@@ -430,6 +430,23 @@ trusted-LAN stream artifact, or physical-input result artifact. Evidence is
 retained under
 [evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/](evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md).
 
+On 2026-08-30 Asia/Shanghai local time / 2026-08-30 UTC, origin/main commit
+`87e16d8bea4446c1ca449045678f1bafc7fd6cb2` refreshed the latency camera
+current-base owner record. The connected Nubia P0110/pacific Android 16 / SDK 36
+substitute was reachable through the required explicit ADB target form and
+recorded under the stable evidence id `nubia-p0110-pacific-device-1`. The local
+preflight found only the built-in MacBook Pro camera, no retained
+high-frame-rate external-camera or optical single-timebase package, no raw
+camera recording, no formal USB/LAN latency manifest, no annotated latency
+samples, and no synchronized-clock input package with a sub-5 ms error budget.
+`make evidence-latency-preflight` returned exit `2`, with all three profiles
+reporting `can_close_performance_gate=false`. This is blocked readiness
+evidence only; FPS and logs do not close these gates, and unsynchronized
+telemetry, decoder timing, RTT, screenshots, and ADB-generated input cannot
+substitute for raw high-frame-rate camera footage or synchronized-clock proof.
+Evidence is retained under
+[evidence/2026-08-30-nubia-p0110-latency-camera-current-base-blocked/](evidence/2026-08-30-nubia-p0110-latency-camera-current-base-blocked/README.md).
+
 ## Still unproved
 
 - Developer ID signing and notarization;
