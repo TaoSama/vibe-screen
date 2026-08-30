@@ -1,0 +1,33 @@
+      Window #3: WindowStateAnimator{4b404fe dev.telemachus.display/dev.telemachus.display.MainActivity}
+    numWindow=1 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=dev.telemachus.display
+  deepestLastOrientationSource=ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}
+  mCurrentFocus=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}
+      mPreferredTopFocusableRootTask=Task{2a8028 #667 type=standard A=10301:dev.telemachus.display}
+      mLastFocusedRootTask=Task{2a8028 #667 type=standard A=10301:dev.telemachus.display}
+      * Task{2a8028 #667 type=standard A=10301:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+        * ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}
+    mFocusedWindow=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mTopFullscreenOpaqueWindowState=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mSystemBarColorApps={ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}}
+    mNavBarColorWindowCandidate=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    mNavBarBackgroundWindowCandidate=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+      Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        source=ActivityRecord{113258458 u0 dev.telemachus.display/.MainActivity t655} SCREEN_ORIENTATION_LANDSCAPE
+        source=ActivityRecord{37626470 u0 dev.telemachus.display/.MainActivity t657} SCREEN_ORIENTATION_LANDSCAPE
+        source=ActivityRecord{173583230 u0 dev.telemachus.display/.MainActivity t661} SCREEN_ORIENTATION_LANDSCAPE
+        source=ActivityRecord{64681279 u0 dev.telemachus.display/.MainActivity t665} SCREEN_ORIENTATION_LANDSCAPE
+      Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+        mControlTarget=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mControlTarget=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mControlTarget=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+        mPendingControlTarget=Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  ActivityRecord{231272011 u0 dev.telemachus.display/.MainActivity t667}
+  Window #21 Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+    mOwnerUid=10301 showForAllUsers=false package=dev.telemachus.display appop=NONE
+    WindowStateAnimator{4b404fe dev.telemachus.display/dev.telemachus.display.MainActivity}:
+  imeLayeringTarget in display# 0 Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  imeInputTarget in display# 0 Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  imeControlTarget in display# 0 Window{76cff63 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+    3 visible windows: [[Gesture Monitor] swipe-up, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1,1)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, [Gesture Monitor] edge-swipe, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,70,2716)(1194,0,1264,2716)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, 76cff63 dev.telemachus.display/dev.telemachus.display.MainActivity, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1264,2800)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=android.os.BinderProxy@1734992, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=true]
+  Display #0: [[Gesture Monitor] swipe-up, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1,1)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, [Gesture Monitor] edge-swipe, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,70,2716)(1194,0,1264,2716)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, 76cff63 dev.telemachus.display/dev.telemachus.display.MainActivity, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1264,2800)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=android.os.BinderProxy@1734992, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=true]

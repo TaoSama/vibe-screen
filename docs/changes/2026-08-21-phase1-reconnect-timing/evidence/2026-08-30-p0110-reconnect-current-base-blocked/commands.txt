@@ -1,0 +1,75 @@
+# Command summary
+
+Branch: `codex/reconnect-3s-p0110-20260830`
+Head commit: `87e16d8bea4446c1ca449045678f1bafc7fd6cb2`
+Target device serial: `<device-serial>`
+Device: nubia P0110 / pacific / Android 16 / SDK 36
+DEVICE_SERIAL='<device-serial>'
+
+Initial safety check:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Result: no output; no `sfltool` process was observed. No
+`/usr/bin/sfltool dumpbtm` command was executed.
+
+Device identity, ADB reverse, Android process, and Host listener probes:
+
+```sh
+make evidence-device-info \
+  EVIDENCE_SERIAL="$DEVICE_SERIAL" \
+  EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked
+
+adb -s "$DEVICE_SERIAL" reverse --list
+adb -s "$DEVICE_SERIAL" shell pidof dev.telemachus.display
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+```
+
+Host source-provenance readiness, expected blocked exit `2`; no login-item
+diagnostic option was passed:
+
+```sh
+make baseline-macos-host-readiness \
+  EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked \
+  EVIDENCE_PORT=54321
+```
+
+Trusted-LAN preflight, expected blocked exit `2` after requiring the LAN
+listener:
+
+```sh
+make evidence-trusted-lan-preflight \
+  EVIDENCE_SERIAL="$DEVICE_SERIAL" \
+  EVIDENCE_DIR=docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked \
+  TRUSTED_LAN_REQUIRE_HOST_LISTENER=1
+```
+
+Reconnect timing blocked summary, expected blocked exit `3` from the Python
+module before the wrapper records it:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
+  --blocked \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36 / <device-serial>" \
+  --blocker "Host source-provenance stable signing is blocked" \
+  --blocker "Host listener is not observed on TCP port 54321" \
+  --blocker "TCC permissions were not evaluated because Host bundle signing inspection failed" \
+  --blocker "trusted LAN preflight reports Android Wi-Fi association, wlan0 IPv4, and wlan0 route to Mac LAN IPv4 blocked; no LAN stream or reconnect was observed" \
+  --artifact host-readiness.json \
+  --artifact host-signing-and-permissions.txt \
+  --artifact device-info.json \
+  --artifact adb-reverse-before.txt \
+  --artifact android-pid-before.txt \
+  --artifact host-54321-listener.txt \
+  --artifact trusted-lan-preflight.json \
+  --notes "P0110/pacific current-base reconnect within 3s owner blocker refresh. No client kill, ADB reverse removal/restoration, or trusted-LAN network interruption was run." \
+  --output docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-30-p0110-reconnect-current-base-blocked/reconnect-timing-summary.json
+```
+
+Final safety check:
+
+```sh
+pgrep -x sfltool || true
+```
