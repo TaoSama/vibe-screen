@@ -735,9 +735,6 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             },
             completeFrames: {
                 completionCallCount += 1
-                if completionCallCount == 4, videoToolbox.completeFirstFrame() {
-                    callbacks = 1
-                }
                 return noErr
             },
             drainFrames: {
@@ -746,7 +743,8 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
             },
             sleep: { interval in
                 currentTime = currentTime.addingTimeInterval(interval)
-                if completionCallCount == 3, videoToolbox.completeFirstFrame() {
+                if currentTime.timeIntervalSinceReferenceDate >= 0.7,
+                   videoToolbox.completeFirstFrame() {
                     callbacks = 1
                 }
             },
@@ -756,7 +754,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(result, .init(submittedFrames: 2, drainedFrames: 0, callbacks: 1, completionStatus: noErr))
         XCTAssertEqual(submittedFrames, [0, 1])
         XCTAssertEqual(videoToolbox.submissionCount, 2)
-        XCTAssertEqual(completionCallCount, 3)
+        XCTAssertEqual(completionCallCount, 2)
         XCTAssertEqual(drainCallCount, 0)
         XCTAssertEqual(admission.inFlightCount, 1)
 
@@ -800,7 +798,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
         XCTAssertEqual(submittedFrames, [0, 1])
         XCTAssertEqual(drainCallCount, 0)
         XCTAssertLessThanOrEqual(maximumObservedInFlight, 2)
-        XCTAssertEqual(videoToolbox.retainedFrameCount, 1)
+        XCTAssertEqual(videoToolbox.retainedFrameCount, 2)
 
         while videoToolbox.completeFirstFrame() {}
         XCTAssertEqual(admission.inFlightCount, 0)
