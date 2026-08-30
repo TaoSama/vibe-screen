@@ -11,7 +11,7 @@
   "display_topology": "",
   "capture_backend": "unavailable",
   "stream_transport": "usb",
-  "android_counterpart": "Nubia P0110 / pacific / Android 16 / SDK 36 / EP0110PZ0B9110300B",
+  "android_counterpart": "Nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>",
   "compatibility_scope": "readiness only; does not close any real Host-backed Android gate",
   "xcode_version": "",
   "swift_version": "",

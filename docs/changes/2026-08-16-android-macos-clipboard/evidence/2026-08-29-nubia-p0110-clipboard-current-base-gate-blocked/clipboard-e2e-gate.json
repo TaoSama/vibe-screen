@@ -1,0 +1,108 @@
+{
+  "blockers": [
+    "device_identity: missing real P0110 device identity evidence from USB, trusted-LAN, or product evidence",
+    "host_readiness: codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "host_readiness: codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n/Applications/Vibe Screen.app: a sealed resource is missing or invalid\nIn subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
+    "host_readiness: Host listener is not observed on TCP port 54321",
+    "host_readiness: Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "host_readiness: login/headless readiness: Launch at Login is not verified enabled: unverified",
+    "real_transport_ready: at least one real Protocol v1 USB or trusted-LAN path must be ready before clipboard E2E can pass",
+    "real_transport_ready: usb: missing USB preflight: usb-smoke-preflight.json",
+    "real_transport_ready: trusted_lan: missing trusted-LAN preflight: trusted-lan-preflight.json",
+    "android_clipboardmanager_smoke: current-run Android ClipboardManager instrumentation log is missing",
+    "bidirectional_product_e2e: missing product E2E evidence: product-e2e.json"
+  ],
+  "can_close_android_macos_clipboard_e2e_gate": false,
+  "checks": [
+    {
+      "evidence": [],
+      "expected_identity": {
+        "android_release": "16",
+        "codename": "pacific",
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "sdk": 36
+      },
+      "identity": null,
+      "name": "device_identity",
+      "reasons": [
+        "missing real P0110 device identity evidence from USB, trusted-LAN, or product evidence"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "name": "host_readiness",
+      "reasons": [
+        "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+        "codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n/Applications/Vibe Screen.app: a sealed resource is missing or invalid\nIn subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
+        "Host listener is not observed on TCP port 54321",
+        "Host is missing com.apple.developer.hid.virtual.device entitlement",
+        "login/headless readiness: Launch at Login is not verified enabled: unverified"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "usb_preflight",
+      "reasons": [
+        "missing USB preflight: usb-smoke-preflight.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "trusted_lan_preflight",
+      "reasons": [
+        "missing trusted-LAN preflight: trusted-lan-preflight.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "real_transport_ready",
+      "reasons": [
+        "at least one real Protocol v1 USB or trusted-LAN path must be ready before clipboard E2E can pass",
+        "usb: missing USB preflight: usb-smoke-preflight.json",
+        "trusted_lan: missing trusted-LAN preflight: trusted-lan-preflight.json"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "android_clipboardmanager_smoke",
+      "reasons": [
+        "current-run Android ClipboardManager instrumentation log is missing"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "bidirectional_product_e2e",
+      "reasons": [
+        "missing product E2E evidence: product-e2e.json"
+      ],
+      "status": "blocked"
+    }
+  ],
+  "gate_closed": false,
+  "interpretation": "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, a current Android system ClipboardManager smoke, and retained bidirectional product E2E evidence showing explicit user action, source system clipboard read, remote system clipboard write, Protocol v1 session ownership, verified session epoch, change ID, SHA-256 digest, bounded byte length, exact source/destination system clipboard endpoints, and distinct final marker matches. Offline or synthetic coverage alone remains readiness evidence.",
+  "kind": "android_macos_clipboard_e2e_gate",
+  "not_proven": [
+    "Android ClipboardManager -> macOS NSPasteboard over Protocol v1 USB/LAN",
+    "macOS NSPasteboard -> Android ClipboardManager over Protocol v1 USB/LAN",
+    "trusted-LAN clipboard warning and secure-record product behavior"
+  ],
+  "result": "blocked",
+  "safety": {
+    "offline_tests_do_not_close_gate": true,
+    "public_output_sanitized": true,
+    "raw_serial_redacted": true,
+    "synthetic_evidence_do_not_close_gate": true
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "serial_label": "REDACTED_P0110_USB_SERIAL",
+  "verdict": "blocked"
+}

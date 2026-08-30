@@ -1,4 +1,4 @@
-Repository: /Users/luwentao/.codex/worktrees/6755/vibe-screen
+Repository: <codex-worktrees>/6755/vibe-screen
 Commit: 8e630ad379fa6b2c5f7e6c9f5453386336e0251b
 Date: 2026-08-20
 

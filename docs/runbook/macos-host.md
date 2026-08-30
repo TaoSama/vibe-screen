@@ -165,7 +165,8 @@ read-only: it does not start Vibe Screen, import certificates, change Keychain
 settings, modify macOS privacy databases, request macOS privacy grants,
 configure ADB, or touch Android state. It also skips Launch at Login probing by default so automated
 tests and CI do not invoke `/usr/bin/sfltool dumpbtm` or trigger macOS
-authorization prompts. For an explicit manual diagnostic, run
+authorization prompts; the JSON records this as
+`login_headless.login_item.sfltool_dumpbtm_was_run=false`. For an explicit manual diagnostic, run
 `make baseline-macos-host-readiness MACOS_HOST_READINESS_PROBE_LOGIN_ITEM=1 EVIDENCE_DIR=<evidence-dir>`.
 
 The `can_start_*` fields are prerequisite flags only. They say whether a run may

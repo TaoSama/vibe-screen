@@ -32,7 +32,7 @@ creating a virtual gamepad. The evidence summary is therefore intentionally
 - [2026-08-23-current-base-controller-runtime-readiness/controller-runtime-readiness.json](evidence/2026-08-23-current-base-controller-runtime-readiness/controller-runtime-readiness.json)
 
 The 2026-08-20 P0110 readiness run was collected under the shared Android device
-lock with `adb -s <device-serial>`. It recorded the connected Nubia P0110
+lock with `adb -s <redacted-adb-serial>`. It recorded the connected Nubia P0110
 identity and installed APK metadata, but `dumpsys input` did not expose a
 physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` device. The running
 `/Applications/Vibe Screen.app` was signed without an Apple team identifier and
@@ -41,7 +41,7 @@ log still reported controller forwarding unavailable for that reason. The gate
 therefore remains blocked.
 
 The 2026-08-23 current-base readiness run was also collected under
-`/tmp/vibe-screen-device-android.lock` with `adb -s <device-serial>`. It
+`/tmp/vibe-screen-device-android.lock` with `adb -s <redacted-adb-serial>`. It
 again recorded the connected device as Nubia P0110 / pacific / Android 16 / SDK
 36 and found no physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` controller. The
 installed APK metadata was unavailable because `dumpsys package
@@ -86,7 +86,7 @@ disprove controller runtime acceptance.
 
 The 2026-08-25 current-base readiness run refreshed the same owner gate from
 `origin/main` commit `87605d6863e8f2372d3092f3e625459b8520124f`. It used the
-shared Android device lock and `adb -s <device-serial>`, recorded the connected
+shared Android device lock and `adb -s <redacted-adb-serial>`, recorded the connected
 device as Nubia P0110 / pacific / Android 16 / SDK 36, and found no physical
 `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` controller. The installed APK metadata was
 unavailable because `dumpsys package dev.telemachus.display` reported no
@@ -103,7 +103,7 @@ resulting `controller-runtime-summary.json` is `blocked` with
 
 The 2026-08-27 current-base readiness run refreshed the controller runtime gate
 from `origin/main` commit `3b2ba11e832a3618eaedfc67f92414b161423a00` using a
-clean detached worktree. Android commands used `adb -s <device-serial>` and the
+clean detached worktree. Android commands used `adb -s <redacted-adb-serial>` and the
 connected device was recorded as Nubia P0110 / pacific / Android 16 / SDK 36.
 No physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` controller was visible. The
 installed Host listener was present, but Host readiness remained blocked by
@@ -120,7 +120,7 @@ availability. The summary is intentionally `blocked` with
 After merging `origin/main` commit `32b05030cf4cff54029d9bffd4c9dd0cb7e1d6e3`
 into `codex/p0110-peripheral-runtime-gates`, PR-head commit
 `7e06483becdc1b63f0de74dfed56342eed2d0aba` was checked again. Android
-commands used `adb -s <device-serial>` and the connected device was recorded as
+commands used `adb -s <redacted-adb-serial>` and the connected device was recorded as
 Nubia P0110 / pacific / Android 16 / SDK 36. No physical `SOURCE_GAMEPAD` or
 `SOURCE_JOYSTICK` controller was visible. Host readiness remained blocked by the
 missing approved virtual HID entitlement and lack of identity-signed runtime

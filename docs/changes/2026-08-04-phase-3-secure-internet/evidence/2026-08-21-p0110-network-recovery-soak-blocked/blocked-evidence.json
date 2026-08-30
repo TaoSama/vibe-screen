@@ -1,5 +1,5 @@
 {
-  "adb_command_required_for_future_run": "adb -s EP0110PZ0B9110300B ...",
+  "adb_command_required_for_future_run": "adb -s <redacted-adb-serial> ...",
   "blocked_before_adb": true,
   "blocked_gates": [
     "public_internet_direct_path",

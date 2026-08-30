@@ -1,0 +1,127 @@
+{
+  "artifact_paths": [
+    "android-logcat-native-pointer.txt",
+    "dumpsys-input.txt",
+    "host-log-appended.txt",
+    "result.json"
+  ],
+  "blocking_notes": [
+    "/tmp/vibe-screen-device-android.lock: p0110-android-uiux-smoke-20260828 30805 2026-08-28T12:10:26Z",
+    "Android device coordination lock exists; no ADB command was run and native pointer HID acceptance could not start."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "adb_was_run",
+      "requirement": "run the collector against the named Android device unless blocked by a shared device lock"
+    },
+    {
+      "field": "device_identity_recorded",
+      "requirement": "record Android manufacturer, model, codename, release, and SDK for the exact device under test"
+    },
+    {
+      "field": "physical_mouse_attached",
+      "requirement": "attach a real USB/Bluetooth mouse, touchpad, trackball, or relative mouse source to Android"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    }
+  ],
+  "can_close_native_pointer_hid_gate": false,
+  "collector_status": "blocked_device_coordination_lock",
+  "inconsistent_observations": [],
+  "kind": "native_pointer_hid_acceptance",
+  "missing_requirements": [
+    {
+      "field": "adb_was_run",
+      "requirement": "run the collector against the named Android device unless blocked by a shared device lock"
+    },
+    {
+      "field": "device_identity_recorded",
+      "requirement": "record Android manufacturer, model, codename, release, and SDK for the exact device under test"
+    },
+    {
+      "field": "device_identity_matches_claim",
+      "requirement": "label the evidence with the observed device identity, without relabeling P0110/pacific as Xiaomi/fuxi"
+    },
+    {
+      "field": "physical_mouse_attached",
+      "requirement": "attach a real USB/Bluetooth mouse, touchpad, trackball, or relative mouse source to Android"
+    },
+    {
+      "field": "android_move_forwarded",
+      "requirement": "retain Android native pointer MOVE forwarding logs from a mouse-like source"
+    },
+    {
+      "field": "android_forwarding_device_ids_match_external_mouse",
+      "requirement": "match every Android forwarded pointer event to a positive deviceId from the external mouse-like input device inventory"
+    },
+    {
+      "field": "android_button_press_forwarded",
+      "requirement": "retain Android native pointer BUTTON_PRESS forwarding logs from a mouse-like source"
+    },
+    {
+      "field": "android_button_release_forwarded",
+      "requirement": "retain Android native pointer BUTTON_RELEASE forwarding logs from a mouse-like source"
+    },
+    {
+      "field": "host_pointer_changed_injected",
+      "requirement": "retain Host Pointer injected changed logs"
+    },
+    {
+      "field": "host_pointer_began_injected",
+      "requirement": "retain Host Pointer injected began logs"
+    },
+    {
+      "field": "host_pointer_ended_injected",
+      "requirement": "retain Host Pointer injected ended logs"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    },
+    {
+      "field": "visible_mac_result_observed",
+      "requirement": "record an operator note describing visible Mac cursor movement and click result"
+    },
+    {
+      "field": "android_logcat_window_retained",
+      "requirement": "retain the bounded Android logcat observation window"
+    },
+    {
+      "field": "host_log_window_retained",
+      "requirement": "retain the newly appended Host log observation window"
+    },
+    {
+      "field": "collector_reported_passed",
+      "requirement": "use a collector result whose own status is passed, not blocked or failed"
+    }
+  ],
+  "notes": "Android device coordination lock exists; no ADB command was run and native pointer HID acceptance could not start.",
+  "observations": {
+    "adb_was_run": false,
+    "android_button_press_forwarded": false,
+    "android_button_release_forwarded": false,
+    "android_forwarding_device_ids_match_external_mouse": false,
+    "android_logcat_window_retained": false,
+    "android_move_forwarded": false,
+    "collector_reported_passed": false,
+    "default_gate_events_required": true,
+    "device_identity_matches_claim": false,
+    "device_identity_recorded": false,
+    "host_log_window_retained": false,
+    "host_pointer_began_injected": false,
+    "host_pointer_changed_injected": false,
+    "host_pointer_ended_injected": false,
+    "host_stable_signed_tcc_ready": false,
+    "physical_mouse_attached": false,
+    "visible_mac_result_observed": false
+  },
+  "profile": "native-pointer-hid-mouse",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
+  "requires_physical_mouse": true,
+  "run_id": "2026-08-28T12:11:36Z",
+  "schema_version": "vibescreen.evidence/v1",
+  "synthetic_adb_pointer_is_not_physical_hid_evidence": true,
+  "verdict": "blocked"
+}

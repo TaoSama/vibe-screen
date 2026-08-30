@@ -1,5 +1,5 @@
 ## listener after client launch
 COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-Vibe\x20S 97995 luwentao    7u  IPv4 0xd61c0623b72d6bcf      0t0  TCP 127.0.0.1:54321 (LISTEN)
+Vibe\x20S 97995 <user>    7u  IPv4 0xd61c0623b72d6bcf      0t0  TCP 127.0.0.1:54321 (LISTEN)
 ## host process after client launch
-luwentao         97995   5.8  0.2 443162800 122864 s012  Ss+   6:00PM   0:02.38 .build/release/Vibe Screen
+<user>         97995   5.8  0.2 443162800 122864 s012  Ss+   6:00PM   0:02.38 .build/release/Vibe Screen

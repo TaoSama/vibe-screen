@@ -9,7 +9,7 @@ sustained-use gate.
 
 ## Device and build
 
-- Device: nubia P0110, codename `pacific`, serial `EP0110PZ0B9110300B`.
+- Device: nubia P0110, codename `pacific`, serial `<redacted-adb-serial>`.
 - OS: Android 16, SDK 36, build fingerprint
   `nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys`.
 - Display state: `wm size` reported `1264x2800`; `wm density` reported `560`.
@@ -22,7 +22,7 @@ sustained-use gate.
 ## Commands
 
 The device was accessed under the shared `/tmp/vibe-screen-device-android.lock`
-advisory lock and targeted explicitly with `adb -s EP0110PZ0B9110300B`.
+advisory lock and targeted explicitly with `adb -s <redacted-adb-serial>`.
 
 Local build and focused unit test:
 
@@ -39,31 +39,31 @@ cd baseline/AndroidClient
 Target-device layout and screenshot instrumentation:
 
 ```bash
-adb -s EP0110PZ0B9110300B install -r \
+adb -s <redacted-adb-serial> install -r \
   baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r \
+adb -s <redacted-adb-serial> install -r \
   baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class 'dev.telemachus.display.SettingsDialogLayoutInstrumentedTest#capturesSustainedUseStatusEvidenceImages' \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class 'dev.telemachus.display.SettingsDialogLayoutInstrumentedTest' \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B shell am start -n dev.telemachus.display/.MainActivity
+adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity
 ```
 
 Platform state snapshots:
 
 ```bash
-make evidence-device-info EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+make evidence-device-info EVIDENCE_SERIAL=<redacted-adb-serial> \
   EVIDENCE_PACKAGE=dev.telemachus.display \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
-adb -s EP0110PZ0B9110300B shell getprop > device.txt
-adb -s EP0110PZ0B9110300B shell wm size > wm-size-before.txt
-adb -s EP0110PZ0B9110300B shell wm density > wm-density-before.txt
-adb -s EP0110PZ0B9110300B shell dumpsys battery > adb-battery-before.txt
-adb -s EP0110PZ0B9110300B shell dumpsys power > adb-power-before.txt
-adb -s EP0110PZ0B9110300B shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
+adb -s <redacted-adb-serial> shell getprop > device.txt
+adb -s <redacted-adb-serial> shell wm size > wm-size-before.txt
+adb -s <redacted-adb-serial> shell wm density > wm-density-before.txt
+adb -s <redacted-adb-serial> shell dumpsys battery > adb-battery-before.txt
+adb -s <redacted-adb-serial> shell dumpsys power > adb-power-before.txt
+adb -s <redacted-adb-serial> shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
 ```
 
 Blocked Phase 2 tablet preflight generated from the retained substitute-device
@@ -87,7 +87,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2
   --host-build "no formal signed Phase 2 tablet host build; readiness evidence only" \
   --apk-sha256 "cebbaacfb7bc26a4fbdfee61a272b2f35247c8692b306afec0b6b99f3ffacfba" \
   -- make soak-8h \
-    EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+    EVIDENCE_SERIAL=<redacted-adb-serial> \
     EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
 make phase2-tablet-preflight \
   EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness

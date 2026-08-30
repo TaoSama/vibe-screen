@@ -35,11 +35,11 @@ platform scaffolding under active development.
 | Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture. The 2026-08-30 Nubia P0110/pacific current-base refresh remains blocked because the installed Host is not a current-source stable-signed Microphone/TCC-ready bundle, no Host listener was observed, and retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`, `AudioTrack` write, or playback-confirmation evidence |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
-| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, stable signed/TCC-ready Host evidence, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
+| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent is verified for software/protocol keyboard input on device; hardware-keyboard workflow acceptance remains blocked and is owned by the [hardware-keyboard current-base owner](./docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner/README.md). Native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The latest Nubia P0110/pacific stylus preflight exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because no physical drawing, stable signed/TCC-ready Host evidence, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Clipboard | Protocol v1 text clipboard forwarding is wired for Android <-> macOS with explicit send/get/overwrite actions, strict UTF-8 `text/plain`, SHA-256/origin/session-epoch validation, deny-wins managed-policy gating, and a 1 MiB negotiated size ceiling. Android JVM tests, Protocol v1 fixtures, and the Mac Protocol v1 self-test pass on current main. The 2026-08-27 Nubia P0110 current-base attempt adds a fail-closed clipboard E2E gate and local Android ClipboardManager smoke evidence, but real Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E remains open because Host readiness and real transport prerequisites are blocked and no bidirectional product transfer record exists |
 | File transfer | Protocol v1 includes a bounded single-file transfer path for Android/macOS USB/LAN sessions with explicit sender action, receiver approval, safe basenames, negotiated limits, chunk ordering, session-epoch checks, SHA-256 verification, deny-wins policy handling, and cancel/disconnect cleanup covered by offline and Android smoke tests. A dedicated fail-closed Phase 0 gate now tracks real Android/macOS product E2E readiness; the 2026-08-29 Nubia P0110 current-base record keeps it blocked because Host readiness is not satisfied and no bidirectional product transfer evidence exists |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
-| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-29 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
+| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-30 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard and file transfer are implemented and offline-tested, but their real device/system service or product E2E gates are still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the [host RSS no-growth gate](docs/changes/2026-08-10-host-rss-growth/TECH.md) and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost in a real two-process localhost loopback using the secure-record path by default; the loopback harness asks the Host to bind port `0` and passes the selected localhost port to the client. Explicit plaintext legacy fallback is regression-tested separately. This is readiness evidence only: Simulator UI, signed iPhone/iPad device acceptance, and real-network LAN acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
@@ -306,7 +306,7 @@ Host integrity/provenance, TCC, listener, virtual-HID entitlement, and full
 Xcode/XCTest prerequisites; see
 [docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness](docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md).
 The Xiaomi 13 baseline evidence is recorded under
-[docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md). The display-switch round-trip and offline self-tests are recorded under
+[docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-redacted](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-redacted/README.md). The display-switch round-trip and offline self-tests are recorded under
 [docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch/roundtrip-verification.md).
 
 Implementation status and evidence are tracked in the
@@ -325,7 +325,9 @@ input envelope routing, and media-frame routing to focused boundary owners with
 offline contract coverage. This is still not completion of Phase 0 module
 ownership: broader protocol/session ownership, full file-transfer and wake-host
 product ownership, decoder/renderer ownership, and UI/product session
-boundaries are still being extracted.
+boundaries are still being extracted. The current-base owner state is tracked by
+`make phase0-module-ownership-gate`, which must remain blocked until every
+required boundary is closed with focused evidence.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
@@ -463,14 +465,20 @@ the negotiated 1 MiB ceiling plus origin, session epoch, UTF-8 and SHA-256
 checks. This path is covered by Android JVM tests, protocol fixtures, MacHost
 clipboard XCTest sources, and the Mac Protocol v1 executable self-test; the
 MacHost clipboard XCTest run itself is blocked in this local Command Line Tools
-environment. The 2026-08-27 Nubia P0110 current-base run records a blocked
+environment. The latest Nubia P0110 current-base records preserve a blocked
 `clipboard-e2e-gate` verdict with local Android ClipboardManager smoke passing,
-but no bidirectional system-pasteboard product transfer. The real Android
-ClipboardManager <-> macOS NSPasteboard USB/LAN E2E gate remains open pending a
-signed Host/device run; see the
+but no bidirectional system-pasteboard product transfer. The gate now requires
+retained product evidence for exact Android ClipboardManager and macOS
+NSPasteboard endpoints, verified session epoch, change ID, SHA-256 digest,
+bounded byte length, and distinct markers for both transfer directions. The real
+Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E gate remains open
+pending a signed Host/device run; see the
 [clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)
 and the blocked E2E evidence under
-[2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-27-nubia-p0110-clipboard-e2e-current-base-blocked/README.md).
+[2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md),
+[2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked](docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md)
+and
+[2026-08-28-p0110-pacific-usb-e2e-current-source](docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/README.md).
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
@@ -581,28 +589,38 @@ device identity and fail-closed battery, power, and thermal snapshots, but it is
 not a gate pass because the device is a phone substitute and no stand-mounted
 tablet setup, controlled thermal-load recovery, or eight-hour window was
 available. The latest P0110/pacific hardware-keyboard current-base readiness
-record captures the real device identity and fails closed on current
-`origin/main` because no external Android-attached keyboard or stable
-signed/TCC-ready Host was available; a Host listener alone is not enough, and
-this is not a gate pass. The latest P0110/pacific tablet sustained-use
+record
+[2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/README.md)
+captures the real device identity and fails closed on current
+`origin/main` because no external Android-attached keyboard, macOS Host
+listener, or stable signed/TCC-ready Host was available; readiness alone is not
+enough, and this is not a gate pass. It is substitute Android readiness only and
+must not be relabeled as Xiaomi/fuxi or physical 8-9 inch tablet evidence. The
+latest P0110/pacific tablet sustained-use
 current-base preflight captures the device as nubia P0110 / pacific / Android
 16 / SDK 36 and keeps the Phase 2 tablet gate blocked because the device is an
 `android_substitute` phone, APK identity was not supplied for a formal run, no
 Host PID or Host telemetry JSONL was provided, no physical 8-9 inch tablet
 evidence exists, and no eight-hour soak gate artifact was produced. The current
 aggregate owner report consumes that blocked keyboard summary and blocked
-tablet preflight, and still reports `can_close_readme_phase2_gates=false`; see
+tablet preflight, and still reports `can_close_readme_phase2_gates=false`; the
+dedicated hardware-keyboard current-base owner record is
+[2026-08-30-phase2-hardware-keyboard-current-base-owner](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner/README.md).
+See
 [the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
 and
 [the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC
-verification is unavailable, Launch at Login could not be machine-verified, the
-Virtual HID entitlement is absent, and no reboot/login, headless display,
-client-render, bounded recovery, or window-restore artifact was collected. It
-therefore does not close login startup or headless Mac mini acceptance; see
-[the blocked current-base record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-27-macos-login-headless-current-base-blocked/README.md).
+verification is unavailable, Launch at Login remains unverified on the default
+non-`sfltool` path, the Virtual HID entitlement is absent, and no reboot/login,
+headless display, client-render, bounded recovery, or window-restore artifact
+was collected. The retained readiness JSON records
+`sfltool_dumpbtm_was_run=false`, and start/end `pgrep -x sfltool || true`
+checks were empty. It therefore does not close login startup or headless Mac
+mini acceptance; see
+[the blocked current-base record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-macos-login-headless-current-base-blocked/README.md).
 See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 

@@ -61,7 +61,7 @@ PR facts were refreshed with local gh plus remote refs.
 - xcode-select -p reports /Library/Developer/CommandLineTools; xcrun --find
   xctest fails with unable to find utility "xctest", so focused Swift XCTest
   cannot run in this environment.
-- adb -s EP0110PZ0B9110300B confirms a connected nubia P0110 / pacific /
+- adb -s <redacted-adb-serial> confirms a connected nubia P0110 / pacific /
   Android 16 / SDK 36 device for general Android substitution, but this Host RSS
   source-readiness slice did not run a fresh Android stream.
 - A fresh local Swift build was attempted from the current-base successor; the
@@ -75,7 +75,7 @@ PR facts were refreshed with local gh plus remote refs.
 
 - python3 -m json.tool docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-24-frame-lifecycle-current-base-blocked/readiness-report.json
 - git diff --check
-- adb -s EP0110PZ0B9110300B get-state and device getprop identity checks
+- adb -s <redacted-adb-serial> get-state and device getprop identity checks
 
 ## Required rerun
 
@@ -87,7 +87,7 @@ With full Xcode selected, first run:
 Then, from a Screen Recording/Accessibility-authorized Host build that matches
 this source revision, use the formal Host RSS gate path:
 
-    export EVIDENCE_SERIAL=EP0110PZ0B9110300B
+    export EVIDENCE_SERIAL=<redacted-adb-serial>
     export EVIDENCE_DIR=.build/evidence/host-rss-2026-08-24
     export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
     mkdir -p "$EVIDENCE_DIR/soak-2h"

@@ -33,6 +33,27 @@ ClipboardContent {
 - Envelope 必须匹配当前 `session_id + session_epoch`。剪贴板不带 display /
   stream target。
 
+## Product E2E Evidence Contract
+
+Retained Android/macOS product E2E evidence must be stronger than local smoke or
+protocol fixture proof. Each transfer direction in `product-e2e.json` must prove:
+
+- `transport` is `usb` or `trusted_lan`, and that transport preflight is current
+  and ready.
+- `source_system_clipboard` / `destination_system_clipboard` are the exact system
+  endpoints for that direction: `android_clipboardmanager` ->
+  `macos_nspasteboard`, or `macos_nspasteboard` -> `android_clipboardmanager`.
+- `protocol_v1_session`, `system_source_clipboard_read`, `explicit_user_action`,
+  `remote_system_clipboard_write`, `session_epoch_verified`,
+  `origin_device_id_verified`, `final_sha256_match`, and `final_marker_match` are
+  all true.
+- `session_epoch` is a positive integer, `change_id_hex` is the 16-byte Protocol
+  v1 change ID encoded as 32 hex characters, `sha256` is a 64-character hex
+  digest, and `byte_length` is positive and no larger than 1 MiB.
+- The Android -> macOS and macOS -> Android markers are distinct, so one
+  transfer, one local ClipboardManager smoke, or one synthetic protocol replay
+  cannot satisfy both directions.
+
 ## 能力协商与旧 Peer
 
 - Android `ClientHello` 与 MacHost `HostHello` 都通告

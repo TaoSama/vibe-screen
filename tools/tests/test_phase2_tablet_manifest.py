@@ -16,8 +16,8 @@ from vibescreen_evidence.phase2_tablet_manifest import build_manifest, main
 
 DEVICE_INFO = {
     "device": {
-        "adb_serial": "EP0110PZ0B9110300B",
-        "device_serial": "EP0110PZ0B9110300B",
+        "adb_serial": "<redacted-adb-serial>",
+        "device_serial": "<redacted-adb-serial>",
         "manufacturer": "nubia",
         "model": "P0110",
         "device": "pacific",

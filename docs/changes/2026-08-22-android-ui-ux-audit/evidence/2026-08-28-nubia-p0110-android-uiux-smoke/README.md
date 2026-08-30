@@ -1,7 +1,7 @@
 # Nubia P0110 Android UI/UX smoke
 
 Date: 2026-08-28
-Device: Nubia P0110 / pacific / Android 16 / SDK 36 / serial EP0110PZ0B9110300B
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
 Repository: TaoSama/vibe-screen
 Base commit: f5db90a761e158798065ce1078bf49428031ce49
 Branch: codex/p0110-android-uiux-smoke-20260828
@@ -36,10 +36,10 @@ Recorded in device-identity.txt with explicit ADB serial commands:
 - Codename: pacific
 - Android release: 16
 - SDK: 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Display: 1264x2800, density 560
 
-All ADB commands used adb -s EP0110PZ0B9110300B ... .
+All ADB commands used adb -s <redacted-adb-serial> ... .
 
 ## Automated Checks
 

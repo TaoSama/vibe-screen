@@ -221,7 +221,7 @@ class HardwareKeyboardReadinessTests(unittest.TestCase):
 
         document = readiness.device_info_document(
             created_at="2026-08-23T00:00:00Z",
-            connection=f"already connected to {TEST_ADB_SERIAL}",
+            connection="already connected to <redacted-adb-serial>",
             adb_version="Android Debug Bridge version 1.0.41",
             device=readiness.redacted_device_identity(device),
             package=package,

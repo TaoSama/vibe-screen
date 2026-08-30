@@ -206,7 +206,10 @@ before it can close the gate:
 - retained product E2E JSON proving both Android `ClipboardManager` -> macOS
   `NSPasteboard` and macOS `NSPasteboard` -> Android `ClipboardManager` with
   explicit user action, source system clipboard read, remote system clipboard
-  write, Protocol v1 session ownership, and final marker match.
+  write, Protocol v1 session ownership, exact source/destination system
+  clipboard endpoints, verified session epoch, verified origin device ID,
+  16-byte change ID, SHA-256 digest, bounded byte length, final digest match,
+  and distinct final marker matches.
 
 The 2026-08-27 run confirmed the device identity as nubia P0110 / pacific /
 Android 16 / SDK 36 and reran the local Android ClipboardManager smoke on
@@ -261,3 +264,30 @@ trusted-LAN preflight was supplied, the retained product session did not
 negotiate clipboard capability, and no bidirectional Android ClipboardManager
 <-> macOS NSPasteboard product-flow evidence exists. The P0110 evidence must not
 be relabeled as Xiaomi 13/fuxi evidence.
+
+## 2026-08-29 Nubia P0110 current-base gate/tooling refresh
+
+Evidence:
+[evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked](evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md).
+
+Status remains open. The run refreshed the fail-closed `clipboard-e2e-gate`
+tooling from `origin/main` at `4884d80813a7f674a10d574a96f8dfcf5723c6e7`. The
+gate now rejects product evidence that omits exact source/destination system
+clipboard endpoints, reuses one marker for both directions, omits verified
+session epoch/origin, omits a 16-byte change ID or SHA-256 digest, exceeds the
+1 MiB byte ceiling, or defaults device identity without retained USB,
+trusted-LAN, or product identity evidence.
+
+This package intentionally did not install or launch the Android app and did not
+change `adb reverse`. A read-only upstream probe observed a nubia P0110 /
+pacific / Android 16 / API 36 device online, which remains usable for general
+Android USB/LAN substitute acceptance when future evidence records that exact
+identity. That probe is not local ClipboardManager smoke, not a USB/LAN preflight,
+and not product-transfer evidence.
+
+The generated `clipboard-e2e-gate.json` is intentionally `blocked` and
+`gate_closed=false`: Host readiness is blocked, no USB preflight, trusted-LAN
+preflight, Android ClipboardManager instrumentation log, or bidirectional
+`product-e2e.json` was supplied, and no Android ClipboardManager <-> macOS
+NSPasteboard product-flow evidence exists. The P0110 evidence must not be
+relabeled as Xiaomi 13/fuxi evidence.

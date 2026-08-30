@@ -38,8 +38,14 @@ EXPECTED_COTURN_DENIES = {
     "denied-peer-ip=169.254.0.0-169.254.255.255",
     "denied-peer-ip=172.16.0.0-172.31.255.255",
     "denied-peer-ip=192.0.0.0-192.0.0.255",
+    "denied-peer-ip=192.0.2.0-192.0.2.255",
     "denied-peer-ip=192.168.0.0-192.168.255.255",
     "denied-peer-ip=198.18.0.0-198.19.255.255",
+    "denied-peer-ip=198.51.100.0-198.51.100.255",
+    "denied-peer-ip=203.0.113.0-203.0.113.255",
+    "denied-peer-ip=240.0.0.0-255.255.255.255",
+    "denied-peer-ip=::",
+    "denied-peer-ip=::1",
     "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
     "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
@@ -59,6 +65,20 @@ def non_comment_coturn_lines() -> set[str]:
     }
 
 
+def service_section(compose: str, service: str) -> str:
+    lines = compose.splitlines()
+    try:
+        start = lines.index(f"  {service}:")
+    except ValueError as error:
+        raise AssertionError(f"missing service section: {service}")
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("  ") and not lines[index].startswith("    "):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
 class ProductionProfileStaticTests(unittest.TestCase):
     def test_relay_production_profile_requires_immutable_image(self) -> None:
         compose = read(RELAY_PRODUCTION_COMPOSE)
@@ -72,7 +92,7 @@ class ProductionProfileStaticTests(unittest.TestCase):
         }
         for service, image in expected_images.items():
             with self.subTest(service=service):
-                self.assertRegex(compose, rf"(?ms)^  {service}:\n(?:    .+\n)*?    image: {image}$")
+                self.assertRegex(service_section(compose, service), rf"(?m)^    image: {image}$")
         for marker in PROHIBITED_RELAY_BUILD_MARKERS:
             with self.subTest(marker=marker):
                 self.assertNotIn(marker, compose)
@@ -80,7 +100,24 @@ class ProductionProfileStaticTests(unittest.TestCase):
         for secret_file in EXPECTED_RELAY_SECRET_FILES:
             with self.subTest(secret_file=secret_file):
                 self.assertIn(secret_file, compose)
-        self.assertIn("./config/relay.production.json:/etc/vibe-relay/config.json:ro", compose)
+        self.assertIn("${VIBE_RELAY_CONFIG_FILE:-./config/relay.production.json}:/etc/vibe-relay/config.json:ro", compose)
+
+    def test_production_app_containers_are_hardened(self) -> None:
+        compose = read(RELAY_PRODUCTION_COMPOSE)
+        anchor = compose.split("services:", 1)[0]
+        self.assertIn("user: \"65532:65532\"", anchor)
+        self.assertIn("read_only: true", anchor)
+        self.assertIn("cap_drop:\n    - ALL", anchor)
+        self.assertIn("no-new-privileges:true", anchor)
+        self.assertIn("pids_limit: 128", anchor)
+        self.assertIn("mem_limit: 256m", anchor)
+        self.assertIn("cpus: 1.0", anchor)
+        self.assertIn("tmpfs:\n    - /tmp:size=16m,mode=0700,uid=65532,gid=65532", anchor)
+        for service in ("signaling-migrate", "signaling", "relay-migrate", "relay"):
+            with self.subTest(service=service):
+                self.assertRegex(compose, rf"(?m)^  {service}:\n    <<: \*vibe-service$")
+        self.assertIn("start_period: 5s", service_section(compose, "signaling"))
+        self.assertIn("start_period: 5s", service_section(compose, "relay"))
 
     def test_authority_production_profile_requires_digest_tls_and_loopback_http(self) -> None:
         compose = read(AUTHORITY_PRODUCTION_COMPOSE)

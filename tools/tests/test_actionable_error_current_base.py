@@ -142,13 +142,13 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         report = evaluate(self.load_real_manifest(), repository_root=REPOSITORY_ROOT)
 
         self.assertEqual(report["device_identity"]["adb_serial"], "<redacted-adb-serial>")
-        self.assertNotIn("EP" + "0110PZ0B9110300B", json.dumps(report, sort_keys=True))
+        self.assertNotIn("EPTESTSERIAL000000", json.dumps(report, sort_keys=True))
 
     def test_rejects_public_manifest_with_raw_adb_serial(self) -> None:
         manifest = self.load_real_manifest()
         device = manifest["device"]
         assert isinstance(device, dict)
-        device["adb_serial"] = "EP" + "0110PZ0B9110300B"
+        device["adb_serial"] = "EPTESTSERIAL000000"
 
         report = evaluate(manifest, repository_root=REPOSITORY_ROOT)
 
@@ -159,7 +159,7 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             artifact = root / "artifact.txt"
-            artifact.write_text("visible serial EP" + "0110PZ0B9110300B\n", encoding="utf-8")
+            artifact.write_text("visible serial EPTESTSERIAL000000\n", encoding="utf-8")
             import hashlib
 
             digest = hashlib.sha256(artifact.read_bytes()).hexdigest()

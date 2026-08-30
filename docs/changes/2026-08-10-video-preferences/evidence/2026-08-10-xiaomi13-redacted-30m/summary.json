@@ -1,0 +1,101 @@
+{
+  "configuration": {
+    "duration_seconds": 1800.0,
+    "host_pid": 24536,
+    "interval_seconds": 30.0,
+    "package": "dev.telemachus.display",
+    "require_stream_telemetry": true,
+    "serial": "<redacted-xiaomi-adb-serial>",
+    "telemetry_jsonl": "docs/changes/2026-08-10-video-preferences/evidence/2026-08-10-xiaomi13-redacted-30m/host-telemetry.jsonl"
+  },
+  "environment": {
+    "adb_version": "Android Debug Bridge version 1.0.41\nVersion 37.0.0-14910828\nInstalled as <android-sdk>/platform-tools/adb\nRunning on Darwin 25.4.0 (arm64)",
+    "device_identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "<redacted-xiaomi-adb-serial>",
+      "android_release": "16",
+      "build_fingerprint": "Xiaomi/fuxi/fuxi:16/BP2A.250605.031.A3/OS3.0.2.0.WMCCNXM:user/release-keys",
+      "device": "fuxi",
+      "device_serial": "<redacted-xiaomi-adb-serial>",
+      "manufacturer": "Xiaomi",
+      "model": "2211133C",
+      "product": "lineage_fuxi",
+      "sdk": 36
+    }
+  },
+  "errors": [],
+  "finished_at": "2026-08-10T08:07:47.456708Z",
+  "kind": "soak",
+  "metrics": {
+    "connected_sample_count": 60,
+    "process_running_sample_count": 60,
+    "reconnect_count": 0,
+    "sample_count": 60,
+    "samples_with_errors": 0,
+    "statistics": {
+      "app_total_pss_kb": {
+        "max": 78837.0,
+        "mean": 76634.7,
+        "min": 74850.0,
+        "samples": 60
+      },
+      "battery_level_percent": {
+        "max": 100.0,
+        "mean": 100.0,
+        "min": 100.0,
+        "samples": 60
+      },
+      "charge_counter_uah": {
+        "max": 3509000.0,
+        "mean": 3509000.0,
+        "min": 3509000.0,
+        "samples": 60
+      },
+      "current_now_ua": {
+        "max": 9000.0,
+        "mean": 4883.333333333333,
+        "min": 0.0,
+        "samples": 60
+      },
+      "device_temperature_c": {
+        "max": 55.4,
+        "mean": 35.72473611111121,
+        "min": 0.0,
+        "samples": 2880
+      },
+      "host_rss_kb": {
+        "max": 95952.0,
+        "mean": 76414.13333333333,
+        "min": 55888.0,
+        "samples": 60
+      },
+      "system_mem_available_kb": {
+        "max": 3501596.0,
+        "mean": 3440761.066666667,
+        "min": 3361856.0,
+        "samples": 60
+      },
+      "system_mem_free_kb": {
+        "max": 352604.0,
+        "mean": 290075.6666666667,
+        "min": 209084.0,
+        "samples": 60
+      },
+      "voltage_now_uv": {
+        "max": 4317000.0,
+        "mean": 4315550.0,
+        "min": 4315000.0,
+        "samples": 60
+      }
+    },
+    "stream_telemetry": {
+      "event_counts": {
+        "stream_stats": 1477
+      }
+    }
+  },
+  "run_id": "xiaomi13-redacted-video-preferences-30m",
+  "schema_version": "vibescreen.evidence/v1",
+  "started_at": "2026-08-10T07:37:47.401664Z",
+  "status": "complete"
+}

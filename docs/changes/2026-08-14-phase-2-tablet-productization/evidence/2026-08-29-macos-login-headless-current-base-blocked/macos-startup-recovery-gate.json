@@ -1,0 +1,183 @@
+{
+  "can_claim_headless_mac_mini_operation": false,
+  "can_close_login_headless_gate": false,
+  "checks": [
+    {
+      "evidence": [
+        "host-signing-and-permissions.txt",
+        "host-signing-and-permissions.txt",
+        "host-readiness.json"
+      ],
+      "name": "host_identity_permissions",
+      "passed": false,
+      "reasons": [
+        "mac_host.source_commit is required",
+        "mac_host.source_tree is required",
+        "mac_host.source_dirty must be false",
+        "mac_host.screen_recording_permission must be granted",
+        "mac_host.accessibility_permission must be granted for window recovery"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json",
+        "host-readiness.json"
+      ],
+      "name": "login_item_registration_and_launch",
+      "passed": false,
+      "reasons": [
+        "login_item.status must be enabled",
+        "login_item.requires_approval must be false",
+        "login_item.reboot_or_logout_login_performed must be true",
+        "login_item.login_launch_observed must be true"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json",
+        "host-readiness.json"
+      ],
+      "name": "automatic_startup_streaming",
+      "passed": false,
+      "reasons": [
+        "automatic_startup.first_server_start_observed must be true",
+        "automatic_startup.client_render_observed must be true"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json",
+        "host-readiness.json"
+      ],
+      "name": "headless_or_dummy_display_capture",
+      "passed": false,
+      "reasons": [
+        "display.capturable_display_observed must be true",
+        "display.first_frame_observed must be true"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "name": "unattended_listener_recovery",
+      "passed": false,
+      "reasons": [
+        "unattended_recovery.observed must be true",
+        "unattended_recovery.retry_delays_seconds must match the bounded 1,2,4,8,16,30,30,30 policy",
+        "unattended_recovery must record restart_succeeded or bounded_exhaustion_observed",
+        "unattended_recovery.logs_retained must be true"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json",
+        "host-readiness.json",
+        "host-readiness.json"
+      ],
+      "name": "window_restore_on_disconnect_or_failure",
+      "passed": false,
+      "reasons": [
+        "window_recovery.move_observed must be true",
+        "window_recovery.disconnect_or_failure_trigger_observed must be true",
+        "window_recovery.restored_observed must be true",
+        "window_recovery.original_frame is required",
+        "window_recovery.restored_frame is required"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "name": "remote_admin_access_boundary",
+      "passed": false,
+      "reasons": [
+        "remote_access.operator_intervention_path_verified must be true",
+        "remote_access.filevault_or_first_login_blocker_absent must be true"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json",
+        "host-readiness.json",
+        "host-readiness.json"
+      ],
+      "name": "android_reconnect_render",
+      "passed": false,
+      "reasons": [
+        "android_reconnect.disconnect_observed must be true",
+        "android_reconnect.reconnect_attempt_observed must be true",
+        "android_reconnect.reconnect_succeeded must be true",
+        "android_reconnect.client_render_after_reconnect_observed must be true"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "name": "android_identity_label_guard",
+      "passed": true,
+      "reasons": [],
+      "status": "pass"
+    }
+  ],
+  "derivation_status": "complete",
+  "interpretation": "This report is a passive Phase 2 login-startup/headless Mac mini owner gate. A pass requires retained real-macOS integration evidence for every boundary; blocked readiness or offline policy tests must keep can_close_login_headless_gate=false.",
+  "kind": "macos_startup_recovery_gate",
+  "open_reasons": [
+    "host_identity_permissions: mac_host.source_commit is required",
+    "host_identity_permissions: mac_host.source_tree is required",
+    "host_identity_permissions: mac_host.source_dirty must be false",
+    "host_identity_permissions: mac_host.screen_recording_permission must be granted",
+    "host_identity_permissions: mac_host.accessibility_permission must be granted for window recovery",
+    "login_item_registration_and_launch: login_item.status must be enabled",
+    "login_item_registration_and_launch: login_item.requires_approval must be false",
+    "login_item_registration_and_launch: login_item.reboot_or_logout_login_performed must be true",
+    "login_item_registration_and_launch: login_item.login_launch_observed must be true",
+    "automatic_startup_streaming: automatic_startup.first_server_start_observed must be true",
+    "automatic_startup_streaming: automatic_startup.client_render_observed must be true",
+    "headless_or_dummy_display_capture: display.capturable_display_observed must be true",
+    "headless_or_dummy_display_capture: display.first_frame_observed must be true",
+    "unattended_listener_recovery: unattended_recovery.observed must be true",
+    "unattended_listener_recovery: unattended_recovery.retry_delays_seconds must match the bounded 1,2,4,8,16,30,30,30 policy",
+    "unattended_listener_recovery: unattended_recovery must record restart_succeeded or bounded_exhaustion_observed",
+    "unattended_listener_recovery: unattended_recovery.logs_retained must be true",
+    "window_restore_on_disconnect_or_failure: window_recovery.move_observed must be true",
+    "window_restore_on_disconnect_or_failure: window_recovery.disconnect_or_failure_trigger_observed must be true",
+    "window_restore_on_disconnect_or_failure: window_recovery.restored_observed must be true",
+    "window_restore_on_disconnect_or_failure: window_recovery.original_frame is required",
+    "window_restore_on_disconnect_or_failure: window_recovery.restored_frame is required",
+    "remote_admin_access_boundary: remote_access.operator_intervention_path_verified must be true",
+    "remote_admin_access_boundary: remote_access.filevault_or_first_login_blocker_absent must be true",
+    "android_reconnect_render: android_reconnect.disconnect_observed must be true",
+    "android_reconnect_render: android_reconnect.reconnect_attempt_observed must be true",
+    "android_reconnect_render: android_reconnect.reconnect_succeeded must be true",
+    "android_reconnect_render: android_reconnect.client_render_after_reconnect_observed must be true"
+  ],
+  "required_boundaries": [
+    "identity-signed Host with current Screen Recording and Accessibility grants",
+    "macOS login item enabled and not awaiting System Settings approval",
+    "reboot or logout/login launch, not manual Finder or Dock launch",
+    "automatic startup produces a real client-rendered stream",
+    "capturable physical, dummy/headless, or Screen Sharing display with first frame",
+    "bounded unattended recovery logs for the declared failure trigger",
+    "real window move and restore after disconnect or failure",
+    "remote or local administrator path for FileVault, first-login, TCC, and display intervention",
+    "Android disconnect, reconnect, and post-reconnect rendered-frame evidence"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "source_evidence": {
+    "kind": "macos_startup_recovery_evidence",
+    "run_id": "2026-08-29-macos-login-headless-current-base-blocked",
+    "source_commit": "e647b6dcd0ea18907d6812a4d5f692f9eb63dfcd"
+  },
+  "verdict": "blocked"
+}

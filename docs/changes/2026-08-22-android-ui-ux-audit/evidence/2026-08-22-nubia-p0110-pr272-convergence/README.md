@@ -3,12 +3,12 @@
 This evidence records the follow-up convergence pass for PR #272 after reviewing
 the overlapping Android display-selection pending-state work. The device was
 locked with `/tmp/vibe-screen-device-android.lock`, and every Android command
-used explicit serial targeting with `adb -s EP0110PZ0B9110300B`.
+used explicit serial targeting with `adb -s <redacted-adb-serial>`.
 
 ## Device
 
 - Device identity: nubia P0110 / pacific / Android 16 / SDK 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Physical size: 1264x2800
 - Physical density: 560
 - Power state during the run: AC powered, 100% battery
@@ -59,9 +59,9 @@ make baseline-android-check
 git diff --check
 git diff --check origin/main...HEAD
 cd baseline/AndroidClient
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class dev.telemachus.display.ControlBarLayoutInstrumentedTest \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 ```

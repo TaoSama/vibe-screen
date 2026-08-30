@@ -547,6 +547,7 @@ def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> 
             matched=False,
             detail="No matching login item entry found in sfltool dumpbtm output.",
             evidence=(),
+            sfltool_dumpbtm_was_run=True,
         )
     combined = "\n---\n".join(matches)
     lowered = combined.lower()
@@ -556,6 +557,7 @@ def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> 
             matched=True,
             detail="Matching login item appears to need user approval; verify in System Settings.",
             evidence=tuple(matches),
+            sfltool_dumpbtm_was_run=True,
         )
     if any(marker in lowered for marker in ("disabled", "not enabled", "state = 0")):
         return LoginItemReadiness(
@@ -563,6 +565,7 @@ def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> 
             matched=True,
             detail="Matching login item appears present but disabled.",
             evidence=tuple(matches),
+            sfltool_dumpbtm_was_run=True,
         )
     if any(marker in lowered for marker in ("enabled", "allowed = 1", "state = 1")):
         return LoginItemReadiness(
@@ -570,12 +573,14 @@ def parse_login_item_state(output: str, bundle_id: str = EXPECTED_BUNDLE_ID) -> 
             matched=True,
             detail="Matching login item appears enabled in read-only sfltool output.",
             evidence=tuple(matches),
+            sfltool_dumpbtm_was_run=True,
         )
     return LoginItemReadiness(
         state="present_unknown",
         matched=True,
         detail="Matching login item was found, but the enabled/approval state was not machine-parsable.",
         evidence=tuple(matches),
+        sfltool_dumpbtm_was_run=True,
     )
 
 
@@ -587,6 +592,7 @@ def read_login_item_readiness() -> LoginItemReadiness:
             matched=False,
             detail=redact_local_report_text(output or "sfltool dumpbtm failed"),
             evidence=(),
+            sfltool_dumpbtm_was_run=True,
         )
     return parse_login_item_state(output)
 
@@ -597,6 +603,7 @@ def skipped_login_item_readiness() -> LoginItemReadiness:
         matched=False,
         detail=LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL,
         evidence=(),
+        sfltool_dumpbtm_was_run=False,
     )
 
 
@@ -837,6 +844,7 @@ class LoginItemReadiness:
     matched: bool
     detail: str
     evidence: tuple[str, ...]
+    sfltool_dumpbtm_was_run: bool = False
 
 
 @dataclass(frozen=True)
@@ -1524,6 +1532,7 @@ def login_headless_record(
             "matched": login_item.matched,
             "detail": login_item.detail,
             "evidence": list(login_item.evidence),
+            "sfltool_dumpbtm_was_run": login_item.sfltool_dumpbtm_was_run,
         },
         "display_inventory": {
             "readable": displays.readable,
@@ -1828,10 +1837,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
-    probe_login_item = bool(
-        vars(args).get("probe_login_item", False)
-        or vars(args).get("include_login_item_diagnostic", False)
-    )
+    probe_login_item = bool(getattr(args, "probe_login_item", False))
     login_item = read_login_item_readiness() if probe_login_item else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(

@@ -104,11 +104,11 @@ When a real Android run is scheduled, every ADB command for the current shared
 phone must use the explicit serial:
 
 ```bash
-adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
 ```
 
 Record the current shared device as Nubia P0110 / pacific / Android 16 / SDK

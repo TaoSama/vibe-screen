@@ -544,14 +544,14 @@ class ReconnectTimingCliTest(unittest.TestCase):
             "--blocker",
             "codesign identity missing",
             "--target-device",
-            "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B",
+            "Nubia P0110 / pacific / Android 16 / <redacted-adb-serial>",
         )
 
         self.assertEqual(result.returncode, 3, result.stderr)
         output = json.loads(result.stdout)
         self.assertEqual(output["verdict"], "blocked")
         self.assertFalse(output["can_close_timing_gate"])
-        self.assertEqual(output["device"]["target"], "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B")
+        self.assertEqual(output["device"]["target"], "Nubia P0110 / pacific / Android 16 / <redacted-adb-serial>")
 
     def test_cli_rejects_missing_input(self) -> None:
         result = self.run_cli()

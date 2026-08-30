@@ -93,7 +93,7 @@ read-only preflight reported `ready`: the installed Host hash matched the
 expected value, Screen Recording and Accessibility were both authorized for
 `dev.telemachus.display`, and the explicit Android identity was recorded as
 nubia P0110 / `pacific` / Android 16 / API 36 / serial
-`EP0110PZ0B9110300B`. The opt-in gesture driver passed three times, including
+`<redacted-adb-serial>`. The opt-in gesture driver passed three times, including
 the final synchronized event-tap run (`OK (1 test)`, 51.539 seconds). Host logs
 recorded Protocol v1 with `touch=on`, `right click injected`, `drag began`,
 `drag ended`, `two-finger scroll began`, and `pinch began`; the listen-only
@@ -176,15 +176,15 @@ plumbing, and source-level ordering that resolves custom gestures before
 ordinary touch forwarding.
 
 Android device-side settings verification also ran on nubia P0110 / `pacific`
-/ Android 16 / SDK 36 / serial `EP0110PZ0B9110300B` with an emulator also
+/ Android 16 / SDK 36 / serial `<redacted-adb-serial>` with an emulator also
 connected, so installation and execution used the explicit P0110 serial:
 
 ```bash
 cd baseline/AndroidClient
 ./gradlew --no-daemon assembleDebugAndroidTest
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 ```

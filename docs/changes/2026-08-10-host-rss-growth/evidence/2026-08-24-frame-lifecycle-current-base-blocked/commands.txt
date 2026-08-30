@@ -5,7 +5,7 @@ Date: 2026-08-24
 
 Initial state:
 
-  git -C /Users/luwentao/Workspaces/vibe-screen worktree add     -B codex/host-rss-frame-lifecycle-current     /private/tmp/vibe-screen-pr195-current-0824 origin/main
+  git -C <workspace-root> worktree add     -B codex/host-rss-frame-lifecycle-current     /private/tmp/vibe-screen-pr195-current-0824 origin/main
 
 Outcome: exit 0. Worktree created from origin/main fb4ba4a4801c3ab228855a2e374791558e80401e.
 
@@ -17,12 +17,12 @@ Outcome: exit 0. #195 remains open draft on old base e8fbed466581c4d20e59801e7d7
 
 Device identity check:
 
-  adb -s EP0110PZ0B9110300B get-state
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
-  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
-  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+  adb -s <redacted-adb-serial> get-state
+  adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+  adb -s <redacted-adb-serial> shell getprop ro.product.model
+  adb -s <redacted-adb-serial> shell getprop ro.product.device
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+  adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
 
 Outcome: exit 0. device / nubia / P0110 / pacific / 16 / 36. This verifies the connected Android substitute identity only; no Host RSS stream or two-hour gate was run.
 

@@ -1,0 +1,354 @@
+{
+  "derivation_status": "partial",
+  "errors": [
+    "host telemetry: no heartbeat_received events in exact window"
+  ],
+  "interpretation": "Trend metrics are descriptive evidence, not a no-leak determination.",
+  "kind": "soak_exact_window_report",
+  "metrics": {
+    "battery": {
+      "level_percent": {
+        "count": 60,
+        "final": 100.0,
+        "first": 100.0,
+        "max": 100.0,
+        "mean": 100.0,
+        "min": 100.0
+      },
+      "temperature_celsius": {
+        "count": 60,
+        "final": 33.0,
+        "first": 32.4,
+        "max": 33.0,
+        "mean": 32.72666666666667,
+        "min": 32.4
+      },
+      "voltage_mv": {
+        "count": 60,
+        "final": 4315.0,
+        "first": 4316.0,
+        "max": 4316.0,
+        "mean": 4315.566666666667,
+        "min": 4315.0
+      }
+    },
+    "memory_kib": {
+      "client_total_pss": {
+        "count": 60,
+        "final": 76682.0,
+        "first": 78631.0,
+        "max": 78837.0,
+        "mean": 76634.7,
+        "min": 74850.0,
+        "slope_kib_per_minute": {
+          "full_window": 32.65691817762067,
+          "second_half": -19.373765224687627,
+          "second_half_sample_count": 30
+        }
+      },
+      "host_rss": {
+        "count": 60,
+        "final": 64240.0,
+        "first": 93728.0,
+        "max": 95952.0,
+        "mean": 76414.13333333333,
+        "min": 55888.0,
+        "slope_kib_per_minute": {
+          "full_window": -1319.7655130266676,
+          "second_half": -581.908109477244,
+          "second_half_sample_count": 30
+        }
+      }
+    },
+    "power": {
+      "charge_counter_uah": {
+        "count": 60,
+        "final": 3509000.0,
+        "first": 3509000.0,
+        "max": 3509000.0,
+        "mean": 3509000.0,
+        "min": 3509000.0
+      },
+      "current_now_ua": {
+        "count": 60,
+        "final": 7000.0,
+        "first": 7000.0,
+        "max": 9000.0,
+        "mean": 4883.333333333333,
+        "min": 0.0
+      },
+      "voltage_now_uv": {
+        "count": 60,
+        "final": 4315000.0,
+        "first": 4316000.0,
+        "max": 4317000.0,
+        "mean": 4315550.0,
+        "min": 4315000.0
+      }
+    },
+    "stream": {
+      "average_frame_age_ms": {
+        "count": 1476,
+        "final": 5.6,
+        "first": 5.5,
+        "max": 29.1,
+        "mean": 5.865853658536586,
+        "min": 5.3
+      },
+      "fps": {
+        "count": 1476,
+        "final": 59.9,
+        "first": 60.0,
+        "max": 60.3,
+        "mean": 59.92540650406504,
+        "min": 41.3
+      },
+      "frame_queue_drop_total": 0.0,
+      "reported_dropped_frames": {
+        "statistics": {
+          "count": 1476,
+          "final": 0.0,
+          "first": 0.0,
+          "max": 29.0,
+          "mean": 0.23712737127371275,
+          "min": 0.0
+        },
+        "sum": 350.0
+      }
+    },
+    "telemetry": {
+      "accepted_heartbeat_count": 0,
+      "event_counts": {
+        "stream_stats": 1476
+      },
+      "heartbeat_gaps": {
+        "count": 0,
+        "maximum_interval_seconds": null,
+        "maximum_window_gap_seconds": null
+      },
+      "stream_stats_gaps": {
+        "count": 1476,
+        "maximum_interval_seconds": 7.003005,
+        "maximum_window_gap_seconds": 7.003005
+      }
+    },
+    "thermal": {
+      "sensors_celsius": {
+        "CPU0": {
+          "count": 120,
+          "final": 42.4,
+          "first": 49.5,
+          "max": 49.5,
+          "mean": 45.32666666666667,
+          "min": 39.2
+        },
+        "CPU1": {
+          "count": 120,
+          "final": 43.2,
+          "first": 47.1,
+          "max": 47.1,
+          "mean": 44.42666666666666,
+          "min": 39.6
+        },
+        "CPU2": {
+          "count": 120,
+          "final": 43.6,
+          "first": 48.3,
+          "max": 48.3,
+          "mean": 45.07666666666667,
+          "min": 39.6
+        },
+        "CPU3": {
+          "count": 120,
+          "final": 40.4,
+          "first": 53.4,
+          "max": 53.4,
+          "mean": 45.71583333333333,
+          "min": 36.9
+        },
+        "CPU4": {
+          "count": 120,
+          "final": 39.2,
+          "first": 49.5,
+          "max": 49.5,
+          "mean": 44.065000000000005,
+          "min": 36.5
+        },
+        "CPU5": {
+          "count": 120,
+          "final": 38.5,
+          "first": 52.2,
+          "max": 52.2,
+          "mean": 45.2425,
+          "min": 36.5
+        },
+        "CPU6": {
+          "count": 120,
+          "final": 38.1,
+          "first": 46.7,
+          "max": 46.7,
+          "mean": 42.079166666666666,
+          "min": 35.7
+        },
+        "CPU7": {
+          "count": 120,
+          "final": 38.1,
+          "first": 55.4,
+          "max": 55.4,
+          "mean": 46.51833333333333,
+          "min": 36.1
+        },
+        "GPU0": {
+          "count": 120,
+          "final": 36.8,
+          "first": 39.6,
+          "max": 39.6,
+          "mean": 38.123333333333335,
+          "min": 36.0
+        },
+        "GPU1": {
+          "count": 120,
+          "final": 36.8,
+          "first": 38.8,
+          "max": 38.8,
+          "mean": 37.61333333333333,
+          "min": 36.0
+        },
+        "GPU2": {
+          "count": 120,
+          "final": 36.8,
+          "first": 38.8,
+          "max": 38.8,
+          "mean": 37.49,
+          "min": 35.6
+        },
+        "GPU3": {
+          "count": 120,
+          "final": 36.4,
+          "first": 38.4,
+          "max": 38.4,
+          "mean": 37.36666666666667,
+          "min": 36.0
+        },
+        "GPU4": {
+          "count": 120,
+          "final": 37.2,
+          "first": 42.8,
+          "max": 42.8,
+          "mean": 39.89,
+          "min": 36.4
+        },
+        "GPU5": {
+          "count": 120,
+          "final": 37.6,
+          "first": 42.0,
+          "max": 42.0,
+          "mean": 39.78333333333333,
+          "min": 36.8
+        },
+        "GPU6": {
+          "count": 120,
+          "final": 36.8,
+          "first": 39.6,
+          "max": 39.6,
+          "mean": 38.03,
+          "min": 35.6
+        },
+        "GPU7": {
+          "count": 120,
+          "final": 36.4,
+          "first": 40.0,
+          "max": 40.0,
+          "mean": 38.43333333333333,
+          "min": 36.0
+        },
+        "battery": {
+          "count": 120,
+          "final": 33.0,
+          "first": 32.5,
+          "max": 33.0,
+          "mean": 32.61666666666667,
+          "min": 32.4
+        },
+        "ibat": {
+          "count": 120,
+          "final": 0.093,
+          "first": 0.656,
+          "max": 0.656,
+          "mean": 0.37450000000000006,
+          "min": 0.093
+        },
+        "nsp0": {
+          "count": 120,
+          "final": 38.1,
+          "first": 40.8,
+          "max": 40.8,
+          "mean": 39.34,
+          "min": 37.3
+        },
+        "nsp1": {
+          "count": 120,
+          "final": 37.7,
+          "first": 40.4,
+          "max": 40.4,
+          "mean": 38.96333333333334,
+          "min": 36.9
+        },
+        "nsp2": {
+          "count": 120,
+          "final": 37.7,
+          "first": 38.9,
+          "max": 38.9,
+          "mean": 38.29666666666667,
+          "min": 37.3
+        },
+        "nsp3": {
+          "count": 120,
+          "final": 37.7,
+          "first": 39.2,
+          "max": 39.2,
+          "mean": 38.33666666666667,
+          "min": 36.9
+        },
+        "socd": {
+          "count": 120,
+          "final": 0.0,
+          "first": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "vbat": {
+          "count": 120,
+          "final": 4.285,
+          "first": 4.285,
+          "max": 4.285,
+          "mean": 4.285,
+          "min": 4.285
+        }
+      },
+      "status": {
+        "count": 60,
+        "final": 0.0,
+        "first": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0
+      }
+    }
+  },
+  "run_id": "xiaomi13-redacted-video-preferences-30m",
+  "schema_version": "vibescreen.evidence/v1",
+  "source_summary": {
+    "errors": [],
+    "status": "complete"
+  },
+  "window": {
+    "duration_seconds": 1800.055044,
+    "finished_at": "2026-08-10T08:07:47.456708Z",
+    "sample_records_in_window": 60,
+    "started_at": "2026-08-10T07:37:47.401664Z",
+    "telemetry_records_excluded": 1,
+    "telemetry_records_in_window": 1476
+  }
+}

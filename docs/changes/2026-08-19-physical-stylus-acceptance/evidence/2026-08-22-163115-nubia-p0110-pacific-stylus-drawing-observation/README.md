@@ -14,7 +14,7 @@
 - Manufacturer: nubia
 - Model/device: P0110 / pacific
 - Android: 16 / SDK 36
-- Serial: EP0110PZ0B9110300B
+- Serial: <redacted-adb-serial>
 - Fingerprint: nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
 
 ## Attempt

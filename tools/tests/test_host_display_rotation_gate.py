@@ -40,7 +40,7 @@ def complete_run(display_kind: str, rotation: int = 90) -> dict:
             "codename": "pacific",
             "android_release": "16",
             "sdk": 36,
-            "adb_serial": "EP0110PZ0B9110300B",
+            "adb_serial": "<redacted-adb-serial>",
         },
         "host_preflight": {
             "host_signing_identity": "Vibe Screen Dev",
