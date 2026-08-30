@@ -1,0 +1,88 @@
+{
+  "blocking_reasons": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "codesign inspection failed for <vendor-app>: --prepared:<vendor-app>/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n<vendor-app>: a sealed resource is missing or invalid\nIn subcomponent: <vendor-app>/Contents/Frameworks/WebRTC.framework\nfile missing: <vendor-app>/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp\nfile missing: <vendor-app>/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
+    "Host listener is not observed on TCP port 54321",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "login/headless readiness: Launch at Login is not verified enabled: unverified",
+    "Full Xcode is required for SwiftPM XCTest; Command Line Tools are insufficient",
+    "xcodebuild -version failed: xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '<xcode-dir>' is a command line tools instance",
+    "XCTest.framework was not found in the selected developer directory",
+    "no stable-signed current-source Host was launched with VIBE_SCREEN_TELEMETRY_PATH",
+    "no 10-17 minute short diagnostic window or formal two-hour Host RSS window was collected",
+    "no host_rss_gate.json exists; old Xiaomi 2026-08-09 soak is historical failure/insufficient evidence and cannot close this gate"
+  ],
+  "created_at": "2026-08-30T07:08:56.601314+00:00",
+  "formal_gate": {
+    "accepted_for_two_hour_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "host_rss_gate_json_present": false
+  },
+  "host": {
+    "can_start_host_rss_gate": false,
+    "configured_signing_identity": "Vibe Screen Dev",
+    "current_source_commit": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
+    "current_source_dirty": false,
+    "current_source_tree": "3876110ef137887daa444293e1dc646d7100e9b1",
+    "full_xcode_available": false,
+    "installed_matches_current_source": false,
+    "installed_source_provenance_present": false,
+    "listener_observed": false,
+    "readiness_status": "blocked",
+    "virtual_hid_entitlement": false,
+    "xcode_developer_dir_kind": "command_line_tools"
+  },
+  "kind": "host_rss_current_base_failclosed_readiness",
+  "login_item": {
+    "diagnostic_was_run": false,
+    "sfltool_dumpbtm_was_run": false,
+    "state": "unverified"
+  },
+  "next_commands": [
+    "export EVIDENCE_SERIAL='<lease-controlled-device-serial>'",
+    "export EVIDENCE_DIR='.build/evidence'",
+    "export VIBE_SCREEN_TELEMETRY_PATH=\"$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl\"",
+    "export HOST_PID='<current-source-host-pid>'",
+    "make soak-2h-host-rss-gate EVIDENCE_SERIAL=\"$EVIDENCE_SERIAL\" EVIDENCE_DIR=\"$EVIDENCE_DIR\" HOST_PID=\"$HOST_PID\""
+  ],
+  "non_claims": [
+    "does not prove a current-source Host RSS short-window diagnostic pass",
+    "does not prove the formal two-hour Host RSS no-growth gate",
+    "does not prove installed Host matches current source",
+    "does not prove Screen Recording or Accessibility authorization for a current-source Host",
+    "does not prove login-item readiness; sfltool dumpbtm was not run",
+    "does not prove Android USB/LAN or Nubia P0110/pacific stream health for this source revision"
+  ],
+  "repository": {
+    "branch": "codex/host-rss-no-growth-2h-20260830",
+    "head": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
+    "origin_main": "87e16d8bea4446c1ca449045678f1bafc7fd6cb2",
+    "source_dirty_during_readiness": false,
+    "worktree": "<worktree>"
+  },
+  "run_id": "2026-08-30-current-base-host-rss-failclosed-readiness",
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "blocked",
+  "verification": [
+    {
+      "command": "pgrep -x sfltool || true before readiness",
+      "exit_code": 0,
+      "result": "no output; no residual sfltool process observed"
+    },
+    {
+      "command": "make baseline-macos-host-readiness EVIDENCE_DIR=<clean-output>",
+      "exit_code": 2,
+      "result": "status=blocked, can_start_host_rss_gate=false"
+    },
+    {
+      "command": "python3 scripts/macos_dev_host.py xctest-preflight --json-output <clean-output>/xctest-toolchain.json",
+      "exit_code": 2,
+      "result": "status=blocked, full Xcode unavailable"
+    },
+    {
+      "command": "pgrep -x sfltool || true after checks",
+      "exit_code": 0,
+      "result": "no output; no residual sfltool process observed"
+    }
+  ]
+}
