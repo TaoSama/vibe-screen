@@ -1,0 +1,100 @@
+{
+  "artifacts": [
+    {
+      "bytes": 3859,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "c0d7c1799cb9e88ba7285b2e0087d6fdadd9946cea5a64063f4c0193324b56c1"
+    },
+    {
+      "bytes": 2622,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "1b08c6205d4d0882f6e6580d4aeb4ec063ce0d308ccc4cbcdb74a1e000f78dd3"
+    },
+    {
+      "bytes": 4362,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ios-app-signing-readiness-gate.json",
+      "result": "pass",
+      "sha256": "299652c8c9fe436df895d81b1618a11b17df60634c9309d3e40edbd2beedc424"
+    },
+    {
+      "bytes": 1615,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ios-app-signing-readiness.json",
+      "result": "pass",
+      "sha256": "2738e2d559cd9d8830988143336f35ed9e678f2418191718081260b22dcc429b"
+    },
+    {
+      "bytes": 21149,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ios-current-base-gate.json",
+      "result": "pass",
+      "sha256": "e346c33416f1b3c29a03b1b437998ae07dd38450744cc2414f6df9f04f9753c0"
+    },
+    {
+      "bytes": 17811,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ios-current-base-manifest.json",
+      "result": "pass",
+      "sha256": "3e77121af6f9dcb19d0ae5dffa5eb15a2c783b3b0955ea8af93e02ef04227097"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
