@@ -1,0 +1,10 @@
+Local camera/formal-package readiness notes for 2026-08-30 latency camera blocked record.
+
+system_profiler SPCameraDataType:
+  Camera: MacBook Pro相机
+  Model ID: MacBook Pro相机
+  Unique ID: 6C707041-05AC-0010-0008-000000000001
+
+No external camera or optical single-timebase device is retained on this host.
+No raw-camera.mov, manifest.json, samples.csv, or latency-evidence-report.json
+was found in the Phase 0 evidence tree for the three README latency profiles.
