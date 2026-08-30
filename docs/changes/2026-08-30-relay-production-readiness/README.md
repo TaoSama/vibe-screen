@@ -7,6 +7,9 @@ deploy, start, stop, or change the production relay stack.
 
 - Deployment state: **blocked**
 - `/readyz`: not runnable
+- Remote host preflight: partial operator-local inspection completed; Docker and
+  Compose were present, while disk headroom, production listeners, and remote
+  `/readyz` remained blocked.
 - Public deployment claim: none
 
 ## Preflight checks
