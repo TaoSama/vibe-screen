@@ -11,7 +11,7 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "218360563c69980ffc56000492d23ed05f33efe290311440ef573fcee80b949d"
+      "sha256": "a5a9130580bedefde52705990e194e411f069639b7ca599f2c97423d8a910549"
     },
     {
       "bytes": 2,
@@ -66,7 +66,7 @@
       "sha256": "f378ff74b44a698c7bba07f805bf5ff347c39d906aa38b3b6a58f8b4541f33ff"
     },
     {
-      "bytes": 5303,
+      "bytes": 5346,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -76,7 +76,7 @@
       ],
       "path": "commands.txt",
       "result": "pass",
-      "sha256": "461fea08526b66f430a23e28b9cd27392769fb08c3c0ae4dd7c1392294695a32"
+      "sha256": "6941d1b5288cbf1cff6cd11c814440e000737c8e4b9ff01b4fa9b6c1d7af27c7"
     },
     {
       "bytes": 41,
@@ -89,7 +89,7 @@
       ],
       "path": "git-head.txt",
       "result": "pass",
-      "sha256": "3c75919ea2c9f4b8968ba4f6be7bd4d30004810f86b860f9628271ba21803e37"
+      "sha256": "7abfe21cf177e0ec98a9d41f4f9e962377c5b8ec36f653a811381b8ffaa325f1"
     },
     {
       "bytes": 41,
@@ -102,7 +102,7 @@
       ],
       "path": "git-origin-main.txt",
       "result": "pass",
-      "sha256": "3c75919ea2c9f4b8968ba4f6be7bd4d30004810f86b860f9628271ba21803e37"
+      "sha256": "7abfe21cf177e0ec98a9d41f4f9e962377c5b8ec36f653a811381b8ffaa325f1"
     },
     {
       "bytes": 39,
@@ -118,7 +118,7 @@
       "sha256": "493320ee2fe177361e6967cf278a09b09c90a3ada4c0979baad2286370e4dd78"
     },
     {
-      "bytes": 1052,
+      "bytes": 1062,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -128,7 +128,7 @@
       ],
       "path": "git-status.txt",
       "result": "pass",
-      "sha256": "fb570f48b12eb59a62cdd94a5424109954a5ebebd58784febb40f091eabc5a74"
+      "sha256": "a18a242cec9ca0b793b5be9cec51785f05212b7a9ab194906aa92cccdd1c4659"
     },
     {
       "bytes": 2,
@@ -154,7 +154,7 @@
       ],
       "path": "host-readiness.json",
       "result": "pass",
-      "sha256": "86befca54d72b90e4aad3c1e08a2762b28c78f1b14246a61c3d7b945a73f9517"
+      "sha256": "1ef77984c397bb03c2615373b9389065472fc785f3c9da76e9b3b1a23c77a8c5"
     },
     {
       "bytes": 6189,
@@ -167,7 +167,7 @@
       ],
       "path": "host-readiness.stderr",
       "result": "pass",
-      "sha256": "86befca54d72b90e4aad3c1e08a2762b28c78f1b14246a61c3d7b945a73f9517"
+      "sha256": "1ef77984c397bb03c2615373b9389065472fc785f3c9da76e9b3b1a23c77a8c5"
     },
     {
       "bytes": 173,
@@ -180,7 +180,7 @@
       ],
       "path": "host-readiness.stdout",
       "result": "pass",
-      "sha256": "cd2b36b532326ed32e1ee276f0230da1f880c2a53276302cb6ebe98bc9033e9c"
+      "sha256": "642e7d4f10662093207697853cbbdb3e03f355de546bb59dbb7e6fd97b6faf86"
     },
     {
       "bytes": 1489,
