@@ -1,0 +1,8 @@
+mkdir -p <clean-output>
+python3 scripts/macos_dev_host.py readiness \
+		--report <clean-output>/host-signing-and-permissions.txt \
+		--json-output <clean-output>/host-readiness.json \
+		--port 54321 \
+
+Wrote <clean-output>/host-signing-and-permissions.txt
+Wrote <clean-output>/host-readiness.json

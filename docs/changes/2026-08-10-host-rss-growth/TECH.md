@@ -180,6 +180,16 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   `com.apple.developer.hid.virtual.device` entitlement，Launch at Login 未验证，且
   当前 developer directory 仍是 Command Line Tools、不可运行 SwiftPM XCTest。见
   [`evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md`](evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md)。
+- 2026-08-30 current-base readiness 在 `origin/main` commit
+  `87e16d8bea4446c1ca449045678f1bafc7fd6cb2` 的干净 checkout 上重跑，同一约束下
+  `pgrep -x sfltool || true` 在检查前后均无输出，且没有使用 `/usr/bin/sfltool dumpbtm`
+  或任何 login-item 诊断 opt-in 参数。结果仍为 `status=blocked`、
+  `can_start_host_rss_gate=false`、`host.current_source_dirty=false`：本机仍缺
+  少 `Vibe Screen Dev` stable signing identity，已安装 Host 的 WebRTC framework
+  sealed resource 校验失败，Host listener 未出现在 TCP 54321，Host 缺少
+  `com.apple.developer.hid.virtual.device` entitlement，Launch at Login 未验证，
+  且 Command Line Tools 仍无法运行 SwiftPM XCTest。见
+  [`evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md`](evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md)。
 - 正式 `host_rss_gate` 的 telemetry 侧最小输入来自同一 exact window 的
   `soak_report`：`stream_stats` 与 `heartbeat_received` 必须存在且窗口间隔不超过
   90 秒，heartbeat 必须全部 accepted，`fps` 必须为正，`frame_queue_drop_total`
