@@ -1,0 +1,83 @@
+{
+  "blocking_reasons": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Create the 'Vibe Screen Dev' self-signed identity (or set $VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass '--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the code-signing hash on every rebuild and invalidates macOS Screen Recording/Accessibility grants.",
+    "codesign inspection failed for /Applications/Vibe Screen.app: --prepared:/Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/.\n/Applications/Vibe Screen.app: a sealed resource is missing or invalid\nIn subcomponent: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp.cstemp\nfile missing: /Applications/Vibe Screen.app/Contents/Frameworks/WebRTC.framework/Versions/Current/WebRTC.cstemp",
+    "Host listener is not observed on TCP port 54321",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "login/headless readiness: Launch at Login is not verified enabled: unverified"
+  ],
+  "created_at": "2026-08-31T04:48:00+08:00",
+  "formal_gate": {
+    "accepted_for_two_hour_gate": false,
+    "can_close_host_rss_no_growth_gate": false,
+    "host_rss_gate_json_present": false
+  },
+  "host": {
+    "can_start_host_rss_gate": false,
+    "configured_signing_identity": "Vibe Screen Dev",
+    "current_source_commit": "075dc157c36ba71df9f757e571015905881a7154",
+    "current_source_dirty": false,
+    "current_source_tree": "5e84c46505b8681eb2d5043259318b50626a3434",
+    "full_xcode_available": false,
+    "installed_matches_current_source": false,
+    "installed_source_provenance_present": false,
+    "listener_observed": false,
+    "readiness_status": "blocked",
+    "virtual_hid_entitlement": false,
+    "xcode_developer_dir_kind": "command_line_tools"
+  },
+  "kind": "host_rss_current_base_failclosed_readiness",
+  "login_item": {
+    "diagnostic_was_run": false,
+    "sfltool_dumpbtm_was_run": false,
+    "state": "unverified"
+  },
+  "next_commands": [
+    "export EVIDENCE_SERIAL='<lease-controlled-device-serial>'",
+    "export EVIDENCE_DIR='.build/evidence'",
+    "export VIBE_SCREEN_TELEMETRY_PATH=\"$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl\"",
+    "export HOST_PID='<current-source-host-pid>'",
+    "make soak-2h-host-rss-gate EVIDENCE_SERIAL=\"$EVIDENCE_SERIAL\" EVIDENCE_DIR=\"$EVIDENCE_DIR\" HOST_PID=\"$HOST_PID\""
+  ],
+  "non_claims": [
+    "does not prove a current-source Host RSS short-window diagnostic pass",
+    "does not prove the formal two-hour Host RSS no-growth gate",
+    "does not close the README Phase 0 Host RSS no-growth gate",
+    "does not prove installed Host matches current source",
+    "does not prove Screen Recording or Accessibility authorization for a current-source Host",
+    "does not prove login-item readiness; sfltool dumpbtm was not run",
+    "does not prove Android USB/LAN stream health for this source revision"
+  ],
+  "repository": {
+    "branch": "codex/host-rss-soak-owner-20260831b",
+    "head": "075dc157c36ba71df9f757e571015905881a7154",
+    "origin_main": "075dc157c36ba71df9f757e571015905881a7154",
+    "source_dirty_during_readiness": false,
+    "worktree": "<worktree>"
+  },
+  "run_id": "2026-08-31-current-base-host-rss-failclosed-readiness",
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "blocked",
+  "verification": [
+    {
+      "command": "pgrep -x sfltool || true before readiness",
+      "exit_code": 0,
+      "result": "no output; no residual sfltool process observed"
+    },
+    {
+      "command": "python3 scripts/macos_dev_host.py readiness --report <evidence>/host-signing-and-permissions.txt --json-output <evidence>/host-readiness.json --port 54321",
+      "exit_code": 2,
+      "result": "status=blocked, can_start_host_rss_gate=false"
+    },
+    {
+      "command": "python3 scripts/macos_dev_host.py xctest-preflight --json-output <evidence>/xctest-toolchain.json",
+      "exit_code": 2,
+      "result": "status=blocked, full Xcode unavailable"
+    },
+    {
+      "command": "pgrep -x sfltool || true after checks",
+      "exit_code": 0,
+      "result": "no output; no residual sfltool process observed"
+    }
+  ]
+}
