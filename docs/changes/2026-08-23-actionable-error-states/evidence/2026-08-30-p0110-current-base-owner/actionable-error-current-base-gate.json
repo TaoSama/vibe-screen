@@ -1,0 +1,125 @@
+{
+  "blocked_state_ids": [
+    "accessibility_denied_or_limited",
+    "host_screen_recording_denied",
+    "lan_route_unavailable",
+    "tcp_54321_unavailable"
+  ],
+  "can_close_readme_phase1_actionable_errors_gate": false,
+  "derivation_status": "complete",
+  "device_identity": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": "36"
+  },
+  "errors": [],
+  "insufficient_state_ids": [
+    "adb_reverse_missing",
+    "stale_epoch_or_session_errors",
+    "usb_disconnected"
+  ],
+  "interpretation": "A pass means every required Phase 1 actionable-error state has retained current-base real-device evidence from the exact Nubia P0110/pacific Android 16 device, with the ADB serial redacted from public reports, and can close the README actionable-errors gate. Blocked, insufficient, not-run, offline-only, or relabeled evidence cannot close that gate.",
+  "kind": "phase1_actionable_error_current_base_gate",
+  "reasons": [
+    "blocked: accessibility_denied_or_limited",
+    "blocked: host_screen_recording_denied",
+    "blocked: lan_route_unavailable",
+    "blocked: tcp_54321_unavailable",
+    "insufficient: adb_reverse_missing",
+    "insufficient: stale_epoch_or_session_errors",
+    "insufficient: usb_disconnected"
+  ],
+  "required_state_ids": [
+    "host_screen_recording_denied",
+    "accessibility_denied_or_limited",
+    "tcp_54321_unavailable",
+    "adb_reverse_missing",
+    "usb_disconnected",
+    "lan_route_unavailable",
+    "stale_epoch_or_session_errors"
+  ],
+  "run_id": "2026-08-30-p0110-current-base-owner",
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "collected_at_commit": "8626c760c0a2c9a519bef38bbf0d1725401f3e79",
+    "evaluated_at_commit": "8626c760c0a2c9a519bef38bbf0d1725401f3e79",
+    "manifest": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/actionable-error-current-base.json",
+    "repository_name": "TaoSama/vibe-screen"
+  },
+  "state_results": [
+    {
+      "artifact_count": 1,
+      "blockers": [
+        "Current environment did not safely induce or revoke macOS Screen Recording/TCC state"
+      ],
+      "can_close_state": false,
+      "id": "host_screen_recording_denied",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 1,
+      "blockers": [
+        "Current environment did not safely induce or revoke macOS Accessibility/TCC state"
+      ],
+      "can_close_state": false,
+      "id": "accessibility_denied_or_limited",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 1,
+      "blockers": [
+        "A local Vibe Screen process was already listening on TCP 54321 during the current-base run, so the missing-listener state could not be reproduced without interrupting a shared Host process."
+      ],
+      "can_close_state": false,
+      "id": "tcp_54321_unavailable",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 5,
+      "blockers": [
+        "The current-source device run removed tcp:54321 and restored it afterwards; with no Host listener available the app showed Mac app unavailable guidance, which is actionable but is not yet ADB-route-unavailable or a complete closing matrix pass."
+      ],
+      "can_close_state": false,
+      "id": "adb_reverse_missing",
+      "observed_on_device": true,
+      "status": "insufficient"
+    },
+    {
+      "artifact_count": 1,
+      "blockers": [
+        "A physical USB disconnect drops the only ADB control channel, so this run could not retain reliable same-window UI/log evidence without external capture."
+      ],
+      "can_close_state": false,
+      "id": "usb_disconnected",
+      "observed_on_device": false,
+      "status": "not_run"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "P0110 had no retained usable trusted-LAN route evidence, so no full LAN connection attempt could exercise the complete UI matrix."
+      ],
+      "can_close_state": false,
+      "id": "lan_route_unavailable",
+      "observed_on_device": true,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 1,
+      "blockers": [
+        "No Protocol v1 stream or stale epoch/session fault was available in the current environment."
+      ],
+      "can_close_state": false,
+      "id": "stale_epoch_or_session_errors",
+      "observed_on_device": false,
+      "status": "not_run"
+    }
+  ],
+  "verdict": "blocked"
+}
