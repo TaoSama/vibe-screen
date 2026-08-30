@@ -324,10 +324,13 @@ module with dependency-direction and resource-lifecycle contract tests.
 `StreamClient` now delegates local product-session lifecycle state, Protocol v1
 action dispatch, side-effect owner checks for file-transfer and wake-host flows,
 input envelope routing, and media-frame routing to focused boundary owners with
-offline contract coverage. This is still not completion of Phase 0 module
-ownership: broader protocol/session ownership, full file-transfer and wake-host
-product ownership, decoder/renderer ownership, and UI/product session
-boundaries are still being extracted. The current-base owner state is tracked by
+offline contract coverage. Renderer viewport layout state is now owned by a
+standalone renderer boundary with contract tests, while decoder output/state
+still composes through MainActivity. This is still not completion of Phase 0
+module ownership: broader protocol/session ownership, full file-transfer and
+wake-host product ownership, decoder ownership, full renderer ownership beyond
+viewport layout, and UI/product session boundaries are still being extracted.
+The current-base owner state is tracked by
 `make phase0-module-ownership-gate`, which must remain blocked until every
 required boundary is closed with focused evidence.
 
