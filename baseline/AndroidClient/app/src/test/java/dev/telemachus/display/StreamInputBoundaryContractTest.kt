@@ -47,12 +47,12 @@ class StreamInputBoundaryContractTest {
         val streamClient = source(PRODUCTION_STREAM_CLIENT)
         val sessionState = source(PRODUCTION_LOCAL_SESSION_STATE)
 
-        assertTrue(streamClient.contains("private val localSessionState = StreamClientLocalSessionState"))
-        assertTrue(streamClient.contains("localSessionState.prepareConnectionStart()"))
-        assertTrue(streamClient.contains("localSessionState.markConnected()"))
-        assertTrue(streamClient.contains("localSessionState.markTerminationClaimed(request.failure)"))
-        assertTrue(streamClient.contains("localSessionState.markReady()"))
-        assertTrue(streamClient.contains("localSessionState.nextReconnectDelayMs()"))
+        assertTrue(streamClient.contains("private val protocolSessionOwner = StreamProtocolSessionOwner"))
+        assertTrue(streamClient.contains("protocolSessionOwner.prepareConnectionStart()"))
+        assertTrue(streamClient.contains("protocolSessionOwner.markConnected()"))
+        assertTrue(streamClient.contains("protocolSessionOwner.markTerminationClaimed(request.failure)"))
+        assertTrue(streamClient.contains("protocolSessionOwner.markReady()"))
+        assertTrue(streamClient.contains("protocolSessionOwner.nextReconnectDelayMs()"))
 
         FORBIDDEN_STREAM_CLIENT_LOCAL_STATE_FIELDS.forEach { field ->
             assertFalse("StreamClient must not own local session field `$field` directly", streamClient.contains(field))
