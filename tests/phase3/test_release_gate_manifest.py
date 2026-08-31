@@ -352,6 +352,28 @@ class ReleaseGateManifestTests(unittest.TestCase):
             errors,
         )
 
+    def test_private_turn_hostnames_are_rejected_for_remote_turn_gate(self) -> None:
+        for hostname in ("relay.corp", "turn.internal", "relay.lan", "turn"):
+            with self.subTest(hostname=hostname):
+                manifest = passing_manifest()
+                gate = manifest["gates"]["remote_turn_relay_path"]  # type: ignore[index]
+                gate["turn_public_hostname"] = hostname
+
+                self.assertIn(
+                    "gates.remote_turn_relay_path.turn_public_hostname: expected public hostname or IP",
+                    validate_manifest(manifest),
+                )
+
+    def test_direct_path_remote_public_asn_requires_as_number(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
+        gate["remote_public_asn"] = "AS-fake"
+
+        self.assertIn(
+            "gates.public_internet_direct_path.remote_public_asn: expected ASN in AS<number> format",
+            validate_manifest(manifest),
+        )
+
     def test_record_layer_requires_aes256gcm_channel_binding_nonce_and_replay_proof(self) -> None:
         manifest = passing_manifest()
         gate = manifest["gates"]["webrtc_datachannel_record_layer"]  # type: ignore[index]
@@ -442,6 +464,14 @@ class ReleaseGateManifestTests(unittest.TestCase):
             "gates.network_handoff_recovery.impairment_tool: deterministic simulator cannot close a release gate",
             validate_manifest(manifest),
         )
+
+        for simulator in ("ns-3", "mininet", "gns3"):
+            with self.subTest(simulator=simulator):
+                gate["impairment_tool"] = simulator
+                self.assertIn(
+                    "gates.network_handoff_recovery.impairment_tool: deterministic simulator cannot close a release gate",
+                    validate_manifest(manifest),
+                )
 
         gate["impairment_tool"] = "deterministic_contract_simulation_only"
         self.assertIn(
