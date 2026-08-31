@@ -10,8 +10,11 @@ import dev.telemachus.display.audio.PcmAudioWriteResult
 import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
 import dev.telemachus.display.audio.encodePacket
 import dev.telemachus.display.audio.pcmPayload
+import dev.telemachus.display.protocol.FileTransferPolicy
+import dev.telemachus.display.protocol.OutgoingFileTransfer
 import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.ProtocolV1Framing
+import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.telemachus.display.protocol.TouchSample
 import dev.vibescreen.protocol.v1.AudioCodec
 import dev.vibescreen.protocol.v1.AudioConfig
@@ -70,6 +73,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -1911,6 +1915,98 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun clientFileOfferRejectsSecondConcurrentOfferBeforeWireMessage() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val first = File.createTempFile("vibescreen-client-first", ".txt")
+            val second = File.createTempFile("vibescreen-client-second", ".txt")
+            first.writeText("first-file")
+            second.writeText("second-file")
+            val connected = CountDownLatch(1)
+            val firstOfferSeen = CountDownLatch(1)
+            val rejectedResultSeen = CountDownLatch(1)
+            val rejectedReason = AtomicReference<String>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        connected.countDown()
+                        val offerEnvelope = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_OFFER, offerEnvelope.payloadCase)
+                        assertEquals(first.name, offerEnvelope.fileOffer.fileName)
+                        firstOfferSeen.countDown()
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(9))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { connectedStatus -> if (connectedStatus) connected.countDown() }
+            client.onFileTransferResult = { accepted, reason ->
+                if (!accepted && reason == "concurrent_limit") {
+                    rejectedReason.set(reason)
+                    rejectedResultSeen.countDown()
+                }
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(connected.await(8, TimeUnit.SECONDS))
+                assertTrue(client.offerFile(first, "text/plain"))
+                assertFalse(client.offerFile(second, "text/plain"))
+                assertTrue(rejectedResultSeen.await(8, TimeUnit.SECONDS))
+                assertEquals("concurrent_limit", rejectedReason.get())
+                assertTrue(firstOfferSeen.await(8, TimeUnit.SECONDS))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                first.delete()
+                second.delete()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun legacyFallbackCancelsPendingOutgoingFileTransfers() {
+        val source = File.createTempFile("vibescreen-fallback-offer", ".txt")
+        source.writeText("fallback-file")
+        val client = StreamClient("127.0.0.1", 1)
+        val transfer =
+            OutgoingFileTransfer(
+                file = source,
+                mimeType = "text/plain",
+                policy = FileTransferPolicy(),
+                remotePolicy = RemoteManagedPolicy.UNMANAGED,
+            )
+        val resultSeen = CountDownLatch(1)
+        val rejectionReason = AtomicReference<String>()
+        client.onFileTransferResult = { accepted, reason ->
+            if (!accepted && reason == "session_deactivated") {
+                rejectionReason.set(reason)
+                resultSeen.countDown()
+            }
+        }
+        try {
+            client.outgoingFileTransfersForTest()[transfer.offer.transferId] = transfer
+
+            client.forceLegacyFallbackForTest()
+
+            assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+            assertEquals("session_deactivated", rejectionReason.get())
+            assertTrue(client.outgoingFileTransfersForTest().isEmpty())
+        } finally {
+            source.delete()
+        }
+    }
+
+    @Test
     fun clientFileOfferRejectsFileLargerThanNegotiatedPeerLimitWithoutWireMessage() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
@@ -2170,6 +2266,19 @@ class StreamClientProtocolV1IntegrationTest {
         assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
         assertTrue(result.videoConfigResult.accepted)
         assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
+    }
+
+    private fun StreamClient.forceLegacyFallbackForTest() {
+        val method = javaClass.getDeclaredMethod("configureLegacyMode", Integer::class.java)
+        method.isAccessible = true
+        method.invoke(this, null)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun StreamClient.outgoingFileTransfersForTest(): ConcurrentHashMap<ByteString, OutgoingFileTransfer> {
+        val field = javaClass.getDeclaredField("outgoingFileTransfers")
+        field.isAccessible = true
+        return field.get(this) as ConcurrentHashMap<ByteString, OutgoingFileTransfer>
     }
 
     private fun beginHandshake(
