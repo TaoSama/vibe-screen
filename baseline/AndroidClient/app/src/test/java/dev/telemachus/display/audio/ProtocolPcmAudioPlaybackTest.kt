@@ -37,6 +37,20 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun configureRejectsInvalidSessionEpochWithoutCreatingOutput() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory)
+
+        assertEquals(
+            ProtocolAudioConfigureResult.Rejected(AudioRejectReason.INVALID_SESSION_EPOCH),
+            player.configure(audioConfig(), sessionEpoch = 0),
+        )
+
+        assertEquals(0, factory.created.size)
+        assertNull(player.activeFormat())
+    }
+
+    @Test
     fun invalidReconfigureStopsOldOutputAndLeavesPlayerUnconfigured() {
         val factory = FakePcmAudioOutputFactory()
         val player = ProtocolPcmAudioPlayer(factory)

@@ -260,6 +260,20 @@ final class AudioCaptureTests: XCTestCase {
         XCTAssertEqual(lock.withAudioTestLock { delivered }, [0])
     }
 
+    func testStreamStartRejectsZeroSessionEpochWithoutStartingSource() {
+        let source = FakeAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+
+        XCTAssertThrowsError(try stream.start(config: makeConfig(), sessionEpoch: 0, onPacket: { _ in })) { error in
+            XCTAssertEqual(error as? MacHostAudioError, .invalidSessionEpoch)
+        }
+
+        XCTAssertFalse(stream.isRunning)
+        XCTAssertNil(stream.currentFormat)
+        XCTAssertEqual(source.startCount, 0)
+        XCTAssertEqual(source.stopCount, 0)
+    }
+
     func testStreamStopDuringPacketDeliverySuppressesRemainingPackets() throws {
         let source = FakeAudioCaptureSource()
         let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)

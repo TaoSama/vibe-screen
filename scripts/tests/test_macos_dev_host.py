@@ -232,6 +232,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Source commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", report)
         self.assertIn("Source tree: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", report)
         self.assertIn("kTCCServiceAccessibility|dev.telemachus.display|0|0|4|1786811429", report)
+        self.assertIn("Microphone not allowed", report)
         self.assertIn("Status: FAIL", report)
         self.assertIn("System Settings -> Privacy & Security", report)
 
@@ -1266,6 +1267,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
 
         self.assertFalse(document["permissions"]["screen_recording_granted"])
         self.assertFalse(document["permissions"]["accessibility_granted"])
+        self.assertFalse(document["permissions"]["microphone_granted"])
         self.assertFalse(document["can_start_controller_runtime_gate"])
         self.assertFalse(document["can_start_headless_login_gate"])
         self.assertFalse(document["can_close_runtime_gates"])
@@ -1284,6 +1286,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 rows=(
                     macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
                     macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                    macos_dev_host.TCCRow("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 3),
                 ),
             ),
             errors=[],
@@ -1950,6 +1953,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                 [
                     ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 10),
                     ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 11),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 12),
                     ("kTCCServiceAccessibility", "other.bundle", 0, 0, 4, 12),
                 ],
             )
@@ -1957,9 +1961,10 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
 
             self.assertTrue(status.readable)
-            self.assertEqual(len(status.rows), 2)
+            self.assertEqual(len(status.rows), 3)
             self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
             self.assertTrue(status.is_allowed((macos_dev_host.ACCESSIBILITY_SERVICE,)))
+            self.assertTrue(status.is_allowed(macos_dev_host.MICROPHONE_SERVICES))
 
     def test_query_tcc_rows_combines_multiple_read_only_databases(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1972,7 +1977,10 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             )
             self.write_tcc_database(
                 system_database,
-                [("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 11)],
+                [
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 11),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 12),
+                ],
             )
 
             status = macos_dev_host.query_tcc_rows(
@@ -1981,9 +1989,10 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             )
 
             self.assertTrue(status.readable)
-            self.assertEqual(len(status.rows), 2)
+            self.assertEqual(len(status.rows), 3)
             self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
             self.assertTrue(status.is_allowed((macos_dev_host.ACCESSIBILITY_SERVICE,)))
+            self.assertTrue(status.is_allowed(macos_dev_host.MICROPHONE_SERVICES))
 
     def test_query_tcc_rows_fails_closed_when_database_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
