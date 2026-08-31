@@ -4563,14 +4563,18 @@ class MainActivity : AppCompatActivity() {
                 managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed
                 managedHostActionsAllowed = !status.managed || status.hostActionsAllowed
                 val binding = currentSessionBinding()
+                val negotiated = callbackClient.negotiatedCapabilities()
                 val hostActionsNegotiated =
-                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in callbackClient.negotiatedCapabilities()
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
                 val hostActions = hostActionsNegotiated && managedHostActionsAllowed
                 val customGestures = hostActions && managedCustomGesturesAllowed
+                val clipboard =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated
                 val capabilities =
                     binding.capabilities.copy(
                         customGestures = customGestures,
                         hostActions = hostActions,
+                        clipboard = clipboard,
                     )
                 applyNegotiatedSession(
                     callbackClient,
@@ -4584,10 +4588,16 @@ class MainActivity : AppCompatActivity() {
                     fileTransfer = callbackClient.canTransferFiles,
                     hostActions = callbackClient.canInvokeHostActions,
                 )
+                if (!clipboard) {
+                    cancelClipboardRequestTimeout()
+                    clipboardApprovalState.clear()
+                }
                 populateHostActions(availableHostActions)
+                refreshClipboardControl()
                 mainDiag(
                     "managed policy updated: customGestures=" + customGestures +
-                        " hostActions=" + capabilities.hostActions,
+                        " hostActions=" + capabilities.hostActions +
+                        " clipboard=" + capabilities.clipboard,
                 )
             }
         }
