@@ -2877,9 +2877,13 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun hostActionFailureMessageId(rejectionReason: String): Int =
-        when (rejectionReason) {
-            "accessibility_permission_required" -> R.string.host_action_rejected_permission
-            "no_focused_window" -> R.string.host_action_rejected_no_window
+        when {
+            rejectionReason == "accessibility_permission_required" ||
+                rejectionReason.contains("Accessibility permission", ignoreCase = true) ->
+                R.string.host_action_rejected_permission
+            rejectionReason == "no_focused_window" ||
+                rejectionReason.contains("focused window", ignoreCase = true) ->
+                R.string.host_action_rejected_no_window
             else -> R.string.host_action_rejected
         }
 

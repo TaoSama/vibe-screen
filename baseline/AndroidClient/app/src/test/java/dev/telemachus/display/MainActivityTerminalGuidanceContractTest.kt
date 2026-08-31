@@ -627,6 +627,14 @@ class MainActivityTerminalGuidanceContractTest {
                 hostActionResult.contains("getString(R.string.host_action_rejected_with_reason, rejectionReason)"),
         )
         assertTrue(hostActionResult.contains("hostActionFailureMessageId(rejectionReason)"))
+        assertTrue(
+            "Host action guidance should handle the Mac Host localized permission rejection",
+            source.contains("rejectionReason.contains(\"Accessibility permission\", ignoreCase = true)"),
+        )
+        assertTrue(
+            "Host action guidance should handle the Mac Host localized focused-window rejection",
+            source.contains("rejectionReason.contains(\"focused window\", ignoreCase = true)"),
+        )
 
         assertFalse(
             "File transfer reason is a protocol/debug value, not user copy",
