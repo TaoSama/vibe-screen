@@ -257,20 +257,26 @@
       "id": "ui_product_session_boundaries",
       "title": "Android UI and product-session boundary",
       "required_for_phase0_stable": true,
-      "status": "open",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+      "status": "partial",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
       "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ProductSessionCoordinatorTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ProductSessionOwnershipBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
       ],
-      "focused_tests": [],
+      "focused_tests": [
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.ProductSessionCoordinatorTest --tests dev.telemachus.display.ProductSessionOwnershipBoundaryContractTest"
+      ],
       "blockers": [
-        "MainActivity still coordinates local USB/LAN and Internet product sessions, UI controls, renderer callbacks, file-transfer prompts, and connection lifecycle.",
-        "No current-base contract proves UI owns only presentation and intent production while session owners own state transitions and side effects."
+        "ProductSessionCoordinator now owns local StreamClient session freshness, negotiated binding access, display and host-action intent command mapping, control availability, disconnect cleanup, and stale callback rejection for the UI-facing local session path.",
+        "MainActivity still coordinates Internet product sessions, renderer callbacks, clipboard approval dialogs, file-transfer picker/storage prompts, and connection lifecycle side effects.",
+        "No current-base contract yet proves UI owns only presentation and intent production across both local and Internet product-session paths."
       ],
       "fail_closed_checklist": [
-        "Extract a product-session coordinator consumed by UI intent handlers instead of allowing MainActivity to own session internals.",
-        "Add tests for UI intent to session-command mapping, disconnect cleanup, and ignored stale callbacks.",
+        "Extend the product-session coordinator beyond the local StreamClient UI path to cover Internet product-session UI state and lifecycle intent routing.",
+        "Move clipboard and file-transfer UI workflow state behind coordinator-owned decisions while keeping Android clipboard, file picker, storage, and protocol side effects in their current owners.",
         "Keep renderer, decoder, protocol/session, file-transfer, WakeHost, and Internet session ownership in separate modules or owner classes with dependency-direction checks."
       ]
     }
