@@ -58,7 +58,7 @@ REQUIRED_FIELDS = (
     ("host_build_identity_recorded", "record Host commit, binary hash, and signing identity"),
     (
         "host_stable_signed_tcc_ready",
-        "run a stable signed Host with Screen Recording and Microphone permission ready",
+        "run a stable signed Host with Screen Recording, Accessibility, and Microphone permission ready",
     ),
     ("host_listener_observed", "record the macOS Host listener for the transport under test"),
     (
@@ -118,6 +118,7 @@ BLOCKING_FIELDS = {
     "host_stable_signed_tcc_ready",
     "host_listener_observed",
     "protocol_v1_session_observed",
+    "playback_output_confirmed",
 }
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
 ALL_REQUIRED_FIELDS = REQUIRED_FIELDS + COMPUTED_REQUIRED_FIELDS

@@ -61,6 +61,7 @@ struct MacHostAudioFormat: Equatable, Sendable {
 
 enum MacHostAudioError: Error, Equatable, LocalizedError {
     case invalidStreamID
+    case invalidSessionEpoch
     case invalidConfigEpoch
     case unsupportedCodec(VSAudioCodec)
     case invalidSampleRate(UInt32)
@@ -82,6 +83,8 @@ enum MacHostAudioError: Error, Equatable, LocalizedError {
         switch self {
         case .invalidStreamID:
             return "Audio stream ID must be nonzero."
+        case .invalidSessionEpoch:
+            return "Audio session epoch must be nonzero."
         case .invalidConfigEpoch:
             return "Audio config epoch must be nonzero."
         case .unsupportedCodec(let codec):

@@ -155,7 +155,7 @@
   "blocking_reasons": [
     {
       "field": "host_stable_signed_tcc_ready",
-      "requirement": "run a stable signed Host with Screen Recording and Microphone permission ready"
+      "requirement": "run a stable signed Host with Screen Recording, Accessibility, and Microphone permission ready"
     },
     {
       "field": "host_listener_observed",
@@ -164,6 +164,10 @@
     {
       "field": "protocol_v1_session_observed",
       "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
+    },
+    {
+      "field": "playback_output_confirmed",
+      "requirement": "record audible output or instrumentation-backed Android playback confirmation from the real device"
     }
   ],
   "can_close_android_audio_playback_gate": false,
@@ -185,7 +189,7 @@
     },
     {
       "field": "host_stable_signed_tcc_ready",
-      "requirement": "run a stable signed Host with Screen Recording and Microphone permission ready"
+      "requirement": "run a stable signed Host with Screen Recording, Accessibility, and Microphone permission ready"
     },
     {
       "field": "host_listener_observed",
