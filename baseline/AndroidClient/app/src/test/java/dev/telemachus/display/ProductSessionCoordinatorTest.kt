@@ -74,6 +74,87 @@ class ProductSessionCoordinatorTest {
     }
 
     @Test
+    fun `connected status gates visible controls and disconnect status clears UI state`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(displaySelection = true, clipboard = true, fileTransfer = true))
+        coordinator.onDisplaysAvailable(client, generation, displays = displays(), selectedId = "built-in")
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true, fileTransfer = true)
+
+        assertFalse(coordinator.renderState().clipboardVisible)
+        assertFalse(coordinator.renderState().fileTransferVisible)
+
+        assertTrue(coordinator.onConnectionStatus(client, generation, isConnected = true))
+        assertTrue(coordinator.renderState().clipboardVisible)
+        assertTrue(coordinator.renderState().clipboardEnabled)
+        assertTrue(coordinator.renderState().fileTransferVisible)
+
+        assertTrue(coordinator.onConnectionStatus(client, generation, isConnected = false))
+        val disconnected = coordinator.renderState()
+        assertFalse(disconnected.connected)
+        assertEquals(emptyList<StreamDisplayOption>(), disconnected.displays)
+        assertFalse(disconnected.clipboardVisible)
+        assertFalse(disconnected.fileTransferVisible)
+    }
+
+    @Test
+    fun `clipboard visible follows capability while enabled follows runtime readiness`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+
+        assertTrue(coordinator.renderState().clipboardVisible)
+        assertFalse(coordinator.renderState().clipboardEnabled)
+
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+
+        assertTrue(coordinator.renderState().clipboardVisible)
+        assertTrue(coordinator.renderState().clipboardEnabled)
+    }
+
+    @Test
+    fun `partial runtime availability updates preserve omitted values`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(hostActions = true, clipboard = true, fileTransfer = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.onHostActionsAvailable(client, generation, listOf(HostActionOption(HostActionMenuPolicy.ACTION_MOVE_WINDOW, "", false)))
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true, fileTransfer = true, hostActions = true)
+
+        coordinator.setRuntimeAvailability(client, generation, clipboard = false)
+        val state = coordinator.renderState()
+
+        assertTrue(state.clipboardVisible)
+        assertFalse(state.clipboardEnabled)
+        assertTrue(state.fileTransferEnabled)
+        assertTrue(state.hostActionsEnabled)
+    }
+
+    @Test
+    fun `confirmed and rejected display callbacks clear pending state`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(displaySelection = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.onDisplaysAvailable(client, generation, displays = displays(), selectedId = "built-in")
+        coordinator.onDisplaySelectionPending(client, generation, selectedId = "built-in", pendingId = "studio")
+
+        assertTrue(coordinator.onDisplaySelectionConfirmed(client, generation, selectedId = "studio"))
+        assertEquals("studio", coordinator.renderState().selectedDisplayId)
+        assertEquals(null, coordinator.renderState().pendingDisplayId)
+
+        coordinator.onDisplaySelectionPending(client, generation, selectedId = "studio", pendingId = "built-in")
+        assertTrue(coordinator.onDisplaySelectionRejected(client, generation, selectedId = "studio"))
+        assertEquals("studio", coordinator.renderState().selectedDisplayId)
+        assertEquals(null, coordinator.renderState().pendingDisplayId)
+    }
+
+    @Test
     fun `disconnect cleanup clears UI product session state`() {
         val coordinator = ProductSessionCoordinator<TestClient>()
         val client = TestClient("current")
@@ -99,6 +180,23 @@ class ProductSessionCoordinatorTest {
         assertFalse(state.clipboardVisible)
         assertFalse(state.fileTransferVisible)
         assertFalse(state.hostActionsVisible)
+    }
+
+    @Test
+    fun `clear disconnected UI state preserves current session identity`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+
+        coordinator.clearDisconnectedUiState()
+
+        assertTrue(coordinator.accepts(client, generation))
+        assertEquals(binding(clipboard = true), coordinator.currentBinding())
+        assertFalse(coordinator.renderState().connected)
+        assertFalse(coordinator.renderState().clipboardVisible)
     }
 
     @Test

@@ -161,7 +161,8 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
     }
 
     fun renderState(): RenderState {
-        val capabilities = currentBinding().capabilities
+        val binding = currentBinding()
+        val capabilities = binding.capabilities
         val sessionControlsActive = activeClient != null && connected
         val hostActionsAvailable =
             sessionControlsActive && HostActionMenuPolicy.isAvailable(capabilities.hostActions, hostActions)
@@ -173,7 +174,7 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         return RenderState(
             connected = connected,
             generation = activeGeneration,
-            binding = currentBinding(),
+            binding = binding,
             capabilities = capabilities,
             displays = displayState.displays,
             selectedDisplayId = displayState.selectedId,
