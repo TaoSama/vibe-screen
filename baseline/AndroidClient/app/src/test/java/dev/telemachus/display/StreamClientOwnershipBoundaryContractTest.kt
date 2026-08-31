@@ -159,6 +159,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 "protocolSessionOwner.trackWakeHostRequest(",
                 "protocolSessionOwner.activate(",
                 "protocolSessionOwner.deactivate()",
+                "protocolSessionOwner.clearSideEffectAdmission()",
                 "protocolSessionOwner.clear()",
                 "mediaFrameRouter.receiveLegacyFrame(",
                 "mediaFrameRouter.receiveProtocolFrame(",

@@ -120,6 +120,24 @@ class StreamProtocolSessionOwnerTest {
     }
 
     @Test
+    fun `clearing side effect admission retains session for outbound drain`() {
+        val owner = StreamProtocolSessionOwner()
+        val session = session()
+        owner.beginSession()
+        owner.activate(session)
+        owner.markConnected()
+        val transferId = ByteString.copyFromUtf8("transfer")
+        assertTrue(owner.trackFileOffer(transferId, session, owner.connectionGeneration))
+
+        owner.markTerminationClaimed(SessionFailure.userRequested())
+        owner.clearSideEffectAdmission()
+
+        assertSame(session, owner.currentSession)
+        assertNull(owner.claimFileOffer(transferId))
+        assertFalse(owner.isCurrent(session, owner.connectionGeneration))
+    }
+
+    @Test
     fun `cleanup resets session reference and side effect admission`() {
         val owner = StreamProtocolSessionOwner()
         val session = session()

@@ -264,7 +264,7 @@ class StreamClient(
             executor = terminationExecutor,
             onClaim = { request ->
                 protocolSessionOwner.markTerminationClaimed(request.failure)
-                protocolSessionOwner.clear()
+                protocolSessionOwner.clearSideEffectAdmission()
             },
             complete = ::completeConnectionEnd,
         )

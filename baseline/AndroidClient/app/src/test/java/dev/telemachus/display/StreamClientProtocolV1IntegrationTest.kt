@@ -341,6 +341,71 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun disconnectDrainsAlreadyQueuedProtocolBatchBeforeClearingSession() = runBlocking {
+        ServerSocket(0).use { server ->
+            val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
+            val connected = CountDownLatch(1)
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD),
+                        )
+                        peer.soTimeout = 500
+                        var observedClipboardOffer = false
+                        repeat(8) {
+                            if (!observedClipboardOffer) {
+                                observedClipboardOffer = readEnvelopeOrNull(peer)?.payloadCase == Envelope.PayloadCase.CLIPBOARD_OFFER
+                            }
+                        }
+                        assertTrue(observedClipboardOffer)
+                    }
+                }
+            val writeFailure = AtomicReference<String?>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    socketFactory = {
+                        GateableFlushSocket().also(gatedFlushSocket::set)
+                    },
+                )
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { isConnected ->
+                if (isConnected) connected.countDown()
+            }
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.onWriteFailure = { writeFailure.set(it) }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(connected.await(8, TimeUnit.SECONDS))
+            val gate = checkNotNull(gatedFlushSocket.get())
+            gate.armNextFlush()
+            client.sendPing()
+            assertTrue(gate.flushEntered.await(8, TimeUnit.SECONDS))
+            assertTrue(client.offerClipboard("queued-before-disconnect"))
+            val disconnectJob = async(Dispatchers.IO) { client.disconnect() }
+            try {
+                gate.releaseFlush.countDown()
+
+                withTimeout(8_000) { disconnectJob.await() }
+                withTimeout(8_000) { serverJob.await() }
+                withTimeout(8_000) { clientJob.await() }
+            } finally {
+                gate.releaseFlush.countDown()
+            }
+
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertNull(writeFailure.get())
+            Unit
+        }
+    }
+
+    @Test
     fun savedVideoPreferencesReplayAfterClientVideoControlNegotiation() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)
@@ -2537,6 +2602,45 @@ class StreamClientProtocolV1IntegrationTest {
                 override fun flush() {
                     delegate.flush()
                     flushCount.incrementAndGet()
+                }
+
+                override fun close() = delegate.close()
+            }
+        }
+    }
+
+    private class GateableFlushSocket : Socket() {
+        val flushEntered = CountDownLatch(1)
+        val releaseFlush = CountDownLatch(1)
+        private val armed = AtomicBoolean(false)
+        private val blocked = AtomicBoolean(false)
+
+        fun armNextFlush() {
+            armed.set(true)
+        }
+
+        override fun getOutputStream(): OutputStream {
+            val delegate = super.getOutputStream()
+            return object : OutputStream() {
+                override fun write(value: Int) = delegate.write(value)
+
+                override fun write(
+                    bytes: ByteArray,
+                    offset: Int,
+                    length: Int,
+                ) = delegate.write(bytes, offset, length)
+
+                override fun flush() {
+                    if (armed.compareAndSet(true, false) && blocked.compareAndSet(false, true)) {
+                        flushEntered.countDown()
+                        try {
+                            releaseFlush.await()
+                        } catch (error: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            throw IOException("flush gate interrupted", error)
+                        }
+                    }
+                    delegate.flush()
                 }
 
                 override fun close() = delegate.close()
