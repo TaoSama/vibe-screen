@@ -133,6 +133,7 @@ class StreamProtocolSessionOwnerTest {
         owner.clearSideEffectAdmission()
 
         assertSame(session, owner.currentSession)
+        assertTrue(owner.retainsSession(session, owner.connectionGeneration))
         assertNull(owner.claimFileOffer(transferId))
         assertFalse(owner.isCurrent(session, owner.connectionGeneration))
     }

@@ -130,6 +130,11 @@ internal class StreamProtocolSessionOwner(
         connectionGeneration: Long,
     ): Boolean = protocolSideEffectOwner.isCurrent(session, connectionGeneration)
 
+    fun retainsSession(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): Boolean = currentSession === session && localSessionState.acceptsEpoch(connectionGeneration)
+
     fun <T> runIfCurrent(
         session: ProtocolV1Session,
         connectionGeneration: Long,

@@ -344,7 +344,7 @@ class StreamClientProtocolV1IntegrationTest {
     fun disconnectDrainsAlreadyQueuedProtocolBatchBeforeClearingSession() = runBlocking {
         ServerSocket(0).use { server ->
             val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
-            val connected = CountDownLatch(1)
+            val clientConnected = CountDownLatch(1)
             val sessionEnded = CountDownLatch(1)
             val serverJob =
                 async(Dispatchers.IO) {
@@ -376,13 +376,13 @@ class StreamClientProtocolV1IntegrationTest {
                 )
             client.acceptVideoConfigurations()
             client.onConnectionStatus = { isConnected ->
-                if (isConnected) connected.countDown()
+                if (isConnected) clientConnected.countDown()
             }
             client.onSessionEnded = { sessionEnded.countDown() }
             client.onWriteFailure = { writeFailure.set(it) }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            assertTrue(connected.await(8, TimeUnit.SECONDS))
+            assertTrue(clientConnected.await(8, TimeUnit.SECONDS))
             val gate = checkNotNull(gatedFlushSocket.get())
             gate.armNextFlush()
             client.sendPing()
@@ -400,6 +400,258 @@ class StreamClientProtocolV1IntegrationTest {
             }
 
             assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertNull(writeFailure.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun disconnectDrainsAlreadyQueuedFileOfferBeforeCleanupCancelsTransferWithReason() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val source = File.createTempFile("vibescreen-drain-offer", ".txt")
+            source.writeText("queued-offer-before-disconnect")
+            val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
+            val clientConnected = CountDownLatch(1)
+            val sessionEnded = CountDownLatch(1)
+            val resultSeen = CountDownLatch(1)
+            val acceptedResult = AtomicBoolean(true)
+            val rejectionReason = AtomicReference<String>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            maxFileBytes = 1024,
+                            maxFileChunkBytes = 64 * 1024,
+                        )
+                        val offer = checkNotNull(readEnvelopeUntil(peer) { it.payloadCase == Envelope.PayloadCase.FILE_OFFER })
+                        assertEquals(source.name, offer.fileOffer.fileName)
+                        assertEquals(source.length(), offer.fileOffer.byteLength)
+                    }
+                }
+            val writeFailure = AtomicReference<String?>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    socketFactory = {
+                        GateableFlushSocket().also(gatedFlushSocket::set)
+                    },
+                )
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { isConnected ->
+                if (isConnected) clientConnected.countDown()
+            }
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.onWriteFailure = { writeFailure.set(it) }
+            client.onFileTransferResult = { accepted, reason ->
+                acceptedResult.set(accepted)
+                rejectionReason.set(reason)
+                resultSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(clientConnected.await(8, TimeUnit.SECONDS))
+            val gate = checkNotNull(gatedFlushSocket.get())
+            gate.armNextFlush()
+            client.sendPing()
+            assertTrue(gate.flushEntered.await(8, TimeUnit.SECONDS))
+            assertTrue(client.offerFile(source, "text/plain"))
+            val disconnectJob = async(Dispatchers.IO) { client.disconnect() }
+            try {
+                gate.releaseFlush.countDown()
+
+                withTimeout(8_000) { disconnectJob.await() }
+                withTimeout(8_000) { serverJob.await() }
+                withTimeout(8_000) { clientJob.await() }
+            } finally {
+                gate.releaseFlush.countDown()
+                source.delete()
+            }
+
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+            assertFalse(acceptedResult.get())
+            assertEquals("connection_cleanup", rejectionReason.get())
+            assertNull(writeFailure.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun disconnectDrainsAlreadyQueuedFileOfferDecisionBeforeClearingSession() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "host-offer-before-disconnect".toByteArray(Charsets.UTF_8)
+            val transferId = ByteString.copyFrom(byteArrayOf(0x61))
+            val capturedOffer = AtomicReference<FileOffer>()
+            val offerSeen = CountDownLatch(1)
+            val serverMayRead = CountDownLatch(1)
+            val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
+            val clientConnected = CountDownLatch(1)
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            maxFileBytes = 1024,
+                            maxFileChunkBytes = 64 * 1024,
+                        )
+                        write(peer, fileOffer(6, transferId, "host-offer.txt", content))
+                        assertTrue(serverMayRead.await(8, TimeUnit.SECONDS))
+                        val accept = checkNotNull(readEnvelopeUntil(peer) { it.payloadCase == Envelope.PayloadCase.FILE_ACCEPT })
+                        assertEquals(transferId, accept.fileAccept.transferId)
+                        assertTrue(accept.fileAccept.accepted)
+                    }
+                }
+            val writeFailure = AtomicReference<String?>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    socketFactory = {
+                        GateableFlushSocket().also(gatedFlushSocket::set)
+                    },
+                )
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { isConnected ->
+                if (isConnected) clientConnected.countDown()
+            }
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.onWriteFailure = { writeFailure.set(it) }
+            client.onFileOffer = { offer ->
+                capturedOffer.set(offer)
+                offerSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(clientConnected.await(8, TimeUnit.SECONDS))
+            assertTrue(offerSeen.await(8, TimeUnit.SECONDS))
+            val gate = checkNotNull(gatedFlushSocket.get())
+            gate.armNextFlush()
+            client.sendPing()
+            assertTrue(gate.flushEntered.await(8, TimeUnit.SECONDS))
+            assertTrue(client.respondToFileOffer(checkNotNull(capturedOffer.get()), accepted = true))
+            val disconnectJob = async(Dispatchers.IO) { client.disconnect() }
+            try {
+                serverMayRead.countDown()
+                gate.releaseFlush.countDown()
+
+                withTimeout(8_000) { disconnectJob.await() }
+                withTimeout(8_000) { serverJob.await() }
+                withTimeout(8_000) { clientJob.await() }
+            } finally {
+                serverMayRead.countDown()
+                gate.releaseFlush.countDown()
+            }
+
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertNull(writeFailure.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun disconnectDrainsAlreadyQueuedWakeHostCompletionBeforeClearingSession() = runBlocking {
+        ServerSocket(0).use { server ->
+            val secret = ByteArray(32) { it.toByte() }
+            val requestId = ByteString.copyFrom(byteArrayOf(0x62))
+            val targetMac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
+            val sentPackets = Collections.synchronizedList(mutableListOf<ByteArray>())
+            val queuedWakeHost = AtomicReference<Runnable?>()
+            val wakeHostQueued = CountDownLatch(1)
+            val wakeCompletionQueued = CountDownLatch(1)
+            val serverMayRead = CountDownLatch(1)
+            val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
+            val clientConnected = CountDownLatch(1)
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        var clientDeviceId = ""
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_WAKE_HOST,
+                            onClientHello = { clientDeviceId = it.deviceId },
+                        )
+                        write(
+                            peer,
+                            signedWakeHostRequest(
+                                id = 6,
+                                requestId = requestId,
+                                targetMac = targetMac,
+                                clientDeviceId = clientDeviceId,
+                                secret = secret,
+                            ),
+                        )
+                        assertTrue(serverMayRead.await(8, TimeUnit.SECONDS))
+                        val result = checkNotNull(readEnvelopeUntil(peer) { it.payloadCase == Envelope.PayloadCase.WAKE_HOST_RESULT })
+                        assertEquals(requestId, result.wakeHostResult.requestId)
+                        assertTrue(result.wakeHostResult.accepted)
+                        assertEquals("", result.wakeHostResult.rejectionReason)
+                    }
+                }
+            val writeFailure = AtomicReference<String?>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    socketFactory = {
+                        GateableFlushSocket().also(gatedFlushSocket::set)
+                    },
+                    wakeHostPolicy = SharedSecretWakeHostPolicy(secret.copyOf(), nowUnixSeconds = { 1_010L }),
+                    wakeHostPacketSender = WakeHostPacketSender { packet -> sentPackets += packet },
+                    wakeHostExecutor = Executor { command ->
+                        queuedWakeHost.set {
+                            command.run()
+                            wakeCompletionQueued.countDown()
+                        }
+                        wakeHostQueued.countDown()
+                    },
+                )
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { isConnected ->
+                if (isConnected) clientConnected.countDown()
+            }
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.onWriteFailure = { writeFailure.set(it) }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(clientConnected.await(8, TimeUnit.SECONDS))
+            assertTrue(wakeHostQueued.await(8, TimeUnit.SECONDS))
+            val gate = checkNotNull(gatedFlushSocket.get())
+            gate.armNextFlush()
+            client.sendPing()
+            assertTrue(gate.flushEntered.await(8, TimeUnit.SECONDS))
+            queuedWakeHost.get()?.run()
+            assertTrue(wakeCompletionQueued.await(8, TimeUnit.SECONDS))
+            val disconnectJob = async(Dispatchers.IO) { client.disconnect() }
+            try {
+                serverMayRead.countDown()
+                gate.releaseFlush.countDown()
+
+                withTimeout(8_000) { disconnectJob.await() }
+                withTimeout(8_000) { serverJob.await() }
+                withTimeout(8_000) { clientJob.await() }
+            } finally {
+                serverMayRead.countDown()
+                gate.releaseFlush.countDown()
+            }
+
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(1, sentPackets.size)
+            assertArrayEquals(WakeHostMagicPacket.build(targetMac), sentPackets.single())
             assertNull(writeFailure.get())
             Unit
         }
@@ -2456,6 +2708,19 @@ class StreamClientProtocolV1IntegrationTest {
         } catch (_: IOException) {
             null
         }
+
+    private fun readEnvelopeUntil(
+        peer: Socket,
+        attempts: Int = 8,
+        predicate: (Envelope) -> Boolean,
+    ): Envelope? {
+        peer.soTimeout = 500
+        repeat(attempts) {
+            val envelope = readEnvelopeOrNull(peer) ?: return@repeat
+            if (predicate(envelope)) return envelope
+        }
+        return null
+    }
 
     private fun write(peer: Socket, envelope: Envelope) =
         ProtocolV1Framing.write(peer.getOutputStream(), ProtocolChannel.CONTROL, envelope.toByteArray())

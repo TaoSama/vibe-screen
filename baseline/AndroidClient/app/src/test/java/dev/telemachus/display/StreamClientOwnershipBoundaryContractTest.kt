@@ -172,6 +172,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 "StreamProtocolActionDispatcher(StreamProtocolActionSink())",
                 "private val mediaFrameRouter =",
                 "protocolSessionOwner.isCurrent(",
+                "protocolSessionOwner.retainsSession(",
                 "protocolSessionOwner.runIfCurrent(",
                 "protocolSessionOwner.trackFileOffer(",
                 "protocolSessionOwner.claimFileOffer(",

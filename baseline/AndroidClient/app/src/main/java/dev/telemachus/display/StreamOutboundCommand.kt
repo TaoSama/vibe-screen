@@ -41,6 +41,7 @@ internal sealed interface StreamOutboundCommand {
 
     data class ProtocolFileOfferSubmission(
         val session: ProtocolV1Session,
+        val connectionGeneration: Long,
         val offer: FileOffer,
         val transfer: OutgoingFileTransfer,
     ) : StreamOutboundCommand
