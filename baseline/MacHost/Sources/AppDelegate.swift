@@ -241,13 +241,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
     private var permissionMonitoringReady = false
-    /// Guards against re-prompting for Screen Recording within a single
-    /// process lifetime. Without a visible settings window (for example when
-    /// the host is launched from a non-GUI context), checkPermissions() is the
-    /// only place that can register the app into the Screen Recording list, so
-    /// it issues the system request exactly once while the permission is still
-    /// missing.
-    private var didRequestScreenRecordingThisSession = false
     private var unattendedRecoveryTask: Task<Void, Never>?
     private var teardownTask: Task<Void, Never>?
     private var unattendedRecoveryAttempt = 0
@@ -305,7 +298,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
         settings.hasAccessibilityPermission = AXIsProcessTrusted()
         settings.controllerForwardingAvailable = gameControllerRuntime.factory != nil
-        settings.evaluatePostUpdatePermissionHint()
 
         // Create menu bar item
         setupMenuBar()
@@ -328,9 +320,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Notice grants made while System Settings is open. This keeps first-run
-        // setup plug-and-play: once Screen Recording is enabled, an auto-start
-        // configuration can begin streaming without another click in Telemachus.
+        // Notice grants made after an explicit user action. This polling path
+        // only observes permission state; it must never request prompts or open
+        // System Settings on its own.
         permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshPermissionState()
@@ -401,7 +393,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if hadAccessibility && !settings.hasAccessibilityPermission {
             cancelActiveInput(releaseDrag: false)
         }
-        settings.clearPostUpdatePermissionHintIfResolved()
 
         guard hasScreenRecording, !hadScreenRecording else { return }
         debugLog("Screen Recording permission became available while app was running")
@@ -1478,17 +1469,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             debugLog("Screen recording permission not granted yet")
-            // Register the app into System Settings > Privacy & Security >
-            // Screen Recording and surface the system prompt even when no
-            // settings window is available to drive the request. Debounced to
-            // a single prompt per process so the 2s permission poll and manual
-            // refreshes never stack system dialogs.
-            await MainActor.run {
-                guard !didRequestScreenRecordingThisSession else { return }
-                didRequestScreenRecordingThisSession = true
-                debugLog("Requesting screen capture access to register app and prompt user")
-                requestScreenRecordingPermission()
-            }
         }
 
         // Check Accessibility permission (required for touch/mouse injection)
@@ -1697,13 +1677,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = "Please grant Screen Recording permission in System Settings > Privacy & Security."
         }
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Open System Settings")
-        alert.addButton(withTitle: "Later")
-
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-        }
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @discardableResult
