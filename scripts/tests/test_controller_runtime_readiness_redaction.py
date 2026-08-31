@@ -250,5 +250,26 @@ class ControllerRuntimeReadinessRedactionTests(unittest.TestCase):
             self.assertNotIn(SAMPLE_DEVICE_SERIAL, json.dumps(readiness_record))
 
 
+
+    def test_redacted_host_readiness_removes_serial_and_home_path(self) -> None:
+        state = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": False,
+                "blockers": [f"Host serial {SAMPLE_DEVICE_SERIAL} blocked", str(Path.home() / "tmp" / "host.log")],
+                "entitlements": {"virtual_hid": False},
+                "host": {"team_identifier": "TEAMID1234"},
+            },
+        }
+
+        redacted = readiness.redact_host_readiness(state, SAMPLE_DEVICE_SERIAL)
+
+        serialized = json.dumps(redacted)
+        self.assertNotIn(SAMPLE_DEVICE_SERIAL, serialized)
+        self.assertNotIn(str(Path.home()), serialized)
+        self.assertIn("<device-serial>", serialized)
+        self.assertIn("~/tmp/host.log", serialized)
+
 if __name__ == "__main__":
     unittest.main()

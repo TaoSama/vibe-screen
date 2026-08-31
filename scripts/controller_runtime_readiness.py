@@ -248,6 +248,123 @@ def redacted_locks(locks: Sequence[dict[str, Any]], serial: str) -> list[dict[st
         )
     return sanitized
 
+def redact_host_readiness(state: dict[str, Any], serial: str) -> dict[str, Any]:
+    document = state.get("document", {})
+    redacted_document: dict[str, Any] = {}
+    if isinstance(document, dict):
+        for key, value in document.items():
+            if key == "blockers" and isinstance(value, list):
+                redacted_document[key] = [redact_evidence_text(str(item), serial) for item in value]
+            elif isinstance(value, str):
+                redacted_document[key] = redact_evidence_text(value, serial)
+            else:
+                redacted_document[key] = value
+    return {
+        "present": state.get("present", False),
+        "readable": state.get("readable", False),
+        "error": redact_evidence_text(str(state["error"]), serial) if isinstance(state.get("error"), str) else state.get("error"),
+        "document": redacted_document,
+    }
+
+
+def load_host_readiness(host_readiness: Path | None) -> dict[str, Any]:
+    """Load the shared macOS Host readiness JSON, if present and well-formed.
+
+    Controller runtime readiness is only one consumer of the shared Host signing,
+    TCC, listener, and entitlement prereadiness snapshot. Keeping this optional
+    avoids hiding a missing Host readiness artifact, but the summary notes the
+    source when it is present.
+    """
+    if host_readiness is None:
+        return {"present": False, "readable": False, "document": {}}
+    try:
+        document = json.loads(host_readiness.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {"present": True, "readable": False, "error": str(error), "document": {}}
+    if not isinstance(document, dict):
+        return {"present": True, "readable": False, "error": "host readiness JSON is not an object", "document": {}}
+    return {"present": True, "readable": True, "error": None, "document": document}
+
+
+def host_readiness_observations(state: dict[str, Any]) -> tuple[dict[str, Any], list[str], str]:
+    """Map the shared Host readiness document onto controller runtime observations.
+
+    The controller runtime readiness tool still inspects the Host directly for
+    its own evidence bundle, but when a shared host-readiness.json is available
+    it records that aggregate gate state in the same bundle so the
+    controller-specific record cannot look less blocked than the shared Host
+    prerequisites already are.
+    """
+    document = state.get("document", {})
+    original = {
+        "host_identity_signed": False,
+        "host_virtual_hid_entitlement_present": False,
+        "host_virtual_gamepad_available": False,
+        "can_start_controller_runtime_gate": None,
+    }
+    blockers: list[str] = []
+    notes: list[str] = []
+    if not state.get("readable"):
+        notes.append("Shared host-readiness.json was not readable, so controller runtime used direct Host inspection only.")
+        return original, blockers, " ".join(notes)
+    can_start = document.get("can_start_controller_runtime_gate")
+    if isinstance(can_start, bool):
+        original["can_start_controller_runtime_gate"] = can_start
+        if can_start:
+            notes.append("Shared Host readiness reports can_start_controller_runtime_gate=true.")
+        else:
+            notes.append("Shared Host readiness reports can_start_controller_runtime_gate=false.")
+    entitlements = document.get("entitlements")
+    if isinstance(entitlements, dict):
+        virtual_hid = entitlements.get("virtual_hid")
+        if isinstance(virtual_hid, bool):
+            original["host_virtual_hid_entitlement_present"] = virtual_hid
+    host = document.get("host")
+    if isinstance(host, dict):
+        team_identifier = host.get("team_identifier")
+        authorities = host.get("authorities") or []
+        identity_signed = bool(
+            team_identifier
+            and team_identifier != "not set"
+            and (authorities or host.get("is_ad_hoc") is False)
+        )
+        original["host_identity_signed"] = identity_signed
+    host_blockers = document.get("blockers")
+    if isinstance(host_blockers, list):
+        blockers.extend(str(blocker) for blocker in host_blockers if isinstance(blocker, str) and blocker)
+    runtime_available = document.get("host_virtual_gamepad_available")
+    if isinstance(runtime_available, bool):
+        original["host_virtual_gamepad_available"] = runtime_available
+    return original, blockers, " ".join(notes)
+
+
+def conservative_or_shared_host(
+    *,
+    direct: bool,
+    shared: bool,
+    shared_gate_value: Any,
+) -> bool:
+    """Merge a direct Host check with shared host-readiness state, fail-closed.
+
+    The shared host-readiness snapshot may include a definitive
+    can_start_controller_runtime_gate=false. When it does, that conservative
+    decision must not be widened by a later direct Host inspection that reports
+    true for the same prerequisite.
+    """
+    if isinstance(shared_gate_value, bool) and not shared_gate_value:
+        return shared
+    return direct or shared
+
+
+def shared_host_blockers_note(shared_blockers: Sequence[str]) -> str:
+    if not shared_blockers:
+        return ""
+    blocker_summary = "; ".join(blocker.splitlines()[0] for blocker in shared_blockers)
+    return (
+        f"Shared Host readiness blockers recorded: {len(shared_blockers)} "
+        f"({blocker_summary}); see host-readiness.json for full details."
+    )
+
 
 def read_source_commit() -> str:
     result = run_command(["git", "rev-parse", "HEAD"], timeout=10.0)
@@ -512,7 +629,10 @@ def build_result(
     host_signing: HostSigningStatus,
     host_availability: HostAvailabilityStatus,
     source_commit: str = "",
+    host_readiness: dict[str, Any] | None = None,
 ) -> ReadinessResult:
+    host_readiness_state = host_readiness or {"present": False, "readable": False, "document": {}}
+    shared_observations, shared_blockers, shared_notes = host_readiness_observations(host_readiness_state)
     observations = {
         "device_identity_recorded": True,
         "apk_identity_recorded": package_identity_recorded(package),
@@ -521,9 +641,21 @@ def build_result(
         "protocol_controller_capability_negotiated": False,
         "android_production_forwarding_observed": False,
         "controller_connected_state_disconnected_observed": False,
-        "host_identity_signed": host_signing.identity_signed,
-        "host_virtual_hid_entitlement_present": host_signing.virtual_hid_entitlement_present,
-        "host_virtual_gamepad_available": host_availability.virtual_gamepad_available,
+        "host_identity_signed": conservative_or_shared_host(
+            direct=host_signing.identity_signed,
+            shared=shared_observations["host_identity_signed"],
+            shared_gate_value=shared_observations.get("can_start_controller_runtime_gate"),
+        ),
+        "host_virtual_hid_entitlement_present": conservative_or_shared_host(
+            direct=host_signing.virtual_hid_entitlement_present,
+            shared=shared_observations["host_virtual_hid_entitlement_present"],
+            shared_gate_value=shared_observations.get("can_start_controller_runtime_gate"),
+        ),
+        "host_virtual_gamepad_available": conservative_or_shared_host(
+            direct=host_availability.virtual_gamepad_available,
+            shared=shared_observations["host_virtual_gamepad_available"],
+            shared_gate_value=shared_observations.get("can_start_controller_runtime_gate"),
+        ),
         "mac_side_controller_response_observed": False,
         "neutral_release_on_disconnect_observed": False,
         "artifact_paths": [
@@ -539,6 +671,15 @@ def build_result(
         ],
     }
     notes = []
+    if shared_notes:
+        notes.append(shared_notes)
+    if shared_observations.get("can_start_controller_runtime_gate") is False:
+        notes.append(
+            "Shared Host readiness recorded can_start_controller_runtime_gate=false, "
+            "so matching direct Host checks are recorded conservatively as false."
+        )
+    if shared_blockers:
+        notes.append(shared_host_blockers_note(shared_blockers))
     if not controller_devices:
         notes.append("No physical Android gamepad/joystick source is visible in dumpsys input.")
     if host_availability.last_controller_line:
@@ -615,16 +756,30 @@ def write_lock_blocked_evidence(
     run_id: str,
     locks: Sequence[dict[str, Any]],
     redact_identifiers: bool = False,
+    host_readiness: dict[str, Any] | None = None,
 ) -> None:
     evidence_dir.mkdir(parents=True, exist_ok=True)
     safe_locks = redacted_locks(locks, requested_serial) if redact_identifiers else list(locks)
     safe_serial = REDACTED_DEVICE_SERIAL if redact_identifiers else requested_serial
+    shared_observations, shared_blockers, shared_notes = host_readiness_observations(
+        host_readiness or {"present": False, "readable": False, "document": {}}
+    )
+    notes = [
+        "ADB was not run because a shared Android device coordination lock already exists. "
+        "This is readiness evidence only; a pass still requires live controller samples, "
+        "Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect."
+    ]
+    if shared_notes:
+        notes.append(shared_notes)
+    if shared_observations.get("can_start_controller_runtime_gate") is False:
+        notes.append(
+            "Shared Host readiness recorded can_start_controller_runtime_gate=false, "
+            "so lock-blocked evidence cannot start the controller runtime gate."
+        )
+    if shared_blockers:
+        notes.append(shared_host_blockers_note(shared_blockers))
     observations = {
-        "notes": (
-            "ADB was not run because a shared Android device coordination lock already exists. "
-            "This is readiness evidence only; a pass still requires live controller samples, "
-            "Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect."
-        ),
+        "notes": " ".join(notes),
         "artifact_paths": [
             "scripts/controller_runtime_readiness.py",
             "docs/runbook/controller-runtime-acceptance.md",
@@ -703,6 +858,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--host-app", type=Path, help="Optional Host .app or executable path to inspect with codesign.")
     parser.add_argument(
+        "--host-readiness",
+        type=Path,
+        help=(
+            "Optional shared macOS Host readiness JSON (e.g. host-readiness.json from "
+            "baseline-macos-host-readiness). When present, its can_start_controller_runtime_gate "
+            "and blocker state are merged into the controller readiness bundle."
+        ),
+    )
+    parser.add_argument(
         "--max-host-log-bytes",
         type=int,
         default=200_000,
@@ -756,6 +920,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 run_id=run_id,
                 locks=locks,
                 redact_identifiers=args.redact_identifiers,
+                host_readiness=(
+                    redact_host_readiness(load_host_readiness(args.host_readiness), args.serial)
+                    if args.redact_identifiers
+                    else load_host_readiness(args.host_readiness)
+                ),
             )
             print(str(error), file=sys.stderr)
             print("controller runtime readiness: blocked")
@@ -768,6 +937,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         controller_devices = physical_controller_devices(input_devices)
         host_signing = inspect_host_signing(args.host_app)
         host_availability = inspect_host_availability(args.host_log, args.max_host_log_bytes)
+        raw_host_readiness = load_host_readiness(args.host_readiness)
+        host_readiness = (
+            redact_host_readiness(raw_host_readiness, args.serial)
+            if args.redact_identifiers
+            else raw_host_readiness
+        )
         evidence_device = redacted_device_identity(device, args.serial) if args.redact_identifiers else device
         evidence_package = redacted_package_identity(package) if args.redact_identifiers else package
         evidence_host_signing = redacted_host_signing(host_signing) if args.redact_identifiers else host_signing
@@ -790,6 +965,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             controller_devices=evidence_controller_devices,
             host_signing=evidence_host_signing,
             host_availability=evidence_host_availability,
+            host_readiness=host_readiness,
         )
 
         args.evidence_dir.mkdir(parents=True, exist_ok=True)

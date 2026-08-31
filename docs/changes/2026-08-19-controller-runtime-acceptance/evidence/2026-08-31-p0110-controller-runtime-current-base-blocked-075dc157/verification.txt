@@ -1,0 +1,14 @@
+Controller runtime readiness verification
+========================================
+
+- controller-runtime-summary.json: blocked, can_close_runtime_gate=false.
+- controller-runtime-readiness.exit: 2 (blocked).
+- baseline-macos-host-readiness.exit: 2 (blocked shared Host readiness).
+- Source snapshot: 075dc157c36ba71df9f757e571015905881a7154.
+- Shared host-readiness.json records current_source_dirty=false in the detached
+  clean worktree before the evidence bundle was copied into docs/.
+- No physical SOURCE_GAMEPAD or SOURCE_JOYSTICK controller was visible in
+  dumpsys input.
+- Shared Host readiness snapshot reports can_start_controller_runtime_gate=false.
+- /usr/bin/sfltool dumpbtm was not requested or run by the readiness commands.
+- pgrep -x sfltool at collection time returned no residual process.

@@ -1,0 +1,54 @@
+# Controller runtime P0110 owner current-base blocked readiness. The bundle
+# directory uses the 2026-08-31 Asia/Shanghai local run date; retained JSON
+# timestamps use UTC.
+
+# Run from the repository root of a clean detached worktree at
+# 075dc157c36ba71df9f757e571015905881a7154. Device serial and local
+# filesystem paths are intentionally parameterized for the public evidence
+# record.
+set +e
+EVID=docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-31-p0110-controller-runtime-current-base-blocked-075dc157
+mkdir -p "$EVID"
+pgrep -x sfltool || true
+make baseline-macos-host-readiness EVIDENCE_DIR="$EVID" EVIDENCE_PORT=54321 \
+  >"$EVID/baseline-macos-host-readiness.stdout" \
+  2>"$EVID/baseline-macos-host-readiness.stderr"
+BASELINE_EXIT=$?
+printf "%s\n" "$BASELINE_EXIT" >"$EVID/baseline-macos-host-readiness.exit"
+
+CONTROLLER_TMP="$(mktemp -d /tmp/vibe-screen-controller-runtime-clean-20260831-evidence.XXXXXX)"
+python3 scripts/controller_runtime_readiness.py \
+  --serial "$ADB_SERIAL" \
+  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --host-app "/Applications/Vibe Screen.app" \
+  --host-readiness "$EVID/host-readiness.json" \
+  --redact-identifiers \
+  --evidence-dir "$CONTROLLER_TMP/controller-readiness" \
+  --run-id 20260831-p0110-controller-runtime-current-base-blocked
+CONTROLLER_EXIT=$?
+printf "%s\n" "$CONTROLLER_EXIT" >"$EVID/controller-runtime-readiness.exit"
+
+cp "$CONTROLLER_TMP/controller-readiness/controller-runtime-observations.json" "$EVID/"
+cp "$CONTROLLER_TMP/controller-readiness/controller-runtime-readiness.json" "$EVID/"
+cp "$CONTROLLER_TMP/controller-readiness/controller-runtime-summary.json" "$EVID/"
+cp "$CONTROLLER_TMP/controller-readiness/device-info.json" "$EVID/"
+cp "$CONTROLLER_TMP/controller-readiness/host-signing-and-permissions.txt" "$EVID/"
+set -e
+test "$BASELINE_EXIT" -eq 2
+test "$CONTROLLER_EXIT" -eq 2
+
+# README.md and verification.txt are retained provenance summaries for the
+# copied readiness artifacts and shared Host readiness output. They add the
+# retained-snapshot package note without adding runtime pass evidence.
+(cd "$EVID" && shasum -a 256 README.md verification.txt \
+  baseline-macos-host-readiness.exit \
+  baseline-macos-host-readiness.stderr \
+  baseline-macos-host-readiness.stdout \
+  commands.txt \
+  controller-runtime-observations.json \
+  controller-runtime-readiness.exit \
+  controller-runtime-readiness.json \
+  controller-runtime-summary.json \
+  device-info.json \
+  host-readiness.json \
+  host-signing-and-permissions.txt > SHA256SUMS)

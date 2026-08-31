@@ -527,9 +527,16 @@ python3 scripts/controller_runtime_readiness.py \
   --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
   --host-app "/path/to/Vibe Screen.app" \
+  --host-readiness docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness/host-readiness.json \
   --write-blocked-on-lock \
   --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 ```
+
+When passed, `--host-readiness` points at the shared `host-readiness.json` from
+`make baseline-macos-host-readiness`. The controller bundle then records the
+shared `can_start_controller_runtime_gate` state and blockers so the
+controller-specific readiness summary does not understate Host signing/TCC,
+listener, or entitlement failures.
 
 Without `--allow-existing-device-lock`, the collector refuses to run ADB when a
 shared Android device lock is present. With `--write-blocked-on-lock`, that

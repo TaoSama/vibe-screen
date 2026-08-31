@@ -88,6 +88,197 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
             self.assertEqual(status.unavailable_reason, "")
             self.assertIn("available", status.last_controller_line)
 
+
+    def test_host_readiness_merge_blocks_controller_runtime(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": False,
+                "blockers": [
+                    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+                    "Host listener is not observed on TCP port 54321",
+                ],
+                "entitlements": {
+                    "virtual_hid": False,
+                },
+                "host": {
+                    "authorities": ["Vibe Screen Dev"],
+                    "team_identifier": "not set",
+                    "is_ad_hoc": True,
+                },
+            },
+        }
+
+        shared, blockers, notes = readiness.host_readiness_observations(host_readiness)
+
+        self.assertFalse(shared["host_identity_signed"])
+        self.assertFalse(shared["host_virtual_hid_entitlement_present"])
+        self.assertFalse(shared["host_virtual_gamepad_available"])
+        self.assertIn("Host is missing com.apple.developer.hid.virtual.device entitlement", blockers[0])
+        self.assertIn("Host listener is not observed", blockers[1])
+        self.assertIn("can_start_controller_runtime_gate=false", notes)
+
+    def test_host_readiness_merge_can_start_true_does_not_infer_runtime_gamepad(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": True,
+                "blockers": [],
+                "entitlements": {"virtual_hid": True},
+                "host": {
+                    "authorities": ["Apple Development: Example"],
+                    "team_identifier": "TEAMID1234",
+                    "is_ad_hoc": False,
+                },
+            },
+        }
+
+        shared, blockers, notes = readiness.host_readiness_observations(host_readiness)
+
+        self.assertTrue(shared["host_identity_signed"])
+        self.assertTrue(shared["host_virtual_hid_entitlement_present"])
+        self.assertFalse(shared["host_virtual_gamepad_available"])
+        self.assertEqual(blockers, [])
+        self.assertIn("can_start_controller_runtime_gate=true", notes)
+
+    def test_host_readiness_merge_uses_distinct_runtime_gamepad_observation(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": True,
+                "host_virtual_gamepad_available": True,
+                "blockers": [],
+                "entitlements": {"virtual_hid": True},
+                "host": {
+                    "authorities": ["Apple Development: Example"],
+                    "team_identifier": "TEAMID1234",
+                    "is_ad_hoc": False,
+                },
+            },
+        }
+
+        shared, blockers, notes = readiness.host_readiness_observations(host_readiness)
+
+        self.assertTrue(shared["host_identity_signed"])
+        self.assertTrue(shared["host_virtual_hid_entitlement_present"])
+        self.assertTrue(shared["host_virtual_gamepad_available"])
+        self.assertEqual(blockers, [])
+        self.assertIn("can_start_controller_runtime_gate=true", notes)
+
+    def test_build_result_does_not_infer_runtime_gamepad_from_shared_start_gate(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": True,
+                "blockers": [],
+                "entitlements": {"virtual_hid": True},
+                "host": {
+                    "authorities": ["Apple Development: Example"],
+                    "team_identifier": "TEAMID1234",
+                    "is_ad_hoc": False,
+                },
+            },
+        }
+
+        result = readiness.build_result(
+            run_id="run-shared-start-direct-runtime-missing",
+            created_at="2026-08-31T00:00:00Z",
+            device=self.sample_device(),
+            package=self.sample_package(),
+            controller_devices=[],
+            host_signing=readiness.HostSigningStatus("Vibe Screen.app", True, True, "TEAMID1234", "", ""),
+            host_availability=readiness.HostAvailabilityStatus(
+                "host.log",
+                False,
+                "",
+                "",
+            ),
+            source_commit="abc123",
+            host_readiness=host_readiness,
+        )
+
+        self.assertFalse(result.observations["host_virtual_gamepad_available"])
+        self.assertFalse(result.summary["can_close_runtime_gate"])
+        self.assertEqual(result.summary["verdict"], "blocked")
+
+    def test_host_readiness_merge_shared_false_wins_over_direct_true(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": False,
+                "blockers": ["Shared host readiness is pessimistic because the controller runtime gate is open"],
+                "entitlements": {"virtual_hid": False},
+                "host": {"authorities": [], "team_identifier": None, "is_ad_hoc": True},
+            },
+        }
+
+        shared, blockers, notes = readiness.host_readiness_observations(host_readiness)
+
+        self.assertFalse(shared["can_start_controller_runtime_gate"])
+        self.assertIn("can_start_controller_runtime_gate=false", notes)
+
+        result = readiness.build_result(
+            run_id="run-shared-false-direct-true",
+            created_at="2026-08-31T00:00:00Z",
+            device=self.sample_device(),
+            package=self.sample_package(),
+            controller_devices=[],
+            host_signing=readiness.HostSigningStatus("Vibe Screen.app", True, True, "TEAMID1234", "", ""),
+            host_availability=readiness.HostAvailabilityStatus(
+                "host.log",
+                True,
+                "Controller forwarding available",
+                "",
+            ),
+            source_commit="abc123",
+            host_readiness=host_readiness,
+        )
+
+        self.assertFalse(result.observations["host_identity_signed"])
+        self.assertFalse(result.observations["host_virtual_hid_entitlement_present"])
+        self.assertFalse(result.observations["host_virtual_gamepad_available"])
+        self.assertEqual(result.summary["verdict"], "blocked")
+        self.assertFalse(result.summary["can_close_runtime_gate"])
+        self.assertIn("Shared Host readiness recorded can_start_controller_runtime_gate=false", result.summary["notes"])
+        self.assertIn("Shared Host readiness blockers recorded: 1", result.summary["notes"])
+
+    def test_build_result_merges_shared_host_readiness_blockers(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": False,
+                "blockers": ["Host is missing com.apple.developer.hid.virtual.device entitlement"],
+                "entitlements": {"virtual_hid": False},
+                "host": {"authorities": [], "team_identifier": None, "is_ad_hoc": True},
+            },
+        }
+
+        result = readiness.build_result(
+            run_id="run-shared",
+            created_at="2026-08-31T00:00:00Z",
+            device=self.sample_device(),
+            package=self.sample_package(),
+            controller_devices=[],
+            host_signing=readiness.HostSigningStatus(None, False, False, "", "", ""),
+            host_availability=readiness.HostAvailabilityStatus(
+                "host.log",
+                False,
+                "Controller forwarding unavailable: missing entitlement",
+                "missing entitlement",
+            ),
+            source_commit="abc123",
+            host_readiness=host_readiness,
+        )
+
+        self.assertEqual(result.summary["verdict"], "blocked")
+        self.assertIn("Shared Host readiness blockers recorded: 1", result.summary["notes"])
+
     def test_virtual_hid_entitlement_requires_exact_true_value(self) -> None:
         entitlement_text = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
         <plist version=\"1.0\"><dict>
@@ -242,6 +433,60 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
             self.assertFalse(summary["can_close_runtime_gate"])
             readme = (evidence_dir / "README.md").read_text(encoding="utf-8")
             self.assertIn("no ADB command was run", readme)
+
+
+    def test_lock_blocked_bundle_merges_shared_host_readiness_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            readiness.write_lock_blocked_evidence(
+                evidence_dir,
+                requested_serial="<redacted-adb-serial>",
+                created_at="2026-08-31T00:00:00Z",
+                source_commit="abc123",
+                run_id="lock-shared-host",
+                locks=[{"path": "/tmp/device.lock", "detail": "owner=other-task"}],
+                host_readiness={
+                    "present": True,
+                    "readable": True,
+                    "document": {
+                        "can_start_controller_runtime_gate": False,
+                        "blockers": ["Host is missing com.apple.developer.hid.virtual.device entitlement"],
+                        "entitlements": {"virtual_hid": False},
+                        "host": {"authorities": [], "team_identifier": None},
+                    },
+                },
+            )
+
+            summary = json.loads((evidence_dir / "controller-runtime-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertIn("can_start_controller_runtime_gate=false", summary["notes"])
+            self.assertIn("Host is missing com.apple.developer.hid.virtual.device entitlement", summary["notes"])
+            self.assertIn("Shared Host readiness blockers recorded: 1", summary["notes"])
+
+    def test_lock_blocked_bundle_keeps_shared_gate_notes_without_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            readiness.write_lock_blocked_evidence(
+                evidence_dir,
+                requested_serial="<redacted-adb-serial>",
+                created_at="2026-08-31T00:00:00Z",
+                source_commit="abc123",
+                run_id="lock-shared-host-no-blockers",
+                locks=[{"path": "/tmp/device.lock", "detail": "owner=other-task"}],
+                host_readiness={
+                    "present": True,
+                    "readable": True,
+                    "document": {
+                        "can_start_controller_runtime_gate": False,
+                        "blockers": [],
+                    },
+                },
+            )
+
+            summary = json.loads((evidence_dir / "controller-runtime-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertIn("can_start_controller_runtime_gate=false", summary["notes"])
+            self.assertIn("cannot start the controller runtime gate", summary["notes"])
 
 
 if __name__ == "__main__":
