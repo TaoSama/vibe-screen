@@ -304,6 +304,49 @@ class ProductionE2EEnforcementTests(unittest.TestCase):
         self.assertIn("evidence.artifacts[deployed_config]", fields)
         self.assertIn("evidence.artifacts[deployed_config].schema", fields)
 
+    def test_synthetic_media_artifacts_fail_even_with_valid_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = valid_manifest()
+            write_valid_artifacts(root, manifest)
+            artifact = manifest["evidence"]["artifacts"][1]
+            payload = json.dumps(
+                valid_artifact_payload(artifact["type"], manifest)
+                | {"limitation": "synthetic_media no_real_media forced_local_coturn"},
+                sort_keys=True,
+            ).encode("utf-8")
+            (root / artifact["path"]).write_bytes(payload)
+            artifact["sha256"] = sha256(payload)
+
+            result = evaluate_manifest(manifest, root)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn(
+            "evidence.artifacts[public_network_observation]",
+            {reason["field"] for reason in result["reasons"]},
+        )
+
+    def test_local_only_true_fields_fail_without_rejecting_false_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = valid_manifest()
+            write_valid_artifacts(root, manifest)
+            artifact = manifest["evidence"]["artifacts"][3]
+            payload = valid_artifact_payload(artifact["type"], manifest)
+            payload["local_coturn"] = False
+            payload["diagnostics"] = {"synthetic_media": True, "deterministic": True}
+            encoded = json.dumps(payload, sort_keys=True).encode("utf-8")
+            (root / artifact["path"]).write_bytes(encoded)
+            artifact["sha256"] = sha256(encoded)
+
+            result = evaluate_manifest(manifest, root)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertIn(
+            "evidence.artifacts[coturn_disconnect_observation]",
+            {reason["field"] for reason in result["reasons"]},
+        )
+
     def test_tiny_self_attesting_pass_artifacts_do_not_close_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
