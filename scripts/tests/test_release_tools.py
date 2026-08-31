@@ -33,14 +33,34 @@ ARCHIVE_SCRIPT = REPOSITORY_ROOT / "scripts/archive_artifact.py"
 PREPARE_SCRIPT = REPOSITORY_ROOT / "scripts/prepare_release.py"
 RELEASE_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/release.yml"
 PHASE0_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/phase0.yml"
+IOS_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/ios.yml"
 MAKEFILE = REPOSITORY_ROOT / "Makefile"
 PHASE3_RUNNER = REPOSITORY_ROOT / "scripts/phase3_webrtc/run_local_e2e.py"
+PHASE3_SOURCE_ARTIFACTS = REPOSITORY_ROOT / "scripts/phase3_webrtc/source_artifacts.py"
 ANDROID_BUILD = REPOSITORY_ROOT / "baseline/AndroidClient/app/build.gradle.kts"
 MAC_HOST_ENTITLEMENTS = REPOSITORY_ROOT / "baseline/MacHost/Telemachus.entitlements"
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 COMMIT = "a" * 40
 CREATED = "2026-08-05T10:00:00+08:00"
+
+
+def workflow_job_body(workflow: str, job_name: str) -> str:
+    match = re.search(
+        rf"(?ms)^  {re.escape(job_name)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+        workflow,
+    )
+    if match is None:
+        raise AssertionError(f"missing workflow job {job_name!r}")
+    return match.group("body")
+
+
+def workflow_job_timeout(workflow: str, job_name: str) -> int:
+    body = workflow_job_body(workflow, job_name)
+    match = re.search(r"(?m)^    timeout-minutes: ([0-9]+)$", body)
+    if match is None:
+        raise AssertionError(f"missing job-level timeout for {job_name!r}")
+    return int(match.group(1))
 
 
 class AndroidStylusAcceptanceTests(unittest.TestCase):
@@ -1914,7 +1934,25 @@ class PrepareReleaseTests(unittest.TestCase):
 
     def test_macos_release_build_remaps_source_paths(self) -> None:
         package_script = (REPOSITORY_ROOT / "scripts/package_macos.py").read_text(encoding="utf-8")
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+        phase3_source_artifacts = PHASE3_SOURCE_ARTIFACTS.read_text(encoding="utf-8")
         self.assertIn('"-file-prefix-map"', package_script)
+        self.assertIn(
+            'SWIFT_RELEASE_FILE_PREFIX_MAP := -Xswiftc -file-prefix-map -Xswiftc "$(realpath $(CURDIR))=."',
+            makefile,
+        )
+        self.assertIn(
+            "swift build -c release $(SWIFT_RELEASE_FILE_PREFIX_MAP)",
+            makefile,
+        )
+        self.assertIn(
+            "swift build -c release $(SWIFT_RELEASE_FILE_PREFIX_MAP) --show-bin-path",
+            makefile,
+        )
+        self.assertIn("repo_root = repo_root.resolve()", phase3_source_artifacts)
+        self.assertIn('swift_path_map = f"{repo_root}=."', phase3_source_artifacts)
+        self.assertIn('"-file-prefix-map"', phase3_source_artifacts)
+        self.assertIn('swift_path_map,', phase3_source_artifacts)
         self.assertIn('PRODUCT_NAME = "Vibe Screen"', package_script)
         self.assertIn('EXECUTABLE_NAME = PRODUCT_NAME', package_script)
         self.assertIn('SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"', package_script)
@@ -1933,6 +1971,8 @@ class PrepareReleaseTests(unittest.TestCase):
             'python3 scripts/package_macos.py --version "$RELEASE_VERSION" --sign-identity -',
             release_workflow,
         )
+        release_macos_job = workflow_job_body(release_workflow, "macos")
+        self.assertIn("timeout-minutes: 30", release_macos_job)
         self.assertIn("name: vibe-screen-macos-ad-hoc-signed", phase0_workflow)
         self.assertNotIn(
             "#filePath",
@@ -2041,6 +2081,17 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn('getByName(dependencyAuditConfiguration)', android_build)
         self.assertIn('inputs.property("dependencyAuditConfiguration"', android_build)
 
+    def test_macos_and_ios_jobs_have_timeout_headroom(self) -> None:
+        phase0_workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        release_workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        ios_workflow = IOS_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertEqual(workflow_job_timeout(phase0_workflow, "macos"), 40)
+        self.assertEqual(workflow_job_timeout(release_workflow, "macos"), 30)
+        self.assertEqual(workflow_job_timeout(release_workflow, "ios-simulator"), 30)
+        self.assertEqual(workflow_job_timeout(ios_workflow, "core"), 40)
+        self.assertEqual(workflow_job_timeout(ios_workflow, "app-build-test-archive"), 30)
+
     def test_phase0_android_job_builds_instrumentation_test_apk(self) -> None:
         workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
         android_job_match = re.search(
@@ -2078,13 +2129,42 @@ class PrepareReleaseTests(unittest.TestCase):
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
+        self.assertIn("baseline-macos-permission-prompt-contract:", makefile)
+        self.assertIn(
+            "\tswift scripts/verify_macos_permission_prompt_contract.swift",
+            makefile,
+        )
         self.assertIn("\tbaseline-macos-xctest-preflight \\", makefile)
+        self.assertIn("\tbaseline-macos-permission-prompt-contract \\", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
-        self.assertRegex(makefile, r"(?m)^baseline-macos-test: baseline-macos-xctest-preflight$")
-        self.assertIn("swift build -c release --show-bin-path", makefile)
+        self.assertRegex(
+            makefile,
+            r"(?m)^baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight$",
+        )
+        self.assertRegex(
+            makefile,
+            r"(?m)^baseline-macos-self-test: baseline-macos-build baseline-macos-permission-prompt-contract$",
+        )
+        self.assertIn(
+            "swift build -c release $(SWIFT_RELEASE_FILE_PREFIX_MAP) --show-bin-path",
+            makefile,
+        )
         self.assertNotIn(
             '"baseline/MacHost/.build/release/Vibe Screen" --host-self-test',
             makefile,
+        )
+
+        phase0_workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        release_workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("- run: make baseline-macos-permission-prompt-contract", phase0_workflow)
+        self.assertIn("make baseline-macos-permission-prompt-contract", release_workflow)
+        self.assertLess(
+            phase0_workflow.index("- run: make baseline-macos-permission-prompt-contract"),
+            phase0_workflow.index("- run: make baseline-macos-test"),
+        )
+        self.assertLess(
+            release_workflow.index("make baseline-macos-permission-prompt-contract"),
+            release_workflow.index("make baseline-macos-test"),
         )
 
     def test_host_display_rotation_gate_make_target_runs_formal_verifier(self) -> None:
@@ -2122,7 +2202,7 @@ class PrepareReleaseTests(unittest.TestCase):
         macos_job = macos_job_match.group("body")
         for contract in (
             "runs-on: macos-15",
-            "timeout-minutes: 20",
+            "timeout-minutes: 40",
             "go-version: 1.25.12",
             'python-version: "3.11"',
             "brew install coturn",
