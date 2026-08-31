@@ -6232,7 +6232,7 @@ class MainActivity : AppCompatActivity() {
             videoWidth = displayWidth,
             videoHeight = displayHeight,
             scaleMode = prefs.videoScaleMode,
-            renderRotation = prefs.clientRotation.degrees,
+            renderRotation = ViewportPolicy.surfaceTransformRotation(prefs.clientRotation),
         )
 
     private fun updateSurfaceViewportLayout() {
@@ -6482,18 +6482,12 @@ class MainActivity : AppCompatActivity() {
      */
     private fun applyRotation(rotation: Int) {
         val effectiveRotation = ViewportPolicy.effectiveRotation(rotation, prefs.clientRotation)
-        requestedOrientation =
-            when (effectiveRotation) {
-                90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
-            }
+        requestedOrientation = ViewportPolicy.screenOrientationFor(effectiveRotation)
 
         // Host rotation chooses the device orientation. The encoded frame keeps
         // its source orientation, so only the client-local offset transforms it.
         binding.surfaceView.apply {
-            this.rotation = prefs.clientRotation.degrees.toFloat()
+            this.rotation = ViewportPolicy.surfaceTransformRotation(prefs.clientRotation).toFloat()
             scaleX = 1f
             scaleY = 1f
         }
