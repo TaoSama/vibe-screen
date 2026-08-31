@@ -2122,7 +2122,7 @@ class PrepareReleaseTests(unittest.TestCase):
         macos_job = macos_job_match.group("body")
         for contract in (
             "runs-on: macos-15",
-            "timeout-minutes: 20",
+            "timeout-minutes: 30",
             "go-version: 1.25.12",
             'python-version: "3.11"',
             "brew install coturn",
