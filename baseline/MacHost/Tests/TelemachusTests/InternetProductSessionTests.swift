@@ -1131,6 +1131,37 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(mediaPayloads, [Data([3])])
     }
 
+    func testFrameAdmissionPreservesPendingKeyframeOverNewerDeltaFrame() throws {
+        let harness = try Harness()
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        let touchEntered = DispatchSemaphore(value: 0)
+        let releaseTouch = DispatchSemaphore(value: 0)
+        harness.session.onAuthenticatedTouchEvent = { _, _, _, _, _, _, _, _ in
+            touchEntered.signal()
+            _ = releaseTouch.wait(timeout: .now() + 1)
+            return true
+        }
+        DispatchQueue.global().async {
+            harness.receiveControl(harness.touch(messageID: 3))
+        }
+        XCTAssertEqual(touchEntered.wait(timeout: .now() + 1), .success)
+
+        harness.session.sendFrame(Data([0x65]), timestamp: 1, isKeyframe: true, sessionEpoch: 1)
+        harness.session.sendFrame(Data([0x41]), timestamp: 2, isKeyframe: false, sessionEpoch: 1)
+        releaseTouch.signal()
+
+        XCTAssertTrue(harness.waitForSentMediaCount(1))
+        let media = try ProtocolV1MediaPacketCodec.decode(
+            harness.engine.sentPlaintext.first { $0.channel == .media }!.payload
+        )
+        XCTAssertEqual(media.payload, Data([0x65]))
+        XCTAssertEqual(media.header.captureTimestampNs, 1)
+        XCTAssertTrue(media.header.keyframe)
+    }
+
     func testStaleSessionEpochCannotReplacePendingFrameOrFailCurrentSession() throws {
         let harness = try Harness()
         try harness.session.start(configuration: harness.configuration)
