@@ -384,7 +384,19 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             self.assertEqual(signaling.read_bytes(), b"signaling")
             self.assertEqual(run.call_count, 2)
             self.assertEqual(run.call_args_list[0].kwargs["timeout"], 45)
-            self.assertEqual(run.call_args_list[1].args[0], ["swift", "build", "-c", "release"])
+            self.assertEqual(
+                run.call_args_list[1].args[0],
+                [
+                    "swift",
+                    "build",
+                    "-c",
+                    "release",
+                    "-Xswiftc",
+                    "-file-prefix-map",
+                    "-Xswiftc",
+                    f"{repo.resolve()}=.",
+                ],
+            )
             self.assertEqual(run.call_args_list[1].kwargs["timeout"], 600)
             self.assertEqual(outputs, ["", ""])
             self.assertEqual(locate_binaries(repo), (signaling, mac_host))
