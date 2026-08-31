@@ -531,9 +531,8 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/modeUSB"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:minWidth="0dp"
                     android:text="@string/usb"
                     android:maxLines="2"
@@ -551,9 +550,8 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/modeWireless"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:minWidth="0dp"
                     android:text="@string/trusted_lan"
                     android:maxLines="2"
