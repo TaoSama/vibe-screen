@@ -217,17 +217,28 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
             main_activity,
             """
             override fun onVideoFrame(frame: ProductVideoFrame) {
-                if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
-                videoDecoder?.decode(
-                    frame.payload,
-                    frame.payload.size,
-                    System.nanoTime(),
-                    frame.keyframe,
-                    frame.sessionEpoch,
-                )
+                val dec = videoDecoder
+                when (
+                    rendererOwner.internetFrameDecision(
+                        sessionCurrent = isCurrentInternetSession(),
+                        frameSessionEpoch = frame.sessionEpoch,
+                        activeSessionEpoch = internetSessionEpoch,
+                        decoderAvailable = dec != null,
+                    )
+                ) {
+                    RendererFramePresentationDecision.Present ->
+                        dec?.decode(
+                            frame.payload,
+                            frame.payload.size,
+                            System.nanoTime(),
+                            frame.keyframe,
+                            frame.sessionEpoch,
+                        )
+                    is RendererFramePresentationDecision.Drop -> Unit
+                }
             }
             """,
-            label="Android Internet video frames are submitted to the production VideoDecoder",
+            label="Android Internet video frames are renderer-admitted before production VideoDecoder",
         )
 
 
