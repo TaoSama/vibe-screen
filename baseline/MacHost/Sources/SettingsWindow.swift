@@ -103,7 +103,6 @@ struct VisualEffectBlur: NSViewRepresentable {
 
 struct SettingsView: View {
     @ObservedObject var settings: DisplaySettings
-    @State private var showPermissionAlert = false
     @State private var showResetConfirmation = false
     @State private var headerHovered = false
     // Plain strings for the custom resolution fields: TextField(value:format:)
@@ -928,6 +927,7 @@ struct SettingsView: View {
                                                 Image(systemName: "gear")
                                                 Text("Open System Settings")
                                             }
+                                            .frame(maxWidth: .infinity)
                                         }
                                         .buttonStyle(.borderedProminent)
                                         .controlSize(.small)
@@ -953,7 +953,7 @@ struct SettingsView: View {
                                         }) {
                                             HStack {
                                                 Image(systemName: "gear")
-                                                Text("Open Settings")
+                                                Text("Open System Settings")
                                             }
                                             .frame(maxWidth: .infinity)
                                         }
