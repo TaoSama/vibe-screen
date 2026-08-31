@@ -415,6 +415,7 @@ class StreamClientProtocolV1IntegrationTest {
             val clientConnected = CountDownLatch(1)
             val sessionEnded = CountDownLatch(1)
             val resultSeen = CountDownLatch(1)
+            val resultCount = AtomicInteger()
             val acceptedResult = AtomicBoolean(true)
             val rejectionReason = AtomicReference<String>()
             val serverJob =
@@ -449,6 +450,7 @@ class StreamClientProtocolV1IntegrationTest {
             client.onSessionEnded = { sessionEnded.countDown() }
             client.onWriteFailure = { writeFailure.set(it) }
             client.onFileTransferResult = { accepted, reason ->
+                resultCount.incrementAndGet()
                 acceptedResult.set(accepted)
                 rejectionReason.set(reason)
                 resultSeen.countDown()
@@ -475,6 +477,7 @@ class StreamClientProtocolV1IntegrationTest {
 
             assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
             assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+            assertEquals(1, resultCount.get())
             assertFalse(acceptedResult.get())
             assertEquals("connection_cleanup", rejectionReason.get())
             assertNull(writeFailure.get())
@@ -490,7 +493,9 @@ class StreamClientProtocolV1IntegrationTest {
             val transferId = ByteString.copyFrom(byteArrayOf(0x61))
             val capturedOffer = AtomicReference<FileOffer>()
             val offerSeen = CountDownLatch(1)
+            val offerCallbackCount = AtomicInteger()
             val serverMayRead = CountDownLatch(1)
+            val fileAcceptCount = AtomicInteger()
             val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
             val clientConnected = CountDownLatch(1)
             val sessionEnded = CountDownLatch(1)
@@ -507,9 +512,24 @@ class StreamClientProtocolV1IntegrationTest {
                         )
                         write(peer, fileOffer(6, transferId, "host-offer.txt", content))
                         assertTrue(serverMayRead.await(8, TimeUnit.SECONDS))
-                        val accept = checkNotNull(readEnvelopeUntil(peer) { it.payloadCase == Envelope.PayloadCase.FILE_ACCEPT })
+                        val accept = checkNotNull(readEnvelopeUntil(peer) { envelope ->
+                            if (envelope.payloadCase == Envelope.PayloadCase.FILE_ACCEPT) {
+                                fileAcceptCount.incrementAndGet()
+                                true
+                            } else {
+                                false
+                            }
+                        })
                         assertEquals(transferId, accept.fileAccept.transferId)
                         assertTrue(accept.fileAccept.accepted)
+                        peer.soTimeout = 300
+                        repeat(3) {
+                            readEnvelopeOrNull(peer)?.let { envelope ->
+                                if (envelope.payloadCase == Envelope.PayloadCase.FILE_ACCEPT) {
+                                    fileAcceptCount.incrementAndGet()
+                                }
+                            }
+                        }
                     }
                 }
             val writeFailure = AtomicReference<String?>()
@@ -528,6 +548,7 @@ class StreamClientProtocolV1IntegrationTest {
             client.onSessionEnded = { sessionEnded.countDown() }
             client.onWriteFailure = { writeFailure.set(it) }
             client.onFileOffer = { offer ->
+                offerCallbackCount.incrementAndGet()
                 capturedOffer.set(offer)
                 offerSeen.countDown()
             }
@@ -554,6 +575,8 @@ class StreamClientProtocolV1IntegrationTest {
             }
 
             assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(1, offerCallbackCount.get())
+            assertEquals(1, fileAcceptCount.get())
             assertNull(writeFailure.get())
             Unit
         }
@@ -569,7 +592,9 @@ class StreamClientProtocolV1IntegrationTest {
             val queuedWakeHost = AtomicReference<Runnable?>()
             val wakeHostQueued = CountDownLatch(1)
             val wakeCompletionQueued = CountDownLatch(1)
+            val wakeCompletionCount = AtomicInteger()
             val serverMayRead = CountDownLatch(1)
+            val wakeResultCount = AtomicInteger()
             val gatedFlushSocket = AtomicReference<GateableFlushSocket?>()
             val clientConnected = CountDownLatch(1)
             val sessionEnded = CountDownLatch(1)
@@ -596,10 +621,25 @@ class StreamClientProtocolV1IntegrationTest {
                             ),
                         )
                         assertTrue(serverMayRead.await(8, TimeUnit.SECONDS))
-                        val result = checkNotNull(readEnvelopeUntil(peer) { it.payloadCase == Envelope.PayloadCase.WAKE_HOST_RESULT })
+                        val result = checkNotNull(readEnvelopeUntil(peer) { envelope ->
+                            if (envelope.payloadCase == Envelope.PayloadCase.WAKE_HOST_RESULT) {
+                                wakeResultCount.incrementAndGet()
+                                true
+                            } else {
+                                false
+                            }
+                        })
                         assertEquals(requestId, result.wakeHostResult.requestId)
                         assertTrue(result.wakeHostResult.accepted)
                         assertEquals("", result.wakeHostResult.rejectionReason)
+                        peer.soTimeout = 300
+                        repeat(3) {
+                            readEnvelopeOrNull(peer)?.let { envelope ->
+                                if (envelope.payloadCase == Envelope.PayloadCase.WAKE_HOST_RESULT) {
+                                    wakeResultCount.incrementAndGet()
+                                }
+                            }
+                        }
                     }
                 }
             val writeFailure = AtomicReference<String?>()
@@ -615,6 +655,7 @@ class StreamClientProtocolV1IntegrationTest {
                     wakeHostExecutor = Executor { command ->
                         queuedWakeHost.set {
                             command.run()
+                            wakeCompletionCount.incrementAndGet()
                             wakeCompletionQueued.countDown()
                         }
                         wakeHostQueued.countDown()
@@ -650,6 +691,8 @@ class StreamClientProtocolV1IntegrationTest {
             }
 
             assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(1, wakeCompletionCount.get())
+            assertEquals(1, wakeResultCount.get())
             assertEquals(1, sentPackets.size)
             assertArrayEquals(WakeHostMagicPacket.build(targetMac), sentPackets.single())
             assertNull(writeFailure.get())
@@ -1549,6 +1592,7 @@ class StreamClientProtocolV1IntegrationTest {
             val queuedWakeHost = AtomicReference<Runnable?>()
             val wakeHostQueued = CountDownLatch(1)
             val serverMayFinish = CountDownLatch(1)
+            val wakeResultCount = AtomicInteger()
             val serverJob =
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
@@ -1574,7 +1618,13 @@ class StreamClientProtocolV1IntegrationTest {
                         assertTrue(wakeHostQueued.await(8, TimeUnit.SECONDS))
                         serverMayFinish.await(8, TimeUnit.SECONDS)
                         peer.soTimeout = 300
-                        assertNull(readEnvelopeOrNull(peer))
+                        repeat(3) {
+                            readEnvelopeOrNull(peer)?.let { envelope ->
+                                if (envelope.payloadCase == Envelope.PayloadCase.WAKE_HOST_RESULT) {
+                                    wakeResultCount.incrementAndGet()
+                                }
+                            }
+                        }
                     }
                 }
             val client =
@@ -1598,6 +1648,7 @@ class StreamClientProtocolV1IntegrationTest {
 
             withTimeout(8_000) { serverJob.await() }
             withTimeout(8_000) { clientJob.await() }
+            assertEquals(0, wakeResultCount.get())
             assertTrue(sentPackets.isEmpty())
         }
     }

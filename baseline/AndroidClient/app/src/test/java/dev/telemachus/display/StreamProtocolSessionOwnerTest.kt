@@ -38,6 +38,7 @@ class StreamProtocolSessionOwnerTest {
 
         assertNull(owner.currentSession)
         assertFalse(owner.isCurrent(session, owner.connectionGeneration))
+        assertFalse(owner.retainsSession(session, owner.connectionGeneration))
     }
 
     @Test
@@ -51,6 +52,7 @@ class StreamProtocolSessionOwnerTest {
 
         assertNull(owner.currentSession)
         assertFalse(owner.isCurrent(session, owner.connectionGeneration))
+        assertFalse(owner.retainsSession(session, owner.connectionGeneration))
     }
 
     @Test
@@ -68,8 +70,10 @@ class StreamProtocolSessionOwnerTest {
         owner.markConnected()
 
         assertFalse(owner.isCurrent(firstSession, firstGeneration))
+        assertFalse(owner.retainsSession(firstSession, firstGeneration))
         assertFalse(owner.ownsAttempt(firstGeneration))
         assertTrue(owner.isCurrent(secondSession, secondGeneration))
+        assertTrue(owner.retainsSession(secondSession, secondGeneration))
         assertTrue(owner.ownsAttempt(secondGeneration))
     }
 
@@ -134,8 +138,33 @@ class StreamProtocolSessionOwnerTest {
 
         assertSame(session, owner.currentSession)
         assertTrue(owner.retainsSession(session, owner.connectionGeneration))
+        assertFalse(owner.trackFileOffer(ByteString.copyFromUtf8("new-transfer"), session, owner.connectionGeneration))
+        assertFalse(owner.trackWakeHostRequest(ByteString.copyFromUtf8("new-wake"), session, owner.connectionGeneration))
         assertNull(owner.claimFileOffer(transferId))
         assertFalse(owner.isCurrent(session, owner.connectionGeneration))
+    }
+
+    @Test
+    fun `old generation drain is rejected after new session activates post side effect admission clear`() {
+        val owner = StreamProtocolSessionOwner()
+        val firstSession = session()
+        val firstGeneration = owner.beginSession()
+        owner.activate(firstSession)
+        owner.markConnected()
+
+        owner.markTerminationClaimed(SessionFailure.userRequested())
+        owner.clearSideEffectAdmission()
+        assertTrue(owner.retainsSession(firstSession, firstGeneration))
+
+        val secondGeneration = owner.beginSession()
+        val secondSession = session()
+        owner.activate(secondSession)
+        owner.markConnected()
+
+        assertFalse(owner.retainsSession(firstSession, firstGeneration))
+        assertFalse(owner.isCurrent(firstSession, firstGeneration))
+        assertTrue(owner.retainsSession(secondSession, secondGeneration))
+        assertTrue(owner.isCurrent(secondSession, secondGeneration))
     }
 
     @Test
@@ -152,6 +181,7 @@ class StreamProtocolSessionOwnerTest {
         owner.clear()
 
         assertNull(owner.currentSession)
+        assertFalse(owner.retainsSession(session, owner.connectionGeneration))
         assertNull(owner.claimFileOffer(transferId))
     }
 
