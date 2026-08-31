@@ -101,20 +101,20 @@ class UsbCurrentBaseGateTest(unittest.TestCase):
 
         self.assertTrue(any("public artifact contains raw ADB serial" in error for error in report["errors"]))
 
-    def test_public_artifact_allows_permission_hint_keyword(self) -> None:
+    def test_public_artifact_allows_non_serial_preference_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.complete_manifest(root)
             good = write_artifact(
                 root / "good.txt",
-                "Telemachus_pendingPostUpdatePermissionHintFingerprint\n",
+                "Telemachus_refreshRate\n",
             )
             manifest["artifacts"].append(
                 {
                     "kind": "privacy_scan",
                     "path": good["path"],
                     "sha256": good["sha256"],
-                    "description": "Host readiness key name that is not an ADB serial",
+                    "description": "Host preference key name that is not an ADB serial",
                 }
             )
             report = evaluate(manifest, repository_root=root)
