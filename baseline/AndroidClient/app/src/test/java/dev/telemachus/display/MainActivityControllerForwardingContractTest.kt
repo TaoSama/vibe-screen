@@ -185,8 +185,17 @@ class MainActivityControllerForwardingContractTest {
         assertContains(displaysCallback, "hostActions = managedHostActions")
         assertContains(managedPolicyCallback, "managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed")
         assertContains(managedPolicyCallback, "managedHostActionsAllowed = !status.managed || status.hostActionsAllowed")
-        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in callbackClient.negotiatedCapabilities()")
+        assertContains(managedPolicyCallback, "val negotiated = callbackClient.negotiatedCapabilities()")
+        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated")
+        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated")
+        assertContains(managedPolicyCallback, "clipboard = clipboard")
+        assertContains(managedPolicyCallback, "if (!clipboard) {")
+        assertContains(managedPolicyCallback, "cancelClipboardRequestTimeout()")
+        assertContains(managedPolicyCallback, "clipboardApprovalState.clear()")
         assertContains(managedPolicyCallback, "populateHostActions(availableHostActions)")
+        assertContains(managedPolicyCallback, "refreshClipboardControl()")
+        assertBefore(managedPolicyCallback, "clipboard = clipboard", "if (!clipboard) {")
+        assertBefore(managedPolicyCallback, "if (!clipboard) {", "refreshClipboardControl()")
     }
 
     @Test
