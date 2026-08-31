@@ -1,5 +1,6 @@
 BUF_VERSION ?= v1.72.0
 BUF := go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
+SWIFT_RELEASE_FILE_PREFIX_MAP := -Xswiftc -file-prefix-map -Xswiftc "$(realpath $(CURDIR))=."
 EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
@@ -543,7 +544,7 @@ phase3-android-current-base-interop-gate:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/android_current_base_interop_gate.py --evidence "$(PHASE3_ANDROID_INTEROP_EVIDENCE)" --profile "$(PHASE3_ANDROID_INTEROP_GATE_PROFILE)" --output "$(EVIDENCE_DIR)/phase3-android-current-base-interop-gate.json"
 
 baseline-macos-build:
-	cd baseline/MacHost && swift build -c release
+	cd baseline/MacHost && swift build -c release $(SWIFT_RELEASE_FILE_PREFIX_MAP)
 
 baseline-macos-permission-prompt-contract:
 	swift scripts/verify_macos_permission_prompt_contract.swift
@@ -555,7 +556,7 @@ baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xc
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build baseline-macos-permission-prompt-contract
-	@host_bin="$$(cd baseline/MacHost && swift build -c release --show-bin-path)/Vibe Screen"; \
+	@host_bin="$$(cd baseline/MacHost && swift build -c release $(SWIFT_RELEASE_FILE_PREFIX_MAP) --show-bin-path)/Vibe Screen"; \
 		"$$host_bin" --host-self-test; \
 		"$$host_bin" --transport-self-test; \
 		"$$host_bin" --reliability-self-test; \
