@@ -344,13 +344,17 @@ acceptance and does not change the README-facing open gate status.
 - [2026-08-30-p0110-controller-runtime-current-base-blocked-f9c7716/controller-runtime-readiness.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-f9c7716/controller-runtime-readiness.json)
 - [2026-08-30-p0110-controller-runtime-current-base-blocked-f9c7716/host-readiness.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-f9c7716/host-readiness.json)
 
-## 2026-08-31 current-base refresh
+## 2026-08-31 retained blocked snapshot
 
-The 2026-08-31 current-base readiness run refreshed the controller owner gate
-from origin/main commit 075dc157c36ba71df9f757e571015905881a7154. The Android
-readiness command ran from a clean detached current-base worktree with the
-shared Host readiness snapshot supplied through `--host-readiness`. The run used
-adb -s <device-serial>, recorded the connected device as nubia P0110 / pacific /
+The 2026-08-31 readiness run was collected at source commit
+075dc157c36ba71df9f757e571015905881a7154, which was the owner branch's
+current source at collection time. This record is retained in the current-base
+owner package after origin/main advanced to
+967e05f4266916569f0898d7e2ed53e3a2602da9; it is a historical blocked snapshot,
+not evidence that the current PR base closed controller runtime acceptance. The
+Android readiness command ran from a clean detached worktree with the shared
+Host readiness snapshot supplied through `--host-readiness`. The run used adb
+-s <device-serial>, recorded the connected device as nubia P0110 / pacific /
 Android 16 / SDK 36, and found no physical SOURCE_GAMEPAD or SOURCE_JOYSTICK
 controller.
 

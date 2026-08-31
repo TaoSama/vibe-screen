@@ -2,7 +2,11 @@
 
 Created: 2026-08-30T21:24:57Z
 Run ID: 20260831-p0110-controller-runtime-current-base-blocked
-Source commit: 075dc157c36ba71df9f757e571015905881a7154
+Source commit at collection time: 075dc157c36ba71df9f757e571015905881a7154
+Package note: this is a historical blocked snapshot retained by the current-base
+owner package after origin/main advanced to
+967e05f4266916569f0898d7e2ed53e3a2602da9; it is not evidence that the
+current PR base closed controller runtime acceptance.
 Device: nubia P0110 / pacific / Android 16 / SDK 36 / serial <device-serial>
 APK: dev.telemachus.display 0.0.0 (100000)
 Physical controller devices: 0
