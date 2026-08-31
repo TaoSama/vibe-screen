@@ -1032,3 +1032,36 @@ returns `result=pass`. Rotated host-display acceptance remains open.
 Evidence:
 
 - [`evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked/`](evidence/2026-08-31-p0110-host-display-rotation-current-base-blocked/)
+
+## P0110 native pointer HID current-base blocked refresh
+
+On 2026-08-31 Asia/Shanghai local run date (2026-08-30T20:48:10Z UTC capture
+timestamp), the native pointer HID gate owner was refreshed from current
+`origin/main` at `075dc157c36ba71df9f757e571015905881a7154`. The start and
+finish safety checks found no `sfltool` process, and the run did not execute
+`sfltool dumpbtm` or any login-item opt-in diagnostic.
+
+The shared Host readiness preflight was retained first. It reports
+`can_start_native_hid_gate=false`: the `Vibe Screen Dev` signing identity was
+not available in the current keychain, the installed Host failed codesign
+inspection with a missing/invalid WebRTC framework subcomponent, no Host
+listener was observed on TCP `54321`, the installed Host lacks
+`com.apple.developer.hid.virtual.device`, and Screen Recording / Accessibility
+could not be verified as ready.
+
+The native pointer collector used an explicit serial-scoped ADB command and
+recorded the connected Android device as nubia P0110 / pacific / Android 16 /
+SDK 36, with the serial redacted from retained evidence. No external Android
+input device with a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`
+source was attached. The collector therefore stopped before any observation
+window, wrote `status=blocked`, and the independent summary reports
+`verdict=blocked` with `can_close_native_pointer_hid_gate=false`. A strict
+`make native-pointer-hid-gate` rerun rejected this blocked bundle as expected.
+
+This refresh is P0110/pacific fail-closed readiness evidence only. It does not
+close the README native mouse pointer move/click gate and does not treat
+synthetic ADB pointer motion as physical HID evidence.
+
+Evidence:
+
+- [`evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/`](evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/)
