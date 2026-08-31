@@ -74,6 +74,119 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             "9AAE572BF6D764E3436A6109197D345B5A87998C",
         )
 
+    def test_designated_requirement_parser_accepts_root_certificate_hash(self) -> None:
+        requirement = macos_dev_host.parse_designated_requirement(
+            'designated => identifier "dev.telemachus.display" and certificate root = H"9aae572bf6d764e3436a6109197d345b5a87998c"\n'
+        )
+
+        self.assertEqual(
+            macos_dev_host.parse_leaf_certificate_hash(requirement),
+            "9AAE572BF6D764E3436A6109197D345B5A87998C",
+        )
+
+    def test_validate_preflight_rejects_wrong_root_certificate_hash(self) -> None:
+        metadata = self.metadata()
+        metadata = macos_dev_host.SigningMetadata(
+            app_path=metadata.app_path,
+            identifier=metadata.identifier,
+            source_commit=metadata.source_commit,
+            source_tree=metadata.source_tree,
+            source_dirty=metadata.source_dirty,
+            binary_sha256=metadata.binary_sha256,
+            authorities=metadata.authorities,
+            cdhash=metadata.cdhash,
+            designated_requirement=(
+                'identifier "dev.telemachus.display" and certificate root = '
+                'H"B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
+            ),
+            signature=metadata.signature,
+            team_identifier=metadata.team_identifier,
+            leaf_certificate_hash=macos_dev_host.parse_leaf_certificate_hash(
+                'identifier "dev.telemachus.display" and certificate root = '
+                'H"B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
+            ),
+        )
+
+        errors = macos_dev_host.validate_preflight(
+            metadata,
+            macos_dev_host.PermissionStatus(
+                database_path=TEST_PRIVACY_DATABASE,
+                rows=(
+                    macos_dev_host.TCCRow(
+                        service=macos_dev_host.SCREEN_CAPTURE_SERVICES[0],
+                        client=macos_dev_host.EXPECTED_BUNDLE_ID,
+                        client_type=0,
+                        auth_value=macos_dev_host.ALLOWED_AUTH_VALUE,
+                        auth_reason=None,
+                        last_modified=None,
+                    ),
+                    macos_dev_host.TCCRow(
+                        service=macos_dev_host.ACCESSIBILITY_SERVICE,
+                        client=macos_dev_host.EXPECTED_BUNDLE_ID,
+                        client_type=0,
+                        auth_value=macos_dev_host.ALLOWED_AUTH_VALUE,
+                        auth_reason=None,
+                        last_modified=None,
+                    ),
+                ),
+                readable=True,
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+        )
+
+        self.assertIn(
+            "Host signing leaf SHA-1 is 'B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'",
+            "\n".join(errors),
+        )
+
+    def test_validate_preflight_rejects_malformed_certificate_requirement(self) -> None:
+        metadata = self.metadata()
+        metadata = macos_dev_host.SigningMetadata(
+            app_path=metadata.app_path,
+            identifier=metadata.identifier,
+            source_commit=metadata.source_commit,
+            source_tree=metadata.source_tree,
+            source_dirty=metadata.source_dirty,
+            binary_sha256=metadata.binary_sha256,
+            authorities=metadata.authorities,
+            cdhash=metadata.cdhash,
+            designated_requirement='identifier "dev.telemachus.display" and certificate root = H"not-a-sha1"',
+            signature=metadata.signature,
+            team_identifier=metadata.team_identifier,
+            leaf_certificate_hash=macos_dev_host.parse_leaf_certificate_hash(
+                'identifier "dev.telemachus.display" and certificate root = H"not-a-sha1"'
+            ),
+        )
+
+        errors = macos_dev_host.validate_preflight(
+            metadata,
+            macos_dev_host.PermissionStatus(
+                database_path=TEST_PRIVACY_DATABASE,
+                rows=(
+                    macos_dev_host.TCCRow(
+                        service=macos_dev_host.SCREEN_CAPTURE_SERVICES[0],
+                        client=macos_dev_host.EXPECTED_BUNDLE_ID,
+                        client_type=0,
+                        auth_value=macos_dev_host.ALLOWED_AUTH_VALUE,
+                        auth_reason=None,
+                        last_modified=None,
+                    ),
+                    macos_dev_host.TCCRow(
+                        service=macos_dev_host.ACCESSIBILITY_SERVICE,
+                        client=macos_dev_host.EXPECTED_BUNDLE_ID,
+                        client_type=0,
+                        auth_value=macos_dev_host.ALLOWED_AUTH_VALUE,
+                        auth_reason=None,
+                        last_modified=None,
+                    ),
+                ),
+                readable=True,
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+        )
+
+        self.assertIn("Host signing leaf SHA-1 is 'missing'", "\n".join(errors))
+
     def test_run_best_effort_reports_missing_command(self) -> None:
         exit_code, output = macos_dev_host.run_best_effort(
             "/definitely/missing/vibe-screen-tool"
@@ -292,6 +405,53 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         )
 
         self.assertIn("expected configured identity", "\n".join(errors))
+
+    def test_validate_preflight_rejects_wrong_signing_leaf_sha1(self) -> None:
+        metadata = self.metadata()
+        metadata = macos_dev_host.SigningMetadata(
+            app_path=metadata.app_path,
+            identifier=metadata.identifier,
+            source_commit=metadata.source_commit,
+            source_tree=metadata.source_tree,
+            source_dirty=metadata.source_dirty,
+            binary_sha256=metadata.binary_sha256,
+            authorities=metadata.authorities,
+            cdhash=metadata.cdhash,
+            designated_requirement=(
+                'identifier "dev.telemachus.display" and certificate leaf = '
+                'H"0123456789abcdef0123456789abcdef01234567"'
+            ),
+            signature=metadata.signature,
+            team_identifier=metadata.team_identifier,
+            leaf_certificate_hash="0123456789ABCDEF0123456789ABCDEF01234567",
+        )
+        errors = macos_dev_host.validate_preflight(
+            metadata,
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity="Vibe Screen Dev",
+        )
+
+        self.assertIn("Host signing leaf SHA-1", "\n".join(errors))
+        self.assertIn(macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1, "\n".join(errors))
+
+    def test_validate_preflight_accepts_pinned_sha1_config_without_name_match(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(authorities=("Vibe Screen Dev Renamed",)),
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        self.assertEqual(errors, [])
 
     def test_validate_preflight_rejects_source_mismatch(self) -> None:
         errors = macos_dev_host.validate_preflight(
@@ -1815,6 +1975,40 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertEqual(inspection.permissions.error, "Host bundle signing was not inspected")
         self.assertIn("missing identity", "\n".join(inspection.errors))
         self.assertIn("Host bundle not found", "\n".join(inspection.errors))
+
+    def test_inspect_host_without_throwing_accepts_name_resolving_to_pinned_sha1(self) -> None:
+        source_identity = macos_dev_host.package_macos.SourceIdentity(
+            commit="a" * 40,
+            tree="b" * 40,
+            dirty=False,
+        )
+
+        with (
+            mock.patch.object(
+                macos_dev_host.package_macos,
+                "resolve_sign_identity",
+                return_value=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+            ),
+            mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity),
+            mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+            mock.patch.object(
+                macos_dev_host,
+                "query_tcc_rows",
+                return_value=macos_dev_host.PermissionStatus(
+                    database_path=Path(PRIVACY_DB_FILENAME),
+                    readable=True,
+                    rows=allowed_tcc_rows(),
+                ),
+            ),
+        ):
+            inspection = macos_dev_host.inspect_host_without_throwing(
+                macos_dev_host.DEFAULT_INSTALL_PATH,
+                Path(PRIVACY_DB_FILENAME),
+                expected_sign_identity="Vibe Screen Dev",
+                source_root=Path("."),
+            )
+
+        self.assertEqual(inspection.errors, [])
 
     def test_xctest_preflight_passes_with_full_xcode_and_xctest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
