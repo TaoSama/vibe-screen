@@ -296,6 +296,18 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun beforeDisplayConfigurationWrapperWinsOverRefusedCause() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                IOException("Mac connection closed before display configuration", ConnectException("Connection refused")),
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+            )
+
+        assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
+        assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
+    }
+
+    @Test
     fun protocolProbeCloseIsTreatedAsHostNotRunning() {
         val guidance =
             ConnectionGuidanceFactory.from(

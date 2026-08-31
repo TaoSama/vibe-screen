@@ -138,12 +138,12 @@ internal object ConnectionGuidanceFactory {
         if (throwable is SessionProtocolException) return from(throwable.failure, context)
         val causes = causeChain(throwable)
         return when {
-            context.mode == ConnectionMode.USB && causes.isConnectionRefused() ->
-                usbRouteUnavailable(context)
-
             causes.containMessage("before display configuration") ||
                 causes.containMessage("Protocol upgrade probe closed before a response") ->
                 hostNotRunning(context)
+
+            context.mode == ConnectionMode.USB && causes.isConnectionRefused() ->
+                usbRouteUnavailable(context)
 
             causes.any { it is NoRouteToHostException || it is UnknownHostException } ||
                 causes.containMessage("Network is unreachable") ||

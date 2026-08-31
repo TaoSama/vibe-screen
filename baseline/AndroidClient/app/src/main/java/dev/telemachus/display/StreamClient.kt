@@ -280,6 +280,7 @@ class StreamClient(
             pendingDecoderFailure.set(null)
             pendingInboundFailure.set(null)
             wakeHostAuthorizationSecret = null
+            var initialSocketConnected = false
             try {
                 val candidate = registerInitialTransportCandidate() ?: return@withContext
                 if (terminationDispatcher.isClaimed()) {
@@ -288,6 +289,7 @@ class StreamClient(
                 }
                 candidate.connection.socket.tcpNoDelay = true
                 candidate.connection.socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                initialSocketConnected = true
                 candidate.connection.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
                 candidate.connection.installStreams()
                 if (!promoteTransportCandidate(candidate) { !terminationDispatcher.isClaimed() }) {
@@ -331,11 +333,17 @@ class StreamClient(
                 if (!protocolSessionOwner.isReady && !protocolSessionOwner.stopRequested) throw e
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
-                completeConnectionEndNow(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
+                val terminalFailure =
+                    if (!protocolSessionOwner.isReady && initialSocketConnected && e.isInitialTransportFailure()) {
+                        SessionFailure.transport("Mac connection closed before display configuration")
+                    } else {
+                        SessionFailure.transport(e.message ?: e.javaClass.simpleName)
+                    }
+                completeConnectionEndNow(terminalFailure)
                 if (!protocolSessionOwner.isReady && !protocolSessionOwner.stopRequested) {
                     val failure = protocolSessionOwner.lastTerminationFailure
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
-                    if (e.isInitialTransportFailure()) throw e
+                    if (!initialSocketConnected && e.isInitialTransportFailure()) throw e
                     throw IOException("Mac connection closed before display configuration", e)
                 }
             }
