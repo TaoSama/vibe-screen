@@ -4,7 +4,6 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.NativeInputWire
-import dev.telemachus.display.WakeHostPolicy
 import dev.telemachus.display.WakeHostProof
 import dev.telemachus.display.WakeHostRequestContext
 import dev.vibescreen.protocol.v1.Capability
@@ -87,7 +86,7 @@ internal class ProtocolV1Session(
     private val advertisePeripheralInputFramework: Boolean = false,
     localManagedPolicy: ManagedPolicy = ManagedPolicy.UNMANAGED,
     private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
-    private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
+    private val advertiseWakeHost: Boolean = false,
     private val nowNs: () -> Long = System::nanoTime,
 ) {
     sealed class Action {
@@ -660,7 +659,7 @@ internal class ProtocolV1Session(
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
             if (advertisePeripheralInputFramework) add(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK)
             if (fileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
-            if (wakeHostPolicy.wakeAllowed) {
+            if (advertiseWakeHost) {
                 add(Capability.CAPABILITY_WAKE_HOST)
             }
         }.filteredBy(localManagedPolicy)

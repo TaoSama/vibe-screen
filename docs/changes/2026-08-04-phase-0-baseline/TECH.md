@@ -66,13 +66,15 @@ fixtures plus the concurrency and resource-lifecycle contract tests.
 
 This is intentionally a partial extraction. `StreamClient` still composes local
 transport with legacy/Protocol v1 session behavior, and `MainActivity` still
-coordinates local and Internet product sessions. A focused Android Protocol v1
-side-effect owner gates file-transfer and WakeHost callbacks on the active
-session object plus connection generation, and owns WakeHost pending-request
-admission so file, UI, and packet-sender side effects must pass current-owner
-checks before running. Broader protocol/session, decoder, renderer, and UI
-ownership therefore remain to be enforced by additional module boundaries before
-Phase 0 module ownership can be called complete.
+coordinates local and Internet product sessions. Focused Android Protocol v1
+owners gate side effects on the active session object plus connection generation;
+the WakeHost product owner now owns request lifecycle, result callback delivery,
+authorization-secret handling, and packet-sender admission behind those gates.
+This is offline/module evidence only: sleeping-Mac wake, router/NIC WOL behavior,
+Host signing/TCC readiness, and retained product logs remain blocked by the
+WakeHost current-base hardware gate. File-transfer product ownership, decoder,
+renderer, and UI ownership therefore remain to be enforced by additional module
+boundaries before Phase 0 module ownership can be called complete.
 
 ## Protocol v1
 

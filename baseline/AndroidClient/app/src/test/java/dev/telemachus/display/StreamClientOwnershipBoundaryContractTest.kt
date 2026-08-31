@@ -53,20 +53,22 @@ class StreamClientOwnershipBoundaryContractTest {
             "Protocol v1",
             "action dispatch",
             "side-effect owner",
+            "WakeHost request lifecycle/callback delivery/packet-sender admission",
             "input envelope routing",
             "media-frame routing",
         ).forEach { phrase ->
             assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
         }
-        assertTrue(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
-        assertTrue(readme.normalizedWhitespace().contains("file-transfer and wake-host flows"))
+        assertTrue(readme.normalizedWhitespace().contains("full file-transfer product ownership"))
+        assertTrue(readme.normalizedWhitespace().contains("WakeHost real sleeping-Mac"))
         assertTrue(audit.contains("#259"))
         assertTrue(audit.contains("current-base owner gate"))
         assertTrue(audit.contains("Module extraction draft PRs [#211]"))
         assertTrue(audit.contains("superseded by [#259]"))
         assertTrue(audit.contains("Remaining module gaps include broader protocol/session"))
-        assertTrue(phaseZeroTech.contains("side-effect owner gates file-transfer and WakeHost"))
-        assertTrue(phaseZeroTech.contains("Broader protocol/session, decoder,"))
+        assertTrue(phaseZeroTech.contains("the WakeHost product owner now owns request lifecycle"))
+        assertTrue(phaseZeroTech.contains("sleeping-Mac wake, router/NIC WOL behavior"))
+        assertTrue(phaseZeroTech.contains("File-transfer product ownership, decoder,"))
     }
 
     private fun source(relativePath: String): String {
@@ -122,6 +124,8 @@ class StreamClientOwnershipBoundaryContractTest {
             "app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt"
         const val PRODUCTION_PROTOCOL_SESSION_OWNER =
             "app/src/main/java/dev/telemachus/display/StreamProtocolSessionOwner.kt"
+        const val PRODUCTION_WAKE_HOST_PRODUCT_OWNER =
+            "app/src/main/java/dev/telemachus/display/WakeHostProductOwner.kt"
 
         val REQUIRED_BOUNDARY_OWNERS =
             listOf(
@@ -131,6 +135,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 PRODUCTION_MEDIA_FRAME_ROUTER,
                 PRODUCTION_PROTOCOL_SIDE_EFFECT_OWNER,
                 PRODUCTION_PROTOCOL_SESSION_OWNER,
+                PRODUCTION_WAKE_HOST_PRODUCT_OWNER,
             )
 
         val REQUIRED_OWNER_TESTS =
@@ -139,6 +144,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 "app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolActionDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+                "app/src/test/java/dev/telemachus/display/WakeHostProductOwnerTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolSessionOwnerTest.kt",
@@ -156,10 +162,14 @@ class StreamClientOwnershipBoundaryContractTest {
                 "protocolSessionOwner.trackFileOffer(",
                 "protocolSessionOwner.claimFileOffer(",
                 "protocolSessionOwner.releaseFileOffer(",
-                "protocolSessionOwner.trackWakeHostRequest(",
                 "protocolSessionOwner.activate(",
                 "protocolSessionOwner.deactivate()",
                 "protocolSessionOwner.clear()",
+                "private val wakeHostProductOwner =",
+                "wakeHostProductOwner.request(",
+                "wakeHostProductOwner.dispatchRequest(",
+                "wakeHostProductOwner.deliverCompletion(",
+                "wakeHostProductOwner.complete(",
                 "mediaFrameRouter.receiveLegacyFrame(",
                 "mediaFrameRouter.receiveProtocolFrame(",
             )
@@ -179,6 +189,11 @@ class StreamClientOwnershipBoundaryContractTest {
                 "ProtocolV1Framing.decodeVideo(",
                 "private val pendingInboundWakeHostRequests",
                 "private fun trackInboundWakeHostRequest",
+                "private fun performWakeHostRequest",
+                "private fun dispatchWakeHostRequest",
+                "private fun processWakeHostCompletion",
+                "WakeHostDecision.magicPacket",
+                "wakeHostPacketSender.send",
             )
 
         val OWNER_LAYER_FORBIDDEN_REFERENCES =
@@ -245,6 +260,16 @@ class StreamClientOwnershipBoundaryContractTest {
                             "FileTransfer",
                             "WakeHostPacketSender",
                             "WakeHostDecision",
+                        ),
+                ),
+                BoundaryOwnerRule(
+                    name = "WakeHostProductOwner",
+                    path = PRODUCTION_WAKE_HOST_PRODUCT_OWNER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES +
+                        listOf(
+                            "DataInputStream",
+                            "StreamTransportOwner",
+                            "SocketStreamTransportConnection",
                         ),
                 ),
             )
