@@ -105,8 +105,9 @@ those preconditions is missing, archive the preflight output as blocked
 readiness evidence and stop before running long device gates.
 `baseline-macos-host-readiness` is a shared prerequisite snapshot and does not
 replace the strict preflight or the runtime probes below. Its `can_start_*`
-fields only decide whether the matching runtime run may begin;
-`can_close_runtime_gates` remains false.
+fields decide whether the matching runtime run may begin.
+`can_close_runtime_gates=true` only means the shared Host prerequisite snapshot
+itself passed; each runtime gate still needs its own retained device evidence.
 
 Then launch the packaged Host, establish the selected USB or trusted-LAN
 Protocol v1 session, and exercise at least these runtime probes:
