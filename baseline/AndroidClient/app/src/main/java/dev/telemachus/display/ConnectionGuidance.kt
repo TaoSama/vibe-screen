@@ -11,6 +11,7 @@ import java.util.IdentityHashMap
 
 internal enum class ConnectionFailureKind {
     HOST_NOT_RUNNING,
+    USB_ROUTE_UNAVAILABLE,
     NETWORK_UNREACHABLE,
     TIMEOUT,
     INCOMPATIBLE_SESSION,
@@ -137,16 +138,21 @@ internal object ConnectionGuidanceFactory {
         if (throwable is SessionProtocolException) return from(throwable.failure, context)
         val causes = causeChain(throwable)
         return when {
-            causes.any { it is ConnectException } ||
-                causes.containMessage("ECONNREFUSED") ||
-                causes.containMessage("Connection refused") ||
-                causes.containMessage("before display configuration") ->
+            context.mode == ConnectionMode.USB && causes.isConnectionRefused() ->
+                usbRouteUnavailable(context)
+
+            causes.containMessage("before display configuration") ||
+                causes.containMessage("Protocol upgrade probe closed before a response") ->
                 hostNotRunning(context)
 
             causes.any { it is NoRouteToHostException || it is UnknownHostException } ||
                 causes.containMessage("Network is unreachable") ||
-                causes.containMessage("ENETUNREACH") ->
+                causes.containMessage("ENETUNREACH") ||
+                causes.containMessage("No Wi-Fi route is available") ->
                 networkUnreachable(context)
+
+            causes.isConnectionRefused() ->
+                hostNotRunning(context)
 
             causes.any { it is SocketTimeoutException } || causes.containMessage("timeout") ->
                 timeout(context)
@@ -189,6 +195,13 @@ internal object ConnectionGuidanceFactory {
                     ConnectionMode.INTERNET ->
                         text(R.string.connection_guidance_internet_network_unavailable_message)
                 },
+        )
+
+    private fun usbRouteUnavailable(context: ConnectionGuidanceContext): ConnectionGuidance =
+        ConnectionGuidance(
+            kind = ConnectionFailureKind.USB_ROUTE_UNAVAILABLE,
+            status = text(R.string.connection_guidance_adb_route_unavailable_title),
+            message = adbRecovery(context, text(R.string.connection_guidance_usb_route_unavailable_prefix)),
         )
 
     private fun timeout(context: ConnectionGuidanceContext): ConnectionGuidance =
@@ -237,6 +250,11 @@ internal object ConnectionGuidanceFactory {
 
     private fun List<Throwable>.containMessage(fragment: String): Boolean =
         any { cause -> cause.message?.contains(fragment, ignoreCase = true) == true }
+
+    private fun List<Throwable>.isConnectionRefused(): Boolean =
+        any { it is ConnectException } ||
+            containMessage("ECONNREFUSED") ||
+            containMessage("Connection refused")
 
     private fun adbRecovery(
         context: ConnectionGuidanceContext,

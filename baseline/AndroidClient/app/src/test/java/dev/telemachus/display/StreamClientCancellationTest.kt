@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.SocketAddress
 import java.net.ServerSocket
@@ -343,6 +344,7 @@ class StreamClientCancellationTest {
                 StreamClient("127.0.0.1", unusedPort).connect()
                 fail("Expected the refused connection to be propagated")
             } catch (expected: Exception) {
+                assertTrue(expected is ConnectException)
                 assertTrue(expected.message.orEmpty().isNotBlank())
             }
         }

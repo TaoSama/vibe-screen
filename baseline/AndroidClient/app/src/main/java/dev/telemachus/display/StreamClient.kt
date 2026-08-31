@@ -44,9 +44,12 @@ import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.File
 import java.io.IOException
+import java.net.ConnectException
 import java.net.InetSocketAddress
+import java.net.NoRouteToHostException
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
@@ -332,11 +335,18 @@ class StreamClient(
                 if (!protocolSessionOwner.isReady && !protocolSessionOwner.stopRequested) {
                     val failure = protocolSessionOwner.lastTerminationFailure
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
-                    if (e.message.orEmpty().contains("before display configuration")) throw e
+                    if (e.isInitialTransportFailure()) throw e
                     throw IOException("Mac connection closed before display configuration", e)
                 }
             }
         }
+
+    private fun Throwable.isInitialTransportFailure(): Boolean =
+        this is ConnectException ||
+            this is NoRouteToHostException ||
+            this is SocketTimeoutException ||
+            this is UnknownHostException ||
+            message.orEmpty().contains("before display configuration")
 
     sealed class WirelessConnectError(
         msg: String,

@@ -598,6 +598,54 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun userVisibleAuxiliaryErrorsDoNotExposeRawProtocolReasons() {
+        val source = mainActivitySource()
+        val decoderFailure = extractMethod(source, "private fun reportDecoderInitializationFailure")
+        val hostActionResult = extractCallback(source, "callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->")
+        val fileTransferResult = extractCallback(source, "callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->")
+
+        assertTrue(
+            "decoder details should remain in diagnostics",
+            decoderFailure.contains("Decoder init FAILED: \${error.message}"),
+        )
+        assertFalse(
+            "decoder exception messages must not be appended to the visible status",
+            decoderFailure.contains("Video decoder failed: \${error.message}"),
+        )
+        assertTrue(
+            "visible decoder status should use fixed recovery copy",
+            decoderFailure.contains("R.string.connection_guidance_video_decoder_recovery_title"),
+        )
+
+        assertFalse(
+            "Host action rejection reason is a protocol/debug value, not user copy",
+            hostActionResult.contains("host_action_rejected_with_reason"),
+        )
+        assertFalse(
+            "Host action toast must not interpolate the raw rejection reason",
+            hostActionResult.contains("getString(R.string.host_action_rejected, rejectionReason)") ||
+                hostActionResult.contains("getString(R.string.host_action_rejected_with_reason, rejectionReason)"),
+        )
+        assertTrue(hostActionResult.contains("hostActionFailureMessageId(rejectionReason)"))
+
+        assertFalse(
+            "File transfer reason is a protocol/debug value, not user copy",
+            fileTransferResult.contains("file_transfer_failed_with_reason"),
+        )
+        assertTrue(fileTransferResult.contains("fileTransferFailureMessageId(reason)"))
+    }
+
+    @Test
+    fun transientFeedbackUsesDedupedToastSurface() {
+        val source = mainActivitySource()
+        val directToastCount = countOccurrences(source, "Toast.makeText(")
+
+        assertTrue(source.contains("private fun showDedupedToast"))
+        assertTrue(source.contains("TOAST_DEDUP_WINDOW_MS"))
+        assertTrue("Only the deduped helper should call Toast.makeText directly", directToastCount == 1)
+    }
+
+    @Test
     fun internetProfileSummaryUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
