@@ -681,8 +681,7 @@ class StreamClient(
                 ),
             )
             remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
-            outgoingFileTransfers.values.forEach { it.cancel() }
-            outgoingFileTransfers.clear()
+            cancelOutgoingFileTransfers(drainOutgoingFileTransfers())
         }
 
     private fun fileTransferStagingDirectory(): File {
@@ -692,8 +691,13 @@ class StreamClient(
     }
 
     private fun configureLegacyMode(firstByte: Int? = null) {
-        wireMode = WireMode.LEGACY
-        protocolSessionOwner.deactivate()
+        val cancelledOutgoingTransfers =
+            synchronized(this) {
+                wireMode = WireMode.LEGACY
+                protocolSessionOwner.deactivate()
+                drainOutgoingFileTransfersLocked()
+            }
+        cancelOutgoingFileTransfers(cancelledOutgoingTransfers, reason = "session_deactivated")
         val activeAudioFormat = audioPlayer.activeFormat()
         audioPlayer.stop()?.let {
             Log.w(TAG, "Audio stop reported ${it.code} while switching to legacy mode")
@@ -1695,6 +1699,9 @@ class StreamClient(
             is StreamOutboundCommand.ProtocolFileOfferDecision ->
                 processProtocolFileOfferDecision(out, command)
 
+            is StreamOutboundCommand.ProtocolFileOfferSubmission ->
+                processProtocolFileOfferSubmission(out, command)
+
             is StreamOutboundCommand.ProtocolSendBulk ->
                 ProtocolV1Framing.write(out, ProtocolChannel.BULK, command.chunk.toFrame())
 
@@ -1865,6 +1872,28 @@ class StreamClient(
             session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
             out.flush()
         }
+    }
+
+    private fun processProtocolFileOfferSubmission(
+        out: java.io.DataOutputStream,
+        command: StreamOutboundCommand.ProtocolFileOfferSubmission,
+    ) {
+        val activeSession = protocolSessionOwner.currentSession
+        if (!protocolSessionOwner.isConnected ||
+            activeSession !== command.session ||
+            !command.session.canTransferFiles
+        ) {
+            outgoingFileTransfers.remove(command.offer.transferId, command.transfer).let { removed ->
+                if (!removed) return
+                val transfer = command.transfer
+                transfer.cancel()
+                onFileTransferResult?.invoke(false, "policy_denied")
+            }
+            return
+        }
+        if (outgoingFileTransfers[command.offer.transferId] !== command.transfer) return
+        command.session.offerFile(command.offer)?.let { writeProtocolEnvelope(out, it) }
+        out.flush()
     }
 
     private inner class StreamProtocolActionSink : StreamProtocolActionDispatcher.Sink {
@@ -2546,6 +2575,7 @@ class StreamClient(
         requestConnectionEnd(SessionFailure.codec(reason))
     }
 
+    @Synchronized
     fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean {
         if (!protocolSessionOwner.isConnected || wireMode != WireMode.V1) return false
         val session = protocolSessionOwner.currentSession ?: return false
@@ -2562,22 +2592,21 @@ class StreamClient(
                 onFileTransferResult?.invoke(false, failure.reasonCode)
                 return false
             }
+        if (outgoingFileTransfers.isNotEmpty()) {
+            transfer.cancel()
+            onFileTransferResult?.invoke(false, "concurrent_limit")
+            return false
+        }
+        outgoingFileTransfers[transfer.offer.transferId] = transfer
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
-            command = StreamOutboundCommand.ProtocolBatch { activeSession ->
-                if (!activeSession.canTransferFiles || outgoingFileTransfers.isNotEmpty()) {
-                    transfer.cancel()
-                    emptyList()
-                } else {
-                    outgoingFileTransfers[transfer.offer.transferId] = transfer
-                    listOfNotNull(activeSession.offerFile(transfer.offer))
-                }
-            },
+            command = StreamOutboundCommand.ProtocolFileOfferSubmission(session, transfer.offer, transfer),
             timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
         )
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
             submission == OutboundCommandScheduler.Submission.CLOSED
         ) {
+            outgoingFileTransfers.remove(transfer.offer.transferId, transfer)
             transfer.cancel()
             onFileTransferResult?.invoke(false, "outbound_backpressure")
             return false
@@ -2693,8 +2722,26 @@ class StreamClient(
 
     private fun cancelActiveFileTransfers() {
         incomingFileTransfers.get()?.cancelAll()
-        outgoingFileTransfers.values.forEach { it.cancel() }
+        cancelOutgoingFileTransfers(drainOutgoingFileTransfers())
+    }
+
+    private fun drainOutgoingFileTransfers(): List<OutgoingFileTransfer> =
+        synchronized(this) { drainOutgoingFileTransfersLocked() }
+
+    private fun drainOutgoingFileTransfersLocked(): List<OutgoingFileTransfer> {
+        val transfers = outgoingFileTransfers.values.toList()
         outgoingFileTransfers.clear()
+        return transfers
+    }
+
+    private fun cancelOutgoingFileTransfers(
+        transfers: List<OutgoingFileTransfer>,
+        reason: String? = null,
+    ) {
+        transfers.forEach { it.cancel() }
+        if (reason != null) {
+            transfers.forEach { onFileTransferResult?.invoke(false, reason) }
+        }
     }
 
     private fun cleanupCandidateTransport(

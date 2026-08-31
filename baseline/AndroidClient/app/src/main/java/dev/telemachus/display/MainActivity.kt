@@ -322,6 +322,7 @@ class MainActivity : AppCompatActivity() {
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private var pendingOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var pendingIncomingFileDecision: (() -> Unit)? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -447,6 +448,7 @@ class MainActivity : AppCompatActivity() {
         resetCustomGestureTouchState()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
+        rejectPendingIncomingFileOffer()
         applyStreamingWindowState(connected = isConnected, foreground = false)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
@@ -2456,26 +2458,8 @@ class MainActivity : AppCompatActivity() {
             }
         }.getOrNull()
 
-    private fun safeOutgoingFileName(displayName: String?): String {
-        val candidate =
-            displayName
-                ?.substringAfterLast('/')
-                ?.substringAfterLast('\\')
-                ?.replace('\u0000', '_')
-                ?.trim()
-                ?.take(MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
-                .orEmpty()
-        return if (candidate.isNotEmpty() &&
-            candidate != "." &&
-            candidate != ".." &&
-            !candidate.contains('/') &&
-            !candidate.contains('\\')
-        ) {
-            candidate
-        } else {
-            "transfer.bin"
-        }
-    }
+    private fun safeOutgoingFileName(displayName: String?): String =
+        AppSpecificDownloadsSaver.safeDisplayName(displayName, MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
 
     private fun promptIncomingFileOffer(
         client: StreamClient,
@@ -2483,7 +2467,12 @@ class MainActivity : AppCompatActivity() {
         offer: dev.vibescreen.protocol.v1.FileOffer,
     ) {
         runOnUiThread {
-            if (!isCurrentSession(client, generation) || !client.canTransferFiles) {
+            if (!isInForeground ||
+                isFinishing ||
+                isDestroyed ||
+                !isCurrentSession(client, generation) ||
+                !client.canTransferFiles
+            ) {
                 client.respondToFileOffer(offer, accepted = false)
                 return@runOnUiThread
             }
@@ -2493,12 +2482,19 @@ class MainActivity : AppCompatActivity() {
             }
 
             var decided = false
-            val timeout = Runnable {
-                if (pendingIncomingFileDialog == null || decided) return@Runnable
-                decided = true
-                pendingIncomingFileDialog?.dismiss()
-                pendingIncomingFileDialog = null
-                client.respondToFileOffer(offer, accepted = false)
+            lateinit var timeout: Runnable
+            val rejectDecision = {
+                if (pendingIncomingFileDialog != null && !decided) {
+                    decided = true
+                    fileTransferApprovalHandler.removeCallbacks(timeout)
+                    pendingIncomingFileDialog?.dismiss()
+                    pendingIncomingFileDialog = null
+                    pendingIncomingFileDecision = null
+                    client.respondToFileOffer(offer, accepted = false)
+                }
+            }
+            timeout = Runnable {
+                rejectDecision()
                 Toast.makeText(this, R.string.file_transfer_offer_expired, Toast.LENGTH_SHORT).show()
             }
             val dialog =
@@ -2516,31 +2512,24 @@ class MainActivity : AppCompatActivity() {
                         if (decided) return@setPositiveButton
                         decided = true
                         pendingIncomingFileDialog = null
+                        pendingIncomingFileDecision = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
                         client.respondToFileOffer(offer, accepted = true)
                     }
-                    .setNegativeButton(R.string.file_transfer_reject) { _, _ ->
-                        if (decided) return@setNegativeButton
-                        decided = true
-                        pendingIncomingFileDialog = null
-                        fileTransferApprovalHandler.removeCallbacks(timeout)
-                        client.respondToFileOffer(offer, accepted = false)
-                    }
-                    .setOnCancelListener {
-                        if (decided) return@setOnCancelListener
-                        decided = true
-                        pendingIncomingFileDialog = null
-                        fileTransferApprovalHandler.removeCallbacks(timeout)
-                        client.respondToFileOffer(offer, accepted = false)
-                    }
+                    .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
+                    .setOnCancelListener { rejectDecision() }
             pendingIncomingFileDialog = showImmersiveDialog(dialog)
+            pendingIncomingFileDecision = rejectDecision
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
     }
 
     private fun safeIncomingDisplayName(fileName: String): String =
-        fileName.takeIf { it.isNotBlank() }?.take(MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS) ?:
-            getString(R.string.file_transfer_unknown_name)
+        AppSpecificDownloadsSaver.safeDisplayName(
+            fileName,
+            MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+            fallback = getString(R.string.file_transfer_unknown_name),
+        )
 
     private fun readableByteCount(bytes: Long): String {
         if (bytes < 1024L) return getString(R.string.file_transfer_size_bytes, bytes)
@@ -2593,6 +2582,7 @@ class MainActivity : AppCompatActivity() {
         completed: dev.telemachus.display.protocol.CompletedIncomingFile,
         displayName: String,
     ): Uri {
+        AppSpecificDownloadsSaver.validateDisplayName(displayName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values =
                 ContentValues().apply {
@@ -2607,9 +2597,11 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { output ->
                     copyFileTo(completed.stagingFile, output)
                 } ?: throw IOException("Unable to open downloads entry")
-                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.also {
-                    contentResolver.update(uri, it, null, null)
-                }
+                val published =
+                    ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.let {
+                        contentResolver.update(uri, it, null, null)
+                    }
+                if (published <= 0) throw IOException("Unable to publish downloads entry")
                 return uri
             } catch (failure: Throwable) {
                 runCatching { contentResolver.delete(uri, null, null) }
@@ -2619,11 +2611,13 @@ class MainActivity : AppCompatActivity() {
 
         val downloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: throw IOException("Downloads directory is unavailable")
-        if (!downloads.exists() && !downloads.mkdirs()) {
-            throw IOException("Unable to create downloads directory")
-        }
-        val target = File(downloads, displayName)
-        FileOutputStream(target).use { output -> copyFileTo(completed.stagingFile, output) }
+        val target =
+            AppSpecificDownloadsSaver.save(
+                source = completed.stagingFile,
+                downloads = downloads,
+                displayName = displayName,
+                copy = ::copyFileTo,
+            )
         return Uri.fromFile(target)
     }
 
@@ -2660,6 +2654,10 @@ class MainActivity : AppCompatActivity() {
     private fun discardPendingOutgoingFileTransfer() {
         pendingOutgoingFileTransfer?.deleteRecursivelyBestEffort()
         pendingOutgoingFileTransfer = null
+    }
+
+    private fun rejectPendingIncomingFileOffer() {
+        pendingIncomingFileDecision?.invoke()
     }
 
     private fun File.deleteRecursivelyBestEffort() {
@@ -6519,9 +6517,8 @@ class MainActivity : AppCompatActivity() {
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         cancelClipboardRequestTimeout()
+        rejectPendingIncomingFileOffer()
         fileTransferApprovalHandler.removeCallbacksAndMessages(null)
-        pendingIncomingFileDialog?.dismiss()
-        pendingIncomingFileDialog = null
         discardPendingOutgoingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
