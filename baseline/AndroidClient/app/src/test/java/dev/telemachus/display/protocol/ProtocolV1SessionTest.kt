@@ -1869,6 +1869,7 @@ class ProtocolV1SessionTest {
         val geometry = committed.last() as ProtocolV1Session.Action.DisplayGeometryChanged
         assertEquals(2560, geometry.width)
         assertEquals(1440, geometry.height)
+        assertEquals(90, geometry.rotation)
         assertTrue(session.isStreaming)
     }
 
