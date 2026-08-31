@@ -278,14 +278,8 @@ class MainActivity : AppCompatActivity() {
     private val connectionStatusAnnouncements = ConnectionStatusAnnouncementCoordinator()
     private val autoConnectHandler = Handler(Looper.getMainLooper())
     private val wirelessReconnectHandler = Handler(Looper.getMainLooper())
-    private val initialWirelessReconnectBackoff =
-        ReconnectBackoff(
-            initialDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS,
-            maximumDelayMs = WIRELESS_RECONNECT_MAXIMUM_DELAY_MS,
-            jitterRatio = 0.0,
-        )
     private var wirelessAutoReconnectEnabled = false
-    private var pendingWirelessReconnectDelayMs: Long? = null
+    private var pendingAutomaticReconnectDelayMs: Long? = null
     private var pendingTerminalGuidance: ConnectionGuidance? = null
     private var isReconnecting = false
     private var hasConnectedThisRun = false
@@ -427,7 +421,7 @@ class MainActivity : AppCompatActivity() {
             internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)
             synchronizeControllerDevices("foreground")
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
-            pendingWirelessReconnectDelayMs?.let(::scheduleWirelessReconnect)
+            pendingAutomaticReconnectDelayMs?.let(::scheduleWirelessReconnect)
                 ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
         } else {
             scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
@@ -612,8 +606,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleAutomaticUsbConnect(delayMs: Long = 1500) {
         if (!automaticUsbConnect || isConnected || !isInForeground) return
+        val boundedDelayMs = delayMs.coerceIn(1L, ReconnectBackoff.MAXIMUM_DELAY_MS)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
-        autoConnectHandler.postDelayed(autoConnectRunnable, delayMs)
+        autoConnectHandler.postDelayed(autoConnectRunnable, boundedDelayMs)
         if (hasConnectedThisRun) {
             isReconnecting = true
             if (prefs.connectionMode == ConnectionMode.USB) updateDisconnectedHeader(ConnectionMode.USB)
@@ -716,8 +711,7 @@ class MainActivity : AppCompatActivity() {
                 acknowledgeTrustedLan = { prefs.trustedLanAcknowledged = true },
                 onConnectRequested = { host, port, token, deviceName, macName ->
                     wirelessAutoReconnectEnabled = true
-                    pendingWirelessReconnectDelayMs = null
-                    initialWirelessReconnectBackoff.reset()
+                    pendingAutomaticReconnectDelayMs = null
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
                     connectWireless(host, port, token, deviceName, macName)
                 },
@@ -4169,7 +4163,7 @@ class MainActivity : AppCompatActivity() {
     private fun createSessionAutomaticRetryCoordinator(
         callbackClient: StreamClient,
         callbackGeneration: Long,
-        postAutomaticRetry: () -> Unit,
+        postAutomaticRetry: (Long) -> Unit,
     ): SessionAutomaticRetryCoordinator {
         val cleanupAdapter =
             SessionAutomaticRetryCleanupAdapter(
@@ -4303,10 +4297,7 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@reconnect
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                pendingWirelessReconnectDelayMs = delayMs
-                if (wirelessAutoReconnectEnabled && prefs.connectionMode == ConnectionMode.WIRELESS) {
-                    scheduleWirelessReconnect(delayMs)
-                }
+                retryCoordinator.onReconnectSuggested(delayMs)
             }
         }
 
@@ -4348,8 +4339,7 @@ class MainActivity : AppCompatActivity() {
                     isReconnecting = false
                     unsupportedKeyboardNoticeShown = false
                     unsupportedNativePointerNoticeShown = false
-                    pendingWirelessReconnectDelayMs = null
-                    initialWirelessReconnectBackoff.reset()
+                    pendingAutomaticReconnectDelayMs = null
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
                     startPingTimer()
                     stopChecklistUpdates()
@@ -5462,7 +5452,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (!isInForeground) {
             wirelessAutoReconnectEnabled = true
-            pendingWirelessReconnectDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS
+            pendingAutomaticReconnectDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS
             return
         }
         if (isConnected || connectionAttemptInProgress) return
@@ -5476,11 +5466,7 @@ class MainActivity : AppCompatActivity() {
         )
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
-            createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
-                val delayMs =
-                    pendingWirelessReconnectDelayMs
-                        ?: initialWirelessReconnectBackoff.nextDelayMs(jitterUnit = 0.5)
-                pendingWirelessReconnectDelayMs = null
+            createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) { delayMs: Long ->
                 scheduleWirelessReconnect(delayMs)
             }
         setupStreamClientCallbacks(
@@ -5527,15 +5513,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scheduleWirelessReconnect(suggestedDelayMs: Long) {
+        val delayMs = suggestedDelayMs.coerceIn(1L, WIRELESS_RECONNECT_MAXIMUM_DELAY_MS)
         if (!wirelessAutoReconnectEnabled ||
             prefs.connectionMode != ConnectionMode.WIRELESS ||
-            isConnected ||
-            !isInForeground
+            isConnected
         ) {
             return
         }
+        if (!isInForeground) {
+            pendingAutomaticReconnectDelayMs = delayMs
+            return
+        }
         val entry = pairedHostStorage.load() ?: return
-        val delayMs = suggestedDelayMs.coerceIn(1L, WIRELESS_RECONNECT_MAXIMUM_DELAY_MS)
         wirelessController.showAutomaticReconnect(entry.macName, entry.host, entry.port, delayMs)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         wirelessReconnectHandler.postDelayed(wirelessReconnectRunnable, delayMs)
@@ -5545,8 +5534,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun cancelWirelessReconnect() {
         wirelessAutoReconnectEnabled = false
-        pendingWirelessReconnectDelayMs = null
-        initialWirelessReconnectBackoff.reset()
+        pendingAutomaticReconnectDelayMs = null
         isReconnecting = false
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
     }
@@ -5590,9 +5578,9 @@ class MainActivity : AppCompatActivity() {
         val guidanceContext = ConnectionGuidanceContext.adb(port, currentUsbTransportSnapshot().adbTransport)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
-            createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
+            createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) { delayMs: Long ->
                 showDisconnectedStreamUi()
-                scheduleAutomaticUsbConnect()
+                scheduleAutomaticUsbConnect(delayMs)
             }
         setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator, guidanceContext)
         lifecycleScope.launch(Dispatchers.IO) {

@@ -1,0 +1,5 @@
+## codex/reconnect-3s-seed-20260831...origin/main [behind 1]
+ M baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+ M baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ReliabilityPrimitives.kt
+ M baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientCancellationTest.kt
+?? docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-31-p0110-usb-reconnect-backoff-fix-blocked/
