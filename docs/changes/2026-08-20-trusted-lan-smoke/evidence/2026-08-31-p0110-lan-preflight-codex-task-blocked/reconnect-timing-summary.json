@@ -26,7 +26,11 @@
   ],
   "host": {},
   "kind": "reconnect_timing_gate",
-  "missing_required_disruptions": [],
+  "missing_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
   "notes": "Preflight stopped before Host launch, QR/token admission, secure-record negotiation, Protocol v1 LAN stream, decoder output, or reconnect exercise",
   "profile": "phase1-reconnect-within-3s",
   "reasons": [
@@ -39,7 +43,7 @@
     "adb-reverse-disconnect",
     "lan-network-interrupt"
   ],
-  "run_id": "4af79f9d-52f3-4292-b02b-8a6f67db9add",
+  "run_id": "f9740585-c072-4165-bcc5-a26892d009f5",
   "schema_version": "vibescreen.evidence/v1",
   "threshold_ms": 3000.0,
   "verdict": "blocked"
