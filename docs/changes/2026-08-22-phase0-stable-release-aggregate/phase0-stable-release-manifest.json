@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "075dc157c36ba71df9f757e571015905881a7154",
+    "base_commit": "28b9d1a59ef026b45ada3cd7e665ef09ea9a7523",
     "base_ref": "origin/main",
     "audit_date": "2026-08-31",
     "owner": "Vibe Screen core team",
@@ -88,7 +88,13 @@
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/macos-hardware-compatibility-gate.json",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/README.md",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked/macos-hardware-compatibility-gate.json",
-        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked/README.md"
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-29-macos-host-compatibility-current-base-blocked/README.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-30-macos-host-compatibility-current-base-blocked/macos-hardware-compatibility-gate.json",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-30-macos-host-compatibility-current-base-blocked/README.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-blocked/macos-hardware-compatibility-gate.json",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-blocked/README.md",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/macos-hardware-compatibility-gate.json",
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md"
       ],
       "owner_prs": [],
       "blockers": [
