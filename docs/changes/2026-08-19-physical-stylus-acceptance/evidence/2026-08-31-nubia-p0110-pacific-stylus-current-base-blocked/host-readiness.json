@@ -138,7 +138,7 @@
   "permissions": {
     "accessibility_granted": null,
     "database_path": "not inspected",
-    "error": "Host bundle signing was not inspected",
+    "error": "Permission inspection was skipped because codesign inspection failed",
     "readable": false,
     "rows": [],
     "screen_recording_granted": null

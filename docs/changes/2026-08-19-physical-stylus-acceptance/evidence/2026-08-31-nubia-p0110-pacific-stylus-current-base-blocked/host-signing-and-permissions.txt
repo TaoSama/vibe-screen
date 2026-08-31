@@ -1,7 +1,7 @@
 Host bundle
 -----------
 Path: /Applications/Vibe Screen.app
-Verification: not inspected
+Verification: failed codesign inspection
 
 Preflight result
 ----------------
