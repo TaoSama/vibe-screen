@@ -31,14 +31,43 @@ LOCAL_ONLY_MARKERS = (
     "local_loopback_only",
     "local loopback only",
     "loopback-only",
+    "synthetic_media",
+    "synthetic media",
+    "no_real_media",
+    "no real media",
     "no_public_internet_path",
     "no public internet path",
+    "synthetic_device",
+    "synthetic device",
+    "no_android_device",
+    "no android device",
     "synthetic protocol v1 harness",
     "synthetic_protocol_v1_device",
     "synthetic peer",
+    "deterministic",
+    "simulation",
+    "local coturn",
     "forced local coturn",
     "no_real_screen_capture",
     "no real screen capture",
+)
+LOCAL_ONLY_TRUE_FIELDS = frozenset(
+    {
+        "forced_local_coturn",
+        "local_coturn",
+        "local_loopback",
+        "local_loopback_only",
+        "no_android_device",
+        "no_public_internet_path",
+        "no_real_media",
+        "no_real_screen_capture",
+        "simulation",
+        "synthetic_protocol_v1_device",
+        "synthetic_device",
+        "synthetic_media",
+        "synthetic_peer",
+        "deterministic",
+    }
 )
 PRIVATE_DNS_SUFFIXES = (
     ".corp",
@@ -269,23 +298,17 @@ def scan_artifact(path: Path, artifact_type: str, manifest: dict[str, Any]) -> l
     except OSError as exc:
         raise EnforcementError(f"cannot read evidence artifact {path}: {exc}") from exc
     lowered = content.decode("utf-8", errors="ignore").lower()
-    for marker in LOCAL_ONLY_MARKERS:
-        if marker in lowered:
-            reasons.append(
-                reason(
-                    "fail",
-                    f"evidence.artifacts[{artifact_type}]",
-                    f"artifact contains local/synthetic limitation marker: {marker}",
-                )
-            )
     try:
         payload = json.loads(content.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
+        reasons.extend(_local_only_text_reasons(lowered, artifact_type))
         reasons.append(reason("fail", f"evidence.artifacts[{artifact_type}]", "artifact must be JSON"))
         return reasons
     if not isinstance(payload, dict):
         reasons.append(reason("fail", f"evidence.artifacts[{artifact_type}]", "artifact must be a JSON object"))
         return reasons
+    reasons.extend(_local_only_text_value_reasons(payload, artifact_type))
+    reasons.extend(_local_only_truthy_field_reasons(payload, artifact_type))
     reasons.extend(_artifact_binding_reasons(payload, artifact_type, manifest))
     status = payload.get("status", payload.get("result"))
     if status == "pass":
@@ -310,4 +333,59 @@ def scan_artifact(path: Path, artifact_type: str, manifest: dict[str, Any]) -> l
                 "local WebRTC E2E schema cannot close production enforcement",
             )
         )
+    return reasons
+
+
+def _local_only_text_reasons(text: str, artifact_type: str) -> list[Reason]:
+    reasons: list[Reason] = []
+    for marker in LOCAL_ONLY_MARKERS:
+        if marker in text:
+            reasons.append(
+                reason(
+                    "fail",
+                    f"evidence.artifacts[{artifact_type}]",
+                    f"artifact contains local/synthetic limitation marker: {marker}",
+                )
+            )
+    return reasons
+
+
+def _local_only_text_value_reasons(payload: Any, artifact_type: str) -> list[Reason]:
+    reasons: list[Reason] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+        elif isinstance(value, str):
+            reasons.extend(_local_only_text_reasons(value.lower(), artifact_type))
+
+    visit(payload)
+    return reasons
+
+
+def _local_only_truthy_field_reasons(payload: Any, artifact_type: str) -> list[Reason]:
+    reasons: list[Reason] = []
+
+    def visit(value: Any, path: str) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = f"{path}.{key}"
+                if key in LOCAL_ONLY_TRUE_FIELDS and child is True:
+                    reasons.append(
+                        reason(
+                            "fail",
+                            f"evidence.artifacts[{artifact_type}]",
+                            f"artifact contains local/synthetic limitation field: {child_path}",
+                        )
+                    )
+                visit(child, child_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, f"{path}[{index}]")
+
+    visit(payload, "artifact")
     return reasons
