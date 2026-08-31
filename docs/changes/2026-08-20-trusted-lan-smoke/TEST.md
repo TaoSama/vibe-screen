@@ -284,8 +284,11 @@ Focused checks for this current-base owner record:
 
 ## 2026-08-31 Codex task current-base preflight recheck
 
-The `codex/trusted-lan-codex-task-20260831` branch was created from `origin/main` commit `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523` in a clean
-worktree. The read-only trusted-LAN preflight ran on the Nubia P0110 / pacific /
+The `codex/trusted-lan-codex-task-20260831` branch was created from
+`origin/main` commit `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523` in a clean
+worktree. This retained bundle is a blocked snapshot for that collection
+revision, even when the PR branch later merges newer `origin/main` revisions.
+The read-only trusted-LAN preflight ran on the Nubia P0110 / pacific /
 Android 16 / SDK 36 device (`<device-serial>`) without launching Host, pairing,
 streaming, reconnect, changing Wi-Fi credentials, modifying TCC, or running any
 login-item diagnostic. The collector first ran `pgrep -x sfltool` and observed

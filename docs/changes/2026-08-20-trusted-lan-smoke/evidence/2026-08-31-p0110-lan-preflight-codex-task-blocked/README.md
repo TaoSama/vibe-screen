@@ -2,16 +2,19 @@
 
 Date: 2026-08-31
 Branch: `codex/trusted-lan-codex-task-20260831`
-Head commit: `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`
+Collection revision: `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`
 Target device serial: `<device-serial>`
 Device: Nubia P0110 / pacific / Android 16 / SDK 36
 
 ## Intended gate
 
 This package refreshes the trusted-LAN stream/reconnect owner record from a
-clean worktree created directly from revision `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`. The
-real-device preflight used the Nubia P0110 / pacific Android substitute with
-explicit `adb -s <device-serial>` targeting.
+clean worktree created directly from revision
+`28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`. It is a blocked snapshot for that
+collection revision, not a passing E2E run and not proof for any later PR head
+after merging newer `origin/main`. The real-device preflight used the Nubia
+P0110 / pacific Android substitute with explicit `adb -s <device-serial>`
+targeting.
 
 The collector first ran `pgrep -x sfltool`, observed no process, and acquired
 the private per-device coordination lock as `<android-device-lock>`. It did
