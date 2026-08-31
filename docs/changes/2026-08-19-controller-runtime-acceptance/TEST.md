@@ -346,11 +346,14 @@ acceptance and does not change the README-facing open gate status.
 
 ## 2026-08-31 retained blocked snapshot
 
-The 2026-08-31 readiness run was collected at source commit
-075dc157c36ba71df9f757e571015905881a7154, which was the owner branch's
-current source at collection time. This record is retained in the current-base
-owner package after origin/main advanced to
-967e05f4266916569f0898d7e2ed53e3a2602da9; it is a historical blocked snapshot,
+The 2026-08-31 directory label is the Asia/Shanghai local run date; retained
+JSON timestamps stay in UTC (`2026-08-30T21:24:57Z` for controller readiness and
+`2026-08-30T21:18:32.995143+00:00` for shared Host readiness). The readiness
+run was collected at source commit 075dc157c36ba71df9f757e571015905881a7154,
+which was the owner branch's current source at collection time. This record is
+retained in the current-base owner package after origin/main advanced to
+967e05f4266916569f0898d7e2ed53e3a2602da9 and later to the current PR base
+d610553d9c81bf1eae4342abc0dfcf02051696cb; it is a historical blocked snapshot,
 not evidence that the current PR base closed controller runtime acceptance. The
 Android readiness command ran from a clean detached worktree with the shared
 Host readiness snapshot supplied through `--host-readiness`. The run used adb

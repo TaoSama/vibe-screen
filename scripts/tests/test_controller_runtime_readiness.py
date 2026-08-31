@@ -119,7 +119,7 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
         self.assertIn("Host listener is not observed", blockers[1])
         self.assertIn("can_start_controller_runtime_gate=false", notes)
 
-    def test_host_readiness_merge_can_start_true_but_notes_shared_status(self) -> None:
+    def test_host_readiness_merge_can_start_true_does_not_infer_runtime_gamepad(self) -> None:
         host_readiness = {
             "present": True,
             "readable": True,
@@ -139,9 +139,71 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
 
         self.assertTrue(shared["host_identity_signed"])
         self.assertTrue(shared["host_virtual_hid_entitlement_present"])
+        self.assertFalse(shared["host_virtual_gamepad_available"])
+        self.assertEqual(blockers, [])
+        self.assertIn("can_start_controller_runtime_gate=true", notes)
+
+    def test_host_readiness_merge_uses_distinct_runtime_gamepad_observation(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": True,
+                "host_virtual_gamepad_available": True,
+                "blockers": [],
+                "entitlements": {"virtual_hid": True},
+                "host": {
+                    "authorities": ["Apple Development: Example"],
+                    "team_identifier": "TEAMID1234",
+                    "is_ad_hoc": False,
+                },
+            },
+        }
+
+        shared, blockers, notes = readiness.host_readiness_observations(host_readiness)
+
+        self.assertTrue(shared["host_identity_signed"])
+        self.assertTrue(shared["host_virtual_hid_entitlement_present"])
         self.assertTrue(shared["host_virtual_gamepad_available"])
         self.assertEqual(blockers, [])
         self.assertIn("can_start_controller_runtime_gate=true", notes)
+
+    def test_build_result_does_not_infer_runtime_gamepad_from_shared_start_gate(self) -> None:
+        host_readiness = {
+            "present": True,
+            "readable": True,
+            "document": {
+                "can_start_controller_runtime_gate": True,
+                "blockers": [],
+                "entitlements": {"virtual_hid": True},
+                "host": {
+                    "authorities": ["Apple Development: Example"],
+                    "team_identifier": "TEAMID1234",
+                    "is_ad_hoc": False,
+                },
+            },
+        }
+
+        result = readiness.build_result(
+            run_id="run-shared-start-direct-runtime-missing",
+            created_at="2026-08-31T00:00:00Z",
+            device=self.sample_device(),
+            package=self.sample_package(),
+            controller_devices=[],
+            host_signing=readiness.HostSigningStatus("Vibe Screen.app", True, True, "TEAMID1234", "", ""),
+            host_availability=readiness.HostAvailabilityStatus(
+                "host.log",
+                False,
+                "",
+                "",
+            ),
+            source_commit="abc123",
+            host_readiness=host_readiness,
+        )
+
+        self.assertFalse(result.observations["host_virtual_gamepad_available"])
+        self.assertFalse(result.summary["can_close_runtime_gate"])
+        self.assertEqual(result.summary["verdict"], "blocked")
 
     def test_host_readiness_merge_shared_false_wins_over_direct_true(self) -> None:
         host_readiness = {
@@ -397,7 +459,34 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
 
             summary = json.loads((evidence_dir / "controller-runtime-summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["verdict"], "blocked")
+            self.assertIn("can_start_controller_runtime_gate=false", summary["notes"])
+            self.assertIn("Host is missing com.apple.developer.hid.virtual.device entitlement", summary["notes"])
             self.assertIn("Shared Host readiness blockers recorded: 1", summary["notes"])
+
+    def test_lock_blocked_bundle_keeps_shared_gate_notes_without_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            readiness.write_lock_blocked_evidence(
+                evidence_dir,
+                requested_serial="<redacted-adb-serial>",
+                created_at="2026-08-31T00:00:00Z",
+                source_commit="abc123",
+                run_id="lock-shared-host-no-blockers",
+                locks=[{"path": "/tmp/device.lock", "detail": "owner=other-task"}],
+                host_readiness={
+                    "present": True,
+                    "readable": True,
+                    "document": {
+                        "can_start_controller_runtime_gate": False,
+                        "blockers": [],
+                    },
+                },
+            )
+
+            summary = json.loads((evidence_dir / "controller-runtime-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "blocked")
+            self.assertIn("can_start_controller_runtime_gate=false", summary["notes"])
+            self.assertIn("cannot start the controller runtime gate", summary["notes"])
 
 
 if __name__ == "__main__":

@@ -310,9 +310,6 @@ def host_readiness_observations(state: dict[str, Any]) -> tuple[dict[str, Any], 
     can_start = document.get("can_start_controller_runtime_gate")
     if isinstance(can_start, bool):
         original["can_start_controller_runtime_gate"] = can_start
-        original["host_virtual_gamepad_available"] = can_start
-        original["host_virtual_hid_entitlement_present"] = can_start
-        original["host_identity_signed"] = can_start
         if can_start:
             notes.append("Shared Host readiness reports can_start_controller_runtime_gate=true.")
         else:
@@ -335,6 +332,9 @@ def host_readiness_observations(state: dict[str, Any]) -> tuple[dict[str, Any], 
     host_blockers = document.get("blockers")
     if isinstance(host_blockers, list):
         blockers.extend(str(blocker) for blocker in host_blockers if isinstance(blocker, str) and blocker)
+    runtime_available = document.get("host_virtual_gamepad_available")
+    if isinstance(runtime_available, bool):
+        original["host_virtual_gamepad_available"] = runtime_available
     return original, blockers, " ".join(notes)
 
 
@@ -355,6 +355,15 @@ def conservative_or_shared_host(
         return shared
     return direct or shared
 
+
+def shared_host_blockers_note(shared_blockers: Sequence[str]) -> str:
+    if not shared_blockers:
+        return ""
+    blocker_summary = "; ".join(blocker.splitlines()[0] for blocker in shared_blockers)
+    return (
+        f"Shared Host readiness blockers recorded: {len(shared_blockers)} "
+        f"({blocker_summary}); see host-readiness.json for full details."
+    )
 
 
 def read_source_commit() -> str:
@@ -670,7 +679,7 @@ def build_result(
             "so matching direct Host checks are recorded conservatively as false."
         )
     if shared_blockers:
-        notes.append(f"Shared Host readiness blockers recorded: {len(shared_blockers)}; see host-readiness.json for details.")
+        notes.append(shared_host_blockers_note(shared_blockers))
     if not controller_devices:
         notes.append("No physical Android gamepad/joystick source is visible in dumpsys input.")
     if host_availability.last_controller_line:
@@ -752,16 +761,25 @@ def write_lock_blocked_evidence(
     evidence_dir.mkdir(parents=True, exist_ok=True)
     safe_locks = redacted_locks(locks, requested_serial) if redact_identifiers else list(locks)
     safe_serial = REDACTED_DEVICE_SERIAL if redact_identifiers else requested_serial
-    _, shared_blockers, _ = host_readiness_observations(host_readiness or {"present": False, "readable": False, "document": {}})
-    notes = (
+    shared_observations, shared_blockers, shared_notes = host_readiness_observations(
+        host_readiness or {"present": False, "readable": False, "document": {}}
+    )
+    notes = [
         "ADB was not run because a shared Android device coordination lock already exists. "
         "This is readiness evidence only; a pass still requires live controller samples, "
         "Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect."
-    )
+    ]
+    if shared_notes:
+        notes.append(shared_notes)
+    if shared_observations.get("can_start_controller_runtime_gate") is False:
+        notes.append(
+            "Shared Host readiness recorded can_start_controller_runtime_gate=false, "
+            "so lock-blocked evidence cannot start the controller runtime gate."
+        )
     if shared_blockers:
-        notes += f" Shared Host readiness blockers recorded: {len(shared_blockers)}; see host-readiness.json for details."
+        notes.append(shared_host_blockers_note(shared_blockers))
     observations = {
-        "notes": notes,
+        "notes": " ".join(notes),
         "artifact_paths": [
             "scripts/controller_runtime_readiness.py",
             "docs/runbook/controller-runtime-acceptance.md",
