@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.content.pm.ActivityInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -8,9 +9,49 @@ import org.junit.Test
 class ClientExperienceTest {
     @Test
     fun `client rotation composes with normalized host rotation`() {
-        assertEquals(180, ViewportPolicy.effectiveRotation(90, ClientRotation.CLOCKWISE_90))
+        val rotations = listOf(0, 90, 180, 270)
+        val clientRotations = ClientRotation.entries
+
+        rotations.forEach { hostRotation ->
+            clientRotations.forEach { clientRotation ->
+                assertEquals(
+                    "host=$hostRotation client=$clientRotation",
+                    (hostRotation + clientRotation.degrees) % 360,
+                    ViewportPolicy.effectiveRotation(hostRotation, clientRotation),
+                )
+            }
+        }
+
         assertEquals(0, ViewportPolicy.effectiveRotation(450, ClientRotation.COUNTER_CLOCKWISE_90))
+    }
+
+    @Test
+    fun `normalizes arbitrary rotation to the nearest display quadrant`() {
+        assertEquals(0, ViewportPolicy.normalizeRotation(0))
+        assertEquals(90, ViewportPolicy.normalizeRotation(90))
+        assertEquals(180, ViewportPolicy.normalizeRotation(180))
+        assertEquals(270, ViewportPolicy.normalizeRotation(270))
+        assertEquals(0, ViewportPolicy.normalizeRotation(360))
+        assertEquals(180, ViewportPolicy.normalizeRotation(-180))
         assertEquals(270, ViewportPolicy.normalizeRotation(-90))
+        assertEquals(0, ViewportPolicy.normalizeRotation(45))
+        assertEquals(0, ViewportPolicy.normalizeRotation(315))
+    }
+
+    @Test
+    fun `effective host rotation maps only to Android screen orientation`() {
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, ViewportPolicy.screenOrientationFor(0))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ViewportPolicy.screenOrientationFor(90))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE, ViewportPolicy.screenOrientationFor(180))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT, ViewportPolicy.screenOrientationFor(270))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ViewportPolicy.screenOrientationFor(450))
+    }
+
+    @Test
+    fun `surface transform stays client local when host rotation changes`() {
+        ClientRotation.entries.forEach { clientRotation ->
+            assertEquals(clientRotation.degrees, ViewportPolicy.surfaceTransformRotation(clientRotation))
+        }
     }
 
     @Test

@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.content.pm.ActivityInfo
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 
 internal object ControlBarAccessibilityPolicy {
@@ -319,6 +320,16 @@ internal object ViewportPolicy {
         hostRotation: Int,
         clientRotation: ClientRotation,
     ): Int = (normalizeRotation(hostRotation) + clientRotation.degrees) % FULL_ROTATION_DEGREES
+
+    fun screenOrientationFor(effectiveRotation: Int): Int =
+        when (normalizeRotation(effectiveRotation)) {
+            90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+
+    fun surfaceTransformRotation(clientRotation: ClientRotation): Int = clientRotation.degrees
 
     fun normalizeRotation(rotation: Int): Int {
         val normalized = ((rotation % FULL_ROTATION_DEGREES) + FULL_ROTATION_DEGREES) % FULL_ROTATION_DEGREES

@@ -342,10 +342,16 @@ final class ProtocolV1SessionTests: XCTestCase {
         ).serializedData())
         let startResponses = try controlEnvelopes(startActions)
         XCTAssertEqual(startResponses.count, 2)
-        guard case .videoConfig(let config)? = startResponses[1].payload else {
-            return XCTFail("Expected VideoConfig")
+        guard case .startDisplayResponse(let response)? = startResponses[0].payload,
+              case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected StartDisplayResponse + VideoConfig")
         }
+        XCTAssertEqual(response.display.logicalSize.width, 1920)
+        XCTAssertEqual(response.display.logicalSize.height, 1080)
         XCTAssertEqual(config.codec, .hevc)
+        XCTAssertEqual(config.encodedSize.width, 1920)
+        XCTAssertEqual(config.encodedSize.height, 1080)
+        XCTAssertEqual(config.rotationDegrees, 90)
         XCTAssertNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
 
         var result = VSVideoConfigResult()
@@ -394,8 +400,11 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertTrue(response.accepted)
         XCTAssertEqual(response.display.displayID, "second-display")
         XCTAssertFalse(response.display.isPrimary)
+        XCTAssertEqual(response.display.logicalSize.width, 3840)
+        XCTAssertEqual(response.display.logicalSize.height, 2160)
         XCTAssertEqual(config.encodedSize.width, 3840)
         XCTAssertEqual(config.encodedSize.height, 2160)
+        XCTAssertEqual(config.rotationDegrees, 90)
 
         let unknownSession = makeMultiDisplaySession()
         _ = unknownSession.handleControl(try clientHello().serializedData())
@@ -405,6 +414,95 @@ final class ProtocolV1SessionTests: XCTestCase {
             payload: .startDisplayRequest(displayRequest(sourceDisplayID: "does-not-exist"))
         ).serializedData())
         XCTAssertEqual(try protocolError(from: unknown).code, .invalidState)
+    }
+
+    func testStreamingDisplayGeometryChangeCarriesRotationAndNativeDimensions() throws {
+        let session = try readySession()
+
+        session.updateDisplayGeometry(width: 1920, height: 1080, rotation: 180)
+        let envelopes = try controlEnvelopes(session.makeDisplayChanged())
+
+        let changed = try XCTUnwrap(envelopes.compactMap { envelope -> VSDisplayChanged? in
+            if case .displayChanged(let changed) = envelope.payload { return changed }
+            return nil
+        }.first)
+        XCTAssertEqual(changed.rotationDegrees, 180)
+        XCTAssertEqual(changed.display.logicalSize.width, 1920)
+        XCTAssertEqual(changed.display.logicalSize.height, 1080)
+    }
+
+    func testDisplayGeometryChangeIsDeferredUntilVideoConfigAcknowledgement() throws {
+        let session = makeSession()
+        _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
+        let startActions = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        let startResponses = try controlEnvelopes(startActions)
+        guard case .videoConfig(let config)? = startResponses.last?.payload else {
+            return XCTFail("Expected pending VideoConfig")
+        }
+        guard case .awaitingVideoConfig = session.phase else {
+            return XCTFail("Expected pending VideoConfig")
+        }
+
+        session.updateDisplayGeometry(width: 1080, height: 1920, rotation: 270)
+        XCTAssertTrue(try controlEnvelopes(session.makeDisplayChanged()).isEmpty)
+
+        var result = VSVideoConfigResult()
+        result.configEpoch = config.configEpoch
+        result.streamID = config.streamID
+        result.accepted = true
+        let ready = try controlEnvelopes(session.handleControl(try envelope(
+            id: 3,
+            payload: .videoConfigResult(result)
+        ).serializedData()))
+
+        let changed = try XCTUnwrap(ready.compactMap { envelope -> VSDisplayChanged? in
+            if case .displayChanged(let changed) = envelope.payload { return changed }
+            return nil
+        }.first)
+        XCTAssertEqual(changed.rotationDegrees, 270)
+        XCTAssertEqual(changed.display.logicalSize.width, 1080)
+        XCTAssertEqual(changed.display.logicalSize.height, 1920)
+    }
+
+    func testDisplaySizeChangeIsDeferredUntilVideoConfigAcknowledgement() throws {
+        let session = makeSession()
+        _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
+        let startActions = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        let startResponses = try controlEnvelopes(startActions)
+        guard case .videoConfig(let config)? = startResponses.last?.payload else {
+            return XCTFail("Expected pending VideoConfig")
+        }
+        guard case .awaitingVideoConfig = session.phase else {
+            return XCTFail("Expected pending VideoConfig")
+        }
+
+        session.updateDisplayGeometry(width: 2560, height: 1440, rotation: 90)
+        XCTAssertTrue(try controlEnvelopes(session.makeDisplayChanged()).isEmpty)
+
+        var result = VSVideoConfigResult()
+        result.configEpoch = config.configEpoch
+        result.streamID = config.streamID
+        result.accepted = true
+        let ready = try controlEnvelopes(session.handleControl(try envelope(
+            id: 3,
+            payload: .videoConfigResult(result)
+        ).serializedData()))
+
+        let changed = try XCTUnwrap(ready.compactMap { envelope -> VSDisplayChanged? in
+            if case .displayChanged(let changed) = envelope.payload { return changed }
+            return nil
+        }.first)
+        XCTAssertEqual(changed.rotationDegrees, 90)
+        XCTAssertEqual(changed.display.logicalSize.width, 2560)
+        XCTAssertEqual(changed.display.logicalSize.height, 1440)
     }
 
     func testHostDisplayRouterIsolatesClientsEpochsAndStreamLimits() throws {

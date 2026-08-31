@@ -35,9 +35,22 @@ class MainSessionDisplayLifecycleTest {
                 viewHeight = 1_000,
                 videoWidth = checkNotNull(geometry).logicalWidth,
                 videoHeight = checkNotNull(geometry).logicalHeight,
+                renderRotation = ViewportPolicy.surfaceTransformRotation(ClientRotation.FOLLOW_HOST),
+            )
+        val clientRotated =
+            TouchMapper.map(
+                x = 250f,
+                y = 500f,
+                viewWidth = 1_000,
+                viewHeight = 1_000,
+                videoWidth = checkNotNull(geometry).logicalWidth,
+                videoHeight = checkNotNull(geometry).logicalHeight,
+                renderRotation = ViewportPolicy.surfaceTransformRotation(ClientRotation.CLOCKWISE_90),
             )
         assertEquals(0f, mapped.x, 0.001f)
         assertEquals(0.5f, mapped.y, 0.001f)
+        assertEquals(0.5f, clientRotated.x, 0.001f)
+        assertEquals(0.75f, clientRotated.y, 0.001f)
     }
 
     @Test

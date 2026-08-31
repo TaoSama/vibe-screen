@@ -109,6 +109,55 @@ class TouchMapperTest {
         }
     }
 
+    @Test
+    fun `host display rotation does not enter stream touch inverse mapping`() {
+        val hostRotatedGeometry = StreamDisplayGeometry(logicalWidth = 1_000, logicalHeight = 2_000, rotation = 90)
+
+        val unrotatedClientPoint =
+            TouchMapper.map(
+                x = 250f,
+                y = 500f,
+                viewWidth = 1_000,
+                viewHeight = 1_000,
+                videoWidth = hostRotatedGeometry.logicalWidth,
+                videoHeight = hostRotatedGeometry.logicalHeight,
+                renderRotation = ViewportPolicy.surfaceTransformRotation(ClientRotation.FOLLOW_HOST),
+            )
+        val clientRotatedPoint =
+            TouchMapper.map(
+                x = 250f,
+                y = 500f,
+                viewWidth = 1_000,
+                viewHeight = 1_000,
+                videoWidth = hostRotatedGeometry.logicalWidth,
+                videoHeight = hostRotatedGeometry.logicalHeight,
+                renderRotation = ViewportPolicy.surfaceTransformRotation(ClientRotation.CLOCKWISE_90),
+            )
+
+        assertEquals(0f, unrotatedClientPoint.x, 0.0001f)
+        assertEquals(0.5f, unrotatedClientPoint.y, 0.0001f)
+        assertEquals(0.5f, clientRotatedPoint.x, 0.0001f)
+        assertEquals(0.75f, clientRotatedPoint.y, 0.0001f)
+    }
+
+    @Test
+    fun `p0110 safe inset coordinates remain viewport local`() {
+        val point =
+            TouchMapper.map(
+                x = 632f,
+                y = 1_400f,
+                viewWidth = 1_264,
+                viewHeight = 2_800,
+                videoWidth = 2_000,
+                videoHeight = 1_200,
+                scaleMode = VideoScaleMode.FIT,
+                renderRotation = ViewportPolicy.surfaceTransformRotation(ClientRotation.CLOCKWISE_90),
+            )
+
+        assertEquals(0.5f, point.x, 0.0001f)
+        assertEquals(0.5f, point.y, 0.0001f)
+    }
+
     private fun assertCorners(
         expected: List<TouchMapper.Point>,
         viewWidth: Int,
