@@ -31,6 +31,26 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `stream client termination keeps session through outbound drain`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val terminationClaim = streamClient.indexOf("protocolSessionOwner.clearSideEffectAdmission()")
+        val gracefulDrain = streamClient.indexOf("outboundScheduler.shutdownGracefully(OUTBOUND_DRAIN_TIMEOUT_MS)")
+        val protocolCleanup = streamClient.indexOf("protocolSessionOwner.clear()")
+
+        assertTrue("termination must close side-effect admission", terminationClaim >= 0)
+        assertTrue("cleanup must gracefully drain accepted outbound commands", gracefulDrain >= 0)
+        assertTrue("cleanup must clear the protocol session", protocolCleanup >= 0)
+        assertTrue(
+            "side-effect admission must close before accepted outbound commands drain",
+            terminationClaim < gracefulDrain,
+        )
+        assertTrue(
+            "protocol session must stay available until accepted outbound commands drain",
+            gracefulDrain < protocolCleanup,
+        )
+    }
+
+    @Test
     fun `extracted owners stay out of android ui transport socket and decoder layers`() {
         BOUNDARY_OWNER_RULES.forEach { rule ->
             val ownerSource = source(rule.path)
