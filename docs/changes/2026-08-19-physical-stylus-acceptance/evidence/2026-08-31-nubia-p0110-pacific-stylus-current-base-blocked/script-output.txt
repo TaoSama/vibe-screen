@@ -1,0 +1,1 @@
+blocked_physical_stylus_not_observed: wrote /private/tmp/vibe-screen-stylus-20260831-evidence

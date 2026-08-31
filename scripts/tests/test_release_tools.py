@@ -190,6 +190,31 @@ Input Reader State:
         adb_mock.assert_not_called()
         self.assertIn("error: --host-log is required", "".join(call.args[0] for call in stderr.write.call_args_list))
 
+    def test_main_writes_lock_blocked_evidence_without_adb(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "evidence"
+            lock_details = [{"path": "/tmp/vibe-screen-device-android.lock", "detail": "owned"}]
+            with mock.patch.object(android_stylus_acceptance, "describe_device_locks", return_value=lock_details):
+                with mock.patch.object(android_stylus_acceptance, "adb") as adb_mock:
+                    result = android_stylus_acceptance.main([
+                        "--adb",
+                        "adb",
+                        "--serial",
+                        "DEVICE_SERIAL",
+                        "--output-dir",
+                        str(output_dir),
+                        "--write-blocked-on-lock",
+                    ])
+
+            self.assertEqual(2, result)
+            adb_mock.assert_not_called()
+            evidence = json.loads((output_dir / "stylus-evidence.json").read_text(encoding="utf-8"))
+            summary = json.loads((output_dir / "stylus-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual("blocked_device_coordination_lock", evidence["status"])
+            self.assertFalse(summary["observations"]["adb_was_run"])
+            self.assertNotIn("dumpsys-input.txt", summary["artifact_paths"])
+            self.assertFalse((output_dir / "dumpsys-input.txt").exists())
+
     def test_passing_status_requires_host_log_and_observation(self) -> None:
         args = argparse.Namespace(observed_physical_drawing=True, drawing_observation="", host_log=None)
         with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "drawing-observation"):

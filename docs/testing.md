@@ -503,6 +503,9 @@ Simulator decode, or a decoded still image cannot close this gate.
   visible macOS drawing-app result. ADB-only input-device snapshots, synthetic
   MotionEvents, or offline protocol tests may support the investigation but do
   not close the README stylus gate.
+  The 2026-08-31 Nubia P0110 current-base record remains blocked because Host
+  readiness is not stable signed/TCC-ready and no physical drawing, forwarding,
+  injection, or visible drawing-app output was captured.
 
 Internal timestamps may measure encoder, decoder, queue, and reconnect
 durations only within their own clock domain. Glass-to-glass latency requires
