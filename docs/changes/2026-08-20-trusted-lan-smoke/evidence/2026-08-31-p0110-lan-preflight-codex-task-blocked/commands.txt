@@ -1,0 +1,63 @@
+# Command summary
+
+Branch: `codex/trusted-lan-codex-task-20260831`
+Head commit: `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`
+Target device serial: `<device-serial>`
+Device: nubia P0110 / pacific / Android 16 / SDK 36
+DEVICE_SERIAL='<device-serial>'
+
+Initial safety check:
+
+```sh
+pgrep -x sfltool || true
+```
+
+Trusted-LAN preflight, expected blocked exit `2`:
+
+```sh
+make evidence-trusted-lan-preflight \
+  EVIDENCE_SERIAL="$DEVICE_SERIAL" \
+  EVIDENCE_DIR=/private/tmp/vibe-screen-trusted-lan-codex-task-20260831/lan
+```
+
+Host readiness, expected blocked exit `2`; no login-item diagnostic option was
+passed:
+
+```sh
+make baseline-macos-host-readiness \
+  EVIDENCE_DIR=/private/tmp/vibe-screen-trusted-lan-codex-task-20260831/host
+```
+
+Reconnect timing blocked summary, expected blocked exit `3` from the Python
+module before the wrapper records it:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \
+  --blocked \
+  --target-device "Nubia P0110 / pacific / Android 16 / SDK 36" \
+  --blocker "Android Wi-Fi is not associated" \
+  --blocker "wlan0 has no IPv4 route to the Mac LAN candidate" \
+  --blocker "Host stable signing is blocked before trusted-LAN evidence can start" \
+  --artifact trusted-lan-preflight.json \
+  --artifact host-readiness.json \
+  --notes "Preflight stopped before Host launch, QR/token admission, secure-record negotiation, Protocol v1 LAN stream, decoder output, or reconnect exercise" \
+  --output docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-31-p0110-lan-preflight-codex-task-blocked/reconnect-timing-summary.json
+```
+
+Evidence checker:
+
+```sh
+make trusted-lan-smoke-evidence-check \
+  EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-31-p0110-lan-preflight-codex-task-blocked
+```
+
+Focused tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_trusted_lan_smoke tools.tests.test_adb tools.tests.test_reconnect_timing -v
+make protocol
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.LanSecureRecordAdapterTest \
+  --tests dev.telemachus.display.StreamClientWirelessSecurityTest \
+  --tests dev.telemachus.display.AuthHandshakeTest
+```
