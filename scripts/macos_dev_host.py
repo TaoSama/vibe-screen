@@ -41,6 +41,9 @@ EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
+ACCESSIBILITY_SERVICES = (ACCESSIBILITY_SERVICE,)
+MICROPHONE_SERVICE = "kTCCServiceMicrophone"
+MICROPHONE_SERVICES = (MICROPHONE_SERVICE,)
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
@@ -1009,7 +1012,7 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
                 )
             auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
             last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
-            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE)
+            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE, MICROPHONE_SERVICE)
             placeholders = ",".join("?" for _ in services)
             cursor = connection.execute(
                 f"""
@@ -1104,8 +1107,10 @@ def validate_preflight(
     else:
         if not permissions.is_allowed(SCREEN_CAPTURE_SERVICES):
             errors.append("Screen Recording is not authorized for the installed Host")
-        if not permissions.is_allowed((ACCESSIBILITY_SERVICE,)):
+        if not permissions.is_allowed(ACCESSIBILITY_SERVICES):
             errors.append("Accessibility is not authorized for the installed Host")
+        if not permissions.is_allowed(MICROPHONE_SERVICES):
+            errors.append("Microphone is not authorized for the installed Host")
     return errors
 
 
@@ -1121,10 +1126,11 @@ def permission_interpretation(permissions: PermissionStatus) -> str:
     if not permissions.readable:
         return f"unverified ({permissions.error})"
     screen = "allowed" if permissions.is_allowed(SCREEN_CAPTURE_SERVICES) else "not allowed"
-    accessibility = "allowed" if permissions.is_allowed((ACCESSIBILITY_SERVICE,)) else "not allowed"
+    accessibility = "allowed" if permissions.is_allowed(ACCESSIBILITY_SERVICES) else "not allowed"
+    microphone = "allowed" if permissions.is_allowed(MICROPHONE_SERVICES) else "not allowed"
     if permissions.error:
-        return f"Screen Recording {screen}; Accessibility {accessibility}; read warning: {permissions.error}."
-    return f"Screen Recording {screen}; Accessibility {accessibility}."
+        return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}; read warning: {permissions.error}."
+    return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}."
 
 
 def format_report(
@@ -1423,7 +1429,8 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "readable": permissions.readable,
         "error": permissions.error,
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
-        "accessibility_granted": permissions.allowed_state((ACCESSIBILITY_SERVICE,)),
+        "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
+        "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
         "rows": [row.__dict__ for row in permissions.rows],
     }
 
