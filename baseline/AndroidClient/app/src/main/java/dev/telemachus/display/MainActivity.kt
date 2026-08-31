@@ -1999,9 +1999,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showDisconnectedStreamUi() {
         connectionStatusAnnouncements.reset()
-        // Keep one stable layout while the USB retry loop runs. Showing system
-        // bars or changing orientation here resized/recreated the Activity and
-        // made the waiting state visibly flash.
+        // configChanges covers orientation|screenSize|screenLayout, so
+        // releasing the forced streaming orientation back to the sensor does
+        // not recreate the Activity. This lets the disconnected connection
+        // panel follow the device's physical orientation.
+        resetOrientationToSensor()
         enableFullscreenMode()
         // Keep the video viewport laid out so the SurfaceView holds a live
         // surface while waiting to connect. The opaque backdrop above it hides

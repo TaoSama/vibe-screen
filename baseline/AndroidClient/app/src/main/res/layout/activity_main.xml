@@ -79,7 +79,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/stats_fps"
                     android:textColor="#88FFFFFF"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
                 <TextView
                     android:id="@+id/fpsText"
                     android:layout_width="wrap_content"
@@ -101,7 +101,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/stats_bitrate"
                     android:textColor="#88FFFFFF"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
                 <TextView
                     android:id="@+id/bitrateText"
                     android:layout_width="wrap_content"
@@ -123,7 +123,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/stats_resolution"
                     android:textColor="#88FFFFFF"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
                 <TextView
                     android:id="@+id/resolutionText"
                     android:layout_width="wrap_content"
@@ -145,7 +145,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/stats_rtt"
                     android:textColor="#88FFFFFF"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
                 <TextView
                     android:id="@+id/latencyText"
                     android:layout_width="wrap_content"
@@ -166,7 +166,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/stats_link"
                     android:textColor="#88FFFFFF"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
                 <TextView
                     android:id="@+id/securityText"
                     android:layout_width="wrap_content"
@@ -236,7 +236,7 @@
                     android:maxLines="1"
                     android:text="@string/stream_status_usb_detail"
                     android:textColor="@color/on_surface_muted"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
             </LinearLayout>
 
             <!-- Display picker collapses entirely unless multi-display is
@@ -467,7 +467,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/wordmark"
                 android:textColor="#65D992"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold"
                 android:letterSpacing="0"
                 android:gravity="center"
@@ -479,7 +479,7 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textColor="#FFFFFF"
-                android:textSize="28sp"
+                android:textSize="24sp"
                 android:textStyle="bold"
                 android:letterSpacing="0"
                 android:gravity="center"
@@ -492,7 +492,7 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textColor="#A8B0B6"
-                android:textSize="14sp"
+                android:textSize="13sp"
                 android:lineSpacingExtra="3dp"
                 android:gravity="center"
                 android:foreground="?attr/selectableItemBackgroundBorderless"
@@ -531,18 +531,16 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/modeUSB"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:minWidth="0dp"
                     android:text="@string/usb"
                     android:maxLines="1"
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    app:autoSizeTextType="uniform"
-                    app:autoSizeMinTextSize="12sp"
-                    app:autoSizeMaxTextSize="14sp"
+                    android:textSize="10sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -550,18 +548,16 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/modeWireless"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:minWidth="0dp"
                     android:text="@string/trusted_lan"
                     android:maxLines="1"
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    app:autoSizeTextType="uniform"
-                    app:autoSizeMinTextSize="12sp"
-                    app:autoSizeMaxTextSize="14sp"
+                    android:textSize="10sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -572,15 +568,14 @@
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
+                    android:minWidth="0dp"
                     android:text="@string/internet"
                     android:maxLines="1"
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    app:autoSizeTextType="uniform"
-                    app:autoSizeMinTextSize="12sp"
-                    app:autoSizeMaxTextSize="14sp"
+                    android:textSize="10sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -599,9 +594,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="14dp"
+                android:padding="8dp"
                 android:background="@drawable/connection_error_bg"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 android:accessibilityLiveRegion="polite"
                 android:visibility="gone">
 
@@ -612,9 +607,9 @@
                     android:text="@string/connection_issue"
                     android:accessibilityLiveRegion="polite"
                     android:textColor="@color/warning"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="6dp" />
+                    android:layout_marginBottom="4dp" />
 
                 <TextView
                     android:id="@+id/connectionErrorMessage"
@@ -623,8 +618,8 @@
                     android:text=""
                     android:accessibilityLiveRegion="polite"
                     android:textColor="#D8DEE4"
-                    android:textSize="13sp"
-                    android:lineSpacingExtra="2dp" />
+                    android:textSize="10sp"
+                    android:lineSpacingExtra="1dp" />
             </LinearLayout>
 
             <!-- Connection Checklist -->
@@ -633,9 +628,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp"
+                android:padding="10dp"
                 android:background="@drawable/instruction_bg"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 android:visibility="gone">
 
                 <TextView
@@ -643,9 +638,9 @@
                     android:layout_height="wrap_content"
                     android:text="@string/connection_checklist"
                     android:textColor="#FFFFFF"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="12dp" />
+                    android:layout_marginBottom="6dp" />
 
                 <!-- Developer Mode Check -->
                 <LinearLayout
@@ -653,7 +648,7 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="4dp">
                     <View
                         android:id="@+id/checkDeveloperMode"
                         android:layout_width="10dp"
@@ -669,7 +664,7 @@
                         android:accessibilityLiveRegion="polite"
                         android:text="@string/developer_mode_not_ready"
                         android:textColor="#BBBBBB"
-                        android:textSize="13sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <!-- USB Debugging Check -->
@@ -678,7 +673,7 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="4dp">
                     <View
                         android:id="@+id/checkUsbDebugging"
                         android:layout_width="10dp"
@@ -694,7 +689,7 @@
                         android:accessibilityLiveRegion="polite"
                         android:text="@string/usb_debugging_not_ready"
                         android:textColor="#BBBBBB"
-                        android:textSize="13sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <!-- USB Connected Check -->
@@ -703,7 +698,7 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="4dp">
                     <View
                         android:id="@+id/checkUsbConnected"
                         android:layout_width="10dp"
@@ -719,7 +714,7 @@
                         android:accessibilityLiveRegion="polite"
                         android:text="@string/usb_data_link_not_ready"
                         android:textColor="#BBBBBB"
-                        android:textSize="13sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <!-- Mac Server Check -->
@@ -743,7 +738,7 @@
                         android:accessibilityLiveRegion="polite"
                         android:text="@string/mac_server_checking"
                         android:textColor="#BBBBBB"
-                        android:textSize="13sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
             </LinearLayout>
@@ -1205,7 +1200,7 @@
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         app:autoSizeMaxTextSize="14sp"
-                        app:autoSizeMinTextSize="12sp"
+                        app:autoSizeMinTextSize="10sp"
                         app:autoSizeTextType="uniform"
                         android:text="@string/internet_prefer_direct"
                         android:textColor="@color/internet_route_text"
@@ -1222,7 +1217,7 @@
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         app:autoSizeMaxTextSize="14sp"
-                        app:autoSizeMinTextSize="12sp"
+                        app:autoSizeMinTextSize="10sp"
                         app:autoSizeTextType="uniform"
                         android:text="@string/internet_force_turn"
                         android:textColor="@color/internet_route_text"
@@ -1340,7 +1335,7 @@
                 android:text="@string/fork_credit"
                 android:textColor="#7F8A90"
                 android:textColorLink="#8FB9FF"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/openSourceLicensesButton"
