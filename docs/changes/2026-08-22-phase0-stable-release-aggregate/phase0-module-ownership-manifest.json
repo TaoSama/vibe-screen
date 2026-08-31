@@ -132,25 +132,21 @@
       "id": "protocol_session_ownership",
       "title": "Protocol and session ownership boundary",
       "required_for_phase0_stable": true,
-      "status": "partial",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt",
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolSessionOwner.kt",
       "evidence_paths": [
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolSessionOwner.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSessionOwnerTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
         "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamProtocolSessionOwnerTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
       ],
-      "blockers": [
-        "StreamClient still composes transport, legacy fallback, Protocol v1 session setup, retry state, and product callbacks in one application-layer owner.",
-        "No current-base module contract proves protocol/session ownership is isolated from transport and UI product-session orchestration end to end."
-      ],
-      "fail_closed_checklist": [
-        "Extract a product-session/session-orchestration owner that owns Protocol v1 session lifecycle, epochs, cleanup, and retry transition admission.",
-        "Add dependency-direction tests proving the session owner does not import Android UI, concrete sockets, MediaCodec, file transfer side effects, or WakeHost packet senders.",
-        "Add stale epoch and disconnect cleanup contract coverage against the extracted owner rather than StreamClient internals."
-      ]
+      "blockers": [],
+      "fail_closed_checklist": []
     },
     {
       "id": "file_transfer_product_ownership",
