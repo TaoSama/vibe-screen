@@ -22,13 +22,22 @@ from typing import Any, Callable, Mapping, Sequence
 SCHEMA = "dev.vibescreen.phase3-release-gate-manifest/v1"
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 HEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+PUBLIC_ASN = re.compile(r"^AS[1-9][0-9]*$")
 CANDIDATE_PAIR_PATTERN = re.compile(
     r"^(direct|relay)\(local=([a-z0-9_-]+),remote=([a-z0-9_-]+),"
     r"protocol=([a-z0-9_-]+)\)$"
 )
 SUPPORTED_CANDIDATE_TYPES = {"host", "srflx", "prflx", "relay"}
 SUPPORTED_CANDIDATE_PROTOCOLS = {"udp", "tcp", "tls"}
-DETERMINISTIC_IMPAIRMENT_TOOL_MARKERS = ("network_profile", "deterministic", "simulation")
+DETERMINISTIC_IMPAIRMENT_TOOL_MARKERS = (
+    "network_profile",
+    "deterministic",
+    "simulation",
+    "ns_3",
+    "ns3",
+    "mininet",
+    "gns3",
+)
 
 
 class ManifestError(ValueError):
@@ -59,6 +68,15 @@ COMMON_GATE_REQUIRED_FIELDS = (
     "synthetic_peer",
 )
 LOCAL_HOSTNAMES = {"localhost", "localhost.localdomain"}
+PRIVATE_DNS_SUFFIXES = (
+    ".corp",
+    ".home",
+    ".internal",
+    ".intranet",
+    ".lan",
+    ".local",
+    ".private",
+)
 REQUIRED_NETWORK_CONDITION_FIELDS = (
     "controlled_impairment",
     "impairment_tool",
@@ -149,20 +167,17 @@ def _require_not_local_only(gate: Mapping[str, Any], path: str, errors: list[str
 
 def _is_public_hostname_or_ip(value: str) -> bool:
     normalized = value.strip().lower().rstrip(".")
-    if not normalized or normalized in LOCAL_HOSTNAMES or normalized.endswith(".local"):
+    if not normalized:
         return False
     try:
         address = ipaddress.ip_address(normalized)
     except ValueError:
-        return True
-    return not (
-        address.is_private
-        or address.is_loopback
-        or address.is_link_local
-        or address.is_multicast
-        or address.is_reserved
-        or address.is_unspecified
-    )
+        return (
+            normalized not in LOCAL_HOSTNAMES
+            and "." in normalized
+            and not normalized.endswith(PRIVATE_DNS_SUFFIXES)
+        )
+    return bool(address.is_global)
 
 
 def _validate_network_conditions(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
@@ -245,7 +260,13 @@ def _validate_direct_path(gate: Mapping[str, Any], path: str) -> list[str]:
     _require_bool(gate.get("usb_adb_reverse", False), f"{path}.usb_adb_reverse", False, errors)
     host_network = _require_nonempty_string(gate.get("host_network"), f"{path}.host_network", errors)
     device_network = _require_nonempty_string(gate.get("device_network"), f"{path}.device_network", errors)
-    _require_nonempty_string(gate.get("remote_public_asn"), f"{path}.remote_public_asn", errors)
+    remote_public_asn = _require_nonempty_string(
+        gate.get("remote_public_asn"),
+        f"{path}.remote_public_asn",
+        errors,
+    )
+    if remote_public_asn and not PUBLIC_ASN.fullmatch(remote_public_asn):
+        errors.append(f"{path}.remote_public_asn: expected ASN in AS<number> format")
     if host_network and device_network and host_network == device_network:
         errors.append(f"{path}.device_network: expected a different public network than host_network")
     if gate.get("route") != "direct":
