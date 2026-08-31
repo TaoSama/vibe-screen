@@ -1806,7 +1806,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 return ""
 
             with mock.patch.object(package_macos, "run", side_effect=fake_run):
-                with self.assertRaisesRegex(SystemExit, "WebRTC\.framework.*expected"):
+                with self.assertRaisesRegex(SystemExit, r"WebRTC\.framework.*expected"):
                     package_macos.sign_packaged_app(app, framework, expected)
 
     def test_sign_packaged_app_ad_hoc_skips_designated_requirement_checks(self) -> None:

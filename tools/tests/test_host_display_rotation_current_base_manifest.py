@@ -59,6 +59,10 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
             "command": ["security", "find-identity", "-v", "-p", "codesigning"],
             "status": "pass",
             "exit_code": 0,
+            "output": (
+                f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"\n'
+                "     1 valid identities found"
+            ),
             "summary": [
                 f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
                 "     1 valid identities found",
@@ -78,6 +82,11 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
             "command": ["security", "find-identity", "-v", "-p", "codesigning"],
             "status": "pass",
             "exit_code": 0,
+            "output": (
+                f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"\n'
+                f'  2) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"\n'
+                "     2 valid identities found"
+            ),
             "summary": [
                 f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
                 f'  2) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
@@ -97,6 +106,10 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
             "command": ["security", "find-identity", "-v", "-p", "codesigning"],
             "status": "pass",
             "exit_code": 0,
+            "output": (
+                '  1) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Vibe Screen Dev"\n'
+                "     1 valid identities found"
+            ),
             "summary": [
                 '  1) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Vibe Screen Dev"',
                 "     1 valid identities found",
@@ -116,6 +129,10 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
             "command": ["security", "find-identity", "-v", "-p", "codesigning"],
             "status": "pass",
             "exit_code": 0,
+            "output": (
+                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Other Signing Identity"\n'
+                "     1 valid identities found"
+            ),
             "summary": [
                 '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Other Signing Identity"',
                 "     1 valid identities found",
@@ -134,6 +151,11 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
             "command": ["security", "find-identity", "-v", "-p", "codesigning"],
             "status": "pass",
             "exit_code": 0,
+            "output": (
+                f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"\n'
+                '  2) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Vibe Screen Dev"\n'
+                "     2 valid identities found"
+            ),
             "summary": [
                 f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
                 '  2) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Vibe Screen Dev"',
@@ -146,6 +168,31 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(result["status"], "blocked")
         self.assertFalse(result["target_identity_available"])
         self.assertEqual(result["target_identity_error"], "multiple matching target identities found")
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    def test_signing_probe_uses_full_output_when_summary_is_truncated(self, run_probe):
+        leading_identities = [
+            f'  {index}) {index:040X} "Other Signing Identity {index}"'
+            for index in range(1, 25)
+        ]
+        output_lines = [
+            *leading_identities,
+            f'  25) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
+            "     25 valid identities found",
+        ]
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-v", "-p", "codesigning"],
+            "status": "pass",
+            "exit_code": 0,
+            "output": "\n".join(output_lines),
+            "summary": output_lines[:20],
+        }
+
+        result = _signing_probe()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["valid_identity_count"], 25)
+        self.assertTrue(result["target_identity_available"])
 
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device")
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
@@ -369,6 +416,7 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
         environment.return_value = {
             "host_preflight": {
                 "command": ["[redacted-path]/python3", "scripts/macos_dev_host.py"],
+                "output": "full private probe output should not be public",
                 "summary": [
                     "Error: unable to open database \"/home/alice/private-permissions.db\"",
                 ],
@@ -405,6 +453,7 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
         self.assertNotIn(TEST_ADB_SERIAL, serialized)
         self.assertNotIn("/home/alice", serialized)
         self.assertNotIn("private-permissions.db", serialized)
+        self.assertNotIn("full private probe output should not be public", serialized)
         self.assertIn(REDACTED_ADB_SERIAL, serialized)
         self.assertIn("unable to open redacted database", serialized)
 

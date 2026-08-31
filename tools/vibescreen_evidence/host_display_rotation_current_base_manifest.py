@@ -98,11 +98,13 @@ def _run_probe(command: Sequence[str], cwd: Path | None = None) -> dict[str, Any
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         return {"command": list(command), "status": "blocked", "detail": str(error)}
-    output = (result.stdout.strip() or result.stderr.strip()).splitlines()
+    stdout = result.stdout.strip()
+    output = (stdout or result.stderr.strip()).splitlines()
     return {
         "command": list(command),
         "status": "pass" if result.returncode == 0 else "blocked",
         "exit_code": result.returncode,
+        "output": stdout,
         "summary": output[:20],
     }
 
@@ -122,7 +124,11 @@ def _redact_string(value: str, adb_serial: str | None = None) -> str:
 
 def _sanitize_public_manifest(value: Any, adb_serial: str | None = None) -> Any:
     if isinstance(value, dict):
-        return {key: _sanitize_public_manifest(item, adb_serial) for key, item in value.items()}
+        return {
+            key: _sanitize_public_manifest(item, adb_serial)
+            for key, item in value.items()
+            if key != "output"
+        }
     if isinstance(value, list):
         return [_sanitize_public_manifest(item, adb_serial) for item in value]
     if isinstance(value, str):
@@ -152,16 +158,14 @@ def _ensure_source_docs(repo: Path, source_docs: Sequence[str]) -> list[str]:
 
 def _signing_probe() -> dict[str, Any]:
     result = _run_probe(["security", "find-identity", "-v", "-p", "codesigning"])
-    summaries = result.get("summary", [])
+    output = result.get("output")
     valid_identity_count = 0
     target_identity_available = False
     target_identity_leaf_sha1 = None
     target_identity_error = None
-    if isinstance(summaries, list):
+    if isinstance(output, str):
         identities = package_macos.dedupe_codesigning_identities_by_sha1(
-            package_macos.parse_codesigning_identities(
-                "\n".join(line for line in summaries if isinstance(line, str))
-            )
+            package_macos.parse_codesigning_identities(output)
         )
         valid_identity_count = len(identities)
         matching_name = [

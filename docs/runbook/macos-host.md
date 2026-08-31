@@ -79,7 +79,8 @@ a different leaf SHA-1 and is intentionally rejected because it cannot reuse the
 existing TCC authorization.
 
 Do not create multiple certificates with the same name. If more than one
-`Vibe Screen Dev` identity exists, or if the visible identity's leaf SHA-1 is not
+distinct `Vibe Screen Dev` leaf remains after SHA-1 deduplication, or if the
+visible identity's leaf SHA-1 is not
 `9AAE572BF6D764E3436A6109197D345B5A87998C`, the build fails closed so the
 certificate leaf hash cannot drift accidentally. The local install script writes
 the current identity, expected certificate SHA-1, actual certificate SHA-1,
@@ -159,8 +160,7 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 
 The target writes both files below without launching the Host, mutating the
 machine, or probing Launch at Login. Keep login-item probing out of default CI
-and test runs; use `python3 scripts/macos_dev_host.py readiness
-		--include-login-item-diagnostic ...` only during an explicit human diagnostic
+and test runs; use `python3 scripts/macos_dev_host.py readiness --include-login-item-diagnostic ...` only during an explicit human diagnostic
 because macOS may request administrator authorization for the underlying service
 dump.
 
@@ -176,7 +176,6 @@ TCP listener observation for port `54321`, and whether the bundle carries the
 virtual HID entitlement needed by controller runtime acceptance. The command is
 read-only: it does not start Vibe Screen, import certificates, change Keychain
 settings, modify macOS privacy databases, request macOS privacy grants,
-configure ADB, or touch Android state. It also skips Launch at Login probing by default so automated
 configure ADB, or touch Android state. It also skips Launch at Login probing by
 default so automated tests and CI do not invoke `/usr/bin/sfltool dumpbtm` or
 trigger macOS authorization prompts; the JSON records this as
