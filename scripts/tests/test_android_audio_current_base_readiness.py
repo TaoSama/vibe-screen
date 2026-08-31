@@ -129,6 +129,87 @@ class AndroidAudioCurrentBaseReadinessTests(unittest.TestCase):
         self.assertFalse(observations["playback_output_confirmed"])
         self.assertTrue(observations["no_synthetic_or_loopback_markers"])
 
+    def test_host_stable_signed_tcc_ready_requires_microphone_grant(self) -> None:
+        ready_without_microphone = {
+            "signing_tcc_status": "ready",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": False,
+            },
+        }
+        ready_without_screen_recording = {
+            "signing_tcc_status": "ready",
+            "permissions": {
+                "screen_recording_granted": False,
+                "accessibility_granted": True,
+                "microphone_granted": True,
+            },
+        }
+        ready_without_accessibility = {
+            "signing_tcc_status": "ready",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": False,
+                "microphone_granted": True,
+            },
+        }
+        ready_with_microphone = {
+            "signing_tcc_status": "ready",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": True,
+            },
+        }
+        ready_without_permissions = {"signing_tcc_status": "ready"}
+        ready_with_unreadable_microphone = {
+            "signing_tcc_status": "ready",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": None,
+            },
+        }
+        blocked_with_all_permissions = {
+            "signing_tcc_status": "blocked",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": True,
+            },
+        }
+        legacy_pass_status_with_all_permissions = {
+            "signing_tcc_status": "pass",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": True,
+            },
+        }
+
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_microphone))
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_screen_recording))
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_accessibility))
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_permissions))
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_with_unreadable_microphone))
+        self.assertFalse(support.host_stable_signed_tcc_ready(blocked_with_all_permissions))
+        self.assertFalse(support.host_stable_signed_tcc_ready(legacy_pass_status_with_all_permissions))
+        self.assertTrue(support.host_stable_signed_tcc_ready(ready_with_microphone))
+
+    def test_android_manifest_does_not_request_record_audio(self) -> None:
+        manifest = (
+            support.REPO_ROOT
+            / "baseline"
+            / "AndroidClient"
+            / "app"
+            / "src"
+            / "main"
+            / "AndroidManifest.xml"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("android.permission.RECORD_AUDIO", manifest)
+
     def test_write_readme_keeps_blocked_claim_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             evidence_dir = Path(tmpdir)

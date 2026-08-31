@@ -261,6 +261,7 @@ final class MacHostAudioStream: @unchecked Sendable {
         onPacket: @escaping PacketHandler,
         onError: @escaping ErrorHandler = { _ in }
     ) throws {
+        guard sessionEpoch != 0 else { throw MacHostAudioError.invalidSessionEpoch }
         let format = try MacHostAudioConfigValidator.validate(config)
         let startGeneration = try lock.withAudioLock { () throws -> UInt64 in
             guard runningState == nil else { throw MacHostAudioError.alreadyRunning }
