@@ -40,6 +40,7 @@ SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
+ACCESSIBILITY_SERVICES = (ACCESSIBILITY_SERVICE,)
 MICROPHONE_SERVICE = "kTCCServiceMicrophone"
 MICROPHONE_SERVICES = (MICROPHONE_SERVICE,)
 ALLOWED_AUTH_VALUE = 2
@@ -1099,8 +1100,10 @@ def validate_preflight(
     else:
         if not permissions.is_allowed(SCREEN_CAPTURE_SERVICES):
             errors.append("Screen Recording is not authorized for the installed Host")
-        if not permissions.is_allowed((ACCESSIBILITY_SERVICE,)):
+        if not permissions.is_allowed(ACCESSIBILITY_SERVICES):
             errors.append("Accessibility is not authorized for the installed Host")
+        if not permissions.is_allowed(MICROPHONE_SERVICES):
+            errors.append("Microphone is not authorized for the installed Host")
     return errors
 
 
@@ -1116,7 +1119,7 @@ def permission_interpretation(permissions: PermissionStatus) -> str:
     if not permissions.readable:
         return f"unverified ({permissions.error})"
     screen = "allowed" if permissions.is_allowed(SCREEN_CAPTURE_SERVICES) else "not allowed"
-    accessibility = "allowed" if permissions.is_allowed((ACCESSIBILITY_SERVICE,)) else "not allowed"
+    accessibility = "allowed" if permissions.is_allowed(ACCESSIBILITY_SERVICES) else "not allowed"
     microphone = "allowed" if permissions.is_allowed(MICROPHONE_SERVICES) else "not allowed"
     if permissions.error:
         return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}; read warning: {permissions.error}."
@@ -1418,7 +1421,7 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "readable": permissions.readable,
         "error": permissions.error,
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
-        "accessibility_granted": permissions.allowed_state((ACCESSIBILITY_SERVICE,)),
+        "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
         "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
         "rows": [row.__dict__ for row in permissions.rows],
     }

@@ -25,6 +25,14 @@ TEST_PRIVACY_DATABASE = Path("privacy.db")
 PRIVACY_DB_FILENAME = "privacy.sqlite"
 
 
+def allowed_tcc_rows() -> tuple[macos_dev_host.TCCRow, ...]:
+    return (
+        macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+        macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+        macos_dev_host.TCCRow("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 3),
+    )
+
+
 class MacOSDevHostMetadataTests(unittest.TestCase):
     def test_run_best_effort_reports_missing_executable(self) -> None:
         with mock.patch.object(macos_dev_host.subprocess, "run", side_effect=FileNotFoundError("/missing/vibe-screen-tool")):
@@ -254,6 +262,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Host is ad-hoc signed", "\n".join(errors))
         self.assertIn("Screen Recording is not authorized", "\n".join(errors))
         self.assertIn("Accessibility is not authorized", "\n".join(errors))
+        self.assertIn("Microphone is not authorized", "\n".join(errors))
 
     def test_refuse_ad_hoc_identity_for_local_install(self) -> None:
         with self.assertRaisesRegex(SystemExit, "stable signing identity"):
@@ -276,10 +285,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             expected_sign_identity="Vibe Screen Dev",
@@ -293,10 +299,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             source_identity=macos_dev_host.package_macos.SourceIdentity(
@@ -314,10 +317,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             source_identity=macos_dev_host.package_macos.SourceIdentity(
@@ -335,10 +335,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             source_identity=macos_dev_host.package_macos.SourceIdentity(
@@ -989,10 +986,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions=macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -1028,10 +1022,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions=macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -1079,10 +1070,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions=macos_dev_host.PermissionStatus(
                 database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -1142,10 +1130,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions=macos_dev_host.PermissionStatus(
                 database_path=Path("privacy.db"),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -1283,11 +1268,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions=macos_dev_host.PermissionStatus(
                 database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                    macos_dev_host.TCCRow("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 3),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -1343,10 +1324,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions=macos_dev_host.PermissionStatus(
                 database_path=TEST_PRIVACY_DATABASE,
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -1630,11 +1608,8 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             permissions = macos_dev_host.PermissionStatus(
                 database_path=Path("privacy.sqlite"),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                    ),
-                )
+                rows=allowed_tcc_rows(),
+            )
 
             with (
                 mock.patch.object(
@@ -1704,10 +1679,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                         permissions=macos_dev_host.PermissionStatus(
                             database_path=Path(PRIVACY_DB_FILENAME),
                             readable=True,
-                            rows=(
-                                macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                                macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                            ),
+                            rows=allowed_tcc_rows(),
                         ),
                         errors=[],
                     ),
@@ -2118,10 +2090,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             permissions=macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             errors=[],
         )
@@ -2392,6 +2361,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertIn("cannot fully verify TCC permissions read-only", joined_errors)
         self.assertNotIn("Screen Recording is not authorized", joined_errors)
         self.assertNotIn("Accessibility is not authorized", joined_errors)
+        self.assertNotIn("Microphone is not authorized", joined_errors)
 
     def test_query_tcc_database_accepts_schema_without_optional_columns(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

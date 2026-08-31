@@ -274,6 +274,23 @@ final class AudioCaptureTests: XCTestCase {
         XCTAssertEqual(source.stopCount, 0)
     }
 
+    func testStreamStartRejectsZeroSessionEpochBeforeAlreadyRunningCheck() throws {
+        let source = FakeAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+
+        try stream.start(config: makeConfig(), sessionEpoch: 5, onPacket: { _ in })
+
+        XCTAssertThrowsError(try stream.start(config: makeConfig(), sessionEpoch: 0, onPacket: { _ in })) { error in
+            XCTAssertEqual(error as? MacHostAudioError, .invalidSessionEpoch)
+        }
+
+        XCTAssertTrue(stream.isRunning)
+        XCTAssertNotNil(stream.currentFormat)
+        XCTAssertEqual(source.startCount, 1)
+        XCTAssertEqual(source.stopCount, 0)
+        stream.stop()
+    }
+
     func testStreamStopDuringPacketDeliverySuppressesRemainingPackets() throws {
         let source = FakeAudioCaptureSource()
         let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
@@ -335,6 +352,22 @@ final class AudioCaptureTests: XCTestCase {
         XCTAssertEqual(lock.withAudioTestLock { delivered.map(\.byteCount) }, [4, 4])
         XCTAssertEqual(stream.currentFormat?.channelCount, 1)
         stream.stop()
+    }
+
+    func testStreamReconfigureRejectsZeroSessionEpochAfterStoppingSource() throws {
+        let source = FakeAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+
+        try stream.start(config: makeConfig(), sessionEpoch: 5, onPacket: { _ in })
+
+        XCTAssertThrowsError(try stream.reconfigure(config: makeConfig(), sessionEpoch: 0, onPacket: { _ in })) { error in
+            XCTAssertEqual(error as? MacHostAudioError, .invalidSessionEpoch)
+        }
+
+        XCTAssertFalse(stream.isRunning)
+        XCTAssertNil(stream.currentFormat)
+        XCTAssertEqual(source.startCount, 1)
+        XCTAssertEqual(source.stopCount, 1)
     }
 
     func testStreamForwardsCaptureErrorAndStops() throws {

@@ -162,10 +162,39 @@ class AndroidAudioCurrentBaseReadinessTests(unittest.TestCase):
                 "microphone_granted": True,
             },
         }
+        ready_without_permissions = {"signing_tcc_status": "ready"}
+        ready_with_unreadable_microphone = {
+            "signing_tcc_status": "ready",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": None,
+            },
+        }
+        blocked_with_all_permissions = {
+            "signing_tcc_status": "blocked",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": True,
+            },
+        }
+        legacy_pass_status_with_all_permissions = {
+            "signing_tcc_status": "pass",
+            "permissions": {
+                "screen_recording_granted": True,
+                "accessibility_granted": True,
+                "microphone_granted": True,
+            },
+        }
 
         self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_microphone))
         self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_screen_recording))
         self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_accessibility))
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_without_permissions))
+        self.assertFalse(support.host_stable_signed_tcc_ready(ready_with_unreadable_microphone))
+        self.assertFalse(support.host_stable_signed_tcc_ready(blocked_with_all_permissions))
+        self.assertFalse(support.host_stable_signed_tcc_ready(legacy_pass_status_with_all_permissions))
         self.assertTrue(support.host_stable_signed_tcc_ready(ready_with_microphone))
 
     def test_android_manifest_does_not_request_record_audio(self) -> None:

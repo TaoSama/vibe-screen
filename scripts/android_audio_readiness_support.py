@@ -252,7 +252,7 @@ def host_build_identity_recorded(readiness: dict[str, Any]) -> bool:
 def host_stable_signed_tcc_ready(readiness: dict[str, Any]) -> bool:
     permissions = readiness.get("permissions")
     return (
-        readiness.get("signing_tcc_status") in {"pass", "ready"}
+        readiness.get("signing_tcc_status") == "ready"
         and isinstance(permissions, dict)
         and permissions.get("screen_recording_granted") is True
         and permissions.get("accessibility_granted") is True
