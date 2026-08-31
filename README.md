@@ -603,34 +603,24 @@ latest P0110/pacific device-environment readiness record captures the real
 device identity and fail-closed battery, power, and thermal snapshots, but it is
 not a gate pass because the device is a phone substitute and no stand-mounted
 tablet setup, controlled thermal-load recovery, or eight-hour window was
-available. The latest P0110/pacific hardware-keyboard current-base readiness
-record
-[2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-pacific-hardware-keyboard-current-base/README.md)
-captures the real device identity and fails closed on current
-`origin/main` because no external Android-attached keyboard, macOS Host
-listener, or stable signed/TCC-ready Host was available; readiness alone is not
-enough, and this is not a gate pass. It is substitute Android readiness only and
-must not be relabeled as Xiaomi/fuxi or physical 8-9 inch tablet evidence. The
-latest P0110/pacific tablet sustained-use
-current-base preflight captures the device as nubia P0110 / pacific / Android
-16 / SDK 36 and keeps the Phase 2 tablet gate blocked because the device is an
-`android_substitute` phone, APK identity was not supplied for a formal run, no
-Host PID or Host telemetry JSONL was provided, no physical 8-9 inch tablet
-evidence exists, and no eight-hour soak gate artifact was produced. The current
-aggregate owner report consumes that blocked keyboard summary and blocked
-tablet preflight, and still reports `can_close_readme_phase2_gates=false`; the
-dedicated hardware-keyboard current-base owner record is
-[2026-08-30-phase2-hardware-keyboard-current-base-owner](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner/README.md).
-See
-[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-nubia-p0110-phase2-soak-preflight-current-base/README.md)
+available. The latest P0110/pacific tablet sustained-use current-base preflight
+captures the device as nubia P0110 / pacific / Android 16 / SDK 36 and keeps
+the Phase 2 tablet gate blocked because the device is an `android_substitute`
+phone, APK identity was not supplied for a formal run, no Host PID or Host
+telemetry JSONL was provided, no physical 8-9 inch tablet evidence exists, and
+no eight-hour soak gate artifact was produced. The latest aggregate owner
+report consumes that blocked tablet preflight, the retained device-environment
+blocked summary, the blocked P0110 hardware-keyboard summary, and the blocked
+login/headless summary; it still reports
+`can_close_readme_phase2_gates=false`. See
+[the P0110 soak preflight](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-31-nubia-p0110-phase2-soak-preflight-current-base/README.md)
 and
-[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-29-phase2-tablet-current-base-owner/README.md).
-The 2026-08-30 current-base owner refresh is under
-[the tablet sustained-use current-base owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-tablet-current-base-owner/README.md),
-which consumes the same blocked P0110 readiness and still reports
-`can_close_readme_phase2_gates=false`; no physical 8-9 inch tablet,
-eight-hour sustained-use, device-memory, device-environment, recovery,
-hardware-keyboard, or login/headless gate is closed by this refresh.
+[the aggregate owner record](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-31-phase2-tablet-current-base-owner/README.md).
+The dedicated hardware-keyboard current-base owner record is
+[2026-08-30-phase2-hardware-keyboard-current-base-owner](docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner/README.md).
+No physical 8-9 inch tablet, eight-hour sustained-use, device-memory,
+device-environment, recovery, hardware-keyboard, or login/headless gate is
+closed by this refresh.
 The latest macOS login-startup/headless current-base record captures a Host
 listener and startup defaults on an Apple silicon development Mac, but it fails
 closed because the installed Host lacks current-source provenance, read-only TCC
