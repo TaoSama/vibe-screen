@@ -170,16 +170,15 @@ class MainActivity : AppCompatActivity() {
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
-    private val videoDecoderRef = AtomicReference<VideoDecoder?>()
+    private val videoDecoderUseGate = DecoderUseGate<VideoDecoder>()
     private val rendererOwner =
         RendererOwner(
             scaleMode = { prefs.videoScaleMode },
             renderRotation = { prefs.clientRotation },
         )
     private val decoderConfigurationGeneration = AtomicLong()
-    private var videoDecoder: VideoDecoder?
-        get() = videoDecoderRef.get()
-        set(value) = videoDecoderRef.set(value)
+    private val videoDecoder: VideoDecoder?
+        get() = videoDecoderUseGate.current()
     private val internetDeviceId by lazy { prefs.internetDeviceId }
     private val internetProfileStore by lazy { InternetSessionProfileStore(applicationContext) }
     private val internetRevocationCoordinator = InternetProductRevocationCoordinator.processShared()
@@ -4008,7 +4007,7 @@ class MainActivity : AppCompatActivity() {
                     val startupResult =
                         decoder.commitStartup {
                             tryPublishConfigurationCommit {
-                                if (!videoDecoderRef.compareAndSet(null, decoder)) {
+                                if (!videoDecoderUseGate.compareAndSet(null, decoder)) {
                                     false
                                 } else if (!rendererOwner.commitDecoderPresentation(
                                         RendererDecoderPresentation(
@@ -4017,7 +4016,7 @@ class MainActivity : AppCompatActivity() {
                                         ),
                                     )
                                 ) {
-                                    videoDecoderRef.compareAndSet(decoder, null)
+                                    videoDecoderUseGate.compareAndSet(decoder, null)
                                     false
                                 } else {
                                     true
@@ -4166,14 +4165,15 @@ class MainActivity : AppCompatActivity() {
     private fun applyVideoScaleMode(mode: VideoScaleMode) {
         prefs.videoScaleMode = mode
         DECODER_LIFECYCLE_EXECUTOR.execute {
-            videoDecoder?.updateScaleMode(mode)
+            videoDecoderUseGate.withCurrent { decoder -> decoder.updateScaleMode(mode) }
         }
     }
 
     private fun releaseVideoDecoderAsync() {
         decoderConfigurationGeneration.incrementAndGet()
+        val decoder = videoDecoderUseGate.clear()
         rendererOwner.clearDecoderPresentation()
-        val decoder = videoDecoderRef.getAndSet(null) ?: return
+        if (decoder == null) return
         DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
     }
 
@@ -4288,32 +4288,51 @@ class MainActivity : AppCompatActivity() {
                 sessionEpoch,
                 configEpoch,
             ->
-            val dec = videoDecoder
-            when (
-                val decision =
-                    rendererOwner.localFrameDecision(
-                        sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
-                        configEpoch = configEpoch,
-                        decoderAvailable = dec != null,
-                    )
-            ) {
-                RendererFramePresentationDecision.Present -> dec?.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
-                is RendererFramePresentationDecision.Drop -> {
-                    when (decision.reason) {
-                        RendererFrameDropReason.STALE_CONFIG_EPOCH -> {
-                            mainDiag(
-                                "FRAME DROPPED: config epoch $configEpoch does not match decoder epoch " +
-                                    rendererOwner.activeDecoderConfigEpoch,
-                            )
-                        }
-                        RendererFrameDropReason.DECODER_UNAVAILABLE,
-                        RendererFrameDropReason.DECODER_NOT_CONFIGURED,
-                        -> mainDiag("FRAME DROPPED: ${decision.reason.logToken}")
-                        RendererFrameDropReason.STALE_SESSION,
-                        RendererFrameDropReason.STALE_SESSION_EPOCH,
-                        -> Unit
+            fun handleDrop(decision: RendererFramePresentationDecision.Drop) {
+                when (decision.reason) {
+                    RendererFrameDropReason.STALE_CONFIG_EPOCH -> {
+                        mainDiag(
+                            "FRAME DROPPED: config epoch $configEpoch does not match decoder epoch " +
+                                rendererOwner.activeDecoderConfigEpoch,
+                        )
                     }
-                    if (decision.releaseFrame) callbackClient.releaseBuffer(frameData)
+                    RendererFrameDropReason.DECODER_UNAVAILABLE,
+                    RendererFrameDropReason.DECODER_NOT_CONFIGURED,
+                    -> mainDiag("FRAME DROPPED: ${decision.reason.logToken}")
+                    RendererFrameDropReason.STALE_SESSION,
+                    RendererFrameDropReason.STALE_SESSION_EPOCH,
+                    -> Unit
+                }
+                if (decision.releaseFrame) callbackClient.releaseBuffer(frameData)
+            }
+
+            val usedDecoder =
+                videoDecoderUseGate.withCurrent { dec ->
+                    when (
+                        val decision =
+                            rendererOwner.localFrameDecision(
+                                sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                                configEpoch = configEpoch,
+                                decoderAvailable = true,
+                            )
+                    ) {
+                        RendererFramePresentationDecision.Present ->
+                            dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
+                        is RendererFramePresentationDecision.Drop -> handleDrop(decision)
+                    }
+                    true
+                } ?: false
+            if (!usedDecoder) {
+                when (
+                    val decision =
+                        rendererOwner.localFrameDecision(
+                            sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                            configEpoch = configEpoch,
+                            decoderAvailable = false,
+                        )
+                ) {
+                    RendererFramePresentationDecision.Present -> Unit
+                    is RendererFramePresentationDecision.Drop -> handleDrop(decision)
                 }
             }
         }
@@ -4854,24 +4873,35 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onVideoFrame(frame: ProductVideoFrame) {
-                    val dec = videoDecoder
-                    when (
+                    val usedDecoder =
+                        videoDecoderUseGate.withCurrent { dec ->
+                            when (
+                                rendererOwner.internetFrameDecision(
+                                    sessionCurrent = isCurrentInternetSession(),
+                                    frameSessionEpoch = frame.sessionEpoch,
+                                    activeSessionEpoch = internetSessionEpoch,
+                                    decoderAvailable = true,
+                                )
+                            ) {
+                                RendererFramePresentationDecision.Present ->
+                                    dec.decode(
+                                        frame.payload,
+                                        frame.payload.size,
+                                        System.nanoTime(),
+                                        frame.keyframe,
+                                        frame.sessionEpoch,
+                                    )
+                                is RendererFramePresentationDecision.Drop -> Unit
+                            }
+                            true
+                        } ?: false
+                    if (!usedDecoder) {
                         rendererOwner.internetFrameDecision(
                             sessionCurrent = isCurrentInternetSession(),
                             frameSessionEpoch = frame.sessionEpoch,
                             activeSessionEpoch = internetSessionEpoch,
-                            decoderAvailable = dec != null,
+                            decoderAvailable = false,
                         )
-                    ) {
-                        RendererFramePresentationDecision.Present ->
-                            dec?.decode(
-                                frame.payload,
-                                frame.payload.size,
-                                System.nanoTime(),
-                                frame.keyframe,
-                                frame.sessionEpoch,
-                            )
-                        is RendererFramePresentationDecision.Drop -> Unit
                     }
                 }
 
@@ -5160,8 +5190,7 @@ class MainActivity : AppCompatActivity() {
             decision
         } catch (failure: Throwable) {
             candidate?.let { failedCandidate ->
-                if (videoDecoder === failedCandidate) {
-                    videoDecoder = null
+                if (videoDecoderUseGate.compareAndSet(failedCandidate, null)) {
                     rendererOwner.clearDecoderPresentation()
                 }
                 failedCandidate.release()
@@ -5199,8 +5228,12 @@ class MainActivity : AppCompatActivity() {
     private fun installInternetDecoderPresentation(
         state: InternetDecoderPresentationState<VideoDecoder, ProductVideoConfiguration>,
     ): Boolean {
-        if (!rendererOwner.installDecoderPresentation(state.rendererPresentation)) return false
-        videoDecoder = state.decoder
+        if (!videoDecoderUseGate.installIf(state.decoder) {
+                rendererOwner.installDecoderPresentation(state.rendererPresentation)
+            }
+        ) {
+            return false
+        }
         internetVideoConfiguration = state.configuration
         if (state.displayWidth > 0 && state.displayHeight > 0) {
             rendererOwner.updateDisplayGeometry(
@@ -5224,12 +5257,23 @@ class MainActivity : AppCompatActivity() {
         previousStreamingWindowEnabled: Boolean,
     ) {
         check(
-            videoDecoderRef.compareAndSet(attempted.decoder, previous.decoder) ||
-                videoDecoder === previous.decoder,
+            videoDecoderUseGate.replaceIfCurrent(attempted.decoder, previous.decoder) {
+                rendererOwner.installDecoderPresentation(previous.rendererPresentation)
+            },
         ) { "Internet decoder changed while presentation rollback was in progress" }
-        check(installInternetDecoderPresentation(previous)) {
-            "Internet renderer presentation changed while rollback was in progress"
+        internetVideoConfiguration = previous.configuration
+        if (previous.displayWidth > 0 && previous.displayHeight > 0) {
+            rendererOwner.updateDisplayGeometry(
+                RendererDisplayGeometry(
+                    width = previous.displayWidth,
+                    height = previous.displayHeight,
+                    rotation = previous.displayRotation,
+                ),
+            )
+        } else {
+            rendererOwner.clearDisplayGeometry()
         }
+        isConnected = previous.connected
         requestedOrientation = previousRequestedOrientation
         binding.surfaceView.apply {
             rotation = prefs.clientRotation.degrees.toFloat()
@@ -5317,7 +5361,6 @@ class MainActivity : AppCompatActivity() {
         val tickJob = internetTickJob
         val session = internetSession
         val networkMonitor = internetNetworkMonitor
-        val decoder = videoDecoder
         var sessionCloseFailure: Throwable? = null
         try {
             session?.close()
@@ -5332,7 +5375,7 @@ class MainActivity : AppCompatActivity() {
                 disconnectInternet(showIdle)
                 return
             }
-            quarantineInternetSession(tickJob, networkMonitor, decoder, failure)
+            quarantineInternetSession(tickJob, networkMonitor, failure)
             return
         } catch (failure: Throwable) {
             sessionCloseFailure = failure
@@ -5342,7 +5385,7 @@ class MainActivity : AppCompatActivity() {
         internetSession = null
         QUARANTINED_INTERNET_SESSION.compareAndSet(session, null)
         internetNetworkMonitor = null
-        videoDecoder = null
+        val decoder = videoDecoderUseGate.clear()
         rendererOwner.clearDecoderPresentation()
         connectionAttemptInProgress = false
         internetRoute = null
@@ -5373,14 +5416,13 @@ class MainActivity : AppCompatActivity() {
     private fun quarantineInternetSession(
         tickJob: kotlinx.coroutines.Job?,
         networkMonitor: AndroidNetworkMonitor?,
-        decoder: VideoDecoder?,
         failure: PendingRevocationBarrierException,
     ) {
         internetVideoDecoderLifecycle?.invalidate("session_quarantined")
         internetVideoDecoderLifecycle = null
         internetTickJob = null
         internetNetworkMonitor = null
-        videoDecoder = null
+        val decoder = videoDecoderUseGate.clear()
         rendererOwner.clearDecoderPresentation()
         connectionAttemptInProgress = false
         internetRoute = null

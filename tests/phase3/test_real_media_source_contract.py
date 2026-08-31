@@ -215,26 +215,64 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         )
         require_compact(
             main_activity,
+            "callbackClient.onFrameReceived = frame@{",
+            label="MainActivity local session receives production media frames",
+        )
+        require_compact(
+            main_activity,
+            """
+            val usedDecoder =
+                videoDecoderUseGate.withCurrent { dec ->
+                    when (
+                        val decision =
+                            rendererOwner.localFrameDecision(
+                                sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                                configEpoch = configEpoch,
+                                decoderAvailable = true,
+                            )
+                    ) {
+                        RendererFramePresentationDecision.Present ->
+                            dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
+                        is RendererFramePresentationDecision.Drop -> handleDrop(decision)
+                    }
+                    true
+                } ?: false
+            """,
+            label="Android local video frames are renderer-admitted under the decoder use gate",
+        )
+        require_compact(
+            main_activity,
             """
             override fun onVideoFrame(frame: ProductVideoFrame) {
-                val dec = videoDecoder
-                when (
+                val usedDecoder =
+                    videoDecoderUseGate.withCurrent { dec ->
+                        when (
+                            rendererOwner.internetFrameDecision(
+                                sessionCurrent = isCurrentInternetSession(),
+                                frameSessionEpoch = frame.sessionEpoch,
+                                activeSessionEpoch = internetSessionEpoch,
+                                decoderAvailable = true,
+                            )
+                        ) {
+                            RendererFramePresentationDecision.Present ->
+                                dec.decode(
+                                    frame.payload,
+                                    frame.payload.size,
+                                    System.nanoTime(),
+                                    frame.keyframe,
+                                    frame.sessionEpoch,
+                                )
+                            is RendererFramePresentationDecision.Drop -> Unit
+                        }
+                        true
+                    } ?: false
+                if (!usedDecoder) {
                     rendererOwner.internetFrameDecision(
                         sessionCurrent = isCurrentInternetSession(),
                         frameSessionEpoch = frame.sessionEpoch,
                         activeSessionEpoch = internetSessionEpoch,
-                        decoderAvailable = dec != null,
+                        decoderAvailable = false,
                     )
-                ) {
-                    RendererFramePresentationDecision.Present ->
-                        dec?.decode(
-                            frame.payload,
-                            frame.payload.size,
-                            System.nanoTime(),
-                            frame.keyframe,
-                            frame.sessionEpoch,
-                        )
-                    is RendererFramePresentationDecision.Drop -> Unit
                 }
             }
             """,

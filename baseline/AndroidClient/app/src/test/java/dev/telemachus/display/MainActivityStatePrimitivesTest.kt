@@ -44,10 +44,33 @@ class MainActivityStatePrimitivesTest {
 
     @Test
     fun presentationFailureRestoresCompletePreviousSemanticState() {
-        val previous = presentationState("old-decoder", "old-config", 1280, 720, 90, connected = true)
-        val attempted = presentationState("new-decoder", "new-config", 1920, 1080, 270, connected = true)
+        val previousRendererPresentation = RendererDecoderPresentation(configEpoch = 11L, renderTargetGeneration = 101L)
+        val attemptedRendererPresentation = RendererDecoderPresentation(configEpoch = 12L, renderTargetGeneration = 102L)
+        val previous =
+            presentationState(
+                "old-decoder",
+                "old-config",
+                1280,
+                720,
+                90,
+                connected = true,
+                rendererPresentation = previousRendererPresentation,
+            )
+        val attempted =
+            presentationState(
+                "new-decoder",
+                "new-config",
+                1920,
+                1080,
+                270,
+                connected = true,
+                rendererPresentation = attemptedRendererPresentation,
+            )
         var current = previous
         val presentationFailure = IllegalStateException("presentation failed")
+
+        assertEquals(previousRendererPresentation, previous.rendererPresentation)
+        assertEquals(attemptedRendererPresentation, attempted.rendererPresentation)
 
         val thrown =
             try {
@@ -73,6 +96,7 @@ class MainActivityStatePrimitivesTest {
 
         assertSame(presentationFailure, thrown)
         assertEquals(previous, current)
+        assertEquals(previousRendererPresentation, current.rendererPresentation)
     }
 
     @Test
@@ -156,11 +180,12 @@ class MainActivityStatePrimitivesTest {
         height: Int,
         rotation: Int,
         connected: Boolean,
+        rendererPresentation: RendererDecoderPresentation? = null,
     ) =
         InternetDecoderPresentationState(
             decoder = decoder,
             configuration = configuration,
-            rendererPresentation = null,
+            rendererPresentation = rendererPresentation,
             displayWidth = width,
             displayHeight = height,
             displayRotation = rotation,
