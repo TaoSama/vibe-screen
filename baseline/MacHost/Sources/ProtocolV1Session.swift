@@ -154,6 +154,12 @@ private struct ProtocolV1AudioState: Equatable {
     }
 }
 
+private struct ProtocolV1VideoGeometry: Equatable {
+    let width: Int
+    let height: Int
+    let rotation: Int
+}
+
 enum ProtocolV1SessionAction {
     case sendControl(Data)
     case codecNegotiated(StreamCodec)
@@ -236,7 +242,7 @@ final class ProtocolV1SessionCoordinator {
     private var stylusSequenceState = StylusSequenceState()
     private var controllerSequenceState = GameControllerStateMachine()
     private var pendingControllerConnections: [UInt64: PendingControllerConnection] = [:]
-    private var advertisedVideoRotation = 0
+    private var advertisedVideoGeometry: ProtocolV1VideoGeometry?
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
     /// bumped-epoch VideoConfig renegotiation is deferred until the host
@@ -325,8 +331,13 @@ final class ProtocolV1SessionCoordinator {
             var changed = VSDisplayChanged()
             changed.display = displayDescriptor()
             changed.rotationDegrees = UInt32(clamping: configuration.rotation)
-            advertisedVideoRotation = configuration.rotation
-            return sendActions(payload: .displayChanged(changed), correlationID: 0)
+            do {
+                let payload = try encode(payload: .displayChanged(changed), correlationID: 0)
+                advertisedVideoGeometry = currentVideoGeometry()
+                return [.sendControl(payload)]
+            } catch {
+                return serializationFailure()
+            }
         }
     }
 
@@ -561,7 +572,7 @@ final class ProtocolV1SessionCoordinator {
         response.streamID = streamID
 
         let config = videoConfig(configEpoch: nextEpoch, streamID: streamID, color: selectedVideoColor())
-        advertisedVideoRotation = configuration.rotation
+        let advertisedGeometry = currentVideoGeometry()
 
         phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
         do {
@@ -571,6 +582,7 @@ final class ProtocolV1SessionCoordinator {
                 .sendControl(try encode(payload: .startDisplayResponse(response), correlationID: correlationID)),
                 .sendControl(try encode(payload: .videoConfig(config), correlationID: correlationID))
             ])
+            advertisedVideoGeometry = advertisedGeometry
             return actions
         } catch {
             return serializationFailure()
@@ -791,12 +803,13 @@ final class ProtocolV1SessionCoordinator {
             }
             phase = .streaming(configEpoch: configEpoch, streamID: streamID)
             var actions: [ProtocolV1SessionAction] = []
-            if advertisedVideoRotation != configuration.rotation {
+            if advertisedVideoGeometry != currentVideoGeometry() {
                 var changed = VSDisplayChanged()
                 changed.display = displayDescriptor()
                 changed.rotationDegrees = UInt32(clamping: configuration.rotation)
                 do {
                     actions.append(.sendControl(try encode(payload: .displayChanged(changed), correlationID: 0)))
+                    advertisedVideoGeometry = currentVideoGeometry()
                 } catch {
                     return serializationFailure()
                 }
@@ -1740,7 +1753,7 @@ final class ProtocolV1SessionCoordinator {
         response.streamID = streamID
 
         let config = videoConfig(configEpoch: configEpoch, streamID: streamID, color: selectedVideoColor())
-        advertisedVideoRotation = configuration.rotation
+        let advertisedGeometry = currentVideoGeometry()
 
         phase = .awaitingVideoConfig(configEpoch: configEpoch, streamID: streamID)
         do {
@@ -1750,10 +1763,19 @@ final class ProtocolV1SessionCoordinator {
                 .sendControl(try encode(payload: .startDisplayResponse(response), correlationID: correlationID)),
                 .sendControl(try encode(payload: .videoConfig(config), correlationID: correlationID))
             ])
+            advertisedVideoGeometry = advertisedGeometry
             return actions
         } catch {
             return serializationFailure()
         }
+    }
+
+    private func currentVideoGeometry() -> ProtocolV1VideoGeometry {
+        ProtocolV1VideoGeometry(
+            width: configuration.displayWidth,
+            height: configuration.displayHeight,
+            rotation: configuration.rotation
+        )
     }
 
     private func bindDisplayRoute(
