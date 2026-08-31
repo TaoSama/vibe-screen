@@ -244,8 +244,11 @@ Focused checks for this current-base owner record:
 ## 2026-08-31 current-base preflight recheck
 
 The `codex/trusted-lan-current-base-owner-20260831b` branch was created from the
-latest `origin/main` commit `075dc157c36ba71df9f757e571015905881a7154` in a
-clean worktree. Open PRs were audited with `git fetch origin --prune`; deleted
+`origin/main` commit `075dc157c36ba71df9f757e571015905881a7154` (the latest
+`origin/main` at branch-creation time) in a clean worktree. `origin/main` has
+since advanced to `967e05f4266916569f0898d7e2ed53e3a2602da9`, so this record is
+a historical blocked snapshot retained in the current-base owner package and
+remains fail-closed. Open PRs were audited with `git fetch origin --prune`; deleted
 historical branches were pruned and no current open PR closes the trusted-LAN
 stream/reconnect gate for this base. The read-only trusted-LAN preflight ran on
 the Nubia P0110 / pacific / Android 16 / SDK 36 device (`<device-serial>`)

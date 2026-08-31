@@ -2,15 +2,18 @@
 
 Date: 2026-08-31
 Branch: `codex/trusted-lan-current-base-owner-20260831b`
-Base/current-source commit: `075dc157c36ba71df9f757e571015905881a7154`
+Source commit at collection time: `075dc157c36ba71df9f757e571015905881a7154` (historical snapshot; origin/main has since advanced to `967e05f4266916569f0898d7e2ed53e3a2602da9`)
 Target device serial: `<device-serial>`
 Device: nubia P0110 / pacific / Android 16 / SDK 36
 
 ## Intended gate
 
-This package refreshes the current-base trusted-LAN stream/reconnect owner
-record against the latest `origin/main` from a clean worktree
-`.claude/worktrees/trusted-lan-current-base-owner-20260831b`. The real-device
+This package retains a historical blocked trusted-LAN preflight snapshot
+in the current-base owner package. The source commit at collection time was
+`075dc157c36ba71df9f757e571015905881a7154`, which was `origin/main` when the
+run started; `origin/main` has since advanced to
+`967e05f4266916569f0898d7e2ed53e3a2602da9`. The snapshot remains fail-closed
+and does not close the trusted-LAN stream/reconnect gate. The real-device
 preflight ran against the Nubia P0110 / pacific Android substitute over explicit
 `adb -s <device-serial>` targeting.
 
