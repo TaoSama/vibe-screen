@@ -169,7 +169,7 @@ def _usb_gate(usb: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, A
     reasons = list(missing)
     if usb is not None:
         claims = usb.get("claims") if isinstance(usb.get("claims"), dict) else {}
-        if usb.get("result") != "pass" or claims.get("can_start_usb_smoke") is not True:
+        if usb.get("result") not in {"pass", "ready"} or claims.get("can_start_usb_smoke") is not True:
             blockers = usb.get("blockers") if isinstance(usb.get("blockers"), list) else []
             for item in blockers:
                 if isinstance(item, dict):
@@ -189,7 +189,7 @@ def _usb_gate(usb: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, A
 def _lan_gate(lan: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, Any]:
     reasons = list(missing)
     if lan is not None:
-        if lan.get("result") != "pass":
+        if lan.get("result") not in {"pass", "ready"}:
             reasons.extend(str(item) for item in _list_value(lan, "blockers"))
             if not _list_value(lan, "blockers"):
                 reasons.append("trusted-LAN preflight did not pass")

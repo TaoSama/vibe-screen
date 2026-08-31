@@ -1842,10 +1842,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
-    probe_login_item = (
-        getattr(args, "probe_login_item", False) is True or
-        getattr(args, "include_login_item_diagnostic", False) is True
-    )
+    probe_login_item = getattr(args, "probe_login_item", False) is True
     login_item = read_login_item_readiness() if probe_login_item else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
