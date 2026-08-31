@@ -267,6 +267,9 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
     sha256 = direction.get("sha256")
     if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         reasons.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
+    origin_device_id = direction.get("origin_device_id")
+    if not isinstance(origin_device_id, str) or not origin_device_id.strip():
+        reasons.append(f"{label}.origin_device_id must record the verified Protocol v1 origin device ID")
     byte_length = direction.get("byte_length")
     if not isinstance(byte_length, int) or isinstance(byte_length, bool) or byte_length <= 0:
         reasons.append(f"{label}.byte_length must be a positive integer")
@@ -302,6 +305,8 @@ def _product_e2e_gate(
         android_to_macos = directions.get("android_clipboardmanager_to_macos_nspasteboard")
         macos_to_android = directions.get("macos_nspasteboard_to_android_clipboardmanager")
         markers: dict[str, str] = {}
+        change_ids: dict[str, str] = {}
+        digests: dict[str, str] = {}
         if isinstance(android_to_macos, dict):
             reasons.extend(_direction_reasons(android_to_macos, "android_clipboardmanager_to_macos_nspasteboard"))
             transport = android_to_macos.get("transport")
@@ -310,6 +315,12 @@ def _product_e2e_gate(
             marker = android_to_macos.get("marker")
             if isinstance(marker, str):
                 markers["android_clipboardmanager_to_macos_nspasteboard"] = marker.strip()
+            change_id = android_to_macos.get("change_id_hex")
+            if isinstance(change_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", change_id):
+                change_ids["android_clipboardmanager_to_macos_nspasteboard"] = change_id.lower()
+            digest = android_to_macos.get("sha256")
+            if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                digests["android_clipboardmanager_to_macos_nspasteboard"] = digest.lower()
         else:
             reasons.append("missing android_clipboardmanager_to_macos_nspasteboard direction evidence")
         if isinstance(macos_to_android, dict):
@@ -320,6 +331,12 @@ def _product_e2e_gate(
             marker = macos_to_android.get("marker")
             if isinstance(marker, str):
                 markers["macos_nspasteboard_to_android_clipboardmanager"] = marker.strip()
+            change_id = macos_to_android.get("change_id_hex")
+            if isinstance(change_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", change_id):
+                change_ids["macos_nspasteboard_to_android_clipboardmanager"] = change_id.lower()
+            digest = macos_to_android.get("sha256")
+            if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                digests["macos_nspasteboard_to_android_clipboardmanager"] = digest.lower()
         else:
             reasons.append("missing macos_nspasteboard_to_android_clipboardmanager direction evidence")
         if (
@@ -328,6 +345,18 @@ def _product_e2e_gate(
             == markers.get("macos_nspasteboard_to_android_clipboardmanager")
         ):
             reasons.append("direction markers must be distinct so one transfer cannot satisfy both directions")
+        if (
+            change_ids.get("android_clipboardmanager_to_macos_nspasteboard")
+            and change_ids.get("android_clipboardmanager_to_macos_nspasteboard")
+            == change_ids.get("macos_nspasteboard_to_android_clipboardmanager")
+        ):
+            reasons.append("direction change IDs must be distinct so one transfer cannot satisfy both directions")
+        if (
+            digests.get("android_clipboardmanager_to_macos_nspasteboard")
+            and digests.get("android_clipboardmanager_to_macos_nspasteboard")
+            == digests.get("macos_nspasteboard_to_android_clipboardmanager")
+        ):
+            reasons.append("direction SHA-256 digests must be distinct so one payload cannot satisfy both directions")
     return _gate("bidirectional_product_e2e", PASS if not reasons else BLOCKED, reasons, evidence)
 
 
@@ -441,9 +470,10 @@ def derive_gate(
             "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, "
             "a current Android system ClipboardManager smoke, and retained bidirectional product E2E evidence "
             "showing explicit user action, source system clipboard read, remote system clipboard write, "
-            "Protocol v1 session ownership, verified session epoch, change ID, SHA-256 digest, bounded byte length, "
-            "exact source/destination system clipboard endpoints, and distinct final marker matches. Offline or synthetic "
-            "coverage alone remains readiness evidence."
+            "Protocol v1 session ownership, verified session epoch, verified origin device ID, change ID, "
+            "SHA-256 digest, bounded byte length, exact source/destination system clipboard endpoints, "
+            "distinct final marker matches, distinct change IDs, and distinct SHA-256 digests. Offline or "
+            "synthetic coverage alone remains readiness evidence."
         ),
     }
 

@@ -1586,7 +1586,7 @@ def build_readiness_document(
         "schema_version": "vibescreen.host-readiness/v1",
         "kind": "macos_host_shared_prerequisite_readiness",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "ready" if not blockers else "blocked",
+        "status": "pass" if not blockers else "blocked",
         "signing_tcc_status": "ready" if not inspection.errors else "blocked",
         "listener_status": "ready" if listener.observed else "blocked",
         "virtual_hid_status": "ready" if entitlements.virtual_hid else "blocked",
@@ -1598,7 +1598,7 @@ def build_readiness_document(
         "can_start_hardware_keyboard_gate": shared_ready,
         "can_start_controller_runtime_gate": controller_ready,
         "can_start_headless_login_gate": headless_login_ready,
-        "can_close_runtime_gates": False,
+        "can_close_runtime_gates": not blockers,
         "blockers": blockers,
         "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
         "permissions": permission_record(inspection.permissions),
@@ -1842,7 +1842,10 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
-    probe_login_item = bool(getattr(args, "probe_login_item", False))
+    probe_login_item = (
+        getattr(args, "probe_login_item", False) is True or
+        getattr(args, "include_login_item_diagnostic", False) is True
+    )
     login_item = read_login_item_readiness() if probe_login_item else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
@@ -1877,7 +1880,7 @@ It only uses the configured codesign identity and reads privacy databases in rea
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
     print(f"Wrote {args.json_output}")
-    if document["status"] != "ready":
+    if document["status"] != "pass":
         print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     print("macOS Host shared prerequisite readiness passed")
