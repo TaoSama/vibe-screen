@@ -222,7 +222,7 @@ class MainActivity : AppCompatActivity() {
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var pingJob: kotlinx.coroutines.Job? = null
     private var isInForeground = false
-    private val sessionState = SessionState<StreamClient>()
+    private val productSessionCoordinator = ProductSessionCoordinator<StreamClient>()
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private val streamControllerSessionState = ControllerSessionState()
@@ -271,7 +271,8 @@ class MainActivity : AppCompatActivity() {
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
     private var isConnected = false // Track connection state to prevent checklist conflicts
-    private var connectionAttemptInProgress = false
+    private val connectionAttemptInProgress: Boolean
+        get() = productSessionCoordinator.renderState().connectionAttemptInProgress
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
     private var connectionDetailsVisible = false
@@ -306,10 +307,14 @@ class MainActivity : AppCompatActivity() {
         }
     private val touchExplorationStateChangeListener =
         AccessibilityManager.TouchExplorationStateChangeListener(::reconcileTouchExplorationState)
-    private var availableDisplays = emptyList<StreamDisplayOption>()
-    private var selectedDisplayId = ""
-    private var pendingDisplaySelectionId: String? = null
-    private var availableHostActions = emptyList<HostActionOption>()
+    private val availableDisplays: List<StreamDisplayOption>
+        get() = productSessionCoordinator.renderState().displays
+    private val selectedDisplayId: String
+        get() = productSessionCoordinator.renderState().selectedDisplayId
+    private val pendingDisplaySelectionId: String?
+        get() = productSessionCoordinator.renderState().pendingDisplayId
+    private val availableHostActions: List<HostActionOption>
+        get() = productSessionCoordinator.renderState().hostActions
     private val threeFingerGestureClassifier = ThreeFingerGestureClassifier()
     private var customGestureTouchSequenceActive = false
     private var customGestureActionCommitted = false
@@ -2147,9 +2152,10 @@ class MainActivity : AppCompatActivity() {
         displays: List<StreamDisplayOption>,
         selectedId: String,
     ) {
-        availableDisplays = displays
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = null
+        val client = streamClient
+        if (client != null) {
+            productSessionCoordinator.onDisplaysAvailable(client, activeSessionGeneration, displays, selectedId)
+        }
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
         refreshDisplayCapsuleLabel()
@@ -2160,15 +2166,14 @@ class MainActivity : AppCompatActivity() {
         selectedId: String,
         pendingId: String,
     ) {
-        if (pendingId == selectedId || availableDisplays.none { it.id == pendingId }) return
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = pendingId
+        val client = streamClient ?: return
+        if (!productSessionCoordinator.onDisplaySelectionPending(client, activeSessionGeneration, selectedId, pendingId)) return
         refreshDisplayCapsuleLabel()
     }
 
     private fun confirmDisplaySelection(selectedId: String) {
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = null
+        val client = streamClient ?: return
+        if (!productSessionCoordinator.onDisplaySelectionConfirmed(client, activeSessionGeneration, selectedId)) return
         refreshDisplayCapsuleLabel()
     }
 
@@ -2177,8 +2182,8 @@ class MainActivity : AppCompatActivity() {
         rejectedId: String,
         reason: String,
     ) {
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = null
+        val client = streamClient ?: return
+        if (!productSessionCoordinator.onDisplaySelectionRejected(client, activeSessionGeneration, selectedId)) return
         refreshDisplayCapsuleLabel()
         val active =
             DisplayCapsulePolicy.capsuleLabel(availableDisplays, selectedDisplayId)
@@ -2255,15 +2260,19 @@ class MainActivity : AppCompatActivity() {
                 return@setOnMenuItemClickListener true
             }
             val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
-            if (option.id != selectedDisplayId) {
-                mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
-                val previousDisplayId = selectedDisplayId
-                if (streamClient?.selectDisplay(option.id) == true) {
-                    markDisplaySelectionPending(previousDisplayId, option.id)
-                    showDedupedToast(R.string.display_switch_request_sent)
-                } else {
-                    rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
+            when (val command = productSessionCoordinator.requestDisplaySelection(option.id)) {
+                ProductSessionCoordinator.Command.None -> Unit
+                is ProductSessionCoordinator.Command.SelectDisplay -> {
+                    val previousDisplayId = command.previousDisplayId
+                    mainDiag("capsule selectDisplay target=${option.id} from=$previousDisplayId")
+                    if (streamClient?.selectDisplay(option.id) == true) {
+                        markDisplaySelectionPending(previousDisplayId, option.id)
+                        showDedupedToast(R.string.display_switch_request_sent)
+                    } else {
+                        rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
+                    }
                 }
+                is ProductSessionCoordinator.Command.InvokeHostAction -> Unit
             }
             true
         }
@@ -2288,25 +2297,34 @@ class MainActivity : AppCompatActivity() {
      * menu is built lazily in showHostActionsMenu() from the stored list.
      */
     private fun populateHostActions(actions: List<HostActionOption>) {
-        availableHostActions = HostActionMenuPolicy.supportedActions(actions)
-        val available =
-            HostActionMenuPolicy.isAvailable(
-                currentSessionBinding().capabilities.hostActions,
-                availableHostActions,
+        val client = streamClient
+        if (client != null) {
+            productSessionCoordinator.onHostActionsAvailable(client, activeSessionGeneration, actions)
+            productSessionCoordinator.setRuntimeAvailability(
+                client,
+                activeSessionGeneration,
+                hostActions = client.canInvokeHostActions,
             )
-        binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
-        binding.controlHostActionsButton.isEnabled = available
+        }
+        val state = productSessionCoordinator.renderState()
+        binding.controlHostActionsButton.visibility = if (state.hostActionsVisible) View.VISIBLE else View.GONE
+        binding.controlHostActionsButton.isEnabled = state.hostActionsEnabled
         applyControlBarLayout()
     }
 
     /** Clipboard is absent from legacy and unnegotiated sessions. */
     private fun refreshClipboardControl() {
         val client = streamClient
-        val available =
-            client != null &&
-                ClipboardMenuPolicy.isAvailable(currentSessionBinding().capabilities.clipboard)
-        binding.controlClipboardButton.visibility = if (available) View.VISIBLE else View.GONE
-        binding.controlClipboardButton.isEnabled = available && client?.canSendClipboard == true
+        if (client != null) {
+            productSessionCoordinator.setRuntimeAvailability(
+                client,
+                activeSessionGeneration,
+                clipboard = client.canSendClipboard,
+            )
+        }
+        val state = productSessionCoordinator.renderState()
+        binding.controlClipboardButton.visibility = if (state.clipboardVisible) View.VISIBLE else View.GONE
+        binding.controlClipboardButton.isEnabled = state.clipboardEnabled
         updateClipboardAccessibilityLabel(client, activeSessionGeneration)
         applyControlBarLayout()
     }
@@ -2328,15 +2346,16 @@ class MainActivity : AppCompatActivity() {
     /** File transfer is absent from legacy and unnegotiated sessions. */
     private fun refreshFileTransferControl() {
         val client = streamClient
-        val available =
-            client != null &&
-                client.canTransferFiles &&
-                ClientControlAvailability.isSupported(
-                    ClientControl.FILE_TRANSFER,
-                    currentSessionBinding().capabilities,
-                )
-        binding.controlFileTransferButton.visibility = if (available) View.VISIBLE else View.GONE
-        binding.controlFileTransferButton.isEnabled = available
+        if (client != null) {
+            productSessionCoordinator.setRuntimeAvailability(
+                client,
+                activeSessionGeneration,
+                fileTransfer = client.canTransferFiles,
+            )
+        }
+        val state = productSessionCoordinator.renderState()
+        binding.controlFileTransferButton.visibility = if (state.fileTransferVisible) View.VISIBLE else View.GONE
+        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled
         applyControlBarLayout()
     }
 
@@ -3058,17 +3077,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun invokeHostActionIfAvailable(actionId: String, label: String) {
-        val supportedActions = availableHostActions
-        val actionIsCurrent =
-            HostActionMenuPolicy.isAvailable(
-                currentSessionBinding().capabilities.hostActions,
-                supportedActions,
-            ) && supportedActions.any { it.id == actionId }
         val client = streamClient
-        if (!actionIsCurrent || client == null) return
-        mainDiag("capsule invokeHostAction id=$actionId")
-        client.invokeHostAction(actionId)
-        showDedupedToast(getString(R.string.host_action_sent, label))
+        if (client == null) return
+        productSessionCoordinator.setRuntimeAvailability(
+            client,
+            activeSessionGeneration,
+            hostActions = client.canInvokeHostActions,
+        )
+        when (productSessionCoordinator.requestHostAction(actionId)) {
+            ProductSessionCoordinator.Command.None -> return
+            is ProductSessionCoordinator.Command.SelectDisplay -> return
+            is ProductSessionCoordinator.Command.InvokeHostAction -> {
+                mainDiag("capsule invokeHostAction id=$actionId")
+                client.invokeHostAction(actionId)
+                showDedupedToast(getString(R.string.host_action_sent, label))
+            }
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")
@@ -3859,7 +3883,7 @@ class MainActivity : AppCompatActivity() {
         managedCustomGesturesAllowed = true
         managedHostActionsAllowed = true
         resetCustomGestureTouchState()
-        val generation = sessionState.activate(client)
+        val generation = productSessionCoordinator.activate(client)
         streamClient = client
         activeSessionGeneration = generation
         clipboardApprovalState.activate(client, generation)
@@ -3869,12 +3893,10 @@ class MainActivity : AppCompatActivity() {
     private fun isCurrentSession(
         client: StreamClient,
         generation: Long,
-    ): Boolean = sessionState.accepts(client, generation)
+    ): Boolean = productSessionCoordinator.accepts(client, generation)
 
     private fun currentSessionBinding(): ClientSessionBinding {
-        val client = streamClient ?: return ClientSessionBinding.LEGACY_TOUCH_ONLY
-        return sessionState.binding(client, activeSessionGeneration)
-            ?: ClientSessionBinding.LEGACY_TOUCH_ONLY
+        return productSessionCoordinator.currentBinding()
     }
 
     /** Protocol-v1 integration point; capabilities and their sender install atomically. */
@@ -3882,7 +3904,7 @@ class MainActivity : AppCompatActivity() {
         client: StreamClient,
         generation: Long,
         binding: ClientSessionBinding,
-    ): Boolean = sessionState.updateNegotiatedSession(client, generation, binding)
+    ): Boolean = productSessionCoordinator.updateNegotiatedSession(client, generation, binding)
 
     private fun initializeDecoder(
         holder: SurfaceHolder,
@@ -4379,6 +4401,7 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@connectionStatus
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)
                 isConnected = connected
                 applyStreamingWindowState(connected = connected, foreground = isInForeground)
                 if (connected) {
@@ -4514,6 +4537,13 @@ class MainActivity : AppCompatActivity() {
                         callbackGeneration,
                         ClientSessionBinding(capabilities, sink),
                     )
+                    productSessionCoordinator.setRuntimeAvailability(
+                        callbackClient,
+                        callbackGeneration,
+                        clipboard = callbackClient.canSendClipboard,
+                        fileTransfer = callbackClient.canTransferFiles,
+                        hostActions = callbackClient.canInvokeHostActions,
+                    )
                     // HostActionCatalog may arrive before ListDisplaysResponse.
                     // Re-evaluate the cached catalog after capability promotion so
                     // that arrival order cannot leave the button permanently hidden.
@@ -4591,6 +4621,13 @@ class MainActivity : AppCompatActivity() {
                     callbackClient,
                     callbackGeneration,
                     ClientSessionBinding(capabilities, binding.inputSink),
+                )
+                productSessionCoordinator.setRuntimeAvailability(
+                    callbackClient,
+                    callbackGeneration,
+                    clipboard = callbackClient.canSendClipboard,
+                    fileTransfer = callbackClient.canTransferFiles,
+                    hostActions = callbackClient.canInvokeHostActions,
                 )
                 if (!clipboard) {
                     cancelClipboardRequestTimeout()
@@ -4779,7 +4816,7 @@ class MainActivity : AppCompatActivity() {
                 IllegalStateException("Import a lease newer than epoch $requiredFreshInternetEpoch"),
             )
         }
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         internetRoute = null
         internetSessionEpoch = lease.authoritativeSessionEpoch
         resetInternetInputStateForNewSession()
@@ -4984,14 +5021,18 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } finally {
-                    if (generation == internetGeneration) connectionAttemptInProgress = false
+                    if (generation == internetGeneration) {
+                        runOnUiThread {
+                            if (generation == internetGeneration) productSessionCoordinator.endConnectionAttempt()
+                        }
+                    }
                 }
             }
         } catch (failure: Throwable) {
             if (generation != internetGeneration) return
             videoDecoderLifecycle.invalidate("session_start_failed")
             if (internetVideoDecoderLifecycle === videoDecoderLifecycle) internetVideoDecoderLifecycle = null
-            connectionAttemptInProgress = false
+            productSessionCoordinator.endConnectionAttempt()
             monitor.close()
             requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, lease.authoritativeSessionEpoch)
             android.util.Log.e(INTERNET_LOG_TAG, "internet_session_error type=${failure.javaClass.simpleName}")
@@ -5205,6 +5246,7 @@ class MainActivity : AppCompatActivity() {
         displayHeight = state.displayHeight
         displayRotation = state.displayRotation
         isConnected = state.connected
+        productSessionCoordinator.setTransportConnected(state.connected)
     }
 
     private fun restoreInternetDecoderPresentation(
@@ -5256,6 +5298,7 @@ class MainActivity : AppCompatActivity() {
         )
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
+            productSessionCoordinator.setTransportConnected(false)
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
             internetStylusContactRouter.reset()
@@ -5331,13 +5374,14 @@ class MainActivity : AppCompatActivity() {
         QUARANTINED_INTERNET_SESSION.compareAndSet(session, null)
         internetNetworkMonitor = null
         videoDecoder = null
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
         isConnected = false
+        productSessionCoordinator.setTransportConnected(false)
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
@@ -5369,7 +5413,7 @@ class MainActivity : AppCompatActivity() {
         internetTickJob = null
         internetNetworkMonitor = null
         videoDecoder = null
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         activeInternetInputIds.clear()
         internetStylusInputIds.clear()
@@ -5380,6 +5424,7 @@ class MainActivity : AppCompatActivity() {
         displayHeight = 0
         displayRotation = 0
         isConnected = false
+        productSessionCoordinator.setTransportConnected(false)
         val quarantinedSession = requireNotNull(internetSession)
         check(
             QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
@@ -5513,8 +5558,7 @@ class MainActivity : AppCompatActivity() {
             pendingWirelessReconnectDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS
             return
         }
-        if (isConnected || connectionAttemptInProgress) return
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         pendingTerminalGuidance = null
         val callbackClient = StreamClient(
             host,
@@ -5565,7 +5609,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    connectionAttemptInProgress = false
+                    productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
                         automaticRetryEnabled = wirelessAutoReconnectEnabled,
                         disconnected = !isConnected,
@@ -5610,11 +5654,11 @@ class MainActivity : AppCompatActivity() {
         val generation = activeSessionGeneration
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
             client?.disconnect()
-            if (client != null) sessionState.invalidate(client, generation)
+            if (client != null) productSessionCoordinator.invalidate(client, generation)
             if (streamClient === client) streamClient = null
         }
         disconnectInternet(showIdle = false)
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         clearUsbConnectionGuidance()
         applyDisconnectedSessionUi()
     }
@@ -5628,8 +5672,7 @@ class MainActivity : AppCompatActivity() {
             scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
             return
         }
-        if (isConnected || connectionAttemptInProgress) return
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         hasAttemptedUsbConnection = true
         clearUsbConnectionGuidance()
         pendingTerminalGuidance = null
@@ -5659,7 +5702,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    connectionAttemptInProgress = false
+                    productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
                         automaticRetryEnabled = automaticUsbConnect,
                         disconnected = !isConnected,
@@ -5692,10 +5735,10 @@ class MainActivity : AppCompatActivity() {
         val generation = activeSessionGeneration
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
             client?.disconnect()
-            if (client != null) sessionState.invalidate(client, generation)
+            if (client != null) productSessionCoordinator.invalidate(client, generation)
             if (streamClient === client) streamClient = null
         }
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         applyDisconnectedSessionUi()
         log("Disconnected")
     }
@@ -5711,9 +5754,7 @@ class MainActivity : AppCompatActivity() {
         streamStylusInputIds.clear()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
-        // Drop any host-action state so a stale window-actions button never
-        // lingers into the next session.
-        availableHostActions = emptyList()
+        productSessionCoordinator.clearDisconnectedUiState()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
         cancelClipboardRequestTimeout()
@@ -5722,9 +5763,6 @@ class MainActivity : AppCompatActivity() {
         binding.controlClipboardButton.isEnabled = false
         binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
-        availableDisplays = emptyList()
-        selectedDisplayId = ""
-        pendingDisplaySelectionId = null
         DisplayCapsuleViewBinder.bind(
             resources = resources,
             selector = binding.displayCapsuleGroup,
