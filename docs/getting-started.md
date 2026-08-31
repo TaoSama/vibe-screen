@@ -72,18 +72,25 @@ Outputs:
 
 - Android Debug APK:
   `baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk`
-- ad-hoc signed macOS source build and SHA-256:
+- pinned stable-identity macOS source build and SHA-256:
   `.build/release-artifacts/`
 
 The Debug APK uses the local Android debug certificate and is not a public
-release artifact. A Developer ID-signed and notarized macOS build is also not
-provided yet.
+release artifact. `make baseline-macos-app` resolves `Vibe Screen Dev` to the
+pinned historical Host signing leaf
+`9AAE572BF6D764E3436A6109197D345B5A87998C` by default so rebuilt local Host
+bundles keep the same designated requirement for existing macOS TCC (Screen
+Recording/Accessibility) grants. A Developer ID-signed and notarized macOS build
+is also not provided yet.
 
 Version tags create draft development-prerelease artifacts for maintainer
-review. They retain these same signing limitations and add an unsigned iOS
-Simulator-only build, aggregate checksums, an SPDX SBOM, and third-party
-notices. See the [release runbook](runbook/releasing.md); these drafts are not a
-stable distribution channel.
+review. CI and release-preview workflows may pass `--sign-identity -` explicitly
+for ad-hoc preview artifacts on machines without the pinned local identity; that
+path changes the designated requirement and cannot reuse local Host TCC grants.
+The draft workflow also adds an unsigned iOS Simulator-only build, aggregate
+checksums, an SPDX SBOM, and third-party notices. See the
+[release runbook](runbook/releasing.md); these drafts are not a stable
+distribution channel.
 
 ## Install and run over USB
 
