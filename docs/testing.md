@@ -42,17 +42,26 @@ make baseline-macos-host-preflight
 ```
 
 If the configured identity is missing, the preflight blocks with
-`codesign identity 'Vibe Screen Dev' not found in the keychain`. Create a
-self-signed Code Signing certificate named `Vibe Screen Dev` in Keychain Access,
-or set `VIBE_SCREEN_SIGN_IDENTITY` to an existing stable codesigning identity,
-then reinstall, grant Screen Recording and Accessibility, and rerun the
-preflight. Do not use ad-hoc signing for current-source device evidence because
-macOS TCC grants are bound to the signing identity.
+`codesign identity 'Vibe Screen Dev' not found in the keychain`. Restore or
+import the historical Code Signing certificate material whose leaf SHA-1 is
+`9AAE572BF6D764E3436A6109197D345B5A87998C`. If that same historical leaf already
+exists under another display name, set
+`VIBE_SCREEN_SIGN_IDENTITY=9AAE572BF6D764E3436A6109197D345B5A87998C` to select
+that existing keychain identity; the environment variable must not be used to
+create or bless a new certificate. Then reinstall and rerun the read-only
+preflight. The preflight must not open System Settings or request macOS privacy
+prompts; with the historical leaf restored, the
+expected result is that existing Screen Recording and Accessibility TCC grants
+are reused. Only when that read-only report proves the historical authorization
+rows are absent should a user explicitly open the permission entry point and
+grant the installed `/Applications/Vibe Screen.app`. A same-named certificate
+with a different leaf, another stable identity, or ad-hoc signing must remain
+blocked because the bundle's designated requirement would change and macOS TCC
+grants would no longer match the historical Host.
 
 `make baseline-macos-host-readiness` keeps login-item state fail-closed by
 default and does not invoke the macOS login-item diagnostic. For an attended
-manual investigation only, run `python3 scripts/macos_dev_host.py readiness
-	--include-login-item-diagnostic ...` to include the real login-item probe. Do
+manual investigation only, run `python3 scripts/macos_dev_host.py readiness --include-login-item-diagnostic ...` to include the real login-item probe. Do
 not enable that flag in default tests or CI.
 
 ## Real-device evidence
