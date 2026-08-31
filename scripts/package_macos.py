@@ -11,6 +11,7 @@ import platform
 import shutil
 import stat
 import subprocess
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,8 +27,10 @@ ARTIFACT_NAME = "Vibe-Screen"
 EXECUTABLE_NAME = PRODUCT_NAME
 DEFAULT_SIGN_IDENTITY = "Vibe Screen Dev"
 SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"
+CODESIGN = "/usr/bin/codesign"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
+CODESIGN_TEMP_FILE_MARKER = ".cstemp"
 REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
 SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
 SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"
@@ -255,6 +258,116 @@ def create_reproducible_zip(app_path: Path, archive_path: Path) -> None:
                 archive.writestr(info, path.read_bytes())
 
 
+def zip_member_destination(root: Path, member_name: str) -> Path:
+    relative = Path(member_name)
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise SystemExit(f"archive contains unsafe path: {member_name}")
+    destination = root.joinpath(*relative.parts)
+    root_resolved = root.resolve(strict=False)
+    destination_resolved = destination.resolve(strict=False)
+    if not destination_resolved.is_relative_to(root_resolved):
+        raise SystemExit(f"archive path escapes extraction root: {member_name}")
+    return destination
+
+
+def extract_reproducible_zip(archive_path: Path, destination: Path) -> None:
+    with zipfile.ZipFile(archive_path) as archive:
+        for entry in archive.infolist():
+            target = zip_member_destination(destination, entry.filename)
+            mode = entry.external_attr >> 16
+            if entry.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                if mode:
+                    target.chmod(stat.S_IMODE(mode))
+                continue
+            if target.exists() or target.is_symlink():
+                raise SystemExit(f"archive contains duplicate path: {entry.filename}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if stat.S_IFMT(mode) == stat.S_IFLNK:
+                link_target = archive.read(entry).decode("utf-8")
+                if Path(link_target).is_absolute():
+                    raise SystemExit(f"archive symlink target is absolute: {entry.filename}")
+                link_destination = target.parent.joinpath(link_target).resolve(strict=False)
+                if not link_destination.is_relative_to(destination.resolve(strict=False)):
+                    raise SystemExit(f"archive symlink target escapes extraction root: {entry.filename}")
+                os.symlink(link_target, target)
+                continue
+            target.write_bytes(archive.read(entry))
+            if mode:
+                target.chmod(stat.S_IMODE(mode))
+
+
+def verify_reproducible_zip(archive_path: Path, app_bundle_name: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="vibe-screen-archive-verify.") as temporary_directory:
+        extract_root = Path(temporary_directory)
+        extract_reproducible_zip(archive_path, extract_root)
+        extracted_app = extract_root / app_bundle_name
+        if not extracted_app.is_dir():
+            raise SystemExit(f"archive omitted expected app bundle: {app_bundle_name}")
+        run(CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(extracted_app))
+        require_no_codesign_temporary_files(extracted_app)
+
+
+def codesign_temporary_files(root: Path) -> tuple[Path, ...]:
+    """Return codesign replacement files that must not enter resource seals."""
+    if not root.exists():
+        return ()
+    return tuple(
+        sorted(
+            (path for path in root.rglob("*") if CODESIGN_TEMP_FILE_MARKER in path.name),
+            key=lambda item: item.relative_to(root).as_posix(),
+        )
+    )
+
+
+def clean_codesign_temporary_files(root: Path) -> tuple[Path, ...]:
+    temporary_files = codesign_temporary_files(root)
+    for path in sorted(temporary_files, key=lambda item: len(item.parts), reverse=True):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    return temporary_files
+
+
+def require_no_codesign_temporary_files(root: Path) -> None:
+    temporary_files = codesign_temporary_files(root)
+    if temporary_files:
+        relative_paths = ", ".join(path.relative_to(root).as_posix() for path in temporary_files)
+        raise SystemExit(
+            f"codesign temporary files remain in {root}: "
+            f"{relative_paths}. Refusing to continue because those files can be sealed "
+            "into package artifacts and make strict verification fail."
+        )
+
+
+def sign_packaged_app(app_path: Path, web_rtc_framework: Path, sign_identity: str) -> None:
+    clean_codesign_temporary_files(web_rtc_framework)
+    require_no_codesign_temporary_files(web_rtc_framework)
+    run(
+        CODESIGN,
+        "--force",
+        "--sign",
+        sign_identity,
+        str(web_rtc_framework),
+    )
+    run(CODESIGN, "--verify", "--strict", "--verbose=2", str(web_rtc_framework))
+    require_no_codesign_temporary_files(web_rtc_framework)
+    clean_codesign_temporary_files(app_path)
+    require_no_codesign_temporary_files(app_path)
+    run(
+        CODESIGN,
+        "--force",
+        "--sign",
+        sign_identity,
+        "--entitlements",
+        str(HOST_ROOT / "Telemachus.entitlements"),
+        str(app_path),
+    )
+    run(CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
+    require_no_codesign_temporary_files(app_path)
+
+
 def main() -> int:
     args = parse_args()
     sign_identity = resolve_sign_identity(args.sign_identity)
@@ -331,25 +444,10 @@ def main() -> int:
             sort_keys=True,
         )
 
-    run(
-        "codesign",
-        "--force",
-        "--sign",
-        sign_identity,
-        str(frameworks_dir / WEBRTC_FRAMEWORK_NAME),
-    )
-    run(
-        "codesign",
-        "--force",
-        "--sign",
-        sign_identity,
-        "--entitlements",
-        str(HOST_ROOT / "Telemachus.entitlements"),
-        str(app_path),
-    )
-    run("codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
+    sign_packaged_app(app_path, frameworks_dir / WEBRTC_FRAMEWORK_NAME, sign_identity)
     normalize_mtimes(app_path)
     create_reproducible_zip(app_path, archive_path)
+    verify_reproducible_zip(archive_path, f"{PRODUCT_NAME}.app")
     checksum_path.write_text(
         f"{sha256(archive_path)}  {archive_path.name}\n",
         encoding="utf-8",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import argparse
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -1315,6 +1316,329 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         resolve_mock.assert_called_once_with("Vibe Screen Dev")
         validate_mock.assert_not_called()
         run_mock.assert_not_called()
+
+    def test_clean_codesign_temporary_files_removes_framework_staging_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            framework = Path(temporary_directory) / "WebRTC.framework"
+            version_dir = framework / "Versions" / "A"
+            version_dir.mkdir(parents=True)
+            current = framework / "Versions" / "Current"
+            current.symlink_to("A")
+            binary = version_dir / "WebRTC"
+            binary.write_bytes(b"binary")
+            stale = version_dir / "WebRTC.cstemp"
+            stale.write_bytes(b"stale")
+            nested_stale = version_dir / "WebRTC.cstemp.cstemp"
+            nested_stale.write_bytes(b"nested stale")
+
+            removed = package_macos.clean_codesign_temporary_files(framework)
+
+            self.assertEqual(
+                tuple(path.relative_to(framework).as_posix() for path in removed),
+                ("Versions/A/WebRTC.cstemp", "Versions/A/WebRTC.cstemp.cstemp"),
+            )
+            self.assertTrue(binary.exists())
+            self.assertTrue(current.is_symlink())
+            self.assertFalse(stale.exists())
+            self.assertFalse(nested_stale.exists())
+            package_macos.require_no_codesign_temporary_files(framework)
+
+    def test_clean_codesign_temporary_files_handles_directories_symlinks_and_missing_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            framework = root / "WebRTC.framework"
+            version_dir = framework / "Versions" / "A"
+            version_dir.mkdir(parents=True)
+            stale_dir = version_dir / "WebRTC.cstemp"
+            stale_dir.mkdir()
+            (stale_dir / "partial").write_bytes(b"partial")
+            real_binary = version_dir / "WebRTC"
+            real_binary.write_bytes(b"binary")
+            stale_link = version_dir / "WebRTC.cstemp.cstemp"
+            stale_link.symlink_to("WebRTC")
+
+            self.assertEqual(package_macos.codesign_temporary_files(root / "missing.framework"), ())
+            removed = package_macos.clean_codesign_temporary_files(framework)
+
+            self.assertEqual(
+                tuple(path.relative_to(framework).as_posix() for path in removed),
+                ("Versions/A/WebRTC.cstemp", "Versions/A/WebRTC.cstemp.cstemp"),
+            )
+            self.assertFalse(stale_dir.exists())
+            self.assertFalse(stale_link.exists())
+            self.assertTrue(real_binary.exists())
+
+    def test_require_no_codesign_temporary_files_reports_relative_framework_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            framework = Path(temporary_directory) / "WebRTC.framework"
+            version_dir = framework / "Versions" / "A"
+            version_dir.mkdir(parents=True)
+            (version_dir / "WebRTC.cstemp").write_bytes(b"stale")
+
+            with self.assertRaisesRegex(SystemExit, r"Versions/A/WebRTC\.cstemp"):
+                package_macos.require_no_codesign_temporary_files(framework)
+
+    def test_sign_packaged_app_cleans_framework_and_signs_outer_bundle_last(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
+            version_dir = framework / "Versions" / "A"
+            version_dir.mkdir(parents=True)
+            stale = version_dir / "WebRTC.cstemp"
+            stale.write_bytes(b"stale")
+            app_stale = app / "Contents" / "Resources" / "Credits.html.cstemp"
+            app_stale.parent.mkdir(parents=True, exist_ok=True)
+            app_stale.write_bytes(b"stale")
+            commands: list[tuple[str, ...]] = []
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                commands.append(command)
+                if command == (package_macos.CODESIGN, "--force", "--sign", "Vibe Screen Dev", str(framework)):
+                    self.assertFalse(stale.exists())
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                package_macos.sign_packaged_app(app, framework, "Vibe Screen Dev")
+
+            self.assertFalse(app_stale.exists())
+            self.assertNotIn("--deep", commands[1])
+            self.assertEqual(
+                commands,
+                [
+                    (package_macos.CODESIGN, "--force", "--sign", "Vibe Screen Dev", str(framework)),
+                    (package_macos.CODESIGN, "--verify", "--strict", "--verbose=2", str(framework)),
+                    (
+                        package_macos.CODESIGN,
+                        "--force",
+                        "--sign",
+                        "Vibe Screen Dev",
+                        "--entitlements",
+                        str(package_macos.HOST_ROOT / "Telemachus.entitlements"),
+                        str(app),
+                    ),
+                    (package_macos.CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app)),
+                ],
+            )
+
+    def test_sign_packaged_app_refuses_temporary_files_left_by_framework_signing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
+            version_dir = framework / "Versions" / "A"
+            version_dir.mkdir(parents=True)
+            leaked = version_dir / "WebRTC.cstemp"
+            commands: list[tuple[str, ...]] = []
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                commands.append(command)
+                if command == (package_macos.CODESIGN, "--force", "--sign", "Vibe Screen Dev", str(framework)):
+                    leaked.write_bytes(b"leaked")
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                with self.assertRaisesRegex(SystemExit, "Refusing to continue"):
+                    package_macos.sign_packaged_app(app, framework, "Vibe Screen Dev")
+
+            self.assertEqual(
+                commands,
+                [
+                    (package_macos.CODESIGN, "--force", "--sign", "Vibe Screen Dev", str(framework)),
+                    (package_macos.CODESIGN, "--verify", "--strict", "--verbose=2", str(framework)),
+                ],
+            )
+
+    def test_sign_packaged_app_refuses_temporary_files_left_by_outer_app_signing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
+            version_dir = framework / "Versions" / "A"
+            version_dir.mkdir(parents=True)
+            leaked = app / "Contents" / "Resources" / "Credits.html.cstemp"
+            commands: list[tuple[str, ...]] = []
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                commands.append(command)
+                if command == (
+                    package_macos.CODESIGN,
+                    "--force",
+                    "--sign",
+                    "Vibe Screen Dev",
+                    "--entitlements",
+                    str(package_macos.HOST_ROOT / "Telemachus.entitlements"),
+                    str(app),
+                ):
+                    leaked.parent.mkdir(parents=True, exist_ok=True)
+                    leaked.write_bytes(b"leaked")
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                with self.assertRaisesRegex(SystemExit, "codesign temporary files remain"):
+                    package_macos.sign_packaged_app(app, framework, "Vibe Screen Dev")
+
+            self.assertEqual(
+                commands,
+                [
+                    (package_macos.CODESIGN, "--force", "--sign", "Vibe Screen Dev", str(framework)),
+                    (package_macos.CODESIGN, "--verify", "--strict", "--verbose=2", str(framework)),
+                    (
+                        package_macos.CODESIGN,
+                        "--force",
+                        "--sign",
+                        "Vibe Screen Dev",
+                        "--entitlements",
+                        str(package_macos.HOST_ROOT / "Telemachus.entitlements"),
+                        str(app),
+                    ),
+                    (package_macos.CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app)),
+                ],
+            )
+
+    def test_verify_reproducible_zip_extracts_and_strict_verifies_app(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / "Vibe Screen.app"
+            (app / "Contents" / "_CodeSignature").mkdir(parents=True)
+            (app / "Contents" / "_CodeSignature" / "CodeResources").write_text("sealed", encoding="utf-8")
+            framework_version = app / "Contents" / "Frameworks" / "WebRTC.framework" / "Versions" / "A"
+            framework_version.mkdir(parents=True)
+            (framework_version / "WebRTC").write_text("binary", encoding="utf-8")
+            (framework_version.parent / "Current").symlink_to("A")
+            archive = root / "Vibe-Screen.zip"
+            package_macos.create_reproducible_zip(app, archive)
+            commands: list[tuple[str, ...]] = []
+            observed_symlink_targets: list[str] = []
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                commands.append(command)
+                current = Path(command[5]) / "Contents" / "Frameworks" / "WebRTC.framework" / "Versions" / "Current"
+                self.assertTrue(current.is_symlink())
+                observed_symlink_targets.append(os.readlink(current))
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                package_macos.verify_reproducible_zip(archive, "Vibe Screen.app")
+
+            self.assertEqual(len(commands), 1)
+            command = commands[0]
+            self.assertEqual(command[:5], (package_macos.CODESIGN, "--verify", "--deep", "--strict", "--verbose=2"))
+            self.assertEqual(Path(command[5]).name, "Vibe Screen.app")
+            self.assertEqual(observed_symlink_targets, ["A"])
+
+    def test_extract_reproducible_zip_rejects_path_traversal_members(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "Vibe-Screen.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("../escaped.txt", "escape")
+
+            with self.assertRaisesRegex(SystemExit, "archive contains unsafe path"):
+                package_macos.extract_reproducible_zip(archive, root / "extract")
+
+    def test_extract_reproducible_zip_rejects_unsafe_symlink_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            cases = {
+                "absolute": ("/tmp/outside", "archive symlink target is absolute"),
+                "escaping": ("../../../outside", "archive symlink target escapes extraction root"),
+            }
+            for name, (link_target, expected_error) in cases.items():
+                with self.subTest(name=name):
+                    archive = root / f"{name}.zip"
+                    info = zipfile.ZipInfo("Vibe Screen.app/Contents/link")
+                    info.create_system = 3
+                    info.external_attr = (package_macos.stat.S_IFLNK | 0o777) << 16
+                    with zipfile.ZipFile(archive, "w") as bundle:
+                        bundle.writestr(info, link_target)
+
+                    with self.assertRaisesRegex(SystemExit, expected_error):
+                        package_macos.extract_reproducible_zip(archive, root / f"extract-{name}")
+
+    def test_verify_reproducible_zip_fails_closed_when_extracted_app_has_codesign_temp_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / "Vibe Screen.app"
+            resource = app / "Contents" / "Resources"
+            resource.mkdir(parents=True)
+            (resource / "Credits.html.cstemp").write_text("stale", encoding="utf-8")
+            archive = root / "Vibe-Screen.zip"
+            package_macos.create_reproducible_zip(app, archive)
+
+            with mock.patch.object(package_macos, "run", return_value=""):
+                with self.assertRaisesRegex(SystemExit, "Credits.html.cstemp"):
+                    package_macos.verify_reproducible_zip(archive, "Vibe Screen.app")
+
+    def test_main_delegates_final_signing_to_packaged_app_signer(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "artifacts"
+            binary_dir = Path(temporary_directory) / "build"
+            executable = binary_dir / package_macos.EXECUTABLE_NAME
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"binary")
+            framework = binary_dir / package_macos.WEBRTC_FRAMEWORK_NAME
+            (framework / "Versions" / "A").mkdir(parents=True)
+            bundle_notice = (
+                binary_dir
+                / package_macos.RESOURCE_BUNDLE_NAME
+                / "ThirdParty"
+                / NOTICE_RELATIVE_PATH.name
+            )
+            bundle_notice.parent.mkdir(parents=True)
+            bundle_notice.write_text("notice", encoding="utf-8")
+            arguments = argparse.Namespace(
+                version="1.2.3",
+                output_dir=output_dir,
+                sign_identity="Vibe Screen Dev",
+            )
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                resolved_app = output_dir.resolve() / "Vibe Screen.app"
+                if command == ("strip", "-S", str(resolved_app / "Contents" / "MacOS" / "Vibe Screen")):
+                    return ""
+                if command == ("swift", "build", "-c", "release", "-Xswiftc", "-file-prefix-map", "-Xswiftc", f"{package_macos.REPOSITORY_ROOT}=."):
+                    return ""
+                if command == (
+                    "swift",
+                    "build",
+                    "-c",
+                    "release",
+                    "-Xswiftc",
+                    "-file-prefix-map",
+                    "-Xswiftc",
+                    f"{package_macos.REPOSITORY_ROOT}=.",
+                    "--show-bin-path",
+                ):
+                    return str(binary_dir)
+                raise AssertionError(command)
+
+            with (
+                mock.patch.object(package_macos, "parse_args", return_value=arguments),
+                mock.patch.object(package_macos, "resolve_sign_identity", return_value="Vibe Screen Dev"),
+                mock.patch.object(package_macos, "validate_notice_bundle"),
+                mock.patch.object(
+                    package_macos,
+                    "collect_source_identity",
+                    return_value=package_macos.SourceIdentity(commit="a" * 40, tree="b" * 40, dirty=False),
+                ),
+                mock.patch.object(
+                    package_macos,
+                    "read_source_plist",
+                    return_value={"CFBundleShortVersionString": "1.2.3", "CFBundleIdentifier": "dev.telemachus.display"},
+                ),
+                mock.patch.object(package_macos, "run", side_effect=fake_run),
+                mock.patch.object(package_macos, "sign_packaged_app") as sign_mock,
+                mock.patch.object(package_macos, "verify_reproducible_zip") as verify_archive_mock,
+            ):
+                self.assertEqual(package_macos.main(), 0)
+
+            sign_mock.assert_called_once_with(
+                output_dir.resolve() / "Vibe Screen.app",
+                output_dir.resolve() / "Vibe Screen.app" / "Contents" / "Frameworks" / "WebRTC.framework",
+                "Vibe Screen Dev",
+            )
+            verify_archive_mock.assert_called_once_with(
+                output_dir.resolve() / f"Vibe-Screen-macos-1.2.3-{package_macos.platform.machine()}.zip",
+                "Vibe Screen.app",
+            )
 
     def test_host_report_marks_tcc_rows_unavailable_when_database_read_fails(self) -> None:
         report = macos_dev_host.format_report(
