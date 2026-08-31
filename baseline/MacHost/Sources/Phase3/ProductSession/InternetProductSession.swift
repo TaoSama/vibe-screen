@@ -50,6 +50,13 @@ final class InternetProductSession: EncodedFrameSink {
         var drainScheduled = false
         var overloadFailureScheduled = false
         var pending: PendingFrameSubmission?
+
+        mutating func submit(_ submission: PendingFrameSubmission) {
+            if let pending, pending.isKeyframe, !submission.isKeyframe {
+                return
+            }
+            self.pending = submission
+        }
     }
 
     private struct ControlAdmissionState {
@@ -282,13 +289,13 @@ final class InternetProductSession: EncodedFrameSink {
                 state.overloadFailureScheduled = true
                 return (state.generation, false, shouldFail)
             }
-            state.pending = PendingFrameSubmission(
+            state.submit(PendingFrameSubmission(
                 data: data,
                 timestamp: timestamp,
                 isKeyframe: isKeyframe,
                 sessionEpoch: sessionEpoch,
                 generation: state.generation
-            )
+            ))
             guard !state.drainScheduled else { return (state.generation, false, false) }
             state.drainScheduled = true
             return (state.generation, true, false)
