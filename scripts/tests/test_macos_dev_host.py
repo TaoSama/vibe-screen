@@ -430,10 +430,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             expected_sign_identity="Vibe Screen Dev",
@@ -448,10 +445,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             macos_dev_host.PermissionStatus(
                 database_path=Path(PRIVACY_DB_FILENAME),
                 readable=True,
-                rows=(
-                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-                ),
+                rows=allowed_tcc_rows(),
             ),
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
             expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
@@ -2003,24 +1997,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 return_value=macos_dev_host.PermissionStatus(
                     database_path=Path(PRIVACY_DB_FILENAME),
                     readable=True,
-                    rows=(
-                        macos_dev_host.TCCRow(
-                            "kTCCServiceScreenCapture",
-                            "dev.telemachus.display",
-                            0,
-                            2,
-                            4,
-                            1,
-                        ),
-                        macos_dev_host.TCCRow(
-                            "kTCCServiceAccessibility",
-                            "dev.telemachus.display",
-                            0,
-                            2,
-                            4,
-                            2,
-                        ),
-                    ),
+                    rows=allowed_tcc_rows(),
                 ),
             ),
         ):
