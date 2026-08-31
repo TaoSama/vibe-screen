@@ -46,6 +46,85 @@ class RendererViewportStateTest {
     }
 
     @Test
+    fun `physical and virtual display layouts use only client local rotation`() {
+        val cases =
+            listOf(
+                Triple(
+                    1_920,
+                    1_080,
+                    ViewportPolicy.Layout(
+                        viewport = ViewportPolicy.Size(1_200, 675),
+                        surface = ViewportPolicy.Size(1_200, 675),
+                    ) to ViewportPolicy.Layout(
+                        viewport = ViewportPolicy.Size(675, 1_200),
+                        surface = ViewportPolicy.Size(1_200, 675),
+                    ),
+                ),
+                Triple(
+                    2_000,
+                    1_200,
+                    ViewportPolicy.Layout(
+                        viewport = ViewportPolicy.Size(1_200, 720),
+                        surface = ViewportPolicy.Size(1_200, 720),
+                    ) to ViewportPolicy.Layout(
+                        viewport = ViewportPolicy.Size(720, 1_200),
+                        surface = ViewportPolicy.Size(1_200, 720),
+                    ),
+                ),
+            )
+
+        cases.forEach { (displayWidth, displayHeight, expectedLayouts) ->
+            ClientRotation.entries.forEach { clientRotation ->
+                val state =
+                    RendererViewportState(
+                        scaleMode = { VideoScaleMode.FIT },
+                        renderRotation = { clientRotation },
+                    )
+
+                state.updateDisplaySize(displayWidth, displayHeight)
+                state.updateParentSize(1_200, 1_200)
+
+                val expected =
+                    if (ViewportPolicy.surfaceTransformRotation(clientRotation) % 180 == 0) {
+                        expectedLayouts.first
+                    } else {
+                        expectedLayouts.second
+                    }
+                assertEquals("display=${displayWidth}x$displayHeight client=$clientRotation", expected, state.currentLayout)
+            }
+        }
+    }
+
+    @Test
+    fun `fill layout uses client rotation without host rotation input`() {
+        ClientRotation.entries.forEach { clientRotation ->
+            val state =
+                RendererViewportState(
+                    scaleMode = { VideoScaleMode.FILL },
+                    renderRotation = { clientRotation },
+                )
+            state.updateDisplaySize(2_000, 1_200)
+            state.updateParentSize(1_264, 2_800)
+
+            val expectedSurface =
+                if (ViewportPolicy.surfaceTransformRotation(clientRotation) % 180 == 0) {
+                    ViewportPolicy.Size(1_264, 2_800)
+                } else {
+                    ViewportPolicy.Size(2_800, 1_264)
+                }
+
+            assertEquals(
+                "client=$clientRotation",
+                ViewportPolicy.Layout(
+                    viewport = ViewportPolicy.Size(1_264, 2_800),
+                    surface = expectedSurface,
+                ),
+                state.currentLayout,
+            )
+        }
+    }
+
+    @Test
     fun `parent size change recalculates without touching display geometry`() {
         var scaleReads = 0
         var rotationReads = 0

@@ -20,7 +20,7 @@ internal class RendererViewportState(
                 videoWidth = videoWidth,
                 videoHeight = videoHeight,
                 scaleMode = mode,
-                renderRotation = rotation.degrees,
+                renderRotation = ViewportPolicy.surfaceTransformRotation(rotation),
             )
         },
 ) {

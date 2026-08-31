@@ -87,6 +87,6 @@ internal object InternetTouchMapper {
             videoWidth = videoWidth,
             videoHeight = videoHeight,
             scaleMode = scaleMode,
-            renderRotation = clientRotation.degrees,
+            renderRotation = ViewportPolicy.surfaceTransformRotation(clientRotation),
         )
 }
