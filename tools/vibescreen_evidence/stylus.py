@@ -269,9 +269,11 @@ def _artifact_paths(record: dict[str, Any], source_path: Path | None) -> list[st
     if explicit is not None:
         return _string_list(record, "artifact_paths")
     paths: list[str] = []
+    status = _string_value(record, "status")
     if source_path is not None and str(source_path) != "-":
         paths.append(source_path.name)
-    paths.append("dumpsys-input.txt")
+    if status != "blocked_device_coordination_lock":
+        paths.append("dumpsys-input.txt")
     if _optional_string_value(record, "diag_log_read_error") == "":
         paths.append("android-diag.log")
     if _integer_value(record, "host_log_appended_bytes") > 0:

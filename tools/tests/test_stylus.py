@@ -111,6 +111,7 @@ class StylusEvidenceTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["observations"]["adb_was_run"])
         self.assertIn("/tmp/vibe-screen-device-android.lock: present", summary["blocking_notes"])
+        self.assertNotIn("dumpsys-input.txt", summary["artifact_paths"])
 
     def test_schema_required_fields_match_summary(self) -> None:
         summary = summarize(self.complete_record())

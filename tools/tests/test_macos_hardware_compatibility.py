@@ -430,6 +430,34 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
 
 
 class MacOSHardwareCompatibilityCliTest(unittest.TestCase):
+    def test_current_base_codex_task_blocked_fixture_has_no_invalid_claims(self) -> None:
+        evidence_dir = (
+            Path(__file__).parents[2]
+            / "docs"
+            / "changes"
+            / "2026-08-21-host-signing-tcc-preflight"
+            / "evidence"
+            / "2026-08-31-macos-host-compatibility-current-base-codex-task-blocked"
+        )
+        record = json.loads(
+            (evidence_dir / "macos-hardware-compatibility.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        summary = summarize(record, evidence_dir=evidence_dir)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["can_close_macos_host_compatibility_row"])
+        self.assertEqual(summary["invalid_claims"], [])
+        self.assertEqual(summary["artifact_file_check"]["missing_paths"], [])
+        self.assertEqual(summary["artifact_file_check"]["invalid_paths"], [])
+        self.assertEqual(summary["artifact_file_check"]["empty_paths"], [])
+        self.assertEqual(
+            summary["row_scope"]["repository_commit"],
+            "28b9d1a59ef026b45ada3cd7e665ef09ea9a7523",
+        )
+
     def test_cli_outputs_blocked_summary(self) -> None:
         result = subprocess.run(
             [sys.executable, "-m", MODULE, "-", "--run-id", "run-cli"],

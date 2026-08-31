@@ -460,6 +460,16 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertFalse(summary["can_mark_phase0_stable_release"])
         self.assertEqual(summary["readme_guard"]["verdict"], "pass")
         self.assertEqual(summary["closed_required_gate_count"], 5)
+        macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+        self.assertEqual(macos_gate["verdict"], "open")
+        self.assertIn(
+            "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/macos-hardware-compatibility-gate.json",
+            macos_gate["evidence_paths"],
+        )
+        self.assertIn(
+            "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md",
+            macos_gate["evidence_paths"],
+        )
 
 
 class Phase0StableReleaseCliTest(unittest.TestCase):
