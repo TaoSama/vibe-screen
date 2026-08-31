@@ -750,7 +750,15 @@ def read_bundle_plist(app_path: Path) -> dict[str, object]:
 def require_expected_bundle(app_path: Path, expected_bundle_id: str) -> None:
     if not app_path.is_dir():
         raise SystemExit(f"Host bundle not found: {app_path}")
-    bundle_id = str(read_bundle_plist(app_path).get("CFBundleIdentifier", ""))
+    try:
+        plist = read_bundle_plist(app_path)
+    except (plistlib.InvalidFileException, ValueError) as error:
+        raise SystemExit(f"Host bundle at {app_path} has a malformed Info.plist: {error}") from error
+    except OSError as error:
+        raise SystemExit(f"Host bundle at {app_path} has an unreadable Info.plist: {error}") from error
+    if not isinstance(plist, dict):
+        raise SystemExit(f"Host bundle at {app_path} has a malformed Info.plist: expected dictionary root")
+    bundle_id = str(plist.get("CFBundleIdentifier", ""))
     if bundle_id != expected_bundle_id:
         raise SystemExit(
             f"refusing unexpected bundle at {app_path}: "
@@ -1319,6 +1327,21 @@ def write_signing_prerequisite_report(args: argparse.Namespace, error: BaseExcep
     return 2
 
 
+SIGNING_PREREQUISITE_ERROR_MARKERS = (
+    "signing identity",
+    "signing leaf",
+    "codesign identity",
+    "codesign identities",
+    "codesigning",
+    "keychain",
+)
+
+
+def is_signing_prerequisite_error(message: str) -> bool:
+    normalized = message.lower()
+    return any(marker in normalized for marker in SIGNING_PREREQUISITE_ERROR_MARKERS)
+
+
 def write_install_blocked_report(
     args: argparse.Namespace,
     errors: list[str],
@@ -1872,9 +1895,9 @@ def install_command(args: argparse.Namespace) -> int:
         packaged_app = package_dev_app(args.output_dir, args.sign_identity)
     except SystemExit as error:
         message = str(error)
-        if "signing identity" in message or "codesign identity" in message:
+        if is_signing_prerequisite_error(message):
             return write_signing_prerequisite_report(args, error)
-        raise
+        return write_install_blocked_report(args, [message], source_identity=source_identity)
     try:
         packaged_metadata = collect_signing_metadata(packaged_app)
     except (SystemExit, OSError) as error:
