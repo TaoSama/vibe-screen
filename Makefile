@@ -11,6 +11,8 @@ EVIDENCE_EXPECTED_DEVICE ?=
 EVIDENCE_EXPECTED_ANDROID_RELEASE ?=
 EVIDENCE_EXPECTED_SDK ?=
 EVIDENCE_ALLOW_EXISTING_LOCKS ?=
+USB_CURRENT_BASE_MANIFEST ?= $(EVIDENCE_DIR)/usb-current-base.json
+USB_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/usb-current-base-gate.json
 EVIDENCE_HOST_PID ?= $(HOST_PID)
 PHASE0_STABLE_RELEASE_MANIFEST ?= docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json
 PHASE0_STABLE_RELEASE_SUMMARY ?= .build/evidence/phase0-stable-release/phase0-stable-release-summary.json
@@ -242,6 +244,8 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	evidence-device-info \
 	evidence-usb-live-smoke \
 	evidence-usb-smoke-preflight \
+	usb-current-base-owner-record \
+	usb-current-base-gate \
 	evidence-touch-rerun-preflight \
 	evidence-touch-rerun-summary \
 	evidence-trusted-lan-preflight \
@@ -653,6 +657,17 @@ evidence-usb-smoke-preflight: require-evidence-serial
 		$(if $(strip $(EVIDENCE_EXPECTED_SDK)),--expected-sdk $(EVIDENCE_EXPECTED_SDK),) \
 		$(if $(filter 1 true yes,$(EVIDENCE_ALLOW_EXISTING_LOCKS)),--allow-existing-locks,) \
 		--output $(EVIDENCE_DIR)/usb-smoke-preflight.json
+
+usb-current-base-gate:
+	@test -f "$(USB_CURRENT_BASE_MANIFEST)" || (echo "error: collect $(USB_CURRENT_BASE_MANIFEST) before usb-current-base-gate" >&2; exit 2)
+	@mkdir -p "$(dir $(USB_CURRENT_BASE_GATE_JSON))"
+	@PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_current_base_gate \
+		--manifest "$(USB_CURRENT_BASE_MANIFEST)" \
+		--repository-root . \
+		--output "$(USB_CURRENT_BASE_GATE_JSON)" \
+		$(if $(filter 1 true yes,$(USB_CURRENT_BASE_ALLOW_BLOCKED)),--allow-blocked,)
+
+usb-current-base-owner-record: usb-current-base-gate
 
 evidence-touch-rerun-preflight: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \

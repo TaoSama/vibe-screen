@@ -566,6 +566,20 @@ and cancel/cleanup evidence. Missing product evidence,
 synthetic/offline-only evidence, or a P0110 run relabeled as Xiaomi/fuxi remains
 blocked or failed.
 
+### Android USB current-base owner gate
+
+The Android USB current-base owner gate consumes `usb-current-base.json` and
+writes `usb-current-base-gate.json`:
+
+```sh
+make usb-current-base-owner-record EVIDENCE_DIR=.build/evidence/usb-current-base
+```
+
+The manifest must reference retained USB smoke preflight, USB live-smoke, Host
+readiness, device identity, and repository snapshot artifacts. The gate returns
+nonzero for blocked evidence unless `USB_CURRENT_BASE_ALLOW_BLOCKED=1` is set;
+a blocked owner record is readiness only and never closes the README gate.
+
 ### USB live-stream smoke
 
 The read-only USB live-stream smoke collector inspects an already-running

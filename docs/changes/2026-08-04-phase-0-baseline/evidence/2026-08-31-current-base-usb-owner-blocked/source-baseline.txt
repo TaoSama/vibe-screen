@@ -1,0 +1,4 @@
+Date/run: 2026-08-31
+Branch: codex/usb-current-base-owner-20260831b
+HEAD/current main: 0d58960970c7b8f1e1a8b3671a79752a4bf8470a
+Origin main: 0d58960970c7b8f1e1a8b3671a79752a4bf8470a

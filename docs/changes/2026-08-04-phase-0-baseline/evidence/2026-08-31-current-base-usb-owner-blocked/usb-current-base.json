@@ -1,0 +1,76 @@
+{
+  "artifacts": [
+    {
+      "description": "source branch/HEAD/origin/main snapshot for current-base owner record",
+      "kind": "repository_snapshot",
+      "path": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-31-current-base-usb-owner-blocked/source-baseline.txt",
+      "sha256": "d98ecf29e757ac3024e5f4d2618a932a9b138eb4a1837b9c18832184b22eb6b1"
+    },
+    {
+      "description": "read-only USB smoke preflight result on Nubia P0110/pacific",
+      "kind": "usb_smoke_preflight",
+      "path": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-31-current-base-usb-owner-blocked/usb-smoke-preflight.json",
+      "sha256": "5aeacbfe84efb7cb4f7df263b752a165dfea3c40095d8642cd3d9dd3dfcba56d"
+    },
+    {
+      "description": "read-only USB live-smoke result; verdict insufficient, no stream observed",
+      "kind": "usb_live_smoke",
+      "path": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-31-current-base-usb-owner-blocked/usb-live-smoke.json",
+      "sha256": "85e2d5e2d23f4aa529d1dbc27c5fb2bcc99cbaf9b13fb0b3fabf1ad5633694b9"
+    },
+    {
+      "description": "macOS Host shared readiness snapshot",
+      "kind": "host_readiness",
+      "path": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-31-current-base-usb-owner-blocked/host-readiness.json",
+      "sha256": "4a3181322e203583600f8c35e22a7b4125fd459d329b088b561872c8dd3b3eff"
+    },
+    {
+      "description": "Nubia P0110/pacific device identity snapshot",
+      "kind": "device_identity",
+      "path": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-31-current-base-usb-owner-blocked/device-info.json",
+      "sha256": "4cf04ad7307709ae4b8fbed34595bb65b166d4855d70f13c001af3b261f60646"
+    }
+  ],
+  "can_close_readme_android_usb_current_base_gate": false,
+  "created_at": "2026-08-31T05:13:00Z",
+  "device": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": "36"
+  },
+  "kind": "android_usb_current_base",
+  "notes": [
+    "blocked owner record only; does not close README USB/Protocol v1 or P0110 general-Android replacement gates"
+  ],
+  "repository": {
+    "branch": "codex/usb-current-base-owner-20260831b",
+    "current_main_sha": "0d58960970c7b8f1e1a8b3671a79752a4bf8470a",
+    "dirty": false,
+    "notes": [
+      "current-base USB owner record started from origin/main HEAD; retained evidence is fail-closed because Host signing/listener and Android foreground prerequisites blocked before USB smoke could start"
+    ]
+  },
+  "run_id": "2026-08-31-current-base-usb-owner-blocked",
+  "schema_version": "vibescreen.evidence/v1",
+  "state": {
+    "blockers": [
+      "Android app process is not running",
+      "Android app is not foreground",
+      "Mac Host is not listening on TCP 54321",
+      "macOS Host stable-signing/TCC preflight failed",
+      "no current-process USB live smoke evidence was collected"
+    ],
+    "host_readiness": {
+      "observed": false
+    },
+    "usb_live_smoke": {
+      "observed": false
+    },
+    "usb_preflight": {
+      "observed": false
+    }
+  }
+}
