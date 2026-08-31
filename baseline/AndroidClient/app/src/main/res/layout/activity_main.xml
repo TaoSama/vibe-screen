@@ -542,7 +542,7 @@
                     android:paddingEnd="4dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    android:textSize="10sp"
+                    android:textSize="12sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -561,7 +561,7 @@
                     android:paddingEnd="4dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    android:textSize="10sp"
+                    android:textSize="12sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -581,7 +581,7 @@
                     android:paddingEnd="4dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    android:textSize="10sp"
+                    android:textSize="12sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -624,8 +624,8 @@
                     android:text=""
                     android:accessibilityLiveRegion="polite"
                     android:textColor="#D8DEE4"
-                    android:textSize="10sp"
-                    android:lineSpacingExtra="1dp" />
+                    android:textSize="12sp"
+                    android:lineSpacingExtra="2dp" />
             </LinearLayout>
 
             <!-- Connection Checklist -->
