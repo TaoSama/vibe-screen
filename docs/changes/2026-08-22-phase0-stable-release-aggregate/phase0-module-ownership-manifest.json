@@ -229,24 +229,26 @@
       "title": "Android renderer ownership boundary",
       "required_for_phase0_stable": true,
       "status": "partial",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererViewportState.kt",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererOwner.kt",
       "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererOwner.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererViewportState.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererViewportStateTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererOwnershipBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientExperience.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.RendererViewportStateTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererViewportStateTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest"
       ],
       "blockers": [
-        "Renderer viewport state is extracted but decoder surface mutation still happens directly in MainActivity.",
-        "Renderer presentation for Internet/local sessions still reaches MainActivity layout callbacks through one UI owner."
+        "Renderer owner now gates viewport layout, render-target generation, and local/Internet frame admission before decoder presentation, but Android View/SurfaceHolder mutation still lives in MainActivity as the platform adapter.",
+        "Decoder output and MediaCodec lifecycle ownership remain tracked by decoder_ownership, so renderer_ownership remains fail-closed until decoder output boundaries are separately closed."
       ],
       "fail_closed_checklist": [
-        "Keep RendererViewportState free of Android UI, transport sockets, decoder, and protocol dependencies.",
-        "Route viewport layout updates through RendererViewportState before touching Android layout params.",
-        "Expand contract tests to frame presentation/stale-frame rejection once decoder output is owned separately."
+        "Keep RendererOwner and RendererViewportState free of Android UI, transport sockets, decoder, and protocol dependencies.",
+        "Route viewport layout updates, render-target generation checks, and local/Internet frame admission through RendererOwner before touching Android layout params or decoder presentation.",
+        "Keep decoder output and MediaCodec lifecycle closure owned by decoder_ownership rather than folding codec lifecycle into renderer_ownership."
       ]
     },
     {

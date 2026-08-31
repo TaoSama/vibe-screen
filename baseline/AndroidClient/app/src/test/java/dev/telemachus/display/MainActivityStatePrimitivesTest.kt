@@ -54,7 +54,7 @@ class MainActivityStatePrimitivesTest {
                 commitInternetDecoderPresentation(
                     nextState = attempted,
                     captureState = { current },
-                    installState = { current = it },
+                    installState = { current = it; true },
                     restoreState = { attemptedState, previousState ->
                         assertEquals(attempted, attemptedState)
                         assertEquals(previous, previousState)
@@ -86,7 +86,7 @@ class MainActivityStatePrimitivesTest {
             commitInternetDecoderPresentation(
                 nextState = attempted,
                 captureState = { current },
-                installState = { current = it },
+                installState = { current = it; true },
                 restoreState = { _, _ -> rollbackCalled = true },
             ) { capturedPrevious ->
                 assertEquals(previous, capturedPrevious)
@@ -95,6 +95,30 @@ class MainActivityStatePrimitivesTest {
 
         assertEquals(previous, captured)
         assertEquals(attempted, current)
+        assertFalse(rollbackCalled)
+    }
+
+    @Test
+    fun rejectedPresentationInstallDoesNotRunPresenterOrRollback() {
+        val previous = presentationState("old-decoder", "old-config", 1280, 720, 0, connected = true)
+        val attempted = presentationState("new-decoder", "new-config", 1920, 1080, 90, connected = true)
+        var current = previous
+        var presenterCalled = false
+        var rollbackCalled = false
+
+        val captured =
+            commitInternetDecoderPresentation(
+                nextState = attempted,
+                captureState = { current },
+                installState = { false },
+                restoreState = { _, _ -> rollbackCalled = true },
+            ) {
+                presenterCalled = true
+            }
+
+        assertNull(captured)
+        assertEquals(previous, current)
+        assertFalse(presenterCalled)
         assertFalse(rollbackCalled)
     }
 
@@ -111,7 +135,7 @@ class MainActivityStatePrimitivesTest {
                 commitInternetDecoderPresentation(
                     nextState = attempted,
                     captureState = { current },
-                    installState = { current = it },
+                    installState = { current = it; true },
                     restoreState = { _, _ -> throw rollbackFailure },
                 ) { throw presentationFailure }
                 fail("Expected presentation failure")
@@ -136,6 +160,7 @@ class MainActivityStatePrimitivesTest {
         InternetDecoderPresentationState(
             decoder = decoder,
             configuration = configuration,
+            rendererPresentation = null,
             displayWidth = width,
             displayHeight = height,
             displayRotation = rotation,
