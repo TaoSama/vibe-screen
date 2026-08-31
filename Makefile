@@ -220,6 +220,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	phase3-internet-soak-gate \
 	phase3-internet-release-gate \
 	baseline-macos-build \
+	baseline-macos-permission-prompt-contract \
 	baseline-macos-xctest-preflight \
 	baseline-macos-test \
 	baseline-macos-self-test \
@@ -544,13 +545,16 @@ phase3-android-current-base-interop-gate:
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
 
+baseline-macos-permission-prompt-contract:
+	swift scripts/verify_macos_permission_prompt_contract.swift
+
 baseline-macos-xctest-preflight:
 	python3 scripts/macos_dev_host.py xctest-preflight
 
-baseline-macos-test: baseline-macos-xctest-preflight
+baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight
 	cd baseline/MacHost && swift test
 
-baseline-macos-self-test: baseline-macos-build
+baseline-macos-self-test: baseline-macos-build baseline-macos-permission-prompt-contract
 	@host_bin="$$(cd baseline/MacHost && swift build -c release --show-bin-path)/Vibe Screen"; \
 		"$$host_bin" --host-self-test; \
 		"$$host_bin" --transport-self-test; \

@@ -2078,13 +2078,39 @@ class PrepareReleaseTests(unittest.TestCase):
         makefile = MAKEFILE.read_text(encoding="utf-8")
 
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
+        self.assertIn("baseline-macos-permission-prompt-contract:", makefile)
+        self.assertIn(
+            "\tswift scripts/verify_macos_permission_prompt_contract.swift",
+            makefile,
+        )
         self.assertIn("\tbaseline-macos-xctest-preflight \\", makefile)
+        self.assertIn("\tbaseline-macos-permission-prompt-contract \\", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
-        self.assertRegex(makefile, r"(?m)^baseline-macos-test: baseline-macos-xctest-preflight$")
+        self.assertRegex(
+            makefile,
+            r"(?m)^baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight$",
+        )
+        self.assertRegex(
+            makefile,
+            r"(?m)^baseline-macos-self-test: baseline-macos-build baseline-macos-permission-prompt-contract$",
+        )
         self.assertIn("swift build -c release --show-bin-path", makefile)
         self.assertNotIn(
             '"baseline/MacHost/.build/release/Vibe Screen" --host-self-test',
             makefile,
+        )
+
+        phase0_workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        release_workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("- run: make baseline-macos-permission-prompt-contract", phase0_workflow)
+        self.assertIn("make baseline-macos-permission-prompt-contract", release_workflow)
+        self.assertLess(
+            phase0_workflow.index("- run: make baseline-macos-permission-prompt-contract"),
+            phase0_workflow.index("- run: make baseline-macos-test"),
+        )
+        self.assertLess(
+            release_workflow.index("make baseline-macos-permission-prompt-contract"),
+            release_workflow.index("make baseline-macos-test"),
         )
 
     def test_host_display_rotation_gate_make_target_runs_formal_verifier(self) -> None:

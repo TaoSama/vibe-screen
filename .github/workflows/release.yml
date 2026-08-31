@@ -85,6 +85,7 @@ jobs:
         run: |
           make baseline-macos-build
           make baseline-macos-self-test
+          make baseline-macos-permission-prompt-contract
           make baseline-macos-test
       - name: Package ad-hoc signed, unnotarized macOS preview
         env:
