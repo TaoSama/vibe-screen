@@ -781,10 +781,7 @@ def parse_designated_requirement(output: str) -> str | None:
 
 
 def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
-    if requirement is None:
-        return None
-    match = re.search(r"certificate leaf = H\"([0-9a-fA-F]+)\"", requirement)
-    return match.group(1).upper() if match else None
+    return package_macos.parse_signing_certificate_hash(requirement)
 
 
 def parse_entitlement_keys(output: str) -> tuple[str, ...]:
@@ -1644,53 +1641,6 @@ def write_json_report(path: Path, document: dict[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(path)
-
-
-def metadata_and_permissions(
-    install_path: Path,
-    tcc_db: Path,
-    *,
-    expected_sign_identity: str | None = None,
-    source_root: Path = package_macos.REPOSITORY_ROOT,
-    allow_source_mismatch: bool = False,
-    validate_configured_identity: bool = True,
-) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
-    errors: list[str] = []
-    if validate_configured_identity:
-        configured_sign_identity = effective_sign_identity(expected_sign_identity)
-        if configured_sign_identity == "-":
-            errors.append(
-                "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
-            )
-        else:
-            try:
-                resolved_identity = package_macos.resolve_sign_identity(
-                    configured_sign_identity
-                )
-            except SystemExit as error:
-                errors.append(str(error))
-            else:
-                if resolved_identity != EXPECTED_SIGNING_LEAF_SHA1:
-                    errors.append(
-                        "configured signing identity resolved to unexpected leaf SHA-1: "
-                        f"resolved '{resolved_identity}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
-                    )
-    else:
-        configured_sign_identity = effective_sign_identity(expected_sign_identity)
-    metadata = collect_signing_metadata(install_path)
-    source_identity = current_source_identity(source_root)
-    permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(
-        validate_preflight(
-            metadata,
-            permissions,
-            install_path=install_path,
-            expected_sign_identity=configured_sign_identity,
-            source_identity=source_identity,
-            allow_source_mismatch=allow_source_mismatch,
-        )
-    )
-    return metadata, source_identity, permissions, errors
 
 
 def refuse_ad_hoc_identity(sign_identity: str) -> None:

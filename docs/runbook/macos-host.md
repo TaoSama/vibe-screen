@@ -133,9 +133,13 @@ same pinned leaf. A missing or drifted `Vibe Screen Dev` identity means the Host
 cannot be rebuilt or reinstalled as the TCC-compatible stable signed binary.
 `baseline-macos-touch-preflight` is a compatibility alias for the same check.
 Both targets exit non-zero if any installed-bundle, source-provenance, or
-permission check is missing. When blocked, keep the generated report as
-readiness evidence, open **System Settings -> Privacy & Security -> Screen &
-System Audio Recording** and **Accessibility**, grant the installed
+permission check is missing. The preflight is read-only and must not open System
+Settings or request macOS privacy prompts. After restoring the exact historical
+leaf and reinstalling the Host, run it first; the expected path is that existing
+Screen Recording and Accessibility TCC grants are reused without new approval.
+Only when the generated report proves those historical authorization rows are
+absent should a user explicitly open **System Settings -> Privacy & Security ->
+Screen & System Audio Recording** and **Accessibility**, grant the installed
 `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run the
 preflight again. A report produced without a stable installed Host identity, TCC
 authorization, or matching source provenance cannot close USB, LAN, Host RSS,

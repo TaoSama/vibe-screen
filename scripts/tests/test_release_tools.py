@@ -1283,6 +1283,24 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 package_macos.EXPECTED_SIGNING_LEAF_SHA1,
             )
 
+    def test_duplicate_same_sha1_identity_is_treated_as_one_keychain_identity(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                f'  1) {package_macos.EXPECTED_SIGNING_LEAF_SHA1} '
+                '"Vibe Screen Dev"\n'
+                f'  2) {package_macos.EXPECTED_SIGNING_LEAF_SHA1} '
+                '"Vibe Screen Dev"\n'
+                "     2 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            self.assertEqual(
+                package_macos.resolve_sign_identity("Vibe Screen Dev"),
+                package_macos.EXPECTED_SIGNING_LEAF_SHA1,
+            )
+
     def test_named_identity_lookup_timeout_fails_closed(self) -> None:
         with mock.patch.object(
             package_macos.subprocess,
@@ -1293,6 +1311,16 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(SystemExit, "security find-identity -v -p codesigning timed out"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
+    def test_identity_lookup_nonzero_return_fails_closed_with_security_output(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=1,
+            stdout="security: SecKeychainSearchCopyNext: The specified item could not be found.\n",
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "security find-identity.*failed"):
                 package_macos.resolve_sign_identity("Vibe Screen Dev")
 
     def test_identity_lookup_requires_an_exact_name(self) -> None:
@@ -1363,8 +1391,102 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "multiple codesign identities"):
                 package_macos.resolve_sign_identity("Vibe Screen Dev")
 
+    def test_duplicate_named_identity_with_expected_leaf_still_fails_closed(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                f'  1) {package_macos.EXPECTED_SIGNING_LEAF_SHA1} '
+                '"Vibe Screen Dev"\n'
+                '  2) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA '
+                '"Vibe Screen Dev"\n'
+                "     2 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "multiple codesign identities"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
+    def test_environment_ad_hoc_identity_requires_explicit_cli_option(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "Pass --sign-identity - explicitly"):
+            package_macos.require_explicit_ad_hoc_preview("-", explicit_cli_option=False)
+
+        package_macos.require_explicit_ad_hoc_preview("-", explicit_cli_option=True)
+
+    def test_parse_signing_certificate_hash_accepts_leaf_or_root_only(self) -> None:
+        expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+        self.assertEqual(
+            package_macos.parse_signing_certificate_hash(
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected.lower()}"'
+            ),
+            expected,
+        )
+        self.assertEqual(
+            package_macos.parse_signing_certificate_hash(
+                f'identifier "dev.telemachus.display" and certificate root = H"{expected.lower()}"'
+            ),
+            expected,
+        )
+        self.assertIsNone(
+            package_macos.parse_signing_certificate_hash(
+                'identifier "dev.telemachus.display" and certificate root = H"not-a-sha1"'
+            )
+        )
+        self.assertIsNone(
+            package_macos.parse_signing_certificate_hash(
+                'identifier "dev.telemachus.display" and certificate 1 = H"' + expected + '"'
+            )
+        )
+
+    def test_parse_signing_certificate_hash_prefers_leaf_when_root_is_present(self) -> None:
+        expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+        root = "B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+        self.assertEqual(
+            package_macos.parse_signing_certificate_hash(
+                f'certificate root = H"{root}" and certificate leaf = H"{expected}"'
+            ),
+            expected,
+        )
+
+    def test_parse_designated_requirement_requires_designated_marker(self) -> None:
+        self.assertIsNone(
+            package_macos.parse_designated_requirement(
+                f'library => certificate leaf = H"{package_macos.EXPECTED_SIGNING_LEAF_SHA1}"'
+            )
+        )
+
+    def test_parse_args_rejects_environment_ad_hoc_without_explicit_cli_option(self) -> None:
+        with (
+            mock.patch.object(sys, "argv", ["package_macos.py"]),
+            mock.patch.dict(os.environ, {package_macos.SIGN_IDENTITY_ENV: "-"}),
+        ):
+            arguments = package_macos.parse_args()
+
+        self.assertEqual(arguments.sign_identity, "-")
+        self.assertFalse(arguments.sign_identity_explicit)
+        with self.assertRaisesRegex(SystemExit, "Pass --sign-identity - explicitly"):
+            package_macos.require_explicit_ad_hoc_preview(
+                arguments.sign_identity,
+                explicit_cli_option=arguments.sign_identity_explicit,
+            )
+
+    def test_parse_args_allows_explicit_cli_ad_hoc_preview(self) -> None:
+        with (
+            mock.patch.object(sys, "argv", ["package_macos.py", "--sign-identity", "-"]),
+            mock.patch.dict(os.environ, {package_macos.SIGN_IDENTITY_ENV: "Vibe Screen Dev"}),
+        ):
+            arguments = package_macos.parse_args()
+
+        self.assertEqual(arguments.sign_identity, "-")
+        self.assertTrue(arguments.sign_identity_explicit)
+        package_macos.require_explicit_ad_hoc_preview(
+            arguments.sign_identity,
+            explicit_cli_option=arguments.sign_identity_explicit,
+        )
+
     def test_main_resolves_identity_before_validating_or_building(self) -> None:
-        arguments = mock.Mock(sign_identity="Vibe Screen Dev")
+        arguments = argparse.Namespace(sign_identity="Vibe Screen Dev", sign_identity_explicit=False)
         with (
             mock.patch.object(package_macos, "parse_args", return_value=arguments),
             mock.patch.object(
@@ -1372,11 +1494,13 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 "resolve_sign_identity",
                 side_effect=SystemExit("missing identity"),
             ) as resolve_mock,
+            mock.patch.object(package_macos, "require_explicit_ad_hoc_preview") as preview_mock,
             mock.patch.object(package_macos, "validate_notice_bundle") as validate_mock,
             mock.patch.object(package_macos, "run") as run_mock,
         ):
             with self.assertRaisesRegex(SystemExit, "missing identity"):
                 package_macos.main()
+        preview_mock.assert_called_once_with("Vibe Screen Dev", explicit_cli_option=False)
         resolve_mock.assert_called_once_with("Vibe Screen Dev")
         validate_mock.assert_not_called()
         run_mock.assert_not_called()
@@ -1459,6 +1583,14 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 commands.append(command)
                 if command == (package_macos.CODESIGN, "--force", "--sign", "Vibe Screen Dev", str(framework)):
                     self.assertFalse(stale.exists())
+                if command in (
+                    (package_macos.CODESIGN, "-d", "-r-", str(app)),
+                    (package_macos.CODESIGN, "-d", "-r-", str(framework)),
+                ):
+                    return (
+                        'designated => identifier "dev.telemachus.display" and '
+                        f'certificate root = H"{package_macos.EXPECTED_SIGNING_LEAF_SHA1}"'
+                    )
                 return ""
 
             with mock.patch.object(package_macos, "run", side_effect=fake_run):
@@ -1481,6 +1613,8 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                         str(app),
                     ),
                     (package_macos.CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app)),
+                    (package_macos.CODESIGN, "-d", "-r-", str(app)),
+                    (package_macos.CODESIGN, "-d", "-r-", str(framework)),
                 ],
             )
 
@@ -1556,6 +1690,182 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                     (package_macos.CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app)),
                 ],
             )
+
+    def test_verify_signed_app_certificate_contract_accepts_root_certificate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value=(
+                    'designated => identifier "dev.telemachus.display" and '
+                    f'certificate root = H"{expected.lower()}"'
+                ),
+            ) as run_mock:
+                package_macos.verify_signed_app_certificate_contract(app, expected)
+
+        run_mock.assert_called_once_with(package_macos.CODESIGN, "-d", "-r-", str(app))
+
+    def test_verify_signed_app_certificate_contract_rejects_wrong_root_certificate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value=(
+                    'designated => identifier "dev.telemachus.display" and '
+                    'certificate root = H"B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
+                ),
+            ):
+                with self.assertRaisesRegex(SystemExit, "expected '9AAE572BF6D764E3436A6109197D345B5A87998C'"):
+                    package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
+
+    def test_verify_signed_app_certificate_contract_rejects_malformed_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value='designated => identifier "dev.telemachus.display" and certificate root = H"not-a-sha1"',
+            ):
+                with self.assertRaisesRegex(SystemExit, "valid certificate leaf/root SHA-1"):
+                    package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
+
+    def test_verify_signed_app_certificate_contract_rejects_missing_designated_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value=f'library => certificate leaf = H"{package_macos.EXPECTED_SIGNING_LEAF_SHA1}"',
+            ):
+                with self.assertRaisesRegex(SystemExit, "designated requirement is missing"):
+                    package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
+
+    def test_verify_signed_app_certificate_contract_wraps_codesign_requirement_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            error = subprocess.CalledProcessError(1, [package_macos.CODESIGN], output="not signed")
+            with mock.patch.object(package_macos, "run", side_effect=error):
+                with self.assertRaisesRegex(SystemExit, "inspection failed.*not signed"):
+                    package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
+
+    def test_verify_signed_app_certificate_contract_skips_ad_hoc_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            with mock.patch.object(package_macos, "run") as run_mock:
+                package_macos.verify_signed_app_certificate_contract(app, "-")
+
+        run_mock.assert_not_called()
+
+    def test_sign_packaged_app_verifies_outer_app_and_framework_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
+            (framework / "Versions" / "A").mkdir(parents=True)
+            commands: list[tuple[str, ...]] = []
+            expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                commands.append(command)
+                if command in (
+                    (package_macos.CODESIGN, "-d", "-r-", str(app)),
+                    (package_macos.CODESIGN, "-d", "-r-", str(framework)),
+                ):
+                    return (
+                        'designated => identifier "dev.telemachus.display" and '
+                        f'certificate leaf = H"{expected}"'
+                    )
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                package_macos.sign_packaged_app(app, framework, expected)
+
+        self.assertIn((package_macos.CODESIGN, "-d", "-r-", str(app)), commands)
+        self.assertIn((package_macos.CODESIGN, "-d", "-r-", str(framework)), commands)
+
+    def test_sign_packaged_app_rejects_framework_requirement_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
+            (framework / "Versions" / "A").mkdir(parents=True)
+            expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                if command == (package_macos.CODESIGN, "-d", "-r-", str(app)):
+                    return (
+                        'designated => identifier "dev.telemachus.display" and '
+                        f'certificate leaf = H"{expected}"'
+                    )
+                if command == (package_macos.CODESIGN, "-d", "-r-", str(framework)):
+                    return (
+                        'designated => identifier "org.webmproject.webrtc" and '
+                        'certificate leaf = H"B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
+                    )
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                with self.assertRaisesRegex(SystemExit, "WebRTC\.framework.*expected"):
+                    package_macos.sign_packaged_app(app, framework, expected)
+
+    def test_sign_packaged_app_ad_hoc_skips_designated_requirement_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
+            (framework / "Versions" / "A").mkdir(parents=True)
+            commands: list[tuple[str, ...]] = []
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                commands.append(command)
+                return ""
+
+            with mock.patch.object(package_macos, "run", side_effect=fake_run):
+                package_macos.sign_packaged_app(app, framework, "-")
+
+        self.assertNotIn((package_macos.CODESIGN, "-d", "-r-", str(app)), commands)
+        self.assertNotIn((package_macos.CODESIGN, "-d", "-r-", str(framework)), commands)
+
+    def test_verify_reproducible_zip_rechecks_extracted_app_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / "Vibe Screen.app"
+            (app / "Contents").mkdir(parents=True)
+            archive = root / "Vibe-Screen.zip"
+            package_macos.create_reproducible_zip(app, archive)
+
+            with (
+                mock.patch.object(package_macos, "run", return_value=""),
+                mock.patch.object(
+                    package_macos,
+                    "verify_packaged_app_certificate_contracts",
+                    side_effect=SystemExit("wrong app leaf"),
+                ) as contract_mock,
+            ):
+                with self.assertRaisesRegex(SystemExit, "wrong app leaf"):
+                    package_macos.verify_reproducible_zip(
+                        archive,
+                        "Vibe Screen.app",
+                        sign_identity=package_macos.EXPECTED_SIGNING_LEAF_SHA1,
+                    )
+
+        self.assertEqual(Path(contract_mock.call_args.args[0]).name, "Vibe Screen.app")
+
+    def test_verify_reproducible_zip_without_sign_identity_skips_certificate_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / "Vibe Screen.app"
+            (app / "Contents").mkdir(parents=True)
+            archive = root / "Vibe-Screen.zip"
+            package_macos.create_reproducible_zip(app, archive)
+
+            with (
+                mock.patch.object(package_macos, "run", return_value=""),
+                mock.patch.object(package_macos, "verify_packaged_app_certificate_contracts") as contract_mock,
+            ):
+                package_macos.verify_reproducible_zip(archive, "Vibe Screen.app")
+
+        contract_mock.assert_not_called()
 
     def test_verify_reproducible_zip_extracts_and_strict_verifies_app(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1652,6 +1962,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 version="1.2.3",
                 output_dir=output_dir,
                 sign_identity="Vibe Screen Dev",
+                sign_identity_explicit=False,
             )
 
             def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
@@ -1702,6 +2013,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             verify_archive_mock.assert_called_once_with(
                 output_dir.resolve() / f"Vibe-Screen-macos-1.2.3-{package_macos.platform.machine()}.zip",
                 "Vibe Screen.app",
+                sign_identity="Vibe Screen Dev",
             )
 
     def test_host_report_marks_tcc_rows_unavailable_when_database_read_fails(self) -> None:

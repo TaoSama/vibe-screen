@@ -16,6 +16,8 @@ from vibescreen_evidence.host_display_rotation_current_base_manifest import (
     SCOPE_PRS,
     SOURCE_DOCS,
     SUPPORTING_GATES,
+    TARGET_SIGNING_LEAF_SHA1,
+    _signing_probe,
     build_manifest,
     collect_environment,
     main,
@@ -51,6 +53,100 @@ def blocked_device() -> dict[str, object]:
 
 
 class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    def test_signing_probe_requires_pinned_target_leaf(self, run_probe):
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-v", "-p", "codesigning"],
+            "status": "pass",
+            "exit_code": 0,
+            "summary": [
+                f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
+                "     1 valid identities found",
+            ],
+        }
+
+        result = _signing_probe()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertTrue(result["target_identity_available"])
+        self.assertEqual(result["target_identity_leaf_sha1"], TARGET_SIGNING_LEAF_SHA1)
+        self.assertEqual(result["expected_identity_leaf_sha1"], TARGET_SIGNING_LEAF_SHA1)
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    def test_signing_probe_treats_duplicate_same_sha1_as_one_identity(self, run_probe):
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-v", "-p", "codesigning"],
+            "status": "pass",
+            "exit_code": 0,
+            "summary": [
+                f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
+                f'  2) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
+                "     2 valid identities found",
+            ],
+        }
+
+        result = _signing_probe()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["valid_identity_count"], 1)
+        self.assertTrue(result["target_identity_available"])
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    def test_signing_probe_rejects_same_named_wrong_leaf(self, run_probe):
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-v", "-p", "codesigning"],
+            "status": "pass",
+            "exit_code": 0,
+            "summary": [
+                '  1) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Vibe Screen Dev"',
+                "     1 valid identities found",
+            ],
+        }
+
+        result = _signing_probe()
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse(result["target_identity_available"])
+        self.assertEqual(result["target_identity_leaf_sha1"], "B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        self.assertIn("expected", result["target_identity_error"])
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    def test_signing_probe_reports_missing_target_identity(self, run_probe):
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-v", "-p", "codesigning"],
+            "status": "pass",
+            "exit_code": 0,
+            "summary": [
+                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Other Signing Identity"',
+                "     1 valid identities found",
+            ],
+        }
+
+        result = _signing_probe()
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["valid_identity_count"], 1)
+        self.assertEqual(result["target_identity_error"], "target identity not found")
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest._run_probe")
+    def test_signing_probe_rejects_duplicate_same_named_identity(self, run_probe):
+        run_probe.return_value = {
+            "command": ["security", "find-identity", "-v", "-p", "codesigning"],
+            "status": "pass",
+            "exit_code": 0,
+            "summary": [
+                f'  1) {TARGET_SIGNING_LEAF_SHA1} "Vibe Screen Dev"',
+                '  2) B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Vibe Screen Dev"',
+                "     2 valid identities found",
+            ],
+        }
+
+        result = _signing_probe()
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse(result["target_identity_available"])
+        self.assertEqual(result["target_identity_error"], "multiple matching target identities found")
+
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device")
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.repository_state")
@@ -110,6 +206,30 @@ class HostDisplayRotationCurrentBaseManifestTests(unittest.TestCase):
         self.assertEqual(set(manifest), set(schema["properties"]))
         for field in schema["required"]:
             self.assertIn(field, manifest)
+
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_device")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
+    @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.repository_state")
+    def test_host_preflight_notes_surface_signing_leaf_mismatch(
+        self, state, environment, device
+    ):
+        state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        environment.return_value = {
+            "codesigning_identities": {
+                "target_identity_available": False,
+                "target_identity_error": "target identity leaf SHA-1 is B55280E7, expected 9AAE572B",
+            }
+        }
+        device.return_value = blocked_device()
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            manifest = build_manifest(command=[], repo=root)
+
+        self.assertEqual(
+            manifest["host_preflight"]["signing_identity"]["notes"],
+            ["target identity leaf SHA-1 is B55280E7, expected 9AAE572B"],
+        )
 
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.collect_environment")
     @patch("vibescreen_evidence.host_display_rotation_current_base_manifest.repository_state")
