@@ -727,3 +727,56 @@ Validation:
 The Phase 2 tablet, stand-mounted charging, thermal/power, device-memory,
 recovery, hardware-keyboard, login/headless, and eight-hour soak gates remain
 open after this refresh.
+
+## 2026-08-31 tablet sustained-use current-base owner and preflight
+
+This update refreshes the Phase 2 tablet sustained-use / physical 8-9 inch
+tablet current-base owner on current `origin/main`
+(`28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`) without claiming a gate pass. No
+physical tablet run, stand-mounted charging run, controlled thermal-load run,
+eight-hour soak, recovery run, hardware-keyboard pass, or login/headless pass was
+performed.
+
+Current P0110 substitute preflight evidence is under
+[`evidence/2026-08-31-nubia-p0110-phase2-soak-preflight-current-base`](evidence/2026-08-31-nubia-p0110-phase2-soak-preflight-current-base/README.md).
+The runner used the attached Nubia P0110/pacific Android 16 / SDK 36 device as
+`android_substitute`, redacted the local ADB serial to `<device-serial>`, and
+returned exit `2` with `result=blocked`. The recorded blockers are missing APK
+identity for a formal run, non-tablet device class, missing Host PID for RSS
+sampling, and missing Host telemetry JSONL. The generated
+`phase2-tablet-preflight.json` also reports `verdict=blocked` because the bundle
+has no physical 8-9 inch tablet identity, no `soak-8h` package, no stylus, no
+hardware-keyboard pass, no device-memory gate, no device-environment summary,
+and no recovery evidence.
+
+Current-base owner evidence is under
+[`evidence/2026-08-31-phase2-tablet-current-base-owner`](evidence/2026-08-31-phase2-tablet-current-base-owner/README.md).
+It consumes the 2026-08-31 P0110 soak preflight, the retained
+device-environment blocked summary, the 2026-08-30 hardware-keyboard blocked
+summary, and the 2026-08-29 login/headless blocked summary. The aggregate report
+records `source_baseline=origin/main 28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`,
+`verdict=blocked`, and `can_close_readme_phase2_gates=false`.
+
+No `/usr/bin/sfltool dumpbtm` command was run and no login-item diagnostic opt-in
+flag was used. The `pgrep -x sfltool || true` start/end records in the owner
+evidence directory are empty.
+
+Validation performed for this refresh:
+
+- `make phase2-tablet-soak-preflight ...` against `<device-serial>`: exit `2`,
+  expected blocked P0110 substitute readiness.
+- `make phase2-tablet-preflight ...`: exit `2`, expected blocked bundle
+  verifier.
+- `make phase2-aggregate-owner ...`: exit `0`, expected blocked aggregate owner
+  report.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_tablet_soak tools.tests.test_phase2_device_memory_gate tools.tests.test_phase2_device_environment tools.tests.test_phase2_aggregate_owner tools.tests.test_schemas -v`: 120 tests, `OK`.
+- `shasum -a 256 -c SHA256SUMS` in both new 2026-08-31 evidence
+  directories.
+- `git diff --check`
+- Sensitive-value scan for the local ADB serial, home path, IPv4 literals, and
+  secret strings: no real ADB serial, home path, IP, or credential leak; matches were
+  an unrelated README word and WLAN driver version string.
+
+The Phase 2 tablet, stand-mounted charging, thermal/power, device-memory,
+recovery, hardware-keyboard, login/headless, and eight-hour soak gates remain
+open after this refresh.
