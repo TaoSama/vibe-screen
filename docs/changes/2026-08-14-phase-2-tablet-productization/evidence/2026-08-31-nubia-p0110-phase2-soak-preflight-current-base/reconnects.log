@@ -1,0 +1,2 @@
+08-31 18:10:39.682 I/VibeScreenTelemetry(21555): {"schema_version":1,"timestamp_ms":1788171039681,"event":"reconnect_scheduled","delay_ms":499,"session_epoch":19115}
+08-31 18:10:41.195 I/VibeScreenTelemetry(21555): {"schema_version":1,"timestamp_ms":1788171041195,"event":"reconnect_scheduled","delay_ms":503,"session_epoch":19116}
