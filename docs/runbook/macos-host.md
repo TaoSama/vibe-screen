@@ -53,31 +53,38 @@ local codesigning identity and one stable install path:
 make baseline-macos-dev-install
 ```
 
-The command uses `VIBE_SCREEN_SIGN_IDENTITY` when it is set, otherwise it uses
-the default `Vibe Screen Dev` identity. It refuses ad-hoc signing for local
-device reruns because ad-hoc signatures drift across rebuilds and invalidate the
-macOS TCC grants. CI and release-preview packaging still pass `--sign-identity -`
-explicitly where a throwaway signature is acceptable.
+The command uses `VIBE_SCREEN_SIGN_IDENTITY` when it is set, otherwise it looks
+for the default `Vibe Screen Dev` identity. In both cases the selected identity
+must resolve to the pinned historical leaf SHA-1
+`9AAE572BF6D764E3436A6109197D345B5A87998C`; the packager passes that SHA-1 to
+`codesign` instead of relying on a mutable certificate name. It refuses ad-hoc
+signing for local device reruns because ad-hoc signatures drift across rebuilds
+and invalidate the macOS TCC grants. CI and release-preview packaging still pass
+`--sign-identity -` explicitly where a throwaway signature is acceptable.
 
-Create or select the stable identity in Keychain Access as a self-signed Code
-Signing certificate named `Vibe Screen Dev`, then confirm it is visible to
-codesign:
+Import or keep the already-authorized stable identity in Keychain Access as a
+self-signed Code Signing certificate named `Vibe Screen Dev`, then confirm the
+exact leaf is visible to codesign:
 
 ```bash
-security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
+security find-identity -v -p codesigning \
+  | grep '9AAE572BF6D764E3436A6109197D345B5A87998C.*"Vibe Screen Dev"'
 ```
 
 In Keychain Access, use **Certificate Assistant -> Create a Certificate**, set
 the name to `Vibe Screen Dev`, identity type to **Self Signed Root**, and
-certificate type to **Code Signing**. Missing this identity blocks rebuilding or
-installing a new stable Host, but a read-only preflight can still inspect an
-already-installed bundle and report its actual signing/TCC state.
+certificate type to **Code Signing** only when you are recreating the same
+historically authorized certificate material. A fresh same-named certificate has
+a different leaf SHA-1 and is intentionally rejected because it cannot reuse the
+existing TCC authorization.
 
 Do not create multiple certificates with the same name. If more than one
-`Vibe Screen Dev` identity exists, the build fails closed so the certificate
-leaf hash cannot drift accidentally. The local install script writes the current
-identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement,
-embedded source commit/tree/dirty state, and read-only TCC state to:
+`Vibe Screen Dev` identity exists, or if the visible identity's leaf SHA-1 is not
+`9AAE572BF6D764E3436A6109197D345B5A87998C`, the build fails closed so the
+certificate leaf hash cannot drift accidentally. The local install script writes
+the current identity, expected certificate SHA-1, actual certificate SHA-1,
+CDHash, binary SHA-256, designated requirement, embedded source
+commit/tree/dirty state, and read-only TCC state to:
 
 ```text
 .build/dev-macos-host/host-signing-and-permissions.txt
@@ -116,23 +123,24 @@ make baseline-macos-host-preflight
 
 `baseline-macos-host-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
-ad-hoc signing identity matching `VIBE_SCREEN_SIGN_IDENTITY` or `Vibe Screen Dev`,
-the designated requirement, source commit/tree provenance embedded by
-`scripts/package_macos.py`, a clean current source tree, and read-only Screen
-Recording plus Accessibility rows in the user's and system TCC databases. It
-does not require the signing identity to still be present in the current
-Keychain; that requirement belongs to `baseline-macos-dev-install`, where a
-missing `Vibe Screen Dev` identity means the Host cannot be rebuilt or
-reinstalled as a stable signed binary. `baseline-macos-touch-preflight` is a
-compatibility alias for the same check. Both targets exit non-zero if any
-installed-bundle, source-provenance, or permission check is missing. When
-blocked, keep the generated report as readiness evidence, open **System Settings
--> Privacy & Security -> Screen & System Audio Recording** and
-**Accessibility**, grant the installed `/Applications/Vibe Screen.app`, quit and
-reopen Vibe Screen, then run the preflight again. A report produced without a
-stable installed Host identity, TCC authorization, or matching source provenance
-cannot close USB, LAN, Host RSS, native-pointer, stylus, controller, rotation,
-login/headless, or compatibility gates.
+ad-hoc signing identity whose designated requirement contains leaf certificate
+SHA-1 `9AAE572BF6D764E3436A6109197D345B5A87998C`, source commit/tree
+provenance embedded by `scripts/package_macos.py`, a clean current source tree,
+and read-only Screen Recording plus Accessibility rows in the user's and system
+TCC databases. The rebuild and reinstall step separately requires the configured
+signing identity to be present in the current Keychain and to resolve to that
+same pinned leaf. A missing or drifted `Vibe Screen Dev` identity means the Host
+cannot be rebuilt or reinstalled as the TCC-compatible stable signed binary.
+`baseline-macos-touch-preflight` is a compatibility alias for the same check.
+Both targets exit non-zero if any installed-bundle, source-provenance, or
+permission check is missing. When blocked, keep the generated report as
+readiness evidence, open **System Settings -> Privacy & Security -> Screen &
+System Audio Recording** and **Accessibility**, grant the installed
+`/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run the
+preflight again. A report produced without a stable installed Host identity, TCC
+authorization, or matching source provenance cannot close USB, LAN, Host RSS,
+native-pointer, stylus, controller, rotation, login/headless, or compatibility
+gates.
 
 ## Shared Host readiness snapshot
 
@@ -148,8 +156,9 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 The target writes both files below without launching the Host, mutating the
 machine, or probing Launch at Login. Keep login-item probing out of default CI
 and test runs; use `python3 scripts/macos_dev_host.py readiness
-	--include-login-item-diagnostic ...` only during an explicit human diagnostic because macOS
-may request administrator authorization for the underlying service dump.
+		--include-login-item-diagnostic ...` only during an explicit human diagnostic
+because macOS may request administrator authorization for the underlying service
+dump.
 
 ```text
 <evidence-dir>/host-signing-and-permissions.txt
@@ -164,9 +173,11 @@ virtual HID entitlement needed by controller runtime acceptance. The command is
 read-only: it does not start Vibe Screen, import certificates, change Keychain
 settings, modify macOS privacy databases, request macOS privacy grants,
 configure ADB, or touch Android state. It also skips Launch at Login probing by default so automated
-tests and CI do not invoke `/usr/bin/sfltool dumpbtm` or trigger macOS
-authorization prompts; the JSON records this as
-`login_headless.login_item.sfltool_dumpbtm_was_run=false`. For an explicit manual diagnostic, run
+configure ADB, or touch Android state. It also skips Launch at Login probing by
+default so automated tests and CI do not invoke `/usr/bin/sfltool dumpbtm` or
+trigger macOS authorization prompts; the JSON records this as
+`login_headless.login_item.sfltool_dumpbtm_was_run=false`. For an explicit
+manual diagnostic, run
 `make baseline-macos-host-readiness MACOS_HOST_READINESS_PROBE_LOGIN_ITEM=1 EVIDENCE_DIR=<evidence-dir>`.
 
 The `can_start_*` fields are prerequisite flags only. They say whether a run may
@@ -531,9 +542,11 @@ Do not record `make baseline-macos-test` as failed product behavior when this
 preflight blocks first; record it as an XCTest toolchain blocker and keep the
 affected README gate open until the full-Xcode run executes.
 
-`make baseline-macos-app` creates a stable-signed local `.app` by default,
-versioned ZIP, and SHA-256 file under `.build/release-artifacts/`. Set
-`VIBE_SCREEN_SIGN_IDENTITY` to use another existing identity. Passing
+`make baseline-macos-app` creates a stable-signed local `.app`, versioned ZIP,
+and SHA-256 file under `.build/release-artifacts/` only when the configured
+identity resolves to leaf SHA-1
+`9AAE572BF6D764E3436A6109197D345B5A87998C`. Set `VIBE_SCREEN_SIGN_IDENTITY` to
+that SHA-1 when the keychain contains multiple display names. Passing
 `--sign-identity -` directly to `scripts/package_macos.py` creates an ad-hoc
 preview artifact and should not be used for iterative device reruns. Public
 distribution still requires a project-controlled Developer ID signature and

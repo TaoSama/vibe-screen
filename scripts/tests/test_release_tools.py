@@ -1251,12 +1251,12 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             self.assertEqual(package_macos.resolve_sign_identity("-"), "-")
         run_mock.assert_not_called()
 
-    def test_named_identity_is_returned_when_keychain_contains_it(self) -> None:
+    def test_named_identity_is_returned_as_pinned_sha1_when_keychain_contains_it(self) -> None:
         lookup = subprocess.CompletedProcess(
             args=("security", "find-identity"),
             returncode=0,
             stdout=(
-                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 '
+                f'  1) {package_macos.EXPECTED_SIGNING_LEAF_SHA1} '
                 '"Vibe Screen Dev"\n'
                 "     1 valid identities found\n"
             ),
@@ -1264,7 +1264,23 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
             self.assertEqual(
                 package_macos.resolve_sign_identity("Vibe Screen Dev"),
-                "Vibe Screen Dev",
+                package_macos.EXPECTED_SIGNING_LEAF_SHA1,
+            )
+
+    def test_pinned_sha1_identity_is_returned_when_keychain_contains_it(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                f'  1) {package_macos.EXPECTED_SIGNING_LEAF_SHA1} '
+                '"Vibe Screen Dev"\n'
+                "     1 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            self.assertEqual(
+                package_macos.resolve_sign_identity(package_macos.EXPECTED_SIGNING_LEAF_SHA1.lower()),
+                package_macos.EXPECTED_SIGNING_LEAF_SHA1,
             )
 
     def test_named_identity_lookup_timeout_fails_closed(self) -> None:
@@ -1302,6 +1318,34 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
             with self.assertRaisesRegex(SystemExit, "not found in the keychain"):
                 package_macos.resolve_sign_identity("Vibe Screen Dev")
+
+    def test_same_named_wrong_leaf_identity_fails_closed(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 '
+                '"Vibe Screen Dev"\n'
+                "     1 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "expected '9AAE572BF6D764E3436A6109197D345B5A87998C'"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
+    def test_wrong_sha1_identity_fails_closed(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                f'  1) {package_macos.EXPECTED_SIGNING_LEAF_SHA1} '
+                '"Vibe Screen Dev"\n'
+                "     1 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "is not the pinned"):
+                package_macos.resolve_sign_identity("0123456789abcdef0123456789abcdef01234567")
 
     def test_duplicate_named_identity_fails_instead_of_choosing_one(self) -> None:
         lookup = subprocess.CompletedProcess(

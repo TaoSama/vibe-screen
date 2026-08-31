@@ -8,6 +8,7 @@ import hashlib
 import os
 import plistlib
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -27,6 +28,7 @@ ARTIFACT_NAME = "Vibe-Screen"
 EXECUTABLE_NAME = PRODUCT_NAME
 DEFAULT_SIGN_IDENTITY = "Vibe Screen Dev"
 SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"
+EXPECTED_SIGNING_LEAF_SHA1 = "9AAE572BF6D764E3436A6109197D345B5A87998C"
 CODESIGN = "/usr/bin/codesign"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
@@ -43,6 +45,12 @@ class SourceIdentity:
     commit: str
     tree: str
     dirty: bool
+
+
+@dataclass(frozen=True)
+class CodesigningIdentity:
+    sha1: str
+    name: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -94,18 +102,41 @@ def command_text(command: tuple[str, ...] | list[str] | str) -> str:
     return " ".join(command)
 
 
-def resolve_sign_identity(requested: str) -> str:
-    """Return a usable codesign identity.
+def normalize_sha1(value: str) -> str:
+    return value.replace(" ", "").upper()
 
-    The default identity ('Vibe Screen Dev') keeps the signing hash stable across
-    local rebuilds so macOS Screen Recording/Accessibility grants survive. An
-    ad-hoc signature (requested with '-') is only used when the operator passes
-    it explicitly; any other missing identity fails fast so a local rebuild does
-    not silently invalidate TCC grants. CI workflows must pass '--sign-identity -'
-    explicitly to produce ad-hoc signed preview artifacts.
+
+def is_sha1(value: str) -> bool:
+    return re.fullmatch(r"[0-9A-Fa-f]{40}", normalize_sha1(value)) is not None
+
+
+def parse_codesigning_identities(output: str) -> tuple[CodesigningIdentity, ...]:
+    identities: list[CodesigningIdentity] = []
+    for raw_line in output.splitlines():
+        match = re.match(r'^\s*\d+\)\s+([0-9A-Fa-f]{40})\s+"(.+)"\s*$', raw_line)
+        if match is None:
+            continue
+        identities.append(
+            CodesigningIdentity(
+                sha1=normalize_sha1(match.group(1)),
+                name=match.group(2),
+            )
+        )
+    return tuple(identities)
+
+
+def resolve_sign_identity(requested: str) -> str:
+    """Return a usable codesign identity argument.
+
+    The local development Host must use the historical leaf certificate SHA-1 so
+    the designated requirement, and therefore macOS Screen Recording/Accessibility
+    grants, stay reusable across rebuilds. An ad-hoc signature (requested with
+    '-') is only used when the operator passes it explicitly; CI workflows must
+    pass '--sign-identity -' explicitly to produce ad-hoc signed preview artifacts.
     """
     if requested == "-":
         return requested
+    requested_normalized = normalize_sha1(requested)
     lookup_command = ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning")
     try:
         lookup = subprocess.run(
@@ -123,27 +154,45 @@ def resolve_sign_identity(requested: str) -> str:
             f"codesign identity '{requested}' is available. Unlock or repair the "
             "keychain, then rerun preflight."
         ) from error
-    quoted_identity = f'"{requested}"'
-    matching_identities = [
-        line.strip()
-        for line in lookup.stdout.splitlines()
-        if line.strip().endswith(quoted_identity)
+    identities = parse_codesigning_identities(lookup.stdout)
+    matching_expected_leaf = [
+        identity for identity in identities if identity.sha1 == EXPECTED_SIGNING_LEAF_SHA1
     ]
-    if lookup.returncode == 0 and len(matching_identities) == 1:
-        return requested
-    if lookup.returncode == 0 and len(matching_identities) > 1:
+    if lookup.returncode == 0 and is_sha1(requested):
+        if requested_normalized != EXPECTED_SIGNING_LEAF_SHA1:
+            raise SystemExit(
+                f"codesign identity SHA-1 '{requested_normalized}' is not the pinned "
+                f"Vibe Screen Host signing leaf '{EXPECTED_SIGNING_LEAF_SHA1}'."
+            )
+        if len(matching_expected_leaf) == 1:
+            return EXPECTED_SIGNING_LEAF_SHA1
+        raise SystemExit(
+            f"pinned Vibe Screen Host signing leaf '{EXPECTED_SIGNING_LEAF_SHA1}' "
+            "not found in the keychain."
+        )
+    matching_name = [identity for identity in identities if identity.name == requested]
+    if lookup.returncode == 0 and len(matching_name) == 1:
+        identity = matching_name[0]
+        if identity.sha1 == EXPECTED_SIGNING_LEAF_SHA1:
+            return EXPECTED_SIGNING_LEAF_SHA1
+        raise SystemExit(
+            f"codesign identity '{requested}' has leaf SHA-1 '{identity.sha1}', "
+            f"expected '{EXPECTED_SIGNING_LEAF_SHA1}'. Refusing to replace the "
+            "historically authorized Host signing leaf."
+        )
+    if lookup.returncode == 0 and len(matching_name) > 1:
         raise SystemExit(
             f"multiple codesign identities named '{requested}' were found in the keychain. "
-            "Remove or rename duplicates so local builds keep one stable certificate "
-            "leaf hash for macOS Screen Recording/Accessibility grants."
+            f"Use the pinned SHA-1 '{EXPECTED_SIGNING_LEAF_SHA1}' or remove duplicates "
+            "so local builds cannot drift to a different certificate leaf."
         )
     raise SystemExit(
         f"codesign identity '{requested}' not found in the keychain. "
-        f"Create the '{DEFAULT_SIGN_IDENTITY}' self-signed identity (or set "
-        f"${SIGN_IDENTITY_ENV} to an existing identity), or pass "
-        "'--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the "
-        "code-signing hash on every rebuild and invalidates macOS Screen "
-        "Recording/Accessibility grants."
+        f"Import the Vibe Screen Host signing certificate with leaf SHA-1 "
+        f"'{EXPECTED_SIGNING_LEAF_SHA1}' (or set ${SIGN_IDENTITY_ENV} to that "
+        "SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview "
+        "build. Ad-hoc signing changes the designated requirement and cannot "
+        "reuse macOS Screen Recording/Accessibility grants."
     )
 
 

@@ -38,6 +38,7 @@ SYSTEM_TCC_DATABASE = Path("/Library") / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
+EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ALLOWED_AUTH_VALUE = 2
@@ -1070,7 +1071,16 @@ def validate_preflight(
         errors.append(
             "Host is ad-hoc signed; use the configured local signing identity so TCC grants survive rebuilds"
         )
-    elif expected_sign_identity and metadata.identity_name != expected_sign_identity:
+    elif metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
+        actual_leaf = metadata.leaf_certificate_hash or "missing"
+        errors.append(
+            f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+        )
+    elif (
+        expected_sign_identity
+        and not package_macos.is_sha1(expected_sign_identity)
+        and metadata.identity_name != expected_sign_identity
+    ):
         errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
     if not metadata.cdhash:
         errors.append("codesign CDHash is missing")
@@ -1175,6 +1185,7 @@ Identity: {identity_name}
 {authorities}
 TeamIdentifier: {team_identifier}
 Certificate SHA-1: {certificate_sha1}
+Expected signing leaf SHA-1: {EXPECTED_SIGNING_LEAF_SHA1}
 CDHash: {cdhash}
 Binary SHA-256: {binary_sha256}
 Designated requirement: {designated_requirement}
@@ -1225,10 +1236,10 @@ Blocking issues:
 Next action
 -----------
 Create or import the stable local codesigning identity, or set
-${package_macos.SIGN_IDENTITY_ENV} to an existing stable identity, then rebuild
-and reinstall the Host before rerunning device evidence. Do not use ad-hoc
-signing for fixed-binary device reruns because it changes the code-signing hash
-and invalidates macOS Screen Recording/Accessibility grants.
+${package_macos.SIGN_IDENTITY_ENV} to the pinned leaf SHA-1
+{EXPECTED_SIGNING_LEAF_SHA1}, then rebuild and reinstall the Host before rerunning device evidence.
+Do not use ad-hoc signing for fixed-binary device reruns because it changes the
+designated requirement and invalidates macOS Screen Recording/Accessibility grants.
 
 Safety
 ------
@@ -1381,10 +1392,10 @@ def inspect_host_without_throwing(
         except SystemExit as error:
             errors.append(str(error))
         else:
-            if expected_sign_identity and resolved_identity != expected_sign_identity:
+            if resolved_identity != EXPECTED_SIGNING_LEAF_SHA1:
                 errors.append(
-                    "configured signing identity did not resolve exactly: "
-                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                    "configured signing identity resolved to unexpected leaf SHA-1: "
+                    f"resolved '{resolved_identity}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
                 )
     try:
         metadata = collect_signing_metadata(install_path)
@@ -1434,6 +1445,7 @@ def signing_record(
             "authorities": [],
             "team_identifier": None,
             "certificate_sha1": None,
+            "expected_certificate_sha1": EXPECTED_SIGNING_LEAF_SHA1,
             "cdhash": None,
             "binary_sha256": None,
             "designated_requirement": None,
@@ -1452,6 +1464,7 @@ def signing_record(
         "authorities": list(metadata.authorities),
         "team_identifier": metadata.team_identifier,
         "certificate_sha1": metadata.leaf_certificate_hash,
+        "expected_certificate_sha1": EXPECTED_SIGNING_LEAF_SHA1,
         "cdhash": metadata.cdhash,
         "binary_sha256": metadata.binary_sha256,
         "designated_requirement": metadata.designated_requirement,
@@ -1657,10 +1670,10 @@ def metadata_and_permissions(
             except SystemExit as error:
                 errors.append(str(error))
             else:
-                if expected_sign_identity and resolved_identity != expected_sign_identity:
+                if resolved_identity != EXPECTED_SIGNING_LEAF_SHA1:
                     errors.append(
-                        "configured signing identity did not resolve exactly: "
-                        f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                        "configured signing identity resolved to unexpected leaf SHA-1: "
+                        f"resolved '{resolved_identity}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
                     )
     else:
         configured_sign_identity = effective_sign_identity(expected_sign_identity)
