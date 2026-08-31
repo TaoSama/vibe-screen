@@ -1237,6 +1237,40 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         replace_mock.assert_not_called()
         inspection_mock.assert_not_called()
 
+    def test_install_command_records_replace_os_error_in_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "safe_replace_app",
+                    side_effect=OSError("simulated rename failure"),
+                ) as replace_mock,
+                mock.patch.object(macos_dev_host, "inspect_host_without_throwing") as inspection_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("simulated rename failure", report.read_text(encoding="utf-8"))
+            self.assertIn("Verification: not inspected", report.read_text(encoding="utf-8"))
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_called_once()
+        inspection_mock.assert_not_called()
+
     def test_install_command_reports_missing_signing_identity_without_installing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"

@@ -1132,20 +1132,19 @@ def append_source_provenance_errors(
         if require_source_identity:
             errors.append("current source identity is unavailable; refusing to install source-bound Host bundle")
         return
-    if source_identity is not None:
-        if source_identity.dirty and not allow_source_mismatch:
-            errors.append("source repository is dirty; rerun from a clean current-base checkout")
-        if not metadata.source_commit or not metadata.source_tree or metadata.source_dirty is None:
-            if not allow_source_mismatch:
-                errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
-        else:
-            if metadata.source_dirty and not allow_source_mismatch:
-                errors.append("installed Host was packaged from a dirty source tree")
-            if (
-                metadata.source_commit != source_identity.commit
-                or metadata.source_tree != source_identity.tree
-            ) and not allow_source_mismatch:
-                errors.append("installed Host source provenance does not match the current source checkout")
+    if source_identity.dirty and not allow_source_mismatch:
+        errors.append("source repository is dirty; rerun from a clean current-base checkout")
+    if not metadata.source_commit or not metadata.source_tree or metadata.source_dirty is None:
+        if not allow_source_mismatch:
+            errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
+    else:
+        if metadata.source_dirty and not allow_source_mismatch:
+            errors.append("installed Host was packaged from a dirty source tree")
+        if (
+            metadata.source_commit != source_identity.commit
+            or metadata.source_tree != source_identity.tree
+        ) and not allow_source_mismatch:
+            errors.append("installed Host source provenance does not match the current source checkout")
 
 
 def validate_installable_host_bundle(
@@ -1814,7 +1813,7 @@ def safe_replace_app(
             source_identity=source_identity,
         )
         if backup.exists():
-            shutil.rmtree(backup)
+            shutil.rmtree(backup, ignore_errors=True)
     except PermissionError as error:
         restore_backup(install_path, backup, remove_installed_without_backup=moved_into_place)
         raise SystemExit(
@@ -1878,7 +1877,7 @@ def install_command(args: argparse.Namespace) -> int:
         raise
     try:
         packaged_metadata = collect_signing_metadata(packaged_app)
-    except SystemExit as error:
+    except (SystemExit, OSError) as error:
         return write_install_blocked_report(args, [str(error)], source_identity=source_identity)
     packaged_errors = validate_installable_host_bundle(
         packaged_metadata,
@@ -1900,7 +1899,7 @@ def install_command(args: argparse.Namespace) -> int:
             expected_sign_identity=args.sign_identity,
             source_identity=source_identity,
         )
-    except SystemExit as error:
+    except (SystemExit, OSError) as error:
         return write_install_blocked_report(args, [str(error)], source_identity=source_identity)
     inspection = inspect_host_without_throwing(
         install_path,
