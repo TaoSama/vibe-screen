@@ -15,6 +15,21 @@ struct HostDisplayDescriptor: Identifiable, Equatable {
 }
 
 enum DisplayCatalog {
+    /// Stable ordering for display descriptors: the main display first, then
+    /// by display ID. Used by `onlineDisplays()` so repeated calls return an
+    /// equal array even when `CGGetOnlineDisplayList` enumerates displays in a
+    /// different order. Without a stable order, the 2-second status refresh
+    /// would emit a spurious `@Published availableDisplays` change and churn
+    /// the SwiftUI settings body, accumulating Observation entries.
+    static func sortedByStableOrder(
+        _ displays: [HostDisplayDescriptor]
+    ) -> [HostDisplayDescriptor] {
+        displays.sorted { lhs, rhs in
+            if lhs.isMain != rhs.isMain { return lhs.isMain }
+            return lhs.id < rhs.id
+        }
+    }
+
     static func onlineDisplays() -> [HostDisplayDescriptor] {
         var count: UInt32 = 0
         guard CGGetOnlineDisplayList(0, nil, &count) == .success,
@@ -33,7 +48,13 @@ enum DisplayCatalog {
             return (CGDirectDisplayID(number.uint32Value), screen.localizedName)
         }
         let screenNames = Dictionary(uniqueKeysWithValues: screenNamePairs)
-        return displayIDs.prefix(Int(count)).map { displayID in
+        // Sort into a stable order (main display first, then by display ID) so
+        // repeated calls return an equal array even when CGGetOnlineDisplayList
+        // enumerates displays in a different order. Without this, the 2-second
+        // status refresh emits a spurious @Published availableDisplays change,
+        // re-evaluates the whole SettingsView body, and accumulates SwiftUI
+        // Observation entries over long sessions.
+        let displays = displayIDs.prefix(Int(count)).map { displayID in
             HostDisplayDescriptor(
                 id: displayID,
                 persistentUUID: persistentUUID(for: displayID),
@@ -43,6 +64,7 @@ enum DisplayCatalog {
                 isMain: CGDisplayIsMain(displayID) != 0
             )
         }
+        return sortedByStableOrder(displays)
     }
 
     static func resolve(_ requestedID: CGDirectDisplayID) -> CGDirectDisplayID {
