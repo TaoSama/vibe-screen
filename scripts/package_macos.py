@@ -12,6 +12,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -41,6 +42,12 @@ SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
 SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"
 SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"
 PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = 30
+AD_HOC_PREVIEW_NOTICE_NAME = "AD_HOC_PREVIEW_NOT_FOR_TCC_OR_DEVICE_EVIDENCE.txt"
+AD_HOC_PREVIEW_WARNING = (
+    "WARNING: created an explicit ad-hoc signed macOS preview artifact. "
+    "It changes the designated requirement and must not be used for macOS TCC "
+    "or device-acceptance evidence."
+)
 
 
 @dataclass(frozen=True)
@@ -239,6 +246,15 @@ def require_explicit_ad_hoc_preview(sign_identity: str, *, explicit_cli_option: 
             "artifact; stable local builds must resolve to the pinned Vibe Screen "
             f"Host signing leaf '{EXPECTED_SIGNING_LEAF_SHA1}'."
         )
+
+
+def write_ad_hoc_preview_notice(resources_dir: Path, sign_identity: str) -> None:
+    if sign_identity != "-":
+        return
+    (resources_dir / AD_HOC_PREVIEW_NOTICE_NAME).write_text(
+        AD_HOC_PREVIEW_WARNING + "\n",
+        encoding="utf-8",
+    )
 
 
 def collect_source_identity(repository_root: Path = REPOSITORY_ROOT) -> SourceIdentity:
@@ -569,6 +585,7 @@ def main() -> int:
     shutil.copy2(HOST_ROOT / "Resources" / "Credits.html", resources_dir)
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "LICENSE", resources_dir / "LICENSE.txt")
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "NOTICE", resources_dir / "NOTICE.txt")
+    write_ad_hoc_preview_notice(resources_dir, sign_identity)
     web_rtc_framework = binary_dir / WEBRTC_FRAMEWORK_NAME
     resource_bundle = binary_dir / RESOURCE_BUNDLE_NAME
     if not web_rtc_framework.is_dir():
@@ -600,6 +617,8 @@ def main() -> int:
         f"{sha256(archive_path)}  {archive_path.name}\n",
         encoding="utf-8",
     )
+    if sign_identity == "-":
+        print(AD_HOC_PREVIEW_WARNING, file=sys.stderr)
     print(app_path)
     print(archive_path)
     print(checksum_path)

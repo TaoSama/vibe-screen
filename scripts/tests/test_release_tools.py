@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -1485,6 +1487,20 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             explicit_cli_option=arguments.sign_identity_explicit,
         )
 
+    def test_ad_hoc_preview_notice_is_written_only_for_ad_hoc_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            resources = Path(temporary_directory) / "Resources"
+            resources.mkdir()
+
+            package_macos.write_ad_hoc_preview_notice(resources, "-")
+            notice = resources / package_macos.AD_HOC_PREVIEW_NOTICE_NAME
+            self.assertTrue(notice.is_file())
+            self.assertIn("must not be used for macOS TCC", notice.read_text(encoding="utf-8"))
+
+            notice.unlink()
+            package_macos.write_ad_hoc_preview_notice(resources, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
+            self.assertFalse(notice.exists())
+
     def test_main_resolves_identity_before_validating_or_building(self) -> None:
         arguments = argparse.Namespace(sign_identity="Vibe Screen Dev", sign_identity_explicit=False)
         with (
@@ -2015,6 +2031,76 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 "Vibe Screen.app",
                 sign_identity="Vibe Screen Dev",
             )
+
+    def test_main_marks_explicit_ad_hoc_preview_as_not_for_tcc_or_device_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "artifacts"
+            binary_dir = Path(temporary_directory) / "build"
+            executable = binary_dir / package_macos.EXECUTABLE_NAME
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"binary")
+            framework = binary_dir / package_macos.WEBRTC_FRAMEWORK_NAME
+            (framework / "Versions" / "A").mkdir(parents=True)
+            bundle_notice = (
+                binary_dir
+                / package_macos.RESOURCE_BUNDLE_NAME
+                / "ThirdParty"
+                / NOTICE_RELATIVE_PATH.name
+            )
+            bundle_notice.parent.mkdir(parents=True)
+            bundle_notice.write_text("notice", encoding="utf-8")
+            arguments = argparse.Namespace(
+                version="1.2.3",
+                output_dir=output_dir,
+                sign_identity="-",
+                sign_identity_explicit=True,
+            )
+
+            def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
+                resolved_app = output_dir.resolve() / "Vibe Screen.app"
+                if command == ("strip", "-S", str(resolved_app / "Contents" / "MacOS" / "Vibe Screen")):
+                    return ""
+                if command == ("swift", "build", "-c", "release", "-Xswiftc", "-file-prefix-map", "-Xswiftc", f"{package_macos.REPOSITORY_ROOT}=."):
+                    return ""
+                if command == (
+                    "swift",
+                    "build",
+                    "-c",
+                    "release",
+                    "-Xswiftc",
+                    "-file-prefix-map",
+                    "-Xswiftc",
+                    f"{package_macos.REPOSITORY_ROOT}=.",
+                    "--show-bin-path",
+                ):
+                    return str(binary_dir)
+                raise AssertionError(command)
+
+            with (
+                mock.patch.object(package_macos, "parse_args", return_value=arguments),
+                mock.patch.object(package_macos, "resolve_sign_identity", return_value="-"),
+                mock.patch.object(package_macos, "validate_notice_bundle"),
+                mock.patch.object(
+                    package_macos,
+                    "collect_source_identity",
+                    return_value=package_macos.SourceIdentity(commit="a" * 40, tree="b" * 40, dirty=False),
+                ),
+                mock.patch.object(
+                    package_macos,
+                    "read_source_plist",
+                    return_value={"CFBundleShortVersionString": "1.2.3", "CFBundleIdentifier": "dev.telemachus.display"},
+                ),
+                mock.patch.object(package_macos, "run", side_effect=fake_run),
+                mock.patch.object(package_macos, "sign_packaged_app"),
+                mock.patch.object(package_macos, "verify_reproducible_zip"),
+                redirect_stderr(StringIO()) as stderr,
+            ):
+                self.assertEqual(package_macos.main(), 0)
+
+            notice = output_dir.resolve() / "Vibe Screen.app" / "Contents" / "Resources" / package_macos.AD_HOC_PREVIEW_NOTICE_NAME
+            self.assertTrue(notice.is_file())
+            self.assertIn("must not be used for macOS TCC", notice.read_text(encoding="utf-8"))
+            self.assertIn("ad-hoc signed macOS preview", stderr.getvalue())
 
     def test_host_report_marks_tcc_rows_unavailable_when_database_read_fails(self) -> None:
         report = macos_dev_host.format_report(
