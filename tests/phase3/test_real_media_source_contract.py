@@ -218,6 +218,13 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
             """
             override fun onVideoFrame(frame: ProductVideoFrame) {
                 if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
+                if (frame.configEpoch != activeDecoderConfigEpoch) {
+                    mainDiag(
+                        "INTERNET FRAME DROPPED: config epoch ${frame.configEpoch} does not match decoder epoch " +
+                            activeDecoderConfigEpoch,
+                    )
+                    return
+                }
                 videoDecoder?.decode(
                     frame.payload,
                     frame.payload.size,
@@ -227,7 +234,7 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
                 )
             }
             """,
-            label="Android Internet video frames are submitted to the production VideoDecoder",
+            label="Android Internet video frames are gated and submitted to the production VideoDecoder",
         )
 
 
