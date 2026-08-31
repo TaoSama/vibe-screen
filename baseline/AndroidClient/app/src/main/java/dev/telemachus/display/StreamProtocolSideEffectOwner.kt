@@ -50,7 +50,6 @@ internal class StreamProtocolSideEffectOwner(
             acceptsConnectionGeneration(connectionGeneration)
     }
 
-    @Synchronized
     fun <T> runIfCurrent(
         session: ProtocolV1Session,
         connectionGeneration: Long,
@@ -84,6 +83,11 @@ internal class StreamProtocolSideEffectOwner(
     @Synchronized
     fun releaseFileOffer(transferId: ByteString) {
         pendingFileOffers.remove(transferId)
+    }
+
+    @Synchronized
+    fun clearFileOffers() {
+        pendingFileOffers.clear()
     }
 
     @Synchronized

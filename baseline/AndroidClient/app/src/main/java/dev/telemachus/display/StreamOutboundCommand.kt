@@ -30,6 +30,7 @@ internal sealed interface StreamOutboundCommand {
     ) : StreamOutboundCommand
 
     class ProtocolBatch(
+        val onUnavailable: (() -> Unit)? = null,
         val build: (ProtocolV1Session) -> List<Envelope>,
     ) : StreamOutboundCommand
 

@@ -152,25 +152,22 @@
       "id": "file_transfer_product_ownership",
       "title": "File-transfer product ownership boundary",
       "required_for_phase0_stable": true,
-      "status": "partial",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/FileTransferSession.kt",
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt",
       "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/FileTransferProductOwnerTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/FileTransferSession.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/FileTransferSessionTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept",
+        "make baseline-android-protocol-side-effect-owner"
       ],
-      "blockers": [
-        "The session-level file-transfer protocol has focused tests, and stale host offers are gated by StreamProtocolSideEffectOwner, but the product file-transfer workflow still reaches UI callbacks through StreamClient composition.",
-        "No module contract owns Android picker/storage/UI side effects separately from protocol admission and session lifecycle."
-      ],
-      "fail_closed_checklist": [
-        "Introduce a file-transfer product owner that owns Android storage and user-decision callbacks behind a protocol-neutral port.",
-        "Prove stale offer decisions, disconnect cleanup, denied writes, and duplicate transfer IDs fail closed at the product owner boundary.",
-        "Keep Protocol v1 framing/session tests separate from Android UI/storage acceptance tests."
-      ]
+      "blockers": [],
+      "fail_closed_checklist": []
     },
     {
       "id": "wake_host_product_ownership",

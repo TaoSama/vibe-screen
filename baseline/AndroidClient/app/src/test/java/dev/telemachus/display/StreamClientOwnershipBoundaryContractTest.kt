@@ -53,20 +53,21 @@ class StreamClientOwnershipBoundaryContractTest {
             "Protocol v1",
             "action dispatch",
             "side-effect owner",
+            "file-transfer product state",
             "input envelope routing",
             "media-frame routing",
         ).forEach { phrase ->
             assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
         }
-        assertTrue(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
-        assertTrue(readme.normalizedWhitespace().contains("file-transfer and wake-host flows"))
+        assertTrue(readme.normalizedWhitespace().contains("wake-host product ownership"))
+        assertFalse(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
         assertTrue(audit.contains("#259"))
         assertTrue(audit.contains("current-base owner gate"))
         assertTrue(audit.contains("Module extraction draft PRs [#211]"))
         assertTrue(audit.contains("superseded by [#259]"))
-        assertTrue(audit.contains("Remaining module gaps include broader protocol/session"))
+        assertTrue(audit.contains("Remaining module gaps include wake-host product ownership"))
         assertTrue(phaseZeroTech.contains("side-effect owner gates file-transfer and WakeHost"))
-        assertTrue(phaseZeroTech.contains("Broader protocol/session, decoder,"))
+        assertTrue(phaseZeroTech.contains("WakeHost product, decoder, renderer, and UI ownership"))
     }
 
     private fun source(relativePath: String): String {
@@ -122,6 +123,8 @@ class StreamClientOwnershipBoundaryContractTest {
             "app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt"
         const val PRODUCTION_PROTOCOL_SESSION_OWNER =
             "app/src/main/java/dev/telemachus/display/StreamProtocolSessionOwner.kt"
+        const val PRODUCTION_FILE_TRANSFER_PRODUCT_OWNER =
+            "app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt"
 
         val REQUIRED_BOUNDARY_OWNERS =
             listOf(
@@ -131,6 +134,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 PRODUCTION_MEDIA_FRAME_ROUTER,
                 PRODUCTION_PROTOCOL_SIDE_EFFECT_OWNER,
                 PRODUCTION_PROTOCOL_SESSION_OWNER,
+                PRODUCTION_FILE_TRANSFER_PRODUCT_OWNER,
             )
 
         val REQUIRED_OWNER_TESTS =
@@ -139,6 +143,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 "app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolActionDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+                "app/src/test/java/dev/telemachus/display/FileTransferProductOwnerTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolSessionOwnerTest.kt",
@@ -151,15 +156,22 @@ class StreamClientOwnershipBoundaryContractTest {
                 "private val protocolActionDispatcher =",
                 "StreamProtocolActionDispatcher(StreamProtocolActionSink())",
                 "private val mediaFrameRouter =",
+                "private val fileTransferProductOwner =",
+                "FileTransferProductOwner(",
                 "protocolSessionOwner.isCurrent(",
                 "protocolSessionOwner.runIfCurrent(",
                 "protocolSessionOwner.trackFileOffer(",
                 "protocolSessionOwner.claimFileOffer(",
                 "protocolSessionOwner.releaseFileOffer(",
+                "protocolSessionOwner.clearFileOffers(",
                 "protocolSessionOwner.trackWakeHostRequest(",
                 "protocolSessionOwner.activate(",
                 "protocolSessionOwner.deactivate()",
                 "protocolSessionOwner.clear()",
+                "fileTransferProductOwner.receiveIncomingChunk(",
+                "fileTransferProductOwner.decideFileOffer(",
+                "fileTransferProductOwner.prepareOutgoingFile(",
+                "fileTransferProductOwner.handleFileAccept(",
                 "mediaFrameRouter.receiveLegacyFrame(",
                 "mediaFrameRouter.receiveProtocolFrame(",
             )
@@ -179,6 +191,10 @@ class StreamClientOwnershipBoundaryContractTest {
                 "ProtocolV1Framing.decodeVideo(",
                 "private val pendingInboundWakeHostRequests",
                 "private fun trackInboundWakeHostRequest",
+                "IncomingFileTransferManager(",
+                "ConcurrentHashMap<ByteString, OutgoingFileTransfer>",
+                "private var remoteManagedPolicy",
+                "private val outgoingFileTransfers",
             )
 
         val OWNER_LAYER_FORBIDDEN_REFERENCES =
@@ -243,6 +259,22 @@ class StreamClientOwnershipBoundaryContractTest {
                             "DataInputStream",
                             "DataOutputStream",
                             "FileTransfer",
+                            "WakeHostPacketSender",
+                            "WakeHostDecision",
+                        ),
+                ),
+                BoundaryOwnerRule(
+                    name = "FileTransferProductOwner",
+                    path = PRODUCTION_FILE_TRANSFER_PRODUCT_OWNER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES +
+                        listOf(
+                            "DataInputStream",
+                            "DataOutputStream",
+                            "ProtocolV1Session",
+                            "ProtocolV1Framing",
+                            "ProtocolChannel",
+                            "OutboundCommandScheduler",
+                            "StreamOutboundCommand",
                             "WakeHostPacketSender",
                             "WakeHostDecision",
                         ),

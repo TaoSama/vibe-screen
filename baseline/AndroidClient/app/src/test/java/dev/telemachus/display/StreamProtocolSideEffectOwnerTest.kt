@@ -161,6 +161,22 @@ class StreamProtocolSideEffectOwnerTest {
     }
 
     @Test
+    fun `run if current does not execute work while holding owner lock`() {
+        val session = session()
+        val owner = alwaysCurrentOwner(session = session, maximumPendingFileOffers = 1)
+        val transfer = ByteString.copyFromUtf8("transfer")
+
+        val admitted = owner.runIfCurrent(session, 1L) {
+            owner.trackFileOffer(transfer, session, 1L)
+        }
+
+        assertTrue(admitted == true)
+        val claimed = owner.claimFileOffer(transfer)
+        assertTrue(claimed?.session === session)
+        assertEquals(1L, claimed?.connectionGeneration)
+    }
+
+    @Test
     fun `clearing side effect owner releases outstanding file offers`() {
         val session = session()
         val owner = StreamProtocolSideEffectOwner(
