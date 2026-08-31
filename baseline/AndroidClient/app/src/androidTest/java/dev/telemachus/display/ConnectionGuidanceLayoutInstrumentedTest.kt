@@ -161,6 +161,17 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale() {
+        withLayout(widthDp = 361, heightDp = 800) { layout ->
+            layout.measureAndLayout()
+
+            listOf(layout.usbModeButton, layout.wirelessModeButton, layout.internetModeButton).forEach { button ->
+                layout.assertMinimumTouchTarget(button)
+            }
+        }
+    }
+
+    @Test
     fun narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect() {
         withLayout(widthDp = 361, heightDp = 800) { layout ->
             layout.showModeContent(R.id.usbModeContent)
