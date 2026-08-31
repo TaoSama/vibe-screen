@@ -85,7 +85,7 @@ def _safe_remote_result(completed: subprocess.CompletedProcess[bytes], label: st
         return BLOCKED_RESULT, f"{label} returned non-zero"
     if completed.stderr.strip():
         return BLOCKED_RESULT, f"{label} reported stderr"
-    return PASS_RESULT, f"{label} completed"
+    return PASS_RESULT, f"{label} passed"
 
 
 def dns_check(relay_host: str, *, family: int, timeout_seconds: float) -> dict[str, Any]:
@@ -159,9 +159,7 @@ def ssh_alias_available(alias: str | None) -> tuple[str, str]:
     if invalid is not None:
         return invalid
     completed = _run(["ssh", "-G", alias], timeout_seconds=5.0)
-    if completed.returncode != 0:
-        return BLOCKED_RESULT, "SSH alias config lookup failed"
-    return PASS_RESULT, "SSH alias config is available"
+    return _safe_remote_result(completed, "SSH alias config lookup")
 
 
 def remote_command(alias: str | None, args: Sequence[str], *, timeout_seconds: float, label: str) -> tuple[str, str]:

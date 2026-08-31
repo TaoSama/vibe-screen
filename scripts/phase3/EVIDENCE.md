@@ -209,7 +209,9 @@ existing containers, and local readiness behind the reverse proxy. It is
 intended to be run from CI as a blocked readiness artifact when production
 material or operator local configuration is unavailable. The report never
 contains the SSH alias, raw relay hostname/endpoint values, usernames, tokens,
-or operator filesystem paths; DNS results are reduced to counts and SHA-256
+or operator filesystem paths. Raw remote stdout/stderr is never recorded;
+report details contain only fixed labels or sanitized/aggregated values such as
+counts and SHA-256 hashes. DNS results are reduced to counts and SHA-256
 hashes. Use `<relay-host-ssh-alias>` in public references and pass the real
 local alias only on the private operator machine:
 
