@@ -9,7 +9,7 @@ Device: Nubia P0110 / pacific / Android 16 / SDK 36
 ## Intended gate
 
 This package refreshes the trusted-LAN stream/reconnect owner record from a
-clean worktree created directly from the current `origin/main` revision. The
+clean worktree created directly from revision `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`. The
 real-device preflight used the Nubia P0110 / pacific Android substitute with
 explicit `adb -s <device-serial>` targeting.
 
