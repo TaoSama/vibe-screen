@@ -193,6 +193,45 @@ Evidence:
   Nubia P0110/pacific identity, Host readiness blockers, start/end sfltool
   process check, and no `/usr/bin/sfltool dumpbtm` execution.
 
+## 2026-08-31 P0110 current-base blocked refresh
+
+The physical-stylus drawing-app confirmation was rechecked on branch
+`codex/stylus-drawing-codex-task-20260831` from `origin/main` at
+`28b9d1a59ef026b45ada3cd7e665ef09ea9a7523`. The connected Android device
+identified as nubia P0110 / pacific / Android 16 / API 36. `pgrep -x sfltool ||
+true` returned no output at start and end. No `/usr/bin/sfltool dumpbtm` command
+was executed, and the Host readiness command did not opt in to login-item
+diagnostics.
+
+`scripts/macos_dev_host.py readiness` reported `status=blocked`,
+`signing_tcc_status=blocked`, and `can_start_stylus_gate=false` while recording
+`current_source_dirty=false` for the `28b9d1a59` source snapshot. Retained
+blockers include the missing stable `Vibe Screen Dev` codesigning identity,
+failed installed-Host codesign inspection for missing WebRTC.framework sealed
+resources, no listener on TCP port `54321`, missing virtual HID entitlement,
+and unverified Screen Recording and Accessibility grants.
+
+`scripts/android_stylus_acceptance.py` again found one pass-eligible
+`goodix_stylus_input` candidate declaring `KEYBOARD | TOUCHSCREEN | STYLUS` plus
+pressure, orientation, tilt, X, and Y axes. No physical stylus drawing was
+performed, no same-session Android `Stylus forwarded:` samples from a drawing
+attempt appeared, no Host `Stylus injected:` excerpt was supplied, and no
+visible macOS drawing-app output was captured. The generated
+`stylus-summary.json` reports `verdict=blocked` and
+`can_close_physical_stylus_gate=false`, so the README physical-stylus
+drawing-app gate remains open.
+
+Evidence:
+
+- `evidence/2026-08-31-nubia-p0110-pacific-stylus-current-base-blocked/`:
+  current-base blocked refresh; status is
+  `blocked_physical_stylus_not_observed` with one pass-eligible capability
+  candidate, no physical drawing observation, no stable signed/TCC-ready Host,
+  no Host stylus log, and no drawing-app screenshot. The package retains the
+  Nubia P0110/pacific identity, Host readiness blockers, clean source
+  provenance, start/end sfltool process check, and no `/usr/bin/sfltool dumpbtm`
+  execution.
+
 ## Tooling change
 
 `scripts/android_stylus_acceptance.py` now writes lock-blocked evidence with
@@ -273,6 +312,15 @@ Results:
   output. The gate summary reports `verdict=blocked` and
   `can_close_physical_stylus_gate=false`, and `make physical-stylus-gate`
   returned nonzero as expected.
+- 2026-08-31 P0110 current-base blocked refresh:
+  `blocked_physical_stylus_not_observed` on nubia P0110 / pacific / Android 16 /
+  API 36, with one pass-eligible `goodix_stylus_input` candidate, clean
+  `origin/main` source provenance at `28b9d1a59`, `scripts/macos_dev_host.py
+  readiness` blocked on stable signing/TCC/listener prerequisites, no physical
+  drawing observation, no Host stylus log, no same-session `Stylus forwarded:`
+  samples, and no visible drawing-app output. The gate summary reports
+  `verdict=blocked` and `can_close_physical_stylus_gate=false`, and
+  `make physical-stylus-gate` returned nonzero as expected.
 - Android focused stylus dispatcher/mapper/protocol tests: Gradle
   `BUILD SUCCESSFUL`.
 - MacHost compile check: SwiftPM `Build complete`.

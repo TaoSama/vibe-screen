@@ -408,7 +408,13 @@ Only `stylus-summary.json` with `verdict=pass` and
 `can_close_physical_stylus_gate=true` can close the README physical-stylus
 drawing-app gate. Capability-only, synthetic ADB stylus, lock-blocked, missing
 Host-log, or missing Android diagnostic records must remain blocked or
-insufficient. Re-check a bundle with:
+insufficient.
+
+When Host readiness reports `can_start_stylus_gate=false`, the physical
+stylus drawing-app record must remain blocked even if `dumpsys input` exposes a
+pass-eligible `goodix_stylus_input` candidate.
+
+Re-check a bundle with:
 
 ```bash
 make physical-stylus-gate \
