@@ -5,6 +5,7 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.UUID
@@ -15,6 +16,7 @@ internal object AppSpecificDownloadsSaver {
     private const val PARTIAL_PREFIX = ".vibescreen-"
     private const val PARTIAL_SUFFIX = ".partial"
     private const val DEFAULT_DISPLAY_NAME = "transfer.bin"
+    private val publishLock = Any()
 
     fun save(
         source: File,
@@ -24,12 +26,12 @@ internal object AppSpecificDownloadsSaver {
     ): File {
         validateDisplayName(displayName)
         ensureDirectory(downloads)
-        val target = availableDestination(downloads, displayName)
         val partial = newPartialFile(downloads)
         try {
             partial.outputStream().use { output -> copy(source, output) }
-            publishPartial(partial, target)
-            return target
+            return synchronized(publishLock) {
+                publishPartialToAvailableDestination(partial, downloads, displayName)
+            }
         } catch (failure: Throwable) {
             partial.delete()
             throw failure
@@ -118,9 +120,26 @@ internal object AppSpecificDownloadsSaver {
     private fun publishPartial(
         partial: File,
         target: File,
-    ) {
-        if (target.exists()) throw IOException("Downloads destination already exists")
-        Files.move(partial.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+    ): Boolean {
+        if (target.exists()) return false
+        try {
+            Files.move(partial.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: FileAlreadyExistsException) {
+            return false
+        }
+        return true
+    }
+
+    private fun publishPartialToAvailableDestination(
+        partial: File,
+        directory: File,
+        displayName: String,
+    ): File {
+        repeat(MAX_COLLISION_ATTEMPTS) {
+            val target = availableDestination(directory, displayName)
+            if (publishPartial(partial, target)) return target
+        }
+        throw IOException("Unable to allocate downloads file name")
     }
 
     private fun copyFileTo(

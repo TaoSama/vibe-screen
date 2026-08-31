@@ -442,8 +442,8 @@ class MainActivity : AppCompatActivity() {
         finishPendingRightClick()
         resetCustomGestureTouchState()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
-        rejectPendingIncomingFileOffer()
         isInForeground = false
+        rejectPendingIncomingFileOffer()
         applyStreamingWindowState(connected = isConnected, foreground = false)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
@@ -2448,7 +2448,12 @@ class MainActivity : AppCompatActivity() {
         offer: dev.vibescreen.protocol.v1.FileOffer,
     ) {
         runOnUiThread {
-            if (!isCurrentSession(client, generation) || !client.canTransferFiles) {
+            if (!isInForeground ||
+                isFinishing ||
+                isDestroyed ||
+                !isCurrentSession(client, generation) ||
+                !client.canTransferFiles
+            ) {
                 client.respondToFileOffer(offer, accepted = false)
                 return@runOnUiThread
             }
