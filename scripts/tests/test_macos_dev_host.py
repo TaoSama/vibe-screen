@@ -1016,7 +1016,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertFalse(document["can_close_runtime_gates"])
         self.assertIn(macos_dev_host.VIRTUAL_HID_ENTITLEMENT, "\n".join(document["blockers"]))
 
-    def test_readiness_document_reports_ready_when_shared_and_controller_prerequisites_pass(self) -> None:
+    def test_readiness_document_reports_pass_when_shared_and_controller_prerequisites_pass(self) -> None:
         inspection = macos_dev_host.HostInspection(
             metadata=self.metadata(),
             source_identity=macos_dev_host.package_macos.SourceIdentity(
@@ -1047,11 +1047,11 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             *self.login_ready_inputs(),
         )
 
-        self.assertEqual(document["status"], "ready")
+        self.assertEqual(document["status"], "pass")
         self.assertTrue(document["can_start_trusted_lan_gate"])
         self.assertTrue(document["can_start_controller_runtime_gate"])
         self.assertTrue(document["can_start_headless_login_gate"])
-        self.assertFalse(document["can_close_runtime_gates"])
+        self.assertTrue(document["can_close_runtime_gates"])
         self.assertEqual(document["login_headless_status"], "ready")
         self.assertIn("does_not_prove", document["login_headless"])
         self.assertEqual(document["blockers"], [])
@@ -1534,7 +1534,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
                 source_root=Path("."),
                 allow_source_mismatch=False,
                 port=54321,
-                include_login_item_diagnostic=True,
+                probe_login_item=True,
             )
 
             with (
@@ -1736,7 +1736,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertEqual(result, 0)
             login_item_probe.assert_called_once_with()
             document = json.loads(json_output.read_text(encoding="utf-8"))
-            self.assertEqual(document["status"], "ready")
+            self.assertEqual(document["status"], "pass")
             self.assertEqual(document["login_headless"]["login_item"]["state"], "enabled")
             self.assertTrue(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
 
