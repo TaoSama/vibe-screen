@@ -266,8 +266,8 @@
         "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.ProductSessionCoordinatorTest --tests dev.telemachus.display.ProductSessionOwnershipBoundaryContractTest"
       ],
       "blockers": [
-        "ProductSessionCoordinator now owns local StreamClient session freshness, negotiated binding access, display and host-action intent command mapping, control availability, disconnect cleanup, and stale callback rejection for the UI-facing local session path.",
-        "MainActivity still coordinates Internet product sessions, renderer callbacks, clipboard approval dialogs, file-transfer picker/storage prompts, and connection lifecycle side effects.",
+        "ProductSessionCoordinator now owns local StreamClient session freshness, negotiated binding access, display and host-action intent command mapping, control availability, connection-attempt admission, disconnect cleanup, and stale callback rejection for the UI-facing local session path.",
+        "MainActivity still coordinates Internet product sessions, renderer callbacks, clipboard approval dialogs, file-transfer picker/storage prompts, and connection lifecycle side-effect execution.",
         "No current-base contract yet proves UI owns only presentation and intent production across both local and Internet product-session paths."
       ],
       "fail_closed_checklist": [

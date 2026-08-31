@@ -18,10 +18,37 @@ class ProductSessionCoordinatorTest {
         assertEquals(generation, state.generation)
         assertEquals(ClientSessionCapabilities.LEGACY_TOUCH_ONLY, state.capabilities)
         assertFalse(state.connected)
+        assertFalse(state.transportConnected)
+        assertFalse(state.connectionAttemptInProgress)
         assertFalse(state.clipboardVisible)
         assertFalse(state.fileTransferVisible)
         assertFalse(state.hostActionsVisible)
         assertEquals(emptyList<StreamDisplayOption>(), state.displays)
+    }
+
+    @Test
+    fun `connection attempt gate allows one in flight attempt until ended`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+
+        assertTrue(coordinator.beginConnectionAttempt())
+        assertTrue(coordinator.renderState().connectionAttemptInProgress)
+        assertFalse(coordinator.beginConnectionAttempt())
+
+        coordinator.endConnectionAttempt()
+
+        assertFalse(coordinator.renderState().connectionAttemptInProgress)
+        assertTrue(coordinator.beginConnectionAttempt())
+    }
+
+    @Test
+    fun `connection attempt gate rejects while any transport is connected`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+
+        coordinator.setTransportConnected(true)
+
+        assertTrue(coordinator.renderState().transportConnected)
+        assertFalse(coordinator.renderState().connected)
+        assertFalse(coordinator.beginConnectionAttempt())
     }
 
     @Test
@@ -86,6 +113,7 @@ class ProductSessionCoordinatorTest {
         assertFalse(coordinator.renderState().fileTransferVisible)
 
         assertTrue(coordinator.onConnectionStatus(client, generation, isConnected = true))
+        assertTrue(coordinator.renderState().transportConnected)
         assertTrue(coordinator.renderState().clipboardVisible)
         assertTrue(coordinator.renderState().clipboardEnabled)
         assertTrue(coordinator.renderState().fileTransferVisible)
@@ -93,9 +121,29 @@ class ProductSessionCoordinatorTest {
         assertTrue(coordinator.onConnectionStatus(client, generation, isConnected = false))
         val disconnected = coordinator.renderState()
         assertFalse(disconnected.connected)
+        assertFalse(disconnected.transportConnected)
         assertEquals(emptyList<StreamDisplayOption>(), disconnected.displays)
         assertFalse(disconnected.clipboardVisible)
         assertFalse(disconnected.fileTransferVisible)
+    }
+
+    @Test
+    fun `internet transport state gates attempts without activating local session controls`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+
+        coordinator.setTransportConnected(true)
+        val active = coordinator.renderState()
+
+        assertTrue(active.transportConnected)
+        assertFalse(active.connected)
+        assertEquals(ClientSessionCapabilities.LEGACY_TOUCH_ONLY, active.capabilities)
+        assertFalse(active.clipboardVisible)
+        assertFalse(coordinator.beginConnectionAttempt())
+
+        coordinator.setTransportConnected(false)
+
+        assertFalse(coordinator.renderState().transportConnected)
+        assertTrue(coordinator.beginConnectionAttempt())
     }
 
     @Test
@@ -132,6 +180,23 @@ class ProductSessionCoordinatorTest {
         assertFalse(state.clipboardEnabled)
         assertTrue(state.fileTransferEnabled)
         assertTrue(state.hostActionsEnabled)
+    }
+
+    @Test
+    fun `activating a local session keeps in flight attempt gate active until completion`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+
+        assertTrue(coordinator.beginConnectionAttempt())
+        val generation = coordinator.activate(client)
+
+        assertTrue(coordinator.accepts(client, generation))
+        assertTrue(coordinator.renderState().connectionAttemptInProgress)
+        assertFalse(coordinator.beginConnectionAttempt())
+
+        coordinator.endConnectionAttempt()
+
+        assertFalse(coordinator.renderState().connectionAttemptInProgress)
     }
 
     @Test
@@ -172,6 +237,8 @@ class ProductSessionCoordinatorTest {
 
         assertFalse(coordinator.accepts(client, generation))
         assertFalse(state.connected)
+        assertFalse(state.transportConnected)
+        assertFalse(state.connectionAttemptInProgress)
         assertEquals(ClientSessionCapabilities.LEGACY_TOUCH_ONLY, state.capabilities)
         assertEquals(emptyList<StreamDisplayOption>(), state.displays)
         assertEquals("", state.selectedDisplayId)
@@ -196,6 +263,7 @@ class ProductSessionCoordinatorTest {
         assertTrue(coordinator.accepts(client, generation))
         assertEquals(binding(clipboard = true), coordinator.currentBinding())
         assertFalse(coordinator.renderState().connected)
+        assertFalse(coordinator.renderState().transportConnected)
         assertFalse(coordinator.renderState().clipboardVisible)
     }
 

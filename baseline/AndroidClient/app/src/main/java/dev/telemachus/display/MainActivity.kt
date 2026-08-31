@@ -270,7 +270,8 @@ class MainActivity : AppCompatActivity() {
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
     private var isConnected = false // Track connection state to prevent checklist conflicts
-    private var connectionAttemptInProgress = false
+    private val connectionAttemptInProgress: Boolean
+        get() = productSessionCoordinator.renderState().connectionAttemptInProgress
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
     private var connectionDetailsVisible = false
@@ -4767,7 +4768,7 @@ class MainActivity : AppCompatActivity() {
                 IllegalStateException("Import a lease newer than epoch $requiredFreshInternetEpoch"),
             )
         }
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         internetRoute = null
         internetSessionEpoch = lease.authoritativeSessionEpoch
         resetInternetInputStateForNewSession()
@@ -4972,14 +4973,18 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } finally {
-                    if (generation == internetGeneration) connectionAttemptInProgress = false
+                    if (generation == internetGeneration) {
+                        runOnUiThread {
+                            if (generation == internetGeneration) productSessionCoordinator.endConnectionAttempt()
+                        }
+                    }
                 }
             }
         } catch (failure: Throwable) {
             if (generation != internetGeneration) return
             videoDecoderLifecycle.invalidate("session_start_failed")
             if (internetVideoDecoderLifecycle === videoDecoderLifecycle) internetVideoDecoderLifecycle = null
-            connectionAttemptInProgress = false
+            productSessionCoordinator.endConnectionAttempt()
             monitor.close()
             requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, lease.authoritativeSessionEpoch)
             android.util.Log.e(INTERNET_LOG_TAG, "internet_session_error type=${failure.javaClass.simpleName}")
@@ -5193,6 +5198,7 @@ class MainActivity : AppCompatActivity() {
         displayHeight = state.displayHeight
         displayRotation = state.displayRotation
         isConnected = state.connected
+        productSessionCoordinator.setTransportConnected(state.connected)
     }
 
     private fun restoreInternetDecoderPresentation(
@@ -5244,6 +5250,7 @@ class MainActivity : AppCompatActivity() {
         )
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
+            productSessionCoordinator.setTransportConnected(false)
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
             internetStylusContactRouter.reset()
@@ -5319,13 +5326,14 @@ class MainActivity : AppCompatActivity() {
         QUARANTINED_INTERNET_SESSION.compareAndSet(session, null)
         internetNetworkMonitor = null
         videoDecoder = null
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
         isConnected = false
+        productSessionCoordinator.setTransportConnected(false)
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
@@ -5357,7 +5365,7 @@ class MainActivity : AppCompatActivity() {
         internetTickJob = null
         internetNetworkMonitor = null
         videoDecoder = null
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         activeInternetInputIds.clear()
         internetStylusInputIds.clear()
@@ -5368,6 +5376,7 @@ class MainActivity : AppCompatActivity() {
         displayHeight = 0
         displayRotation = 0
         isConnected = false
+        productSessionCoordinator.setTransportConnected(false)
         val quarantinedSession = requireNotNull(internetSession)
         check(
             QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
@@ -5501,8 +5510,7 @@ class MainActivity : AppCompatActivity() {
             pendingWirelessReconnectDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS
             return
         }
-        if (isConnected || connectionAttemptInProgress) return
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         val callbackClient = StreamClient(
             host,
             port,
@@ -5552,7 +5560,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    connectionAttemptInProgress = false
+                    productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
                         automaticRetryEnabled = wirelessAutoReconnectEnabled,
                         disconnected = !isConnected,
@@ -5601,7 +5609,7 @@ class MainActivity : AppCompatActivity() {
             if (streamClient === client) streamClient = null
         }
         disconnectInternet(showIdle = false)
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         clearUsbConnectionGuidance()
         applyDisconnectedSessionUi()
     }
@@ -5615,8 +5623,7 @@ class MainActivity : AppCompatActivity() {
             scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
             return
         }
-        if (isConnected || connectionAttemptInProgress) return
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         hasAttemptedUsbConnection = true
         clearUsbConnectionGuidance()
         if (prefs.connectionMode == ConnectionMode.USB) {
@@ -5645,7 +5652,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    connectionAttemptInProgress = false
+                    productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
                         automaticRetryEnabled = automaticUsbConnect,
                         disconnected = !isConnected,
@@ -5681,7 +5688,7 @@ class MainActivity : AppCompatActivity() {
             if (client != null) productSessionCoordinator.invalidate(client, generation)
             if (streamClient === client) streamClient = null
         }
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         applyDisconnectedSessionUi()
         log("Disconnected")
     }

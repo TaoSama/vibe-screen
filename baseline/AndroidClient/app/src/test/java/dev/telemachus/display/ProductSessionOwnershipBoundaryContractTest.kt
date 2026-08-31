@@ -35,6 +35,9 @@ class ProductSessionOwnershipBoundaryContractTest {
         assertTrue(source.contains("productSessionCoordinator.updateNegotiatedSession(client, generation, binding)"))
         assertTrue(source.contains("productSessionCoordinator.invalidate(client, generation)"))
         assertTrue(source.contains("productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)"))
+        assertTrue(source.contains("if (!productSessionCoordinator.beginConnectionAttempt()) return"))
+        assertTrue(source.contains("productSessionCoordinator.endConnectionAttempt()"))
+        assertTrue(source.contains("productSessionCoordinator.setTransportConnected(state.connected)"))
         assertTrue(source.contains("productSessionCoordinator.requestDisplaySelection(option.id)"))
         assertTrue(source.contains("productSessionCoordinator.requestHostAction(actionId)"))
 
@@ -44,6 +47,9 @@ class ProductSessionOwnershipBoundaryContractTest {
             "private var selectedDisplayId = \"\"",
             "private var pendingDisplaySelectionId: String? = null",
             "private var availableHostActions = emptyList<HostActionOption>()",
+            "private var connectionAttemptInProgress = false",
+            "connectionAttemptInProgress = true",
+            "connectionAttemptInProgress = false",
             "sessionState.activate(client)",
             "sessionState.accepts(client, generation)",
             "sessionState.updateNegotiatedSession(client, generation, binding)",

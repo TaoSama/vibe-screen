@@ -11,6 +11,8 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
     private var activeClient: ClientIdentity? = null
     private var activeGeneration = NO_GENERATION
     private var connected = false
+    private var transportConnected = false
+    private var connectionAttemptInProgress = false
     private var displayState = DisplayState()
     private var hostActions = emptyList<HostActionOption>()
     private var clipboardRuntimeAvailable = false
@@ -22,6 +24,7 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         activeClient = client
         activeGeneration = generation
         connected = false
+        transportConnected = false
         clearUiState()
         return generation
     }
@@ -35,6 +38,8 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
             activeClient = null
             activeGeneration = NO_GENERATION
             connected = false
+            transportConnected = false
+            connectionAttemptInProgress = false
             clearUiState()
         }
         return true
@@ -65,8 +70,27 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
     ): Boolean {
         if (!accepts(client, generation)) return false
         connected = isConnected
+        transportConnected = isConnected
         if (!isConnected) clearUiState()
         return true
+    }
+
+    fun beginConnectionAttempt(): Boolean {
+        if (transportConnected || connectionAttemptInProgress) return false
+        connectionAttemptInProgress = true
+        return true
+    }
+
+    fun endConnectionAttempt() {
+        connectionAttemptInProgress = false
+    }
+
+    fun setTransportConnected(isConnected: Boolean) {
+        transportConnected = isConnected
+        if (!isConnected) {
+            connected = false
+            clearUiState()
+        }
     }
 
     fun onDisplaysAvailable(
@@ -173,6 +197,8 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
                 fileTransferRuntimeAvailable
         return RenderState(
             connected = connected,
+            transportConnected = transportConnected,
+            connectionAttemptInProgress = connectionAttemptInProgress,
             generation = activeGeneration,
             binding = binding,
             capabilities = capabilities,
@@ -191,6 +217,7 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
 
     fun clearDisconnectedUiState() {
         connected = false
+        transportConnected = false
         clearUiState()
     }
 
@@ -204,6 +231,8 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
 
     data class RenderState(
         val connected: Boolean,
+        val transportConnected: Boolean,
+        val connectionAttemptInProgress: Boolean,
         val generation: Long,
         val binding: ClientSessionBinding,
         val capabilities: ClientSessionCapabilities,
