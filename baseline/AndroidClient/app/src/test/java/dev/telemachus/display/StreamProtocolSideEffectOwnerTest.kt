@@ -10,6 +10,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class StreamProtocolSideEffectOwnerTest {
     @Test
@@ -161,7 +165,7 @@ class StreamProtocolSideEffectOwnerTest {
     }
 
     @Test
-    fun `run if current does not execute work while holding owner lock`() {
+    fun `run if current permits reentrant owner calls while holding current owner`() {
         val session = session()
         val owner = alwaysCurrentOwner(session = session, maximumPendingFileOffers = 1)
         val transfer = ByteString.copyFromUtf8("transfer")
@@ -174,6 +178,43 @@ class StreamProtocolSideEffectOwnerTest {
         val claimed = owner.claimFileOffer(transfer)
         assertTrue(claimed?.session === session)
         assertEquals(1L, claimed?.connectionGeneration)
+    }
+
+    @Test
+    fun `run if current keeps owner current until side effect completes`() {
+        val session = session()
+        val owner = alwaysCurrentOwner(session = session)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val clearReturned = AtomicBoolean(false)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val sideEffect = executor.submit<Boolean> {
+                owner.runIfCurrent(session, 1L) {
+                    entered.countDown()
+                    assertTrue(release.await(5, TimeUnit.SECONDS))
+                    true
+                } ?: false
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+
+            val clear = executor.submit {
+                owner.clear()
+                clearReturned.set(true)
+            }
+
+            Thread.sleep(100)
+            assertFalse(clearReturned.get())
+
+            release.countDown()
+            assertTrue(sideEffect.get(5, TimeUnit.SECONDS))
+            clear.get(5, TimeUnit.SECONDS)
+            assertFalse(owner.isCurrent(session, 1L))
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
     }
 
     @Test

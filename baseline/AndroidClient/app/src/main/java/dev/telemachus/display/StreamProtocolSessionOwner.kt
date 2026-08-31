@@ -62,8 +62,16 @@ internal class StreamProtocolSessionOwner(
     }
 
     /**
-     * Full session cleanup on connection termination. Clears the session
-     * reference, side-effect gates, and local session termination state.
+     * Stops accepting delayed side effects while retaining the Protocol v1
+     * session reference for already-admitted outbound drain work.
+     */
+    fun clearSideEffectAdmission() {
+        protocolSideEffectOwner.clear()
+    }
+
+    /**
+     * Full session cleanup after outbound drain has finished. Clears the session
+     * reference and side-effect gates.
      */
     fun clear() {
         protocolSession = null
@@ -121,6 +129,11 @@ internal class StreamProtocolSessionOwner(
         session: ProtocolV1Session,
         connectionGeneration: Long,
     ): Boolean = protocolSideEffectOwner.isCurrent(session, connectionGeneration)
+
+    fun retainsSession(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): Boolean = currentSession === session && localSessionState.acceptsEpoch(connectionGeneration)
 
     fun <T> runIfCurrent(
         session: ProtocolV1Session,

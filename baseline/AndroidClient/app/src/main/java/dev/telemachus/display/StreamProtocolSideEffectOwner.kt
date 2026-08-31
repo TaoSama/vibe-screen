@@ -50,6 +50,7 @@ internal class StreamProtocolSideEffectOwner(
             acceptsConnectionGeneration(connectionGeneration)
     }
 
+    @Synchronized
     fun <T> runIfCurrent(
         session: ProtocolV1Session,
         connectionGeneration: Long,

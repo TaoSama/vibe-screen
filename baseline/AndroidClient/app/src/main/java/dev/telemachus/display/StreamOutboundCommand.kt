@@ -30,13 +30,19 @@ internal sealed interface StreamOutboundCommand {
     ) : StreamOutboundCommand
 
     class ProtocolBatch(
-        val onUnavailable: (() -> Unit)? = null,
         val build: (ProtocolV1Session) -> List<Envelope>,
     ) : StreamOutboundCommand
 
     class ProtocolActionBatch(
         val build: (ProtocolV1Session) -> List<ProtocolV1Session.Action>,
         val onEmpty: ((ProtocolV1Session) -> Unit)? = null,
+    ) : StreamOutboundCommand
+
+    data class ProtocolFileOfferSubmission(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
+        val offer: FileOffer,
+        val prepared: FileTransferProductOwner.PreparedOutgoingTransfer,
     ) : StreamOutboundCommand
 
     data class ProtocolReceive(

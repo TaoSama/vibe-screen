@@ -38,8 +38,12 @@ SYSTEM_TCC_DATABASE = Path("/Library") / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
+EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
+ACCESSIBILITY_SERVICES = (ACCESSIBILITY_SERVICE,)
+MICROPHONE_SERVICE = "kTCCServiceMicrophone"
+MICROPHONE_SERVICES = (MICROPHONE_SERVICE,)
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
@@ -780,10 +784,7 @@ def parse_designated_requirement(output: str) -> str | None:
 
 
 def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
-    if requirement is None:
-        return None
-    match = re.search(r"certificate leaf = H\"([0-9a-fA-F]+)\"", requirement)
-    return match.group(1).upper() if match else None
+    return package_macos.parse_signing_certificate_hash(requirement)
 
 
 def parse_entitlement_keys(output: str) -> tuple[str, ...]:
@@ -1011,7 +1012,7 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
                 )
             auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
             last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
-            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE)
+            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE, MICROPHONE_SERVICE)
             placeholders = ",".join("?" for _ in services)
             cursor = connection.execute(
                 f"""
@@ -1070,7 +1071,16 @@ def validate_preflight(
         errors.append(
             "Host is ad-hoc signed; use the configured local signing identity so TCC grants survive rebuilds"
         )
-    elif expected_sign_identity and metadata.identity_name != expected_sign_identity:
+    elif metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
+        actual_leaf = metadata.leaf_certificate_hash or "missing"
+        errors.append(
+            f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+        )
+    elif (
+        expected_sign_identity
+        and not package_macos.is_sha1(expected_sign_identity)
+        and metadata.identity_name != expected_sign_identity
+    ):
         errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
     if not metadata.cdhash:
         errors.append("codesign CDHash is missing")
@@ -1097,8 +1107,10 @@ def validate_preflight(
     else:
         if not permissions.is_allowed(SCREEN_CAPTURE_SERVICES):
             errors.append("Screen Recording is not authorized for the installed Host")
-        if not permissions.is_allowed((ACCESSIBILITY_SERVICE,)):
+        if not permissions.is_allowed(ACCESSIBILITY_SERVICES):
             errors.append("Accessibility is not authorized for the installed Host")
+        if not permissions.is_allowed(MICROPHONE_SERVICES):
+            errors.append("Microphone is not authorized for the installed Host")
     return errors
 
 
@@ -1114,10 +1126,11 @@ def permission_interpretation(permissions: PermissionStatus) -> str:
     if not permissions.readable:
         return f"unverified ({permissions.error})"
     screen = "allowed" if permissions.is_allowed(SCREEN_CAPTURE_SERVICES) else "not allowed"
-    accessibility = "allowed" if permissions.is_allowed((ACCESSIBILITY_SERVICE,)) else "not allowed"
+    accessibility = "allowed" if permissions.is_allowed(ACCESSIBILITY_SERVICES) else "not allowed"
+    microphone = "allowed" if permissions.is_allowed(MICROPHONE_SERVICES) else "not allowed"
     if permissions.error:
-        return f"Screen Recording {screen}; Accessibility {accessibility}; read warning: {permissions.error}."
-    return f"Screen Recording {screen}; Accessibility {accessibility}."
+        return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}; read warning: {permissions.error}."
+    return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}."
 
 
 def format_report(
@@ -1175,6 +1188,7 @@ Identity: {identity_name}
 {authorities}
 TeamIdentifier: {team_identifier}
 Certificate SHA-1: {certificate_sha1}
+Expected signing leaf SHA-1: {EXPECTED_SIGNING_LEAF_SHA1}
 CDHash: {cdhash}
 Binary SHA-256: {binary_sha256}
 Designated requirement: {designated_requirement}
@@ -1225,10 +1239,10 @@ Blocking issues:
 Next action
 -----------
 Create or import the stable local codesigning identity, or set
-${package_macos.SIGN_IDENTITY_ENV} to an existing stable identity, then rebuild
-and reinstall the Host before rerunning device evidence. Do not use ad-hoc
-signing for fixed-binary device reruns because it changes the code-signing hash
-and invalidates macOS Screen Recording/Accessibility grants.
+${package_macos.SIGN_IDENTITY_ENV} to the pinned leaf SHA-1
+{EXPECTED_SIGNING_LEAF_SHA1}, then rebuild and reinstall the Host before rerunning device evidence.
+Do not use ad-hoc signing for fixed-binary device reruns because it changes the
+designated requirement and invalidates macOS Screen Recording/Accessibility grants.
 
 Safety
 ------
@@ -1381,10 +1395,10 @@ def inspect_host_without_throwing(
         except SystemExit as error:
             errors.append(str(error))
         else:
-            if expected_sign_identity and resolved_identity != expected_sign_identity:
+            if resolved_identity != EXPECTED_SIGNING_LEAF_SHA1:
                 errors.append(
-                    "configured signing identity did not resolve exactly: "
-                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                    "configured signing identity resolved to unexpected leaf SHA-1: "
+                    f"resolved '{resolved_identity}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
                 )
     try:
         metadata = collect_signing_metadata(install_path)
@@ -1415,7 +1429,8 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "readable": permissions.readable,
         "error": permissions.error,
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
-        "accessibility_granted": permissions.allowed_state((ACCESSIBILITY_SERVICE,)),
+        "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
+        "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
         "rows": [row.__dict__ for row in permissions.rows],
     }
 
@@ -1434,6 +1449,7 @@ def signing_record(
             "authorities": [],
             "team_identifier": None,
             "certificate_sha1": None,
+            "expected_certificate_sha1": EXPECTED_SIGNING_LEAF_SHA1,
             "cdhash": None,
             "binary_sha256": None,
             "designated_requirement": None,
@@ -1452,6 +1468,7 @@ def signing_record(
         "authorities": list(metadata.authorities),
         "team_identifier": metadata.team_identifier,
         "certificate_sha1": metadata.leaf_certificate_hash,
+        "expected_certificate_sha1": EXPECTED_SIGNING_LEAF_SHA1,
         "cdhash": metadata.cdhash,
         "binary_sha256": metadata.binary_sha256,
         "designated_requirement": metadata.designated_requirement,
@@ -1586,7 +1603,7 @@ def build_readiness_document(
         "schema_version": "vibescreen.host-readiness/v1",
         "kind": "macos_host_shared_prerequisite_readiness",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "ready" if not blockers else "blocked",
+        "status": "pass" if not blockers else "blocked",
         "signing_tcc_status": "ready" if not inspection.errors else "blocked",
         "listener_status": "ready" if listener.observed else "blocked",
         "virtual_hid_status": "ready" if entitlements.virtual_hid else "blocked",
@@ -1598,7 +1615,7 @@ def build_readiness_document(
         "can_start_hardware_keyboard_gate": shared_ready,
         "can_start_controller_runtime_gate": controller_ready,
         "can_start_headless_login_gate": headless_login_ready,
-        "can_close_runtime_gates": False,
+        "can_close_runtime_gates": not blockers,
         "blockers": blockers,
         "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
         "permissions": permission_record(inspection.permissions),
@@ -1631,53 +1648,6 @@ def write_json_report(path: Path, document: dict[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(path)
-
-
-def metadata_and_permissions(
-    install_path: Path,
-    tcc_db: Path,
-    *,
-    expected_sign_identity: str | None = None,
-    source_root: Path = package_macos.REPOSITORY_ROOT,
-    allow_source_mismatch: bool = False,
-    validate_configured_identity: bool = True,
-) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
-    errors: list[str] = []
-    if validate_configured_identity:
-        configured_sign_identity = effective_sign_identity(expected_sign_identity)
-        if configured_sign_identity == "-":
-            errors.append(
-                "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
-            )
-        else:
-            try:
-                resolved_identity = package_macos.resolve_sign_identity(
-                    configured_sign_identity
-                )
-            except SystemExit as error:
-                errors.append(str(error))
-            else:
-                if expected_sign_identity and resolved_identity != expected_sign_identity:
-                    errors.append(
-                        "configured signing identity did not resolve exactly: "
-                        f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
-                    )
-    else:
-        configured_sign_identity = effective_sign_identity(expected_sign_identity)
-    metadata = collect_signing_metadata(install_path)
-    source_identity = current_source_identity(source_root)
-    permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(
-        validate_preflight(
-            metadata,
-            permissions,
-            install_path=install_path,
-            expected_sign_identity=configured_sign_identity,
-            source_identity=source_identity,
-            allow_source_mismatch=allow_source_mismatch,
-        )
-    )
-    return metadata, source_identity, permissions, errors
 
 
 def refuse_ad_hoc_identity(sign_identity: str) -> None:
@@ -1842,7 +1812,7 @@ def readiness_command(args: argparse.Namespace) -> int:
     )
     listener = inspect_listener(args.port)
     entitlements = inspect_entitlements(install_path)
-    probe_login_item = bool(getattr(args, "probe_login_item", False))
+    probe_login_item = getattr(args, "probe_login_item", False) is True
     login_item = read_login_item_readiness() if probe_login_item else skipped_login_item_readiness()
     if inspection.metadata is not None:
         report = format_report(
@@ -1877,7 +1847,7 @@ It only uses the configured codesign identity and reads privacy databases in rea
     write_json_report(args.json_output, document)
     print(f"Wrote {args.report}")
     print(f"Wrote {args.json_output}")
-    if document["status"] != "ready":
+    if document["status"] != "pass":
         print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     print("macOS Host shared prerequisite readiness passed")

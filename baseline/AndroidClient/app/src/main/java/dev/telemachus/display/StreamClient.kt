@@ -289,7 +289,7 @@ class StreamClient(
             executor = terminationExecutor,
             onClaim = { request ->
                 protocolSessionOwner.markTerminationClaimed(request.failure)
-                protocolSessionOwner.clear()
+                protocolSessionOwner.clearSideEffectAdmission()
             },
             complete = ::completeConnectionEnd,
         )
@@ -709,7 +709,7 @@ class StreamClient(
 
     private fun configureLegacyMode(firstByte: Int? = null) {
         wireMode = WireMode.LEGACY
-        fileTransferProductOwner.clear()
+        fileTransferProductOwner.clear(reasonCode = "session_deactivated")
         protocolSessionOwner.deactivate()
         val activeAudioFormat = audioPlayer.activeFormat()
         audioPlayer.stop()?.let {
@@ -1683,10 +1683,7 @@ class StreamClient(
 
             is StreamOutboundCommand.ProtocolBatch -> {
                 val session = protocolSessionOwner.currentSession
-                if (session == null) {
-                    command.onUnavailable?.invoke()
-                    return
-                }
+                if (session == null) return
                 command.build(session).forEach { writeProtocolEnvelope(out, it) }
             }
 
@@ -1715,6 +1712,9 @@ class StreamClient(
 
             is StreamOutboundCommand.ProtocolFileOfferDecision ->
                 processProtocolFileOfferDecision(out, command)
+
+            is StreamOutboundCommand.ProtocolFileOfferSubmission ->
+                processProtocolFileOfferSubmission(out, command)
 
             is StreamOutboundCommand.ProtocolSendBulk ->
                 ProtocolV1Framing.write(out, ProtocolChannel.BULK, command.chunk.toFrame())
@@ -1860,20 +1860,40 @@ class StreamClient(
         val session = protocolSessionOwner.currentSession
         if (session == null ||
             session !== command.session ||
-            !isCurrentProtocolSession(session, command.connectionGeneration)
+            !retainsProtocolSessionForDrain(session, command.connectionGeneration)
         ) {
             return
         }
-        protocolSessionOwner.runIfCurrent(session, command.connectionGeneration) {
-            val response = fileTransferProductOwner.decideFileOffer(
-                offer = command.offer,
-                acceptedByUser = command.acceptedByUser,
-                negotiatedPolicy = session.negotiatedFilePolicy,
-                sessionEpoch = session.activeSessionEpoch,
-            )
-            session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
-            out.flush()
+        val response = fileTransferProductOwner.decideFileOffer(
+            offer = command.offer,
+            acceptedByUser = command.acceptedByUser,
+            negotiatedPolicy = session.negotiatedFilePolicy,
+            sessionEpoch = session.activeSessionEpoch,
+        )
+        session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
+        out.flush()
+    }
+
+    private fun processProtocolFileOfferSubmission(
+        out: java.io.DataOutputStream,
+        command: StreamOutboundCommand.ProtocolFileOfferSubmission,
+    ) {
+        val activeSession = protocolSessionOwner.currentSession
+        if (activeSession !== command.session ||
+            !retainsProtocolSessionForDrain(command.session, command.connectionGeneration) ||
+            !command.session.canTransferFiles
+        ) {
+            val rejectionReason = if (command.session.canTransferFiles) "session_terminated" else "policy_denied"
+            fileTransferProductOwner.rejectOutgoingTransfer(
+                transferId = command.offer.transferId,
+                prepared = command.prepared,
+                reasonCode = rejectionReason,
+            )?.let(fileTransferProductOwner::notifyFileTransferResult)
+            return
         }
+        if (!fileTransferProductOwner.isOutgoingTransferActive(command.offer.transferId, command.prepared)) return
+        command.session.offerFile(command.offer)?.let { writeProtocolEnvelope(out, it) }
+        out.flush()
     }
 
     private inner class StreamProtocolActionSink : StreamProtocolActionDispatcher.Sink {
@@ -2351,7 +2371,7 @@ class StreamClient(
         command: StreamOutboundCommand.ProtocolWakeHostCompletion,
     ) {
         try {
-            if (!isCurrentProtocolSession(command.session, command.connectionGeneration)) return
+            if (!retainsProtocolSessionForDrain(command.session, command.connectionGeneration)) return
             command.session.completeWakeHost(
                 requestId = command.requestId,
                 accepted = command.accepted,
@@ -2458,6 +2478,11 @@ class StreamClient(
         expectedConnectionGeneration: Long,
     ): Boolean = protocolSessionOwner.isCurrent(expectedSession, expectedConnectionGeneration)
 
+    private fun retainsProtocolSessionForDrain(
+        expectedSession: ProtocolV1Session,
+        expectedConnectionGeneration: Long,
+    ): Boolean = protocolSessionOwner.retainsSession(expectedSession, expectedConnectionGeneration)
+
     private fun writeProtocolEnvelope(
         out: java.io.DataOutputStream,
         envelope: Envelope,
@@ -2519,6 +2544,7 @@ class StreamClient(
         requestConnectionEnd(SessionFailure.codec(reason))
     }
 
+    @Synchronized
     fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean {
         if (!protocolSessionOwner.isConnected || wireMode != WireMode.V1) return false
         val session = protocolSessionOwner.currentSession ?: return false
@@ -2539,32 +2565,39 @@ class StreamClient(
                 return false
             }
         }
+        val offer = when (
+            val startResult = fileTransferProductOwner.startPreparedOutgoing(
+                prepared = prepared,
+                canTransferFiles = session.canTransferFiles,
+            )
+        ) {
+            is FileTransferProductOwner.StartOutgoingResult.Started -> startResult.offer
+            is FileTransferProductOwner.StartOutgoingResult.Rejected -> {
+                fileTransferProductOwner.notifyFileTransferResult(
+                    FileTransferProductOwner.TransferResult(accepted = false, reason = startResult.reasonCode),
+                )
+                return false
+            }
+            FileTransferProductOwner.StartOutgoingResult.Stale -> return false
+        }
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
-            command = StreamOutboundCommand.ProtocolBatch(
-                onUnavailable = { fileTransferProductOwner.cancelPreparedOutgoing(prepared) },
-            ) { activeSession ->
-                if (activeSession !== session ||
-                    !protocolSessionOwner.isCurrent(activeSession, connectionGeneration)
-                ) {
-                    fileTransferProductOwner.cancelPreparedOutgoing(prepared)
-                    return@ProtocolBatch emptyList()
-                }
-                val offer = fileTransferProductOwner.startPreparedOutgoing(
-                    prepared = prepared,
-                    canTransferFiles = activeSession.canTransferFiles,
-                ) ?: return@ProtocolBatch emptyList()
-                listOfNotNull(activeSession.offerFile(offer))
-            },
+            command = StreamOutboundCommand.ProtocolFileOfferSubmission(
+                session = session,
+                connectionGeneration = connectionGeneration,
+                offer = offer,
+                prepared = prepared,
+            ),
             timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
         )
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
             submission == OutboundCommandScheduler.Submission.CLOSED
         ) {
-            fileTransferProductOwner.cancelPreparedOutgoing(prepared)
-            fileTransferProductOwner.notifyFileTransferResult(
-                FileTransferProductOwner.TransferResult(accepted = false, reason = "outbound_backpressure"),
-            )
+            fileTransferProductOwner.rejectOutgoingTransfer(
+                transferId = offer.transferId,
+                prepared = prepared,
+                reasonCode = "outbound_backpressure",
+            )?.let(fileTransferProductOwner::notifyFileTransferResult)
             return false
         }
         return true

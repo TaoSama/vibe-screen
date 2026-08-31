@@ -275,6 +275,36 @@ final class StreamingServerLifecycleTests: XCTestCase {
         )
     }
 
+    func testDisconnectResetsFramePipelineState() throws {
+        let port = testPort(offset: 19)
+        let server = StreamingServer(port: port)
+        defer { server.stop() }
+        let connected = expectation(description: "client connected")
+        let disconnected = expectation(description: "client disconnected")
+        server.onClientConnected = { _ in connected.fulfill() }
+        server.onClientDisconnected = { _ in disconnected.fulfill() }
+        try server.start()
+
+        let client = try readyClient(port: port)
+        wait(for: [connected], timeout: 2)
+        let active = server.framePipelineSnapshotForSelfTest()
+        XCTAssertTrue(server.stageFramePipelineBacklogForSelfTest())
+        let backedUp = server.framePipelineSnapshotForSelfTest()
+        XCTAssertTrue(backedUp.sendInFlight)
+        XCTAssertEqual(backedUp.pendingFrameCount, 1)
+        XCTAssertFalse(backedUp.requiresKeyframe)
+        client.cancel()
+
+        wait(for: [disconnected], timeout: 2)
+        waitForNetworkQueue(server)
+        let afterDisconnect = server.framePipelineSnapshotForSelfTest()
+
+        XCTAssertGreaterThan(afterDisconnect.generation, active.generation)
+        XCTAssertFalse(afterDisconnect.sendInFlight)
+        XCTAssertEqual(afterDisconnect.pendingFrameCount, 0)
+        XCTAssertTrue(afterDisconnect.requiresKeyframe)
+    }
+
     func testProtocolV1UpgradeInvalidatesPendingLegacyCodecCompletion() throws {
         let port = testPort(offset: 8)
         let server = StreamingServer(port: port)

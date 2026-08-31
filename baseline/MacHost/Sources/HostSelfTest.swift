@@ -209,6 +209,30 @@ enum HostSelfTest {
         if displays.isEmpty {
             failures.append("online display catalog is empty")
         }
+        // Regression: onlineDisplays must return a stable order so the
+        // 2-second status refresh does not emit a spurious @Published change
+        // that churns the SwiftUI settings body and accumulates Observation
+        // entries. Verify the live array is sorted main-first then by ID.
+        let stableDisplays = DisplayCatalog.sortedByStableOrder(displays)
+        if displays != stableDisplays {
+            failures.append("onlineDisplays order is not stable (main-first then by ID)")
+        }
+        // Same elements in different orders must sort to an equal array; this
+        // is the property that prevents spurious @Published availableDisplays
+        // updates across refresh ticks.
+        let syntheticA = [
+            HostDisplayDescriptor(id: 3, persistentUUID: nil, name: "C", width: 1, height: 1, isMain: false),
+            HostDisplayDescriptor(id: 1, persistentUUID: nil, name: "A", width: 1, height: 1, isMain: true),
+            HostDisplayDescriptor(id: 2, persistentUUID: nil, name: "B", width: 1, height: 1, isMain: false)
+        ]
+        let syntheticB = [
+            HostDisplayDescriptor(id: 2, persistentUUID: nil, name: "B", width: 1, height: 1, isMain: false),
+            HostDisplayDescriptor(id: 3, persistentUUID: nil, name: "C", width: 1, height: 1, isMain: false),
+            HostDisplayDescriptor(id: 1, persistentUUID: nil, name: "A", width: 1, height: 1, isMain: true)
+        ]
+        if DisplayCatalog.sortedByStableOrder(syntheticA) != DisplayCatalog.sortedByStableOrder(syntheticB) {
+            failures.append("stable display sort is not order-independent")
+        }
         if DisplayCatalog.resolve(CGDirectDisplayID.max) != CGMainDisplayID() {
             failures.append("missing display did not fall back to main display")
         }

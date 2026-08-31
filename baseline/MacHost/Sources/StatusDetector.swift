@@ -42,11 +42,15 @@ enum StatusDetector {
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
+        // Sort serials so the same device set always yields an equal array.
+        // adb devices enumeration order is not guaranteed; without sorting the
+        // 2-second status refresh can emit a spurious @Published
+        // availableADBDevices change and churn the SwiftUI settings body.
         return output.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t").map(String.init)
             guard parts.count == 2, parts[1] == "device" else { return nil }
             return parts[0]
-        }
+        }.sorted()
     }
 
     /// Heuristic: parse `adb reverse --list` for `tcp:<port> tcp:<port>`.

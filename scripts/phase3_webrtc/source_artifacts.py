@@ -1151,7 +1151,9 @@ def verify_build_manifest(
 
 
 def build_binaries(repo_root: Path, timeout: int) -> tuple[Path, Path, list[str]]:
+    repo_root = repo_root.resolve()
     source_state = repository_source_state(repo_root)
+    swift_path_map = f"{repo_root}=."
     signaling_root = repo_root / "services/signaling"
     mac_root = repo_root / "baseline/MacHost"
     signaling_binary = repo_root / "scripts/phase3_webrtc/.build/signaling/vibe-signaling"
@@ -1167,7 +1169,16 @@ def build_binaries(repo_root: Path, timeout: int) -> tuple[Path, Path, list[str]
             timeout=timeout,
         ).stdout,
         run_checked(
-            ["swift", "build", "-c", "release"],
+            [
+                "swift",
+                "build",
+                "-c",
+                "release",
+                "-Xswiftc",
+                "-file-prefix-map",
+                "-Xswiftc",
+                swift_path_map,
+            ],
             cwd=mac_root,
             timeout=max(timeout, _MAC_RELEASE_BUILD_MIN_TIMEOUT_SECONDS),
         ).stdout,
