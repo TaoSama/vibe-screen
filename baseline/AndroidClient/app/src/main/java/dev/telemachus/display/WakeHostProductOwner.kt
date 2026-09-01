@@ -86,6 +86,7 @@ internal class WakeHostProductOwner(
                     accepted = false,
                     rejectionReason = TOO_MANY_PENDING_REQUESTS_REASON,
                     correlationId = correlationId,
+                    requiresTrackedReservation = false,
                 )
             if (!isOutboundAdmitted(submission)) endForCompletionBackpressure(submission)
             return
@@ -103,27 +104,30 @@ internal class WakeHostProductOwner(
                     accepted = false,
                     rejectionReason = DISPATCH_FAILED_REASON,
                     correlationId = correlationId,
+                    requiresTrackedReservation = false,
                 )
             if (!isOutboundAdmitted(submission)) endForCompletionBackpressure(submission)
         }
     }
 
     fun complete(command: StreamOutboundCommand.ProtocolWakeHostCompletion): Envelope? {
-        try {
-            if (!sessionOwner.isCurrent(command.session, command.connectionGeneration)) return null
-            return command.session.completeWakeHost(
-                requestId = command.requestId,
-                accepted = command.accepted,
-                rejectionReason = command.rejectionReason,
-                correlationId = command.correlationId,
-            )
-        } finally {
-            sessionOwner.releaseWakeHostRequest(
+        val retained = sessionOwner.retainsSession(command.session, command.connectionGeneration)
+        if (!retained || !command.claimForWrite()) return null
+        if (command.requiresTrackedReservation &&
+            !sessionOwner.releaseWakeHostRequest(
                 command.requestId,
                 command.session,
                 command.connectionGeneration,
             )
+        ) {
+            return null
         }
+        return command.session.completeWakeHost(
+            requestId = command.requestId,
+            accepted = command.accepted,
+            rejectionReason = command.rejectionReason,
+            correlationId = command.correlationId,
+        )
     }
 
     fun deliverCompletion(
@@ -193,6 +197,7 @@ internal class WakeHostProductOwner(
         accepted: Boolean,
         rejectionReason: String,
         correlationId: Long,
+        requiresTrackedReservation: Boolean = true,
     ): OutboundCommandScheduler.Submission =
         submitOutbound(
             OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
@@ -203,6 +208,7 @@ internal class WakeHostProductOwner(
                 accepted = accepted,
                 rejectionReason = rejectionReason,
                 correlationId = correlationId,
+                requiresTrackedReservation = requiresTrackedReservation,
             ),
             protocolActionTimeoutMs,
         )

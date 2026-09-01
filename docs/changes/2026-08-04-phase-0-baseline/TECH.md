@@ -67,13 +67,20 @@ fixtures plus the concurrency and resource-lifecycle contract tests.
 This is intentionally a partial extraction. `StreamClient` still composes local
 transport with legacy/Protocol v1 session behavior, and `MainActivity` still
 coordinates local and Internet product sessions. Focused Android Protocol v1
-owners gate side effects on the active session object plus connection generation;
-the WakeHost product owner now owns request lifecycle, result callback delivery,
-authorization-secret handling, and packet-sender admission behind those gates.
-This is offline/module evidence only: sleeping-Mac wake, router/NIC WOL behavior,
-Host signing/TCC readiness, and retained product logs remain blocked by the
-WakeHost current-base hardware gate. File-transfer product ownership, decoder,
-renderer, and UI ownership therefore remain to be enforced by additional module
+owners gate side effects on the active session object plus connection
+generation. `FileTransferProductOwner` owns the Android file-transfer product
+state, user-decision callback port, staging lifecycle, stale-offer cleanup, and
+duplicate-transfer rejection behind the session boundary. The WakeHost product
+owner now owns request lifecycle, result callback delivery, authorization-secret
+handling, and packet-sender admission behind those gates; already accepted
+completion writes may drain while new side effects fail closed after termination
+admission closes. `RendererOwner` gates viewport/layout/render target/frame
+admission for the current renderer boundary. This is offline/module evidence
+only: sleeping-Mac wake, router/NIC WOL behavior, Host signing/TCC readiness,
+and retained product logs remain blocked by the WakeHost current-base hardware
+gate. Broader protocol/session ownership, decoder ownership beyond lifecycle
+admission, renderer ownership beyond the current boundary, and UI/product
+session ownership therefore remain to be enforced by additional module
 boundaries before Phase 0 module ownership can be called complete.
 
 ## Protocol v1

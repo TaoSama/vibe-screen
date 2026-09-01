@@ -216,10 +216,10 @@ class WakeHostProductOwnerTest {
         assertTrue(harness.sessionOwner.trackWakeHostRequest(requestId, session, generation))
         harness.connectedV1 = false
 
-        assertNull(harness.owner.complete(completion(session, requestId, generation, accepted = true)))
         harness.owner.deliverCompletion(session, generation, accepted = true, rejectionReason = "")
 
         assertTrue(callbacks.isEmpty())
+        assertTrue(harness.owner.complete(completion(session, requestId, generation, accepted = true)) != null)
         harness.connectedV1 = true
         assertTrue(
             harness.sessionOwner.trackWakeHostRequest(
@@ -228,6 +228,155 @@ class WakeHostProductOwnerTest {
                 generation,
             ),
         )
+    }
+
+    @Test
+    fun `termination drain completion writes once and releases reservation`() {
+        val session = wakeHostStreamingSession()
+        val harness = OwnerHarness(session = session, maximumPendingWakeHostRequests = 1)
+        val requestId = ByteString.copyFromUtf8("drain")
+        val generation = harness.connectionGeneration
+        assertTrue(harness.sessionOwner.trackWakeHostRequest(requestId, session, generation))
+
+        harness.sessionOwner.markTerminationClaimed(SessionFailure.transport("ending"))
+        harness.sessionOwner.clearSideEffectAdmission()
+
+        val envelope = checkNotNull(harness.owner.complete(completion(session, requestId, generation, accepted = true)))
+        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, envelope.payloadCase)
+        assertEquals(requestId, envelope.wakeHostResult.requestId)
+        assertTrue(envelope.wakeHostResult.accepted)
+        assertNull(harness.owner.complete(completion(session, requestId, generation, accepted = true)))
+    }
+
+    @Test
+    fun `capacity rejection completion writes without reservation and does not release active request`() {
+        val session = wakeHostStreamingSession()
+        val queued = mutableListOf<Runnable>()
+        val harness = OwnerHarness(
+            session = session,
+            maximumPendingWakeHostRequests = 1,
+            executor = Executor { queued += it },
+        )
+        val firstRequestId = ByteString.copyFromUtf8("first")
+        val rejectedRequestId = ByteString.copyFromUtf8("second")
+        val generation = harness.connectionGeneration
+
+        harness.owner.dispatchRequest(session, generation, request(firstRequestId), correlationId = 7L)
+        harness.owner.dispatchRequest(session, generation, request(rejectedRequestId), correlationId = 8L)
+
+        assertEquals(1, queued.size)
+        val rejection = harness.singleCompletion()
+        assertFalse(rejection.requiresTrackedReservation)
+        assertEquals(rejectedRequestId, rejection.requestId)
+        assertFalse(rejection.accepted)
+        assertEquals("too_many_pending_wake_host_requests", rejection.rejectionReason)
+
+        val envelope = checkNotNull(harness.owner.complete(rejection))
+        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, envelope.payloadCase)
+        assertEquals(rejectedRequestId, envelope.wakeHostResult.requestId)
+        assertFalse(envelope.wakeHostResult.accepted)
+        assertEquals("too_many_pending_wake_host_requests", envelope.wakeHostResult.rejectionReason)
+        assertEquals(8L, envelope.correlationId)
+        assertNull(harness.owner.complete(rejection))
+
+        assertFalse(
+            harness.sessionOwner.trackWakeHostRequest(
+                ByteString.copyFromUtf8("still-full"),
+                session,
+                generation,
+            ),
+        )
+
+        harness.submissions.clear()
+        queued.single().run()
+        val accepted = harness.singleCompletion()
+        assertTrue(accepted.requiresTrackedReservation)
+        assertTrue(checkNotNull(harness.owner.complete(accepted)).wakeHostResult.accepted)
+        assertTrue(
+            harness.sessionOwner.trackWakeHostRequest(
+                ByteString.copyFromUtf8("after-first-release"),
+                session,
+                generation,
+            ),
+        )
+    }
+
+    @Test
+    fun `stale capacity rejection completion is dropped even without reservation`() {
+        val session = wakeHostStreamingSession()
+        val queued = mutableListOf<Runnable>()
+        val harness = OwnerHarness(
+            session = session,
+            maximumPendingWakeHostRequests = 1,
+            executor = Executor { queued += it },
+        )
+        val generation = harness.connectionGeneration
+
+        harness.owner.dispatchRequest(session, generation, request(ByteString.copyFromUtf8("first")), correlationId = 7L)
+        harness.owner.dispatchRequest(session, generation, request(ByteString.copyFromUtf8("second")), correlationId = 8L)
+
+        val rejection = harness.singleCompletion()
+        assertFalse(rejection.requiresTrackedReservation)
+        harness.advanceGeneration()
+
+        assertNull(harness.owner.complete(rejection))
+    }
+
+    @Test
+    fun `stale generation completion rejects but releases reservation`() {
+        val session = wakeHostStreamingSession()
+        val harness = OwnerHarness(session = session, maximumPendingWakeHostRequests = 1)
+        val requestId = ByteString.copyFromUtf8("old-generation")
+        val oldGeneration = harness.connectionGeneration
+        assertTrue(harness.sessionOwner.trackWakeHostRequest(requestId, session, oldGeneration))
+
+        harness.advanceGeneration()
+
+        assertNull(harness.owner.complete(completion(session, requestId, oldGeneration, accepted = true)))
+        assertTrue(harness.sessionOwner.trackWakeHostRequest(requestId, session, harness.connectionGeneration))
+    }
+
+    @Test
+    fun `tracked completion envelope requires reservation and releases it exactly once`() {
+        val session = wakeHostStreamingSession()
+        val harness = OwnerHarness(session = session, maximumPendingWakeHostRequests = 1)
+        val requestId = ByteString.copyFromUtf8("tracked")
+        val generation = harness.connectionGeneration
+        assertTrue(harness.sessionOwner.trackWakeHostRequest(requestId, session, generation))
+        val completion = completion(session, requestId, generation, accepted = true)
+
+        val envelope = checkNotNull(harness.owner.complete(completion))
+        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, envelope.payloadCase)
+        assertTrue(envelope.wakeHostResult.accepted)
+        assertNull(harness.owner.complete(completion))
+
+        assertTrue(
+            harness.sessionOwner.trackWakeHostRequest(
+                ByteString.copyFromUtf8("after-release"),
+                session,
+                generation,
+            ),
+        )
+        assertNull(harness.owner.complete(completion(session, requestId, generation, accepted = true)))
+    }
+
+    @Test
+    fun `new wake host side effects fail closed after admission closes`() {
+        val session = wakeHostStreamingSession()
+        val sentPackets = mutableListOf<ByteArray>()
+        val harness = OwnerHarness(
+            session = session,
+            packetSender = WakeHostPacketSender { sentPackets += it },
+        )
+        val generation = harness.connectionGeneration
+
+        harness.sessionOwner.markTerminationClaimed(SessionFailure.transport("ending"))
+        harness.sessionOwner.clearSideEffectAdmission()
+
+        assertFalse(harness.sessionOwner.trackWakeHostRequest(ByteString.copyFromUtf8("blocked"), session, generation))
+        harness.owner.dispatchRequest(session, generation, request(ByteString.copyFromUtf8("dispatch")), correlationId = 9L)
+        assertTrue(sentPackets.isEmpty())
+        assertTrue(harness.submissions.isEmpty())
     }
 
     @Test
@@ -266,7 +415,7 @@ class WakeHostProductOwnerTest {
     }
 
     private class OwnerHarness(
-        session: ProtocolV1Session,
+        private val session: ProtocolV1Session,
         maximumPendingWakeHostRequests: Int = StreamProtocolSideEffectOwner.DEFAULT_MAXIMUM_PENDING_WAKE_HOST_REQUESTS,
         policy: WakeHostPolicy = StaticWakeHostPolicy(true),
         executor: Executor = Executor { it.run() },
@@ -324,6 +473,8 @@ class WakeHostProductOwnerTest {
 
         fun advanceGeneration() {
             sessionOwner.beginSession()
+            sessionOwner.activate(session)
+            sessionOwner.markConnected()
         }
     }
 

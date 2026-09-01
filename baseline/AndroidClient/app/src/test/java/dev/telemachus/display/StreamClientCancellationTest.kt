@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.SocketAddress
 import java.net.ServerSocket
@@ -343,8 +344,42 @@ class StreamClientCancellationTest {
                 StreamClient("127.0.0.1", unusedPort).connect()
                 fail("Expected the refused connection to be propagated")
             } catch (expected: Exception) {
+                assertTrue(expected is ConnectException)
                 assertTrue(expected.message.orEmpty().isNotBlank())
             }
+        }
+
+    @Test
+    fun legacyFallbackConnectFailureKeepsHostUnavailableGuidance() =
+        runBlocking {
+            val failures = mutableListOf<SessionFailure>()
+            val first = LegacyProbeTimeoutSocket()
+            val second = ConnectRefusedSocket()
+            val sockets = listOf(first, second).iterator()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = 54321,
+                    socketFactory = { sockets.next() },
+                ).apply {
+                    onSessionEnded = { failures += it }
+                }
+
+            try {
+                client.connect()
+                fail("Expected legacy fallback connect failure")
+            } catch (expected: IOException) {
+                assertFalse(expected is ConnectException)
+                assertEquals("Mac connection closed before display configuration", expected.message)
+            }
+
+            assertEquals("Mac connection closed before display configuration", failures.single().detail)
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    failures.single(),
+                    ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                )
+            assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
         }
 
     @Test
@@ -637,6 +672,85 @@ class StreamClientCancellationTest {
         override fun setTcpNoDelay(on: Boolean) = Unit
 
         override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    @Test
+    fun retryableFailureSuggestsReconnectDelayWithinBoundedBackoffRange() =
+        runBlocking {
+            val deviceName = "test-device"
+            val requestSize = 37 + deviceName.toByteArray().size
+            ServerSocket(0).use { server ->
+                val serverObservedEof = CountDownLatch(1)
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { socket ->
+                            socket.getInputStream().readNBytes(requestSize)
+                            socket.getOutputStream().apply {
+                                write(byteArrayOf(0x53, 0x53, 0x57, 0x52, 0x00))
+                                flush()
+                            }
+                            while (socket.getInputStream().read() >= 0) {
+                                // Wait for client termination.
+                            }
+                            serverObservedEof.countDown()
+                        }
+                    }
+                val retries = mutableListOf<Long>()
+                val client =
+                    StreamClient(
+                        host = "127.0.0.1",
+                        port = server.localPort,
+                        socketFactory = { FailAfterBytesSocket(requestSize) },
+                    ).apply {
+                        onReconnectSuggested = { retries += it }
+                    }
+
+                client.connectWireless(ByteArray(32), deviceName)
+
+                assertTrue(serverObservedEof.await(1, TimeUnit.SECONDS))
+                serverJob.await()
+                assertEquals(1, retries.size)
+                val delayMs = retries.first()
+                val minDelay = (ReconnectBackoff.INITIAL_DELAY_MS * (1.0 - ReconnectBackoff.DEFAULT_JITTER_RATIO)).toLong()
+                val maxDelay = (ReconnectBackoff.INITIAL_DELAY_MS * (1.0 + ReconnectBackoff.DEFAULT_JITTER_RATIO)).toLong()
+                assertTrue(
+                    "reconnect delay $delayMs not within first-attempt bounded range [$minDelay, $maxDelay]",
+                    delayMs in minDelay..maxDelay,
+                )
+                assertTrue(
+                    "reconnect delay $delayMs exceeds maximum backoff ${ReconnectBackoff.MAXIMUM_DELAY_MS}",
+                    delayMs <= ReconnectBackoff.MAXIMUM_DELAY_MS,
+                )
+                client.disconnect()
+            }
+        }
+
+    private class LegacyProbeTimeoutSocket : Socket() {
+        private val output = ByteArrayOutputStream()
+        private val input =
+            object : InputStream() {
+                override fun read(): Int {
+                    throw java.net.SocketTimeoutException("protocol probe timed out")
+                }
+            }
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) = Unit
+
+        override fun getOutputStream(): OutputStream = output
+
+        override fun getInputStream(): InputStream = input
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private class ConnectRefusedSocket : Socket() {
+        override fun connect(endpoint: SocketAddress?, timeout: Int) {
+            throw ConnectException("Connection refused")
+        }
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
     }
 
     private companion object {

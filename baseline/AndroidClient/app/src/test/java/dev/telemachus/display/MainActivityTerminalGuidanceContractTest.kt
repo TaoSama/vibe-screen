@@ -85,6 +85,105 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun reconnectSuggestionRoutesThroughSingleRetryCoordinator() {
+        val source = mainActivitySource()
+        val reconnectCallback = extractCallback(source, "callbackClient.onReconnectSuggested = reconnect@")
+        val compactCallback = reconnectCallback.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "StreamClient reconnect suggestions must feed the session retry coordinator",
+            compactCallback.contains("retryCoordinator.onReconnectSuggested(delayMs)"),
+        )
+        assertFalse(
+            "Reconnect callback must not independently schedule USB retries",
+            reconnectCallback.contains("scheduleAutomaticUsbConnect"),
+        )
+        assertFalse(
+            "Reconnect callback must not independently schedule wireless retries",
+            reconnectCallback.contains("scheduleWirelessReconnect"),
+        )
+        assertFalse(
+            "Reconnect callback must not store a shared pending retry delay outside the coordinator",
+            reconnectCallback.contains("pendingAutomaticReconnectDelayMs"),
+        )
+        assertFalse(
+            "MainActivity must not keep a second wireless ReconnectBackoff owner",
+            source.contains("initialWirelessReconnectBackoff"),
+        )
+    }
+
+    @Test
+    fun automaticRetryConsumersUseCoordinatorSuggestedDelay() {
+        val source = mainActivitySource()
+        val usbConnect = extractMethod(source, "private fun connect")
+        val wirelessConnect = extractMethod(source, "private fun connectWireless")
+        val usbRetryConsumer = extractBlockAfterMarker(usbConnect, "createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration)")
+        val wirelessRetryConsumer = extractBlockAfterMarker(wirelessConnect, "createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration)")
+
+        assertTrue(
+            "USB retry consumer must accept the coordinator delay parameter",
+            usbRetryConsumer.contains("{ delayMs: Long ->"),
+        )
+        assertTrue(
+            "USB retry consumer must schedule with the suggested delay",
+            usbRetryConsumer.contains("scheduleAutomaticUsbConnect(delayMs)"),
+        )
+        assertFalse(
+            "USB retry consumer must not fall back to the old fixed or shared pending delay path",
+            usbRetryConsumer.contains("pendingAutomaticReconnectDelayMs") ||
+                usbRetryConsumer.contains("pendingWirelessReconnectDelayMs"),
+        )
+        assertTrue(
+            "Wireless retry consumer must accept the coordinator delay parameter",
+            wirelessRetryConsumer.contains("{ delayMs: Long ->"),
+        )
+        assertTrue(
+            "Wireless retry consumer must schedule with the suggested delay",
+            wirelessRetryConsumer.contains("scheduleWirelessReconnect(delayMs)"),
+        )
+    }
+
+    @Test
+    fun backgroundWirelessReconnectKeepsCoordinatorSelectedDelayForForegroundResume() {
+        val source = mainActivitySource()
+        val onStart = extractMethod(source, "override fun onStart")
+        val scheduleWirelessReconnect = extractMethod(source, "private fun scheduleWirelessReconnect")
+        val compactScheduler = scheduleWirelessReconnect.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Wireless retry scheduler must clamp the coordinator-selected delay before storing it",
+            compactScheduler.contains("valdelayMs=suggestedDelayMs.coerceIn(1L,WIRELESS_RECONNECT_MAXIMUM_DELAY_MS)"),
+        )
+        assertTrue(
+            "Wireless retry scheduler must keep the selected delay if retry becomes eligible while backgrounded",
+            compactScheduler.contains("if(!isInForeground){pendingAutomaticReconnectDelayMs=delayMsreturn}"),
+        )
+        assertTrue(
+            "Foreground start must use the pending coordinator-selected delay",
+            onStart.contains("pendingAutomaticReconnectDelayMs?.let(::scheduleWirelessReconnect)"),
+        )
+    }
+
+    @Test
+    fun automaticUsbRetryClampsSuggestedDelayToBackoffBudget() {
+        val scheduleAutomaticUsbConnect = extractMethod(mainActivitySource(), "private fun scheduleAutomaticUsbConnect")
+        val compact = scheduleAutomaticUsbConnect.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "USB retry scheduler must clamp any suggested delay into the reconnect backoff budget",
+            compact.contains("delayMs.coerceIn(1L,ReconnectBackoff.MAXIMUM_DELAY_MS)"),
+        )
+        assertTrue(
+            "USB retry scheduler must post the clamped delay",
+            compact.contains("postDelayed(autoConnectRunnable,boundedDelayMs)"),
+        )
+        assertFalse(
+            "USB retry scheduler must not post raw unbounded delays",
+            compact.contains("postDelayed(autoConnectRunnable,delayMs)"),
+        )
+    }
+
+    @Test
     fun terminalGuidanceUsesModeSpecificInlineSurfaces() {
         val presenter = extractMethod(mainActivitySource(), "private fun showTerminalConnectionGuidance")
         val compact = presenter.replace(Regex("\\s+"), "")
@@ -265,6 +364,64 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "The inner icon should not duplicate the parent accessibility node",
             settingsButton.contains("android:importantForAccessibility=\"no\""),
+        )
+    }
+
+    @Test
+    fun connectionDetailsLinkIsKeyboardFocusable() {
+        val connectionDetails = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/showAdvanced\"")
+
+        assertTrue(
+            "Connection details expands inline recovery guidance, so keyboard and D-pad users need a focus target",
+            connectionDetails.contains("android:focusable=\"true\""),
+        )
+        assertTrue(
+            "Connection details should remain reachable when navigating with hardware keyboard focus",
+            connectionDetails.contains("android:focusableInTouchMode=\"true\""),
+        )
+        assertTrue(
+            "Connection details should keep the 48dp touch target minimum",
+            connectionDetails.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Connection details needs a visible keyboard and D-pad focus indicator",
+            connectionDetails.contains("android:background=\"?attr/selectableItemBackgroundBorderless\""),
+        )
+    }
+
+    @Test
+    fun internetDisconnectButtonCanGrowForLargeFontLabels() {
+        val disconnectButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/internetDisconnectButton\"")
+
+        assertTrue(
+            "Internet disconnect copy may wrap at large font scale, so height must not be fixed",
+            disconnectButton.contains("android:layout_height=\"wrap_content\""),
+        )
+        assertTrue(
+            "Internet disconnect button still needs the 48dp touch target minimum",
+            disconnectButton.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Internet disconnect copy should be allowed to use a second line instead of clipping",
+            disconnectButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
+    fun internetRevokeButtonCanGrowForLargeFontLabels() {
+        val revokeButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/internetRevokeButton\"")
+
+        assertTrue(
+            "Internet revoke copy is long enough to wrap at large font scale, so height must not be fixed",
+            revokeButton.contains("android:layout_height=\"wrap_content\""),
+        )
+        assertTrue(
+            "Internet revoke button still needs the 48dp touch target minimum",
+            revokeButton.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Internet revoke copy should be allowed to use a second line instead of clipping",
+            revokeButton.contains("android:maxLines=\"2\""),
         )
     }
 
@@ -598,6 +755,62 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun userVisibleAuxiliaryErrorsDoNotExposeRawProtocolReasons() {
+        val source = mainActivitySource()
+        val decoderFailure = extractMethod(source, "private fun reportDecoderInitializationFailure")
+        val hostActionResult = extractCallback(source, "callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->")
+        val fileTransferResult = extractCallback(source, "callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->")
+
+        assertTrue(
+            "decoder details should remain in diagnostics",
+            decoderFailure.contains("Decoder init FAILED: \${error.message}"),
+        )
+        assertFalse(
+            "decoder exception messages must not be appended to the visible status",
+            decoderFailure.contains("Video decoder failed: \${error.message}"),
+        )
+        assertTrue(
+            "visible decoder status should use fixed recovery copy",
+            decoderFailure.contains("R.string.connection_guidance_video_decoder_recovery_title"),
+        )
+
+        assertFalse(
+            "Host action rejection reason is a protocol/debug value, not user copy",
+            hostActionResult.contains("host_action_rejected_with_reason"),
+        )
+        assertFalse(
+            "Host action toast must not interpolate the raw rejection reason",
+            hostActionResult.contains("getString(R.string.host_action_rejected, rejectionReason)") ||
+                hostActionResult.contains("getString(R.string.host_action_rejected_with_reason, rejectionReason)"),
+        )
+        assertTrue(hostActionResult.contains("hostActionFailureMessageId(rejectionReason)"))
+        assertTrue(
+            "Host action guidance should handle the Mac Host localized permission rejection",
+            source.contains("rejectionReason.contains(\"Accessibility permission\", ignoreCase = true)"),
+        )
+        assertTrue(
+            "Host action guidance should handle the Mac Host localized focused-window rejection",
+            source.contains("rejectionReason.contains(\"focused window\", ignoreCase = true)"),
+        )
+
+        assertFalse(
+            "File transfer reason is a protocol/debug value, not user copy",
+            fileTransferResult.contains("file_transfer_failed_with_reason"),
+        )
+        assertTrue(fileTransferResult.contains("fileTransferFailureMessageId(reason)"))
+    }
+
+    @Test
+    fun transientFeedbackUsesDedupedToastSurface() {
+        val source = mainActivitySource()
+        val directToastCount = countOccurrences(source, "Toast.makeText(")
+
+        assertTrue(source.contains("private fun showDedupedToast"))
+        assertTrue(source.contains("TOAST_DEDUP_WINDOW_MS"))
+        assertTrue("Only the deduped helper should call Toast.makeText directly", directToastCount == 1)
+    }
+
+    @Test
     fun internetProfileSummaryUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
@@ -917,8 +1130,10 @@ class MainActivityTerminalGuidanceContractTest {
                 .takeWhile { !it.isWhitespace() && it != '>' }
         val closeMarker = "</$elementName>"
         val closeEnd = source.indexOf(closeMarker, idIndex)
-        require(closeEnd >= 0) { "XML element end not found: $idAttribute" }
-        return source.substring(openStart, closeEnd + closeMarker.length)
+        if (closeEnd >= 0) return source.substring(openStart, closeEnd + closeMarker.length)
+        val selfClosingEnd = source.indexOf("/>", idIndex)
+        require(selfClosingEnd >= 0) { "XML element end not found: $idAttribute" }
+        return source.substring(openStart, selfClosingEnd + 2)
     }
 
     private companion object {

@@ -30,6 +30,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(onStop, "autoConnectHandler.removeCallbacks(autoConnectRunnable)")
         assertContains(onStop, "wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)")
         assertBefore(onStop, "completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)", "isInForeground = false")
+        assertBefore(onStop, "isInForeground = false", "rejectPendingIncomingFileOffer()")
         assertBefore(onStop, "applyStreamingWindowState(connected = isConnected, foreground = false)", "super.onStop()")
     }
 
@@ -132,6 +133,27 @@ class MainActivityControllerForwardingContractTest {
     }
 
     @Test
+    fun incomingFileOffersAreRejectedBeforeShowingApprovalWhenBackgrounded() {
+        val source = mainActivitySource()
+        val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer")
+        val onStop = extractMethod(source, "override fun onStop")
+        val onDestroy = extractMethod(source, "override fun onDestroy")
+
+        assertContains(promptOffer, "if (!isInForeground ||")
+        assertContains(promptOffer, "isFinishing ||")
+        assertContains(promptOffer, "isDestroyed ||")
+        assertContains(promptOffer, "!isCurrentSession(client, generation) ||")
+        assertContains(promptOffer, "!client.canTransferFiles")
+        assertBefore(promptOffer, "if (!isInForeground", "pendingIncomingFileDialog != null")
+        assertBefore(promptOffer, "if (!isInForeground", "showImmersiveDialog(dialog)")
+        assertContains(onStop, "rejectPendingIncomingFileOffer()")
+        assertBefore(onStop, "isInForeground = false", "rejectPendingIncomingFileOffer()")
+        assertContains(onDestroy, "rejectPendingIncomingFileOffer()")
+        assertContains(onDestroy, "fileTransferApprovalHandler.removeCallbacksAndMessages(null)")
+        assertBefore(onDestroy, "rejectPendingIncomingFileOffer()", "fileTransferApprovalHandler.removeCallbacksAndMessages(null)")
+    }
+
+    @Test
     fun customGestureHostActionsAreResolvedBeforeForwardingTouch() {
         val source = mainActivitySource()
         val touchHandler = extractMethod(source, "private fun handleTouch")
@@ -185,8 +207,17 @@ class MainActivityControllerForwardingContractTest {
         assertContains(displaysCallback, "hostActions = managedHostActions")
         assertContains(managedPolicyCallback, "managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed")
         assertContains(managedPolicyCallback, "managedHostActionsAllowed = !status.managed || status.hostActionsAllowed")
-        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in callbackClient.negotiatedCapabilities()")
+        assertContains(managedPolicyCallback, "val negotiated = callbackClient.negotiatedCapabilities()")
+        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated")
+        assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated")
+        assertContains(managedPolicyCallback, "clipboard = clipboard")
+        assertContains(managedPolicyCallback, "if (!clipboard) {")
+        assertContains(managedPolicyCallback, "cancelClipboardRequestTimeout()")
+        assertContains(managedPolicyCallback, "clipboardApprovalState.clear()")
         assertContains(managedPolicyCallback, "populateHostActions(availableHostActions)")
+        assertContains(managedPolicyCallback, "refreshClipboardControl()")
+        assertBefore(managedPolicyCallback, "clipboard = clipboard", "if (!clipboard) {")
+        assertBefore(managedPolicyCallback, "if (!clipboard) {", "refreshClipboardControl()")
     }
 
     @Test

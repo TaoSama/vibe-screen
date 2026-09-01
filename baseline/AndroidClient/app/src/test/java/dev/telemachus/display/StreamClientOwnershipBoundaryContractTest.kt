@@ -31,6 +31,88 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `stream client termination keeps session through outbound drain`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val terminationClaim = streamClient.indexOf("protocolSessionOwner.clearSideEffectAdmission()")
+        val gracefulDrain = streamClient.indexOf("outboundScheduler.shutdownGracefully(OUTBOUND_DRAIN_TIMEOUT_MS)")
+        val protocolCleanup = streamClient.indexOf("protocolSessionOwner.clear()")
+
+        assertTrue("termination must close side-effect admission", terminationClaim >= 0)
+        assertTrue("cleanup must gracefully drain accepted outbound commands", gracefulDrain >= 0)
+        assertTrue("cleanup must clear the protocol session", protocolCleanup >= 0)
+        assertTrue(
+            "side-effect admission must close before accepted outbound commands drain",
+            terminationClaim < gracefulDrain,
+        )
+        assertTrue(
+            "protocol session must stay available until accepted outbound commands drain",
+            gracefulDrain < protocolCleanup,
+        )
+    }
+
+    @Test
+    fun `protocol batch notifies unavailable session before returning`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val outboundCommand = source(PRODUCTION_STREAM_OUTBOUND_COMMAND)
+        val protocolBatchCommand = outboundCommand.indexOf("class ProtocolBatch(")
+        val unavailableCallback = outboundCommand.indexOf("val onUnavailable: (() -> Unit)? = null", protocolBatchCommand)
+        val buildCallback = outboundCommand.indexOf("val build: (ProtocolV1Session) -> List<Envelope>", protocolBatchCommand)
+        val protocolBatchHandler = streamClient.indexOf("is StreamOutboundCommand.ProtocolBatch ->")
+        val sessionLookup = streamClient.indexOf("val session = protocolSessionOwner.currentSession", protocolBatchHandler)
+        val unavailableCheck = streamClient.indexOf("if (session == null)", sessionLookup)
+        val unavailableNotify = streamClient.indexOf("command.onUnavailable?.invoke()", unavailableCheck)
+        val unavailableReturn = streamClient.indexOf("return", unavailableNotify)
+        val batchBuild = streamClient.indexOf("command.build(session)", unavailableReturn)
+
+        assertTrue("ProtocolBatch must retain unavailable callback ownership hook", unavailableCallback >= 0)
+        assertTrue("ProtocolBatch must keep trailing lambdas bound to build", unavailableCallback < buildCallback)
+        assertTrue("StreamClient must handle ProtocolBatch commands", protocolBatchHandler >= 0)
+        assertTrue("ProtocolBatch handling must read the current protocol session", sessionLookup > protocolBatchHandler)
+        assertTrue("ProtocolBatch handling must branch when the session is unavailable", unavailableCheck > sessionLookup)
+        assertTrue("ProtocolBatch handling must notify unavailable sessions", unavailableNotify > unavailableCheck)
+        assertTrue("ProtocolBatch handling must stop after unavailable notification", unavailableReturn > unavailableNotify)
+        assertTrue("ProtocolBatch envelopes must only build after unavailable handling", batchBuild > unavailableReturn)
+    }
+
+    @Test
+    fun `clipboard expiry completion is notified when queued batch loses its session`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val expireMethod = streamClient.indexOf("fun expireClipboardRequest(")
+        val protocolBatch = streamClient.indexOf("StreamOutboundCommand.ProtocolBatch(", expireMethod)
+        val unavailableCompletion = streamClient.indexOf("onUnavailable = { completion(false) }", protocolBatch)
+        val buildCallback = streamClient.indexOf(") { activeSession ->", unavailableCompletion)
+        val expireCall = streamClient.indexOf("completion(activeSession.expireClipboardRequest(id))", buildCallback)
+
+        assertTrue("StreamClient must keep expireClipboardRequest", expireMethod >= 0)
+        assertTrue("expireClipboardRequest must queue a protocol batch", protocolBatch > expireMethod)
+        assertTrue("queued clipboard expiry must notify false if the session disappears", unavailableCompletion > protocolBatch)
+        assertTrue("clipboard expiry must keep trailing lambda bound to the batch build callback", buildCallback > unavailableCompletion)
+        assertTrue("clipboard expiry must only complete true/false from an active session inside build", expireCall > buildCallback)
+    }
+
+    @Test
+    fun `file offer decisions release claimed offers when capability guard fails`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val respondMethod = streamClient.indexOf("fun respondToFileOffer(")
+        val claim = streamClient.indexOf("fileTransferProductOwner.claimFileOfferDecision(offer)", respondMethod)
+        val nullableSession = streamClient.indexOf("val session = owner.ownerToken as? ProtocolV1Session", claim)
+        val capabilityGuard = streamClient.indexOf("if (session == null || wireMode != WireMode.V1 || !session.canTransferFiles)", nullableSession)
+        val guardRelease = streamClient.indexOf("fileTransferProductOwner.releaseFileOfferDecision(offer)", capabilityGuard)
+        val guardReturn = streamClient.indexOf("return false", guardRelease)
+        val submit = streamClient.indexOf("val submission = submitOutbound(", guardReturn)
+        val backpressureRelease = streamClient.indexOf("fileTransferProductOwner.releaseFileOfferDecision(offer)", submit)
+
+        assertTrue("StreamClient must keep respondToFileOffer", respondMethod >= 0)
+        assertTrue("respondToFileOffer must claim the pending offer before sending a decision", claim > respondMethod)
+        assertTrue("respondToFileOffer must preserve nullable session guard after claim", nullableSession > claim)
+        assertTrue("respondToFileOffer must gate stale session, wire mode, and capability together", capabilityGuard > nullableSession)
+        assertTrue("respondToFileOffer must release claimed offers when the capability guard fails", guardRelease > capabilityGuard)
+        assertTrue("respondToFileOffer must stop after releasing a failed guard claim", guardReturn > guardRelease)
+        assertTrue("respondToFileOffer must submit only after guard release handling", submit > guardReturn)
+        assertTrue("respondToFileOffer must still release claimed offers on outbound backpressure", backpressureRelease > submit)
+    }
+
+    @Test
     fun `extracted owners stay out of android ui transport socket and decoder layers`() {
         BOUNDARY_OWNER_RULES.forEach { rule ->
             val ownerSource = source(rule.path)
@@ -53,22 +135,25 @@ class StreamClientOwnershipBoundaryContractTest {
             "Protocol v1",
             "action dispatch",
             "side-effect owner",
+            "file-transfer product state",
             "WakeHost request lifecycle/callback delivery/packet-sender admission",
             "input envelope routing",
             "media-frame routing",
         ).forEach { phrase ->
             assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
         }
-        assertTrue(readme.normalizedWhitespace().contains("full file-transfer product ownership"))
+        assertTrue(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
         assertTrue(readme.normalizedWhitespace().contains("WakeHost real sleeping-Mac"))
         assertTrue(audit.contains("#259"))
         assertTrue(audit.contains("current-base owner gate"))
         assertTrue(audit.contains("Module extraction draft PRs [#211]"))
         assertTrue(audit.contains("superseded by [#259]"))
         assertTrue(audit.contains("Remaining module gaps include broader protocol/session"))
-        assertTrue(phaseZeroTech.contains("the WakeHost product owner now owns request lifecycle"))
+        assertTrue(phaseZeroTech.contains("The WakeHost product"))
+        assertTrue(phaseZeroTech.contains("owner now owns request lifecycle"))
         assertTrue(phaseZeroTech.contains("sleeping-Mac wake, router/NIC WOL behavior"))
-        assertTrue(phaseZeroTech.contains("File-transfer product ownership, decoder,"))
+        assertTrue(phaseZeroTech.contains("`FileTransferProductOwner` owns the Android file-transfer product"))
+        assertTrue(phaseZeroTech.contains("`RendererOwner` gates viewport/layout/render target/frame"))
     }
 
     private fun source(relativePath: String): String {
@@ -113,6 +198,8 @@ class StreamClientOwnershipBoundaryContractTest {
         const val PHASE_ZERO_TECH = "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
 
         const val PRODUCTION_STREAM_CLIENT = "app/src/main/java/dev/telemachus/display/StreamClient.kt"
+        const val PRODUCTION_STREAM_OUTBOUND_COMMAND =
+            "app/src/main/java/dev/telemachus/display/StreamOutboundCommand.kt"
         const val PRODUCTION_INPUT_DISPATCHER = "app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt"
         const val PRODUCTION_LOCAL_SESSION_STATE =
             "app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt"
@@ -124,6 +211,8 @@ class StreamClientOwnershipBoundaryContractTest {
             "app/src/main/java/dev/telemachus/display/StreamProtocolSideEffectOwner.kt"
         const val PRODUCTION_PROTOCOL_SESSION_OWNER =
             "app/src/main/java/dev/telemachus/display/StreamProtocolSessionOwner.kt"
+        const val PRODUCTION_FILE_TRANSFER_PRODUCT_OWNER =
+            "app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt"
         const val PRODUCTION_WAKE_HOST_PRODUCT_OWNER =
             "app/src/main/java/dev/telemachus/display/WakeHostProductOwner.kt"
 
@@ -135,6 +224,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 PRODUCTION_MEDIA_FRAME_ROUTER,
                 PRODUCTION_PROTOCOL_SIDE_EFFECT_OWNER,
                 PRODUCTION_PROTOCOL_SESSION_OWNER,
+                PRODUCTION_FILE_TRANSFER_PRODUCT_OWNER,
                 PRODUCTION_WAKE_HOST_PRODUCT_OWNER,
             )
 
@@ -144,6 +234,7 @@ class StreamClientOwnershipBoundaryContractTest {
                 "app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolActionDispatcherTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+                "app/src/test/java/dev/telemachus/display/FileTransferProductOwnerTest.kt",
                 "app/src/test/java/dev/telemachus/display/WakeHostProductOwnerTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
                 "app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
@@ -157,19 +248,28 @@ class StreamClientOwnershipBoundaryContractTest {
                 "private val protocolActionDispatcher =",
                 "StreamProtocolActionDispatcher(StreamProtocolActionSink())",
                 "private val mediaFrameRouter =",
+                "private val fileTransferProductOwner =",
+                "FileTransferProductOwner(",
                 "protocolSessionOwner.isCurrent(",
+                "protocolSessionOwner.retainsSession(",
                 "protocolSessionOwner.runIfCurrent(",
                 "protocolSessionOwner.trackFileOffer(",
                 "protocolSessionOwner.claimFileOffer(",
                 "protocolSessionOwner.releaseFileOffer(",
+                "protocolSessionOwner.clearFileOffers(",
                 "protocolSessionOwner.activate(",
                 "protocolSessionOwner.deactivate()",
+                "protocolSessionOwner.clearSideEffectAdmission()",
                 "protocolSessionOwner.clear()",
                 "private val wakeHostProductOwner =",
                 "wakeHostProductOwner.request(",
                 "wakeHostProductOwner.dispatchRequest(",
                 "wakeHostProductOwner.deliverCompletion(",
                 "wakeHostProductOwner.complete(",
+                "fileTransferProductOwner.receiveIncomingChunk(",
+                "fileTransferProductOwner.decideFileOffer(",
+                "fileTransferProductOwner.prepareOutgoingFile(",
+                "fileTransferProductOwner.handleFileAccept(",
                 "mediaFrameRouter.receiveLegacyFrame(",
                 "mediaFrameRouter.receiveProtocolFrame(",
             )
@@ -194,6 +294,10 @@ class StreamClientOwnershipBoundaryContractTest {
                 "private fun processWakeHostCompletion",
                 "WakeHostDecision.magicPacket",
                 "wakeHostPacketSender.send",
+                "IncomingFileTransferManager(",
+                "ConcurrentHashMap<ByteString, OutgoingFileTransfer>",
+                "private var remoteManagedPolicy",
+                "private val outgoingFileTransfers",
             )
 
         val OWNER_LAYER_FORBIDDEN_REFERENCES =
@@ -258,6 +362,22 @@ class StreamClientOwnershipBoundaryContractTest {
                             "DataInputStream",
                             "DataOutputStream",
                             "FileTransfer",
+                            "WakeHostPacketSender",
+                            "WakeHostDecision",
+                        ),
+                ),
+                BoundaryOwnerRule(
+                    name = "FileTransferProductOwner",
+                    path = PRODUCTION_FILE_TRANSFER_PRODUCT_OWNER,
+                    forbiddenReferences = OWNER_LAYER_FORBIDDEN_REFERENCES +
+                        listOf(
+                            "DataInputStream",
+                            "DataOutputStream",
+                            "ProtocolV1Session",
+                            "ProtocolV1Framing",
+                            "ProtocolChannel",
+                            "OutboundCommandScheduler",
+                            "StreamOutboundCommand",
                             "WakeHostPacketSender",
                             "WakeHostDecision",
                         ),

@@ -40,7 +40,7 @@ android-audio-playback-summary.json reports:
 
 - verdict=blocked
 - can_close_android_audio_playback_gate=false
-- blocking fields: host_stable_signed_tcc_ready, host_listener_observed, protocol_v1_session_observed
+- blocking fields: host_stable_signed_tcc_ready, host_listener_observed, protocol_v1_session_observed, playback_output_confirmed
 
 Missing requirements include: host_build_identity_recorded, host_stable_signed_tcc_ready, host_listener_observed, protocol_v1_session_observed, audio_capability_negotiated, audio_config_accepted, host_microphone_capture_started, host_audio_packets_sent, android_audio_track_started, android_audio_packets_written, playback_output_confirmed, disconnect_cleanup_observed.
 

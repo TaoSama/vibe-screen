@@ -62,8 +62,16 @@ internal class StreamProtocolSessionOwner(
     }
 
     /**
-     * Full session cleanup on connection termination. Clears the session
-     * reference, side-effect gates, and local session termination state.
+     * Stops accepting delayed side effects while retaining the Protocol v1
+     * session reference for already-admitted outbound drain work.
+     */
+    fun clearSideEffectAdmission() {
+        protocolSideEffectOwner.closeAdmission()
+    }
+
+    /**
+     * Full session cleanup after outbound drain has finished. Clears the session
+     * reference and side-effect gates.
      */
     fun clear() {
         protocolSession = null
@@ -122,6 +130,11 @@ internal class StreamProtocolSessionOwner(
         connectionGeneration: Long,
     ): Boolean = protocolSideEffectOwner.isCurrent(session, connectionGeneration)
 
+    fun retainsSession(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): Boolean = currentSession === session && localSessionState.acceptsEpoch(connectionGeneration)
+
     fun <T> runIfCurrent(
         session: ProtocolV1Session,
         connectionGeneration: Long,
@@ -140,6 +153,8 @@ internal class StreamProtocolSessionOwner(
     fun releaseFileOffer(transferId: ByteString) =
         protocolSideEffectOwner.releaseFileOffer(transferId)
 
+    fun clearFileOffers() = protocolSideEffectOwner.clearFileOffers()
+
     fun trackWakeHostRequest(
         requestId: ByteString,
         session: ProtocolV1Session,
@@ -150,5 +165,5 @@ internal class StreamProtocolSessionOwner(
         requestId: ByteString,
         session: ProtocolV1Session,
         connectionGeneration: Long,
-    ) = protocolSideEffectOwner.releaseWakeHostRequest(requestId, session, connectionGeneration)
+    ): Boolean = protocolSideEffectOwner.releaseWakeHostRequest(requestId, session, connectionGeneration)
 }
