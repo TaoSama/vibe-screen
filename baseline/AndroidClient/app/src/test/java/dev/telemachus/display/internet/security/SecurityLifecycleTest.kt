@@ -512,6 +512,13 @@ class SecurityLifecycleTest {
                 "f014c1e536fdd26670c84a0737526b2fc6052ca0b08be2e5d5197fc126e4c46",
             listOf(keys.hostControl, keys.deviceControl, keys.hostMedia, keys.deviceMedia).joinToString("") { it.toHex() },
         )
+        assertEquals(
+            "75c2d9de0303ce4867fc7c408e0c40fe3d3862659acccd7eca02b031372d08ff" +
+                "e6c04365acb8cf207f96b3e7f4ba0394070213885741eb7d0998a2312a94208f" +
+                "bc3cdce0774b08432ecaa5a9ae582fee9a9ce769a041a16fdff7595f413482ad0" +
+                "4e2beb4ac97f1f648c55b8b619cb408207c896b1efeb99a29c636a4181c2cfd",
+            listOf(keys.hostAudio, keys.deviceAudio, keys.hostBulk, keys.deviceBulk).joinToString("") { it.toHex() },
+        )
     }
 
     @Test
@@ -525,7 +532,19 @@ class SecurityLifecycleTest {
         val rotated = TrafficKeyDerivation.rotate(current, 2, (64..79).map(Int::toByte).toByteArray())
         assertEquals(2, rotated.keyEpoch)
         assertNotEquals(current.keyId, rotated.keyId)
-        assertEquals(4, listOf(rotated.hostControl, rotated.deviceControl, rotated.hostMedia, rotated.deviceMedia).map { it.toHex() }.toSet().size)
+        assertEquals(
+            8,
+            listOf(
+                rotated.hostControl,
+                rotated.deviceControl,
+                rotated.hostMedia,
+                rotated.deviceMedia,
+                rotated.hostAudio,
+                rotated.deviceAudio,
+                rotated.hostBulk,
+                rotated.deviceBulk,
+            ).map { it.toHex() }.toSet().size,
+        )
         assertThrows(IllegalArgumentException::class.java) {
             TrafficKeyDerivation.rotate(current, 3, (64..79).map(Int::toByte).toByteArray())
         }
@@ -533,7 +552,16 @@ class SecurityLifecycleTest {
         current.close()
         assertEquals(
             setOf(0.toByte()),
-            listOf(current.hostControl, current.deviceControl, current.hostMedia, current.deviceMedia).flatMap(ByteArray::asIterable).toSet(),
+            listOf(
+                current.hostControl,
+                current.deviceControl,
+                current.hostMedia,
+                current.deviceMedia,
+                current.hostAudio,
+                current.deviceAudio,
+                current.hostBulk,
+                current.deviceBulk,
+            ).flatMap(ByteArray::asIterable).toSet(),
         )
     }
 
