@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -382,6 +383,112 @@ func TestMessageRateLimit(t *testing.T) {
 		MessageRequest{MessageID: "offer-rate", Type: MessageOffer, SDP: "v=0"}, http.StatusCreated)
 	postMessageForTest(t, handler, created.SessionID, created.HostToken,
 		MessageRequest{MessageID: "candidate-rate", Type: MessageICECandidate, Candidate: &ICECandidate{Candidate: "candidate:rate"}}, http.StatusTooManyRequests)
+}
+
+func TestCreateSessionRateLimitIsStoreOwned(t *testing.T) {
+	cfg := testConfig()
+	cfg.SessionCreatesPerMinute = 1
+	service, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := service.Handler()
+
+	createSessionForTest(t, handler, "create-rate-1", 0)
+	firstReplay := createSessionForTest(t, handler, "create-rate-1", 0)
+	secondReplay := createSessionForTest(t, handler, "create-rate-1", 0)
+	if firstReplay != secondReplay {
+		t.Fatalf("idempotent replay consumed create quota: %#v != %#v", firstReplay, secondReplay)
+	}
+	body, err := json.Marshal(createSessionRequest{RequestID: "create-rate-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("create rate status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestCreateRateDeviceIDs(t *testing.T) {
+	tests := []struct {
+		name    string
+		request CreateSessionRequest
+		want    []string
+	}{
+		{
+			name:    "local development",
+			request: CreateSessionRequest{},
+			want:    []string{localDevelopmentDeviceID},
+		},
+		{
+			name:    "host only",
+			request: CreateSessionRequest{HostDeviceID: "host-a"},
+			want:    []string{"host-a"},
+		},
+		{
+			name:    "client only",
+			request: CreateSessionRequest{ClientDeviceID: "client-a"},
+			want:    []string{"client-a"},
+		},
+		{
+			name:    "same device",
+			request: CreateSessionRequest{HostDeviceID: "device-a", ClientDeviceID: "device-a"},
+			want:    []string{"device-a"},
+		},
+		{
+			name:    "sorted identities",
+			request: CreateSessionRequest{HostDeviceID: "host-z", ClientDeviceID: "client-a"},
+			want:    []string{"client-a", "host-z"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := createRateDeviceIDs(test.request)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("device IDs = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestConsumeTokenBucket(t *testing.T) {
+	now := time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC)
+	bucket := tokenBucket{}
+	if !consumeTokenBucket(&bucket, now, 2) {
+		t.Fatal("first token rejected")
+	}
+	if bucket.tokensAvailable != 1 {
+		t.Fatalf("tokens after first consume = %d, want 1", bucket.tokensAvailable)
+	}
+	if !consumeTokenBucket(&bucket, now.Add(30*time.Second), 2) {
+		t.Fatal("second token rejected")
+	}
+	if consumeTokenBucket(&bucket, now.Add(59*time.Second), 2) {
+		t.Fatal("third token admitted before refill")
+	}
+	if !consumeTokenBucket(&bucket, now.Add(time.Minute), 2) {
+		t.Fatal("token rejected after refill")
+	}
+	if bucket.tokensAvailable != 1 {
+		t.Fatalf("tokens after refill consume = %d, want 1", bucket.tokensAvailable)
+	}
+
+	bucket = tokenBucket{refilledAt: now, tokensAvailable: 100}
+	if !consumeTokenBucket(&bucket, now.Add(time.Second), 2) {
+		t.Fatal("clamped oversized bucket rejected")
+	}
+	if bucket.tokensAvailable != 1 {
+		t.Fatalf("clamped tokens = %d, want 1", bucket.tokensAvailable)
+	}
+
+	bucket = tokenBucket{refilledAt: now.Add(-24 * time.Hour), tokensAvailable: 0}
+	if !consumeTokenBucket(&bucket, now, 2) {
+		t.Fatal("stale bucket rejected")
+	}
+	if bucket.tokensAvailable != 1 {
+		t.Fatalf("stale bucket tokens = %d, want 1", bucket.tokensAvailable)
+	}
 }
 
 func waitForWaiter(t *testing.T, store *MemoryStore, sessionID string, role Role) {

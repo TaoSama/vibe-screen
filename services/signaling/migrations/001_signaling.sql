@@ -54,3 +54,13 @@ CREATE TABLE IF NOT EXISTS signaling_waiter_leases (
 );
 CREATE INDEX IF NOT EXISTS signaling_waiter_leases_backend_idx
     ON signaling_waiter_leases(backend_pid, backend_started_at);
+
+CREATE TABLE IF NOT EXISTS signaling_device_action_rates (
+    device_id text NOT NULL,
+    action text NOT NULL,
+    refilled_at timestamptz NOT NULL,
+    tokens_available integer NOT NULL CHECK (tokens_available >= 0),
+    PRIMARY KEY (device_id, action)
+);
+CREATE INDEX IF NOT EXISTS signaling_device_action_rates_window_idx
+    ON signaling_device_action_rates(refilled_at);

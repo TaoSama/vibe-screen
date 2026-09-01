@@ -56,7 +56,7 @@ func openSignalingIntegrationStore(t *testing.T, cfg Config) (*PostgresStore, Co
 		store.Close()
 		t.Fatalf("postgres integration schema = %q, want %q", currentSchema, schema)
 	}
-	if _, err := store.pool.Exec(ctx, "TRUNCATE signaling_waiter_leases,signaling_role_rates,signaling_messages,signaling_sessions RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := store.pool.Exec(ctx, "TRUNCATE signaling_waiter_leases,signaling_device_action_rates,signaling_role_rates,signaling_messages,signaling_sessions RESTART IDENTITY CASCADE"); err != nil {
 		store.Close()
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestPostgresAuthorityReplayWithoutLocalStateFailsClosed(t *testing.T) {
 	if err != nil || !wasCreated || created.SessionID != "authority-session-1" {
 		t.Fatalf("initial authority create response=%#v created=%t err=%v", created, wasCreated, err)
 	}
-	if _, err := store.pool.Exec(ctx, "TRUNCATE signaling_waiter_leases,signaling_role_rates,signaling_messages,signaling_sessions RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := store.pool.Exec(ctx, "TRUNCATE signaling_waiter_leases,signaling_device_action_rates,signaling_role_rates,signaling_messages,signaling_sessions RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -672,6 +672,207 @@ func TestPostgresLocalCreateCapacityIsAtomic(t *testing.T) {
 	}
 }
 
+func TestPostgresCreateRateLimitIsSharedAcrossInstances(t *testing.T) {
+	cfg := testConfig()
+	cfg.SessionCreatesPerMinute = 2
+	cfg.MaxActiveSessions = 10
+	first, cfg := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	second, err := OpenPostgresStore(ctx, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	stores := []*PostgresStore{first, second, first, second}
+	start := make(chan struct{})
+	errs := make(chan error, len(stores))
+	var wait sync.WaitGroup
+	for index, store := range stores {
+		wait.Add(1)
+		go func(index int, store *PostgresStore) {
+			defer wait.Done()
+			<-start
+			_, _, err := store.Create(ctx, CreateSessionRequest{
+				RequestID:      fmt.Sprintf("shared-rate-%d", index),
+				TTL:            time.Minute,
+				HostDeviceID:   "host-shared",
+				ClientDeviceID: "client-shared",
+			})
+			errs <- err
+		}(index, store)
+	}
+	close(start)
+	wait.Wait()
+	close(errs)
+
+	var accepted, limited int
+	for err := range errs {
+		switch {
+		case err == nil:
+			accepted++
+		case errors.Is(err, ErrRateLimited):
+			limited++
+		default:
+			t.Fatalf("create error=%v", err)
+		}
+	}
+	if accepted != cfg.SessionCreatesPerMinute || limited != len(stores)-cfg.SessionCreatesPerMinute {
+		t.Fatalf("accepted=%d limited=%d, want accepted=%d limited=%d", accepted, limited, cfg.SessionCreatesPerMinute, len(stores)-cfg.SessionCreatesPerMinute)
+	}
+	var hostTokens, clientTokens int
+	if err := first.pool.QueryRow(ctx, "SELECT tokens_available FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2", "host-shared", createSessionAction).Scan(&hostTokens); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.pool.QueryRow(ctx, "SELECT tokens_available FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2", "client-shared", createSessionAction).Scan(&clientTokens); err != nil {
+		t.Fatal(err)
+	}
+	if hostTokens != 0 || clientTokens != 0 {
+		t.Fatalf("host_tokens=%d client_tokens=%d want 0", hostTokens, clientTokens)
+	}
+}
+
+func TestPostgresCreateRateLimitIsSharedAcrossServerInstances(t *testing.T) {
+	var authorityCalls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode authority request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		authorityCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID:   fmt.Sprintf("authority-rate-%d", request.SessionEpoch),
+			HostToken:   fmt.Sprintf("host-token-%d", request.SessionEpoch),
+			ClientToken: fmt.Sprintf("client-token-%d", request.SessionEpoch),
+			ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+			Created:     true,
+		})
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	cfg.SessionCreatesPerMinute = 2
+	cfg.MaxActiveSessions = 10
+	firstStore, cfg := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	secondStore, err := OpenPostgresStore(ctx, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondStore.Close()
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstStore.authority = authority
+	secondStore.authority = authority
+	firstServer := testServerWithStore(t, cfg, firstStore)
+	firstServer.authority = authority
+	secondServer := testServerWithStore(t, cfg, secondStore)
+	secondServer.authority = authority
+	servers := []*Server{firstServer, secondServer, firstServer, secondServer}
+	type createStatus struct {
+		Index  int
+		Status int
+		Body   string
+	}
+	statuses := make(chan createStatus, len(servers))
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for index, server := range servers {
+		wait.Add(1)
+		go func(index int, server *Server) {
+			defer wait.Done()
+			body := fmt.Sprintf("{\"request_id\":\"server-rate-%d\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-server-shared\",\"client_device_id\":\"client-server-shared\",\"session_epoch\":%d,\"ttl_seconds\":60}", index, index+1)
+			<-start
+			response := performRequest(t, server.Handler(), http.MethodPost, "/v1/sessions", testIssuerToken, body)
+			statuses <- createStatus{Index: index, Status: response.Code, Body: response.Body.String()}
+		}(index, server)
+	}
+	close(start)
+	wait.Wait()
+	close(statuses)
+
+	var accepted, limited int
+	for status := range statuses {
+		switch status.Status {
+		case http.StatusCreated:
+			accepted++
+		case http.StatusTooManyRequests:
+			limited++
+		default:
+			t.Fatalf("unexpected create status index=%d status=%d body=%s", status.Index, status.Status, status.Body)
+		}
+	}
+	if accepted != cfg.SessionCreatesPerMinute || limited != len(servers)-cfg.SessionCreatesPerMinute {
+		t.Fatalf("accepted=%d limited=%d, want accepted=%d limited=%d", accepted, limited, cfg.SessionCreatesPerMinute, len(servers)-cfg.SessionCreatesPerMinute)
+	}
+	if got := int(authorityCalls.Load()); got != accepted {
+		t.Fatalf("authority calls=%d, want accepted creates only %d", got, accepted)
+	}
+}
+
+func TestPostgresCreateRateReplayAndWindowReset(t *testing.T) {
+	cfg := testConfig()
+	cfg.SessionCreatesPerMinute = 1
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	request := CreateSessionRequest{RequestID: "create-rate-replay", TTL: time.Minute, HostDeviceID: "host-rate", ClientDeviceID: "client-rate"}
+	created, wasCreated, err := store.Create(ctx, request)
+	if err != nil || !wasCreated {
+		t.Fatalf("initial create created=%t err=%v", wasCreated, err)
+	}
+	replayed, replayCreated, err := store.Create(ctx, request)
+	if err != nil || replayCreated || replayed.SessionID != created.SessionID {
+		t.Fatalf("replay response=%#v created=%t err=%v", replayed, replayCreated, err)
+	}
+	if _, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "create-rate-blocked", TTL: time.Minute, HostDeviceID: "host-rate", ClientDeviceID: "client-rate-2"}); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("blocked create error=%v, want ErrRateLimited", err)
+	}
+	if _, err := store.pool.Exec(ctx, "UPDATE signaling_device_action_rates SET refilled_at=now()-interval '61 seconds' WHERE device_id IN ($1,$2)", "host-rate", "client-rate"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "create-rate-reset", TTL: time.Minute, HostDeviceID: "host-rate", ClientDeviceID: "client-rate-3"}); err != nil {
+		t.Fatalf("create after window reset: %v", err)
+	}
+}
+
+func TestPostgresCleanupRemovesExpiredCreateRateRows(t *testing.T) {
+	cfg := testConfig()
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	if _, err := store.pool.Exec(ctx, "INSERT INTO signaling_device_action_rates(device_id,action,refilled_at,tokens_available) VALUES ($1,$2,now()-interval '3 minutes',1),($3,$2,now(),1)", "old-device", createSessionAction, "active-device"); err != nil {
+		t.Fatal(err)
+	}
+	store.Cleanup()
+	var oldExists, activeExists bool
+	if err := store.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM signaling_device_action_rates WHERE device_id=$1)", "old-device").Scan(&oldExists); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM signaling_device_action_rates WHERE device_id=$1)", "active-device").Scan(&activeExists); err != nil {
+		t.Fatal(err)
+	}
+	if oldExists || !activeExists {
+		t.Fatalf("cleanup old_exists=%t active_exists=%t", oldExists, activeExists)
+	}
+}
+
+func TestPostgresCreateRateStorageFailureFailsClosed(t *testing.T) {
+	cfg := testConfig()
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	if _, err := store.pool.Exec(ctx, "DROP TABLE signaling_device_action_rates"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "rate-storage-fail", TTL: time.Minute})
+	if !errors.Is(err, ErrStorage) {
+		t.Fatalf("create after rate table drop error=%v, want ErrStorage", err)
+	}
+}
+
 func TestPostgresReadyFailsClosedOnSchemaDrift(t *testing.T) {
 	store, _ := openSignalingIntegrationStore(t, testConfig())
 	ctx := context.Background()
@@ -695,7 +896,7 @@ func TestSignalingMigrationUpgradesWaiterCountSchema(t *testing.T) {
 	}
 	databaseURL, _ = signalingIntegrationTestDatabaseURL(t, databaseURL)
 	currentMigration := readSignalingMigration(t)
-	oldMigration := strings.Replace(currentMigration, newWaiterLeaseSchemaForTest, oldWaiterCountSchemaForTest, 1)
+	oldMigration := strings.Replace(strings.Replace(currentMigration, newWaiterLeaseSchemaForTest, oldWaiterCountSchemaForTest, 1), createRateSchemaForTest, "", 1)
 	if oldMigration == currentMigration {
 		t.Fatal("newWaiterLeaseSchemaForTest no longer matches the migration source")
 	}
@@ -726,6 +927,9 @@ func TestSignalingMigrationUpgradesWaiterCountSchema(t *testing.T) {
 	if _, err := pool.Exec(ctx, "SELECT session_id,role,lease_id,backend_pid,backend_started_at,registered_at FROM signaling_waiter_leases LIMIT 0"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, "SELECT device_id,action,refilled_at,tokens_available FROM signaling_device_action_rates LIMIT 0"); err != nil {
+		t.Fatal(err)
+	}
 	var oldTableExists bool
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('signaling_waiters') IS NOT NULL").Scan(&oldTableExists); err != nil {
 		t.Fatal(err)
@@ -742,6 +946,47 @@ func TestSignalingMigrationUpgradesWaiterCountSchema(t *testing.T) {
 	}
 	if err := ApplyMigration(ctx, databaseURL, readSignalingMigration(t)); err != nil {
 		t.Fatalf("reapply upgraded migration: %v", err)
+	}
+}
+
+func TestSignalingMigrationAddsCreateRateSchema(t *testing.T) {
+	databaseURL := os.Getenv("VIBE_SIGNALING_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("VIBE_SIGNALING_TEST_DATABASE_URL is not set")
+	}
+	databaseURL, _ = signalingIntegrationTestDatabaseURL(t, databaseURL)
+	currentMigration := readSignalingMigration(t)
+	oldMigration := strings.Replace(currentMigration, createRateSchemaForTest, "", 1)
+	if oldMigration == currentMigration {
+		t.Fatal("createRateSchemaForTest no longer matches the migration source")
+	}
+	oldDigest := sha256.Sum256([]byte(oldMigration))
+	if hex.EncodeToString(oldDigest[:]) != previousCreateRateSchemaChecksum {
+		t.Fatal("pre-create-rate migration fixture no longer matches previous checksum")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := ApplyMigration(ctx, databaseURL, oldMigration); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	if err := ApplyMigration(ctx, databaseURL, currentMigration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "SELECT device_id,action,refilled_at,tokens_available FROM signaling_device_action_rates LIMIT 0"); err != nil {
+		t.Fatal(err)
+	}
+	var recorded string
+	if err := pool.QueryRow(ctx, "SELECT checksum_sha256 FROM signaling_schema_migrations WHERE version=1").Scan(&recorded); err != nil {
+		t.Fatal(err)
+	}
+	if recorded != requiredSignalingSchemaChecksum {
+		t.Fatalf("recorded checksum = %q, want %q", recorded, requiredSignalingSchemaChecksum)
 	}
 }
 
@@ -767,6 +1012,16 @@ const oldWaiterCountSchemaForTest = "CREATE TABLE IF NOT EXISTS signaling_waiter
 	"    waiter_count integer NOT NULL CHECK (waiter_count >= 0),\n" +
 	"    PRIMARY KEY (session_id, role)\n" +
 	");"
+
+const createRateSchemaForTest = "\nCREATE TABLE IF NOT EXISTS signaling_device_action_rates (\n" +
+	"    device_id text NOT NULL,\n" +
+	"    action text NOT NULL,\n" +
+	"    refilled_at timestamptz NOT NULL,\n" +
+	"    tokens_available integer NOT NULL CHECK (tokens_available >= 0),\n" +
+	"    PRIMARY KEY (device_id, action)\n" +
+	");\n" +
+	"CREATE INDEX IF NOT EXISTS signaling_device_action_rates_window_idx\n" +
+	"    ON signaling_device_action_rates(refilled_at);\n"
 
 func TestValidateDatabaseClock(t *testing.T) {
 	now := time.Date(2026, time.August, 19, 4, 0, 0, 0, time.UTC)

@@ -493,13 +493,17 @@ shipped:
   durable high-water mark are both enforced, but product-side reconciliation and
   recovery for mismatched floors remain open.
 - PostgreSQL durable signaling routing is implemented, including cross-instance
-  message delivery and connection-scoped long-poll waiter leases that can be
-  reclaimed after a failed instance loses its database backend. Global
-  create-rate enforcement, throughput under multiple replicas, production
-  load-balancer behavior, and multi-region consistency remain unproved.
+  message delivery, connection-scoped long-poll waiter leases that can be
+  reclaimed after a failed instance loses its database backend, and shared
+  per-device/action session-create rate rows for instances using the same
+  database. Throughput under multiple replicas, production load-balancer
+  behavior, and multi-region consistency remain unproved.
 - Per-message remote authority authorization and the global PostgreSQL advisory-lock
   create serialization are fail-closed correctness choices, not a
-  high-throughput design.
+  high-throughput design. Create transactions take that lock before opening a
+  serializable transaction, and cleanup paths that delete session or create-rate
+  rows use the same lock to avoid repeated serialization failures under
+  concurrent creates.
 - Signaling and authority require NTP clock synchronization. Authority startup
   and `/readyz` compare PostgreSQL `clock_timestamp()` with the application
   clock and fail closed when the configured conservative skew bound cannot be

@@ -31,28 +31,32 @@ type session struct {
 }
 
 type MemoryStore struct {
-	mu                sync.Mutex
-	authorityCreateMu sync.Mutex
-	sessions          map[string]*session
-	requestSessions   map[string]string
-	now               func() time.Time
-	maxSessions       int
-	messagesPerMinute int
-	maxCandidates     int
-	maxWaiters        int
-	authority         *AuthorityClient
+	mu                      sync.Mutex
+	authorityCreateMu       sync.Mutex
+	sessions                map[string]*session
+	requestSessions         map[string]string
+	now                     func() time.Time
+	maxSessions             int
+	sessionCreatesPerMinute int
+	messagesPerMinute       int
+	createRates             map[string]tokenBucket
+	maxCandidates           int
+	maxWaiters              int
+	authority               *AuthorityClient
 }
 
 func NewMemoryStore(cfg Config, authority *AuthorityClient) *MemoryStore {
 	return &MemoryStore{
-		sessions:          make(map[string]*session),
-		requestSessions:   make(map[string]string),
-		now:               time.Now,
-		maxSessions:       cfg.MaxActiveSessions,
-		messagesPerMinute: cfg.MessagesPerMinute,
-		maxCandidates:     cfg.MaxCandidatesPerRole,
-		maxWaiters:        cfg.MaxWaitersPerRole,
-		authority:         authority,
+		sessions:                make(map[string]*session),
+		requestSessions:         make(map[string]string),
+		now:                     time.Now,
+		maxSessions:             cfg.MaxActiveSessions,
+		sessionCreatesPerMinute: cfg.SessionCreatesPerMinute,
+		messagesPerMinute:       cfg.MessagesPerMinute,
+		createRates:             make(map[string]tokenBucket),
+		maxCandidates:           cfg.MaxCandidatesPerRole,
+		maxWaiters:              cfg.MaxWaitersPerRole,
+		authority:               authority,
 	}
 }
 
@@ -89,6 +93,9 @@ func (s *MemoryStore) createLocal(request CreateSessionRequest) (SessionResponse
 	}
 	if len(s.sessions) >= s.maxSessions {
 		return SessionResponse{}, false, ErrCapacity
+	}
+	if !s.allowCreateLocked(request) {
+		return SessionResponse{}, false, ErrRateLimited
 	}
 	sessionID, err := randomToken(16)
 	if err != nil {
@@ -143,6 +150,10 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 	if !replay && len(s.sessions) >= s.maxSessions {
 		s.mu.Unlock()
 		return SessionResponse{}, false, ErrCapacity
+	}
+	if !replay && !s.allowCreateLocked(request) {
+		s.mu.Unlock()
+		return SessionResponse{}, false, ErrRateLimited
 	}
 	s.mu.Unlock()
 
@@ -493,7 +504,28 @@ func (s *MemoryStore) cleanupLocked(now time.Time) int {
 			removed++
 		}
 	}
+	for key, bucket := range s.createRates {
+		if now.Sub(bucket.refilledAt) >= rateLimitIdleRetention {
+			delete(s.createRates, key)
+		}
+	}
 	return removed
+}
+
+func (s *MemoryStore) allowCreateLocked(request CreateSessionRequest) bool {
+	now := s.now()
+	updated := make(map[string]tokenBucket)
+	for _, deviceID := range createRateDeviceIDs(request) {
+		bucket := s.createRates[deviceID]
+		if !consumeTokenBucket(&bucket, now, s.sessionCreatesPerMinute) {
+			return false
+		}
+		updated[deviceID] = bucket
+	}
+	for deviceID, bucket := range updated {
+		s.createRates[deviceID] = bucket
+	}
+	return true
 }
 
 func (s *MemoryStore) authorizeLocked(sessionID, token string) (*session, Role, error) {
@@ -534,14 +566,10 @@ func eventsAfter(events []Event, receiver Role, after uint64) ([]Event, uint64) 
 
 func allowRate(windows map[Role]rateWindow, key Role, now time.Time, limit int) bool {
 	window := windows[key]
-	if window.started.IsZero() || now.Sub(window.started) >= time.Minute {
-		window = rateWindow{started: now}
-	}
-	if window.count >= limit {
+	if !allowFixedWindowRate(&window, now, limit) {
 		windows[key] = window
 		return false
 	}
-	window.count++
 	windows[key] = window
 	return true
 }

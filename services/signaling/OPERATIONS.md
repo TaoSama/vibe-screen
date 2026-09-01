@@ -150,9 +150,19 @@ cleanup; Go heap reclamation does not guarantee immediate byte-level erasure.
   authority revocation.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch have different scopes and are not yet unified.
-- PostgreSQL durable routing is implemented for `production_authority`, but
-  multi-instance operation, global create-rate enforcement, and throughput under
-  multiple replicas remain unproved.
+- PostgreSQL durable routing is implemented for `production_authority`, and
+  `session_creates_per_minute` is enforced by shared per-device/action database
+  rows for instances using the same PostgreSQL database. Multi-instance
+  throughput, load-balancer behavior, rolling deployment behavior, and
+  multi-region consistency remain unproved.
 - Per-message remote authorization and the global PostgreSQL advisory-lock create
   serialization are fail-closed correctness choices, not a high-throughput
-  design; do not claim multi-instance throughput.
+  design; create paths take the lock before opening the serializable transaction
+  so queued creators observe a fresh database snapshot. PostgreSQL cleanup paths
+  that delete session or create-rate rows also use the same lock so background
+  cleanup cannot force repeated create-transaction serialization failures. Do
+  not claim multi-instance throughput.
+- In `production_authority`, session-create limiter tokens are consumed before
+  the outbound Authority create call and are not refunded on Authority errors;
+  this intentionally fails closed during dependency degradation instead of
+  allowing unbounded retry traffic toward Authority.

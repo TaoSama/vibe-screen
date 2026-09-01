@@ -210,6 +210,9 @@ func (c Config) Validate() error {
 	if c.MaxActiveSessions <= 0 || c.SessionCreatesPerMinute <= 0 || c.MessagesPerMinute <= 0 {
 		return errors.New("session and rate limits must be positive")
 	}
+	if c.SessionCreatesPerMinute > math.MaxInt32 {
+		return errors.New("session create rate limit must fit a PostgreSQL integer")
+	}
 	if c.MaxRequestBodyBytes < 1024 || c.MaxSDPBytes <= 0 || c.MaxCandidateBytes <= 0 ||
 		int64(c.MaxSDPBytes) > c.MaxRequestBodyBytes {
 		return errors.New("request, SDP, and candidate byte limits are inconsistent")
