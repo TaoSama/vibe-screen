@@ -150,6 +150,28 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun usbLanPcmProductFlowFixtureWritesAudioTrackPayloadsAndStops() {
+        val fixture = loadUsbLanPcmAudioFixture()
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory)
+
+        assertEquals(
+            ProtocolAudioConfigureResult.Accepted(fixture.config.streamId, fixture.config.configEpoch),
+            player.configure(fixture.audioConfig(), sessionEpoch = fixture.sessionEpoch),
+        )
+        assertEquals(
+            fixture.packets.map { ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 1) },
+            fixture.packets.map { packet -> player.submit(packet.serializedFrameBytes) },
+        )
+
+        player.stop()
+
+        assertEquals(1, factory.created.size)
+        assertEquals(fixture.cleanupExpectations.outputEventsAfterConfigPacketDisconnect, factory.created.single().events)
+        assertEquals(fixture.packets.map { it.payloadBytes.toList() }, factory.created.single().writes.map { it.toList() })
+    }
+
+    @Test
     fun submitRejectsScopeMismatchWithoutWriting() {
         val factory = FakePcmAudioOutputFactory()
         val player = ProtocolPcmAudioPlayer(factory)
@@ -199,7 +221,7 @@ class ProtocolPcmAudioPlaybackTest {
             player.configure(audioConfig(streamId = 9, configEpoch = 4, channelCount = 1, framesPerPacket = 3), sessionEpoch = 6),
         )
 
-        assertEquals(listOf("start", "stop", "close"), factory.created[0].events)
+        assertEquals(listOf("start", "write", "stop", "close"), factory.created[0].events)
         assertEquals(listOf("start"), factory.created[1].events)
         assertEquals(
             ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 1),
@@ -263,6 +285,7 @@ private class FakePcmAudioOutput(
         if (writeFailures.isNotEmpty()) {
             return PcmAudioWriteResult.Failed(writeFailures.removeAt(0))
         }
+        events += "write"
         writes += payload.copyOf()
         return PcmAudioWriteResult.Written
     }

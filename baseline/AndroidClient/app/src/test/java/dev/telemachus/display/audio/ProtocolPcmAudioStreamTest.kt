@@ -1,5 +1,7 @@
 package dev.telemachus.display.audio
 
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import dev.vibescreen.protocol.v1.AudioCodec
 import dev.vibescreen.protocol.v1.AudioConfig
 import dev.vibescreen.protocol.v1.AudioPacketHeader
@@ -7,6 +9,9 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 
 class ProtocolPcmAudioStreamTest {
     @Test
@@ -48,6 +53,51 @@ class ProtocolPcmAudioStreamTest {
         }
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
             ProtocolAudioPacket.parse(byteArrayOf(0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01))
+        }
+    }
+
+    @Test
+    fun usbLanPcmProductFlowFixtureMatchesProtocolParser() {
+        val fixture = loadUsbLanPcmAudioFixture()
+        val config = fixture.audioConfig()
+        val format = PcmAudioStreamFormat.from(config)
+
+        assertEquals(listOf("usb", "lan"), fixture.transportModes)
+        assertEquals("CAPABILITY_AUDIO", fixture.capability)
+        assertEquals("AUDIO", fixture.protocolChannelName)
+        assertEquals(3, fixture.protocolChannelId)
+        assertEquals("connection_cleanup", fixture.cleanupExpectations.disconnectStopReason)
+        assertEquals("audio_reconfigure", fixture.cleanupExpectations.hostStopReason)
+        assertEquals(listOf("start", "write", "write", "stop", "close"), fixture.cleanupExpectations.outputEventsAfterConfigPacketDisconnect)
+        assertEquals(listOf("start", "stop", "close"), fixture.cleanupExpectations.outputEventsAfterConfigReject)
+        assertEquals(listOf("start", "stop", "close"), fixture.cleanupExpectations.outputEventsAfterPacketError)
+        assertEquals(fixture.config.streamId, format.streamId)
+        assertEquals(fixture.config.configEpoch, format.configEpoch)
+        assertEquals(fixture.config.sampleRateHz, format.sampleRateHz)
+        assertEquals(fixture.config.channelCount, format.channelCount)
+        assertEquals(fixture.config.framesPerPacket, format.framesPerPacket)
+        assertEquals(fixture.config.bytesPerPacket, format.bytesPerPacket)
+        assertArrayEquals(fixture.config.serializedBytes, config.toByteArray())
+        assertArrayEquals(fixture.acceptedConfigResult.serializedBytes, fixture.acceptedConfigResult.message().toByteArray())
+
+        val buffer = AudioJitterBuffer(firstSequence = fixture.packets.first().sequence)
+        fixture.packets.reversed().forEach { packetFixture ->
+            val parsed = ProtocolAudioPacket.parse(packetFixture.serializedFrameBytes)
+            assertEquals(fixture.config.streamId, parsed.header.streamId)
+            assertEquals(fixture.sessionEpoch, parsed.header.sessionEpoch)
+            assertEquals(fixture.config.configEpoch, parsed.header.configEpoch)
+            assertEquals(packetFixture.sequence, parsed.header.sequence)
+            assertEquals(packetFixture.frameCount, parsed.header.frameCount)
+            assertEquals(packetFixture.payloadBytes.size, parsed.header.payloadLength)
+            assertArrayEquals(packetFixture.headerBytes, parsed.header.toByteArray())
+            assertArrayEquals(packetFixture.payloadBytes, parsed.payload)
+            assertEquals(AudioEnqueueResult.Queued, buffer.enqueue(parsed, fixture.sessionEpoch, format))
+        }
+
+        val ready = buffer.drainReady()
+        assertEquals(fixture.packets.map { it.sequence }, ready.map { it.header.sequence })
+        fixture.packets.zip(ready).forEach { (expected, actual) ->
+            assertArrayEquals(expected.payloadBytes, actual.payload)
         }
     }
 
@@ -223,4 +273,156 @@ internal fun assertProtocolThrows(
 ) {
     val failure = assertThrows(ProtocolAudioException::class.java, block)
     assertEquals(expected, failure.reason)
+}
+
+internal data class UsbLanPcmAudioFixture(
+    val transportModes: List<String>,
+    val capability: String,
+    val protocolChannelName: String,
+    val protocolChannelId: Int,
+    val sessionEpoch: Long,
+    val config: FixtureAudioConfig,
+    val acceptedConfigResult: FixtureAudioConfigResult,
+    val capture: FixtureCapture,
+    val packets: List<FixtureAudioPacket>,
+    val cleanupExpectations: FixtureCleanupExpectations,
+) {
+    fun audioConfig(): AudioConfig =
+        AudioConfig
+            .newBuilder()
+            .setStreamId(config.streamId)
+            .setConfigEpoch(config.configEpoch)
+            .setCodec(AudioCodec.valueOf(config.codec))
+            .setSampleRateHz(config.sampleRateHz)
+            .setChannelCount(config.channelCount)
+            .setFramesPerPacket(config.framesPerPacket)
+            .build()
+}
+
+internal data class FixtureAudioConfig(
+    val streamId: Long,
+    val configEpoch: Long,
+    val codec: String,
+    val sampleRateHz: Int,
+    val channelCount: Int,
+    val framesPerPacket: Int,
+    val bytesPerPacket: Int,
+    val serializedBytes: ByteArray,
+)
+
+internal data class FixtureAudioConfigResult(
+    val streamId: Long,
+    val configEpoch: Long,
+    val accepted: Boolean,
+    val rejectionReason: String,
+    val serializedBytes: ByteArray,
+) {
+    fun message(): dev.vibescreen.protocol.v1.AudioConfigResult =
+        dev.vibescreen.protocol.v1.AudioConfigResult
+            .newBuilder()
+            .setStreamId(streamId)
+            .setConfigEpoch(configEpoch)
+            .setAccepted(accepted)
+            .setRejectionReason(rejectionReason)
+            .build()
+}
+
+internal data class FixtureCapture(
+    val frameCount: Int,
+    val timestampMonotonicNs: Long,
+    val pcmS16LEBytes: ByteArray,
+)
+
+internal data class FixtureAudioPacket(
+    val sequence: Long,
+    val frameCount: Int,
+    val timestampMonotonicNs: Long,
+    val payloadBytes: ByteArray,
+    val headerBytes: ByteArray,
+    val serializedFrameBytes: ByteArray,
+)
+
+internal data class FixtureCleanupExpectations(
+    val disconnectStopReason: String,
+    val hostStopReason: String,
+    val outputEventsAfterConfigPacketDisconnect: List<String>,
+    val outputEventsAfterConfigReject: List<String>,
+    val outputEventsAfterPacketError: List<String>,
+)
+
+internal fun loadUsbLanPcmAudioFixture(): UsbLanPcmAudioFixture {
+    val relative = Path.of("contracts", "fixtures", "audio", "v1", "usb-lan-pcm-s16le-product-flow.json")
+    val fixturePath = generateSequence(Path.of(System.getProperty("user.dir")).toAbsolutePath()) { it.parent }
+        .map { it.resolve(relative) }
+        .firstOrNull(Files::isRegularFile)
+        ?: error("Unable to locate USB/LAN PCM audio fixture from " + System.getProperty("user.dir"))
+    val root = JsonParser.parseString(String(Files.readAllBytes(fixturePath), StandardCharsets.UTF_8)).asJsonObject
+    val config = root.getAsJsonObject("config")
+    val result = root.getAsJsonObject("accepted_config_result")
+    val capture = root.getAsJsonObject("capture")
+    val channel = root.getAsJsonObject("protocol_channel")
+    val cleanup = root.getAsJsonObject("cleanup_expectations")
+    val packets = root.getAsJsonArray("packets").map { item ->
+        val packet = item.asJsonObject
+        FixtureAudioPacket(
+            sequence = packet.long("sequence"),
+            frameCount = packet.int("frame_count"),
+            timestampMonotonicNs = packet.long("timestamp_monotonic_ns"),
+            payloadBytes = hexToBytes(packet.string("payload_hex")),
+            headerBytes = hexToBytes(packet.string("header_hex")),
+            serializedFrameBytes = hexToBytes(packet.string("serialized_frame_hex")),
+        )
+    }
+    return UsbLanPcmAudioFixture(
+        transportModes = root.getAsJsonArray("transport_modes").map { it.asString },
+        capability = root.string("capability"),
+        protocolChannelName = channel.string("name"),
+        protocolChannelId = channel.int("id"),
+        sessionEpoch = root.long("session_epoch"),
+        config = FixtureAudioConfig(
+            streamId = config.long("stream_id"),
+            configEpoch = config.long("config_epoch"),
+            codec = config.string("codec"),
+            sampleRateHz = config.int("sample_rate_hz"),
+            channelCount = config.int("channel_count"),
+            framesPerPacket = config.int("frames_per_packet"),
+            bytesPerPacket = config.int("bytes_per_packet"),
+            serializedBytes = hexToBytes(config.string("serialized_hex")),
+        ),
+        acceptedConfigResult = FixtureAudioConfigResult(
+            streamId = result.long("stream_id"),
+            configEpoch = result.long("config_epoch"),
+            accepted = result.get("accepted").asBoolean,
+            rejectionReason = result.string("rejection_reason"),
+            serializedBytes = hexToBytes(result.string("serialized_hex")),
+        ),
+        capture = FixtureCapture(
+            frameCount = capture.int("frame_count"),
+            timestampMonotonicNs = capture.long("timestamp_monotonic_ns"),
+            pcmS16LEBytes = hexToBytes(capture.string("pcm_s16le_hex")),
+        ),
+        packets = packets,
+        cleanupExpectations = FixtureCleanupExpectations(
+            disconnectStopReason = cleanup.string("disconnect_stop_reason"),
+            hostStopReason = cleanup.string("host_stop_reason"),
+            outputEventsAfterConfigPacketDisconnect = cleanup.stringList("output_events_after_config_packet_disconnect"),
+            outputEventsAfterConfigReject = cleanup.stringList("output_events_after_config_reject"),
+            outputEventsAfterPacketError = cleanup.stringList("output_events_after_packet_error"),
+        ),
+    )
+}
+
+private fun JsonObject.string(name: String): String = get(name).asString
+
+private fun JsonObject.long(name: String): Long = get(name).asLong
+
+private fun JsonObject.int(name: String): Int = get(name).asInt
+
+private fun JsonObject.stringList(name: String): List<String> = getAsJsonArray(name).map { it.asString }
+
+internal fun hexToBytes(value: String): ByteArray {
+    require(value.length % 2 == 0) { "hex string must have even length" }
+    return ByteArray(value.length / 2) { index ->
+        value.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+    }
 }

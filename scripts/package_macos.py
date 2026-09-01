@@ -55,6 +55,10 @@ AD_HOC_PREVIEW_WARNING = (
     "It changes the designated requirement and must not be used for macOS TCC "
     "or device-acceptance evidence."
 )
+AUDIO_PCM_FIXTURE_RELATIVE_PATH = Path(
+    "contracts/fixtures/audio/v1/usb-lan-pcm-s16le-product-flow.json"
+)
+AUDIO_PCM_FIXTURE_SOURCE = REPOSITORY_ROOT / AUDIO_PCM_FIXTURE_RELATIVE_PATH
 
 
 @dataclass(frozen=True)
@@ -262,6 +266,14 @@ def write_ad_hoc_preview_notice(resources_dir: Path, sign_identity: str) -> None
         AD_HOC_PREVIEW_WARNING + "\n",
         encoding="utf-8",
     )
+
+
+def copy_audio_pcm_fixture(resources_dir: Path) -> None:
+    if not AUDIO_PCM_FIXTURE_SOURCE.is_file():
+        raise FileNotFoundError(f"audio PCM fixture missing: {AUDIO_PCM_FIXTURE_SOURCE}")
+    destination = resources_dir / AUDIO_PCM_FIXTURE_RELATIVE_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(AUDIO_PCM_FIXTURE_SOURCE, destination)
 
 
 def collect_source_identity(repository_root: Path = REPOSITORY_ROOT) -> SourceIdentity:
@@ -702,6 +714,7 @@ def main() -> int:
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "LICENSE", resources_dir / "LICENSE.txt")
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "NOTICE", resources_dir / "NOTICE.txt")
     write_ad_hoc_preview_notice(resources_dir, sign_identity)
+    copy_audio_pcm_fixture(resources_dir)
     web_rtc_framework = binary_dir / WEBRTC_FRAMEWORK_NAME
     resource_bundle = binary_dir / RESOURCE_BUNDLE_NAME
     if not web_rtc_framework.is_dir():

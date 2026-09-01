@@ -1,6 +1,10 @@
 import Foundation
 import VibeScreenProtocol
 
+enum MacHostAudioStopReason {
+    static let reconfigure = "audio_reconfigure"
+}
+
 struct MacHostAudioFormat: Equatable, Sendable {
     static let minimumSampleRateHz: UInt32 = 8_000
     static let maximumSampleRateHz: UInt32 = 192_000

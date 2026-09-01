@@ -1248,6 +1248,17 @@ class MacOSSigningIdentityTests(unittest.TestCase):
 
         self.assertIs(entitlements.get("com.apple.developer.hid.virtual.device"), True)
 
+    def test_copy_audio_pcm_fixture_into_app_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            resources_dir = Path(temporary_directory) / "Vibe Screen.app" / "Contents" / "Resources"
+            resources_dir.mkdir(parents=True)
+
+            package_macos.copy_audio_pcm_fixture(resources_dir)
+
+            destination = resources_dir / package_macos.AUDIO_PCM_FIXTURE_RELATIVE_PATH
+            self.assertTrue(destination.is_file())
+            self.assertEqual(destination.read_bytes(), package_macos.AUDIO_PCM_FIXTURE_SOURCE.read_bytes())
+
     def test_explicit_ad_hoc_identity_skips_keychain_lookup(self) -> None:
         with mock.patch.object(package_macos.subprocess, "run") as run_mock:
             self.assertEqual(package_macos.resolve_sign_identity("-"), "-")
