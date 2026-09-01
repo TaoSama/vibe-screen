@@ -112,6 +112,7 @@ Required checks:
 ```bash
 make protocol
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract contracts.tests.test_controller_reference -v
+shasum -a 256 -c docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/SHA256SUMS
 cd baseline/AndroidClient && ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
@@ -123,13 +124,14 @@ gate.
 
 Executed from current branch `codex/controller-forwarding-contract-20260901`
 rebased on `origin/main` commit
-`3c1db3e905873be632eeed3b1530df3016344141`.
+`c1e23d3e54bc706aaa8f010acb101beb46278280`.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.internet.InternetProductSessionTest --tests dev.telemachus.display.ControllerSessionFeedbackTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest` | PASS | Focused Android controller ACK gate, deferred disconnect cleanup, tracker, USB/LAN dispatcher, MainActivity resync, StreamClient integration, and Protocol v1 session tests passed |
 | `make protocol` | PASS | 45 protocol/fixture/security/shared-model tests passed after Buf format/lint/build/breaking checks |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract contracts.tests.test_controller_reference -v` | PASS | Targeted protocol fixture, security contract, and controller reference tests passed |
+| `shasum -a 256 -c docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/SHA256SUMS` | PASS | Recovered source snapshot checksum manifest validated |
 | `cd baseline/MacHost && swift test --filter ProtocolV1SessionTests && swift test --filter GameController && swift test --filter InternetProductSessionTests && swift test --filter InternetProductProtocolCodecTests && swift test --filter StreamingServerLifecycleTests && swift test --filter IOKitVirtualGamepadDeviceTests` | BLOCKED | Local Command Line Tools Swift environment cannot import XCTest, so Mac offline XCTest did not run in this worktree |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest` | PASS | Android JVM unit tests built and passed |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon lintDebug assembleDebug :transport:check assembleDebugAndroidTest` | PASS | Android lint, debug APK assembly, transport module check, and debug instrumentation APK assembly completed without installing or launching an app |
