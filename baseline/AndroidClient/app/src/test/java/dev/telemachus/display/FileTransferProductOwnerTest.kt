@@ -458,6 +458,44 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `reject outgoing transfer returns stored drain reason exactly once`() {
+        lateinit var owner: FileTransferProductOwner
+        lateinit var prepared: FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        lateinit var transferId: ByteString
+        val results = mutableListOf<Pair<Boolean, String>>()
+        val outgoing = FakeOutgoingTransferStore(id = 96, payload = "drained".toByteArray()) {
+            owner.rejectOutgoingTransfer(
+                transferId = transferId,
+                prepared = prepared.transfer,
+                reasonCode = "outbound_backpressure",
+            )?.let(owner::notifyFileTransferResult)
+        }
+        owner = owner(outgoing = outgoing)
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        owner.activateSession()
+        prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "drained.txt").also { it.writeText("drained") },
+            "text/plain",
+            FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        owner.clear()
+
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(listOf(false to "connection_cleanup"), results)
+        assertNull(
+            owner.rejectOutgoingTransfer(
+                transferId = transferId,
+                prepared = prepared.transfer,
+                reasonCode = "outbound_backpressure",
+            ),
+        )
+    }
+
+    @Test
     fun `cancel prepared outgoing releases unstarted transfer exactly once`() {
         val outgoing = FakeOutgoingTransferStore(id = 11, payload = "cancel-prepared".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -619,6 +657,7 @@ class FileTransferProductOwnerTest {
     private class FakeOutgoingTransferStore(
         id: Int,
         payload: ByteArray,
+        private val onCancel: (() -> Unit)? = null,
     ) : FileTransferProductOwner.OutgoingTransferStore {
         override val offer: FileOffer = offer(id = id, payload = payload)
         var cancelCount = 0
@@ -626,6 +665,7 @@ class FileTransferProductOwnerTest {
 
         override fun cancel() {
             cancelCount += 1
+            onCancel?.invoke()
         }
 
         override fun applyAcceptedMaximumChunkBytes(maximumBytes: Int) = Unit

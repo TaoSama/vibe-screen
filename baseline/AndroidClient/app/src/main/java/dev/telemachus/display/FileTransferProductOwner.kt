@@ -295,7 +295,7 @@ internal class FileTransferProductOwner(
             staleReason = if (transferToCancel == null) terminatedOutgoingTransfers.remove(prepared.transfer) else null
         }
         if (transferToCancel == null) {
-            return staleReason?.let { _ -> TransferResult(accepted = false, reason = reasonCode) }
+            return staleReason?.let { reason -> TransferResult(accepted = false, reason = reason) }
         }
         transferToCancel.cancel()
         return TransferResult(accepted = false, reason = reasonCode)
