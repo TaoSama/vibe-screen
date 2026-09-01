@@ -132,15 +132,12 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             "9AAE572BF6D764E3436A6109197D345B5A87998C",
         )
 
-    def test_designated_requirement_parser_accepts_root_certificate_hash(self) -> None:
+    def test_designated_requirement_parser_rejects_root_certificate_hash_as_leaf(self) -> None:
         requirement = macos_dev_host.parse_designated_requirement(
             'designated => identifier "dev.telemachus.display" and certificate root = H"9aae572bf6d764e3436a6109197d345b5a87998c"\n'
         )
 
-        self.assertEqual(
-            macos_dev_host.parse_leaf_certificate_hash(requirement),
-            "9AAE572BF6D764E3436A6109197D345B5A87998C",
-        )
+        self.assertIsNone(macos_dev_host.parse_leaf_certificate_hash(requirement))
 
     def test_validate_preflight_rejects_wrong_root_certificate_hash(self) -> None:
         metadata = self.metadata()
@@ -192,10 +189,10 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
         )
 
-        self.assertIn(
-            "Host signing leaf SHA-1 is 'B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'",
-            "\n".join(errors),
-        )
+        joined = "\n".join(errors)
+        self.assertIn("Host designated requirement is not canonical", joined)
+        self.assertIn("unsupported clause", joined)
+        self.assertIn("Host signing leaf SHA-1 is 'missing'", joined)
 
     def test_validate_preflight_rejects_malformed_certificate_requirement(self) -> None:
         metadata = self.metadata()
@@ -497,6 +494,78 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Host signing leaf SHA-1", "\n".join(errors))
         self.assertIn(macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1, "\n".join(errors))
 
+    def test_validate_preflight_rejects_non_canonical_designated_requirement_contract(self) -> None:
+        expected = macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1
+        scenarios = (
+            (
+                "root-only",
+                f'identifier "dev.telemachus.display" and certificate root = H"{expected}"',
+                None,
+                "unsupported clause",
+            ),
+            (
+                "intermediate-only",
+                f'identifier "dev.telemachus.display" and certificate 1 = H"{expected}"',
+                None,
+                "unsupported clause",
+            ),
+            (
+                "missing identifier",
+                f'certificate leaf = H"{expected}"',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "wrong identifier",
+                f'identifier "com.example.OtherHost" and certificate leaf = H"{expected}"',
+                expected,
+                "expected 'dev.telemachus.display'",
+            ),
+            (
+                "extra-or",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" or anchor trusted',
+                expected,
+                "must not contain OR",
+            ),
+            (
+                "extra-clause",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and anchor trusted',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "leaf-plus-root",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and certificate root = H"{expected}"',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "custom-requirement",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and cdhash H"14d6c458c817f38dfdf7cc1d31bfdcb1e8e11fa7"',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+        )
+        for label, requirement, leaf_hash, expected_error in scenarios:
+            with self.subTest(label=label):
+                errors = macos_dev_host.validate_preflight(
+                    self.metadata(
+                        designated_requirement=requirement,
+                        leaf_certificate_hash=leaf_hash,
+                    ),
+                    macos_dev_host.PermissionStatus(
+                        database_path=Path(PRIVACY_DB_FILENAME),
+                        readable=True,
+                        rows=allowed_tcc_rows(),
+                    ),
+                    install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    expected_sign_identity="Vibe Screen Dev",
+                )
+
+                joined = "\n".join(errors)
+                self.assertIn("Host designated requirement is not canonical", joined)
+                self.assertRegex(joined, expected_error)
+
     def test_validate_preflight_accepts_pinned_sha1_config_without_name_match(self) -> None:
         errors = macos_dev_host.validate_preflight(
             self.metadata(authorities=("Vibe Screen Dev Renamed",)),
@@ -642,6 +711,16 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 "missing designated requirement",
                 self.metadata(designated_requirement="", leaf_certificate_hash=None),
                 "codesign designated requirement is missing",
+            ),
+            (
+                "root-only canonical bypass attempt",
+                self.metadata(
+                    designated_requirement=(
+                        f'identifier "dev.telemachus.display" and certificate root = H"{macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1}"'
+                    ),
+                    leaf_certificate_hash=None,
+                ),
+                "Host designated requirement is not canonical",
             ),
         )
         for label, metadata, expected in scenarios:

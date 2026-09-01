@@ -798,11 +798,7 @@ def parse_codesign_details(output: str) -> dict[str, object]:
 
 
 def parse_designated_requirement(output: str) -> str | None:
-    for line in output.splitlines():
-        if "designated =>" in line:
-            return line.split("designated =>", 1)[1].strip()
-    stripped = output.strip()
-    return stripped or None
+    return package_macos.parse_designated_requirement(output)
 
 
 def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
@@ -1170,17 +1166,27 @@ def append_signing_identity_errors(
         errors.append(
             "Host is ad-hoc signed; use the configured local signing identity so TCC grants survive rebuilds"
         )
-    elif metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
-        actual_leaf = metadata.leaf_certificate_hash or "missing"
-        errors.append(
-            f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+    else:
+        contract_error = package_macos.canonical_designated_requirement_contract_error(
+            metadata.designated_requirement,
+            expected_identifier=EXPECTED_BUNDLE_ID,
         )
-    elif (
-        expected_sign_identity
-        and not package_macos.is_sha1(expected_sign_identity)
-        and metadata.identity_name != expected_sign_identity
-    ):
-        errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
+        if contract_error:
+            errors.append(
+                "Host designated requirement is not canonical: "
+                f"{contract_error}"
+            )
+        if metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
+            actual_leaf = metadata.leaf_certificate_hash or "missing"
+            errors.append(
+                f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+            )
+        if (
+            expected_sign_identity
+            and not package_macos.is_sha1(expected_sign_identity)
+            and metadata.identity_name != expected_sign_identity
+        ):
+            errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
     if not metadata.cdhash:
         errors.append("codesign CDHash is missing")
     if not metadata.designated_requirement:

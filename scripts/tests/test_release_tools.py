@@ -1480,7 +1480,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
 
         package_macos.require_explicit_ad_hoc_preview("-", explicit_cli_option=True)
 
-    def test_parse_signing_certificate_hash_accepts_leaf_or_root_only(self) -> None:
+    def test_parse_signing_certificate_hash_accepts_leaf_only(self) -> None:
         expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
         self.assertEqual(
             package_macos.parse_signing_certificate_hash(
@@ -1488,11 +1488,10 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             ),
             expected,
         )
-        self.assertEqual(
+        self.assertIsNone(
             package_macos.parse_signing_certificate_hash(
                 f'identifier "dev.telemachus.display" and certificate root = H"{expected.lower()}"'
-            ),
-            expected,
+            )
         )
         self.assertIsNone(
             package_macos.parse_signing_certificate_hash(
@@ -1514,6 +1513,93 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 f'certificate root = H"{root}" and certificate leaf = H"{expected}"'
             ),
             expected,
+        )
+
+    def test_canonical_designated_requirement_contract_accepts_pure_and_equivalent_forms(self) -> None:
+        expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+        for requirement in (
+            f'identifier "dev.telemachus.display" and certificate leaf = H"{expected.lower()}"',
+            f'certificate leaf = H"{expected}" and identifier "dev.telemachus.display"',
+            f'(identifier "dev.telemachus.display") and (certificate leaf = H"{expected}")',
+        ):
+            with self.subTest(requirement=requirement):
+                self.assertIsNone(
+                    package_macos.canonical_designated_requirement_contract_error(requirement)
+                )
+
+    def test_canonical_designated_requirement_contract_rejects_drift(self) -> None:
+        expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+        scenarios = (
+            (
+                "root-only",
+                f'identifier "dev.telemachus.display" and certificate root = H"{expected}"',
+                "unsupported clause",
+            ),
+            (
+                "intermediate-only",
+                f'identifier "dev.telemachus.display" and certificate 1 = H"{expected}"',
+                "unsupported clause",
+            ),
+            (
+                "missing identifier",
+                f'certificate leaf = H"{expected}"',
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "wrong identifier",
+                f'identifier "com.example.OtherHost" and certificate leaf = H"{expected}"',
+                "expected 'dev.telemachus.display'",
+            ),
+            (
+                "extra-or",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" or anchor apple generic',
+                "must not contain OR",
+            ),
+            (
+                "extra-clause",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and anchor trusted',
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "leaf-plus-root",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and certificate root = H"{expected}"',
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "custom-requirement",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and cdhash H"14d6c458c817f38dfdf7cc1d31bfdcb1e8e11fa7"',
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "wrong leaf",
+                'identifier "dev.telemachus.display" and certificate leaf = H"0123456789ABCDEF0123456789ABCDEF01234567"',
+                "expected '9AAE572BF6D764E3436A6109197D345B5A87998C'",
+            ),
+        )
+        for label, requirement, expected_error in scenarios:
+            with self.subTest(label=label):
+                self.assertRegex(
+                    package_macos.canonical_designated_requirement_contract_error(requirement) or "",
+                    expected_error,
+                )
+
+    def test_designated_requirement_contract_parser_handles_parens_and_quoted_and_literals(self) -> None:
+        expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+        contract = package_macos.parse_designated_requirement_contract(
+            f'((identifier "dev.telemachus.display")) and ((certificate leaf = H"{expected.lower()}"))'
+        )
+
+        self.assertEqual(contract.identifier, "dev.telemachus.display")
+        self.assertEqual(contract.leaf_sha1, expected)
+        contract = package_macos.parse_designated_requirement_contract(
+            f'identifier "dev.and.telemachus.display" and certificate leaf = H"{expected}"'
+        )
+        self.assertEqual(contract.identifier, "dev.and.telemachus.display")
+        self.assertRegex(
+            package_macos.canonical_designated_requirement_contract_error(
+                f'identifier "dev.and.telemachus.display" and certificate leaf = H"{expected}"'
+            ) or "",
+            "expected 'dev.telemachus.display'",
         )
 
     def test_parse_designated_requirement_requires_designated_marker(self) -> None:
@@ -1764,7 +1850,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                     identifier = "org.webrtc.WebRTC" if command[-1] == str(framework) else "dev.telemachus.display"
                     return (
                         f'designated => identifier "{identifier}" and '
-                        f'certificate root = H"{package_macos.EXPECTED_SIGNING_LEAF_SHA1}"'
+                        f'certificate leaf = H"{package_macos.EXPECTED_SIGNING_LEAF_SHA1}"'
                     )
                 return ""
 
@@ -1866,7 +1952,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 ],
             )
 
-    def test_verify_signed_app_certificate_contract_accepts_root_certificate(self) -> None:
+    def test_verify_signed_app_certificate_contract_rejects_root_certificate(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
             expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
@@ -1878,7 +1964,8 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                     f'certificate root = H"{expected.lower()}"'
                 ),
             ) as run_mock:
-                package_macos.verify_signed_app_certificate_contract(app, expected)
+                with self.assertRaisesRegex(SystemExit, "unsupported clause"):
+                    package_macos.verify_signed_app_certificate_contract(app, expected)
 
         run_mock.assert_called_once_with(package_macos.CODESIGN, "-d", "-r-", str(app))
 
@@ -1893,7 +1980,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                     'certificate root = H"B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
                 ),
             ):
-                with self.assertRaisesRegex(SystemExit, "expected '9AAE572BF6D764E3436A6109197D345B5A87998C'"):
+                with self.assertRaisesRegex(SystemExit, "unsupported clause"):
                     package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
 
     def test_verify_signed_app_certificate_contract_rejects_malformed_requirement(self) -> None:
@@ -1904,8 +1991,43 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 "run",
                 return_value='designated => identifier "dev.telemachus.display" and certificate root = H"not-a-sha1"',
             ):
-                with self.assertRaisesRegex(SystemExit, "valid certificate leaf/root SHA-1"):
+                with self.assertRaisesRegex(SystemExit, "unsupported clause"):
                     package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
+
+    def test_verify_signed_app_certificate_contract_rejects_extra_or_and_custom_clauses(self) -> None:
+        expected = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+        scenarios = (
+            (
+                "extra-or",
+                f'designated => identifier "dev.telemachus.display" and certificate leaf = H"{expected}" or anchor trusted',
+                "must not contain OR",
+            ),
+            (
+                "extra-clause",
+                f'designated => identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and anchor trusted',
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "leaf-plus-root",
+                f'designated => identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and certificate root = H"{expected}"',
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "wrong-identifier",
+                f'designated => identifier "com.example.OtherHost" and certificate leaf = H"{expected}"',
+                "uses identifier 'com.example.OtherHost'",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            for label, requirement_output, expected_error in scenarios:
+                with self.subTest(label=label):
+                    with mock.patch.object(package_macos, "run", return_value=requirement_output):
+                        with self.assertRaisesRegex(SystemExit, expected_error):
+                            package_macos.verify_signed_app_certificate_contract(
+                                app,
+                                package_macos.EXPECTED_SIGNING_LEAF_SHA1,
+                            )
 
     def test_verify_signed_app_certificate_contract_rejects_missing_designated_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
