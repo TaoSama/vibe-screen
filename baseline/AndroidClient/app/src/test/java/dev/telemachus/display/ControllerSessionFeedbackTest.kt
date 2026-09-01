@@ -12,10 +12,10 @@ class ControllerSessionFeedbackTest {
     fun connectionTrackerIsIdempotentAndRejectsConflictingMappings() {
         val tracker = ControllerConnectionAckTracker()
 
-        assertTrue(tracker.recordConnected(7, "c1", 1))
-        assertTrue(tracker.recordConnected(7, "c1", 1))
-        assertFalse(tracker.recordConnected(7, "c2", 1))
-        assertFalse(tracker.recordConnected(8, "c1", 1))
+        assertTrue(tracker.recordConnected(7, "c1", 1, nowMillis = 100))
+        assertTrue(tracker.recordConnected(7, "c1", 1, nowMillis = 100))
+        assertFalse(tracker.recordConnected(7, "c2", 1, nowMillis = 100))
+        assertFalse(tracker.recordConnected(8, "c1", 1, nowMillis = 100))
         assertEquals(1, tracker.pendingCount())
         assertTrue(tracker.isPending("c1", 1))
         assertFalse(tracker.isPending("c2", 1))
@@ -30,18 +30,18 @@ class ControllerSessionFeedbackTest {
     fun deferredDisconnectIsReportedOnlyWhenPendingConnectionIsAcknowledged() {
         val tracker = ControllerConnectionAckTracker()
 
-        assertTrue(tracker.recordConnected(7, "c1", 1))
-        assertTrue(tracker.deferDisconnected(9, "c1", 1))
-        assertFalse(tracker.deferDisconnected(10, "c1", 1))
+        assertTrue(tracker.recordConnected(7, "c1", 1, nowMillis = 100))
+        assertTrue(tracker.deferDisconnected("c1", 1))
+        assertFalse(tracker.deferDisconnected("c1", 1))
         assertTrue(tracker.hasDeferredDisconnectBefore("c1", 2))
 
         val acknowledged = tracker.acknowledge(7)
 
         assertEquals(ControllerConnection("c1", 1), acknowledged?.connection)
-        assertEquals(9L, acknowledged?.deferredDisconnectInputId)
-        tracker.markDisconnectReady(requireNotNull(acknowledged).connection, acknowledged.deferredDisconnectInputId!!)
+        assertEquals(true, acknowledged?.hasDeferredDisconnect)
+        tracker.markDisconnectReady(requireNotNull(acknowledged).connection)
         assertTrue(tracker.hasDeferredDisconnectBefore("c1", 2))
-        assertEquals(DeferredControllerDisconnect(9, ControllerConnection("c1", 1)), tracker.nextReadyDisconnect())
+        assertEquals(DeferredControllerDisconnect(ControllerConnection("c1", 1)), tracker.nextReadyDisconnect())
         tracker.recordDisconnected("c1", 1)
         assertNull(tracker.nextReadyDisconnect())
         assertFalse(tracker.hasDeferredDisconnectBefore("c1", 2))
@@ -51,10 +51,10 @@ class ControllerSessionFeedbackTest {
     @Test
     fun disconnectAndResetRemovePendingConnections() {
         val tracker = ControllerConnectionAckTracker()
-        tracker.recordConnected(7, "c1", 1)
-        tracker.recordConnected(8, "c2", 1)
+        tracker.recordConnected(7, "c1", 1, nowMillis = 100)
+        tracker.recordConnected(8, "c2", 1, nowMillis = 100)
 
-        tracker.deferDisconnected(9, "c1", 1)
+        tracker.deferDisconnected("c1", 1)
         tracker.recordDisconnected("c1", 1)
         assertFalse(tracker.isPending("c1", 1))
         assertFalse(tracker.hasDeferredDisconnectBefore("c1", 2))
@@ -64,11 +64,27 @@ class ControllerSessionFeedbackTest {
         assertEquals(1, tracker.pendingCount())
 
         val acknowledged = requireNotNull(tracker.acknowledge(8))
-        tracker.markDisconnectReady(acknowledged.connection, 10)
+        tracker.markDisconnectReady(acknowledged.connection)
 
         tracker.reset()
         assertFalse(tracker.hasDeferredDisconnectBefore("c2", 2))
         assertNull(tracker.nextReadyDisconnect())
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test
+    fun pendingConnectionTimeoutUsesConnectedTimeBoundaryAndIgnoresClockRollback() {
+        val tracker = ControllerConnectionAckTracker()
+        assertTrue(tracker.recordConnected(7, "c1", 1, nowMillis = 100))
+        assertTrue(tracker.recordConnected(8, "c2", 1, nowMillis = 200))
+
+        assertTrue(tracker.expirePendingConnections(nowMillis = 99).isEmpty())
+        assertTrue(tracker.expirePendingConnections(nowMillis = 2_099).isEmpty())
+        assertEquals(listOf(ControllerConnection("c1", 1)), tracker.expirePendingConnections(nowMillis = 2_100))
+
+        assertNull(tracker.acknowledge(7))
+        assertTrue(tracker.isPending("c2", 1))
+        assertEquals(listOf(ControllerConnection("c2", 1)), tracker.expirePendingConnections(nowMillis = 2_200))
         assertEquals(0, tracker.pendingCount())
     }
 

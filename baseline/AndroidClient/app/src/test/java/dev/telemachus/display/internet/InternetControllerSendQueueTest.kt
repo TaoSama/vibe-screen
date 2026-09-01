@@ -124,6 +124,31 @@ class InternetControllerSendQueueTest {
     }
 
     @Test
+    fun drainSelectableSkipsBlockedHeadWithoutPassingEarlierSameKey() {
+        val queue = InternetControllerSendQueue<String>()
+        queue.enqueue(listOf("a2", "b1", "a3"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL)
+        val sent = mutableListOf<String>()
+
+        val result =
+            queue.drainSelectable(
+                canSend = { event -> event != "a2" },
+                sharesOrderingKey = { first, second -> first.first() == second.first() },
+                send = { event ->
+                    sent += event
+                    true
+                },
+            )
+
+        assertEquals(listOf("b1"), sent)
+        assertEquals(1, result.sentEvents)
+        assertTrue(result.blocked)
+        assertEquals(
+            listOf(InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL to listOf("a2", "a3")),
+            queue.pendingBatches(),
+        )
+    }
+
+    @Test
     fun analogBackpressureKeepsCurrentRemainderAndOnlyLatestSnapshot() {
         val queue = InternetControllerSendQueue<String>()
         queue.enqueue(listOf("old-1", "old-2"), InternetControllerSendQueue.Delivery.ANALOG)

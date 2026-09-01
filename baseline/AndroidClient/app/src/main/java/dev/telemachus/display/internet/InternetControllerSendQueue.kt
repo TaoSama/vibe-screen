@@ -32,7 +32,7 @@ internal class InternetControllerSendQueue<Event : Any>(
         delivery: Delivery,
     ): EnqueueResult {
         require(events.isNotEmpty())
-        val copied = events.toList()
+        val copied = events.toMutableList()
         return synchronized(lock) {
             when (delivery) {
                 Delivery.ANALOG -> {
@@ -97,6 +97,47 @@ internal class InternetControllerSendQueue<Event : Any>(
         }
     }
 
+    /**
+     * Sends the first currently admissible event, skipping causally blocked events
+     * only when doing so does not pass an earlier event for the same controller.
+     */
+    fun drainSelectable(
+        canSend: (Event) -> Boolean,
+        sharesOrderingKey: (Event, Event) -> Boolean,
+        send: (Event) -> Boolean,
+    ): DrainResult {
+        var sent = 0
+        while (true) {
+            val claim =
+                synchronized(lock) {
+                    selectClaimLocked(canSend, sharesOrderingKey)
+                }
+            when (claim) {
+                SelectClaim.Blocked -> return DrainResult(sentEvents = sent, blocked = true)
+                null -> return DrainResult(sentEvents = sent, blocked = false)
+                is SelectClaim.Event<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    claim as SelectClaim.Event<Event>
+                    var accepted = false
+                    var failure: Throwable? = null
+                    try {
+                        accepted = send(claim.event)
+                    } catch (sendFailure: Throwable) {
+                        failure = sendFailure
+                    } finally {
+                        synchronized(lock) {
+                            claim.batch.inFlight = false
+                            if (accepted) removeClaimedEventLocked(claim)
+                        }
+                    }
+                    failure?.let { return DrainResult(sentEvents = sent, blocked = false, failure = it) }
+                    if (!accepted) return DrainResult(sentEvents = sent, blocked = true)
+                    sent++
+                }
+            }
+        }
+    }
+
     fun clear() = synchronized(lock) { batches.clear() }
 
     internal fun pendingBatches(): List<Pair<Delivery, List<Event>>> =
@@ -104,13 +145,62 @@ internal class InternetControllerSendQueue<Event : Any>(
             batches.map { batch -> batch.delivery to batch.events.drop(batch.nextIndex) }
         }
 
+    private fun selectClaimLocked(
+        canSend: (Event) -> Boolean,
+        sharesOrderingKey: (Event, Event) -> Boolean,
+    ): SelectClaim<Event>? {
+        val blockedEvents = mutableListOf<Event>()
+        var sawBlocked = false
+        batches.forEach { batch ->
+            if (batch.inFlight) return SelectClaim.Blocked
+            var index = batch.nextIndex
+            while (index < batch.events.size) {
+                val event = batch.events[index]
+                if (blockedEvents.any { blocked -> sharesOrderingKey(blocked, event) }) {
+                    index++
+                    continue
+                }
+                if (!canSend(event)) {
+                    blockedEvents += event
+                    sawBlocked = true
+                    index++
+                    continue
+                }
+                batch.inFlight = true
+                return SelectClaim.Event(batch, index, event)
+            }
+        }
+        return if (sawBlocked) SelectClaim.Blocked else null
+    }
+
+    private fun removeClaimedEventLocked(claim: SelectClaim.Event<Event>) {
+        val batch = claim.batch
+        check(batch.events.getOrNull(claim.index) == claim.event) { "Controller send queue changed during drain" }
+        batch.events.removeAt(claim.index)
+        if (batch.nextIndex > batch.events.size) batch.nextIndex = batch.events.size
+        if (batch.nextIndex == batch.events.size) {
+            val batchIndex = batches.indexOfFirst { it === batch }
+            if (batchIndex >= 0) batches.removeAt(batchIndex)
+        }
+    }
+
     private data class Batch<Event : Any>(
         val delivery: Delivery,
-        val events: List<Event>,
+        val events: MutableList<Event>,
         var nextIndex: Int = 0,
         var inFlight: Boolean = false,
     ) {
         fun current(): Event = events[nextIndex]
+    }
+
+    private sealed interface SelectClaim<out Event : Any> {
+        data object Blocked : SelectClaim<Nothing>
+
+        data class Event<Event : Any>(
+            val batch: Batch<Event>,
+            val index: Int,
+            val event: Event,
+        ) : SelectClaim<Event>
     }
 
     private data class Claim<Event : Any>(
