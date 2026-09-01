@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class InternetControllerSendQueueTest {
     @Test
@@ -146,6 +149,40 @@ class InternetControllerSendQueueTest {
             listOf(InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL to listOf("a2", "a3")),
             queue.pendingBatches(),
         )
+    }
+
+    @Test
+    fun drainSelectableTreatsConcurrentClearAsCompletedClaim() {
+        val queue = InternetControllerSendQueue<String>()
+        queue.enqueue(listOf("a1", "a2"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL)
+        val sendEntered = CountDownLatch(1)
+        val allowSendReturn = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val drained = executor.submit<InternetControllerSendQueue.DrainResult> {
+                queue.drainSelectable(
+                    canSend = { true },
+                    sharesOrderingKey = { first, second -> first.first() == second.first() },
+                    send = { event ->
+                        assertEquals("a1", event)
+                        sendEntered.countDown()
+                        assertTrue(allowSendReturn.await(2, TimeUnit.SECONDS))
+                        true
+                    },
+                )
+            }
+
+            assertTrue(sendEntered.await(2, TimeUnit.SECONDS))
+            queue.clear()
+            allowSendReturn.countDown()
+
+            val result = drained.get(2, TimeUnit.SECONDS)
+            assertEquals(1, result.sentEvents)
+            assertFalse(result.blocked)
+            assertTrue(queue.pendingBatches().isEmpty())
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test

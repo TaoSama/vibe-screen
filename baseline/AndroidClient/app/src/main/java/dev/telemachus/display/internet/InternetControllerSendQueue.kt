@@ -138,7 +138,10 @@ internal class InternetControllerSendQueue<Event : Any>(
         }
     }
 
-    fun clear() = synchronized(lock) { batches.clear() }
+    fun clear() = synchronized(lock) {
+        batches.forEach { batch -> batch.inFlight = false }
+        batches.clear()
+    }
 
     internal fun pendingBatches(): List<Pair<Delivery, List<Event>>> =
         synchronized(lock) {
@@ -175,7 +178,8 @@ internal class InternetControllerSendQueue<Event : Any>(
 
     private fun removeClaimedEventLocked(claim: SelectClaim.Event<Event>) {
         val batch = claim.batch
-        check(batch.events.getOrNull(claim.index) == claim.event) { "Controller send queue changed during drain" }
+        if (batches.none { it === batch }) return
+        if (batch.events.getOrNull(claim.index) != claim.event) return
         batch.events.removeAt(claim.index)
         if (batch.nextIndex > batch.events.size) batch.nextIndex = batch.events.size
         if (batch.nextIndex == batch.events.size) {

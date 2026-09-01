@@ -29,6 +29,7 @@ internal class StreamInputDispatcher(
     private val onControllerDeferredOverflow: () -> Unit = {},
     private val onControllerAckTimeout: (List<ControllerConnection>) -> Unit = {},
     private val nowMillis: () -> Long = { System.nanoTime() / NANOS_PER_MILLISECOND },
+    private val afterPendingNonConnectedDetected: (ControllerStateSample) -> Unit = {},
 ) {
     init {
         require(maximumDeferredControllerDispatches > 0) { "maximumDeferredControllerDispatches must be positive" }
@@ -374,7 +375,6 @@ internal class StreamInputDispatcher(
         dispatch: ControllerDispatch,
         blockedControllerIds: Set<String>,
         ignoredReadyDisconnects: Set<ControllerConnection> = emptySet(),
-        allowedPendingConnections: Set<ControllerConnection> = emptySet(),
     ): PreparedControllerDispatch {
         val orderedDispatch = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)
         val connectedInBatch =
@@ -391,17 +391,22 @@ internal class StreamInputDispatcher(
             val connection = ControllerConnection(sample.controllerId, sample.controllerEpoch)
             val isPendingConnection =
                 connection in seenConnectedInBatch ||
-                    (
-                        connection !in allowedPendingConnections &&
-                            controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch)
-                    )
+                    controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch)
             if (sample.kind != ControllerEventKind.CONNECTED && isPendingConnection) {
-                if (!deferPendingControllerDisconnect(sample)) {
-                    // STATE is recovered by an ACK-triggered full-state resync.
+                afterPendingNonConnectedDetected(sample)
+                val disposition = controllerConnectionAcks.consumePendingNonConnected(sample.controllerId, sample.controllerEpoch, sample.kind)
+                if (disposition == PendingControllerInputDisposition.CONSUMED_PENDING_STATE) {
+                    consumedWithoutWire = true
+                    continue
                 }
-                consumedWithoutWire = true
-                if (sample.kind == ControllerEventKind.DISCONNECTED) deferredControllersInBatch += sample.controllerId
-                continue
+                if (
+                    disposition == PendingControllerInputDisposition.DEFERRED_PENDING_DISCONNECT ||
+                    disposition == PendingControllerInputDisposition.DUPLICATE_PENDING_DISCONNECT
+                ) {
+                    consumedWithoutWire = true
+                    deferredControllersInBatch += sample.controllerId
+                    continue
+                }
             }
             if (controllerConnectionAcks.hasDeferredDisconnectFor(sample.controllerId, sample.controllerEpoch)) {
                 consumedWithoutWire = true
@@ -428,7 +433,11 @@ internal class StreamInputDispatcher(
                 continue
             }
             if (sample.kind != ControllerEventKind.CONNECTED && connection in connectedInBatch && connection !in seenConnectedInBatch) {
-                deferredSamples += sample
+                if (sample.kind == ControllerEventKind.STATE) {
+                    consumedWithoutWire = true
+                } else {
+                    deferredSamples += sample
+                }
                 continue
             }
             val inputId = nextInputId.getAndIncrement()
@@ -449,16 +458,6 @@ internal class StreamInputDispatcher(
         return PreparedControllerDispatch(samples, deferredDispatch, consumedWithoutWire)
     }
 
-    private fun deferPendingControllerDisconnect(sample: ControllerStateSample): Boolean {
-        if (sample.kind != ControllerEventKind.DISCONNECTED) return false
-        if (!controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch)) return false
-        controllerConnectionAcks.deferDisconnected(
-            sample.controllerId,
-            sample.controllerEpoch,
-        )
-        return true
-    }
-
     private fun prepareControllerCleanup(): PreparedControllerCleanup {
         val readyDisconnects = controllerConnectionAcks.readyDisconnects()
         val samples = readyDisconnects.map { connection ->
@@ -471,22 +470,17 @@ internal class StreamInputDispatcher(
         }.map { sample ->
             PreparedControllerSample(nextInputId.getAndIncrement(), sample)
         }.toMutableList()
-        val allowedPendingConnections = mutableSetOf<ControllerConnection>()
         while (true) {
             val queued = pollDrainableDeferredControllerDispatch() ?: break
             val plan = prepareControllerDispatch(
                 queued.dispatch,
                 queued.blockedControllerIds,
                 readyDisconnects.toSet(),
-                allowedPendingConnections,
             )
             plan.deferredDispatch?.let { deferred ->
                 reinsertDeferredControllerDispatch(queued.index, deferred)
             }
             samples += plan.samples
-            allowedPendingConnections += plan.samples
-                .filter { planned -> planned.sample.kind == ControllerEventKind.CONNECTED }
-                .map { planned -> ControllerConnection(planned.sample.controllerId, planned.sample.controllerEpoch) }
         }
         return PreparedControllerCleanup(samples, readyDisconnects)
     }

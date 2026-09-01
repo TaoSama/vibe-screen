@@ -673,7 +673,7 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun sameBatchReconnectAfterAcknowledgedDisconnectSendsInInputIdOrder() {
+    fun sameBatchReconnectAfterAcknowledgedDisconnectReordersEventsWithoutSwappingExplicitInputIds() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
@@ -694,8 +694,8 @@ class InternetProductSessionTest {
         assertTrue(
             session.sendController(
                 listOf(
-                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
                     ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
+                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
                 ),
                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
             ),

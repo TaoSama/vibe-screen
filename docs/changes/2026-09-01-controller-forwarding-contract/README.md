@@ -89,19 +89,26 @@ Focused Android session tests cover ACK-before-state ordering, USB/LAN and
 Internet deferred disconnect cleanup, transport backpressure before ACK
 tracking, stale/rejected/closed ACK cleanup suppression, same-controller epoch
 replacement ordering, rejected-ACK replay without cleanup, session reset
-cleanup, and cleanup backpressure retention.
+cleanup, cleanup backpressure retention, and controller `CONNECTED` ACK timeout
+fail-closed behavior. The focused queue tests also cover in-flight Internet
+queue clearing and explicit input-id preservation when reconnect batches are
+reordered.
 
 The Android README was updated to document the now-current controller forwarding
 behavior and its blocked runtime acceptance boundary.
 
 ## Remaining Risks
 
-The offline recovery does not add a controller ACK timeout, unknown-input ACK
-fail-closed policy, duplicate `CONNECTED` soft-failure policy, or physical
-`DISCONNECTED` runtime evidence. Those are broader protocol-lifecycle policy
-changes and remain unproven by this recovery. They should be handled under a
-separate scoped change if the product wants behavior beyond the existing
-session reset and offline gates.
+The offline recovery now includes a bounded 2s controller `CONNECTED` ACK
+timeout. USB/LAN sessions check that deadline from the receive-loop read-timeout
+tick and while explicit controller cleanup is flushed; Internet sessions check
+it from the regular product-session tick. Expiry is fail-closed: pending
+controller connections and deferred controller work are cleared and the owning
+product session fails instead of sending ambiguous follow-up input. Unknown-input
+ACK fail-closed policy, duplicate `CONNECTED` soft-failure policy, and physical
+`DISCONNECTED` runtime evidence remain unproven by this recovery. Those should
+stay separate scoped changes if the product wants behavior beyond the existing
+session reset, timeout, and offline gates.
 
 ## Verification Plan
 
