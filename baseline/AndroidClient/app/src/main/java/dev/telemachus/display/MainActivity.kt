@@ -4215,7 +4215,7 @@ class MainActivity : AppCompatActivity() {
                                 showDisconnectedStreamUi()
                             }
                         },
-                        presentState = { previousPresentation ->
+                        presentState = { _ ->
                             applyRotation(configuration.rotationDegrees)
                             binding.surfaceView.post {
                                 if (isPublishedInternetDecoderCurrent(decoder, attempt)) {
@@ -4227,6 +4227,8 @@ class MainActivity : AppCompatActivity() {
                                 getString(R.string.resolution_format, configuration.width, configuration.height)
                             binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
                             showConnectedStreamUi()
+                        },
+                        afterCommit = { previousPresentation ->
                             previousPresentation.decoder?.let(::releaseDecoderAsync)
                         },
                     )

@@ -22,35 +22,37 @@ class DecoderUseGateTest {
         val clearCompleted = AtomicBoolean(false)
         val executor = Executors.newFixedThreadPool(2)
         try {
+            var clearThread: Thread? = null
             val useFuture =
                 executor.submit<Any?> {
                     gate.withCurrent { admittedDecoder ->
                         assertSame(decoder, admittedDecoder)
                         useStarted.countDown()
-                        assertTrue(releaseUse.await(1, TimeUnit.SECONDS))
+                        assertTrue(releaseUse.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
                         admittedDecoder
                     }
                 }
-            assertTrue(useStarted.await(1, TimeUnit.SECONDS))
+            assertTrue(useStarted.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
 
             val clearFuture =
                 executor.submit<Any?> {
+                    clearThread = Thread.currentThread()
                     clearStarted.countDown()
                     gate.clear().also { clearCompleted.set(true) }
                 }
 
-            assertTrue(clearStarted.await(1, TimeUnit.SECONDS))
-            Thread.sleep(50)
+            assertTrue(clearStarted.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            waitUntilBlocked(requireNotNull(clearThread))
             assertFalse(clearCompleted.get())
             releaseUse.countDown()
 
-            assertSame(decoder, useFuture.get(1, TimeUnit.SECONDS))
-            assertSame(decoder, clearFuture.get(1, TimeUnit.SECONDS))
+            assertSame(decoder, useFuture.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            assertSame(decoder, clearFuture.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             assertNull(gate.current())
         } finally {
             releaseUse.countDown()
             executor.shutdownNow()
-            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+            assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
         }
     }
 
@@ -71,10 +73,10 @@ class DecoderUseGateTest {
                 executor.submit<Any?> {
                     gate.clear {
                         callbackEntered.countDown()
-                        assertTrue(releaseCallback.await(5, TimeUnit.SECONDS))
+                        assertTrue(releaseCallback.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
                     }
                 }
-            assertTrue(callbackEntered.await(1, TimeUnit.SECONDS))
+            assertTrue(callbackEntered.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
 
             val installFuture =
                 executor.submit<Boolean> {
@@ -82,18 +84,18 @@ class DecoderUseGateTest {
                     installEntered.countDown()
                     gate.installIf(replacement) { true }
                 }
-            assertTrue(installEntered.await(1, TimeUnit.SECONDS))
+            assertTrue(installEntered.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             waitUntilBlocked(requireNotNull(installThread))
             assertFalse(installFuture.isDone)
 
             releaseCallback.countDown()
-            assertSame(decoder, clearFuture.get(1, TimeUnit.SECONDS))
-            assertTrue(installFuture.get(1, TimeUnit.SECONDS))
+            assertSame(decoder, clearFuture.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            assertTrue(installFuture.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             assertSame(replacement, gate.current())
         } finally {
             releaseCallback.countDown()
             executor.shutdownNow()
-            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+            assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
         }
     }
 
@@ -153,10 +155,10 @@ class DecoderUseGateTest {
                 executor.submit<Boolean> {
                     gate.compareAndSet(decoder, null) {
                         callbackEntered.countDown()
-                        assertTrue(releaseCallback.await(5, TimeUnit.SECONDS))
+                        assertTrue(releaseCallback.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
                     }
                 }
-            assertTrue(callbackEntered.await(1, TimeUnit.SECONDS))
+            assertTrue(callbackEntered.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
 
             val installFuture =
                 executor.submit<Boolean> {
@@ -164,27 +166,31 @@ class DecoderUseGateTest {
                     installEntered.countDown()
                     gate.installIf(replacement) { true }
                 }
-            assertTrue(installEntered.await(1, TimeUnit.SECONDS))
+            assertTrue(installEntered.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             waitUntilBlocked(requireNotNull(installThread))
             assertFalse(installFuture.isDone)
 
             releaseCallback.countDown()
-            assertTrue(compareFuture.get(1, TimeUnit.SECONDS))
-            assertTrue(installFuture.get(1, TimeUnit.SECONDS))
+            assertTrue(compareFuture.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            assertTrue(installFuture.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             assertSame(replacement, gate.current())
         } finally {
             releaseCallback.countDown()
             executor.shutdownNow()
-            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+            assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
         }
     }
 
     private fun waitUntilBlocked(thread: Thread) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_TIMEOUT_SECONDS)
         while (System.nanoTime() < deadline) {
             if (thread.state == Thread.State.BLOCKED) return
             Thread.sleep(10)
         }
         throw AssertionError("Expected competing install to wait for the decoder gate")
+    }
+
+    private companion object {
+        const val WAIT_TIMEOUT_SECONDS = 5L
     }
 }
