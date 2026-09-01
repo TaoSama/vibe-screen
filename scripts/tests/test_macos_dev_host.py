@@ -23,6 +23,8 @@ TEST_PRIVACY_DATABASE = Path("privacy.db")
 
 
 PRIVACY_DB_FILENAME = "privacy.sqlite"
+SOURCE_COMMIT = "a" * 40
+SOURCE_TREE = "b" * 40
 
 
 def allowed_tcc_rows() -> tuple[macos_dev_host.TCCRow, ...]:
@@ -31,6 +33,15 @@ def allowed_tcc_rows() -> tuple[macos_dev_host.TCCRow, ...]:
         macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
         macos_dev_host.TCCRow("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 3),
     )
+
+
+def source_identity(
+    *,
+    commit: str = SOURCE_COMMIT,
+    tree: str = SOURCE_TREE,
+    dirty: bool = False,
+) -> macos_dev_host.package_macos.SourceIdentity:
+    return macos_dev_host.package_macos.SourceIdentity(commit=commit, tree=tree, dirty=dirty)
 
 
 class MacOSDevHostMetadataTests(unittest.TestCase):
@@ -508,6 +519,91 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertEqual(errors, [])
 
+    def test_installable_host_bundle_accepts_current_clean_pinned_leaf_bundle(self) -> None:
+        errors = macos_dev_host.validate_installable_host_bundle(
+            self.metadata(),
+            expected_sign_identity="Vibe Screen Dev",
+            source_identity=source_identity(),
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_installable_host_bundle_rejects_dirty_or_missing_source_provenance(self) -> None:
+        scenarios = (
+            (
+                "missing current source",
+                self.metadata(),
+                None,
+                "current source identity is unavailable",
+            ),
+            (
+                "current source repository is dirty",
+                self.metadata(),
+                source_identity(dirty=True),
+                "source repository is dirty",
+            ),
+            (
+                "packaged from dirty source",
+                self.metadata(source_dirty=True),
+                source_identity(),
+                "packaged from a dirty source tree",
+            ),
+            (
+                "missing source commit",
+                self.metadata(source_commit=None),
+                source_identity(),
+                "lacks source commit/tree provenance",
+            ),
+            (
+                "source commit mismatch",
+                self.metadata(source_commit="c" * 40),
+                source_identity(),
+                "source provenance does not match",
+            ),
+        )
+        for label, metadata, current_source, expected in scenarios:
+            with self.subTest(label=label):
+                errors = macos_dev_host.validate_installable_host_bundle(
+                    metadata,
+                    expected_sign_identity="Vibe Screen Dev",
+                    source_identity=current_source,
+                )
+
+                self.assertIn(expected, "\n".join(errors))
+
+    def test_installable_host_bundle_rejects_ad_hoc_wrong_leaf_and_missing_codesign_fields(self) -> None:
+        scenarios = (
+            (
+                "ad-hoc",
+                self.metadata(authorities=(), signature="adhoc", leaf_certificate_hash=None),
+                "Host is ad-hoc signed",
+            ),
+            (
+                "wrong leaf",
+                self.metadata(leaf_certificate_hash="0123456789ABCDEF0123456789ABCDEF01234567"),
+                "Host signing leaf SHA-1",
+            ),
+            (
+                "missing cdhash",
+                self.metadata(cdhash=None),
+                "codesign CDHash is missing",
+            ),
+            (
+                "missing designated requirement",
+                self.metadata(designated_requirement="", leaf_certificate_hash=None),
+                "codesign designated requirement is missing",
+            ),
+        )
+        for label, metadata, expected in scenarios:
+            with self.subTest(label=label):
+                errors = macos_dev_host.validate_installable_host_bundle(
+                    metadata,
+                    expected_sign_identity="Vibe Screen Dev",
+                    source_identity=source_identity(),
+                )
+
+                self.assertIn(expected, "\n".join(errors))
+
     def test_preflight_command_reports_ad_hoc_blocker_before_reading_bundle_or_tcc(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "report.txt"
@@ -894,7 +990,9 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         )
         with (
             mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")),
-            mock.patch.object(macos_dev_host, "safe_replace_app"),
+            mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+            mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+            mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
             mock.patch.object(
                 macos_dev_host,
                 "inspect_host_without_throwing",
@@ -913,6 +1011,13 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             redirect_stdout(StringIO()),
         ):
             macos_dev_host.install_command(args)
+        replace_mock.assert_called_once_with(
+            Path("built.app"),
+            macos_dev_host.DEFAULT_INSTALL_PATH,
+            macos_dev_host.EXPECTED_BUNDLE_ID,
+            expected_sign_identity="Vibe Screen Dev",
+            source_identity=source_identity(),
+        )
         inspection_mock.assert_called_once_with(
             macos_dev_host.DEFAULT_INSTALL_PATH,
             TEST_PRIVACY_DATABASE,
@@ -920,6 +1025,168 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             source_root=Path("."),
             allow_source_mismatch=False,
         )
+
+    def test_install_command_returns_nonzero_for_post_install_preflight_errors_with_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "inspect_host_without_throwing",
+                    return_value=macos_dev_host.HostInspection(
+                        metadata=self.metadata(),
+                        source_identity=source_identity(),
+                        permissions=macos_dev_host.PermissionStatus(TEST_PRIVACY_DATABASE, (), True),
+                        errors=["Screen Recording is not authorized for the installed Host"],
+                    ),
+                ),
+                redirect_stdout(StringIO()) as stdout,
+                redirect_stderr(StringIO()) as stderr,
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("Installed", stdout.getvalue())
+            self.assertIn("not ready for device evidence", stdout.getvalue())
+            self.assertIn("macOS Host install preflight failed", stderr.getvalue())
+            self.assertIn("Screen Recording is not authorized", report.read_text(encoding="utf-8"))
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_called_once()
+
+    def test_install_command_blocks_dirty_current_source_before_packaging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity(dirty=True)),
+                mock.patch.object(macos_dev_host, "package_dev_app") as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()) as stderr,
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("source repository is dirty", report.read_text(encoding="utf-8"))
+            self.assertIn("failed before replacing", stderr.getvalue())
+        package_mock.assert_not_called()
+        replace_mock.assert_not_called()
+
+    def test_install_command_refuses_source_mismatch_escape_hatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=True,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity") as source_mock,
+                mock.patch.object(macos_dev_host, "package_dev_app") as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("install refuses --allow-source-mismatch", report.read_text(encoding="utf-8"))
+        source_mock.assert_not_called()
+        package_mock.assert_not_called()
+        replace_mock.assert_not_called()
+
+    def test_install_command_blocks_packaged_wrong_leaf_before_replace(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            wrong_leaf = self.metadata(leaf_certificate_hash="0123456789ABCDEF0123456789ABCDEF01234567")
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=wrong_leaf),
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("Host signing leaf SHA-1", report.read_text(encoding="utf-8"))
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_not_called()
+
+    def test_install_command_blocks_packaged_missing_codesign_fields_before_replace(self) -> None:
+        scenarios = (
+            (
+                "missing cdhash",
+                self.metadata(cdhash=None),
+                "codesign CDHash is missing",
+            ),
+            (
+                "missing designated requirement",
+                self.metadata(designated_requirement=""),
+                "codesign designated requirement is missing",
+            ),
+        )
+        for label, packaged_metadata, expected in scenarios:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary_directory:
+                report = Path(temporary_directory) / "report.txt"
+                args = mock.Mock(
+                    install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    output_dir=Path("out"),
+                    sign_identity="Vibe Screen Dev",
+                    tcc_db=TEST_PRIVACY_DATABASE,
+                    report=report,
+                    source_root=Path("."),
+                    allow_source_mismatch=False,
+                )
+                with (
+                    mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                    mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                    mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=packaged_metadata),
+                    mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                    redirect_stdout(StringIO()),
+                    redirect_stderr(StringIO()),
+                ):
+                    result = macos_dev_host.install_command(args)
+
+                self.assertEqual(result, 2)
+                self.assertIn(expected, report.read_text(encoding="utf-8"))
+                package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+                replace_mock.assert_not_called()
 
     def test_install_command_records_metadata_inspection_error_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -934,7 +1201,13 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 allow_source_mismatch=False,
             )
             with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
                 mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    side_effect=SystemExit("Host bundle not found"),
+                ) as metadata_mock,
                 mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
                 mock.patch.object(
                     macos_dev_host,
@@ -960,18 +1233,140 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertIn("Verification: not inspected", report.read_text(encoding="utf-8"))
             self.assertIn("Host bundle not found", report.read_text(encoding="utf-8"))
         package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
-        replace_mock.assert_called_once_with(
-            Path("built.app"),
-            macos_dev_host.DEFAULT_INSTALL_PATH,
-            macos_dev_host.EXPECTED_BUNDLE_ID,
-        )
-        inspection_mock.assert_called_once_with(
-            macos_dev_host.DEFAULT_INSTALL_PATH,
-            Path(PRIVACY_DB_FILENAME),
-            expected_sign_identity="Vibe Screen Dev",
-            source_root=Path("."),
-            allow_source_mismatch=False,
-        )
+        metadata_mock.assert_called_once_with(Path("built.app"))
+        replace_mock.assert_not_called()
+        inspection_mock.assert_not_called()
+
+    def test_install_command_records_replace_os_error_in_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "safe_replace_app",
+                    side_effect=OSError("simulated rename failure"),
+                ) as replace_mock,
+                mock.patch.object(macos_dev_host, "inspect_host_without_throwing") as inspection_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("simulated rename failure", report.read_text(encoding="utf-8"))
+            self.assertIn("Verification: not inspected", report.read_text(encoding="utf-8"))
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_called_once()
+        inspection_mock.assert_not_called()
+
+    def test_install_command_records_replace_malformed_plist_error_in_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(macos_dev_host, "package_dev_app", return_value=Path("built.app")) as package_mock,
+                mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "safe_replace_app",
+                    side_effect=SystemExit("Host bundle at built.app has a malformed Info.plist: Invalid file"),
+                ) as replace_mock,
+                mock.patch.object(macos_dev_host, "inspect_host_without_throwing") as inspection_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()) as stderr,
+            ):
+                result = macos_dev_host.install_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 2)
+            self.assertIn("malformed Info.plist", report_text)
+            self.assertIn("Verification: not inspected", report_text)
+            self.assertIn("failed before replacing", stderr.getvalue())
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_called_once()
+        inspection_mock.assert_not_called()
+
+    def test_install_command_records_packaging_bundle_error_in_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "package_dev_app",
+                    side_effect=SystemExit("Host bundle at out/Vibe Screen.app has a malformed Info.plist: Invalid file"),
+                ) as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()) as stderr,
+            ):
+                result = macos_dev_host.install_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 2)
+            self.assertIn("malformed Info.plist", report_text)
+            self.assertIn("Verification: not inspected", report_text)
+            self.assertIn("failed before replacing", stderr.getvalue())
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_not_called()
+
+    def test_install_command_does_not_catch_keyboard_interrupt_from_packaging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                mock.patch.object(
+                    macos_dev_host,
+                    "package_dev_app",
+                    side_effect=KeyboardInterrupt(),
+                ) as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    macos_dev_host.install_command(args)
+
+            self.assertFalse(report.exists())
+        package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+        replace_mock.assert_not_called()
 
     def test_install_command_reports_missing_signing_identity_without_installing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -982,8 +1377,11 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 sign_identity="Vibe Screen Dev",
                 tcc_db=Path(PRIVACY_DB_FILENAME),
                 report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
             )
             with (
+                mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
                 mock.patch.object(
                     macos_dev_host,
                     "package_dev_app",
@@ -1002,6 +1400,50 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertIn("not an Android device-identity result", " ".join(report_text.split()))
         package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
         replace_mock.assert_not_called()
+
+    def test_install_command_reports_signing_prerequisite_for_keychain_leaf_errors(self) -> None:
+        scenarios = (
+            (
+                "pinned leaf missing",
+                f"pinned Vibe Screen Host signing leaf '{macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1}' not found in the keychain.",
+            ),
+            (
+                "duplicate identities",
+                "multiple codesign identities named 'Vibe Screen Dev' were found in the keychain.",
+            ),
+        )
+        for label, message in scenarios:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary_directory:
+                report = Path(temporary_directory) / "report.txt"
+                args = mock.Mock(
+                    install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    output_dir=Path("out"),
+                    sign_identity="Vibe Screen Dev",
+                    tcc_db=Path(PRIVACY_DB_FILENAME),
+                    report=report,
+                    source_root=Path("."),
+                    allow_source_mismatch=False,
+                )
+                with (
+                    mock.patch.object(macos_dev_host, "current_source_identity", return_value=source_identity()),
+                    mock.patch.object(
+                        macos_dev_host,
+                        "package_dev_app",
+                        side_effect=SystemExit(message),
+                    ) as package_mock,
+                    mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                    redirect_stdout(StringIO()),
+                    redirect_stderr(StringIO()),
+                ):
+                    result = macos_dev_host.install_command(args)
+
+                report_text = report.read_text(encoding="utf-8")
+                self.assertEqual(result, 2)
+                self.assertIn("Host signing prerequisite", report_text)
+                self.assertIn(message, report_text)
+                self.assertIn("not an Android device-identity result", " ".join(report_text.split()))
+            package_mock.assert_called_once_with(Path("out"), "Vibe Screen Dev")
+            replace_mock.assert_not_called()
 
 
     def test_xctest_preflight_command_passes_with_full_xcode_and_xctest(self) -> None:
@@ -1062,29 +1504,37 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
     @staticmethod
     def metadata(
         *,
+        app_path: Path = macos_dev_host.DEFAULT_INSTALL_PATH,
+        identifier: str = macos_dev_host.EXPECTED_BUNDLE_ID,
         authorities: tuple[str, ...] = ("Vibe Screen Dev", "Vibe Screen Dev Root"),
         signature: str | None = None,
-        source_commit: str | None = "a" * 40,
-        source_tree: str | None = "b" * 40,
+        source_commit: str | None = SOURCE_COMMIT,
+        source_tree: str | None = SOURCE_TREE,
         source_dirty: bool | None = False,
+        binary_sha256: str = "aa1cdba1d65b8a4ed7e9376fcd329b3c8dbb6e635dbf61f1c1b61af727fb592d",
+        cdhash: str | None = "e4ac7dab68720d647550f2e031f40070ab291e8b",
+        designated_requirement: str | None = None,
+        leaf_certificate_hash: str | None = macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
     ) -> macos_dev_host.SigningMetadata:
-        requirement = (
-            'identifier "dev.telemachus.display" and certificate leaf = '
-            'H"9aae572bf6d764e3436a6109197d345b5a87998c"'
-        )
+        requirement = designated_requirement
+        if requirement is None:
+            requirement = (
+                'identifier "dev.telemachus.display" and certificate leaf = '
+                'H"9aae572bf6d764e3436a6109197d345b5a87998c"'
+            )
         return macos_dev_host.SigningMetadata(
-            app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
-            identifier="dev.telemachus.display",
+            app_path=app_path,
+            identifier=identifier,
             source_commit=source_commit,
             source_tree=source_tree,
             source_dirty=source_dirty,
-            binary_sha256="aa1cdba1d65b8a4ed7e9376fcd329b3c8dbb6e635dbf61f1c1b61af727fb592d",
+            binary_sha256=binary_sha256,
             authorities=authorities,
-            cdhash="e4ac7dab68720d647550f2e031f40070ab291e8b",
+            cdhash=cdhash,
             designated_requirement=requirement,
             signature=signature,
             team_identifier=None,
-            leaf_certificate_hash="9AAE572BF6D764E3436A6109197D345B5A87998C",
+            leaf_certificate_hash=leaf_certificate_hash,
         )
 
     def test_parse_entitlement_keys_detects_true_virtual_hid_entitlement(self) -> None:
@@ -2735,6 +3185,16 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
 
 class MacOSDevHostInstallTests(unittest.TestCase):
+    def test_require_expected_bundle_rejects_malformed_info_plist(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Malformed.app"
+            contents = app / "Contents"
+            contents.mkdir(parents=True)
+            (contents / "Info.plist").write_bytes(b"not a plist")
+
+            with self.assertRaisesRegex(SystemExit, "malformed Info.plist"):
+                macos_dev_host.require_expected_bundle(app, macos_dev_host.EXPECTED_BUNDLE_ID)
+
     def test_require_expected_bundle_rejects_bundle_id_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Wrong.app"
@@ -2743,7 +3203,247 @@ class MacOSDevHostInstallTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "expected 'dev.telemachus.display'"):
                 macos_dev_host.require_expected_bundle(app, macos_dev_host.EXPECTED_BUNDLE_ID)
 
-    def test_safe_replace_app_preserves_existing_app_when_staging_verification_fails(self) -> None:
+    def test_safe_replace_app_preserves_existing_app_when_staging_signature_gate_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            self.write_app(install, executable=b"old")
+            wrong_leaf = MacOSDevHostMetadataTests.metadata(
+                app_path=source,
+                leaf_certificate_hash="0123456789ABCDEF0123456789ABCDEF01234567",
+            )
+
+            with mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                return_value=wrong_leaf,
+            ):
+                with self.assertRaisesRegex(SystemExit, "refusing to install non-evidence-ready"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
+
+    def test_safe_replace_app_restores_existing_app_when_final_signature_gate_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            self.write_app(install, executable=b"old")
+            staged_metadata = MacOSDevHostMetadataTests.metadata(app_path=source)
+            installed_bad_metadata = MacOSDevHostMetadataTests.metadata(
+                app_path=install,
+                designated_requirement="",
+                leaf_certificate_hash=None,
+            )
+
+            with mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                side_effect=(staged_metadata, installed_bad_metadata),
+            ):
+                with self.assertRaisesRegex(SystemExit, "codesign designated requirement is missing"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
+
+    def test_safe_replace_app_restores_existing_app_when_final_gate_detects_wrong_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            self.write_app(install, executable=b"old")
+            staged_metadata = MacOSDevHostMetadataTests.metadata(app_path=source)
+            installed_bad_metadata = MacOSDevHostMetadataTests.metadata(
+                app_path=install,
+                leaf_certificate_hash="0123456789ABCDEF0123456789ABCDEF01234567",
+            )
+
+            with mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                side_effect=(staged_metadata, installed_bad_metadata),
+            ):
+                with self.assertRaisesRegex(SystemExit, "Host signing leaf SHA-1"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
+
+    def test_safe_replace_app_removes_new_install_when_final_gate_fails_without_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            staged_metadata = MacOSDevHostMetadataTests.metadata(app_path=source)
+            installed_bad_metadata = MacOSDevHostMetadataTests.metadata(
+                app_path=install,
+                cdhash=None,
+            )
+
+            with mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                side_effect=(staged_metadata, installed_bad_metadata),
+            ):
+                with self.assertRaisesRegex(SystemExit, "codesign CDHash is missing"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertFalse(install.exists())
+
+    def test_safe_replace_app_removes_new_install_when_final_gate_detects_ad_hoc_without_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            staged_metadata = MacOSDevHostMetadataTests.metadata(app_path=source)
+            installed_bad_metadata = MacOSDevHostMetadataTests.metadata(
+                app_path=install,
+                authorities=(),
+                signature="adhoc",
+                leaf_certificate_hash=None,
+            )
+
+            with mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                side_effect=(staged_metadata, installed_bad_metadata),
+            ):
+                with self.assertRaisesRegex(SystemExit, "Host is ad-hoc signed"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertFalse(install.exists())
+
+    def test_safe_replace_app_removes_new_install_when_permission_fails_after_move_without_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+
+            def require_or_raise(app_path: Path, **_: object) -> macos_dev_host.SigningMetadata:
+                if app_path == install:
+                    raise PermissionError("simulated permission failure")
+                return MacOSDevHostMetadataTests.metadata(app_path=app_path)
+
+            with mock.patch.object(
+                macos_dev_host,
+                "require_installable_host_bundle",
+                side_effect=require_or_raise,
+            ):
+                with self.assertRaisesRegex(SystemExit, "requires permission"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertFalse(install.exists())
+
+    def test_safe_replace_app_removes_malformed_final_install_without_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            original_rename = Path.rename
+
+            def rename_and_corrupt_final_plist(path: Path, target: Path) -> Path:
+                result = original_rename(path, target)
+                if path.name.startswith(".Vibe Screen.app.installing-"):
+                    (target / "Contents" / "Info.plist").write_bytes(b"not a plist")
+                return result
+
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    return_value=MacOSDevHostMetadataTests.metadata(app_path=source),
+                ),
+                mock.patch.object(Path, "rename", rename_and_corrupt_final_plist),
+            ):
+                with self.assertRaisesRegex(SystemExit, "malformed Info.plist"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertFalse(install.exists())
+
+    def test_safe_replace_app_restores_existing_app_when_final_plist_is_malformed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            self.write_app(install, executable=b"old")
+            original_rename = Path.rename
+
+            def rename_and_corrupt_final_plist(path: Path, target: Path) -> Path:
+                result = original_rename(path, target)
+                if path.name.startswith(".Vibe Screen.app.installing-"):
+                    (target / "Contents" / "Info.plist").write_bytes(b"not a plist")
+                return result
+
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    return_value=MacOSDevHostMetadataTests.metadata(app_path=source),
+                ),
+                mock.patch.object(Path, "rename", rename_and_corrupt_final_plist),
+            ):
+                with self.assertRaisesRegex(SystemExit, "malformed Info.plist"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
+
+            self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
+
+    def test_safe_replace_app_restores_existing_app_when_permission_fails_after_move_with_backup(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             source = root / "source.app"
@@ -2751,15 +3451,50 @@ class MacOSDevHostInstallTests(unittest.TestCase):
             self.write_app(source, executable=b"new")
             self.write_app(install, executable=b"old")
 
+            def require_or_raise(app_path: Path, **_: object) -> macos_dev_host.SigningMetadata:
+                if app_path == install:
+                    raise PermissionError("simulated permission failure")
+                return MacOSDevHostMetadataTests.metadata(app_path=app_path)
+
             with mock.patch.object(
                 macos_dev_host,
-                "run",
-                side_effect=subprocess.CalledProcessError(1, ["codesign"]),
+                "require_installable_host_bundle",
+                side_effect=require_or_raise,
             ):
-                with self.assertRaises(subprocess.CalledProcessError):
-                    macos_dev_host.safe_replace_app(source, install, macos_dev_host.EXPECTED_BUNDLE_ID)
+                with self.assertRaisesRegex(SystemExit, "requires permission"):
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
 
             self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
+
+    def test_safe_replace_app_installs_when_staged_and_final_gates_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            staged_metadata = MacOSDevHostMetadataTests.metadata(app_path=source)
+            installed_metadata = MacOSDevHostMetadataTests.metadata(app_path=install)
+
+            with mock.patch.object(
+                macos_dev_host,
+                "collect_signing_metadata",
+                side_effect=(staged_metadata, installed_metadata),
+            ):
+                macos_dev_host.safe_replace_app(
+                    source,
+                    install,
+                    macos_dev_host.EXPECTED_BUNDLE_ID,
+                    expected_sign_identity="Vibe Screen Dev",
+                    source_identity=source_identity(),
+                )
+
+            self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"new")
 
     def test_safe_replace_app_restores_existing_app_when_final_rename_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -2776,11 +3511,21 @@ class MacOSDevHostInstallTests(unittest.TestCase):
                 return original_rename(path, target)
 
             with (
-                mock.patch.object(macos_dev_host, "run", return_value=""),
+                mock.patch.object(
+                    macos_dev_host,
+                    "collect_signing_metadata",
+                    return_value=MacOSDevHostMetadataTests.metadata(app_path=source),
+                ),
                 mock.patch.object(Path, "rename", rename_or_fail),
             ):
                 with self.assertRaisesRegex(OSError, "simulated final rename failure"):
-                    macos_dev_host.safe_replace_app(source, install, macos_dev_host.EXPECTED_BUNDLE_ID)
+                    macos_dev_host.safe_replace_app(
+                        source,
+                        install,
+                        macos_dev_host.EXPECTED_BUNDLE_ID,
+                        expected_sign_identity="Vibe Screen Dev",
+                        source_identity=source_identity(),
+                    )
 
             self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
 

@@ -149,6 +149,29 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun narrowPortraitKeepsModeLabelsReadableAtLargeFontScale() {
+        withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
+            layout.measureAndLayout()
+
+            listOf(layout.usbModeButton, layout.wirelessModeButton, layout.internetModeButton).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+            }
+        }
+    }
+
+    @Test
+    fun narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale() {
+        withLayout(widthDp = 361, heightDp = 800) { layout ->
+            layout.measureAndLayout()
+
+            listOf(layout.usbModeButton, layout.wirelessModeButton, layout.internetModeButton).forEach { button ->
+                layout.assertMinimumTouchTarget(button)
+            }
+        }
+    }
+
+    @Test
     fun narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect() {
         withLayout(widthDp = 361, heightDp = 800) { layout ->
             layout.showModeContent(R.id.usbModeContent)
@@ -191,9 +214,10 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     private fun withLayout(
         widthDp: Int,
         heightDp: Int,
+        fontScale: Float = 1f,
         assertion: (MeasuredLayout) -> Unit,
     ) {
-        val context = configuredContext(widthDp, heightDp)
+        val context = configuredContext(widthDp, heightDp, fontScale)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val root = inflateLayout(context)
             val layout = MeasuredLayout(context, root, widthDp, heightDp)
@@ -209,11 +233,13 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     private fun configuredContext(
         widthDp: Int,
         heightDp: Int,
+        fontScale: Float = 1f,
     ): Context {
         val configuration = Configuration(applicationContext().resources.configuration)
         configuration.screenWidthDp = widthDp
         configuration.screenHeightDp = heightDp
         configuration.smallestScreenWidthDp = minOf(widthDp, heightDp)
+        configuration.fontScale = fontScale
         configuration.orientation =
             if (widthDp > heightDp) {
                 Configuration.ORIENTATION_LANDSCAPE
@@ -244,6 +270,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val connectButton = root.findViewById<View>(R.id.connectButton)
         val inlineSettingsButton = root.findViewById<View>(R.id.connectionSettingsButton)
         val floatingSettingsButton = root.findViewById<View>(R.id.settingsButton)
+        val usbModeButton = root.findViewById<TextView>(R.id.modeUSB)
+        val wirelessModeButton = root.findViewById<TextView>(R.id.modeWireless)
+        val internetModeButton = root.findViewById<TextView>(R.id.modeInternet)
         private val scrollView = root.findViewById<NestedScrollView>(R.id.connectionScroll)
         private val icon = root.findViewById<View>(R.id.connectionIcon)
         private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
@@ -385,13 +414,13 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         fun assertPortraitDimensionsInflated() {
             assertEquals(dp(32), content.paddingTop)
             assertEquals(dp(28), content.paddingBottom)
-            assertEquals(dp(72), icon.layoutParams.width)
-            assertEquals(dp(72), icon.layoutParams.height)
-            assertEquals(dp(20), margins(icon).bottomMargin)
-            assertEquals(dp(10), margins(wordmark).bottomMargin)
-            assertEquals(dp(8), margins(title).bottomMargin)
-            assertEquals(dp(20), margins(subtitle).bottomMargin)
-            assertEquals(dp(20), margins(progress).bottomMargin)
+            assertEquals(dp(56), icon.layoutParams.width)
+            assertEquals(dp(56), icon.layoutParams.height)
+            assertEquals(dp(12), margins(icon).bottomMargin)
+            assertEquals(dp(6), margins(wordmark).bottomMargin)
+            assertEquals(dp(6), margins(title).bottomMargin)
+            assertEquals(dp(12), margins(subtitle).bottomMargin)
+            assertEquals(dp(12), margins(progress).bottomMargin)
             assertEquals(dp(16), margins(modeToggle).bottomMargin)
             assertEquals(dp(12), margins(internetRouteLabel).topMargin)
             assertEquals(dp(12), margins(internetRouteToggle).bottomMargin)

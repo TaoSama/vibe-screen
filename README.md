@@ -39,7 +39,7 @@ platform scaffolding under active development.
 | Clipboard | Protocol v1 text clipboard forwarding is wired for Android <-> macOS with explicit send/get/overwrite actions, strict UTF-8 `text/plain`, SHA-256/origin/session-epoch validation, deny-wins managed-policy gating, and a 1 MiB negotiated size ceiling. Android JVM tests, Protocol v1 fixtures, and the Mac Protocol v1 self-test pass on current main. The 2026-08-27 and 2026-08-30 Nubia P0110 current-base attempts add fail-closed clipboard E2E gates and local Android ClipboardManager smoke evidence, but real Android ClipboardManager <-> macOS NSPasteboard USB/LAN E2E remains open because Host readiness and real transport prerequisites are blocked and no bidirectional product transfer record exists |
 | File transfer | Protocol v1 includes a bounded single-file transfer path for Android/macOS USB/LAN sessions with explicit sender action, receiver approval, safe basenames, negotiated limits, chunk ordering, session-epoch checks, SHA-256 verification, deny-wins policy handling, and cancel/disconnect cleanup covered by offline and Android smoke tests. A dedicated fail-closed Phase 0 gate now tracks real Android/macOS product E2E readiness; the 2026-08-29 Nubia P0110 current-base record keeps it blocked because Host readiness is not satisfied and no bidirectional product transfer evidence exists |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
-| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Current-worktree real-device LAN stream/reconnect evidence remains open; the 2026-08-30 Nubia P0110/pacific preflight was still blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
+| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted. Real-device LAN stream/reconnect evidence remains open; the latest retained 2026-08-31 Nubia P0110/pacific Codex task preflight remained blocked by device Wi-Fi association/route and Host stable-signing prerequisites |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Clipboard and file transfer are implemented and offline-tested, but their real device/system service or product E2E gates are still open. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the [host RSS no-growth gate](docs/changes/2026-08-10-host-rss-growth/TECH.md) and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost in a real two-process localhost loopback using the secure-record path by default; the loopback harness asks the Host to bind port `0` and passes the selected localhost port to the client. Explicit plaintext legacy fallback is regression-tested separately. This is readiness evidence only: Simulator UI, signed iPhone/iPad device acceptance, and real-network LAN acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
@@ -323,13 +323,13 @@ Android TCP connection ownership is now enforced by a standalone JVM transport
 module with dependency-direction and resource-lifecycle contract tests.
 `StreamClient` now delegates local product-session lifecycle state, Protocol v1
 action dispatch, side-effect owner checks for file-transfer and wake-host flows,
-input envelope routing, and media-frame routing to focused boundary owners with
-offline contract coverage. Renderer viewport layout state is now owned by a
-standalone renderer boundary with contract tests, while decoder output/state
-still composes through MainActivity. This is still not completion of Phase 0
-module ownership: broader protocol/session ownership, full file-transfer and
-wake-host product ownership, decoder ownership, full renderer ownership beyond
-viewport layout, and UI/product session boundaries are still being extracted.
+file-transfer product state, input envelope routing, and media-frame routing to
+focused boundary owners with offline contract coverage. Renderer viewport
+layout state is now owned by a standalone renderer boundary with contract tests,
+while decoder output/state still composes through MainActivity. This is still
+not completion of Phase 0 module ownership: wake-host product ownership, decoder
+ownership, full renderer ownership beyond viewport layout, and UI/product
+session boundaries are still being extracted.
 The current-base owner state is tracked by
 `make phase0-module-ownership-gate`, which must remain blocked until every
 required boundary is closed with focused evidence.

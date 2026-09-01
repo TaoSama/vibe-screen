@@ -219,7 +219,6 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         attempt = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
         attempt["trusted_lan_encrypted"] = False
 
-
         summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_LAN_NETWORK])
 
         self.assertEqual(summary["verdict"], "blocked")
@@ -234,7 +233,15 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             set(summary["full_gate_missing_disruptions"]),
             {DISRUPTION_CLIENT_KILL, DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
         )
+        self.assertEqual(
+            set(summary["missing_required_disruptions"]),
+            {DISRUPTION_CLIENT_KILL, DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
+        )
         self.assertEqual(summary["reasons"], ["Host 54321 listener unavailable"])
+        self.assertEqual(
+            summary["missing_required_disruptions"],
+            summary["required_disruptions"],
+        )
 
     def test_parses_android_diag_after_disruption_start(self) -> None:
         events = parse_android_diag_events(

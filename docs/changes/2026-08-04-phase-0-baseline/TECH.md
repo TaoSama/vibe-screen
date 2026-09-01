@@ -68,11 +68,14 @@ This is intentionally a partial extraction. `StreamClient` still composes local
 transport with legacy/Protocol v1 session behavior, and `MainActivity` still
 coordinates local and Internet product sessions. A focused Android Protocol v1
 side-effect owner gates file-transfer and WakeHost callbacks on the active
-session object plus connection generation, and owns WakeHost pending-request
-admission so file, UI, and packet-sender side effects must pass current-owner
-checks before running. Broader protocol/session, decoder, renderer, and UI
-ownership therefore remain to be enforced by additional module boundaries before
-Phase 0 module ownership can be called complete.
+session object plus connection generation, while `FileTransferProductOwner` owns
+the Android file-transfer product state, user-decision callback port, staging
+lifecycle, stale-offer cleanup, and duplicate-transfer rejection behind the
+session boundary. WakeHost pending-request admission still lives in the
+side-effect owner so packet-sender side effects must pass current-owner checks
+before running. WakeHost product, decoder, renderer, and UI ownership therefore
+remain to be enforced by additional module boundaries before Phase 0 module
+ownership can be called complete.
 
 ## Protocol v1
 
