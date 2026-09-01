@@ -14,7 +14,7 @@ import org.junit.Test
 
 class ConnectionGuidanceTest {
     @Test
-    fun usbErrorsUseTheActiveAdbTransportRecoveryPath() {
+    fun usbRefusedConnectionsUseTheActiveAdbTransportRecoveryPathForMissingRoutes() {
         val cases =
             listOf(
                 AdbTransportKind.USB to R.string.connection_guidance_usb_recovery_usb,
@@ -29,9 +29,9 @@ class ConnectionGuidanceTest {
                     ConnectionGuidanceContext.adb(54321, transport),
                 )
 
-            assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
+            assertEquals(ConnectionFailureKind.USB_ROUTE_UNAVAILABLE, guidance.kind)
             assertEquals(expectedRecoveryResource, guidance.message.resourceId)
-            assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
+            assertEquals(text(R.string.connection_guidance_usb_route_unavailable_prefix), guidance.message.args[0])
             assertEquals(54321, guidance.message.args[1])
         }
     }
@@ -40,10 +40,26 @@ class ConnectionGuidanceTest {
     fun allTransportErrorClassesAreModeAware() {
         val failures =
             listOf(
-                ConnectException("Connection refused") to ConnectionFailureKind.HOST_NOT_RUNNING,
-                NoRouteToHostException("ENETUNREACH") to ConnectionFailureKind.NETWORK_UNREACHABLE,
-                SocketTimeoutException("connect timeout") to ConnectionFailureKind.TIMEOUT,
-                IOException("unexpected transport failure") to ConnectionFailureKind.UNKNOWN,
+                TransportFailureCase(
+                    ConnectException("Connection refused"),
+                    usbKind = ConnectionFailureKind.USB_ROUTE_UNAVAILABLE,
+                    nonUsbKind = ConnectionFailureKind.HOST_NOT_RUNNING,
+                ),
+                TransportFailureCase(
+                    NoRouteToHostException("ENETUNREACH"),
+                    usbKind = ConnectionFailureKind.NETWORK_UNREACHABLE,
+                    nonUsbKind = ConnectionFailureKind.NETWORK_UNREACHABLE,
+                ),
+                TransportFailureCase(
+                    SocketTimeoutException("connect timeout"),
+                    usbKind = ConnectionFailureKind.TIMEOUT,
+                    nonUsbKind = ConnectionFailureKind.TIMEOUT,
+                ),
+                TransportFailureCase(
+                    IOException("unexpected transport failure"),
+                    usbKind = ConnectionFailureKind.UNKNOWN,
+                    nonUsbKind = ConnectionFailureKind.UNKNOWN,
+                ),
             )
         val contexts =
             listOf(
@@ -53,7 +69,10 @@ class ConnectionGuidanceTest {
             )
 
         contexts.forEach { context ->
-            failures.forEach { (failure, expectedKind) ->
+            failures.forEach { failureCase ->
+                val failure = failureCase.failure
+                val expectedKind =
+                    if (context.mode == ConnectionMode.USB) failureCase.usbKind else failureCase.nonUsbKind
                 val guidance = ConnectionGuidanceFactory.from(failure, context)
                 assertEquals("${context.mode} ${failure.javaClass.simpleName}", expectedKind, guidance.kind)
                 assertTrue(guidance.message.resourceId != 0)
@@ -199,7 +218,7 @@ class ConnectionGuidanceTest {
         val refused = SessionFailure.heartbeat("Connection refused")
         val guidance =
             ConnectionGuidanceFactory.from(refused, ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB))
-        assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
+        assertEquals(ConnectionFailureKind.USB_ROUTE_UNAVAILABLE, guidance.kind)
     }
 
     @Test
@@ -219,7 +238,7 @@ class ConnectionGuidanceTest {
         val failures =
             listOf(
                 ConnectException("Connection refused") to
-                    (ConnectionFailureKind.HOST_NOT_RUNNING to R.string.connection_guidance_usb_open_mac_prefix),
+                    (ConnectionFailureKind.USB_ROUTE_UNAVAILABLE to R.string.connection_guidance_usb_route_unavailable_prefix),
                 NoRouteToHostException("ENETUNREACH") to
                     (ConnectionFailureKind.NETWORK_UNREACHABLE to R.string.connection_guidance_usb_route_unavailable_prefix),
                 SocketTimeoutException("connect timeout") to
@@ -247,7 +266,7 @@ class ConnectionGuidanceTest {
     }
 
     @Test
-    fun usbRecoveryCopyKeepsExecutableAdbReverseCommand() {
+    fun usbRecoveryCopyRoutesRepairThroughMacAppWithoutRawCommands() {
         val resources =
             listOf(
                 "connection_guidance_usb_recovery_usb",
@@ -255,10 +274,14 @@ class ConnectionGuidanceTest {
                 "connection_guidance_usb_recovery_unavailable",
             )
         val strings = stringsXml()
+        val forbidden = listOf("run adb", "adb reverse", "adb connect", "<device-ip>")
 
         resources.forEach { name ->
             val text = strings.stringResource(name)
-            assertTrue(text, text.contains("adb reverse tcp:%2\$d tcp:%2\$d"))
+            assertTrue(text, text.contains("Mac app", ignoreCase = true))
+            forbidden.forEach { fragment ->
+                assertFalse("$name must not expose $fragment", text.contains(fragment, ignoreCase = true))
+            }
         }
     }
 
@@ -291,6 +314,58 @@ class ConnectionGuidanceTest {
 
         assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
         assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
+    }
+
+    @Test
+    fun beforeDisplayConfigurationWrapperWinsOverRefusedCause() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                IOException("Mac connection closed before display configuration", ConnectException("Connection refused")),
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+            )
+
+        assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
+        assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
+    }
+
+    @Test
+    fun protocolProbeCloseIsTreatedAsHostNotRunning() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                IOException("Protocol upgrade probe closed before a response"),
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+            )
+
+        assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
+        assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
+    }
+
+    @Test
+    fun lanWifiRouteDiscoveryFailureIsNetworkUnreachable() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                IOException("No Wi-Fi route is available for macbook.local"),
+                ConnectionGuidanceContext.trustedLan(54321),
+            )
+
+        assertEquals(ConnectionFailureKind.NETWORK_UNREACHABLE, guidance.kind)
+        assertEquals(R.string.connection_guidance_lan_network_unavailable_message, guidance.message.resourceId)
+        assertNoAdbReferences(guidance)
+    }
+
+    @Test
+    fun usbUserFacingRecoveryCopyDoesNotExposeAdbCommands() {
+        val source = File(connectionGuidanceStringsPath()).readText()
+        val forbidden = listOf("run adb", "adb reverse", "adb connect", "<device-ip>", "&lt;device-ip&gt;")
+
+        USB_ONLY_STRING_NAMES.forEach { name ->
+            val body = requireNotNull(Regex("<string name=\"$name\">(.*?)</string>").find(source)) {
+                "Missing $name"
+            }.groupValues[1]
+            forbidden.forEach { fragment ->
+                assertFalse("$name must not expose $fragment", body.contains(fragment, ignoreCase = true))
+            }
+        }
     }
 
     @Test
@@ -454,6 +529,12 @@ class ConnectionGuidanceTest {
     }
 
     private companion object {
+        data class TransportFailureCase(
+            val failure: Throwable,
+            val usbKind: ConnectionFailureKind,
+            val nonUsbKind: ConnectionFailureKind,
+        )
+
         val STRINGS_XML_PATHS =
             listOf(
                 "app/src/main/res/values/strings.xml",
@@ -470,5 +551,24 @@ class ConnectionGuidanceTest {
                 R.string.connection_guidance_usb_recovery_wireless_adb,
                 R.string.connection_guidance_usb_recovery_unavailable,
             )
+        val USB_ONLY_STRING_NAMES =
+            setOf(
+                "connection_guidance_adb_route_unavailable_title",
+                "connection_guidance_usb_open_mac_prefix",
+                "connection_guidance_usb_route_unavailable_prefix",
+                "connection_guidance_usb_timeout_prefix",
+                "connection_guidance_usb_unknown_prefix",
+                "connection_guidance_usb_recovery_usb",
+                "connection_guidance_usb_recovery_wireless_adb",
+                "connection_guidance_usb_recovery_unavailable",
+            )
+
+        fun connectionGuidanceStringsPath(): String =
+            listOf(
+                "src/main/res/values/strings.xml",
+                "app/src/main/res/values/strings.xml",
+                "baseline/AndroidClient/app/src/main/res/values/strings.xml",
+            ).firstOrNull { File(it).isFile }
+                ?: error("strings.xml not found from " + System.getProperty("user.dir"))
     }
 }
