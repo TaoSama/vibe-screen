@@ -79,6 +79,7 @@ IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
 IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
 IOS_NATIVE_INPUT_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-native-input-observations.json
 IOS_NATIVE_INPUT_GATE_JSON ?= $(dir $(IOS_NATIVE_INPUT_OBSERVATIONS_JSON))ios-native-input-gate.json
+PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON ?= $(EVIDENCE_DIR)/phase5-host-advanced-adapters-readiness.json
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
 CLIPBOARD_E2E_GATE_JSON ?= $(EVIDENCE_DIR)/clipboard-e2e-gate.json
 CLIPBOARD_E2E_HOST_READINESS_JSON ?= $(EVIDENCE_DIR)/host-readiness.json
@@ -306,6 +307,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	ios-native-input-gate \
 	ios-current-base-manifest \
 	ios-current-base-gate \
+	phase5-host-advanced-adapters-gate \
 	phase5-multi-client-current-base-gate \
 	macos-hardware-compatibility-gate \
 	phase2-tablet-soak-preflight \
@@ -1110,6 +1112,11 @@ ios-current-base-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate \
 		--manifest $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--output $(EVIDENCE_DIR)/ios-current-base-gate.json
+
+phase5-host-advanced-adapters-gate:
+	@mkdir -p "$(dir $(PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase5_host_advanced_adapters.py \
+		--output "$(PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON)"
 
 phase5-multi-client-current-base-gate:
 	@mkdir -p "$(dir $(PHASE5_MULTI_CLIENT_GATE_JSON))"

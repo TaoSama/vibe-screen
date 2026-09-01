@@ -505,78 +505,78 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(changed.display.logicalSize.height, 1440)
     }
 
-    func testHostDisplayRouterIsolatesClientsEpochsAndStreamLimits() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
-        let first = HostClientSessionKey(sessionID: Data([0x01]), epoch: 1)
-        let second = HostClientSessionKey(sessionID: Data([0x02]), epoch: 1)
-        let firstNextEpoch = HostClientSessionKey(sessionID: Data([0x01]), epoch: 2)
+    func testHostDisplayAllocatorIsolatesClientsEpochsAndStreamLimits() throws {
+        let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2)
+        let first = MultiClientSessionKey(sessionID: Data([0x01]), epoch: 1)
+        let second = MultiClientSessionKey(sessionID: Data([0x02]), epoch: 1)
+        let firstNextEpoch = MultiClientSessionKey(sessionID: Data([0x01]), epoch: 2)
 
-        XCTAssertThrowsError(try router.register(HostClientSessionKey(sessionID: Data(), epoch: 1))) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .invalidSession)
+        XCTAssertThrowsError(try allocator.register(MultiClientSessionKey(sessionID: Data(), epoch: 1))) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .invalidSession)
         }
-        XCTAssertThrowsError(try router.register(HostClientSessionKey(sessionID: Data([0x09]), epoch: 0))) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .invalidSession)
-        }
-
-        try router.register(first)
-        XCTAssertThrowsError(try router.allocateStream(for: "", in: first)) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .invalidBinding)
-        }
-        XCTAssertEqual(try router.allocateStream(for: "display-a", in: first), 1)
-        XCTAssertEqual(try router.allocateStream(for: "display-b", in: first), 2)
-        XCTAssertThrowsError(try router.rebind(streamID: 2, toDisplayID: "display-a", in: first)) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .duplicateDisplay("display-a"))
-        }
-        XCTAssertThrowsError(try router.allocateStream(for: "display-c", in: first)) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .streamLimitReached(2))
+        XCTAssertThrowsError(try allocator.register(MultiClientSessionKey(sessionID: Data([0x09]), epoch: 0))) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .invalidSession)
         }
 
-        try router.register(second)
-        XCTAssertEqual(try router.allocateStream(for: "display-a", in: second), 1)
-        XCTAssertEqual(router.activeClientCount, 2)
-        XCTAssertThrowsError(try router.register(HostClientSessionKey(sessionID: Data([0x03]), epoch: 1))) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .clientLimitReached(2))
+        try allocator.register(first)
+        XCTAssertThrowsError(try allocator.allocateStream(for: "", in: first)) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .invalidBinding)
+        }
+        XCTAssertEqual(try allocator.allocateStream(for: "display-a", in: first), 1)
+        XCTAssertEqual(try allocator.allocateStream(for: "display-b", in: first), 2)
+        XCTAssertThrowsError(try allocator.rebind(streamID: 2, toDisplayID: "display-a", in: first)) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .duplicateDisplay("display-a"))
+        }
+        XCTAssertThrowsError(try allocator.allocateStream(for: "display-c", in: first)) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .streamLimitReached(2))
         }
 
-        try router.register(firstNextEpoch)
-        XCTAssertNil(router.binding(streamID: 1, in: first))
-        XCTAssertEqual(router.binding(streamID: 1, in: firstNextEpoch)?.displayID, nil)
-        XCTAssertEqual(try router.allocateStream(for: "display-c", in: firstNextEpoch), 1)
-        XCTAssertEqual(router.activeClientCount, 2)
-
-        XCTAssertThrowsError(try router.register(first)) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .invalidSession)
+        try allocator.register(second)
+        XCTAssertEqual(try allocator.allocateStream(for: "display-a", in: second), 1)
+        XCTAssertEqual(allocator.activeClientCount, 2)
+        XCTAssertThrowsError(try allocator.register(MultiClientSessionKey(sessionID: Data([0x03]), epoch: 1))) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .clientLimitReached(2))
         }
-        router.disconnect(second)
-        XCTAssertNil(router.binding(streamID: 1, in: second))
-        XCTAssertEqual(router.binding(streamID: 1, in: firstNextEpoch)?.displayID, "display-c")
-        XCTAssertEqual(router.activeClientCount, 1)
-        router.disconnect(firstNextEpoch)
-        XCTAssertEqual(router.activeClientCount, 0)
+
+        try allocator.register(firstNextEpoch)
+        XCTAssertNil(allocator.binding(streamID: 1, in: first))
+        XCTAssertEqual(allocator.binding(streamID: 1, in: firstNextEpoch)?.displayID, nil)
+        XCTAssertEqual(try allocator.allocateStream(for: "display-c", in: firstNextEpoch), 1)
+        XCTAssertEqual(allocator.activeClientCount, 2)
+
+        XCTAssertThrowsError(try allocator.register(first)) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .invalidSession)
+        }
+        allocator.disconnect(second)
+        XCTAssertNil(allocator.binding(streamID: 1, in: second))
+        XCTAssertEqual(allocator.binding(streamID: 1, in: firstNextEpoch)?.displayID, "display-c")
+        XCTAssertEqual(allocator.activeClientCount, 1)
+        allocator.disconnect(firstNextEpoch)
+        XCTAssertEqual(allocator.activeClientCount, 0)
     }
 
-    func testHostDisplayRouterSkipsReservedAudioStreamID() throws {
+    func testHostDisplayAllocatorSkipsReservedAudioStreamID() throws {
         let audioStreamID: UInt64 = 2
-        let router = HostMultiClientDisplayRouter(maximumClients: 1, maximumStreamsPerClient: 2)
-        let key = HostClientSessionKey(sessionID: Data([0x01]), epoch: 1)
+        let allocator = MultiClientDisplayAllocator(maximumClients: 1, maximumStreamsPerClient: 2)
+        let key = MultiClientSessionKey(sessionID: Data([0x01]), epoch: 1)
 
-        try router.register(key, reservedStreamIDs: [audioStreamID])
+        try allocator.register(key, reservedStreamIDs: [audioStreamID])
 
-        XCTAssertEqual(try router.allocateStream(for: "display-a", in: key), 1)
-        XCTAssertEqual(try router.allocateStream(for: "display-b", in: key), 3)
-        XCTAssertThrowsError(try router.bind(
-            HostDisplayStreamBinding(displayID: "display-c", streamID: audioStreamID),
+        XCTAssertEqual(try allocator.allocateStream(for: "display-a", in: key), 1)
+        XCTAssertEqual(try allocator.allocateStream(for: "display-b", in: key), 3)
+        XCTAssertThrowsError(try allocator.bind(
+            MultiClientDisplayStreamBinding(displayID: "display-c", streamID: audioStreamID),
             to: key
         )) { error in
-            XCTAssertEqual(error as? HostDisplayRouterError, .invalidBinding)
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .invalidBinding)
         }
     }
 
-    func testSharedHostRouterAdvertisesClientAndStreamCaps() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
+    func testSharedHostAllocatorAdvertisesClientAndStreamCaps() throws {
+        let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2)
         let session = makeMultiDisplaySession(
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient]),
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumClients: 2,
             maximumVideoStreamsPerClient: 2
         )
@@ -612,7 +612,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 0)
     }
 
-    func testMultiClientCapabilityRequiresSharedHostRouter() throws {
+    func testMultiClientCapabilityRequiresSharedHostAllocator() throws {
         let session = makeMultiDisplaySession(maximumClients: 2, maximumVideoStreamsPerClient: 2)
         var hello = clientHello()
         hello.clientHello.capabilities.append(.multiClient)
@@ -636,10 +636,10 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     func testRuntimeDisplayRebindRejectsDuplicateDisplayAsInvalidState() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
+        let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2)
         let session = makeMultiDisplaySession(
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient]),
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumClients: 2,
             maximumVideoStreamsPerClient: 2
         )
@@ -656,9 +656,9 @@ final class ProtocolV1SessionTests: XCTestCase {
         result.streamID = 1
         result.accepted = true
         _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
-        try router.bind(
-            HostDisplayStreamBinding(displayID: "second-display", streamID: 2),
-            to: HostClientSessionKey(sessionID: sessionID, epoch: sessionEpoch)
+        try allocator.bind(
+            MultiClientDisplayStreamBinding(displayID: "second-display", streamID: 2),
+            to: MultiClientSessionKey(sessionID: sessionID, epoch: sessionEpoch)
         )
 
         let actions = session.handleControl(try envelope(
@@ -672,19 +672,19 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     func testInputTargetCannotCrossSharedClientRoutes() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+        let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 1)
         let first = try readySession(
             sessionID: Data([0x01]),
             sessionEpoch: 1,
             displayID: "first-display",
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumClients: 2
         )
         let second = try readySession(
             sessionID: Data([0x02]),
             sessionEpoch: 1,
             displayID: "second-display",
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumClients: 2
         )
 
@@ -712,12 +712,12 @@ final class ProtocolV1SessionTests: XCTestCase {
             payload: .touchEvent(secondTouch)
         ).serializedData()).containsTouch)
 
-        let keyRouter = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+        let keyAllocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 1)
         let firstKeySession = try readySession(
             sessionID: Data([0x03]),
             sessionEpoch: 1,
             displayID: "first-display",
-            displayRouter: keyRouter,
+            displayAllocator: keyAllocator,
             maximumClients: 2,
             clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
         )
@@ -725,7 +725,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             sessionID: Data([0x04]),
             sessionEpoch: 1,
             displayID: "second-display",
-            displayRouter: keyRouter,
+            displayAllocator: keyAllocator,
             maximumClients: 2,
             clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
         )
@@ -747,16 +747,16 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     func testClientDisconnectReleasesSharedHostRoute() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+        let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 1)
         let first = try readySession(
             sessionID: Data([0x01]),
             sessionEpoch: 1,
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumClients: 2,
             clientCapabilities: [.touch, .multiDisplay, .multiClient],
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient])
         )
-        XCTAssertEqual(router.activeClientCount, 1)
+        XCTAssertEqual(allocator.activeClientCount, 1)
         var notice = VSDisconnectNotice()
         notice.reasonCode = "client_shutdown"
         notice.mayResume = false
@@ -768,13 +768,13 @@ final class ProtocolV1SessionTests: XCTestCase {
         ).serializedData())
 
         XCTAssertTrue(actions.containsClose)
-        XCTAssertEqual(router.activeClientCount, 0)
+        XCTAssertEqual(allocator.activeClientCount, 0)
 
         let second = makeSession(
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([.multiClient]),
             sessionID: Data([0x02]),
             sessionEpoch: 1,
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumClients: 2
         )
         var secondHello = clientHello()
@@ -782,7 +782,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         _ = second.handleControl(try secondHello.serializedData())
         let responses = try controlEnvelopes(second.completeCodecNegotiation())
         XCTAssertTrue(responses.contains { if case .sessionAccepted = $0.payload { true } else { false } })
-        XCTAssertEqual(router.activeClientCount, 1)
+        XCTAssertEqual(allocator.activeClientCount, 1)
     }
 
     func testHandshakeRejectsVersionAndUnsupportedRequiredCapability() throws {
@@ -2260,13 +2260,13 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     func testAudioNegotiationReservesFixedStreamIDFromDisplayStreams() throws {
-        let router = HostMultiClientDisplayRouter(maximumClients: 1, maximumStreamsPerClient: 2)
+        let allocator = MultiClientDisplayAllocator(maximumClients: 1, maximumStreamsPerClient: 2)
         let session = makeSession(
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
                 audioCaptureAvailable: true
             ),
-            displayRouter: router,
+            displayAllocator: allocator,
             maximumVideoStreamsPerClient: 2
         )
         var hello = clientHello()
@@ -2275,9 +2275,9 @@ final class ProtocolV1SessionTests: XCTestCase {
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
 
-        let key = HostClientSessionKey(sessionID: sessionID, epoch: sessionEpoch)
-        XCTAssertEqual(try router.allocateStream(for: "display-a", in: key), 1)
-        XCTAssertEqual(try router.allocateStream(for: "display-b", in: key), 3)
+        let key = MultiClientSessionKey(sessionID: sessionID, epoch: sessionEpoch)
+        XCTAssertEqual(try allocator.allocateStream(for: "display-a", in: key), 1)
+        XCTAssertEqual(try allocator.allocateStream(for: "display-b", in: key), 3)
     }
 
     func testAudioConfigResultStartsAudioAndRejectsStaleEpochs() throws {
@@ -2950,7 +2950,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         sessionID: Data? = nil,
         sessionEpoch: UInt64? = nil,
         displayID: String = "active-display",
-        displayRouter: HostMultiClientDisplayRouter? = nil,
+        displayAllocator: MultiClientDisplayAllocator? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1
     ) -> ProtocolV1SessionCoordinator {
@@ -2980,7 +2980,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         configuration.preferredColorDescription = preferredColorDescription
         configuration.maximumClients = maximumClients
         configuration.maximumVideoStreamsPerClient = maximumVideoStreamsPerClient
-        configuration.displayRouter = displayRouter
+        configuration.displayAllocator = displayAllocator
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
@@ -3081,7 +3081,7 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     private func makeMultiDisplaySession(
         hostCapabilities: Set<VSCapability>? = nil,
-        displayRouter: HostMultiClientDisplayRouter? = nil,
+        displayAllocator: MultiClientDisplayAllocator? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1
     ) -> ProtocolV1SessionCoordinator {
@@ -3117,7 +3117,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
         configuration.maximumClients = maximumClients
         configuration.maximumVideoStreamsPerClient = maximumVideoStreamsPerClient
-        configuration.displayRouter = displayRouter
+        configuration.displayAllocator = displayAllocator
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
@@ -3326,7 +3326,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         sessionID: Data? = nil,
         sessionEpoch: UInt64? = nil,
         displayID: String = "active-display",
-        displayRouter: HostMultiClientDisplayRouter? = nil,
+        displayAllocator: MultiClientDisplayAllocator? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1,
         clientCapabilities: [VSCapability] = [.touch, .multiDisplay],
@@ -3339,7 +3339,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             sessionID: resolvedSessionID,
             sessionEpoch: resolvedSessionEpoch,
             displayID: displayID,
-            displayRouter: displayRouter,
+            displayAllocator: displayAllocator,
             maximumClients: maximumClients,
             maximumVideoStreamsPerClient: maximumVideoStreamsPerClient
         )

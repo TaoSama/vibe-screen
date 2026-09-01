@@ -40,6 +40,7 @@ struct ProtocolV1SessionConfiguration {
         capabilities.formUnion(ManagedPolicy.advertisedCapabilities)
         if managedPolicy.clipboardAllowed { capabilities.insert(.clipboard) }
         if touchEnabled && managedPolicy.hostActionsAllowed { capabilities.insert(.hostActions) }
+        if maximumClients > 1 { capabilities.insert(.multiClient) }
         if controllerAvailable { capabilities.insert(.controller) }
         if peripheralInputFrameworkAvailable { capabilities.insert(.peripheralInputFramework) }
         if hdrVideoAvailable { capabilities.insert(.hdrVideo) }
@@ -73,7 +74,7 @@ struct ProtocolV1SessionConfiguration {
     var displays: [ProtocolV1DisplayInfo] = []
     var maximumClients = 1
     var maximumVideoStreamsPerClient = 1
-    var displayRouter: HostMultiClientDisplayRouter?
+    var displayAllocator: MultiClientDisplayAllocator?
     var managedPolicy: ManagedPolicy = .unmanaged
     var fileTransferPolicy: ProtocolV1FileTransferPolicy = .default
 }
@@ -264,8 +265,8 @@ final class ProtocolV1SessionCoordinator {
     /// maximumPendingHostActionInvocations.
     private var pendingHostActionInvocations: [Data: UInt64] = [:]
     private var pendingWakeHostRequests: [Data: UInt64] = [:]
-    private var displayRouter: HostMultiClientDisplayRouter
-    private let sessionKey: HostClientSessionKey
+    private var displayAllocator: MultiClientDisplayAllocator
+    private let sessionKey: MultiClientSessionKey
 
     /// The remote peer's device identity captured from ClientHello. Every
     /// incoming clipboard offer/content must carry this exact, non-empty
@@ -284,24 +285,24 @@ final class ProtocolV1SessionCoordinator {
     /// managed remote status with clipboard_allowed=false denies clipboard
     /// transfer for the active session and clears any staged clipboard state.
     private var remoteManagedClipboardAllowed = true
-    private var isRegisteredWithDisplayRouter = false
+    private var isRegisteredWithDisplayAllocator = false
 
     init(configuration: ProtocolV1SessionConfiguration) {
         precondition(!configuration.sessionID.isEmpty)
         precondition(configuration.sessionEpoch > 0)
         var normalizedConfiguration = configuration
-        if normalizedConfiguration.maximumClients > 1 && normalizedConfiguration.displayRouter == nil {
+        if normalizedConfiguration.maximumClients > 1 && normalizedConfiguration.displayAllocator == nil {
             normalizedConfiguration.maximumClients = 1
             normalizedConfiguration.hostCapabilities.remove(.multiClient)
         }
         self.configuration = normalizedConfiguration
         self.managedPolicyResolver = ManagedPolicyResolver(localPolicy: normalizedConfiguration.managedPolicy)
         self.negotiatedFileTransferPolicy = normalizedConfiguration.fileTransferPolicy
-        self.sessionKey = HostClientSessionKey(
+        self.sessionKey = MultiClientSessionKey(
             sessionID: normalizedConfiguration.sessionID,
             epoch: normalizedConfiguration.sessionEpoch
         )
-        self.displayRouter = normalizedConfiguration.displayRouter ?? HostMultiClientDisplayRouter(
+        self.displayAllocator = normalizedConfiguration.displayAllocator ?? MultiClientDisplayAllocator(
             maximumClients: normalizedConfiguration.maximumClients,
             maximumStreamsPerClient: normalizedConfiguration.maximumVideoStreamsPerClient
         )
@@ -1323,8 +1324,8 @@ final class ProtocolV1SessionCoordinator {
     private static let maximumPeripheralPayloadBytes = 64 * 1_024
 
     private func releaseRouteLocked() {
-        displayRouter.disconnect(sessionKey)
-        isRegisteredWithDisplayRouter = false
+        displayAllocator.disconnect(sessionKey)
+        isRegisteredWithDisplayAllocator = false
     }
 
     private func routeDisplayFailure(
@@ -1334,21 +1335,21 @@ final class ProtocolV1SessionCoordinator {
     ) -> [ProtocolV1SessionAction]? {
         let routedDisplayID = displayID.isEmpty ? configuration.displayID : displayID
         do {
-            try displayRouter.rebind(streamID: streamID, toDisplayID: routedDisplayID, in: sessionKey)
+            try displayAllocator.rebind(streamID: streamID, toDisplayID: routedDisplayID, in: sessionKey)
             return nil
-        } catch HostDisplayRouterError.streamLimitReached(_) {
+        } catch MultiClientDisplayAllocatorError.streamLimitReached(_) {
             return fail(
                 code: .resourceExhausted,
                 message: "Host has reached the negotiated maximum video stream count for this client.",
                 correlationID: correlationID
             )
-        } catch HostDisplayRouterError.duplicateDisplay(_) {
+        } catch MultiClientDisplayAllocatorError.duplicateDisplay(_) {
             return invalidState(
-                "Host display routing rejected a duplicate display binding for this client.",
+                "Host display allocator rejected a duplicate display binding for this client.",
                 correlationID
             )
         } catch {
-            return invalidState("Host display routing rejected the requested display binding.", correlationID)
+            return invalidState("Host display allocator rejected the requested display binding.", correlationID)
         }
     }
 
@@ -1454,7 +1455,7 @@ final class ProtocolV1SessionCoordinator {
         let hasStreamID = target.streamID != 0
         if !hasDisplayID && !hasStreamID { return true }
         let lookupStreamID = hasStreamID ? target.streamID : streamID
-        guard let binding = displayRouter.binding(streamID: lookupStreamID, in: sessionKey) else {
+        guard let binding = displayAllocator.binding(streamID: lookupStreamID, in: sessionKey) else {
             return false
         }
         let displayMatches = !hasDisplayID || binding.displayID == target.displayID
@@ -1542,7 +1543,7 @@ final class ProtocolV1SessionCoordinator {
         selectedCodec = codec
         var baseNegotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
         if baseNegotiatedCapabilities.contains(.multiClient) {
-            let localMaximumClients = displayRouter.maximumClients
+            let localMaximumClients = displayAllocator.maximumClients
             let peerMaximumClients = hello.resourceLimits.maximumClients == 0
                 ? localMaximumClients
                 : Int(hello.resourceLimits.maximumClients)
@@ -1568,9 +1569,9 @@ final class ProtocolV1SessionCoordinator {
         )
         remoteManagedClipboardAllowed = managedPolicyResolver.effectivePolicy.clipboardAllowed
         do {
-            try displayRouter.register(sessionKey, reservedStreamIDs: reservedDisplayStreamIDs())
-            isRegisteredWithDisplayRouter = true
-        } catch HostDisplayRouterError.clientLimitReached {
+            try displayAllocator.register(sessionKey, reservedStreamIDs: reservedDisplayStreamIDs())
+            isRegisteredWithDisplayAllocator = true
+        } catch MultiClientDisplayAllocatorError.clientLimitReached {
             return fail(
                 code: .resourceExhausted,
                 message: "Host has no available multi-client display route slot.",
@@ -1646,9 +1647,9 @@ final class ProtocolV1SessionCoordinator {
 
     private func hostResourceLimits() -> VSResourceLimits {
         var limits = VSResourceLimits()
-        limits.maximumClients = UInt32(clamping: displayRouter.maximumClients)
+        limits.maximumClients = UInt32(clamping: displayAllocator.maximumClients)
         limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
-        limits.maximumVideoStreams = UInt32(clamping: displayRouter.maximumStreamsPerClient)
+        limits.maximumVideoStreams = UInt32(clamping: displayAllocator.maximumStreamsPerClient)
         limits.maximumAudioStreams = configuration.hostCapabilities.contains(.audio)
             ? ManagedPolicy.defaultMaximumAudioStreams
             : 0
@@ -1730,14 +1731,14 @@ final class ProtocolV1SessionCoordinator {
         let resolvedDisplayID = requestedDisplayID ?? configuration.displayID
         let streamID: UInt64
         do {
-            streamID = try displayRouter.allocateStream(for: configuration.displayID, in: sessionKey)
-        } catch HostDisplayRouterError.clientLimitReached(_) {
+            streamID = try displayAllocator.allocateStream(for: resolvedDisplayID, in: sessionKey)
+        } catch MultiClientDisplayAllocatorError.clientLimitReached(_) {
             return fail(
                 code: .resourceExhausted,
                 message: "Host has reached the negotiated maximum client count.",
                 correlationID: correlationID
             )
-        } catch HostDisplayRouterError.streamLimitReached(_) {
+        } catch MultiClientDisplayAllocatorError.streamLimitReached(_) {
             return fail(
                 code: .resourceExhausted,
                 message: "Host has reached the negotiated maximum video stream count for this client.",
@@ -1783,16 +1784,16 @@ final class ProtocolV1SessionCoordinator {
         streamID: UInt64,
         correlationID: UInt64
     ) -> [ProtocolV1SessionAction]? {
-        guard let router = configuration.displayRouter, negotiatedCapabilities.contains(.multiClient) else {
+        guard let allocator = configuration.displayAllocator, negotiatedCapabilities.contains(.multiClient) else {
             return nil
         }
         do {
-            try router.rebind(streamID: streamID, toDisplayID: displayID, in: sessionKey)
+            try allocator.rebind(streamID: streamID, toDisplayID: displayID, in: sessionKey)
             return nil
         } catch {
             return fail(
                 code: .invalidState,
-                message: "Host display routing rejected display binding: \(error)",
+                message: "Host display allocator rejected display binding: \(error)",
                 correlationID: correlationID
             )
         }
@@ -1965,9 +1966,9 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private func resetSessionOwnedStateLocked() {
-        if isRegisteredWithDisplayRouter {
-            displayRouter.disconnect(sessionKey)
-            isRegisteredWithDisplayRouter = false
+        if isRegisteredWithDisplayAllocator {
+            displayAllocator.disconnect(sessionKey)
+            isRegisteredWithDisplayAllocator = false
         }
         _ = stylusSequenceState.consumeReset()
         resetControllerState()

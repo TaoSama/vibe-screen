@@ -1,19 +1,19 @@
-# Host multi-client routing boundary blocked evidence
+# Host multi-client allocator boundary blocked evidence
 
 Date: 2026-08-21
 Host: macOS local development machine
-Scope: MacHost Protocol v1 session/display/input routing only
+Scope: MacHost Protocol v1 session/display/input allocation only
 
 ## What was implemented
 
-- `HostMultiClientDisplayRouter` tracks client routes by `session_id` plus
+- `MultiClientDisplayAllocator` tracks client routes by `session_id` plus
   `session_epoch` and owns display-to-`stream_id` bindings independently of the
   Network.framework connection object.
-- The router enforces configured `maximum_clients` and per-client video-stream
+- The allocator enforces configured `maximum_clients` and per-client video-stream
   caps, reuses a stream for repeated selection of the same display, rejects
   stale lower epochs after a newer epoch registers, and releases routes on
   protocol close.
-- `ProtocolV1SessionCoordinator` uses the shared router for StartDisplay stream
+- `ProtocolV1SessionCoordinator` uses the shared allocator for StartDisplay stream
   allocation, resource-limit reporting, runtime display rebinding, and input
   target validation. Touch, pointer, scroll, keyboard, controller, and host
   action messages must target a route owned by the same client session before
@@ -64,11 +64,11 @@ The following gates remain open:
 - real input-injection proof that events targeted at one routed client/display
   cannot affect another live client/display.
 
-Local XCTest coverage includes router caps, invalid IDs, stale epochs,
+Local XCTest coverage includes allocator caps, invalid IDs, stale epochs,
 duplicate-display rebind error mapping, route cleanup, negotiated resource
 limits, and cross-client touch/keyboard rejection. It remains blocked in this
 Command Line Tools environment:
-`swift test --package-path baseline/MacHost --filter ProtocolV1SessionTests/testHostDisplayRouterIsolatesClientsEpochsAndStreamLimits`
+`swift test --package-path baseline/MacHost --filter ProtocolV1SessionTests/testHostDisplayAllocatorIsolatesClientsEpochsAndStreamLimits`
 fails before test execution because SwiftPM cannot import `XCTest`. The XCTest
 cases added with this change must run under the full-Xcode CI gate.
 

@@ -161,6 +161,24 @@ number of valid identities; raw certificate hashes, identity names, Team IDs,
 profile UUIDs, device UDIDs, and local paths must stay out of committed
 evidence and PR text.
 
+## Phase 5 host advanced-adapter readiness gate
+
+The host-side advanced-adapter readiness gate is source-only. It verifies that
+the Phase 5 adapter matrix is documented, that production Host capabilities keep
+unaccepted adapters unadvertised or policy-gated, and that the MacHost source has
+the standalone `MultiClientDisplayAllocator` boundary used by Protocol v1
+session tests. It does not prove iOS hardware behavior, simultaneous clients,
+parallel capture, or multiple live Host streams.
+
+```sh
+make phase5-host-advanced-adapters-gate \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/<run>
+```
+
+The target writes `phase5-host-advanced-adapters-readiness.json` under
+`EVIDENCE_DIR` unless `PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON` points
+elsewhere.
+
 ## Phase 5 multi-client/display current-base gate
 
 The Phase 5 multi-client/display gate is a read-only current-base owner for the

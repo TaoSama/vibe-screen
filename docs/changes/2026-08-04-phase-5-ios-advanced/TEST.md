@@ -474,15 +474,15 @@ boundary found in source audit: MacHost `StreamingServer` still owns a single
 active `NWConnection`, a single `ProtocolV1SessionCoordinator`, a single
 capture pipeline, and one virtual display; `ProtocolV1SessionConfiguration`
 does not advertise `.multiClient` in production. PR #201 adds an offline Host
-routing boundary, but its own record keeps production capped at one active
+allocator boundary, but its own record keeps production capped at one active
 client/stream and does not close multi-device or parallel-capture acceptance.
 The Host-side advanced adapter readiness gate is source/readiness evidence only
 and does not close host-side multi-client/display or other Phase 5 device gates.
 
-## MacHost multi-client/display routing boundary
+## MacHost multi-client/display allocator boundary
 
 On 2026-08-21 the Host Protocol v1 session layer gained an offline-tested
-multi-client/display routing boundary. The shared `HostMultiClientDisplayRouter`
+multi-client/display allocator boundary. The shared `MultiClientDisplayAllocator`
 keys clients by `session_id` and `session_epoch`, enforces configured
 `maximum_clients` and per-client video-stream limits, allocates display-bound
 `stream_id` values, rejects stale lower epochs while a newer route is active,
@@ -515,12 +515,12 @@ video encoder self-test passed (encoded callbacks: 1)
 37 Python protocol fixture/security tests. `git diff --check` reported no
 whitespace errors.
 
-Additional XCTest coverage was added for the same boundary: router stream/client
+Additional XCTest coverage was added for the same boundary: allocator stream/client
 caps, stale-epoch rejection, disconnect cleanup, HostHello versus
 SessionAccepted resource-limit reporting, `CAPABILITY_MULTI_CLIENT` negotiation,
 duplicate-display rebind error mapping, and cross-client touch/keyboard target
 rejection. On this local machine
-`swift test --package-path baseline/MacHost --filter ProtocolV1SessionTests/testHostDisplayRouterIsolatesClientsEpochsAndStreamLimits`
+`swift test --package-path baseline/MacHost --filter ProtocolV1SessionTests/testHostDisplayAllocatorIsolatesClientsEpochsAndStreamLimits`
 still fails before executing tests because the selected Command Line Tools
 SwiftPM environment cannot import `XCTest`. Full-Xcode CI remains responsible
 for running that XCTest target.
@@ -531,7 +531,7 @@ production `StreamingServer` still intentionally configures one active client,
 one virtual display, and one video stream per client; it continues to replace an
 old Network.framework connection when a new one is admitted. `ScreenCapture`,
 `VirtualDisplayManager`, AppDelegate display state, and frame queues remain
-single-instance. Therefore this closes only the offline Protocol v1 Host routing
+single-instance. Therefore this closes only the offline Protocol v1 Host allocator
 boundary and does not close multi-device, parallel capture, or multi-virtual-
 display acceptance.
 
