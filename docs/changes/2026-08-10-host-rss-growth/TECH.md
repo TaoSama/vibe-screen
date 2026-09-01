@@ -45,6 +45,19 @@ docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-
 不发布」契约。该证据足以定位并消除一个主要增长贡献源，但**不能替代修复后的
 两小时复测**，因此无增长门禁仍保持开放。
 
+2026-09-01 补充一个确定性离线回归门禁：`StreamMetricsTests` 现在用公开行为
+不变量覆盖 10,000 次变化 FPS/码率更新、10,000 次重复 FPS/码率更新、
+10,000 次未变化 Host 状态刷新，以及 10,000 次真实变化 Host 状态刷新。
+断言点是 `DisplaySettings.objectWillChange` 的
+发布次数、`StreamMetrics` subject 的发布次数、`setIfChanged` 的写入次数，以及
+`DisplaySettings` 对同一个 `StreamMetrics` 实例的所有权；不读取或匹配私有
+`ObservationRegistrar` heap 类型、类名或 SwiftUI runtime 内部结构。该门禁能证明
+高频 telemetry 与不变状态刷新不会通过根 settings publisher 触发 O(N) SwiftUI
+观察重建，真实变化状态也只按实际写入次数发布，同时证明相同值不会重复发布。
+证据边界仍是离线 publisher/所有权不变量：
+它不测 Host RSS、不启动 Host、不做 memory soak，也不得用于关闭正式
+`host_rss_2h_no_growth` / `host_rss_gate`。
+
 2026-08-24 的当前源码补强继续收敛可验证面：`debugLog` 与 `TelemetryEvent`
 共用一个加锁的 `ISO8601DateFormatter`，避免推流期间每条日志和 telemetry 都构造
 新的 formatter；生产 `stream_stats` 现在同时携带 `frame_registry_count` 与
