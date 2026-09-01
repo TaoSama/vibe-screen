@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.view.Gravity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -11,6 +12,7 @@ class ConnectionPanelLayoutPolicyTest {
         val layout = ConnectionPanelLayoutPolicy.resolve(twoColumn = false, columnGapPx = 28)
 
         assertEquals(ConnectionPanelLayoutPolicy.Orientation.VERTICAL, layout.contentOrientation)
+        assertEquals(Gravity.CENTER_VERTICAL, layout.contentGravity)
         assertTrue(layout.header.widthMatchParent)
         assertTrue(layout.actions.widthMatchParent)
         assertEquals(0f, layout.header.weight, 0f)
@@ -24,6 +26,7 @@ class ConnectionPanelLayoutPolicyTest {
         val layout = ConnectionPanelLayoutPolicy.resolve(twoColumn = true, columnGapPx = 28)
 
         assertEquals(ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL, layout.contentOrientation)
+        assertEquals(Gravity.CENTER_VERTICAL, layout.contentGravity)
         assertFalse(layout.header.widthMatchParent)
         assertFalse(layout.actions.widthMatchParent)
         assertEquals(ConnectionPanelLayoutPolicy.HEADER_WEIGHT, layout.header.weight, 0f)

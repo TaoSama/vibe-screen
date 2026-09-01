@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import android.content.pm.ActivityInfo
+import android.view.Gravity
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 
 internal object ControlBarAccessibilityPolicy {
@@ -1043,6 +1044,7 @@ internal object ConnectionPanelLayoutPolicy {
 
     data class Layout(
         val contentOrientation: Orientation,
+        val contentGravity: Int,
         val header: Column,
         val actions: Column,
         /** Gap placed between the two columns; zero in the stacked layout. */
@@ -1066,6 +1068,7 @@ internal object ConnectionPanelLayoutPolicy {
         if (twoColumn) {
             Layout(
                 contentOrientation = Orientation.HORIZONTAL,
+                contentGravity = Gravity.CENTER_VERTICAL,
                 header = Column(widthMatchParent = false, weight = HEADER_WEIGHT),
                 actions = Column(widthMatchParent = false, weight = ACTIONS_WEIGHT),
                 columnGapPx = columnGapPx.coerceAtLeast(0),
@@ -1075,6 +1078,7 @@ internal object ConnectionPanelLayoutPolicy {
             // visual so portrait renders exactly as before.
             Layout(
                 contentOrientation = Orientation.VERTICAL,
+                contentGravity = Gravity.CENTER_VERTICAL,
                 header = Column(widthMatchParent = true, weight = 0f),
                 actions = Column(widthMatchParent = true, weight = 0f),
                 columnGapPx = 0,

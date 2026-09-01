@@ -1,0 +1,220 @@
+
+WINDOW MANAGER LAST ANR (dumpsys window lastanr)
+  <no ANR has occurred since boot>
+
+WINDOW MANAGER POLICY STATE (dumpsys window policy)
+    mSafeMode=false mSystemReady=true mSystemBooted=true
+    mCameraLensCoverState=CAMERA_LENS_COVER_ABSENT
+    mWakeGestureEnabledSetting=true
+    mUiMode=UI_MODE_TYPE_NORMALmEnableCarDockHomeCapture=false
+    mLidKeyboardAccessibility=0 mLidNavigationAccessibility=0 getLidBehavior=LID_BEHAVIOR_NONE
+    mLongPressOnBackBehavior=LONG_PRESS_BACK_NOTHING
+    mLongPressOnHomeBehavior=LONG_PRESS_HOME_NOTIFICATION_PANEL
+    mDoubleTapOnHomeBehavior=DOUBLE_TAP_HOME_NOTHING
+    mShortPressOnPowerBehavior=SHORT_PRESS_POWER_GO_TO_SLEEP
+    mLongPressOnPowerBehavior=LONG_PRESS_POWER_NOTHING
+    mSettingsKeyBehavior=SETTINGS_KEY_BEHAVIOR_SETTINGS_ACTIVITY
+    mLongPressOnPowerAssistantTimeoutMs=300
+    mVeryLongPressOnPowerBehavior=VERY_LONG_PRESS_POWER_GLOBAL_ACTIONS
+    mDoublePressOnPowerBehavior=MULTI_PRESS_POWER_LAUNCH_TARGET_ACTIVITY
+    mTriplePressOnPowerBehavior=MULTI_PRESS_POWER_NOTHING
+    mSupportShortPressPowerWhenDefaultDisplayOn=false
+    mPowerVolUpBehavior=POWER_VOLUME_UP_BEHAVIOR_NOTHING
+    mShortPressOnSleepBehavior=SHORT_PRESS_SLEEP_GO_TO_SLEEP
+    mShortPressOnWindowBehavior=SHORT_PRESS_WINDOW_PICTURE_IN_PICTURE
+    mShortPressOnStemPrimaryBehavior=SHORT_PRESS_PRIMARY_NOTHING
+    mDoublePressOnStemPrimaryBehavior=DOUBLE_PRESS_PRIMARY_NOTHING
+    mTriplePressOnStemPrimaryBehavior=TRIPLE_PRESS_PRIMARY_NOTHING
+    mLongPressOnStemPrimaryBehavior=LONG_PRESS_PRIMARY_NOTHING
+    mAllowStartActivityForLongPressOnPowerDuringSetup=false
+    mHasSoftInput=true
+    mDismissImeOnBackKeyPressed=false mIncallPowerBehavior=sleep
+    mIncallBackBehavior=<nothing> mEndcallBehavior=sleep
+    mDisplayHomeButtonHandlers=
+      mDisplayId = -1, mHomePressed = false
+    mKeyguardOccluded=false mKeyguardOccludedChanged=false mPendingKeyguardOccluded=false
+    mAllowLockscreenWhenOnDisplays=false mLockScreenTimeout=600000 mLockScreenTimerActive=false
+    mKidsModeEnabled=false
+    mKeyMapping.size=0
+    KeyCombination rules:
+      KEYCODE_VOLUME_DOWN + KEYCODE_POWER
+      KEYCODE_UNKNOWN + KEYCODE_POWER
+      KEYCODE_UNKNOWN + KEYCODE_VOLUME_UP
+      KEYCODE_VOLUME_DOWN + KEYCODE_VOLUME_UP
+    SingleKey rules:
+      KeyCode=KEYCODE_POWER, LongPress=false, VeryLongPress=true, MaxMultiPressCount=1
+      KeyCode=KEYCODE_STYLUS_BUTTON_TAIL, LongPress=false, VeryLongPress=false, MaxMultiPressCount=2
+    Deferred key action executor:
+      empty
+    WakeGestureListener
+      mTriggerRequested=false
+      mSensor=null
+    KeyguardServiceDelegate
+      showing=false
+      inputRestricted=false
+      occluded=false
+      secure=true
+      dreaming=false
+      systemIsReady=true
+      deviceHasKeyguard=true
+      enabled=true
+      offReason=OFF_BECAUSE_OF_USER
+      currentUser=-10000
+      bootCompleted=true
+      screenState=SCREEN_STATE_ON
+      interactiveState=INTERACTIVE_STATE_AWAKE
+      KeyguardStateMonitor
+        mIsShowing=false
+        mSimSecure=false
+        mInputRestricted=false
+        mTrusted=false
+        mCurrentUserId=0
+    Looper state:
+      Looper (android.ui, tid 25) {5e03b35}
+        (MessageQueue is using Concurrent implementation)
+        State: android.os.MessageQueue$StateNode@b31bfc6
+        PriorityQueue Messages:
+        AsyncPriorityQueue Messages:
+        (Total messages: 1, polling=true, quitting=false)
+    ModifierShortcutManager shortcuts:
+      e Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] sel=act=android.intent.action.MAIN cat=[android.intent.category.APP_EMAIL]} }
+          Resolves to: 邮件
+      u Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] sel=act=android.intent.action.MAIN cat=[android.intent.category.APP_CALCULATOR]} }
+          Resolves to: 计算器
+      p Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] sel=act=android.intent.action.MAIN cat=[android.intent.category.APP_CONTACTS]} }
+          <No KeyboardShortcutInfo available for this shortcut>
+      c Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] sel=act=android.intent.action.MAIN cat=[android.intent.category.APP_CALENDAR]} }
+          Resolves to: 日历(旧版)
+      b Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 pkg=com.obric.browser cmp=com.obric.browser/com.xiphias.browser.home.HomeActivity (has extras) }
+          Resolves to: 浏览器
+      m Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] sel=act=android.intent.action.MAIN cat=[android.intent.category.APP_MAPS]} }
+          <No KeyboardShortcutInfo available for this shortcut>
+
+WINDOW MANAGER ANIMATOR STATE (dumpsys window animator)
+    Display{#0 state=ON size=1264x2800 ROTATION_0}:
+      Window #0: WindowStateAnimator{dd153d9 com.android.systemui.wallpapers.ImageWallpaper}
+      Window #1: WindowStateAnimator{69db0f6 com.android.launcher3/com.obric.feature.ObricLauncher}
+      Window #2: WindowStateAnimator{1537cf7 }
+      Window #3: WindowStateAnimator{ea9a764 dev.telemachus.display/dev.telemachus.display.MainActivity}
+      Window #4: WindowStateAnimator{678a511 InputMethod}
+      Window #5: WindowStateAnimator{5660477 ShellDropTarget}
+      Window #6: WindowStateAnimator{835733b AnimationExecutor}
+      Window #7: WindowStateAnimator{ab1814d StatusBar}
+      Window #8: WindowStateAnimator{187b402 NotificationShade}
+      Window #9: WindowStateAnimator{a94edcd QSWindow}
+      Window #10: WindowStateAnimator{b6be682 NavigationBar0}
+      Window #11: WindowStateAnimator{921e549 ScreenDecorOverlay}
+      Window #12: WindowStateAnimator{6c10e4e ScreenDecorOverlayBottom}
+      Window #13: WindowStateAnimator{e30b6f EdgeBackGestureHandler0}
+      Window #14: WindowStateAnimator{501e07c ProximityFalsingCover}
+      Window #15: WindowStateAnimator{1a8d05 EdgeBackGestureHandler0}
+      Window #16: WindowStateAnimator{cd26e29 EdgeBackGestureHandler0}
+      Window #17: WindowStateAnimator{fdf95ae EdgeBackGestureHandler0}
+      Window #18: WindowStateAnimator{461ef4f EdgeBackGestureHandler0}
+      Window #19: WindowStateAnimator{ab726dc EdgeBackGestureHandler0}
+      Window #20: WindowStateAnimator{10153c5 EdgeBackGestureHandler0}
+      Window #21: WindowStateAnimator{474e11a EdgeBackGestureHandler0}
+      Window #22: WindowStateAnimator{7224eaa EdgeBackGestureHandler0}
+      Window #23: WindowStateAnimator{f0f7a9b EdgeBackGestureHandler0}
+      Window #24: WindowStateAnimator{218ec6b EdgeBackGestureHandler0}
+      Window #25: WindowStateAnimator{26773c8 EdgeBackGestureHandler0}
+      Window #26: WindowStateAnimator{36c61 EdgeBackGestureHandler0}
+      Window #27: WindowStateAnimator{80e386 EdgeBackGestureHandler0}
+      Window #28: WindowStateAnimator{bd7e447 EdgeBackGestureHandler0}
+      Window #29: WindowStateAnimator{8640474 EdgeBackGestureHandler0}
+      Window #30: WindowStateAnimator{509971e EdgeBackGestureHandler0}
+      Window #31: WindowStateAnimator{54abff EdgeBackGestureHandler0}
+      Window #32: WindowStateAnimator{7fa78de EdgeBackGestureHandler0}
+      Window #33: WindowStateAnimator{2d4abf EdgeBackGestureHandler0}
+      Window #34: WindowStateAnimator{25e4b61 EdgeBackGestureHandler0}
+      Window #35: WindowStateAnimator{b23d686 EdgeBackGestureHandler0}
+      Window #36: WindowStateAnimator{6803985 EdgeBackGestureHandler0}
+      Window #37: WindowStateAnimator{7fd33da EdgeBackGestureHandler0}
+      Window #38: WindowStateAnimator{c7cca5f EdgeBackGestureHandler0}
+      Window #39: WindowStateAnimator{b454cac EdgeBackGestureHandler0}
+      Window #40: WindowStateAnimator{ad05451 EdgeBackGestureHandler0}
+      Window #41: WindowStateAnimator{c0ac4b6 EdgeBackGestureHandler0}
+      Window #42: WindowStateAnimator{ea7ac03 EdgeBackGestureHandler0}
+      Window #43: WindowStateAnimator{11f5780 EdgeBackGestureHandler0}
+      Window #44: WindowStateAnimator{a75650c EdgeBackGestureHandler0}
+      Window #45: WindowStateAnimator{c0dde55 EdgeBackGestureHandler0}
+      Window #46: WindowStateAnimator{663c06a EdgeBackGestureHandler0}
+      Window #47: WindowStateAnimator{7b8f193 EdgeBackGestureHandler0}
+      Window #48: WindowStateAnimator{e0bd5d0 EdgeBackGestureHandler0}
+      Window #49: WindowStateAnimator{50f99c9 EdgeBackGestureHandler0}
+      Window #50: WindowStateAnimator{2f5e8ce EdgeBackGestureHandler0}
+      Window #51: WindowStateAnimator{cf713ef EdgeBackGestureHandler0}
+      Window #52: WindowStateAnimator{7207efc EdgeBackGestureHandler0}
+      Window #53: WindowStateAnimator{26f0985 EdgeBackGestureHandler0}
+      Window #54: WindowStateAnimator{bc3da EdgeBackGestureHandler0}
+      Window #55: WindowStateAnimator{f4b000b EdgeBackGestureHandler0}
+      Window #56: WindowStateAnimator{748ee8 EdgeBackGestureHandler0}
+      Window #57: WindowStateAnimator{49bb901 EdgeBackGestureHandler0}
+      Window #58: WindowStateAnimator{7243a6 EdgeBackGestureHandler0}
+      Window #59: WindowStateAnimator{9a791e7 EdgeBackGestureHandler0}
+      Window #60: WindowStateAnimator{a77b194 EdgeBackGestureHandler0}
+      Window #61: WindowStateAnimator{989e43d EdgeBackGestureHandler0}
+      Window #62: WindowStateAnimator{76ef432 EdgeBackGestureHandler0}
+      Window #63: WindowStateAnimator{9516583 EdgeBackGestureHandler0}
+      Window #64: WindowStateAnimator{ae85300 EdgeBackGestureHandler0}
+      Window #65: WindowStateAnimator{358739 EdgeBackGestureHandler0}
+      Window #66: WindowStateAnimator{514217e EdgeBackGestureHandler0}
+      Window #67: WindowStateAnimator{13ad6df EdgeBackGestureHandler0}
+
+
+
+WINDOW MANAGER SESSIONS (dumpsys window sessions)
+  Session Session{219680 4726:1000}:
+    numWindow=0 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=com.obric.matrix
+  Session Session{5c2336 8751:u0a10057}:
+    numWindow=1 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=com.bytedance.android.doubaoime
+  Session Session{2cd04a1 14926:u0a10106}:
+    numWindow=0 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=com.obric.account
+  Session Session{4159cdb 4140:u0a10173}:
+    numWindow=0 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=com.android.permissioncontroller
+  Session Session{5ae4220 14372:u0a10169}:
+    numWindow=1 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=com.android.launcher3
+  Session Session{786349f 8613:u0a10109}:
+    numWindow=1 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=obric.home.flow
+  Session Session{983289f 4157:u0a10156}:
+    numWindow=63 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=com.android.systemui
+  Session Session{a82367e 21620:u0a10312}:
+    numWindow=1 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=dev.telemachus.display
+  Session Session{ba65fa2 8311:u0a10056}:
+    numWindow=0 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=com.larus.nova
+  Session Session{c3421f2 25866:1000}:
+    numWindow=0 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=com.android.settings
+  Session Session{c5cb777 8837:u0a10100}:
+    numWindow=1 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=com.obric.quicksearch
+  Session Session{d90a63b 3199:1000}:
+    numWindow=0 mCanAddInternalSystemWindow=true mAlertWindows={} mClientDead=false    mPackageName=android
+
+WINDOW MANAGER DISPLAY CONTENTS (dumpsys window displays)
+  Display: mDisplayId=0 (organized)
+    init=1264x2800 560dpi mMinSizeOfResizeableTaskDp=220 cur=1264x2800 app=1264x2800 rng=1264x1264-2800x2800
+    deferred=false mLayoutNeeded=false
+  mLastOrientationSource=WindowedMagnification:0:31@123413106
+  deepestLastOrientationSource=ActivityRecord{264457996 u0 dev.telemachus.display/.MainActivity t747}
+  overrideConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.37193 fontWeightAdjustment=0}
+  ignoreOrientationRequest=false
+  mLayoutSeq=294420
+  mCurrentFocus=Window{9f36f5 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{264457996 u0 dev.telemachus.display/.MainActivity t747}
+
+  mHoldScreenWindow=null
+  mObscuringWindow=null
+  mLastWakeLockHoldingWindow=null
+  mLastWakeLockObscuringWindow=null
+
+   mPointerEventDispatcher: com.android.server.wm.PointerEventDispatcher@ebeef8b
+  com.android.server.wm.PointerEventDispatcher
+   mInputChannel: PointerEventDispatcher0
+   mSeqMap: {}
+   mReceiverPtr:
+    mInputConsumer:
+      mResampleTouch = true
+      mChannel = PointerEventDispatcher0
+      mMsgDeferred: false
+      Batches:
+          <empty>
+      mSeqChains:

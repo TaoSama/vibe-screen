@@ -426,6 +426,45 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun connectionPanelOuterGeometryUsesResponsiveResources() {
+        val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
+
+        assertTrue(
+            "Connection panel horizontal margin should adapt by resource qualifier",
+            settingsPanel.contains("android:layout_marginStart=\"@dimen/connection_panel_margin_horizontal\"") &&
+                settingsPanel.contains("android:layout_marginEnd=\"@dimen/connection_panel_margin_horizontal\""),
+        )
+        assertTrue(
+            "Connection panel vertical margin should adapt by resource qualifier",
+            settingsPanel.contains("android:layout_marginTop=\"@dimen/connection_panel_margin_vertical\"") &&
+                settingsPanel.contains("android:layout_marginBottom=\"@dimen/connection_panel_margin_vertical\""),
+        )
+        assertTrue(
+            "Connection panel max width should follow phone/tablet resource qualifiers",
+            settingsPanel.contains("app:layout_constraintWidth_max=\"@dimen/connection_panel_max_width\""),
+        )
+        assertFalse(
+            "Connection panel must not keep the old hard-coded 680dp cap",
+            settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
+        )
+    }
+
+    @Test
+    fun statusOverlaySecurityTextCanWrapLongLinkState() {
+        val securityText = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/securityText\"")
+
+        assertTrue(
+            "Link/security copy can be long in transport error states, so it needs a second line",
+            securityText.contains("android:maxLines=\"2\""),
+        )
+        assertFalse(
+            "Link/security copy must not be forced through single-line ellipsizing",
+            securityText.contains("android:ellipsize=\"end\"") ||
+                securityText.contains("android:maxLines=\"1\""),
+        )
+    }
+
+    @Test
     fun overlayOpacityOnlyDimsTheStatsOverlay() {
         val source = mainActivitySource()
         val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")

@@ -47,6 +47,9 @@
     <!-- Gap between the header and actions columns when the connection panel
          splits into two columns in landscape; ignored in the stacked layout. -->
     <dimen name="connection_panel_column_gap">28dp</dimen>
+    <dimen name="connection_panel_margin_horizontal">24dp</dimen>
+    <dimen name="connection_panel_margin_vertical">20dp</dimen>
+    <dimen name="connection_panel_max_width">680dp</dimen>
     <dimen name="connection_panel_padding_top">32dp</dimen>
     <dimen name="connection_panel_padding_bottom">28dp</dimen>
     <dimen name="connection_panel_horizontal_padding">24dp</dimen>

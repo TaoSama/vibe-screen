@@ -1,0 +1,16 @@
+# App log summary
+
+Source files `logcat-summary.txt` and `logcat-tail.txt` contain full-device logcat output and include unrelated app telemetry. They are intentionally excluded from the curated evidence set.
+
+Relevant app entries from `StreamClient`:
+
+```text
+09-02 06:26:17.152 21144 21270 E StreamClient: Connection error
+09-02 06:26:17.152 21144 21270 E StreamClient: java.net.ConnectException: failed to connect to /127.0.0.1 (port 54321) from /127.0.0.1 (port 39596) after 5000ms: isConnected failed: ECONNREFUSED (Connection refused)
+09-02 06:26:17.152 21144 21270 E StreamClient:     at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:330)
+09-02 06:26:17.152 21144 21270 E StreamClient:     at dev.telemachus.display.StreamClient.connect(StreamClient.kt:315)
+09-02 06:26:17.152 21144 21270 E StreamClient:     at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:5624)
+09-02 06:26:17.152 21144 21270 E StreamClient: Caused by: android.system.ErrnoException: isConnected failed: ECONNREFUSED (Connection refused)
+```
+
+Interpretation: this is expected for this validation run because the macOS host app was not started and `adb reverse --list` was intentionally left empty.

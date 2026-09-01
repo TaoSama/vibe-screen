@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Wide portrait windows have enough horizontal room for the same balanced
+         header/actions split as wide landscape, while narrow phone portrait
+         keeps the default stacked layout. -->
+    <bool name="connection_panel_two_column">true</bool>
+    <bool name="connection_panel_inline_settings_button">false</bool>
+</resources>

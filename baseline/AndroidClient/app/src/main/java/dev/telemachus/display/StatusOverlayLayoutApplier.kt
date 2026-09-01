@@ -89,8 +89,8 @@ internal object StatusOverlayLayoutApplier {
         val contentParams = views.content.layoutParams
         when (mode) {
             StatusOverlayLayoutPolicy.Mode.SINGLE_ROW -> {
-                cardParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                contentParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                cardParams.width = availableWidthPx
+                contentParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 views.content.orientation = LinearLayout.HORIZONTAL
                 views.content.gravity = Gravity.CENTER_VERTICAL
             }
@@ -117,8 +117,8 @@ internal object StatusOverlayLayoutApplier {
             item.minimumWidth = geometry.columnMinimumWidthPx
             when (mode) {
                 StatusOverlayLayoutPolicy.Mode.SINGLE_ROW -> {
-                    params.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                    params.weight = 0f
+                    params.width = 0
+                    params.weight = 1f
                     params.marginEnd = if (index < items.lastIndex) geometry.itemGapPx else 0
                     params.topMargin = 0
                 }

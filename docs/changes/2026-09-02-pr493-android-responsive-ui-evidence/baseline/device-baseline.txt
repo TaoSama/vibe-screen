@@ -1,0 +1,20 @@
+2026-09-01T21:54:01Z
+--- adb devices
+List of devices attached
+EP0110PZ0B9110300B     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:26
+
+--- identity
+nubia
+P0110
+pacific
+16
+--- wm
+Physical size: 1264x2800
+Physical density: 560
+--- settings
+1.0
+Night mode: no
+0
+0
+--- reverse
+(empty)

@@ -3,7 +3,6 @@ package dev.telemachus.display
 import android.content.res.Resources
 import android.content.res.Configuration
 import android.text.TextUtils
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -36,14 +35,7 @@ internal object ConnectionPanelLayoutApplier {
                 ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
                 ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
             }
-        // Stacked portrait keeps the original vertical centering inside the
-        // scroll viewport; the two-column landscape split must top-align the
-        // header and actions so their internal content starts at the same edge.
-        views.content.gravity =
-            when (layout.contentOrientation) {
-                ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> Gravity.TOP
-                ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> Gravity.CENTER_VERTICAL
-            }
+        views.content.gravity = layout.contentGravity
         applySubtitleDisclosure(
             resources = resources,
             subtitle = views.subtitle,
