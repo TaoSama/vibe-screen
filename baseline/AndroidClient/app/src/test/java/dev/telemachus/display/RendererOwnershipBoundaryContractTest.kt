@@ -29,13 +29,19 @@ class RendererOwnershipBoundaryContractTest {
     @Test
     fun `main activity routes renderer state and frame admission through renderer owner`() {
         val activity = source(MAIN_ACTIVITY)
+        val decoderPresentationOwner = source(DECODER_PRESENTATION_OWNER)
 
         assertTrue(activity.contains("RendererOwner("))
         assertTrue(activity.contains("rendererOwner.updateViewportParent"))
-        assertTrue(activity.contains("rendererOwner.localFrameDecision"))
-        assertTrue(activity.contains("rendererOwner.internetFrameDecision"))
-        assertTrue(activity.contains("rendererOwner.publishRenderTarget"))
-        assertTrue(activity.contains("rendererOwner.invalidateRenderTarget"))
+        assertTrue(activity.contains("DecoderPresentationOwner<VideoDecoder, ProductVideoConfiguration>"))
+        assertTrue(activity.contains("decoderPresentationOwner.routeLocalFrame"))
+        assertTrue(activity.contains("decoderPresentationOwner.routeInternetFrame"))
+        assertTrue(activity.contains("decoderPresentationOwner.publishRenderTarget"))
+        assertTrue(activity.contains("decoderPresentationOwner.invalidateRenderTarget"))
+        assertTrue(decoderPresentationOwner.contains("rendererOwner.localFrameDecision"))
+        assertTrue(decoderPresentationOwner.contains("rendererOwner.internetFrameDecision"))
+        assertTrue(decoderPresentationOwner.contains("rendererOwner.publishRenderTarget"))
+        assertTrue(decoderPresentationOwner.contains("rendererOwner.invalidateRenderTarget"))
         assertFalse(activity.contains("private val rendererViewportState"))
         assertFalse(activity.contains("private val surfaceGeneration"))
         assertFalse(activity.contains("@Volatile private var activeDecoderConfigEpoch"))
@@ -64,6 +70,8 @@ class RendererOwnershipBoundaryContractTest {
             "app/src/test/java/dev/telemachus/display/RendererViewportStateTest.kt"
         const val RENDERER_OWNER_TEST =
             "app/src/test/java/dev/telemachus/display/RendererOwnerTest.kt"
+        const val DECODER_PRESENTATION_OWNER =
+            "app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt"
         const val MAIN_ACTIVITY =
             "app/src/main/java/dev/telemachus/display/MainActivity.kt"
         val FORBIDDEN_IMPORT_OR_TYPE_REFERENCES =
