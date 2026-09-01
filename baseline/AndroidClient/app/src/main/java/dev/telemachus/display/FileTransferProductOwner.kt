@@ -433,10 +433,14 @@ internal class FileTransferProductOwner(
         val outgoing = LinkedHashSet<OutgoingTransferStore>()
         outgoing += drain.prepared
         outgoing += drain.active
-        outgoing.forEach {
-            val reason = terminatedOutgoingTransfers.remove(it) ?: return@forEach
-            notifyFileTransferResult(TransferResult(accepted = false, reason = reason))
+        val results = synchronized(lock) {
+            outgoing.mapNotNull { transfer ->
+                terminatedOutgoingTransfers.remove(transfer)?.let { reason ->
+                    TransferResult(accepted = false, reason = reason)
+                }
+            }
         }
+        results.forEach(::notifyFileTransferResult)
     }
 
     private fun rejectedFileAccept(transferId: ByteString, reasonCode: String): FileAccept =

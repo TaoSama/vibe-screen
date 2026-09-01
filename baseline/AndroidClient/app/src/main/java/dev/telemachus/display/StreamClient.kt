@@ -1685,7 +1685,10 @@ class StreamClient(
 
             is StreamOutboundCommand.ProtocolBatch -> {
                 val session = protocolSessionOwner.currentSession
-                if (session == null) return
+                if (session == null) {
+                    command.onUnavailable?.invoke()
+                    return
+                }
                 command.build(session).forEach { writeProtocolEnvelope(out, it) }
             }
 

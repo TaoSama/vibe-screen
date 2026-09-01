@@ -13,7 +13,6 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 class StreamProtocolSideEffectOwnerTest {
     @Test
@@ -181,12 +180,12 @@ class StreamProtocolSideEffectOwnerTest {
     }
 
     @Test
-    fun `run if current keeps owner current until side effect completes`() {
+    fun `run if current releases owner lock before side effect completes`() {
         val session = session()
         val owner = alwaysCurrentOwner(session = session)
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
-        val clearReturned = AtomicBoolean(false)
+        val clearReturned = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
 
         try {
@@ -201,11 +200,11 @@ class StreamProtocolSideEffectOwnerTest {
 
             val clear = executor.submit {
                 owner.clear()
-                clearReturned.set(true)
+                clearReturned.countDown()
             }
 
-            Thread.sleep(100)
-            assertFalse(clearReturned.get())
+            assertTrue(clearReturned.await(5, TimeUnit.SECONDS))
+            assertFalse(owner.isCurrent(session, 1L))
 
             release.countDown()
             assertTrue(sideEffect.get(5, TimeUnit.SECONDS))

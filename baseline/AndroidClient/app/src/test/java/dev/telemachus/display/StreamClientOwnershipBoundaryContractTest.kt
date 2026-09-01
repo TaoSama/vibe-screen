@@ -51,6 +51,30 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `protocol batch notifies unavailable session before returning`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val outboundCommand = source(PRODUCTION_STREAM_OUTBOUND_COMMAND)
+        val protocolBatchCommand = outboundCommand.indexOf("class ProtocolBatch(")
+        val unavailableCallback = outboundCommand.indexOf("val onUnavailable: (() -> Unit)? = null", protocolBatchCommand)
+        val buildCallback = outboundCommand.indexOf("val build: (ProtocolV1Session) -> List<Envelope>", protocolBatchCommand)
+        val protocolBatchHandler = streamClient.indexOf("is StreamOutboundCommand.ProtocolBatch ->")
+        val sessionLookup = streamClient.indexOf("val session = protocolSessionOwner.currentSession", protocolBatchHandler)
+        val unavailableCheck = streamClient.indexOf("if (session == null)", sessionLookup)
+        val unavailableNotify = streamClient.indexOf("command.onUnavailable?.invoke()", unavailableCheck)
+        val unavailableReturn = streamClient.indexOf("return", unavailableNotify)
+        val batchBuild = streamClient.indexOf("command.build(session)", unavailableReturn)
+
+        assertTrue("ProtocolBatch must retain unavailable callback ownership hook", unavailableCallback >= 0)
+        assertTrue("ProtocolBatch must keep trailing lambdas bound to build", unavailableCallback < buildCallback)
+        assertTrue("StreamClient must handle ProtocolBatch commands", protocolBatchHandler >= 0)
+        assertTrue("ProtocolBatch handling must read the current protocol session", sessionLookup > protocolBatchHandler)
+        assertTrue("ProtocolBatch handling must branch when the session is unavailable", unavailableCheck > sessionLookup)
+        assertTrue("ProtocolBatch handling must notify unavailable sessions", unavailableNotify > unavailableCheck)
+        assertTrue("ProtocolBatch handling must stop after unavailable notification", unavailableReturn > unavailableNotify)
+        assertTrue("ProtocolBatch envelopes must only build after unavailable handling", batchBuild > unavailableReturn)
+    }
+
+    @Test
     fun `extracted owners stay out of android ui transport socket and decoder layers`() {
         BOUNDARY_OWNER_RULES.forEach { rule ->
             val ownerSource = source(rule.path)
@@ -132,6 +156,8 @@ class StreamClientOwnershipBoundaryContractTest {
         const val PHASE_ZERO_TECH = "docs/changes/2026-08-04-phase-0-baseline/TECH.md"
 
         const val PRODUCTION_STREAM_CLIENT = "app/src/main/java/dev/telemachus/display/StreamClient.kt"
+        const val PRODUCTION_STREAM_OUTBOUND_COMMAND =
+            "app/src/main/java/dev/telemachus/display/StreamOutboundCommand.kt"
         const val PRODUCTION_INPUT_DISPATCHER = "app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt"
         const val PRODUCTION_LOCAL_SESSION_STATE =
             "app/src/main/java/dev/telemachus/display/StreamClientLocalSessionState.kt"
