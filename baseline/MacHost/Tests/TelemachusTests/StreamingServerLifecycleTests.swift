@@ -12,20 +12,21 @@ final class StreamingServerLifecycleTests: XCTestCase {
     )
 
     func testSecondListenerReportsPortConflict() throws {
-        let port = testPort(offset: 1)
-        let first = StreamingServer(port: port)
-        let second = StreamingServer(port: port)
+        let first = StreamingServer(port: 0)
         defer {
             first.stop()
-            second.stop()
         }
 
         try first.start()
+        let port = try XCTUnwrap(first.listeningPort)
+        let second = StreamingServer(port: port)
+        defer { second.stop() }
+
         XCTAssertThrowsError(try second.start(timeout: 1))
     }
 
     func testAppliedVideoRatesSeedTheNextProtocolSession() {
-        let server = StreamingServer(port: testPort(offset: 10))
+        let server = StreamingServer(port: 0)
         server.setProtocolV1VideoConfiguration(
             framesPerSecond: 60,
             bitrateKbps: 13_000,
@@ -66,12 +67,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testFragmentedWirelessHandshakeIsAccepted() throws {
-        let port = testPort(offset: 2)
         let token = Data(repeating: 0xA5, count: 32)
-        let server = StreamingServer(
-            port: port,
-            mode: .wireless(authToken: token)
-        )
+        let (server, port) = try startServer(mode: .wireless(authToken: token))
         defer { server.stop() }
 
         let paired = expectation(description: "fragmented handshake accepted")
@@ -79,8 +76,6 @@ final class StreamingServerLifecycleTests: XCTestCase {
             XCTAssertEqual(name, "Test tablet")
             paired.fulfill()
         }
-        try server.start()
-
         let client = try readyClient(port: port)
         defer { client.cancel() }
         let request = handshakeRequest(token: token, name: "Test tablet")
@@ -99,12 +94,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testUnauthenticatedCandidateDoesNotEvictActiveClient() throws {
-        let port = testPort(offset: 3)
         let token = Data(repeating: 0x5A, count: 32)
-        let server = StreamingServer(
-            port: port,
-            mode: .wireless(authToken: token)
-        )
+        let (server, port) = try startServer(mode: .wireless(authToken: token))
         defer { server.stop() }
 
         let connected = expectation(description: "legitimate client connected")
@@ -112,8 +103,6 @@ final class StreamingServerLifecycleTests: XCTestCase {
         disconnected.isInverted = true
         server.onClientConnected = { _ in connected.fulfill() }
         server.onClientDisconnected = { _ in disconnected.fulfill() }
-        try server.start()
-
         let legitimate = try readySecureWirelessClient(port: port, token: token, name: "Legitimate")
         defer { legitimate.cancel() }
         _ = try readySecureWirelessProtocolSession(
@@ -130,13 +119,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testIncompleteHandshakeTimesOut() throws {
-        let port = testPort(offset: 6)
-        let server = StreamingServer(
-            port: port,
-            mode: .wireless(authToken: Data(repeating: 0x45, count: 32))
-        )
+        let (server, port) = try startServer(mode: .wireless(authToken: Data(repeating: 0x45, count: 32)))
         defer { server.stop() }
-        try server.start()
 
         let client = try readyClient(port: port)
         defer { client.cancel() }
@@ -151,20 +135,14 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testTokenRotationDisconnectsAuthenticatedClient() throws {
-        let port = testPort(offset: 4)
         let token = Data(repeating: 0x12, count: 32)
-        let server = StreamingServer(
-            port: port,
-            mode: .wireless(authToken: token)
-        )
+        let (server, port) = try startServer(mode: .wireless(authToken: token))
         defer { server.stop() }
 
         let connected = expectation(description: "client connected")
         let disconnected = expectation(description: "client revoked")
         server.onClientConnected = { _ in connected.fulfill() }
         server.onClientDisconnected = { _ in disconnected.fulfill() }
-        try server.start()
-
         let client = try readySecureWirelessClient(port: port, token: token, name: "Revoked")
         defer { client.cancel() }
         _ = try readySecureWirelessProtocolSession(
@@ -178,12 +156,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testReplacingConnectionIgnoresStaleCancellationCallback() throws {
-        let port = testPort(offset: 5)
         let token = Data(repeating: 0x77, count: 32)
-        let server = StreamingServer(
-            port: port,
-            mode: .wireless(authToken: token)
-        )
+        let (server, port) = try startServer(mode: .wireless(authToken: token))
         defer { server.stop() }
 
         let firstConnected = expectation(description: "first connected")
@@ -200,8 +174,6 @@ final class StreamingServerLifecycleTests: XCTestCase {
         let disconnected = expectation(description: "new session disconnected")
         disconnected.isInverted = true
         server.onClientDisconnected = { _ in disconnected.fulfill() }
-        try server.start()
-
         let first = try readySecureWirelessClient(port: port, token: token, name: "First")
         defer { first.cancel() }
         _ = try readySecureWirelessProtocolSession(
@@ -221,15 +193,12 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testInvalidPointerCountClosesConnectionWithoutResynchronizing() throws {
-        let port = testPort(offset: 7)
-        let server = StreamingServer(port: port)
+        let (server, port) = try startServer()
         defer { server.stop() }
         let connected = expectation(description: "client connected")
         let disconnected = expectation(description: "malformed client disconnected")
         server.onClientConnected = { _ in connected.fulfill() }
         server.onClientDisconnected = { _ in disconnected.fulfill() }
-        try server.start()
-
         let client = try readyClient(port: port)
         defer { client.cancel() }
         wait(for: [connected], timeout: 2)
@@ -241,14 +210,14 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testClosedUSBConnectionsReleaseServerSocketWrappers() throws {
-        let port = testPort(offset: 18)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         defer { server.stop() }
         var serverConnections: [WeakServerConnection] = []
         server.observeAcceptedConnectionsForSelfTest { connection in
             serverConnections.append(WeakServerConnection(connection))
         }
         try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
 
         for index in 0..<8 {
             let connected = expectation(description: "client connected \(index)")
@@ -276,14 +245,14 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testDisconnectResetsFramePipelineState() throws {
-        let port = testPort(offset: 19)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         defer { server.stop() }
         let connected = expectation(description: "client connected")
         let disconnected = expectation(description: "client disconnected")
         server.onClientConnected = { _ in connected.fulfill() }
         server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
 
         let client = try readyClient(port: port)
         wait(for: [connected], timeout: 2)
@@ -306,8 +275,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testProtocolV1UpgradeInvalidatesPendingLegacyCodecCompletion() throws {
-        let port = testPort(offset: 8)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         defer { server.stop() }
 
         let legacyNegotiationStarted = expectation(description: "legacy codec negotiation started")
@@ -321,6 +289,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
         incorrectlyConnected.isInverted = true
         server.onClientConnected = { _ in incorrectlyConnected.fulfill() }
         try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
 
         let client = try readyClient(port: port)
         defer { client.cancel() }
@@ -344,15 +313,12 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testWirelessProtocolUpgradeAcceptsOfferAfterLANRoundTripDelay() throws {
-        let port = testPort(offset: 9)
         let token = Data(repeating: 0x91, count: 32)
-        let server = StreamingServer(
-            port: port,
+        let (server, port) = try startServer(
             mode: .wireless(authToken: token),
             protocolUpgradeGraceMillisecondsOverride: 2_000
         )
         defer { server.stop() }
-        try server.start()
 
         let client = try readySecureWirelessClient(port: port, token: token, name: "Delayed Android")
         defer { client.cancel() }
@@ -374,13 +340,13 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testSecureWirelessProtocolV1AdvertisesEncryptionAndEncryptsMediaFrames() throws {
-        let port = testPort(offset: 15)
         let token = Data(repeating: 0xA9, count: 32)
-        let server = StreamingServer(port: port, mode: .wireless(authToken: token))
+        let server = StreamingServer(port: 0, mode: .wireless(authToken: token))
         let connected = expectation(description: "secure wireless protocol v1 streaming")
         server.onClientConnected = { _ in connected.fulfill() }
         defer { server.stop() }
         try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
 
         let client = try readySecureWirelessClient(port: port, token: token, name: "Encrypted Android")
         defer { client.cancel() }
@@ -454,15 +420,12 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testExplicitLegacyFallbackHostStillNegotiatesSecureRecordsWithNewPeer() throws {
-        let port = testPort(offset: 16)
         let token = Data(repeating: 0xB1, count: 32)
-        let server = StreamingServer(
-            port: port,
+        let (server, port) = try startServer(
             mode: .wireless(authToken: token),
             allowPlaintextWirelessLegacyFallback: true
         )
         defer { server.stop() }
-        try server.start()
 
         let client = try readySecureWirelessClient(port: port, token: token, name: "New secure peer")
         defer { client.cancel() }
@@ -471,15 +434,12 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testExplicitLegacyFallbackDoesNotAdvertiseEncryptionCapabilities() throws {
-        let port = testPort(offset: 17)
         let token = Data(repeating: 0xB2, count: 32)
-        let server = StreamingServer(
-            port: port,
+        let (server, port) = try startServer(
             mode: .wireless(authToken: token),
             allowPlaintextWirelessLegacyFallback: true
         )
         defer { server.stop() }
-        try server.start()
 
         let client = try readyLegacyWirelessClient(port: port, token: token, name: "Legacy peer")
         defer { client.cancel() }
@@ -508,8 +468,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testProtocolV1ControllerFailureDropsLaterQueuedDelivery() throws {
-        let port = testPort(offset: 11)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         server.controllerAvailable = true
         let streamingReady = expectation(description: "controller session streaming")
         let initialKeyframeRequested = expectation(description: "initial keyframe requested")
@@ -552,6 +511,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
         }
         defer { server.stop() }
         try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
 
         let client = try readyClient(port: port)
         defer { client.cancel() }
@@ -668,8 +628,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testProtocolV1ControllerConnectedAckAndLifecycleNoAck() throws {
-        let port = testPort(offset: 12)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         server.controllerAvailable = true
         let routed = expectation(description: "controller lifecycle routed")
         routed.expectedFulfillmentCount = 3
@@ -681,7 +640,6 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
         let (client, accepted, videoEnvelope) = try readyControllerProtocolSession(
             server: server,
-            port: port,
             deviceID: "controller-ack"
         )
         defer { client.cancel() }
@@ -750,8 +708,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testProtocolV1StaleControllerGenerationDoesNotSendAcceptedAck() throws {
-        let port = testPort(offset: 13)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         server.controllerAvailable = true
         let routed = expectation(description: "stale controller handler completed")
         server.onControllerEvent = { _, generation in
@@ -763,7 +720,6 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
         let (client, accepted, _) = try readyControllerProtocolSession(
             server: server,
-            port: port,
             deviceID: "controller-stale-generation"
         )
         defer { client.cancel() }
@@ -799,19 +755,27 @@ final class StreamingServerLifecycleTests: XCTestCase {
     }
 
     func testProtocolV1StaleConnectionOwnerDoesNotSendAcceptedAck() throws {
-        let port = testPort(offset: 14)
-        let server = StreamingServer(port: port)
+        let server = StreamingServer(port: 0)
         server.controllerAvailable = true
         let secondReady = expectation(description: "replacement connection ready")
         let firstClosed = expectation(description: "stale connection closed")
         let releaseHandler = DispatchSemaphore(value: 0)
         let socketState = StreamingServerLifecycleSocketState()
-        let second = NWConnection(
+        var second: NWConnection?
+        defer { server.stop() }
+
+        let (first, firstAccepted, _) = try readyControllerProtocolSession(
+            server: server,
+            deviceID: "controller-stale-owner-a"
+        )
+        defer { first.cancel() }
+        let replacementPort = try XCTUnwrap(server.listeningPort)
+        second = NWConnection(
             host: NWEndpoint.Host("127.0.0.1"),
-            port: NWEndpoint.Port(rawValue: port)!,
+            port: NWEndpoint.Port(rawValue: replacementPort)!,
             using: .tcp
         )
-        second.stateUpdateHandler = { state in
+        second?.stateUpdateHandler = { state in
             switch state {
             case .ready:
                 secondReady.fulfill()
@@ -823,21 +787,11 @@ final class StreamingServerLifecycleTests: XCTestCase {
             }
         }
         server.onControllerEvent = { _, _ in
-            second.start(queue: self.queue)
+            second?.start(queue: self.queue)
             XCTAssertEqual(releaseHandler.wait(timeout: .now() + 2), .success)
             return true
         }
-        defer {
-            second.cancel()
-            server.stop()
-        }
-
-        let (first, firstAccepted, _) = try readyControllerProtocolSession(
-            server: server,
-            port: port,
-            deviceID: "controller-stale-owner-a"
-        )
-        defer { first.cancel() }
+        defer { second?.cancel() }
         receiveUntilClosed(
             first,
             received: { socketState.appendReceivedBytes($0) },
@@ -864,8 +818,9 @@ final class StreamingServerLifecycleTests: XCTestCase {
         XCTAssertTrue(socketState.receivedBytes().isEmpty)
         waitForNetworkQueue(server)
 
+        let replacement = try XCTUnwrap(second)
         let (secondAccepted, _) = try negotiateControllerProtocolSession(
-            client: second,
+            client: replacement,
             deviceID: "controller-stale-owner-b"
         )
         var ping = VSPing()
@@ -875,14 +830,37 @@ final class StreamingServerLifecycleTests: XCTestCase {
             payload: .ping(ping),
             sessionID: secondAccepted.sessionID,
             sessionEpoch: secondAccepted.sessionEpoch
-        ), on: second)
+        ), on: replacement)
 
-        let barrierEnvelope = try receiveEnvelope(from: second)
+        let barrierEnvelope = try receiveEnvelope(from: replacement)
         guard case .pong(let pong)? = barrierEnvelope.payload else {
             return XCTFail("Stale completion must not emit InputAck on the replacement connection")
         }
         XCTAssertEqual(pong.sequence, 200)
         XCTAssertEqual(barrierEnvelope.correlationID, 5)
+    }
+
+    private func startServer(
+        mode: StreamingServerMode = .usb,
+        allowPlaintextWirelessLegacyFallback: Bool = false,
+        protocolUpgradeGraceMillisecondsOverride: Int? = nil,
+        configure: (StreamingServer) -> Void = { _ in }
+    ) throws -> (server: StreamingServer, port: UInt16) {
+        // Let Network.framework choose the port so parallel CI jobs cannot collide
+        // with this integration suite's loopback and wireless listeners.
+        let server = StreamingServer(
+            port: 0,
+            mode: mode,
+            allowPlaintextWirelessLegacyFallback: allowPlaintextWirelessLegacyFallback,
+            protocolUpgradeGraceMillisecondsOverride: protocolUpgradeGraceMillisecondsOverride
+        )
+        configure(server)
+        try server.start()
+        guard let port = server.listeningPort, port != 0 else {
+            server.stop()
+            throw TestError.invalidListeningPort
+        }
+        return (server, port)
     }
 
     private func readyClient(port: UInt16) throws -> NWConnection {
@@ -972,7 +950,6 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
     private func readyControllerProtocolSession(
         server: StreamingServer,
-        port: UInt16,
         deviceID: String
     ) throws -> (client: NWConnection, accepted: VSSessionAccepted, video: VSEnvelope) {
         server.onCodecNegotiated = { _, _, completion in
@@ -983,6 +960,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
             ))
         }
         try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
 
         let client = try readyClient(port: port)
         let (accepted, videoEnvelope) = try negotiateControllerProtocolSession(
@@ -1256,12 +1234,9 @@ final class StreamingServerLifecycleTests: XCTestCase {
         return connections.allSatisfy { $0.connection == nil }
     }
 
-    private func testPort(offset: UInt16) -> UInt16 {
-        56_000 + UInt16(ProcessInfo.processInfo.processIdentifier % 500) + offset
-    }
-
     private enum TestError: Error {
         case connectionClosed
+        case invalidListeningPort
     }
 }
 

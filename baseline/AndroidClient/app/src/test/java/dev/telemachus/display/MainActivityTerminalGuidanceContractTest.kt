@@ -269,6 +269,42 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun connectionDetailsLinkIsKeyboardFocusable() {
+        val connectionDetails = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/showAdvanced\"")
+
+        assertTrue(
+            "Connection details expands inline recovery guidance, so keyboard and D-pad users need a focus target",
+            connectionDetails.contains("android:focusable=\"true\""),
+        )
+        assertTrue(
+            "Connection details should remain reachable when navigating with hardware keyboard focus",
+            connectionDetails.contains("android:focusableInTouchMode=\"true\""),
+        )
+        assertTrue(
+            "Connection details should keep the 48dp touch target minimum",
+            connectionDetails.contains("android:minHeight=\"48dp\""),
+        )
+    }
+
+    @Test
+    fun internetRevokeButtonCanGrowForLargeFontLabels() {
+        val revokeButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/internetRevokeButton\"")
+
+        assertTrue(
+            "Internet revoke copy is long enough to wrap at large font scale, so height must not be fixed",
+            revokeButton.contains("android:layout_height=\"wrap_content\""),
+        )
+        assertTrue(
+            "Internet revoke button still needs the 48dp touch target minimum",
+            revokeButton.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Internet revoke copy should be allowed to use a second line instead of clipping",
+            revokeButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
     fun overlayOpacityOnlyDimsTheStatsOverlay() {
         val source = mainActivitySource()
         val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")
@@ -917,8 +953,10 @@ class MainActivityTerminalGuidanceContractTest {
                 .takeWhile { !it.isWhitespace() && it != '>' }
         val closeMarker = "</$elementName>"
         val closeEnd = source.indexOf(closeMarker, idIndex)
-        require(closeEnd >= 0) { "XML element end not found: $idAttribute" }
-        return source.substring(openStart, closeEnd + closeMarker.length)
+        if (closeEnd >= 0) return source.substring(openStart, closeEnd + closeMarker.length)
+        val selfClosingEnd = source.indexOf("/>", idIndex)
+        require(selfClosingEnd >= 0) { "XML element end not found: $idAttribute" }
+        return source.substring(openStart, selfClosingEnd + 2)
     }
 
     private companion object {

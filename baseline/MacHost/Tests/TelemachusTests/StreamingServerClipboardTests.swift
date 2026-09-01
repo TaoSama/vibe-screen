@@ -39,11 +39,9 @@ final class StreamingServerClipboardTests: XCTestCase {
     // MARK: - Legacy fallback
 
     func testShareClipboardReturnsFalseInLegacyMode() throws {
-        let port = testPort(offset: 100)
-        server = StreamingServer(port: port)
+        let port = try startServer()
         let connected = expectation(description: "legacy client connected")
         server.onClientConnected = { _ in connected.fulfill() }
-        try server.start()
 
         client = try readyClient(port: port)
         wait(for: [connected], timeout: 2)
@@ -52,11 +50,9 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testRequestClipboardReturnsFalseInLegacyMode() throws {
-        let port = testPort(offset: 101)
-        server = StreamingServer(port: port)
+        let port = try startServer()
         let connected = expectation(description: "legacy client connected")
         server.onClientConnected = { _ in connected.fulfill() }
-        try server.start()
 
         client = try readyClient(port: port)
         wait(for: [connected], timeout: 2)
@@ -68,9 +64,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     // MARK: - Capability not negotiated
 
     func testShareClipboardReturnsFalseWhenClipboardNotNegotiated() throws {
-        let port = testPort(offset: 102)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -82,9 +76,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testRequestClipboardReturnsFalseWhenClipboardNotNegotiated() throws {
-        let port = testPort(offset: 103)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -98,9 +90,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     // MARK: - Incoming clipboard dispatch
 
     func testClipboardOfferCallbackFiresOnMainActorWithGeneration() throws {
-        let port = testPort(offset: 104)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -137,9 +127,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testSolicitedClipboardContentCallbackFires() throws {
-        let port = testPort(offset: 105)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -185,9 +173,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testDirectClipboardContentCallbackFires() throws {
-        let port = testPort(offset: 106)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -218,9 +204,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     // MARK: - Generation filtering
 
     func testStaleClipboardOfferCallbackIsDroppedAfterGenerationAdvance() throws {
-        let port = testPort(offset: 107)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -266,12 +250,11 @@ final class StreamingServerClipboardTests: XCTestCase {
     // MARK: - File transfer integration
 
     func testIncomingFileOfferAcceptsBulkChunkAndCompletes() throws {
-        let port = testPort(offset: 108)
-        server = StreamingServer(port: port)
-        server.onFileTransferApprovalRequested = { offer in
-            offer.fileName == "hello.txt"
+        let port = try startServer { streamingServer in
+            streamingServer.onFileTransferApprovalRequested = { offer in
+                offer.fileName == "hello.txt"
+            }
         }
-        try server.start()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -341,9 +324,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testOfferProtocolV1FileSendsOfferAndBulkChunkAfterAccept() throws {
-        let port = testPort(offset: 109)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -395,9 +376,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testOfferProtocolV1FileCancelsOnUnexpectedProgressOffset() throws {
-        let port = testPort(offset: 111)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -447,9 +426,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testOfferProtocolV1FileCancelsOnCompletionDigestMismatch() throws {
-        let port = testPort(offset: 112)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -505,9 +482,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testOfferProtocolV1FileCancelsCompletionBeforeAllBytesAreAcknowledged() throws {
-        let port = testPort(offset: 113)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -568,9 +543,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     }
 
     func testOfferProtocolV1FileIsNoOpWhenFileTransferNotNegotiated() throws {
-        let port = testPort(offset: 110)
-        server = StreamingServer(port: port)
-        try server.start()
+        let port = try startServer()
 
         client = try readyClient(port: port)
         try upgradeToProtocolV1()
@@ -592,9 +565,15 @@ final class StreamingServerClipboardTests: XCTestCase {
 
     private let clientDeviceID = "android-device"
 
-    private func testPort(offset: UInt16) -> UInt16 {
-        let processStride = UInt16(ProcessInfo.processInfo.processIdentifier % 60) * 200
-        return 52_000 + processStride + offset
+    private func startServer(configure: (StreamingServer) -> Void = { _ in }) throws -> UInt16 {
+        // Let Network.framework choose the port so parallel CI jobs cannot collide
+        // on this integration suite's loopback listener.
+        server = StreamingServer(port: 0)
+        configure(server)
+        try server.start()
+        let port = try XCTUnwrap(server.listeningPort)
+        XCTAssertNotEqual(port, 0)
+        return port
     }
 
     private func readyClient(port: UInt16) throws -> NWConnection {
