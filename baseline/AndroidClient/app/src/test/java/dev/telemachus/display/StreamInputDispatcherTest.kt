@@ -915,6 +915,51 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun disconnectedBeforeSameBatchConnectedWaitsForAcceptedConnection() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(
+            dispatcher.sendController(
+                ControllerDispatch(
+                    samples =
+                        listOf(
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.DISCONNECTED),
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED),
+                        ),
+                    delivery = ControllerDelivery.STRUCTURAL,
+                ),
+            ),
+        )
+
+        val connectedOnly = recorder.submissions[0].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(1, connectedOnly.size)
+        assertEquals(30L, connectedOnly.single().inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, connectedOnly.single().kind)
+        assertTrue(tracker.isPending("pad-1", 1))
+        assertEquals(0, dispatcher.deferredControllerDispatchCount())
+
+        val acknowledgement = requireNotNull(tracker.acknowledge(30))
+        assertTrue(acknowledgement.hasDeferredDisconnect)
+        tracker.markDisconnectReady(acknowledgement.connection)
+        assertTrue(dispatcher.flushControllerDisconnectCleanup())
+
+        val cleanup = recorder.controllerEventBatches(controllerSession).last().single().controllerEvent
+        assertEquals(31L, cleanup.inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, cleanup.kind)
+        assertEquals("pad-1", cleanup.controllerId)
+        assertEquals(1L, cleanup.controllerEpoch)
+        assertFalse(tracker.isPending("pad-1", 1))
+    }
+
+    @Test
     fun disconnectedAckRaceAfterPendingCheckStillSendsDisconnectOnWire() {
         val recorder = RecordingSubmitter()
         val tracker = ControllerConnectionAckTracker()

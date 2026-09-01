@@ -486,13 +486,12 @@ class InternetProductSession internal constructor(
         val ordered = ArrayList<ProductControllerEvent>(events.size)
         var changed = false
         while (remaining.isNotEmpty()) {
+            val samples = remaining.map { it.sample }
             val nextIndex =
                 remaining.indices.firstOrNull { index ->
-                    !ControllerDispatchOrdering.hasLaterLowerEpochDisconnect(
-                        remaining.map { it.sample },
-                        index,
-                        remaining[index].sample,
-                    )
+                    val sample = samples[index]
+                    !ControllerDispatchOrdering.hasLaterLowerEpochDisconnect(samples, index, sample) &&
+                        !ControllerDispatchOrdering.hasLaterSameConnectionConnected(samples, index, sample)
                 } ?: 0
             if (nextIndex != 0) changed = true
             ordered += remaining.removeAt(nextIndex)
