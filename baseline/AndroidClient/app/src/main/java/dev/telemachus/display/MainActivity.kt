@@ -1022,32 +1022,7 @@ class MainActivity : AppCompatActivity() {
                     // from the server so we use the correct resolution.
                     // Store the holder so we can initialize later.
                     decoderPresentationOwner.publishRenderTarget(holder)
-                    // If we already have a video configuration (reconnect case), init now.
-                    if (decoderPresentationOwner.currentDecoder() == null) {
-                        val internetConfiguration = decoderPresentationOwner.internetConfiguration()
-                        if (prefs.connectionMode == ConnectionMode.INTERNET) {
-                            val internetLifecycle = internetVideoDecoderLifecycle
-                            if (internetLifecycle?.hasPendingConfiguration == true) {
-                                internetLifecycle.onSurfaceReady()
-                            } else if (internetConfiguration != null && displayWidth > 0 && displayHeight > 0) {
-                                val currentInternetSession = internetSession
-                                val currentInternetGeneration = internetGeneration
-                                configureInternetDecoder(
-                                    internetConfiguration,
-                                    currentInternetGeneration,
-                                    AtomicReference(currentInternetSession),
-                                )
-                            }
-                        } else if (prefs.connectionMode != ConnectionMode.INTERNET &&
-                            mainSessionDisplayLifecycle?.hasPendingVideoConfiguration == true
-                        ) {
-                            mainSessionDisplayLifecycle?.onSurfaceReady()
-                        } else if (prefs.connectionMode != ConnectionMode.INTERNET &&
-                            decoderPresentationOwner.localVideoConfigurationSnapshot() != null
-                        ) {
-                            initializeDecoder(holder)
-                        }
-                    }
+                    handleRenderTargetReady(holder)
                 }
 
                 override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -1076,6 +1051,42 @@ class MainActivity : AppCompatActivity() {
                 applyStatusOverlayLayout()
             }
             updateSurfaceViewportLayout()
+        }
+    }
+
+    private fun handleRenderTargetReady(holder: SurfaceHolder) {
+        val internetConfiguration = decoderPresentationOwner.internetConfiguration()
+        when (
+            rendererOwner.renderTargetReadyAction(
+                RendererRenderTargetReadiness(
+                    flow =
+                        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+                            RendererRenderTargetFlow.INTERNET
+                        } else {
+                            RendererRenderTargetFlow.LOCAL
+                        },
+                    decoderConfigured = decoderPresentationOwner.currentDecoder() != null,
+                    localConfigurationPending = mainSessionDisplayLifecycle?.hasPendingVideoConfiguration == true,
+                    localConfigurationAvailable = decoderPresentationOwner.localVideoConfigurationSnapshot() != null,
+                    internetConfigurationPending = internetVideoDecoderLifecycle?.hasPendingConfiguration == true,
+                    internetConfigurationAvailable = internetConfiguration != null,
+                ),
+            )
+        ) {
+            RendererRenderTargetReadyAction.NONE -> Unit
+            RendererRenderTargetReadyAction.RETRY_PENDING_LOCAL_CONFIGURATION -> mainSessionDisplayLifecycle?.onSurfaceReady()
+            RendererRenderTargetReadyAction.CONFIGURE_LOCAL_DECODER -> initializeDecoder(holder)
+            RendererRenderTargetReadyAction.RETRY_PENDING_INTERNET_CONFIGURATION -> internetVideoDecoderLifecycle?.onSurfaceReady()
+            RendererRenderTargetReadyAction.CONFIGURE_INTERNET_DECODER -> {
+                val configuration = internetConfiguration ?: return
+                val currentInternetSession = internetSession
+                val currentInternetGeneration = internetGeneration
+                configureInternetDecoder(
+                    configuration,
+                    currentInternetGeneration,
+                    AtomicReference(currentInternetSession),
+                )
+            }
         }
     }
 
@@ -4182,8 +4193,9 @@ class MainActivity : AppCompatActivity() {
                         },
                         restoreState = { previousPresentation ->
                             requestedOrientation = previousRequestedOrientation
+                            val rotationPolicy = rendererOwner.rotationPolicy()
                             binding.surfaceView.apply {
-                                rotation = prefs.clientRotation.degrees.toFloat()
+                                rotation = rotationPolicy.surfaceRotation.toFloat()
                                 scaleX = 1f
                                 scaleY = 1f
                             }
@@ -6193,15 +6205,11 @@ class MainActivity : AppCompatActivity() {
         x: Float,
         y: Float,
     ): TouchMapper.Point =
-        TouchMapper.map(
+        rendererOwner.mapTouchPoint(
             x = x,
             y = y,
             viewWidth = view.width,
             viewHeight = view.height,
-            videoWidth = displayWidth,
-            videoHeight = displayHeight,
-            scaleMode = prefs.videoScaleMode,
-            renderRotation = ViewportPolicy.surfaceTransformRotation(prefs.clientRotation),
         )
 
     private fun updateSurfaceViewportLayout() {
@@ -6247,15 +6255,11 @@ class MainActivity : AppCompatActivity() {
                     else -> activeInternetInputIds[pointerId] ?: return
                 }
             val point =
-                InternetTouchMapper.map(
+                rendererOwner.mapTouchPoint(
                     x = event.getX(index),
                     y = event.getY(index),
                     viewWidth = view.width,
                     viewHeight = view.height,
-                    videoWidth = displayWidth,
-                    videoHeight = displayHeight,
-                    scaleMode = prefs.videoScaleMode,
-                    clientRotation = prefs.clientRotation,
                 )
             session.sendTouch(
                 ProductTouchEvent(
@@ -6288,15 +6292,11 @@ class MainActivity : AppCompatActivity() {
     ): Boolean {
         val snapshot =
             StylusInputMapper.snapshot(event) { x, y ->
-                InternetTouchMapper.map(
+                rendererOwner.mapTouchPoint(
                     x = x,
                     y = y,
                     viewWidth = view.width,
                     viewHeight = view.height,
-                    videoWidth = displayWidth,
-                    videoHeight = displayHeight,
-                    scaleMode = prefs.videoScaleMode,
-                    clientRotation = prefs.clientRotation,
                 )
             }
         val extended = session.canSendExtendedStylus()
@@ -6450,20 +6450,20 @@ class MainActivity : AppCompatActivity() {
      * This provides proper fullscreen portrait/landscape support
      */
     private fun applyRotation(rotation: Int) {
-        val effectiveRotation = ViewportPolicy.effectiveRotation(rotation, prefs.clientRotation)
-        requestedOrientation = ViewportPolicy.screenOrientationFor(effectiveRotation)
+        val policy = rendererOwner.rotationPolicy(rotation)
+        requestedOrientation = policy.screenOrientation
 
         // Host rotation chooses the device orientation. The encoded frame keeps
         // its source orientation, so only the client-local offset transforms it.
         binding.surfaceView.apply {
-            this.rotation = ViewportPolicy.surfaceTransformRotation(prefs.clientRotation).toFloat()
+            this.rotation = policy.surfaceRotation.toFloat()
             scaleX = 1f
             scaleY = 1f
         }
         updateSurfaceViewportLayout()
 
         log(
-            "🔄 Orientation: ${when (effectiveRotation) {
+            "🔄 Orientation: ${when (policy.effectiveRotation) {
                 90 -> "Portrait"
                 180 -> "Landscape (flipped)"
                 270 -> "Portrait (flipped)"

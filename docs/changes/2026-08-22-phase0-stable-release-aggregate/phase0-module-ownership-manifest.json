@@ -3,9 +3,9 @@
   "kind": "phase0_module_ownership_current_base_manifest",
   "phase": "phase0",
   "source": {
-    "base_commit": "030c2f920f8cdf510ceb68b30a6da01a1df93447",
+    "base_commit": "f1fde5fdb43ccfc98a4066f42fb361e29ba8574e",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-31",
+    "audit_date": "2026-09-01",
     "owner": "Phase 0 module ownership extraction owner"
   },
   "module_boundaries": [
@@ -226,28 +226,25 @@
       "id": "renderer_ownership",
       "title": "Android renderer ownership boundary",
       "required_for_phase0_stable": true,
-      "status": "partial",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererOwner.kt",
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererOwner.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererViewportState.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererOwner.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/RendererViewportState.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererViewportStateTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererOwnershipBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientExperience.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererViewportStateTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererViewportStateTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest",
+        "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_module_ownership -v",
+        "make phase0-module-ownership-gate"
       ],
-      "blockers": [
-        "Renderer owner now gates viewport layout, render-target generation, and local/Internet frame admission before decoder presentation, but Android View/SurfaceHolder mutation still lives in MainActivity as the platform adapter.",
-        "Decoder output and MediaCodec lifecycle ownership remain tracked by decoder_ownership, so renderer_ownership remains fail-closed until decoder output boundaries are separately closed."
-      ],
-      "fail_closed_checklist": [
-        "Keep RendererOwner and RendererViewportState free of Android UI, transport sockets, decoder, and protocol dependencies.",
-        "Route viewport layout updates, render-target generation checks, and local/Internet frame admission through RendererOwner before touching Android layout params or decoder presentation.",
-        "Keep decoder output and MediaCodec lifecycle closure owned by decoder_ownership rather than folding codec lifecycle into renderer_ownership."
-      ]
+      "blockers": [],
+      "fail_closed_checklist": []
     },
     {
       "id": "ui_product_session_boundaries",

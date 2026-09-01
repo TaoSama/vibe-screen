@@ -327,16 +327,16 @@ module with dependency-direction and resource-lifecycle contract tests.
 action dispatch, side-effect owner checks for file-transfer and wake-host flows,
 file-transfer product state, WakeHost request lifecycle/callback
 delivery/packet-sender admission, input envelope routing, media-frame routing,
-and renderer viewport/layout/admission to focused boundary owners with offline
-contract coverage. Android decoder admission, lifecycle callbacks, active
-decoder gating, renderer presentation, local/Internet frame routing, and
-Internet decoder-presentation rollback now have focused owner coverage, while
-`MainActivity` remains the Android platform adapter that creates `VideoDecoder`
-with the active `Surface` and applies UI side effects. This is still not
-completion of Phase 0 module ownership: broader protocol/session ownership,
-the remaining decoder platform-adapter/device-evidence slice, full renderer
-ownership beyond the current boundary, and UI/product session boundaries are
-still being extracted. WakeHost real
+and renderer viewport/layout/render-target readiness/admission to focused
+boundary owners with offline contract coverage. Android decoder admission,
+lifecycle callbacks, active decoder gating, renderer presentation,
+local/Internet frame routing, and Internet decoder-presentation rollback now
+have focused owner coverage, while `MainActivity` remains the Android platform
+adapter that creates `VideoDecoder` with the active `Surface` and applies UI
+side effects. This is still not completion of Phase 0 module ownership: the
+remaining decoder platform-adapter/device-evidence slice and UI/product session
+boundaries are still being extracted.
+WakeHost real
 sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence
 remain separate fail-closed gates.
 The current-base owner state is tracked by

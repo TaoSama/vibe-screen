@@ -74,17 +74,22 @@ duplicate-transfer rejection behind the session boundary. The WakeHost product
 owner now owns request lifecycle, result callback delivery, authorization-secret
 handling, and packet-sender admission behind those gates; already accepted
 completion writes may drain while new side effects fail closed after termination
-admission closes. `RendererOwner` gates viewport/layout/render target/frame
-admission for the current renderer boundary. This is offline/module evidence
+admission closes. `RendererOwner` gates viewport/layout, render-target
+generation, render-target readiness actions, and local/Internet frame admission
+for the renderer boundary. `MainActivity` may publish the Android
+`SurfaceHolder`, check whether its live `Surface` is valid, and apply Android
+layout params, but render-target state changes, decoder-presentation state,
+display-geometry state, and frame admission must flow through
+`DecoderPresentationOwner`/`RendererOwner`. This is offline/module evidence
 only: sleeping-Mac wake, router/NIC WOL behavior, Host signing/TCC readiness,
 and retained product logs remain blocked by the WakeHost current-base hardware
 gate. Decoder ownership beyond lifecycle admission now has focused decoder
 presentation owner coverage, but the Android `MainActivity` platform adapter
 still creates `VideoDecoder` against live `Surface`/`Display` objects and no
-current-source device decoder-lifecycle evidence is attached. Broader
-protocol/session ownership, renderer ownership beyond the current boundary,
-and UI/product session ownership remain to be enforced by additional module
-boundaries before Phase 0 module ownership can be called complete.
+current-source device decoder-lifecycle evidence is attached. The remaining
+decoder platform-adapter/device-evidence slice and UI/product session ownership
+remain to be enforced by additional module boundaries before Phase 0 module
+ownership can be called complete.
 
 ## Protocol v1
 
