@@ -1,0 +1,24 @@
+{
+  "can_close_trusted_lan_reconnect_gate": false,
+  "can_close_trusted_lan_stream_gate": false,
+  "device_identity_requirement": "Nubia P0110/pacific/Android 16/SDK 36 evidence must remain labeled as Nubia P0110/pacific and must not be relabeled as another device.",
+  "errors": [],
+  "evidence_dir": "docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-31-p0110-lan-preflight-codex-task-blocked",
+  "files_checked": [
+    "README.md",
+    "commands.txt",
+    "host-readiness-command.exit",
+    "host-readiness.json",
+    "host-signing-and-permissions.txt",
+    "preflight-command.exit",
+    "reconnect-timing-command.exit",
+    "reconnect-timing-summary.json",
+    "trusted-lan-preflight.json",
+    "trusted-lan-smoke-evidence-check.exit"
+  ],
+  "kind": "trusted_lan_smoke_evidence",
+  "profile": "trusted-lan-current-worktree-smoke",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked",
+  "warnings": []
+}

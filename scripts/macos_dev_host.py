@@ -38,8 +38,12 @@ SYSTEM_TCC_DATABASE = Path("/Library") / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
+EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
+ACCESSIBILITY_SERVICES = (ACCESSIBILITY_SERVICE,)
+MICROPHONE_SERVICE = "kTCCServiceMicrophone"
+MICROPHONE_SERVICES = (MICROPHONE_SERVICE,)
 ALLOWED_AUTH_VALUE = 2
 DEFAULT_LISTENER_PORT = 54321
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
@@ -746,7 +750,15 @@ def read_bundle_plist(app_path: Path) -> dict[str, object]:
 def require_expected_bundle(app_path: Path, expected_bundle_id: str) -> None:
     if not app_path.is_dir():
         raise SystemExit(f"Host bundle not found: {app_path}")
-    bundle_id = str(read_bundle_plist(app_path).get("CFBundleIdentifier", ""))
+    try:
+        plist = read_bundle_plist(app_path)
+    except (plistlib.InvalidFileException, ValueError) as error:
+        raise SystemExit(f"Host bundle at {app_path} has a malformed Info.plist: {error}") from error
+    except OSError as error:
+        raise SystemExit(f"Host bundle at {app_path} has an unreadable Info.plist: {error}") from error
+    if not isinstance(plist, dict):
+        raise SystemExit(f"Host bundle at {app_path} has a malformed Info.plist: expected dictionary root")
+    bundle_id = str(plist.get("CFBundleIdentifier", ""))
     if bundle_id != expected_bundle_id:
         raise SystemExit(
             f"refusing unexpected bundle at {app_path}: "
@@ -780,10 +792,7 @@ def parse_designated_requirement(output: str) -> str | None:
 
 
 def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
-    if requirement is None:
-        return None
-    match = re.search(r"certificate leaf = H\"([0-9a-fA-F]+)\"", requirement)
-    return match.group(1).upper() if match else None
+    return package_macos.parse_signing_certificate_hash(requirement)
 
 
 def parse_entitlement_keys(output: str) -> tuple[str, ...]:
@@ -1011,7 +1020,7 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
                 )
             auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
             last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
-            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE)
+            services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE, MICROPHONE_SERVICE)
             placeholders = ",".join("?" for _ in services)
             cursor = connection.execute(
                 f"""
@@ -1064,32 +1073,18 @@ def validate_preflight(
     errors: list[str] = []
     if not is_default_install_path(install_path):
         errors.append(f"Host must be installed at the stable path: {DEFAULT_INSTALL_PATH}")
-    if metadata.identifier != EXPECTED_BUNDLE_ID:
-        errors.append(f"codesign identifier is '{metadata.identifier}', expected '{EXPECTED_BUNDLE_ID}'")
-    if metadata.is_ad_hoc:
-        errors.append(
-            "Host is ad-hoc signed; use the configured local signing identity so TCC grants survive rebuilds"
-        )
-    elif expected_sign_identity and metadata.identity_name != expected_sign_identity:
-        errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
-    if not metadata.cdhash:
-        errors.append("codesign CDHash is missing")
-    if not metadata.designated_requirement:
-        errors.append("codesign designated requirement is missing")
-    if source_identity is not None:
-        if source_identity.dirty and not allow_source_mismatch:
-            errors.append("source repository is dirty; rerun from a clean current-base checkout")
-        if not metadata.source_commit or not metadata.source_tree or metadata.source_dirty is None:
-            if not allow_source_mismatch:
-                errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
-        else:
-            if metadata.source_dirty and not allow_source_mismatch:
-                errors.append("installed Host was packaged from a dirty source tree")
-            if (
-                metadata.source_commit != source_identity.commit
-                or metadata.source_tree != source_identity.tree
-            ) and not allow_source_mismatch:
-                errors.append("installed Host source provenance does not match the current source checkout")
+    append_signing_identity_errors(
+        errors,
+        metadata,
+        expected_sign_identity=expected_sign_identity,
+    )
+    append_source_provenance_errors(
+        errors,
+        metadata,
+        source_identity=source_identity,
+        allow_source_mismatch=allow_source_mismatch,
+        require_source_identity=False,
+    )
     if not permissions.readable:
         errors.append(f"cannot verify TCC permissions read-only: {permissions.error}")
     elif permissions.error:
@@ -1097,8 +1092,88 @@ def validate_preflight(
     else:
         if not permissions.is_allowed(SCREEN_CAPTURE_SERVICES):
             errors.append("Screen Recording is not authorized for the installed Host")
-        if not permissions.is_allowed((ACCESSIBILITY_SERVICE,)):
+        if not permissions.is_allowed(ACCESSIBILITY_SERVICES):
             errors.append("Accessibility is not authorized for the installed Host")
+        if not permissions.is_allowed(MICROPHONE_SERVICES):
+            errors.append("Microphone is not authorized for the installed Host")
+    return errors
+
+
+def append_signing_identity_errors(
+    errors: list[str],
+    metadata: SigningMetadata,
+    *,
+    expected_sign_identity: str | None = None,
+) -> None:
+    if metadata.identifier != EXPECTED_BUNDLE_ID:
+        errors.append(f"codesign identifier is '{metadata.identifier}', expected '{EXPECTED_BUNDLE_ID}'")
+    if metadata.is_ad_hoc:
+        errors.append(
+            "Host is ad-hoc signed; use the configured local signing identity so TCC grants survive rebuilds"
+        )
+    elif metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
+        actual_leaf = metadata.leaf_certificate_hash or "missing"
+        errors.append(
+            f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+        )
+    elif (
+        expected_sign_identity
+        and not package_macos.is_sha1(expected_sign_identity)
+        and metadata.identity_name != expected_sign_identity
+    ):
+        errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
+    if not metadata.cdhash:
+        errors.append("codesign CDHash is missing")
+    if not metadata.designated_requirement:
+        errors.append("codesign designated requirement is missing")
+
+
+def append_source_provenance_errors(
+    errors: list[str],
+    metadata: SigningMetadata,
+    *,
+    source_identity: package_macos.SourceIdentity | None = None,
+    allow_source_mismatch: bool = False,
+    require_source_identity: bool = False,
+) -> None:
+    if source_identity is None:
+        if require_source_identity:
+            errors.append("current source identity is unavailable; refusing to install source-bound Host bundle")
+        return
+    if source_identity.dirty and not allow_source_mismatch:
+        errors.append("source repository is dirty; rerun from a clean current-base checkout")
+    if not metadata.source_commit or not metadata.source_tree or metadata.source_dirty is None:
+        if not allow_source_mismatch:
+            errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
+    else:
+        if metadata.source_dirty and not allow_source_mismatch:
+            errors.append("installed Host was packaged from a dirty source tree")
+        if (
+            metadata.source_commit != source_identity.commit
+            or metadata.source_tree != source_identity.tree
+        ) and not allow_source_mismatch:
+            errors.append("installed Host source provenance does not match the current source checkout")
+
+
+def validate_installable_host_bundle(
+    metadata: SigningMetadata,
+    *,
+    expected_sign_identity: str | None,
+    source_identity: package_macos.SourceIdentity | None,
+) -> list[str]:
+    errors: list[str] = []
+    append_signing_identity_errors(
+        errors,
+        metadata,
+        expected_sign_identity=expected_sign_identity,
+    )
+    append_source_provenance_errors(
+        errors,
+        metadata,
+        source_identity=source_identity,
+        allow_source_mismatch=False,
+        require_source_identity=True,
+    )
     return errors
 
 
@@ -1114,10 +1189,11 @@ def permission_interpretation(permissions: PermissionStatus) -> str:
     if not permissions.readable:
         return f"unverified ({permissions.error})"
     screen = "allowed" if permissions.is_allowed(SCREEN_CAPTURE_SERVICES) else "not allowed"
-    accessibility = "allowed" if permissions.is_allowed((ACCESSIBILITY_SERVICE,)) else "not allowed"
+    accessibility = "allowed" if permissions.is_allowed(ACCESSIBILITY_SERVICES) else "not allowed"
+    microphone = "allowed" if permissions.is_allowed(MICROPHONE_SERVICES) else "not allowed"
     if permissions.error:
-        return f"Screen Recording {screen}; Accessibility {accessibility}; read warning: {permissions.error}."
-    return f"Screen Recording {screen}; Accessibility {accessibility}."
+        return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}; read warning: {permissions.error}."
+    return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}."
 
 
 def format_report(
@@ -1175,6 +1251,7 @@ Identity: {identity_name}
 {authorities}
 TeamIdentifier: {team_identifier}
 Certificate SHA-1: {certificate_sha1}
+Expected signing leaf SHA-1: {EXPECTED_SIGNING_LEAF_SHA1}
 CDHash: {cdhash}
 Binary SHA-256: {binary_sha256}
 Designated requirement: {designated_requirement}
@@ -1225,10 +1302,10 @@ Blocking issues:
 Next action
 -----------
 Create or import the stable local codesigning identity, or set
-${package_macos.SIGN_IDENTITY_ENV} to an existing stable identity, then rebuild
-and reinstall the Host before rerunning device evidence. Do not use ad-hoc
-signing for fixed-binary device reruns because it changes the code-signing hash
-and invalidates macOS Screen Recording/Accessibility grants.
+${package_macos.SIGN_IDENTITY_ENV} to the pinned leaf SHA-1
+{EXPECTED_SIGNING_LEAF_SHA1}, then rebuild and reinstall the Host before rerunning device evidence.
+Do not use ad-hoc signing for fixed-binary device reruns because it changes the
+designated requirement and invalidates macOS Screen Recording/Accessibility grants.
 
 Safety
 ------
@@ -1247,6 +1324,42 @@ def write_signing_prerequisite_report(args: argparse.Namespace, error: BaseExcep
     )
     write_report(args.report, report)
     print(report, file=sys.stderr)
+    return 2
+
+
+SIGNING_PREREQUISITE_ERROR_MARKERS = (
+    "signing identity",
+    "signing leaf",
+    "codesign identity",
+    "codesign identities",
+    "codesigning",
+    "keychain",
+)
+
+
+def is_signing_prerequisite_error(message: str) -> bool:
+    normalized = message.lower()
+    return any(marker in normalized for marker in SIGNING_PREREQUISITE_ERROR_MARKERS)
+
+
+def write_install_blocked_report(
+    args: argparse.Namespace,
+    errors: list[str],
+    *,
+    metadata: SigningMetadata | None = None,
+    source_identity: package_macos.SourceIdentity | None = None,
+) -> int:
+    report = format_report(
+        metadata,
+        missing_permission_status("Host bundle was not installed because installability validation failed"),
+        errors,
+        source_identity=source_identity,
+        allow_source_mismatch=False,
+        install_path=args.install_path.resolve(),
+    )
+    write_report(args.report, report)
+    print(report, file=sys.stderr)
+    print("macOS Host install failed before replacing the installed app", file=sys.stderr)
     return 2
 
 
@@ -1381,10 +1494,10 @@ def inspect_host_without_throwing(
         except SystemExit as error:
             errors.append(str(error))
         else:
-            if expected_sign_identity and resolved_identity != expected_sign_identity:
+            if resolved_identity != EXPECTED_SIGNING_LEAF_SHA1:
                 errors.append(
-                    "configured signing identity did not resolve exactly: "
-                    f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
+                    "configured signing identity resolved to unexpected leaf SHA-1: "
+                    f"resolved '{resolved_identity}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
                 )
     try:
         metadata = collect_signing_metadata(install_path)
@@ -1415,7 +1528,8 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "readable": permissions.readable,
         "error": permissions.error,
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
-        "accessibility_granted": permissions.allowed_state((ACCESSIBILITY_SERVICE,)),
+        "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
+        "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
         "rows": [row.__dict__ for row in permissions.rows],
     }
 
@@ -1434,6 +1548,7 @@ def signing_record(
             "authorities": [],
             "team_identifier": None,
             "certificate_sha1": None,
+            "expected_certificate_sha1": EXPECTED_SIGNING_LEAF_SHA1,
             "cdhash": None,
             "binary_sha256": None,
             "designated_requirement": None,
@@ -1452,6 +1567,7 @@ def signing_record(
         "authorities": list(metadata.authorities),
         "team_identifier": metadata.team_identifier,
         "certificate_sha1": metadata.leaf_certificate_hash,
+        "expected_certificate_sha1": EXPECTED_SIGNING_LEAF_SHA1,
         "cdhash": metadata.cdhash,
         "binary_sha256": metadata.binary_sha256,
         "designated_requirement": metadata.designated_requirement,
@@ -1633,53 +1749,6 @@ def write_json_report(path: Path, document: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def metadata_and_permissions(
-    install_path: Path,
-    tcc_db: Path,
-    *,
-    expected_sign_identity: str | None = None,
-    source_root: Path = package_macos.REPOSITORY_ROOT,
-    allow_source_mismatch: bool = False,
-    validate_configured_identity: bool = True,
-) -> tuple[SigningMetadata, package_macos.SourceIdentity, PermissionStatus, list[str]]:
-    errors: list[str] = []
-    if validate_configured_identity:
-        configured_sign_identity = effective_sign_identity(expected_sign_identity)
-        if configured_sign_identity == "-":
-            errors.append(
-                "Host readiness requires a stable signing identity; --sign-identity - is ad-hoc and cannot retain TCC grants"
-            )
-        else:
-            try:
-                resolved_identity = package_macos.resolve_sign_identity(
-                    configured_sign_identity
-                )
-            except SystemExit as error:
-                errors.append(str(error))
-            else:
-                if expected_sign_identity and resolved_identity != expected_sign_identity:
-                    errors.append(
-                        "configured signing identity did not resolve exactly: "
-                        f"requested '{expected_sign_identity}', resolved '{resolved_identity}'"
-                    )
-    else:
-        configured_sign_identity = effective_sign_identity(expected_sign_identity)
-    metadata = collect_signing_metadata(install_path)
-    source_identity = current_source_identity(source_root)
-    permissions = query_tcc_rows(EXPECTED_BUNDLE_ID, tcc_database_paths(tcc_db))
-    errors.extend(
-        validate_preflight(
-            metadata,
-            permissions,
-            install_path=install_path,
-            expected_sign_identity=configured_sign_identity,
-            source_identity=source_identity,
-            allow_source_mismatch=allow_source_mismatch,
-        )
-    )
-    return metadata, source_identity, permissions, errors
-
-
 def refuse_ad_hoc_identity(sign_identity: str) -> None:
     if sign_identity == "-":
         raise SystemExit(
@@ -1708,7 +1777,37 @@ def package_dev_app(output_dir: Path, sign_identity: str) -> Path:
     return app_path
 
 
-def safe_replace_app(source_app: Path, install_path: Path, expected_bundle_id: str) -> None:
+def require_installable_host_bundle(
+    app_path: Path,
+    *,
+    expected_bundle_id: str,
+    expected_sign_identity: str,
+    source_identity: package_macos.SourceIdentity,
+) -> SigningMetadata:
+    require_expected_bundle(app_path, expected_bundle_id)
+    metadata = collect_signing_metadata(app_path)
+    errors = validate_installable_host_bundle(
+        metadata,
+        expected_sign_identity=expected_sign_identity,
+        source_identity=source_identity,
+    )
+    if errors:
+        joined_errors = "\n".join(f"- {error}" for error in errors)
+        raise SystemExit(
+            f"refusing to install non-evidence-ready Host bundle at {app_path}:\n"
+            f"{joined_errors}"
+        )
+    return metadata
+
+
+def safe_replace_app(
+    source_app: Path,
+    install_path: Path,
+    expected_bundle_id: str,
+    *,
+    expected_sign_identity: str,
+    source_identity: package_macos.SourceIdentity,
+) -> None:
     require_expected_bundle(source_app, expected_bundle_id)
     if install_path.exists():
         require_expected_bundle(install_path, expected_bundle_id)
@@ -1717,33 +1816,51 @@ def safe_replace_app(source_app: Path, install_path: Path, expected_bundle_id: s
     backup = install_path.parent / f".{install_path.name}.previous-{os.getpid()}"
     if staging.exists() or backup.exists():
         raise SystemExit(f"temporary install path already exists near {install_path}")
+    moved_into_place = False
     try:
         shutil.copytree(source_app, staging, symlinks=True)
-        run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", str(staging))
+        require_installable_host_bundle(
+            staging,
+            expected_bundle_id=expected_bundle_id,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+        )
         if install_path.exists():
             install_path.rename(backup)
         staging.rename(install_path)
+        moved_into_place = True
+        require_installable_host_bundle(
+            install_path,
+            expected_bundle_id=expected_bundle_id,
+            expected_sign_identity=expected_sign_identity,
+            source_identity=source_identity,
+        )
         if backup.exists():
-            shutil.rmtree(backup)
+            shutil.rmtree(backup, ignore_errors=True)
     except PermissionError as error:
-        restore_backup(install_path, backup)
+        restore_backup(install_path, backup, remove_installed_without_backup=moved_into_place)
         raise SystemExit(
             f"installing to {install_path} requires permission: {error}. Keep the Host at "
             "/Applications/Vibe Screen.app and approve it in System Settings."
         ) from error
+    except SystemExit:
+        restore_backup(install_path, backup, remove_installed_without_backup=moved_into_place)
+        raise
     except Exception:
-        restore_backup(install_path, backup)
+        restore_backup(install_path, backup, remove_installed_without_backup=moved_into_place)
         raise
     finally:
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
 
 
-def restore_backup(install_path: Path, backup: Path) -> None:
+def restore_backup(install_path: Path, backup: Path, *, remove_installed_without_backup: bool = False) -> None:
     if backup.exists():
         if install_path.exists():
             shutil.rmtree(install_path, ignore_errors=True)
         backup.rename(install_path)
+    elif remove_installed_without_backup and install_path.exists():
+        shutil.rmtree(install_path, ignore_errors=True)
 
 
 def is_default_install_path(path: Path) -> bool:
@@ -1754,27 +1871,72 @@ def install_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
+    allow_source_mismatch = getattr(args, "allow_source_mismatch", False)
+    source_root = getattr(args, "source_root", package_macos.REPOSITORY_ROOT)
+    if allow_source_mismatch:
+        return write_install_blocked_report(
+            args,
+            [
+                "install refuses --allow-source-mismatch; use preflight/readiness only "
+                "for historical fixed-binary diagnostics"
+            ],
+        )
+    try:
+        source_identity = current_source_identity(source_root)
+    except SystemExit as error:
+        return write_install_blocked_report(args, [str(error)])
+    if source_identity.dirty:
+        return write_install_blocked_report(
+            args,
+            ["source repository is dirty; rerun from a clean current-base checkout"],
+            source_identity=source_identity,
+        )
     try:
         packaged_app = package_dev_app(args.output_dir, args.sign_identity)
     except SystemExit as error:
         message = str(error)
-        if "signing identity" in message or "codesign identity" in message:
+        if is_signing_prerequisite_error(message):
             return write_signing_prerequisite_report(args, error)
-        raise
-    safe_replace_app(packaged_app, install_path, EXPECTED_BUNDLE_ID)
+        return write_install_blocked_report(args, [message], source_identity=source_identity)
+    try:
+        packaged_metadata = collect_signing_metadata(packaged_app)
+    except (SystemExit, OSError) as error:
+        return write_install_blocked_report(args, [str(error)], source_identity=source_identity)
+    packaged_errors = validate_installable_host_bundle(
+        packaged_metadata,
+        expected_sign_identity=args.sign_identity,
+        source_identity=source_identity,
+    )
+    if packaged_errors:
+        return write_install_blocked_report(
+            args,
+            packaged_errors,
+            metadata=packaged_metadata,
+            source_identity=source_identity,
+        )
+    try:
+        safe_replace_app(
+            packaged_app,
+            install_path,
+            EXPECTED_BUNDLE_ID,
+            expected_sign_identity=args.sign_identity,
+            source_identity=source_identity,
+        )
+    except (SystemExit, OSError) as error:
+        return write_install_blocked_report(args, [str(error)], source_identity=source_identity)
     inspection = inspect_host_without_throwing(
         install_path,
         args.tcc_db,
         expected_sign_identity=args.sign_identity,
-        source_root=args.source_root,
-        allow_source_mismatch=args.allow_source_mismatch,
+        source_root=source_root,
+        allow_source_mismatch=False,
     )
     report = format_report(
         inspection.metadata,
         inspection.permissions,
         inspection.errors,
         source_identity=inspection.source_identity,
-        allow_source_mismatch=args.allow_source_mismatch,
+        allow_source_mismatch=False,
         install_path=install_path,
     )
     write_report(args.report, report)
@@ -1782,12 +1944,12 @@ def install_command(args: argparse.Namespace) -> int:
     print(f"Wrote {args.report}")
     if inspection.errors:
         print(
-            "Permissions are not ready for device evidence yet; grant the listed items in "
+            "Installed bundle is not ready for device evidence yet; grant the listed items in "
             f"{SYSTEM_SETTINGS_PATH}, relaunch Vibe Screen, then run preflight."
         )
-        if inspection.metadata is None:
-            print(report, file=sys.stderr)
-            return 2
+        print(report, file=sys.stderr)
+        print("macOS Host install preflight failed", file=sys.stderr)
+        return 2
     return 0
 
 
