@@ -187,7 +187,7 @@ final class VideoConfigValidatorTests: XCTestCase {
         av1.codec = .av1
 
         switch VideoColorNegotiator(decodeCapabilities: [decodeCapability()]).evaluate(av1) {
-        case let .fallback(fallback):
+        case let .fallback(fallback, reason: _):
             XCTAssertEqual(fallback.codec, .h264)
             XCTAssertEqual(fallback.configEpoch, 12)
             XCTAssertEqual(fallback.colorDescription, VideoColorNegotiator.legacySDRColor)
