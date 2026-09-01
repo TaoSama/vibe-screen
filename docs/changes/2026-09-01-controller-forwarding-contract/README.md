@@ -63,6 +63,7 @@ The recovered behavior is represented in current source by these main files:
 - `contracts/fixtures/messages/v1/controller_validation.json`
 - `contracts/reference/controller_event.py`
 - `baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt`
+- `baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerDispatchOrdering.kt`
 - `baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerSessionFeedback.kt`
 - `baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionInputIdSequence.kt`
 - `baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt`
