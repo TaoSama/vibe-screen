@@ -65,6 +65,19 @@ class ControllerDispatchOrderingTest {
         assertFalse(ControllerDispatchOrdering.hasLaterLowerEpochDisconnect(ordered.samples))
     }
 
+    @Test
+    fun movesSameConnectionConnectedBeforeEarlierStateAndDisconnect() {
+        val state = sample("c1", 1, ControllerEventKind.STATE, buttonMask = 1)
+        val disconnected = sample("c1", 1, ControllerEventKind.DISCONNECTED)
+        val otherController = sample("c2", 1, ControllerEventKind.STATE, buttonMask = 2)
+        val connected = sample("c1", 1, ControllerEventKind.CONNECTED)
+        val dispatch = ControllerDispatch(listOf(state, otherController, disconnected, connected), ControllerDelivery.STRUCTURAL)
+
+        val ordered = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)
+
+        assertEquals(listOf(otherController, connected, state, disconnected), ordered.samples)
+    }
+
     private fun sample(
         controllerId: String,
         controllerEpoch: Long,
