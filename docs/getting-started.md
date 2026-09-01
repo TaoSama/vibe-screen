@@ -105,11 +105,19 @@ adb -s "$ANDROID_SERIAL" reverse tcp:54321 tcp:54321
 adb -s "$ANDROID_SERIAL" reverse --list
 ```
 
-Start the packaged host:
+Install, preflight, and start the packaged host through the guarded entry
+points:
 
 ```bash
-open ".build/release-artifacts/Vibe Screen.app"
+make baseline-macos-dev-install
+make baseline-macos-host-preflight
+make baseline-macos-launch
 ```
+
+Do not launch `.build/release-artifacts/Vibe Screen.app` directly for device
+evidence. The supported path installs and preflights the source-bound,
+stable-signed bundle at `/Applications/Vibe Screen.app` before launch so stale
+artifacts or drifted signing identities cannot silently reuse Host permissions.
 
 On first launch:
 

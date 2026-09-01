@@ -41,6 +41,60 @@ PHASE3_RUNNER = REPOSITORY_ROOT / "scripts/phase3_webrtc/run_local_e2e.py"
 PHASE3_SOURCE_ARTIFACTS = REPOSITORY_ROOT / "scripts/phase3_webrtc/source_artifacts.py"
 ANDROID_BUILD = REPOSITORY_ROOT / "baseline/AndroidClient/app/build.gradle.kts"
 MAC_HOST_ENTITLEMENTS = REPOSITORY_ROOT / "baseline/MacHost/Telemachus.entitlements"
+CURRENT_HOST_LAUNCH_DOCS = (
+    REPOSITORY_ROOT / "README.md",
+    REPOSITORY_ROOT / "docs/getting-started.md",
+    REPOSITORY_ROOT / "docs/testing.md",
+)
+CURRENT_HOST_LAUNCH_DOC_GLOBS = (
+    "docs/runbook/*.md",
+    "docs/changes/*/RUNBOOK.md",
+    "docs/changes/*/TECH.md",
+)
+FORBIDDEN_HOST_LAUNCH_LINE_PATTERNS = (
+    (
+        "direct LaunchServices Host start",
+        re.compile(
+            r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*(?:/usr/bin/)?open\b'
+            r'(?=.*(?:Vibe Screen|\.build/release-artifacts/Vibe Screen\.app))'
+        ),
+    ),
+    (
+        "direct Host executable start",
+        re.compile(
+            r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*["\']?'
+            r'/Applications/Vibe Screen\.app/Contents/MacOS/Vibe Screen["\']?(?:\s|&|$)'
+        ),
+    ),
+    (
+        "direct build-output Host start",
+        re.compile(
+            r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*["\']?'
+            r'(?:baseline/MacHost/)?\.build/(?:debug|release)/.*Vibe(?:\\ | )Screen'
+        ),
+    ),
+    (
+        "direct swift-run Host start",
+        re.compile(r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*swift\s+run\s+["\']?Vibe Screen["\']?'),
+    ),
+)
+OFFLINE_HOST_SELF_TEST_FLAG_PATTERN = re.compile(r'--[A-Za-z0-9-]*self-test\b')
+FORBIDDEN_HOST_LAUNCH_SCRIPT_PATTERNS = (
+    (
+        "direct LaunchServices Host start",
+        re.compile(
+            r'["\'](?:/usr/bin/)?open["\'][^\n]*'
+            r'(?:Vibe Screen|\.build/release-artifacts/Vibe Screen\.app)'
+        ),
+    ),
+    (
+        "direct Host executable start",
+        re.compile(
+            r'(?:subprocess\.|run_command\(|run\()[^\n]*'
+            r'/Applications/Vibe Screen\.app/Contents/MacOS/Vibe Screen'
+        ),
+    ),
+)
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 COMMIT = "a" * 40
@@ -2759,6 +2813,7 @@ class PrepareReleaseTests(unittest.TestCase):
 
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
         self.assertIn("baseline-macos-permission-prompt-contract:", makefile)
+        self.assertIn("baseline-macos-launch:", makefile)
         self.assertIn(
             "\tswift scripts/verify_macos_permission_prompt_contract.swift",
             makefile,
@@ -2766,6 +2821,7 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn("\tbaseline-macos-xctest-preflight \\", makefile)
         self.assertIn("\tbaseline-macos-permission-prompt-contract \\", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
+        self.assertIn("python3 scripts/macos_dev_host.py launch", makefile)
         self.assertRegex(
             makefile,
             r"(?m)^baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight$",
@@ -2795,6 +2851,48 @@ class PrepareReleaseTests(unittest.TestCase):
             release_workflow.index("make baseline-macos-permission-prompt-contract"),
             release_workflow.index("make baseline-macos-test"),
         )
+
+    def test_current_macos_host_docs_do_not_bypass_guarded_launcher(self) -> None:
+        docs = list(CURRENT_HOST_LAUNCH_DOCS)
+        for pattern in CURRENT_HOST_LAUNCH_DOC_GLOBS:
+            docs.extend(REPOSITORY_ROOT.glob(pattern))
+
+        violations: list[str] = []
+        for path in sorted(set(docs)):
+            relative = path.relative_to(REPOSITORY_ROOT)
+            for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                for label, pattern in FORBIDDEN_HOST_LAUNCH_LINE_PATTERNS:
+                    if pattern.search(line) and not OFFLINE_HOST_SELF_TEST_FLAG_PATTERN.search(line):
+                        violations.append(f"{relative}:{line_number}: {label}: {line.strip()}")
+
+        self.assertEqual([], violations)
+
+    def test_host_launching_make_targets_and_scripts_use_guarded_launcher(self) -> None:
+        inspected_files = [MAKEFILE]
+        inspected_files.extend(
+            path
+            for suffix in ("*.py", "*.sh")
+            for path in (REPOSITORY_ROOT / "scripts").rglob(suffix)
+            if "tests" not in path.relative_to(REPOSITORY_ROOT).parts
+        )
+
+        violations: list[str] = []
+        for path in sorted(set(inspected_files)):
+            text = path.read_text(encoding="utf-8")
+            relative = path.relative_to(REPOSITORY_ROOT)
+            for line_number, line in enumerate(text.splitlines(), start=1):
+                for label, pattern in FORBIDDEN_HOST_LAUNCH_LINE_PATTERNS:
+                    if pattern.search(line) and not OFFLINE_HOST_SELF_TEST_FLAG_PATTERN.search(line):
+                        violations.append(f"{relative}:{line_number}: {label}: {line.strip()}")
+            for label, pattern in FORBIDDEN_HOST_LAUNCH_SCRIPT_PATTERNS:
+                for match in pattern.finditer(text):
+                    line_number = text.count("\n", 0, match.start()) + 1
+                    line = text.splitlines()[line_number - 1]
+                    if OFFLINE_HOST_SELF_TEST_FLAG_PATTERN.search(line):
+                        continue
+                    violations.append(f"{relative}:{line_number}: {label}: {match.group(0)}")
+
+        self.assertEqual([], violations)
 
     def test_host_display_rotation_gate_make_target_runs_formal_verifier(self) -> None:
         makefile = MAKEFILE.read_text(encoding="utf-8")
