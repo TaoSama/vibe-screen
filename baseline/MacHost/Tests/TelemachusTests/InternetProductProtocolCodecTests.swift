@@ -137,6 +137,56 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         })
     }
 
+    func testHandshakeAdvertisesAndNegotiatesInternetFileTransferResourceLimits() throws {
+        let policy = ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 512,
+            maximumChunkBytes: 64
+        )
+        var codec = try makeCodec(
+            negotiate: false,
+            fileTransferPolicy: policy,
+            managedConfigurationAvailable: true
+        )
+        var hello = clientHello(supportsFileTransfer: true)
+        hello.resourceLimits.maximumFileBytes = 128
+        hello.resourceLimits.maximumFileChunkBytes = 16
+
+        try codec.validate(hello)
+        let host = try VSEnvelope(serializedBytes: codec.hostHello()).hostHello
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsFileTransfer: true,
+            peerSupportsManagedConfiguration: true
+        )).sessionAccepted
+
+        XCTAssertTrue(host.capabilities.contains(.fileTransfer))
+        XCTAssertTrue(host.capabilities.contains(.managedConfiguration))
+        XCTAssertEqual(host.resourceLimits.maximumFileBytes, 512)
+        XCTAssertEqual(host.resourceLimits.maximumFileChunkBytes, 64)
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.fileTransfer))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.managedConfiguration))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 128)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 16)
+    }
+
+    func testFileTransferCapabilityIsOptionalForLegacyInternetPeers() throws {
+        var codec = try makeCodec(negotiate: false)
+
+        try codec.validate(clientHello(supportsFileTransfer: false))
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsFileTransfer: false,
+            peerSupportsManagedConfiguration: false
+        )).sessionAccepted
+
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.fileTransfer))
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.managedConfiguration))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 0)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 0)
+    }
+
     func testDisabledInputIsNeitherAdvertisedNorNegotiated() throws {
         var codec = try makeCodec(negotiate: false, inputEnabled: false)
         try codec.validate(clientHello())
@@ -687,7 +737,9 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         rotationDegrees: Int = 0,
         negotiate: Bool = true,
         inputEnabled: Bool = true,
-        controllerAvailable: Bool = false
+        controllerAvailable: Bool = false,
+        fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
+        managedConfigurationAvailable: Bool = true
     ) throws -> InternetProductProtocolCodec {
         var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
@@ -707,6 +759,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             ),
             inputEnabled: inputEnabled,
             controllerAvailable: controllerAvailable,
+            fileTransferPolicy: fileTransferPolicy,
+            managedConfigurationAvailable: managedConfigurationAvailable,
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,
                 maximumBufferedControlBytes: 2 * 1_024 * 1_024,
@@ -722,7 +776,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
 
     private func clientHello(
         maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes,
-        supportsController: Bool = false
+        supportsController: Bool = false,
+        supportsFileTransfer: Bool = false
     ) -> VSClientHello {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -735,6 +790,10 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         hello.deviceName = "Android"
         hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
         if supportsController { hello.capabilities.append(.controller) }
+        if supportsFileTransfer {
+            hello.capabilities.append(.fileTransfer)
+            hello.capabilities.append(.managedConfiguration)
+        }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]

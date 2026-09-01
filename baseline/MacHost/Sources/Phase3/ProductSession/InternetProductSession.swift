@@ -20,6 +20,16 @@ struct FreshSessionRecoveryBudget {
     }
 }
 
+extension InternetProductSession: FileTransferServer {
+    var fileTransferAvailable: Bool {
+        performSync { isStreaming && peerSupportsFileTransfer && remoteManagedPolicy.fileTransferAllowed }
+    }
+
+    func offerProtocolV1File(fileURL: URL, mimeType: String) throws {
+        _ = try sendFile(fileURL: fileURL, mimeType: mimeType)
+    }
+}
+
 final class InternetProductSession: EncodedFrameSink {
     private static let terminalProtocolErrorDrainTimeoutMilliseconds = 500
     private static let rawBulkAdmissionTransferID = Data("internet-bulk-v1".utf8)
@@ -110,6 +120,8 @@ final class InternetProductSession: EncodedFrameSink {
     ) -> Void)?
     var onAudioRecordReceived: ((Data) -> Void)?
     var onBulkRecordReceived: ((Data) -> Void)?
+    var onFileTransferApprovalRequested: ((VSFileOffer) -> Bool)?
+    var onFileTransferCompleted: ((ProtocolV1CompletedIncomingFile) -> Void)?
     var onRevoked: (() -> Void)?
     /// Composition must deliver this signed tombstone to the session authority
     /// and peer. Local persistence remains fail-closed even if propagation is delayed.
@@ -151,6 +163,16 @@ final class InternetProductSession: EncodedFrameSink {
     private var controlAdmission = ControlAdmissionState()
     private var advancedChannelGate: AdvancedChannelSecurityGate?
     private var advancedChannelGateInitializationError: AdvancedChannelSecurityError?
+    private var peerSupportsFileTransfer = false
+    private var peerSupportsManagedConfiguration = false
+    private var negotiatedFileTransferPolicy: ProtocolV1FileTransferPolicy = .default
+    private var remoteManagedPolicy: ProtocolV1RemoteManagedPolicy = .unmanaged
+    private var incomingFileTransferManager: ProtocolV1IncomingFileTransferManager?
+    private var outgoingFileTransfers: [Data: ProtocolV1OutgoingFileTransfer] = [:]
+    private var pendingIncomingFileApprovals: Set<Data> = []
+    // Tracks transfer IDs that passed explicit approval and remain active until
+    // final chunk completion, peer cancel, session close, or fail-closed cleanup.
+    private var approvedIncomingFileOffers: Set<Data> = []
 
     var currentSessionEpoch: UInt64 {
         performSync { codec?.sessionEpoch ?? 0 }
@@ -212,9 +234,14 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             peerSupportsController = false
+            peerSupportsFileTransfer = false
+            peerSupportsManagedConfiguration = false
             transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
+            cancelAllFileTransfers()
+            incomingFileTransferManager = nil
+            remoteManagedPolicy = .unmanaged
             configuration = nil
             let changed = state != .closed
             state = .closed
@@ -243,9 +270,14 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             peerSupportsController = false
+            peerSupportsFileTransfer = false
+            peerSupportsManagedConfiguration = false
             transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
+            cancelAllFileTransfers()
+            incomingFileTransferManager = nil
+            remoteManagedPolicy = .unmanaged
             let changed = state != .revoked
             state = .revoked
             let revocationGeneration = sessionGeneration
@@ -326,6 +358,27 @@ final class InternetProductSession: EncodedFrameSink {
     @discardableResult
     func sendBulkRecord(_ payload: Data, transferID: Data) -> Bool {
         sendAdvancedRecord(payload, binding: .bulk(transferID: transferID))
+    }
+
+    @discardableResult
+    func sendFile(fileURL: URL, mimeType: String) throws -> Data {
+        try performSync {
+            guard peerSupportsFileTransfer, var codec else {
+                throw InternetProductSessionError.invalidConfiguration(
+                    "File transfer is not negotiated for this Internet session."
+                )
+            }
+            let transfer = try ProtocolV1OutgoingFileTransfer(
+                fileURL: fileURL,
+                mimeType: mimeType,
+                policy: negotiatedFileTransferPolicy,
+                remotePolicy: remoteManagedPolicy
+            )
+            outgoingFileTransfers[transfer.offer.transferID] = transfer
+            try sendControl(codec.fileOffer(transfer.offer))
+            self.codec = codec
+            return transfer.offer.transferID
+        }
     }
 
     func snapshotState() -> InternetProductSessionState {
@@ -556,6 +609,7 @@ final class InternetProductSession: EncodedFrameSink {
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
             controllerAvailable: configuration.controllerAvailable,
+            fileTransferPolicy: configuration.fileTransferPolicy,
             limits: configuration.limits
         )
         let transport = WebRTCInternetTransport(
@@ -575,9 +629,14 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        peerSupportsFileTransfer = false
+        peerSupportsManagedConfiguration = false
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
+        cancelAllFileTransfers()
+        incomingFileTransferManager = nil
+        remoteManagedPolicy = .unmanaged
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
         let connectingState = InternetProductSessionState.connecting
@@ -720,13 +779,33 @@ final class InternetProductSession: EncodedFrameSink {
                     && hello.capabilities.contains(.stylusExtended)
                 peerSupportsController = codec.controllerAvailable
                     && hello.capabilities.contains(.controller)
+                peerSupportsFileTransfer = codec.fileTransferPolicy.allowed
+                    && hello.capabilities.contains(.fileTransfer)
+                peerSupportsManagedConfiguration = codec.managedConfigurationAvailable
+                    && hello.capabilities.contains(.managedConfiguration)
+                if peerSupportsFileTransfer {
+                    negotiatedFileTransferPolicy = codec.fileTransferPolicy.negotiated(
+                        with: hello.resourceLimits
+                    )
+                    incomingFileTransferManager = try ProtocolV1IncomingFileTransferManager(
+                        policy: negotiatedFileTransferPolicy,
+                        directory: Self.fileTransferStagingDirectory(),
+                        approval: { _ in true }
+                    )
+                } else {
+                    negotiatedFileTransferPolicy = codec.fileTransferPolicy
+                    incomingFileTransferManager = nil
+                }
+                remoteManagedPolicy = .unmanaged
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
                     peerSupportsTouch: peerSupportsTouch,
                     peerSupportsStylus: peerSupportsStylus,
                     peerSupportsStylusExtended: peerSupportsStylusExtended,
-                    peerSupportsController: peerSupportsController
+                    peerSupportsController: peerSupportsController,
+                    peerSupportsFileTransfer: peerSupportsFileTransfer,
+                    peerSupportsManagedConfiguration: peerSupportsManagedConfiguration
                 ))
                 try sendControl(codec.videoConfiguration())
                 self.codec = codec
@@ -826,6 +905,44 @@ final class InternetProductSession: EncodedFrameSink {
                     codec: &codec
                 )
 
+            case .fileOffer(let offer) where isStreaming:
+                handleIncomingFileOffer(offer, codec: &codec, generation: generation)
+                self.codec = codec
+
+            case .fileAccept(let response) where isStreaming:
+                handleOutgoingFileAccept(response, codec: &codec, generation: generation)
+                self.codec = codec
+
+            case .fileTransferProgress(let progress) where isStreaming:
+                handleOutgoingFileProgress(progress, codec: &codec, generation: generation)
+                self.codec = codec
+
+            case .fileTransferCancel(let cancellation) where isStreaming:
+                self.codec = codec
+                handleFileTransferCancel(cancellation)
+
+            case .fileTransferComplete(let result) where isStreaming:
+                self.codec = codec
+                handleOutgoingFileComplete(result)
+
+            case .managedPolicyStatus(let status) where isStreaming:
+                self.codec = codec
+                guard peerSupportsManagedConfiguration else {
+                    throw InternetProductProtocolError.missingCapability(.managedConfiguration)
+                }
+                guard peerSupportsFileTransfer else {
+                    throw InternetProductProtocolError.missingCapability(.fileTransfer)
+                }
+                guard ManagedPolicy.validateRestrictionResults(status) else {
+                    throw InternetProductProtocolError.malformedControl(
+                        "ManagedPolicyStatus requires complete, consistent restriction_results."
+                    )
+                }
+                remoteManagedPolicy = ProtocolV1RemoteManagedPolicy(status: status)
+                if !remoteManagedPolicy.fileTransferAllowed {
+                    cancelAllFileTransfers()
+                }
+
             case .disconnectNotice(let notice):
                 self.codec = codec
                 if notice.mayResume {
@@ -846,6 +963,12 @@ final class InternetProductSession: EncodedFrameSink {
                 case .stylusEvent: payloadName = "StylusEvent"
                 case .controllerEvent: payloadName = "ControllerEvent"
                 case .disconnectNotice: payloadName = "DisconnectNotice"
+                case .fileOffer: payloadName = "FileOffer"
+                case .fileAccept: payloadName = "FileAccept"
+                case .fileTransferProgress: payloadName = "FileTransferProgress"
+                case .fileTransferCancel: payloadName = "FileTransferCancel"
+                case .fileTransferComplete: payloadName = "FileTransferComplete"
+                case .managedPolicyStatus: payloadName = "ManagedPolicyStatus"
                 case nil: payloadName = "empty payload"
                 default: payloadName = "unsupported payload"
                 }
@@ -1036,6 +1159,197 @@ final class InternetProductSession: EncodedFrameSink {
         }
     }
 
+    private static func fileTransferStagingDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibescreen-internet-file-transfer", isDirectory: true)
+    }
+
+    private func handleIncomingFileApproval(_ offer: VSFileOffer) -> Bool {
+        guard remoteManagedPolicy.fileTransferAllowed else { return false }
+        return onFileTransferApprovalRequested?(offer) ?? false
+    }
+
+    private func handleIncomingFileOffer(
+        _ offer: VSFileOffer,
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) {
+        guard peerSupportsFileTransfer, let incomingFiles = incomingFileTransferManager else {
+            let response = rejectedFileAccept(
+                transferID: offer.transferID,
+                reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode
+            )
+            do { try sendControl(codec.fileAccept(response)) } catch { fail(.securityFailure(error.localizedDescription)) }
+            return
+        }
+        do {
+            guard !pendingIncomingFileApprovals.contains(offer.transferID) else {
+                throw ProtocolV1FileTransferError.duplicateTransfer
+            }
+            _ = try incomingFiles.validateOfferForApproval(
+                offer,
+                remotePolicy: remoteManagedPolicy,
+                negotiatedPolicy: negotiatedFileTransferPolicy,
+                pendingTransferCount: pendingIncomingFileApprovals.count
+            )
+        } catch let error as ProtocolV1FileTransferError {
+            let response = rejectedFileAccept(transferID: offer.transferID, reasonCode: error.reasonCode)
+            do { try sendControl(codec.fileAccept(response)) } catch { fail(.securityFailure(error.localizedDescription)) }
+            return
+        } catch {
+            let response = rejectedFileAccept(
+                transferID: offer.transferID,
+                reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+            )
+            do { try sendControl(codec.fileAccept(response)) } catch { fail(.securityFailure(error.localizedDescription)) }
+            return
+        }
+        pendingIncomingFileApprovals.insert(offer.transferID)
+        let accepted = handleIncomingFileApproval(offer)
+        pendingIncomingFileApprovals.remove(offer.transferID)
+        guard accepted else {
+            let response = rejectedFileAccept(
+                transferID: offer.transferID,
+                reasonCode: ProtocolV1FileTransferError.userDenied.reasonCode
+            )
+            do { try sendControl(codec.fileAccept(response)) } catch { fail(.securityFailure(error.localizedDescription)) }
+            return
+        }
+        do {
+            approvedIncomingFileOffers.insert(offer.transferID)
+            let response = try incomingFiles.accept(
+                offer,
+                remotePolicy: remoteManagedPolicy,
+                negotiatedPolicy: negotiatedFileTransferPolicy,
+                sessionEpoch: codec.sessionEpoch
+            )
+            try sendControl(codec.fileAccept(response))
+        } catch let error as ProtocolV1FileTransferError {
+            approvedIncomingFileOffers.remove(offer.transferID)
+            let response = rejectedFileAccept(transferID: offer.transferID, reasonCode: error.reasonCode)
+            do { try sendControl(codec.fileAccept(response)) } catch { fail(.securityFailure(error.localizedDescription)) }
+        } catch {
+            approvedIncomingFileOffers.remove(offer.transferID)
+            let response = rejectedFileAccept(
+                transferID: offer.transferID,
+                reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+            )
+            do { try sendControl(codec.fileAccept(response)) } catch { fail(.securityFailure(error.localizedDescription)) }
+        }
+    }
+
+    private func handleOutgoingFileAccept(
+        _ response: VSFileAccept,
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) {
+        guard response.accepted,
+              let transfer = outgoingFileTransfers[response.transferID] else {
+            outgoingFileTransfers.removeValue(forKey: response.transferID)?.cancel()
+            return
+        }
+        transfer.applyAcceptedMaximumChunkBytes(Int(response.maximumChunkBytes))
+        sendNextOutgoingFileChunk(transfer, codec: &codec, generation: generation)
+    }
+
+    private func handleOutgoingFileProgress(
+        _ progress: VSFileTransferProgress,
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) {
+        guard let transfer = outgoingFileTransfers[progress.transferID] else { return }
+        do {
+            try transfer.validateAcknowledgedOffset(progress.receivedBytes)
+        } catch let error as ProtocolV1FileTransferError {
+            outgoingFileTransfers.removeValue(forKey: progress.transferID)?.cancel()
+            do {
+                try sendControl(codec.fileTransferCancel(
+                    transferID: progress.transferID,
+                    reasonCode: error.reasonCode
+                ))
+            } catch { fail(.securityFailure(error.localizedDescription)) }
+            return
+        } catch {
+            outgoingFileTransfers.removeValue(forKey: progress.transferID)?.cancel()
+            do {
+                try sendControl(codec.fileTransferCancel(
+                    transferID: progress.transferID,
+                    reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                ))
+            } catch { fail(.securityFailure(error.localizedDescription)) }
+            return
+        }
+        sendNextOutgoingFileChunk(transfer, codec: &codec, generation: generation)
+    }
+
+    private func handleFileTransferCancel(_ cancellation: VSFileTransferCancel) {
+        incomingFileTransferManager?.cancel(transferID: cancellation.transferID)
+        pendingIncomingFileApprovals.remove(cancellation.transferID)
+        approvedIncomingFileOffers.remove(cancellation.transferID)
+        outgoingFileTransfers.removeValue(forKey: cancellation.transferID)?.cancel()
+    }
+
+    private func handleOutgoingFileComplete(_ result: VSFileTransferComplete) {
+        guard let transfer = outgoingFileTransfers.removeValue(forKey: result.transferID) else { return }
+        defer { transfer.cancel() }
+        guard result.accepted else { return }
+        do {
+            try transfer.validateCompletionDigest(result.sha256)
+        } catch {
+            // Digest mismatch or incomplete transfer; the transfer is already
+            // removed and cancelled. No further action is required.
+        }
+    }
+
+    private func sendNextOutgoingFileChunk(
+        _ transfer: ProtocolV1OutgoingFileTransfer,
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) {
+        guard sessionGeneration == generation else { return }
+        let maximumBytes = transfer.maximumChunkBytes(default: negotiatedFileTransferPolicy.maximumChunkBytes)
+        do {
+            guard let chunk = try transfer.nextChunk(
+                maximumBytes: maximumBytes,
+                sessionEpoch: codec.sessionEpoch
+            ) else { return }
+            let frame = try chunk.serializedFrame()
+            guard sendBulkRecord(frame, transferID: chunk.header.transferID) else { return }
+        } catch let error as ProtocolV1FileTransferError {
+            outgoingFileTransfers.removeValue(forKey: transfer.offer.transferID)?.cancel()
+            do {
+                try sendControl(codec.fileTransferCancel(
+                    transferID: transfer.offer.transferID,
+                    reasonCode: error.reasonCode
+                ))
+            } catch { fail(.securityFailure(error.localizedDescription)) }
+        } catch {
+            outgoingFileTransfers.removeValue(forKey: transfer.offer.transferID)?.cancel()
+            do {
+                try sendControl(codec.fileTransferCancel(
+                    transferID: transfer.offer.transferID,
+                    reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                ))
+            } catch { fail(.securityFailure(error.localizedDescription)) }
+        }
+    }
+
+    private func cancelAllFileTransfers() {
+        incomingFileTransferManager?.cancelAll()
+        pendingIncomingFileApprovals.removeAll()
+        approvedIncomingFileOffers.removeAll()
+        for transfer in outgoingFileTransfers.values { transfer.cancel() }
+        outgoingFileTransfers.removeAll()
+    }
+
+    private func rejectedFileAccept(transferID: Data, reasonCode: String) -> VSFileAccept {
+        var response = VSFileAccept()
+        response.transferID = transferID
+        response.accepted = false
+        response.rejectionReason = reasonCode
+        return response
+    }
+
     private func beginAdaptiveProfileRequest(
         _ profile: AdaptiveMediaProfile,
         generation: UInt64
@@ -1203,8 +1517,67 @@ final class InternetProductSession: EncodedFrameSink {
 
     private func handleBulkRecord(_ payload: Data, generation: UInt64) {
         guard sessionGeneration == generation, isStreaming else { return }
+        if peerSupportsFileTransfer,
+           incomingFileTransferManager != nil,
+           let chunk = try? ProtocolV1FileChunk(serializedFrame: payload),
+           approvedIncomingFileOffers.contains(chunk.header.transferID) {
+            handleAdvancedRecord(payload, binding: .bulk(transferID: chunk.header.transferID)) { _ in
+                handleIncomingFileChunk(chunk, generation: generation)
+            }
+            return
+        }
         handleAdvancedRecord(payload, binding: .bulk(transferID: Self.rawBulkAdmissionTransferID)) {
             onBulkRecordReceived?($0)
+        }
+    }
+
+    private func handleIncomingFileChunk(_ chunk: ProtocolV1FileChunk, generation: UInt64) {
+        guard let incomingFiles = incomingFileTransferManager,
+              var codec else { return }
+        do {
+            let offset = try incomingFiles.append(chunk, sessionEpoch: codec.sessionEpoch)
+            if chunk.header.final {
+                let completed = try incomingFiles.finish(transferID: chunk.header.transferID)
+                let response = try codec.fileTransferComplete(
+                    transferID: completed.transferID,
+                    accepted: true,
+                    sha256: completed.sha256,
+                    rejectionReason: ""
+                )
+                try sendControl(response)
+                self.codec = codec
+                approvedIncomingFileOffers.remove(chunk.header.transferID)
+                onFileTransferCompleted?(completed)
+            } else {
+                let progress = try codec.fileTransferProgress(
+                    transferID: chunk.header.transferID,
+                    receivedBytes: offset
+                )
+                try sendControl(progress)
+                self.codec = codec
+            }
+        } catch let error as ProtocolV1FileTransferError {
+            incomingFiles.cancel(transferID: chunk.header.transferID)
+            approvedIncomingFileOffers.remove(chunk.header.transferID)
+            do {
+                let cancel = try codec.fileTransferCancel(
+                    transferID: chunk.header.transferID,
+                    reasonCode: error.reasonCode
+                )
+                try sendControl(cancel)
+                self.codec = codec
+            } catch { fail(.securityFailure(error.localizedDescription)) }
+        } catch {
+            incomingFiles.cancel(transferID: chunk.header.transferID)
+            approvedIncomingFileOffers.remove(chunk.header.transferID)
+            do {
+                let cancel = try codec.fileTransferCancel(
+                    transferID: chunk.header.transferID,
+                    reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                )
+                try sendControl(cancel)
+                self.codec = codec
+            } catch { fail(.securityFailure(error.localizedDescription)) }
         }
     }
 
@@ -1420,9 +1793,14 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        peerSupportsFileTransfer = false
+        peerSupportsManagedConfiguration = false
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
+        cancelAllFileTransfers()
+        incomingFileTransferManager = nil
+        remoteManagedPolicy = .unmanaged
         configuration = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
@@ -1711,9 +2089,14 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
+        peerSupportsFileTransfer = false
+        peerSupportsManagedConfiguration = false
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
+        cancelAllFileTransfers()
+        incomingFileTransferManager = nil
+        remoteManagedPolicy = .unmanaged
         // Close the retired transport before publishing the terminal state so
         // any observer waking on .failed already sees the transport closed,
         // instead of racing the queue that would otherwise close it afterward.

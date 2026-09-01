@@ -4,11 +4,18 @@ import com.google.protobuf.ByteString
 import com.google.protobuf.InvalidProtocolBufferException
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.FileTransferProgress
 import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
@@ -161,6 +168,8 @@ sealed class ProductControlMessage {
         val hostName: String,
         val capabilities: Set<Capability>,
         val maximumEncryptedMediaRecordBytes: Long,
+        val maximumFileBytes: Long,
+        val maximumFileChunkBytes: Int,
     ) : ProductControlMessage()
 
     data class SessionAccepted(
@@ -169,6 +178,8 @@ sealed class ProductControlMessage {
         val capabilities: Set<Capability>,
         val heartbeatIntervalMillis: Long,
         val maximumEncryptedMediaRecordBytes: Long,
+        val maximumFileBytes: Long,
+        val maximumFileChunkBytes: Int,
     ) : ProductControlMessage()
 
     data class SessionRejected(
@@ -198,6 +209,18 @@ sealed class ProductControlMessage {
     data class Revoked(val reasonCode: String) : ProductControlMessage()
 
     data class ProtocolFailure(val code: String, val message: String, val retryable: Boolean) : ProductControlMessage()
+
+    data class FileOfferReceived(val offer: FileOffer) : ProductControlMessage()
+
+    data class FileAcceptReceived(val response: FileAccept) : ProductControlMessage()
+
+    data class FileProgressReceived(val progress: FileTransferProgress) : ProductControlMessage()
+
+    data class FileCancelReceived(val cancellation: FileTransferCancel) : ProductControlMessage()
+
+    data class FileCompleteReceived(val result: FileTransferComplete) : ProductControlMessage()
+
+    data class ManagedPolicyStatusReceived(val status: ManagedPolicyStatus) : ProductControlMessage()
 
     data object Ignored : ProductControlMessage()
 }
@@ -254,6 +277,36 @@ internal interface ProtocolV1ProductCodec {
         rejectionReason: String,
     ): ByteArray
 
+    fun encodeFileOffer(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, offer: FileOffer): ByteArray
+
+    fun encodeFileAccept(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, response: FileAccept): ByteArray
+
+    fun encodeFileProgress(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        transferId: ByteString,
+        receivedBytes: Long,
+    ): ByteArray
+
+    fun encodeFileCancel(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        transferId: ByteString,
+        reasonCode: String,
+    ): ByteArray
+
+    fun encodeFileComplete(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        transferId: ByteString,
+        accepted: Boolean,
+        sha256: ByteString,
+        rejectionReason: String,
+    ): ByteArray
+
     fun decodeControl(payload: ByteArray): DecodedProductControl
 
     fun decodeMediaFragment(payload: ByteArray): ProductMediaFragment
@@ -294,7 +347,9 @@ internal class ProtobufProtocolV1ProductCodec(
                         .newBuilder()
                         .setMaximumEncryptedMediaRecordBytes(
                             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
-                        ),
+                        )
+                        .setMaximumFileBytes(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES)
+                        .setMaximumFileChunkBytes(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES),
                 )
                 .build()
         return envelope(messageId, sessionId, sessionEpoch).setClientHello(hello).build().toByteArray()
@@ -435,6 +490,76 @@ internal class ProtobufProtocolV1ProductCodec(
         return envelope(messageId, sessionId, sessionEpoch).setVideoConfigResult(result).build().toByteArray()
     }
 
+    override fun encodeFileOffer(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        offer: FileOffer,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setFileOffer(offer).build().toByteArray()
+
+    override fun encodeFileAccept(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        response: FileAccept,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setFileAccept(response).build().toByteArray()
+
+    override fun encodeFileProgress(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        transferId: ByteString,
+        receivedBytes: Long,
+    ): ByteArray {
+        require(!transferId.isEmpty && receivedBytes >= 0) { "File progress metadata is invalid" }
+        val progress =
+            FileTransferProgress
+                .newBuilder()
+                .setTransferId(transferId)
+                .setReceivedBytes(receivedBytes)
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setFileTransferProgress(progress).build().toByteArray()
+    }
+
+    override fun encodeFileCancel(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        transferId: ByteString,
+        reasonCode: String,
+    ): ByteArray {
+        require(!transferId.isEmpty && reasonCode.isNotBlank()) { "File cancellation metadata is invalid" }
+        val cancellation =
+            FileTransferCancel
+                .newBuilder()
+                .setTransferId(transferId)
+                .setReasonCode(reasonCode.take(MAX_REASON_BYTES))
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setFileTransferCancel(cancellation).build().toByteArray()
+    }
+
+    override fun encodeFileComplete(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        transferId: ByteString,
+        accepted: Boolean,
+        sha256: ByteString,
+        rejectionReason: String,
+    ): ByteArray {
+        require(!transferId.isEmpty) { "File completion transfer id is required" }
+        require(accepted || rejectionReason.isNotBlank()) { "Rejected file completion requires a reason" }
+        val result =
+            FileTransferComplete
+                .newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(accepted)
+                .setSha256(sha256)
+                .setRejectionReason(if (accepted) "" else rejectionReason.take(MAX_REASON_BYTES))
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setFileTransferComplete(result).build().toByteArray()
+    }
+
     override fun decodeControl(payload: ByteArray): DecodedProductControl {
         require(payload.size in 1..MAX_CONTROL_BYTES) { "Control envelope size is invalid" }
         val envelope = parseEnvelope(payload)
@@ -449,6 +574,8 @@ internal class ProtobufProtocolV1ProductCodec(
                         value.hostName,
                         value.capabilitiesList.toSet(),
                         Integer.toUnsignedLong(value.resourceLimits.maximumEncryptedMediaRecordBytes),
+                        value.resourceLimits.maximumFileBytes,
+                        value.resourceLimits.maximumFileChunkBytes,
                     )
                 }
                 Envelope.PayloadCase.SESSION_ACCEPTED -> {
@@ -459,6 +586,8 @@ internal class ProtobufProtocolV1ProductCodec(
                         value.negotiatedCapabilitiesList.toSet(),
                         value.heartbeatIntervalMs.toLong(),
                         Integer.toUnsignedLong(value.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes),
+                        value.negotiatedResourceLimits.maximumFileBytes,
+                        value.negotiatedResourceLimits.maximumFileChunkBytes,
                     )
                 }
                 Envelope.PayloadCase.SESSION_REJECTED -> {
@@ -484,6 +613,18 @@ internal class ProtobufProtocolV1ProductCodec(
                 Envelope.PayloadCase.ERROR_REPORT -> {
                     val value = envelope.errorReport
                     ProductControlMessage.ProtocolFailure(value.code, value.message, value.retryable)
+                }
+                Envelope.PayloadCase.FILE_OFFER -> ProductControlMessage.FileOfferReceived(envelope.fileOffer)
+                Envelope.PayloadCase.FILE_ACCEPT -> ProductControlMessage.FileAcceptReceived(envelope.fileAccept)
+                Envelope.PayloadCase.FILE_TRANSFER_PROGRESS -> {
+                    ProductControlMessage.FileProgressReceived(envelope.fileTransferProgress)
+                }
+                Envelope.PayloadCase.FILE_TRANSFER_CANCEL -> ProductControlMessage.FileCancelReceived(envelope.fileTransferCancel)
+                Envelope.PayloadCase.FILE_TRANSFER_COMPLETE -> {
+                    ProductControlMessage.FileCompleteReceived(envelope.fileTransferComplete)
+                }
+                Envelope.PayloadCase.MANAGED_POLICY_STATUS -> {
+                    ProductControlMessage.ManagedPolicyStatusReceived(envelope.managedPolicyStatus)
                 }
                 else -> ProductControlMessage.Ignored
             }
@@ -619,14 +760,18 @@ internal class ProtobufProtocolV1ProductCodec(
                 Capability.CAPABILITY_END_TO_END_ENCRYPTION,
                 Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
                 Capability.CAPABILITY_REPLAY_PROTECTION,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
                 Capability.CAPABILITY_AUDIO_DATA_CHANNEL,
                 Capability.CAPABILITY_BULK_DATA_CHANNEL,
+                Capability.CAPABILITY_FILE_TRANSFER,
             )
         val REQUIRED_CLIENT_CAPABILITIES =
             OFFERED_CLIENT_CAPABILITIES.filterNot {
                 it == Capability.CAPABILITY_TOUCH ||
                     it == Capability.CAPABILITY_STYLUS ||
-                    it == Capability.CAPABILITY_STYLUS_EXTENDED
+                    it == Capability.CAPABILITY_STYLUS_EXTENDED ||
+                    it == Capability.CAPABILITY_MANAGED_CONFIGURATION ||
+                    it == Capability.CAPABILITY_FILE_TRANSFER
             }
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */

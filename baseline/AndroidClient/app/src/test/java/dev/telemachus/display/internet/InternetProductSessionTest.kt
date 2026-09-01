@@ -15,6 +15,12 @@ import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileChunkHeader
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
+import dev.vibescreen.protocol.v1.ManagedRestrictionResult
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.MediaPacketHeader
@@ -28,6 +34,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -805,6 +813,112 @@ class InternetProductSessionTest {
 
         assertArrayEquals(byteArrayOf(0xA1.toByte(), 0xA2.toByte()), callbacks.audio.single())
         assertArrayEquals(byteArrayOf(0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte()), callbacks.bulk.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun negotiatedInternetFileTransferAcceptsBulkChunkAndCompletesStagedFile() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val transferId = ByteString.copyFrom(ByteArray(16) { (it + 9).toByte() })
+        val payload = "from-internet-host".toByteArray(Charsets.UTF_8)
+        val offer = fileOffer(transferId, "hello.txt", payload)
+
+        peer.receive(controlEnvelope(4).setFileOffer(offer).build())
+        assertEquals(listOf(offer), callbacks.fileOffers)
+        assertTrue(session.respondToFileOffer(offer, accepted = true))
+
+        val accept = Envelope.parseFrom(peer.control.last())
+        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+        assertTrue(accept.fileAccept.accepted)
+        peer.bulk(fileChunk(transferId, offset = 0, payload = payload, final = true))
+
+        val fileControls = peer.control.map(Envelope::parseFrom).filter {
+            it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_PROGRESS ||
+                it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_COMPLETE
+        }
+        assertEquals(2, fileControls.size)
+        assertEquals(payload.size.toLong(), fileControls[0].fileTransferProgress.receivedBytes)
+        assertTrue(fileControls[1].fileTransferComplete.accepted)
+        assertEquals(ByteString.copyFrom(sha256(payload)), fileControls[1].fileTransferComplete.sha256)
+        assertEquals("hello.txt", callbacks.completedFiles.single().fileName)
+        assertArrayEquals(payload, callbacks.completedFiles.single().stagingFile.readBytes())
+        assertEquals(listOf(true to ""), callbacks.fileResults)
+        assertTrue(callbacks.bulk.isEmpty())
+    }
+
+    @Test
+    fun clientFileOfferStreamsChunksOverInternetBulkDataChannel() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val directory = createTempDir(prefix = "vibescreen-outgoing-test-")
+        val file = File(directory, "client.txt").also { it.writeText("from-android-internet") }
+
+        assertTrue(session.offerFile(file, "text/plain"))
+        val offerEnvelope = peer.control.map(Envelope::parseFrom).last { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }
+        val offer = offerEnvelope.fileOffer
+        assertEquals("client.txt", offer.fileName)
+
+        peer.receive(
+            controlEnvelope(4)
+                .setFileAccept(
+                    FileAccept
+                        .newBuilder()
+                        .setTransferId(offer.transferId)
+                        .setAccepted(true)
+                        .setMaximumChunkBytes(64 * 1024),
+                ).build(),
+        )
+
+        val chunk = dev.telemachus.display.protocol.FileChunk.fromFrame(peer.bulk.single())
+        assertEquals(offer.transferId, chunk.header.transferId)
+        assertEquals(7L, chunk.header.sessionEpoch)
+        assertArrayEquals(file.readBytes(), chunk.payload)
+
+        peer.receive(
+            controlEnvelope(5)
+                .setFileTransferProgress(
+                    dev.vibescreen.protocol.v1.FileTransferProgress
+                        .newBuilder()
+                        .setTransferId(offer.transferId)
+                        .setReceivedBytes(file.length()),
+                ).build(),
+        )
+        peer.receive(
+            controlEnvelope(6)
+                .setFileTransferComplete(
+                    FileTransferComplete
+                        .newBuilder()
+                        .setTransferId(offer.transferId)
+                        .setAccepted(true)
+                        .setSha256(offer.sha256),
+                ).build(),
+        )
+
+        assertEquals(listOf(true to ""), callbacks.fileResults)
+        directory.deleteRecursively()
+    }
+
+    @Test
+    fun managedPolicyDenyDisablesInternetFileTransferWithoutAffectingRawBulkCallback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true, managedConfiguration = true)
+        assertTrue(session.canTransferFiles)
+
+        peer.receive(controlEnvelope(4).setManagedPolicyStatus(managedPolicyStatus(fileTransferAllowed = false)).build())
+
+        assertFalse(session.canTransferFiles)
+        peer.bulk(byteArrayOf(0x66))
+        assertArrayEquals(byteArrayOf(0x66), callbacks.bulk.single())
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
     }
 
@@ -2074,6 +2188,8 @@ class InternetProductSessionTest {
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
         controller: Boolean = false,
+        fileTransfer: Boolean = false,
+        managedConfiguration: Boolean = false,
     ) {
         session.start()
         monitor.available("wifi")
@@ -2083,6 +2199,19 @@ class InternetProductSessionTest {
         if (controller) {
             hello.addCapabilities(Capability.CAPABILITY_CONTROLLER)
             accepted.addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER)
+        }
+        if (fileTransfer) {
+            hello.addCapabilities(Capability.CAPABILITY_FILE_TRANSFER)
+            accepted.addNegotiatedCapabilities(Capability.CAPABILITY_FILE_TRANSFER)
+            val limits = mediaRecordLimits()
+                .setMaximumFileBytes(dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES)
+                .setMaximumFileChunkBytes(dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES)
+            hello.setResourceLimits(limits)
+            accepted.setNegotiatedResourceLimits(limits)
+        }
+        if (managedConfiguration) {
+            hello.addCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+            accepted.addNegotiatedCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
         }
         peer.receive(controlEnvelope(1).setHostHello(hello).build())
         peer.receive(controlEnvelope(2).setSessionAccepted(accepted).build())
@@ -2156,6 +2285,79 @@ class InternetProductSessionTest {
         ResourceLimits
             .newBuilder()
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+
+    private fun fileOffer(
+        transferId: ByteString,
+        fileName: String,
+        payload: ByteArray,
+    ): FileOffer =
+        FileOffer
+            .newBuilder()
+            .setTransferId(transferId)
+            .setFileName(fileName)
+            .setMimeType("text/plain")
+            .setByteLength(payload.size.toLong())
+            .setSha256(ByteString.copyFrom(sha256(payload)))
+            .build()
+
+    private fun fileChunk(
+        transferId: ByteString,
+        offset: Long,
+        payload: ByteArray,
+        final: Boolean,
+        sessionEpoch: Long = 7,
+    ): ByteArray =
+        dev.telemachus.display.protocol.ProtocolV1Framing.encodeFileChunk(
+            FileChunkHeader
+                .newBuilder()
+                .setTransferId(transferId)
+                .setOffset(offset)
+                .setPayloadLength(payload.size)
+                .setSessionEpoch(sessionEpoch)
+                .setChunkSha256(ByteString.copyFrom(sha256(payload)))
+                .setFinal(final)
+                .build(),
+            payload,
+        )
+
+    private fun sha256(payload: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(payload)
+
+    private fun managedPolicyStatus(
+        fileTransferAllowed: Boolean = true,
+        maximumFileBytes: Long = dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
+    ): ManagedPolicyStatus =
+        ManagedPolicyStatus
+            .newBuilder()
+            .setManaged(true)
+            .setClipboardAllowed(true)
+            .setFileTransferAllowed(fileTransferAllowed)
+            .setAudioAllowed(true)
+            .setWakeAllowed(true)
+            .setCustomGesturesAllowed(true)
+            .setHostActionsAllowed(true)
+            .setMaximumFileBytes(maximumFileBytes)
+            .addAllRestrictionResults(
+                listOf(
+                    restriction("clipboard", true),
+                    restriction("file_transfer", fileTransferAllowed && maximumFileBytes > 0L),
+                    restriction("audio", true),
+                    restriction("wake", true),
+                    restriction("custom_gestures", true),
+                    restriction("host_actions", true),
+                    restriction("maximum_file_bytes", maximumFileBytes > 0L),
+                    restriction("allowed_hosts", true),
+                    restriction("denied_hosts", true),
+                ),
+            ).build()
+
+    private fun restriction(restriction: String, allowed: Boolean): ManagedRestrictionResult =
+        ManagedRestrictionResult
+            .newBuilder()
+            .setRestriction(restriction)
+            .setAllowed(allowed)
+            .setSource("test")
+            .setReason("test restriction result")
+            .build()
 
     private fun media(
         frameId: Long,
@@ -2257,6 +2459,9 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     val frames = mutableListOf<ProductVideoFrame>()
     val audio = mutableListOf<ByteArray>()
     val bulk = mutableListOf<ByteArray>()
+    val fileOffers = mutableListOf<FileOffer>()
+    val completedFiles = mutableListOf<dev.telemachus.display.protocol.CompletedIncomingFile>()
+    val fileResults = mutableListOf<Pair<Boolean, String>>()
     val configurations = mutableListOf<ProductVideoConfiguration>()
     val appliedConfigurations = mutableListOf<ProductVideoConfiguration>()
     val inputAcks = java.util.concurrent.CopyOnWriteArrayList<ProductInputAckCallback>()
@@ -2292,6 +2497,11 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onAudioRecord(payload: ByteArray) { audio += payload }
     override fun onBulkRecord(payload: ByteArray) { bulk += payload }
+    override fun onFileOffer(offer: FileOffer) { fileOffers += offer }
+    override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
+        completedFiles += completed
+    }
+    override fun onFileTransferResult(accepted: Boolean, reason: String) { fileResults += accepted to reason }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }
     override fun onRouteSelected(route: PeerRoute) { routes += route }

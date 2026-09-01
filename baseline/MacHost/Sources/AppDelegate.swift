@@ -2821,6 +2821,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.sync(execute: request)
             }
         }
+        session.onFileTransferApprovalRequested = { [weak self, weak session] offer in
+            let approve = { () -> Bool in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return false }
+                return self.fileTransferController?.approveIncomingFileOffer(offer) ?? false
+            }
+            return Thread.isMainThread
+                ? approve()
+                : DispatchQueue.main.sync(execute: approve)
+        }
+        session.onFileTransferCompleted = { [weak self, weak session] completed in
+            DispatchQueue.main.async { [weak self, weak session] in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.handleIncomingFileCompleted(completed)
+            }
+        }
         session.onFreshSessionRecoveryRequired = {
             [weak self, weak session] attempt in
             Task { @MainActor in
@@ -3389,37 +3408,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func applyInternetSessionState(_ state: InternetProductSessionState) {
+        let activeInternetFileTransferSession = internetProductSession
         switch state {
         case .idle:
             settings.internetStatus = internetPairingMetadataIsComplete ? .paired : .idle
+            fileTransferController?.unbind()
         case .connecting, .authenticating, .awaitingVideoConfiguration:
             settings.internetStatus = .connecting
             settings.clientConnected = false
+            fileTransferController?.unbind()
         case .streaming(let path):
             guard path != .unknown else {
                 settings.internetStatus = .failed
                 settings.internetErrorMessage =
                     "The selected ICE candidate path is unknown; no route was published."
                 settings.clientConnected = false
+                fileTransferController?.unbind()
                 return
             }
             settings.internetStatus = path == .relay ? .relay : .direct
             settings.clientConnected = true
             settings.internetErrorMessage = nil
             settings.internetRecoverySuggestion = nil
+            if let activeInternetFileTransferSession {
+                fileTransferController?.bind(
+                    server: activeInternetFileTransferSession,
+                    fileTransferAvailable: activeInternetFileTransferSession.fileTransferAvailable
+                )
+            } else {
+                fileTransferController?.unbind()
+            }
             screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
         case .recovering:
             settings.internetStatus = .recovering
             settings.clientConnected = false
+            fileTransferController?.unbind()
         case .failed(let reason):
             settings.internetStatus = .failed
             settings.internetErrorMessage = reason
             settings.clientConnected = false
+            fileTransferController?.unbind()
         case .revoked:
             settings.internetStatus = .revoked
             settings.clientConnected = false
+            fileTransferController?.unbind()
         case .closed:
             settings.clientConnected = false
+            fileTransferController?.unbind()
             if settings.internetStatus != .recovering,
                settings.internetStatus != .revoked,
                settings.internetStatus != .failed {

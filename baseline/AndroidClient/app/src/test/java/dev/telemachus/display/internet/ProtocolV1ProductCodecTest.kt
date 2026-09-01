@@ -4,10 +4,15 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
+import dev.vibescreen.protocol.v1.FileTransferComplete
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.MediaPacketHeader
@@ -34,16 +39,17 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO_DATA_CHANNEL))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
-        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO_DATA_CHANNEL))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
@@ -51,6 +57,8 @@ class ProtocolV1ProductCodecTest {
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
             hello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes,
         )
+        assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES, hello.clientHello.resourceLimits.maximumFileBytes)
+        assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES, hello.clientHello.resourceLimits.maximumFileChunkBytes)
         assertEquals(listOf(Codec.CODEC_H264, Codec.CODEC_HEVC), hello.clientHello.codecsList.sortedBy { it.number })
 
         val touch =
@@ -135,6 +143,52 @@ class ProtocolV1ProductCodecTest {
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES.toLong(),
             decodedAccepted.maximumEncryptedMediaRecordBytes,
+        )
+        assertEquals(0L, decodedHost.maximumFileBytes)
+        assertEquals(0, decodedHost.maximumFileChunkBytes)
+        assertEquals(0L, decodedAccepted.maximumFileBytes)
+        assertEquals(0, decodedAccepted.maximumFileChunkBytes)
+    }
+
+    @Test
+    fun encodesAndDecodesInternetFileTransferControlMessages() {
+        val transferId = ByteString.copyFrom(ByteArray(16) { index -> index.toByte() })
+        val digest = ByteString.copyFrom(ByteArray(32) { 0x5A })
+        val offer =
+            FileOffer
+                .newBuilder()
+                .setTransferId(transferId)
+                .setFileName("hello.txt")
+                .setMimeType("text/plain")
+                .setByteLength(12)
+                .setSha256(digest)
+                .build()
+        val accept = FileAccept.newBuilder().setTransferId(transferId).setAccepted(true).setMaximumChunkBytes(1024).build()
+
+        val offerEnvelope = Envelope.parseFrom(codec.encodeFileOffer(10, sessionId, 7, offer))
+        assertEquals(Envelope.PayloadCase.FILE_OFFER, offerEnvelope.payloadCase)
+        assertEquals(offer, (codec.decodeControl(offerEnvelope.toByteArray()).message as ProductControlMessage.FileOfferReceived).offer)
+
+        val acceptEnvelope = Envelope.parseFrom(codec.encodeFileAccept(11, sessionId, 7, accept))
+        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, acceptEnvelope.payloadCase)
+        assertEquals(accept, (codec.decodeControl(acceptEnvelope.toByteArray()).message as ProductControlMessage.FileAcceptReceived).response)
+
+        val progressEnvelope = Envelope.parseFrom(codec.encodeFileProgress(12, sessionId, 7, transferId, 12))
+        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_PROGRESS, progressEnvelope.payloadCase)
+        assertEquals(12L, (codec.decodeControl(progressEnvelope.toByteArray()).message as ProductControlMessage.FileProgressReceived).progress.receivedBytes)
+
+        val cancelEnvelope = Envelope.parseFrom(codec.encodeFileCancel(13, sessionId, 7, transferId, "policy_denied"))
+        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancelEnvelope.payloadCase)
+        assertEquals(
+            "policy_denied",
+            (codec.decodeControl(cancelEnvelope.toByteArray()).message as ProductControlMessage.FileCancelReceived).cancellation.reasonCode,
+        )
+
+        val completeEnvelope = Envelope.parseFrom(codec.encodeFileComplete(14, sessionId, 7, transferId, true, digest, ""))
+        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_COMPLETE, completeEnvelope.payloadCase)
+        assertEquals(
+            digest,
+            (codec.decodeControl(completeEnvelope.toByteArray()).message as ProductControlMessage.FileCompleteReceived).result.sha256,
         )
     }
 

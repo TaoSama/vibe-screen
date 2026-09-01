@@ -260,6 +260,7 @@ class MainActivity : AppCompatActivity() {
     private var managedHostActionsAllowed = true
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private var pendingOutgoingFileTransfer: File? = null
+    private var pendingOutgoingFileTransferTarget: ActiveFileTransferSession? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var pendingIncomingFileDecision: (() -> Unit)? = null
     private var revealOnlyTouchGestureActive = false
@@ -1945,6 +1946,7 @@ class MainActivity : AppCompatActivity() {
         // persistent floating button that occludes the video.
         binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
+        refreshFileTransferControl()
         revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
         connectionStatusAnnouncements.announceIfChanged(connectedStatus) { announcement ->
             binding.controlBar.announceForAccessibility(announcement)
@@ -2292,26 +2294,27 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val state = productSessionCoordinator.renderState()
-        binding.controlFileTransferButton.visibility = if (state.fileTransferVisible) View.VISIBLE else View.GONE
-        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled
+        val internetAvailable = activeInternetFileTransferSession() != null
+        val visible = state.fileTransferVisible || internetAvailable
+        binding.controlFileTransferButton.visibility = if (visible) View.VISIBLE else View.GONE
+        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled || internetAvailable
         applyControlBarLayout()
     }
 
     private fun beginChooseFileForTransfer() {
-        val client = streamClient ?: return
-        if (!isCurrentSession(client, activeSessionGeneration) ||
-            !currentSessionBinding().capabilities.fileTransfer ||
-            !client.canTransferFiles
-        ) {
+        val target = activeFileTransferSession()
+        if (target == null || !target.canTransfer()) {
             showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
+        pendingOutgoingFileTransferTarget = target
         val intent =
             Intent(Intent.ACTION_OPEN_DOCUMENT)
                 .addCategory(Intent.CATEGORY_OPENABLE)
                 .setType("*/*")
         runCatching { startActivityForResult(intent, REQ_FILE_TRANSFER_OPEN) }
             .onFailure { failure ->
+                pendingOutgoingFileTransferTarget = null
                 mainDiag("file transfer picker failed: " + failure.javaClass.simpleName)
                 showDedupedToast(R.string.file_transfer_pick_failed)
             }
@@ -2321,26 +2324,25 @@ class MainActivity : AppCompatActivity() {
         resultCode: Int,
         data: Intent?,
     ) {
-        if (resultCode != RESULT_OK) return
+        if (resultCode != RESULT_OK) {
+            pendingOutgoingFileTransferTarget = null
+            return
+        }
+        val target = pendingOutgoingFileTransferTarget?.takeIf { it.isCurrent() && it.canTransfer() }
+        pendingOutgoingFileTransferTarget = null
         val uri = data?.data ?: return
-        val client = streamClient
-        val generation = activeSessionGeneration
-        if (client == null ||
-            !isCurrentSession(client, generation) ||
-            !currentSessionBinding().capabilities.fileTransfer ||
-            !client.canTransferFiles
-        ) {
+        if (target == null) {
             showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
-        val maximumFileBytes = client.negotiatedMaxFileBytes
+        val maximumFileBytes = target.negotiatedMaxFileBytes()
         lifecycleScope.launch(Dispatchers.IO) {
             val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
             val sent =
                 runCatching {
                     val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
                     val registered = withContext(Dispatchers.Main) {
-                        if (isCurrentSession(client, generation) && client.canTransferFiles) {
+                        if (target.isCurrent() && target.canTransfer()) {
                             discardPendingOutgoingFileTransfer()
                             pendingOutgoingFileTransfer = file
                             true
@@ -2349,10 +2351,10 @@ class MainActivity : AppCompatActivity() {
                             false
                         }
                     }
-                    registered && client.offerFile(file, mimeType)
+                    registered && target.offerFile(file, mimeType)
             }
             withContext(Dispatchers.Main) {
-                if (!isCurrentSession(client, generation)) return@withContext
+                if (!target.isCurrent()) return@withContext
                 val sentValue =
                     sent.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
@@ -2367,6 +2369,64 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun activeFileTransferSession(): ActiveFileTransferSession? =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            activeInternetFileTransferSession()
+        } else {
+            activeStreamFileTransferSession()
+        }
+
+    private fun activeStreamFileTransferSession(): ActiveFileTransferSession? {
+        val client = streamClient ?: return null
+        val generation = activeSessionGeneration
+        if (!isCurrentSession(client, generation) ||
+            !currentSessionBinding().capabilities.fileTransfer ||
+            !client.canTransferFiles
+        ) {
+            return null
+        }
+        return ActiveFileTransferSession(
+            isCurrent = { isCurrentSession(client, generation) },
+            canTransfer = {
+                isCurrentSession(client, generation) &&
+                    currentSessionBinding().capabilities.fileTransfer &&
+                    client.canTransferFiles
+            },
+            negotiatedMaxFileBytes = { client.negotiatedMaxFileBytes },
+            offerFile = client::offerFile,
+        )
+    }
+
+    private fun activeInternetFileTransferSession(): ActiveFileTransferSession? {
+        val session = internetSession ?: return null
+        val generation = internetGeneration
+        if (prefs.connectionMode != ConnectionMode.INTERNET ||
+            !isConnected ||
+            !isCurrentInternetSession(session, generation) ||
+            !session.canTransferFiles
+        ) {
+            return null
+        }
+        return ActiveFileTransferSession(
+            isCurrent = { isCurrentInternetSession(session, generation) },
+            canTransfer = {
+                prefs.connectionMode == ConnectionMode.INTERNET &&
+                    isConnected &&
+                    isCurrentInternetSession(session, generation) &&
+                    session.canTransferFiles
+            },
+            negotiatedMaxFileBytes = { session.negotiatedMaxFileBytes },
+            offerFile = session::offerFile,
+        )
+    }
+
+    private data class ActiveFileTransferSession(
+        val isCurrent: () -> Boolean,
+        val canTransfer: () -> Boolean,
+        val negotiatedMaxFileBytes: () -> Long,
+        val offerFile: (File, String) -> Boolean,
+    )
 
     private fun stageOutgoingFileTransfer(
         uri: Uri,
@@ -2420,18 +2480,41 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
         offer: dev.vibescreen.protocol.v1.FileOffer,
     ) {
+        promptIncomingFileOffer(
+            offer = offer,
+            isCurrentAndAllowed = { isCurrentSession(client, generation) && client.canTransferFiles },
+            respond = { accepted -> client.respondToFileOffer(offer, accepted) },
+        )
+    }
+
+    private fun promptIncomingInternetFileOffer(
+        session: InternetProductSession,
+        generation: Long,
+        offer: dev.vibescreen.protocol.v1.FileOffer,
+    ) {
+        promptIncomingFileOffer(
+            offer = offer,
+            isCurrentAndAllowed = { isCurrentInternetSession(session, generation) && session.canTransferFiles },
+            respond = { accepted -> session.respondToFileOffer(offer, accepted) },
+        )
+    }
+
+    private fun promptIncomingFileOffer(
+        offer: dev.vibescreen.protocol.v1.FileOffer,
+        isCurrentAndAllowed: () -> Boolean,
+        respond: (accepted: Boolean) -> Boolean,
+    ) {
         runOnUiThread {
             if (!isInForeground ||
                 isFinishing ||
                 isDestroyed ||
-                !isCurrentSession(client, generation) ||
-                !client.canTransferFiles
+                !isCurrentAndAllowed()
             ) {
-                client.respondToFileOffer(offer, accepted = false)
+                respond(false)
                 return@runOnUiThread
             }
             if (pendingIncomingFileDialog != null) {
-                client.respondToFileOffer(offer, accepted = false)
+                respond(false)
                 return@runOnUiThread
             }
 
@@ -2444,7 +2527,7 @@ class MainActivity : AppCompatActivity() {
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
                     pendingIncomingFileDecision = null
-                    client.respondToFileOffer(offer, accepted = false)
+                    respond(false)
                 }
             }
             timeout = Runnable {
@@ -2468,7 +2551,10 @@ class MainActivity : AppCompatActivity() {
                         pendingIncomingFileDialog = null
                         pendingIncomingFileDecision = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
-                        client.respondToFileOffer(offer, accepted = true)
+                        if (!isCurrentAndAllowed() || !respond(true)) {
+                            mainDiag("file transfer accept dropped because the session is no longer current")
+                            showDedupedToast(R.string.file_transfer_unavailable)
+                        }
                     }
                     .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
                     .setOnCancelListener { rejectDecision() }
@@ -2606,6 +2692,7 @@ class MainActivity : AppCompatActivity() {
     private fun discardPendingOutgoingFileTransfer() {
         pendingOutgoingFileTransfer?.deleteRecursivelyBestEffort()
         pendingOutgoingFileTransfer = null
+        pendingOutgoingFileTransferTarget = null
     }
 
     private fun rejectPendingIncomingFileOffer() {
@@ -3829,6 +3916,11 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
     ): Boolean = productSessionCoordinator.accepts(client, generation)
 
+    private fun isCurrentInternetSession(
+        session: InternetProductSession,
+        generation: Long,
+    ): Boolean = generation == internetGeneration && internetSession === session
+
     private fun currentSessionBinding(): ClientSessionBinding {
         return productSessionCoordinator.currentBinding()
     }
@@ -4995,6 +5087,37 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                override fun onFileOffer(offer: dev.vibescreen.protocol.v1.FileOffer) {
+                    if (!isCurrentInternetSession()) return
+                    val session = sessionReference.get() ?: return
+                    promptIncomingInternetFileOffer(session, generation, offer)
+                }
+
+                override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        onIncomingFileCompleted(completed)
+                    }
+                }
+
+                override fun onFileTransferResult(accepted: Boolean, reason: String) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        discardPendingOutgoingFileTransfer()
+                        val message =
+                            if (accepted) {
+                                R.string.file_transfer_completed
+                            } else {
+                                fileTransferFailureMessageId(reason)
+                            }
+                        mainDiag("onInternetFileTransferResult: accepted=$accepted reason=$reason")
+                        showDedupedToast(message)
+                        refreshFileTransferControl()
+                    }
+                }
+
                 override fun onFreshSessionRequired(reason: String) {
                     if (!isCurrentInternetSession()) return
                     android.util.Log.i(INTERNET_LOG_TAG, "internet_fresh_session_required session_epoch=${lease.authoritativeSessionEpoch}")
@@ -5051,6 +5174,7 @@ class MainActivity : AppCompatActivity() {
                             internetProfileStore.isRevoked(pairingIdentifier)
                     },
                     internetRevocationCoordinator,
+                    File(cacheDir, "vibescreen-internet-incoming-files"),
                 )
             sessionReference.set(created)
             internetNetworkMonitor = monitor
@@ -5693,6 +5817,8 @@ class MainActivity : AppCompatActivity() {
         binding.controlClipboardButton.isEnabled = false
         binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
+        binding.controlFileTransferButton.visibility = View.GONE
+        binding.controlFileTransferButton.isEnabled = false
         DisplayCapsuleViewBinder.bind(
             resources = resources,
             selector = binding.displayCapsuleGroup,

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import CoreMedia
 import CoreVideo
 import VibeScreenProtocol
@@ -255,6 +256,215 @@ final class InternetProductSessionTests: XCTestCase {
             reason.contains("invalidLimits"),
             "Expected gate initialization failure, got: " + reason
         )
+    }
+
+    func testInternetFileOfferRequiresExplicitApprovalBeforeBulkChunks() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+        var approvalRequests = 0
+        var rawBulkReceived: Data?
+        harness.session.onFileTransferApprovalRequested = { offer in
+            approvalRequests += 1
+            XCTAssertEqual(offer.fileName, "internet.txt")
+            return false
+        }
+        harness.session.onBulkRecordReceived = { payload in
+            rawBulkReceived = payload
+        }
+
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let offer = fileOffer(
+            transferID: Data(repeating: 0xA1, count: 16),
+            fileName: "internet.txt",
+            payload: Data([0x11, 0x12, 0x13])
+        )
+        harness.receiveControl(harness.fileOffer(messageID: 3, offer: offer))
+
+        XCTAssertTrue(harness.waitForFileAccept(transferID: offer.transferID))
+        let rejected = try XCTUnwrap(harness.sentFileAccept(transferID: offer.transferID))
+        XCTAssertFalse(rejected.accepted)
+        XCTAssertEqual(rejected.rejectionReason, ProtocolV1FileTransferError.userDenied.reasonCode)
+        XCTAssertEqual(approvalRequests, 1)
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+
+        let chunk = try fileChunk(
+            transferID: offer.transferID,
+            payload: Data([0x11, 0x12, 0x13]),
+            offset: 0,
+            final: true
+        )
+        let frame = try chunk.serializedFrame()
+        harness.receiveBulk(frame)
+        XCTAssertTrue(harness.waitForRawBulkRecord { rawBulkReceived != nil })
+        XCTAssertEqual(rawBulkReceived, frame)
+        XCTAssertNil(harness.sentFileTransferProgress(transferID: offer.transferID))
+        XCTAssertNil(harness.sentFileTransferComplete(transferID: offer.transferID))
+        XCTAssertNil(harness.sentFileTransferCancel(transferID: offer.transferID))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testInternetUnknownFileTransferChunkFallsBackToRawBulk() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+        var rawBulkReceived: Data?
+        harness.session.onBulkRecordReceived = { payload in
+            rawBulkReceived = payload
+        }
+
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let transferID = Data(repeating: 0xDD, count: 16)
+        let chunk = try fileChunk(
+            transferID: transferID,
+            payload: Data([0x44]),
+            offset: 0,
+            final: true
+        )
+        let frame = try chunk.serializedFrame()
+        harness.receiveBulk(frame)
+
+        XCTAssertTrue(harness.waitForRawBulkRecord { rawBulkReceived != nil })
+        XCTAssertEqual(rawBulkReceived, frame)
+        XCTAssertNil(harness.sentFileTransferCancel(transferID: transferID))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testInternetManagedPolicyStatusWithoutNegotiatedFileTransferFailsClosed() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+        try reachStreaming(harness, supportsFileTransfer: false)
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 3,
+            fileTransferAllowed: false
+        ))
+
+        XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected unnegotiated managed policy status to fail closed.")
+        }
+        XCTAssertTrue(reason.contains("required capability"), reason)
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testInternetApprovedIncomingFileUsesBulkProgressAndCompleteControls() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 2
+        ))
+        let completed = expectation(description: "incoming file completed")
+        let payload = Data([0x21, 0x22, 0x23])
+        let transferID = Data(repeating: 0xB2, count: 16)
+        harness.session.onFileTransferApprovalRequested = { offer in
+            XCTAssertEqual(offer.transferID, transferID)
+            return true
+        }
+        harness.session.onFileTransferCompleted = { received in
+            XCTAssertEqual(received.transferID, transferID)
+            XCTAssertEqual(received.fileName, "incoming.bin")
+            XCTAssertEqual(received.byteLength, UInt64(payload.count))
+            XCTAssertEqual(received.sha256, sha256(payload))
+            XCTAssertEqual(try? Data(contentsOf: received.stagingURL), payload)
+            try? FileManager.default.removeItem(at: received.stagingURL)
+            completed.fulfill()
+        }
+
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let offer = fileOffer(
+            transferID: transferID,
+            fileName: "incoming.bin",
+            payload: payload
+        )
+        harness.receiveControl(harness.fileOffer(messageID: 3, offer: offer))
+        XCTAssertTrue(harness.waitForFileAccept(transferID: transferID))
+        let accepted = try XCTUnwrap(harness.sentFileAccept(transferID: transferID))
+        XCTAssertTrue(accepted.accepted)
+        XCTAssertEqual(accepted.maximumChunkBytes, 2)
+
+        harness.receiveBulk(try fileChunk(
+            transferID: transferID,
+            payload: Data([0x21, 0x22]),
+            offset: 0,
+            final: false
+        ).serializedFrame())
+        XCTAssertTrue(harness.waitForFileProgress(transferID: transferID, receivedBytes: 2))
+
+        harness.receiveBulk(try fileChunk(
+            transferID: transferID,
+            payload: Data([0x23]),
+            offset: 2,
+            final: true
+        ).serializedFrame())
+        wait(for: [completed], timeout: 1)
+        XCTAssertTrue(harness.waitForFileComplete(transferID: transferID))
+        let complete = try XCTUnwrap(harness.sentFileTransferComplete(transferID: transferID))
+        XCTAssertTrue(complete.accepted)
+        XCTAssertEqual(complete.sha256, sha256(payload))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testInternetOutgoingFileOfferStreamsAcceptedChunksOverBulk() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 2
+        ))
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let fileURL = try makeTemporaryFile(name: "outgoing.bin", contents: Data([0x31, 0x32, 0x33]))
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+
+        let transferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: transferID))
+        let offer = try XCTUnwrap(harness.sentFileOffer(transferID: transferID))
+        XCTAssertEqual(offer.fileName, "outgoing.bin")
+        XCTAssertEqual(offer.byteLength, 3)
+        XCTAssertEqual(offer.sha256, sha256(Data([0x31, 0x32, 0x33])))
+
+        harness.receiveControl(harness.fileAccept(
+            messageID: 3,
+            transferID: transferID,
+            maximumChunkBytes: 2
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+        let firstFrame = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .bulk })
+        let firstChunk = try ProtocolV1FileChunk(serializedFrame: firstFrame.payload)
+        XCTAssertEqual(firstChunk.header.transferID, transferID)
+        XCTAssertEqual(firstChunk.header.offset, 0)
+        XCTAssertEqual(firstChunk.payload, Data([0x31, 0x32]))
+        XCTAssertFalse(firstChunk.header.final)
+
+        harness.receiveControl(harness.fileProgress(
+            messageID: 4,
+            transferID: transferID,
+            receivedBytes: 2
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(2))
+        let secondFrame = try XCTUnwrap(harness.engine.sentPlaintext.filter { $0.channel == .bulk }.last)
+        let secondChunk = try ProtocolV1FileChunk(serializedFrame: secondFrame.payload)
+        XCTAssertEqual(secondChunk.header.offset, 2)
+        XCTAssertEqual(secondChunk.payload, Data([0x33]))
+        XCTAssertTrue(secondChunk.header.final)
+
+        harness.receiveControl(harness.fileProgress(
+            messageID: 5,
+            transferID: transferID,
+            receivedBytes: 3
+        ))
+        harness.receiveControl(harness.fileComplete(
+            messageID: 6,
+            transferID: transferID,
+            sha256: sha256(Data([0x31, 0x32, 0x33]))
+        ))
+
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
     }
 
     func testInternetNegotiatesAndRoutesValidatedStylusWithoutTouchFallback() throws {
@@ -1515,6 +1725,23 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
     }
 
+    private func reachStreaming(
+        _ harness: Harness,
+        supportsFileTransfer: Bool
+    ) throws {
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(
+            messageID: 1,
+            supportsFileTransfer: supportsFileTransfer
+        ))
+        harness.receiveControl(harness.videoAccepted(
+            messageID: 2,
+            configEpoch: harness.configuration.video.configEpoch
+        ))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
     func testInitialVideoAckWithWrongEpochFailsClosed() throws {
         let harness = try Harness()
         try harness.session.start(configuration: harness.configuration)
@@ -2528,7 +2755,8 @@ private final class Harness {
         freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
         videoConfigEpoch: UInt64 = 1,
         replacementSessionEpoch: UInt64? = nil,
-        controllerAvailable: Bool = false
+        controllerAvailable: Bool = false,
+        fileTransferPolicy: ProtocolV1FileTransferPolicy = .default
     ) throws {
         let configurationCount = max(1, engineCount)
         let configurations = (0..<configurationCount).map { index in
@@ -2537,7 +2765,8 @@ private final class Harness {
                 videoConfigEpoch: videoConfigEpoch,
                 negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
                 limits: limits,
-                controllerAvailable: controllerAvailable
+                controllerAvailable: controllerAvailable,
+                fileTransferPolicy: fileTransferPolicy
             )
         }
         let pairs = try configurations.map { configuration in
@@ -2590,7 +2819,8 @@ private final class Harness {
         videoConfigEpoch: UInt64,
         negotiationTimeoutMilliseconds: UInt32,
         limits: InternetTransportLimits,
-        controllerAvailable: Bool
+        controllerAvailable: Bool,
+        fileTransferPolicy: ProtocolV1FileTransferPolicy
     ) -> InternetProductSessionConfiguration {
         InternetProductSessionConfiguration(
             transport: WebRTCTransportConfiguration(
@@ -2621,6 +2851,7 @@ private final class Harness {
                 configEpoch: videoConfigEpoch
             ),
             controllerAvailable: controllerAvailable,
+            fileTransferPolicy: fileTransferPolicy,
             heartbeatIntervalMilliseconds: 10_000,
             heartbeatTimeoutMilliseconds: 20_000,
             negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
@@ -2649,6 +2880,7 @@ private final class Harness {
         supportsStylus: Bool = false,
         supportsStylusExtended: Bool = false,
         supportsController: Bool = false,
+        supportsFileTransfer: Bool = false,
         sessionEpoch: UInt64 = 1
     ) -> VSEnvelope {
         var range = VSProtocolRange()
@@ -2662,6 +2894,10 @@ private final class Harness {
         if supportsStylus { hello.capabilities.append(.stylus) }
         if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
         if supportsController { hello.capabilities.append(.controller) }
+        if supportsFileTransfer {
+            hello.capabilities.append(.fileTransfer)
+            hello.capabilities.append(.managedConfiguration)
+        }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]
@@ -2669,9 +2905,80 @@ private final class Harness {
         limits.maximumEncryptedMediaRecordBytes = UInt32(
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         )
+        if supportsFileTransfer {
+            limits.maximumFileBytes = 1_024
+            limits.maximumFileChunkBytes = 2
+        }
         hello.resourceLimits = limits
         var envelope = baseEnvelope(messageID: messageID, sessionEpoch: sessionEpoch)
         envelope.clientHello = hello
+        return envelope
+    }
+
+    func fileOffer(messageID: UInt64, offer: VSFileOffer) -> VSEnvelope {
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.fileOffer = offer
+        return envelope
+    }
+
+    func fileAccept(
+        messageID: UInt64,
+        transferID: Data,
+        maximumChunkBytes: UInt32
+    ) -> VSEnvelope {
+        var accept = VSFileAccept()
+        accept.transferID = transferID
+        accept.accepted = true
+        accept.maximumChunkBytes = maximumChunkBytes
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.fileAccept = accept
+        return envelope
+    }
+
+    func fileProgress(
+        messageID: UInt64,
+        transferID: Data,
+        receivedBytes: UInt64
+    ) -> VSEnvelope {
+        var progress = VSFileTransferProgress()
+        progress.transferID = transferID
+        progress.receivedBytes = receivedBytes
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.fileTransferProgress = progress
+        return envelope
+    }
+
+    func fileComplete(
+        messageID: UInt64,
+        transferID: Data,
+        sha256: Data
+    ) -> VSEnvelope {
+        var complete = VSFileTransferComplete()
+        complete.transferID = transferID
+        complete.accepted = true
+        complete.sha256 = sha256
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.fileTransferComplete = complete
+        return envelope
+    }
+
+    func managedPolicyStatus(
+        messageID: UInt64,
+        fileTransferAllowed: Bool
+    ) -> VSEnvelope {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: fileTransferAllowed,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 1_024,
+            allowedHosts: []
+        )
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.managedPolicyStatus = policy.protocolStatus
         return envelope
     }
 
@@ -2820,6 +3127,76 @@ private final class Harness {
         waitUntil { self.engine.sentPlaintext.filter { $0.channel == .bulk }.count >= count }
     }
 
+    func waitForRawBulkRecord(_ predicate: () -> Bool) -> Bool {
+        waitUntil { predicate() }
+    }
+
+    func waitForFileOffer(transferID: Data) -> Bool {
+        waitUntil { self.sentFileOffer(transferID: transferID) != nil }
+    }
+
+    func waitForFileAccept(transferID: Data) -> Bool {
+        waitUntil { self.sentFileAccept(transferID: transferID) != nil }
+    }
+
+    func waitForFileProgress(transferID: Data, receivedBytes: UInt64) -> Bool {
+        waitUntil {
+            self.sentFileTransferProgress(transferID: transferID)?.receivedBytes == receivedBytes
+        }
+    }
+
+    func waitForFileComplete(transferID: Data) -> Bool {
+        waitUntil { self.sentFileTransferComplete(transferID: transferID) != nil }
+    }
+
+    func sentFileOffer(transferID: Data) -> VSFileOffer? {
+        sentControlPayload { envelope in
+            guard case .fileOffer(let offer) = envelope.payload,
+                  offer.transferID == transferID else { return nil }
+            return offer
+        }
+    }
+
+    func sentFileAccept(transferID: Data) -> VSFileAccept? {
+        sentControlPayload { envelope in
+            guard case .fileAccept(let accept) = envelope.payload,
+                  accept.transferID == transferID else { return nil }
+            return accept
+        }
+    }
+
+    func sentFileTransferProgress(transferID: Data) -> VSFileTransferProgress? {
+        sentControlPayload { envelope in
+            guard case .fileTransferProgress(let progress) = envelope.payload,
+                  progress.transferID == transferID else { return nil }
+            return progress
+        }
+    }
+
+    func sentFileTransferComplete(transferID: Data) -> VSFileTransferComplete? {
+        sentControlPayload { envelope in
+            guard case .fileTransferComplete(let complete) = envelope.payload,
+                  complete.transferID == transferID else { return nil }
+            return complete
+        }
+    }
+
+    func sentFileTransferCancel(transferID: Data) -> VSFileTransferCancel? {
+        sentControlPayload { envelope in
+            guard case .fileTransferCancel(let cancellation) = envelope.payload,
+                  cancellation.transferID == transferID else { return nil }
+            return cancellation
+        }
+    }
+
+    private func sentControlPayload<T>(_ extract: (VSEnvelope) -> T?) -> T? {
+        engine.sentPlaintext.lazy.compactMap { item -> T? in
+            guard item.channel == .control,
+                  let envelope = try? VSEnvelope(serializedBytes: item.payload) else { return nil }
+            return extract(envelope)
+        }.first
+    }
+
     func waitForPong(sequence: UInt64) -> Bool {
         waitUntil {
             self.engine.sentPlaintext.contains { item in
@@ -2952,6 +3329,51 @@ private func waitForMonotonicDuration(_ duration: TimeInterval) {
     let durationNanoseconds = UInt64(duration * 1_000_000_000)
     let deadline = DispatchTime.now().uptimeNanoseconds + durationNanoseconds
     while DispatchTime.now().uptimeNanoseconds < deadline {}
+}
+
+private func fileOffer(
+    transferID: Data,
+    fileName: String,
+    payload: Data,
+    mimeType: String = "application/octet-stream"
+) -> VSFileOffer {
+    var offer = VSFileOffer()
+    offer.transferID = transferID
+    offer.fileName = fileName
+    offer.mimeType = mimeType
+    offer.byteLength = UInt64(payload.count)
+    offer.sha256 = sha256(payload)
+    return offer
+}
+
+private func fileChunk(
+    transferID: Data,
+    payload: Data,
+    offset: UInt64,
+    final: Bool,
+    sessionEpoch: UInt64 = 1
+) throws -> ProtocolV1FileChunk {
+    var header = VSFileChunkHeader()
+    header.transferID = transferID
+    header.offset = offset
+    header.payloadLength = UInt32(payload.count)
+    header.sessionEpoch = sessionEpoch
+    header.chunkSha256 = sha256(payload)
+    header.final = final
+    return ProtocolV1FileChunk(header: header, payload: payload)
+}
+
+private func makeTemporaryFile(name: String, contents: Data) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("vibescreen-internet-session-tests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let fileURL = directory.appendingPathComponent(name, isDirectory: false)
+    try contents.write(to: fileURL)
+    return fileURL
+}
+
+private func sha256(_ data: Data) -> Data {
+    Data(SHA256.hash(data: data))
 }
 
 private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
