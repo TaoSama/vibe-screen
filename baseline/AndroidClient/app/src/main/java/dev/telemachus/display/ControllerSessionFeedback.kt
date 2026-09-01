@@ -3,6 +3,8 @@ package dev.telemachus.display
 internal const val MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON =
     "maximum_active_controllers_exceeded"
 
+internal const val MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES = 128
+
 internal data class ControllerConnection(
     val controllerId: String,
     val controllerEpoch: Long,
