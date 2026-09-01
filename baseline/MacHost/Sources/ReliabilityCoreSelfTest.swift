@@ -9,6 +9,7 @@ enum ReliabilityCoreSelfTest {
     static func run() -> Bool {
         var failures: [String] = []
         testQueue(failures: &failures)
+        testMailboxKeyframeSync(failures: &failures)
         testEpoch(failures: &failures)
         testRecovery(failures: &failures)
         testCodec(failures: &failures)
@@ -46,6 +47,70 @@ enum ReliabilityCoreSelfTest {
             }
         } catch {
             failures.append("latest-frame queue setup failed: \(error)")
+        }
+    }
+
+    private static func testMailboxKeyframeSync(failures: inout [String]) {
+        let mailbox = LatestFrameMailbox<Frame>(isKeyframe: { $0.keyframe })
+        mailbox.reset(generation: 1, sessionEpoch: 10, accepting: true)
+
+        guard mailbox.submit(Frame(id: 1, keyframe: true), generation: 1, sessionEpoch: 10),
+              mailbox.take(generation: 1, sessionEpoch: 10)?.element?.id == 1 else {
+            failures.append("latest-frame mailbox did not admit the initial keyframe")
+            return
+        }
+
+        guard !mailbox.submit(Frame(id: 2, keyframe: false), generation: 1, sessionEpoch: 10) else {
+            failures.append("latest-frame mailbox scheduled an unexpected dependent drain")
+            return
+        }
+        mailbox.requireKeyframe(generation: 1, sessionEpoch: 10)
+        guard mailbox.finishDrain(generation: 1, sessionEpoch: 10),
+              let rejectedDependent = mailbox.take(generation: 1, sessionEpoch: 10),
+              rejectedDependent.element == nil,
+              rejectedDependent.droppedCount == 1,
+              rejectedDependent.requiresKeyframe else {
+            failures.append("latest-frame mailbox did not drop pending dependent frame after keyframe sync")
+            return
+        }
+
+        guard !mailbox.finishDrain(generation: 1, sessionEpoch: 10),
+              mailbox.submit(Frame(id: 3, keyframe: false), generation: 1, sessionEpoch: 10),
+              let nextRejectedDependent = mailbox.take(generation: 1, sessionEpoch: 10),
+              nextRejectedDependent.element == nil,
+              nextRejectedDependent.droppedCount == 1,
+              nextRejectedDependent.requiresKeyframe,
+              !mailbox.finishDrain(generation: 1, sessionEpoch: 10),
+              mailbox.submit(Frame(id: 4, keyframe: true), generation: 1, sessionEpoch: 10),
+              let replacement = mailbox.take(generation: 1, sessionEpoch: 10),
+              replacement.element?.id == 4,
+              replacement.droppedCount == 0,
+              !replacement.requiresKeyframe else {
+            failures.append("latest-frame mailbox did not wait for a replacement keyframe")
+            return
+        }
+
+        mailbox.reset(generation: 2, sessionEpoch: 20, accepting: true)
+        guard mailbox.submit(Frame(id: 10, keyframe: true), generation: 2, sessionEpoch: 20),
+              mailbox.take(generation: 2, sessionEpoch: 20)?.element?.id == 10 else {
+            failures.append("latest-frame mailbox did not restart pending-keyframe coverage")
+            return
+        }
+        guard !mailbox.submit(Frame(id: 11, keyframe: true), generation: 2, sessionEpoch: 20) else {
+            failures.append("latest-frame mailbox scheduled duplicate drain for pending keyframe")
+            return
+        }
+        mailbox.requireKeyframe(generation: 2, sessionEpoch: 20)
+        guard mailbox.finishDrain(generation: 2, sessionEpoch: 20),
+              let pendingKeyframe = mailbox.take(generation: 2, sessionEpoch: 20),
+              pendingKeyframe.element?.id == 11,
+              pendingKeyframe.droppedCount == 0,
+              !pendingKeyframe.requiresKeyframe,
+              !mailbox.finishDrain(generation: 2, sessionEpoch: 20),
+              mailbox.submit(Frame(id: 12, keyframe: false), generation: 2, sessionEpoch: 20),
+              mailbox.take(generation: 2, sessionEpoch: 20)?.element?.id == 12 else {
+            failures.append("latest-frame mailbox treated pending keyframe as still waiting for a keyframe")
+            return
         }
     }
 
