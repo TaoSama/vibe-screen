@@ -1331,9 +1331,10 @@ class MainActivity : AppCompatActivity() {
         targetSession: InternetProductSession? = internetSession,
     ): Boolean {
         val session = targetSession ?: return false
-        val events = dispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
+        val orderedDispatch = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)
+        val events = orderedDispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
         val delivery =
-            when (dispatch.delivery) {
+            when (orderedDispatch.delivery) {
                 ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
                 ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
             }

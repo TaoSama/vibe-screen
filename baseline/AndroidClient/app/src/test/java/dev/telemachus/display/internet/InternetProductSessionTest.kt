@@ -616,6 +616,153 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun sameBatchReconnectBeforeOlderDisconnectIsRepairedAfterInputIdsAreAssigned() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(21, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 3))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(
+                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
+                    ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
+                ),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+
+        val beforeAck = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(1, beforeAck.size)
+        assertEquals(21L, beforeAck.single().inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, beforeAck.single().kind)
+        assertEquals(3L, beforeAck.single().controllerEpoch)
+
+        peer.receive(
+            controlEnvelope(4)
+                .setInputAck(InputAck.newBuilder().setInputId(21).setAccepted(true))
+                .build(),
+        )
+
+        val afterAck = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(3, afterAck.size)
+        assertEquals(listOf(21L, 22L, 23L), afterAck.map { it.inputId })
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            ),
+            afterAck.map { it.kind },
+        )
+        assertEquals(listOf(3L, 3L, 4L), afterAck.map { it.controllerEpoch })
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun sameBatchReconnectAfterAcknowledgedDisconnectSendsInInputIdOrder() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(21, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 3))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        peer.receive(
+            controlEnvelope(4)
+                .setInputAck(InputAck.newBuilder().setInputId(21).setAccepted(true))
+                .build(),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(
+                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
+                    ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
+                ),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+
+        val controllers = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(3, controllers.size)
+        assertEquals(listOf(21L, 22L, 23L), controllers.map { it.inputId })
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            ),
+            controllers.map { it.kind },
+        )
+        assertEquals(listOf(3L, 3L, 4L), controllers.map { it.controllerEpoch })
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun deferredDisconnectBlocksOtherControllerUntilCleanupPreservesInputIdOrder() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(21, controllerSample(kind = ControllerEventKind.CONNECTED, controllerId = "pad-1"))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerId = "pad-1"))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.CONNECTED, controllerId = "pad-2"))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertEquals(1, peer.controllerEvents().size)
+
+        peer.receive(
+            controlEnvelope(4)
+                .setInputAck(InputAck.newBuilder().setInputId(21).setAccepted(true))
+                .build(),
+        )
+
+        val controllers = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(3, controllers.size)
+        assertEquals(listOf(21L, 22L, 23L), controllers.map { it.inputId })
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            ),
+            controllers.map { it.kind },
+        )
+        assertEquals(listOf("pad-1", "pad-1", "pad-2"), controllers.map { it.controllerId })
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
     fun staleControllerAckDoesNotFlushPendingDisconnectCleanup() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()

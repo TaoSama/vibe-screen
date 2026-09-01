@@ -63,6 +63,10 @@ internal class ControllerConnectionAckTracker {
             }
     }
 
+    fun hasDeferredDisconnects(): Boolean = synchronized(lock) {
+        pendingDisconnectsByConnection.isNotEmpty() || readyDisconnectsByConnection.isNotEmpty()
+    }
+
     fun markDisconnectReady(
         connection: ControllerConnection,
         inputId: Long,
