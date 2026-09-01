@@ -1210,6 +1210,8 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
             rotated.hostControl, rotated.deviceControl, rotated.hostMedia, rotated.deviceMedia,
             rotated.hostAudio, rotated.deviceAudio, rotated.hostBulk, rotated.deviceBulk,
         ]).count, 8)
+        current.close()
+        XCTAssertTrue(current.isClearedForTest)
         XCTAssertThrowsError(try TrafficKeyDerivation.rotate(current: current, nextEpoch: 3, updateNonce: Data((64...79).map(UInt8.init))))
     }
 
