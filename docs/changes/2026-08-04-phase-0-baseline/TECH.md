@@ -66,16 +66,22 @@ fixtures plus the concurrency and resource-lifecycle contract tests.
 
 This is intentionally a partial extraction. `StreamClient` still composes local
 transport with legacy/Protocol v1 session behavior, and `MainActivity` still
-coordinates local and Internet product sessions. A focused Android Protocol v1
-side-effect owner gates file-transfer and WakeHost callbacks on the active
-session object plus connection generation, while `FileTransferProductOwner` owns
-the Android file-transfer product state, user-decision callback port, staging
-lifecycle, stale-offer cleanup, and duplicate-transfer rejection behind the
-session boundary. WakeHost pending-request admission still lives in the
-side-effect owner so packet-sender side effects must pass current-owner checks
-before running. WakeHost product, decoder, renderer, and UI ownership therefore
-remain to be enforced by additional module boundaries before Phase 0 module
-ownership can be called complete.
+coordinates local and Internet product sessions. Focused Android Protocol v1
+owners gate side effects on the active session object plus connection
+generation. `FileTransferProductOwner` owns the Android file-transfer product
+state, user-decision callback port, staging lifecycle, stale-offer cleanup, and
+duplicate-transfer rejection behind the session boundary. The WakeHost product
+owner now owns request lifecycle, result callback delivery, authorization-secret
+handling, and packet-sender admission behind those gates; already accepted
+completion writes may drain while new side effects fail closed after termination
+admission closes. `RendererOwner` gates viewport/layout/render target/frame
+admission for the current renderer boundary. This is offline/module evidence
+only: sleeping-Mac wake, router/NIC WOL behavior, Host signing/TCC readiness,
+and retained product logs remain blocked by the WakeHost current-base hardware
+gate. Broader protocol/session ownership, decoder ownership beyond lifecycle
+admission, renderer ownership beyond the current boundary, and UI/product
+session ownership therefore remain to be enforced by additional module
+boundaries before Phase 0 module ownership can be called complete.
 
 ## Protocol v1
 

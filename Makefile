@@ -589,6 +589,7 @@ baseline-android-test:
 
 baseline-android-protocol-side-effect-owner:
 	cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
+		--tests dev.telemachus.display.WakeHostProductOwnerTest \
 		--tests dev.telemachus.display.StreamProtocolSideEffectOwnerTest \
 		--tests dev.telemachus.display.FileTransferProductOwnerTest \
 		--tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest \

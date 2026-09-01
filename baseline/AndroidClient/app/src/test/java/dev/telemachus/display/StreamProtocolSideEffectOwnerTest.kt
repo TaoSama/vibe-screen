@@ -125,6 +125,20 @@ class StreamProtocolSideEffectOwnerTest {
     }
 
     @Test
+    fun `closing admission rejects new wake requests but keeps existing reservations releasable`() {
+        val session = session()
+        val owner = alwaysCurrentOwner(session = session, maximumPendingWakeHostRequests = 1)
+        val request = ByteString.copyFromUtf8("request")
+
+        assertTrue(owner.trackWakeHostRequest(request, session, 1L))
+        owner.closeAdmission()
+
+        assertFalse(owner.trackWakeHostRequest(ByteString.copyFromUtf8("blocked"), session, 1L))
+        assertTrue(owner.releaseWakeHostRequest(request, session, 1L))
+        assertFalse(owner.releaseWakeHostRequest(request, session, 1L))
+    }
+
+    @Test
     fun `file offer decisions are claimed only by current protocol owner`() {
         val session = session()
         var connected = true

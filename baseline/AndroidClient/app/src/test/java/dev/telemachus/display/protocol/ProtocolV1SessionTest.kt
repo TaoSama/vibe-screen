@@ -4,7 +4,6 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
-import dev.telemachus.display.StaticWakeHostPolicy
 import dev.telemachus.display.WakeHostProof
 import dev.telemachus.display.WakeHostRequestContext
 import dev.vibescreen.protocol.v1.AudioCodec
@@ -1888,8 +1887,8 @@ class ProtocolV1SessionTest {
     }
 
     @Test
-    fun wakeHostPolicyAllowsCapabilityAdvertisement() {
-        val session = session(wakeAllowed = true)
+    fun advertiseWakeHostAllowsCapabilityAdvertisement() {
+        val session = session(advertiseWakeHost = true)
         val hello = session.clientHello()
 
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_WAKE_HOST))
@@ -2791,7 +2790,7 @@ class ProtocolV1SessionTest {
         listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST)
 
     private fun wakeHostSessionThroughDisplayStart(hostId: String = "mac-host"): ProtocolV1Session =
-        session(wakeAllowed = true).also {
+        session(advertiseWakeHost = true).also {
             it.clientHello()
             it.receive(hostHello(2, advertisedCapabilities = wakeHostCaps, hostId = hostId))
             it.receive(sessionAccepted(3, negotiatedCapabilities = wakeHostCaps))
@@ -2875,7 +2874,7 @@ class ProtocolV1SessionTest {
 
     private fun session(
         localManagedPolicy: ProtocolV1Session.ManagedPolicy = ProtocolV1Session.ManagedPolicy.UNMANAGED,
-        wakeAllowed: Boolean = false,
+        advertiseWakeHost: Boolean = false,
     ): ProtocolV1Session =
         ProtocolV1Session(
             deviceId = "android-test",
@@ -2883,7 +2882,7 @@ class ProtocolV1SessionTest {
             transport = TransportKind.TRANSPORT_KIND_USB,
             codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
             localManagedPolicy = localManagedPolicy,
-            wakeHostPolicy = StaticWakeHostPolicy(wakeAllowed),
+            advertiseWakeHost = advertiseWakeHost,
             nowNs = { 1_000L },
         )
 

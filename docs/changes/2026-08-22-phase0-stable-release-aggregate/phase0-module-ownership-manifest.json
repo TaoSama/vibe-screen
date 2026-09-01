@@ -3,7 +3,7 @@
   "kind": "phase0_module_ownership_current_base_manifest",
   "phase": "phase0",
   "source": {
-    "base_commit": "b99611016853e5da5d981f5d868f6fc26cb94816",
+    "base_commit": "bd7c4454803cb10432bf483e3ebc40ff8ad2e41e",
     "base_ref": "origin/main",
     "audit_date": "2026-08-31",
     "owner": "Phase 0 module ownership extraction owner"
@@ -173,27 +173,24 @@
       "id": "wake_host_product_ownership",
       "title": "WakeHost product ownership boundary",
       "required_for_phase0_stable": true,
-      "status": "partial",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHost.kt",
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHostProductOwner.kt",
       "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHostProductOwner.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHost.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WakeHostProductOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WakeHostTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamProtocolSideEffectOwnerTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt",
         "tools/vibescreen_evidence/wake_host_current_base.py"
       ],
       "focused_tests": [
         "make baseline-android-protocol-side-effect-owner",
         "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_wake_host_current_base -v"
       ],
-      "blockers": [
-        "WakeHost authorization and packet construction have focused offline tests, and pending requests are side-effect-owner gated, but sleeping-Mac product ownership remains evidence-gated outside the Android session owner.",
-        "No current-base module contract owns identity-signed Host/TCC readiness, WOL delivery evidence, and product callback lifecycle as one WakeHost owner."
-      ],
-      "fail_closed_checklist": [
-        "Keep offline WakeHost protocol tests as prerequisite only, not acceptance.",
-        "Bind WakeHost product ownership to the current-base hardware gate summary before allowing sleeping-Mac wake claims.",
-        "Add a product owner boundary for request lifecycle, UI callback delivery, and packet sender admission independent of StreamClient."
-      ]
+      "blockers": [],
+      "fail_closed_checklist": []
     },
     {
       "id": "decoder_ownership",

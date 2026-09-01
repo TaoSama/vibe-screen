@@ -6,6 +6,7 @@ import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileOffer
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal sealed interface StreamOutboundCommand {
     data class Touch(
@@ -76,14 +77,19 @@ internal sealed interface StreamOutboundCommand {
         val decision: StreamVideoConfigurationDecision,
     ) : StreamOutboundCommand
 
-    data class ProtocolWakeHostCompletion(
+    class ProtocolWakeHostCompletion(
         val session: ProtocolV1Session,
         val connectionGeneration: Long,
         val requestId: ByteString,
         val accepted: Boolean,
         val rejectionReason: String,
         val correlationId: Long,
-    ) : StreamOutboundCommand
+        val requiresTrackedReservation: Boolean = true,
+    ) : StreamOutboundCommand {
+        private val claimed = AtomicBoolean(false)
+
+        fun claimForWrite(): Boolean = claimed.compareAndSet(false, true)
+    }
 }
 
 internal interface StreamVideoConfigurationPendingCommit : StreamVideoConfigurationCommit {

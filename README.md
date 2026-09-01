@@ -323,13 +323,17 @@ Android TCP connection ownership is now enforced by a standalone JVM transport
 module with dependency-direction and resource-lifecycle contract tests.
 `StreamClient` now delegates local product-session lifecycle state, Protocol v1
 action dispatch, side-effect owner checks for file-transfer and wake-host flows,
-file-transfer product state, input envelope routing, and media-frame routing to
-focused boundary owners with offline contract coverage. Renderer viewport
-layout state is now owned by a standalone renderer boundary with contract tests,
-while decoder output/state still composes through MainActivity. This is still
-not completion of Phase 0 module ownership: wake-host product ownership, decoder
-ownership, full renderer ownership beyond viewport layout, and UI/product
-session boundaries are still being extracted.
+file-transfer product state, WakeHost request lifecycle/callback
+delivery/packet-sender admission, input envelope routing, media-frame routing,
+and renderer viewport/layout/admission to focused boundary owners with offline
+contract coverage. Android decoder lifecycle admission has a focused owner
+slice, while broader decoder presentation and product-session composition still
+run through `MainActivity`. This is still not completion of Phase 0 module
+ownership: broader protocol/session ownership, full renderer ownership beyond
+the current boundary, decoder ownership beyond lifecycle admission, and
+UI/product session boundaries are still being extracted. WakeHost real
+sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence
+remain separate fail-closed gates.
 The current-base owner state is tracked by
 `make phase0-module-ownership-gate`, which must remain blocked until every
 required boundary is closed with focused evidence.

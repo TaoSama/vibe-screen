@@ -113,11 +113,16 @@ internal class StreamProtocolSideEffectOwner(
         requestId: ByteString,
         session: ProtocolV1Session,
         connectionGeneration: Long,
-    ) {
-        val owner = pendingWakeHostRequests[requestId] ?: return
-        if (owner.session === session && owner.connectionGeneration == connectionGeneration) {
-            pendingWakeHostRequests.remove(requestId)
-        }
+    ): Boolean {
+        val owner = pendingWakeHostRequests[requestId] ?: return false
+        if (owner.session !== session || owner.connectionGeneration != connectionGeneration) return false
+        pendingWakeHostRequests.remove(requestId)
+        return true
+    }
+
+    @Synchronized
+    fun closeAdmission() {
+        activeOwner = null
     }
 
     @Synchronized

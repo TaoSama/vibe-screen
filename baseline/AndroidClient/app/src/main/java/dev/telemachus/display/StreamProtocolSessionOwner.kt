@@ -66,7 +66,7 @@ internal class StreamProtocolSessionOwner(
      * session reference for already-admitted outbound drain work.
      */
     fun clearSideEffectAdmission() {
-        protocolSideEffectOwner.clear()
+        protocolSideEffectOwner.closeAdmission()
     }
 
     /**
@@ -165,5 +165,5 @@ internal class StreamProtocolSessionOwner(
         requestId: ByteString,
         session: ProtocolV1Session,
         connectionGeneration: Long,
-    ) = protocolSideEffectOwner.releaseWakeHostRequest(requestId, session, connectionGeneration)
+    ): Boolean = protocolSideEffectOwner.releaseWakeHostRequest(requestId, session, connectionGeneration)
 }

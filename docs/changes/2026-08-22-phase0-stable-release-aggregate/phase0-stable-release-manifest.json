@@ -270,9 +270,9 @@
         372
       ],
       "blockers": [
-        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, and Protocol v1 file-transfer/WakeHost side-effect owner checks, but it still composes transport with local product-session behavior.",
-        "The current-base module ownership manifest records Android TCP transport and several StreamClient owner slices as closed, but the manifest still evaluates to blocked for Phase 0 closure.",
-        "Protocol/session, full file-transfer and wake-host product ownership, decoder, renderer, and UI/product session boundaries remain partial or open with fail-closed checklists."
+        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, protocol/session, file-transfer, and WakeHost product ownership to focused owner slices, but the module ownership sub-gate still evaluates to blocked for Phase 0 closure.",
+        "Decoder ownership beyond lifecycle admission, full renderer ownership beyond the current boundary, and UI/product session boundaries remain partial with fail-closed checklists.",
+        "WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence remain separate fail-closed runtime gates and are not closed by module ownership evidence."
       ]
     }
   ],
