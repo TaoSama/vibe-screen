@@ -26,6 +26,9 @@ internal class StreamInputDispatcher(
         (OutboundCommandScheduler.Kind, StreamOutboundCommand, Long) -> OutboundCommandScheduler.Submission,
     private val controllerConnectionAcks: ControllerConnectionAckTracker,
 ) {
+    private val controllerDispatchLock = Any()
+    private val deferredControllerDispatches = ArrayDeque<ControllerDispatch>()
+
     fun sendTouch(
         x: Float,
         y: Float,
@@ -281,6 +284,15 @@ internal class StreamInputDispatcher(
     fun sendController(dispatch: ControllerDispatch): Boolean {
         val current = state()
         if (!current.connected || !current.protocolV1 || !current.canSendController) return false
+        if (shouldDeferControllerDispatch(dispatch)) {
+            enqueueDeferredControllerDispatch(dispatch)
+            flushControllerDisconnectCleanup()
+            return true
+        }
+        return submitControllerDispatch(dispatch).wasAdmitted()
+    }
+
+    private fun submitControllerDispatch(dispatch: ControllerDispatch): OutboundCommandScheduler.Submission {
         val submission =
             submitOutbound(
                 when (dispatch.delivery) {
@@ -288,34 +300,130 @@ internal class StreamInputDispatcher(
                     ControllerDelivery.STRUCTURAL -> OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL
                 },
                 StreamOutboundCommand.ProtocolBatch { activeSession ->
-                    val pendingConnections =
-                        dispatch.samples
-                            .filter { it.kind == ControllerEventKind.CONNECTED }
-                            .map { ControllerConnection(it.controllerId, it.controllerEpoch) }
-                            .toMutableSet()
-                    dispatch.samples.mapNotNull { sample ->
-                        val connection = ControllerConnection(sample.controllerId, sample.controllerEpoch)
-                        if (sample.kind != ControllerEventKind.CONNECTED &&
-                            (connection in pendingConnections ||
-                                controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch))
-                        ) {
-                            return@mapNotNull null
-                        }
-                        val inputId = nextInputId.getAndIncrement()
-                        if (sample.kind == ControllerEventKind.CONNECTED) {
-                            check(controllerConnectionAcks.recordConnected(inputId, sample.controllerId, sample.controllerEpoch)) {
-                                "duplicate controller CONNECTED input id"
-                            }
-                        } else if (sample.kind == ControllerEventKind.DISCONNECTED) {
-                            controllerConnectionAcks.recordDisconnected(sample.controllerId, sample.controllerEpoch)
-                        }
-                        activeSession.controller(inputId = inputId, sample = sample)
+                    if (shouldDeferControllerDispatch(dispatch)) {
+                        enqueueDeferredControllerDispatch(dispatch)
+                        emptyList()
+                    } else {
+                        buildControllerEnvelopes(activeSession, dispatch)
                     }
+                },
+                0,
+            )
+        return submission
+    }
+
+    fun flushControllerDisconnectCleanup(): Boolean {
+        val current = state()
+        if (!current.connected || !current.protocolV1 || !current.canSendController) return false
+        if (!hasFlushableControllerWork()) return true
+        val submission =
+            submitOutbound(
+                OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL,
+                StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    buildControllerDisconnectCleanupEnvelopes(activeSession)
                 },
                 0,
             )
         return submission.wasAdmitted()
     }
+
+    fun resetControllerState() {
+        synchronized(controllerDispatchLock) { deferredControllerDispatches.clear() }
+    }
+
+    private fun buildControllerEnvelopes(
+        activeSession: ProtocolV1Session,
+        dispatch: ControllerDispatch,
+    ): List<dev.vibescreen.protocol.v1.Envelope> {
+        val connectedInBatch =
+            dispatch.samples
+                .filter { it.kind == ControllerEventKind.CONNECTED }
+                .map { ControllerConnection(it.controllerId, it.controllerEpoch) }
+                .toSet()
+        val seenConnectedInBatch = mutableSetOf<ControllerConnection>()
+        return dispatch.samples.mapNotNull { sample ->
+            val connection = ControllerConnection(sample.controllerId, sample.controllerEpoch)
+            val isPendingConnection =
+                connection in seenConnectedInBatch ||
+                    controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch)
+            if (sample.kind != ControllerEventKind.CONNECTED && isPendingConnection) {
+                if (sample.kind == ControllerEventKind.DISCONNECTED) {
+                    controllerConnectionAcks.deferDisconnected(
+                        nextInputId.getAndIncrement(),
+                        sample.controllerId,
+                        sample.controllerEpoch,
+                    )
+                } else {
+                    // STATE is recovered by an ACK-triggered full-state resync.
+                }
+                return@mapNotNull null
+            }
+            if (sample.kind != ControllerEventKind.CONNECTED && connection in connectedInBatch && connection !in seenConnectedInBatch) {
+                return@mapNotNull null
+            }
+            val inputId = nextInputId.getAndIncrement()
+            if (sample.kind == ControllerEventKind.CONNECTED) {
+                check(controllerConnectionAcks.recordConnected(inputId, sample.controllerId, sample.controllerEpoch)) {
+                    "duplicate controller CONNECTED input id"
+                }
+                seenConnectedInBatch += connection
+            } else if (sample.kind == ControllerEventKind.DISCONNECTED) {
+                controllerConnectionAcks.recordDisconnected(sample.controllerId, sample.controllerEpoch)
+            }
+            activeSession.controller(inputId = inputId, sample = sample)
+        }
+    }
+
+    private fun buildControllerDisconnectCleanupEnvelopes(
+        activeSession: ProtocolV1Session,
+    ): List<dev.vibescreen.protocol.v1.Envelope> {
+        val envelopes = mutableListOf<dev.vibescreen.protocol.v1.Envelope>()
+        while (true) {
+            val disconnect = controllerConnectionAcks.nextReadyDisconnect() ?: break
+            val sample =
+                ControllerStateSample(
+                    controllerId = disconnect.connection.controllerId,
+                    controllerEpoch = disconnect.connection.controllerEpoch,
+                    kind = ControllerEventKind.DISCONNECTED,
+                )
+            envelopes += activeSession.controller(inputId = disconnect.inputId, sample = sample)
+            controllerConnectionAcks.recordDisconnected(sample.controllerId, sample.controllerEpoch)
+        }
+        while (true) {
+            val dispatch = pollUnblockedDeferredControllerDispatch() ?: break
+            envelopes += buildControllerEnvelopes(activeSession, dispatch)
+        }
+        return envelopes
+    }
+
+    private fun shouldDeferControllerDispatch(dispatch: ControllerDispatch): Boolean =
+        hasDeferredControllerDispatches() || dispatch.samples.any { sample ->
+            controllerConnectionAcks.hasDeferredDisconnectBefore(sample.controllerId, sample.controllerEpoch)
+        }
+
+    private fun hasFlushableControllerWork(): Boolean =
+        controllerConnectionAcks.nextReadyDisconnect() != null ||
+            synchronized(controllerDispatchLock) {
+                deferredControllerDispatches.firstOrNull()?.let { !isBlockedByDeferredDisconnect(it) } == true
+            }
+
+    private fun hasDeferredControllerDispatches(): Boolean =
+        synchronized(controllerDispatchLock) { deferredControllerDispatches.isNotEmpty() }
+
+    private fun enqueueDeferredControllerDispatch(dispatch: ControllerDispatch) =
+        synchronized(controllerDispatchLock) { deferredControllerDispatches.addLast(dispatch) }
+
+    private fun pollUnblockedDeferredControllerDispatch(): ControllerDispatch? =
+        synchronized(controllerDispatchLock) {
+            val dispatch = deferredControllerDispatches.firstOrNull() ?: return@synchronized null
+            if (isBlockedByDeferredDisconnect(dispatch)) return@synchronized null
+            deferredControllerDispatches.removeFirst()
+        }
+
+    private fun isBlockedByDeferredDisconnect(dispatch: ControllerDispatch): Boolean =
+        dispatch.samples.any { sample ->
+            controllerConnectionAcks.hasDeferredDisconnectBefore(sample.controllerId, sample.controllerEpoch)
+        }
 
     fun sendPeripheral(
         peripheralKind: String,

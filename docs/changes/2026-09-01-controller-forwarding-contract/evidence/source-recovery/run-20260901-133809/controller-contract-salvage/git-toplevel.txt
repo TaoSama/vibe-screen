@@ -1,1 +1,1 @@
-/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/controller-contract-salvage
+<SOURCE_WORKTREE>/controller-contract-salvage

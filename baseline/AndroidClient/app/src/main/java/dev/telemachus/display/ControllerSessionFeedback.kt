@@ -18,6 +18,8 @@ internal class ControllerConnectionAckTracker {
     private val lock = Any()
     private val connectionsByInputId = linkedMapOf<Long, ControllerConnection>()
     private val inputIdsByConnection = mutableMapOf<ControllerConnection, Long>()
+    private val pendingDisconnectsByConnection = mutableMapOf<ControllerConnection, Long>()
+    private val readyDisconnectsByConnection = linkedMapOf<ControllerConnection, Long>()
 
     fun recordConnected(
         inputId: Long,
@@ -36,18 +38,57 @@ internal class ControllerConnectionAckTracker {
         true
     }
 
+    fun deferDisconnected(
+        inputId: Long,
+        controllerId: String,
+        controllerEpoch: Long,
+    ): Boolean = synchronized(lock) {
+        require(inputId > 0)
+        val connection = ControllerConnection(controllerId, controllerEpoch)
+        if (connection !in inputIdsByConnection) return@synchronized false
+        pendingDisconnectsByConnection.putIfAbsent(connection, inputId) == null
+    }
+
+    fun hasDeferredDisconnectBefore(
+        controllerId: String,
+        controllerEpoch: Long,
+    ): Boolean = synchronized(lock) {
+        pendingDisconnectsByConnection.keys.any { connection ->
+            connection.controllerId == controllerId && connection.controllerEpoch < controllerEpoch
+        } ||
+            readyDisconnectsByConnection.keys.any { connection ->
+                connection.controllerId == controllerId && connection.controllerEpoch < controllerEpoch
+            }
+    }
+
+    fun markDisconnectReady(
+        connection: ControllerConnection,
+        inputId: Long,
+    ): Unit = synchronized(lock) {
+        require(inputId > 0)
+        readyDisconnectsByConnection.putIfAbsent(connection, inputId)
+    }
+
+    fun nextReadyDisconnect(): DeferredControllerDisconnect? = synchronized(lock) {
+        val first = readyDisconnectsByConnection.entries.firstOrNull() ?: return@synchronized null
+        DeferredControllerDisconnect(first.value, first.key)
+    }
+
     fun recordDisconnected(
         controllerId: String,
         controllerEpoch: Long,
     ) = synchronized(lock) {
         val connection = ControllerConnection(controllerId, controllerEpoch)
         inputIdsByConnection.remove(connection)?.let(connectionsByInputId::remove)
+        pendingDisconnectsByConnection.remove(connection)
+        readyDisconnectsByConnection.remove(connection)
     }
 
-    fun acknowledge(inputId: Long): ControllerConnection? = synchronized(lock) {
+    fun acknowledge(inputId: Long): ControllerConnectionAcknowledgement? = synchronized(lock) {
         val connection = connectionsByInputId.remove(inputId) ?: return@synchronized null
         inputIdsByConnection.remove(connection, inputId)
-        connection
+        val deferredDisconnectInputId = pendingDisconnectsByConnection.remove(connection)
+        ControllerConnectionAcknowledgement(connection, deferredDisconnectInputId)
     }
 
     fun isPending(
@@ -60,10 +101,22 @@ internal class ControllerConnectionAckTracker {
     fun reset() = synchronized(lock) {
         connectionsByInputId.clear()
         inputIdsByConnection.clear()
+        pendingDisconnectsByConnection.clear()
+        readyDisconnectsByConnection.clear()
     }
 
     internal fun pendingCount(): Int = synchronized(lock) { connectionsByInputId.size }
 }
+
+internal data class ControllerConnectionAcknowledgement(
+    val connection: ControllerConnection,
+    val deferredDisconnectInputId: Long?,
+)
+
+internal data class DeferredControllerDisconnect(
+    val inputId: Long,
+    val connection: ControllerConnection,
+)
 
 internal data class RejectedControllerConnection(
     val controllerId: String,

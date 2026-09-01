@@ -519,43 +519,81 @@ class InternetProductSession internal constructor(
             Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
 
     private fun drainControllerQueue(): Boolean {
+        while (true) {
+            val pendingDisconnect = controllerConnectionAcks.nextReadyDisconnect() ?: break
+            val sent =
+                try {
+                    sendControllerEvent(
+                        ProductControllerEvent(
+                            pendingDisconnect.inputId,
+                            ControllerStateSample(
+                                controllerId = pendingDisconnect.connection.controllerId,
+                                controllerEpoch = pendingDisconnect.connection.controllerEpoch,
+                                kind = ControllerEventKind.DISCONNECTED,
+                            ),
+                        ),
+                    )
+                } catch (failure: Throwable) {
+                    fail(failure)
+                    return false
+                }
+            if (!sent) return false
+        }
         val result =
             controllerSendQueue.drain { event ->
-                if (event.sample.kind == ControllerEventKind.STATE &&
-                    controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)
+                if (event.sample.kind == ControllerEventKind.CONNECTED &&
+                    controllerConnectionAcks.hasDeferredDisconnectBefore(event.sample.controllerId, event.sample.controllerEpoch)
                 ) {
-                    return@drain true
+                    return@drain false
                 }
-                val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return@drain false
-                val encoded =
-                    codec.encodeController(
-                        nextMessageId(),
-                        lease.protocolSessionId,
-                        lease.authoritativeSessionEpoch,
-                        streamId,
-                        event.inputId,
-                        event.sample,
-                    )
-                val sent = sendOptionalApplicationControl(encoded)
-                if (sent) {
+                if (controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)) {
                     when (event.sample.kind) {
-                        ControllerEventKind.CONNECTED -> check(
-                            controllerConnectionAcks.recordConnected(
+                        ControllerEventKind.CONNECTED -> Unit
+                        ControllerEventKind.DISCONNECTED -> {
+                            controllerConnectionAcks.deferDisconnected(
                                 event.inputId,
                                 event.sample.controllerId,
                                 event.sample.controllerEpoch,
-                            ),
-                        ) { "duplicate controller CONNECTED input id" }
-                        ControllerEventKind.DISCONNECTED -> {
-                            controllerConnectionAcks.recordDisconnected(event.sample.controllerId, event.sample.controllerEpoch)
+                            )
+                            return@drain true
                         }
-                        ControllerEventKind.STATE -> Unit
+                        ControllerEventKind.STATE -> return@drain true
                     }
                 }
-                sent
+                sendControllerEvent(event)
             }
         result.failure?.let { fail(it) }
         return !result.blocked && result.failure == null
+    }
+
+    private fun sendControllerEvent(event: ProductControllerEvent): Boolean {
+        val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
+        val encoded =
+            codec.encodeController(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                streamId,
+                event.inputId,
+                event.sample,
+            )
+        val sent = sendOptionalApplicationControl(encoded)
+        if (sent) {
+            when (event.sample.kind) {
+                ControllerEventKind.CONNECTED -> check(
+                    controllerConnectionAcks.recordConnected(
+                        event.inputId,
+                        event.sample.controllerId,
+                        event.sample.controllerEpoch,
+                    ),
+                ) { "duplicate controller CONNECTED input id" }
+                ControllerEventKind.DISCONNECTED -> {
+                    controllerConnectionAcks.recordDisconnected(event.sample.controllerId, event.sample.controllerEpoch)
+                }
+                ControllerEventKind.STATE -> Unit
+            }
+        }
+        return sent
     }
 
     private fun sendOptionalApplicationControl(payload: ByteArray): Boolean =
@@ -1434,29 +1472,54 @@ class InternetProductSession internal constructor(
         accepted: Boolean,
         rejectionReason: String,
     ) {
-        withLifecycleGate {
-            if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
-                val controllerWasNegotiated =
-                    synchronized(lock) {
-                        acceptedSession && Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+        var shouldDrainControllerQueue = false
+        var shouldNotify = false
+        var controllerId: String? = null
+        var controllerEpoch: Long? = null
+        controllerSendGate.withLock {
+            withLifecycleGate {
+                if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
+                    val controllerWasNegotiated =
+                        synchronized(lock) {
+                            acceptedSession && Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+                        }
+                    if (!controllerWasNegotiated) {
+                        failIfOwned(
+                            owner,
+                            IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
+                        )
+                        return@withLifecycleGate
                     }
-                if (!controllerWasNegotiated) {
-                    failIfOwned(
-                        owner,
-                        IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
-                    )
-                    return@withLifecycleGate
+                    val acknowledgement =
+                        controllerConnectionAcks.acknowledge(inputId).also { acknowledged ->
+                            if (acknowledged != null) shouldDrainControllerQueue = true
+                            if (accepted && acknowledged?.deferredDisconnectInputId != null) {
+                                controllerConnectionAcks.markDisconnectReady(
+                                    acknowledged.connection,
+                                    acknowledged.deferredDisconnectInputId,
+                                )
+                                shouldDrainControllerQueue = true
+                            }
+                        }
+                    controllerId = acknowledgement?.connection?.controllerId
+                    controllerEpoch = acknowledgement?.connection?.controllerEpoch
+                    shouldNotify = true
                 }
-                val connection = controllerConnectionAcks.acknowledge(inputId)
+            }
+        }
+        if (shouldNotify) {
+            withLifecycleGate {
+                if (!synchronized(lock) { acceptsTransportCallbackLocked(owner) }) return@withLifecycleGate
                 callbacks.onInputAck(
                     inputId,
-                    connection?.controllerId,
-                    connection?.controllerEpoch,
+                    controllerId,
+                    controllerEpoch,
                     accepted,
                     rejectionReason,
                 )
             }
         }
+        if (shouldDrainControllerQueue) controllerSendGate.withLock { drainControllerQueue() }
     }
 
     private fun notifyFailureIfOwned(

@@ -1,1 +1,1 @@
-/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/android-controller-forwarding
+<SOURCE_WORKTREE>/android-controller-forwarding
