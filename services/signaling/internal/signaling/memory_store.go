@@ -76,6 +76,9 @@ func (s *MemoryStore) Create(ctx context.Context, request CreateSessionRequest) 
 }
 
 func (s *MemoryStore) createLocal(request CreateSessionRequest) (SessionResponse, bool, error) {
+	if request.SessionProfile != nil {
+		return SessionResponse{}, false, ErrConflict
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleanupLocked(s.now())
@@ -160,6 +163,7 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 		ClientDeviceID: request.ClientDeviceID,
 		SessionEpoch:   request.SessionEpoch,
 		TTLSeconds:     int64(request.TTL / time.Second),
+		SessionProfile: request.SessionProfile,
 	})
 	if err != nil {
 		return SessionResponse{}, false, err
@@ -173,10 +177,11 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 		return SessionResponse{}, false, err
 	}
 	response := SessionResponse{
-		SessionID:   admission.SessionID,
-		HostToken:   admission.HostToken,
-		DeviceToken: admission.ClientToken,
-		ExpiresAt:   admission.ExpiresAt,
+		SessionID:      admission.SessionID,
+		HostToken:      admission.HostToken,
+		DeviceToken:    admission.ClientToken,
+		ExpiresAt:      admission.ExpiresAt,
+		SessionProfile: admission.SessionProfile,
 	}
 	// Role tokens are returned only from the latest authority response. The
 	// production store never retains them for local authorization fallback.

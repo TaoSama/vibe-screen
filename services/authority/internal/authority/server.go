@@ -180,6 +180,17 @@ func (s *Server) createSignaling(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 400, "invalid signaling admission")
 		return
 	}
+	if request.SessionProfile != nil {
+		profileRequest, err := sessionProfileRequestFromSignaling(request)
+		if err != nil {
+			s.reject(w, 400, "invalid signaling session profile")
+			return
+		}
+		if err := validateSessionProfileRequest(profileRequest, s.cfg); err != nil {
+			s.reject(w, 400, err.Error())
+			return
+		}
+	}
 	result, err := s.store.CreateSignaling(r.Context(), request, s.now().UTC())
 	if err != nil {
 		s.storeError(w, err)

@@ -296,7 +296,8 @@ enum InternetSessionLeaseCodec {
         sizes: ClosedRange<Int>
     ) throws -> Data {
         let encoded = try string(root, name, maximumBytes: 8_192)
-        guard let decoded = Data(base64Encoded: encoded), sizes.contains(decoded.count) else {
+        guard let decoded = Data(base64Encoded: encoded), sizes.contains(decoded.count),
+              decoded.base64EncodedString() == encoded else {
             throw invalid("\(name) is not valid bounded base64.")
         }
         return decoded

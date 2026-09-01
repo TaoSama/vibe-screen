@@ -104,6 +104,94 @@ func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
 	}
 }
 
+func TestAuthorityModeCreateSessionForwardsSessionProfile(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Second)
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	unsignedLease := testUnsignedAndroidLease(t, profileRequest, authoritySignalingAdmission{
+		SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1", ExpiresAt: expiresAt, Created: true,
+	})
+	var received atomic.Bool
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/signaling/sessions" || r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode authority request: %v", err)
+		}
+		if request.SessionProfile == nil {
+			t.Fatal("authority request omitted session_profile")
+		}
+		if request.SessionProfile.PairingID != profileRequest.PairingID ||
+			request.SessionProfile.HostIdentity.DeviceID != "host-1" ||
+			request.SessionProfile.ClientIdentity.DeviceID != "client-1" {
+			t.Fatalf("unexpected forwarded session_profile: %#v", request.SessionProfile)
+		}
+		received.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1",
+			ExpiresAt: expiresAt, Created: true,
+			SessionProfile: &SessionProfileResponse{
+				AccountID: "acct-1", PairingID: profileRequest.PairingID,
+				SignalingSessionID: "sess-1", HostSignalingToken: "host-token-1",
+				ExpiresAt: expiresAt, Created: true, UnsignedAndroidLease: unsignedLease,
+			},
+		})
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+	body, err := json.Marshal(createSessionRequest{
+		RequestID: "req-1", AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1",
+		SessionEpoch: 7, TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	if !received.Load() {
+		t.Fatal("authority did not receive session_profile")
+	}
+	var created SessionResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.SessionProfile == nil ||
+		created.SessionProfile.SignalingSessionID != "sess-1" ||
+		string(created.SessionProfile.UnsignedAndroidLease) != string(unsignedLease) {
+		t.Fatalf("session_profile was not returned to caller: %#v", created.SessionProfile)
+	}
+}
+
+func TestLocalModeRejectsSessionProfile(t *testing.T) {
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	cfg := testConfig()
+	service := testServerWithStore(t, cfg, NewMemoryStore(cfg, nil))
+	body, err := json.Marshal(createSessionRequest{
+		RequestID: "req-1", TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := performRequest(t, service.Handler(), http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "session_profile requires production authority mode") {
+		t.Fatalf("unexpected rejection body: %s", response.Body.String())
+	}
+}
+
 func TestAuthorityModeCreateSessionReplay(t *testing.T) {
 	var calls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

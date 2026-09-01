@@ -1,6 +1,9 @@
 package signaling
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Role string
 
@@ -43,8 +46,44 @@ type Event struct {
 }
 
 type SessionResponse struct {
-	SessionID   string    `json:"session_id"`
-	HostToken   string    `json:"host_token"`
-	DeviceToken string    `json:"device_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	SessionID      string                  `json:"session_id"`
+	HostToken      string                  `json:"host_token"`
+	DeviceToken    string                  `json:"device_token"`
+	ExpiresAt      time.Time               `json:"expires_at"`
+	SessionProfile *SessionProfileResponse `json:"session_profile,omitempty"`
+}
+
+type PublicDeviceIdentity struct {
+	DeviceID           string `json:"device_id"`
+	KeyID              string `json:"key_id"`
+	KeyEpoch           uint64 `json:"key_epoch"`
+	SignatureAlgorithm string `json:"signature_algorithm"`
+	SigningPublicKey   string `json:"signing_public_key"`
+}
+
+type LeaseICEServer struct {
+	URLs       []string `json:"urls"`
+	Username   *string  `json:"username"`
+	Credential *string  `json:"credential"`
+}
+
+type SessionProfileRequest struct {
+	PairingID               string               `json:"pairing_id"`
+	HostIdentity            PublicDeviceIdentity `json:"host_identity"`
+	ClientIdentity          PublicDeviceIdentity `json:"client_identity"`
+	SignalingURL            string               `json:"signaling_url"`
+	TranscriptContext       string               `json:"transcript_context"`
+	ProtocolSessionID       string               `json:"protocol_session_id"`
+	ICEServers              []LeaseICEServer     `json:"ice_servers"`
+	AllowInsecureForTesting bool                 `json:"allow_insecure_for_testing"`
+}
+
+type SessionProfileResponse struct {
+	AccountID            string          `json:"account_id"`
+	PairingID            string          `json:"pairing_id"`
+	SignalingSessionID   string          `json:"signaling_session_id"`
+	HostSignalingToken   string          `json:"host_signaling_token"`
+	ExpiresAt            time.Time       `json:"expires_at"`
+	Created              bool            `json:"created"`
+	UnsignedAndroidLease json.RawMessage `json:"unsigned_android_lease"`
 }

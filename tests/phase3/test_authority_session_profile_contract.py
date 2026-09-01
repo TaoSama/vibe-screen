@@ -17,6 +17,9 @@ ANDROID_PROFILE_STORE = (
 AUTHORITY_SERVER = ROOT / "services/authority/internal/authority/server.go"
 AUTHORITY_STORE = ROOT / "services/authority/internal/authority/store.go"
 AUTHORITY_MIGRATION = ROOT / "services/authority/migrations/001_authority.sql"
+SIGNALING_AUTHORITY_CLIENT = (
+    ROOT / "services/signaling/internal/signaling/authority_client.go"
+)
 
 SIGNED_ONLY_KEYS = {"lease_host_key_id", "lease_signature"}
 EXPECTED_UNSIGNED_KEYS = {
@@ -62,6 +65,12 @@ def bracket_block(source: str, marker: str, open_char: str, close_char: str) -> 
     raise AssertionError(f"unterminated block after {marker}")
 
 
+def section_between(source: str, start_marker: str, end_marker: str) -> str:
+    start = source.index(start_marker)
+    end = source.index(end_marker, start)
+    return source[start:end]
+
+
 class AuthoritySessionProfileContractTests(unittest.TestCase):
     def test_unsigned_lease_keys_match_mac_decoder_and_android_signed_profile(self) -> None:
         swift = read(MAC_LEASE_ISSUER)
@@ -93,6 +102,62 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("CREATE TABLE authority_session_profile_issuance", migration)
         self.assertIn("authority_session_profile_issuance", store)
         self.assertIn("IssueSessionProfile", store)
+
+    def test_signaling_admission_can_embed_unsigned_session_profile(self) -> None:
+        server = read(AUTHORITY_SERVER)
+        store = read(AUTHORITY_STORE)
+        signaling_client = read(SIGNALING_AUTHORITY_CLIENT)
+
+        self.assertIn("SessionProfile *SignalingSessionProfileRequest", read(ROOT / "services/authority/internal/authority/model.go"))
+        self.assertIn("SessionProfile *SessionProfileResponse", read(ROOT / "services/authority/internal/authority/model.go"))
+
+        create_signaling = bracket_block(server, "func (s *Server) createSignaling", "{", "}")
+        self.assertIn("sessionProfileRequestFromSignaling", create_signaling)
+        self.assertIn("validateSessionProfileRequest", create_signaling)
+
+        self.assertIn("attachSignalingSessionProfileTx", store)
+        self.assertIn("signalingProfileRequestID", store)
+        self.assertIn("sessionProfileResponse", store)
+        self.assertIn("authority_session_profile_issuance", store)
+        self.assertIn("ErrConflict", bracket_block(store, "func (s *PostgresStore) attachSignalingSessionProfileTx", "{", "}"))
+
+        binding = bracket_block(store, "func sessionProfileRequestFromSignaling", "{", "}")
+        self.assertIn("HostIdentity.DeviceID != request.HostDeviceID", binding)
+        self.assertIn("ClientIdentity.DeviceID != request.ClientDeviceID", binding)
+
+        comparator = bracket_block(store, "func sameSignalingAdmissionRequest", "{", "}")
+        self.assertNotIn("SessionProfile", comparator)
+
+        self.assertIn('\"signaling-profile-%x\"', store)
+        self.assertIn('\"profile-%x\"', store)
+
+        self.assertIn(
+            "SessionProfile *SessionProfileRequest",
+            bracket_block(signaling_client, "type authoritySignalingRequest", "{", "}"),
+        )
+        self.assertIn(
+            "SessionProfile *SessionProfileResponse",
+            bracket_block(signaling_client, "type authoritySignalingAdmission", "{", "}"),
+        )
+        self.assertIn("validAuthoritySessionProfile", signaling_client)
+        self.assertIn("decodeAuthorityUnsignedAndroidLease", signaling_client)
+
+        unsigned_lease = bracket_block(
+            signaling_client, "type authorityUnsignedAndroidLease", "{", "}"
+        )
+        self.assertTrue(SIGNED_ONLY_KEYS.isdisjoint(string_literals(unsigned_lease)))
+        signaling_keys = string_literals(
+            section_between(
+                signaling_client,
+                "var authorityUnsignedAndroidLeaseKeys",
+                "var authorityUnsignedAndroidLeaseICEKeys",
+            )
+        )
+        self.assertEqual(signaling_keys, EXPECTED_UNSIGNED_KEYS)
+        self.assertIn("sameJSONKeys(root, authorityUnsignedAndroidLeaseKeys)", signaling_client)
+        self.assertIn('sameICEKeys(root["ice_servers"])', signaling_client)
+        self.assertIn("lease.SignalingToken == admission.ClientToken", signaling_client)
+        self.assertIn("lease.LeaseDeviceKeyID == request.SessionProfile.ClientIdentity.KeyID", signaling_client)
 
     def test_profile_issuance_records_digest_not_bearer_tokens(self) -> None:
         migration = read(AUTHORITY_MIGRATION)

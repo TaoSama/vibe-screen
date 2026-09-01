@@ -157,6 +157,19 @@ greater than the per-device epoch floor. On success it returns `session_id`,
 derived from the session ID and a server secret, so an exact idempotency replay
 returns the same credentials without storing raw bearer tokens.
 
+The request may also include `session_profile` with the same pairing identity,
+signaling URL, transcript context, protocol session ID, ICE server list, and
+testing-insecure flag accepted by `/v1/session-authority/profiles`. When present,
+the response includes `session_profile` with an unsigned Android lease bound to
+the same `session_id`, `client_token`, expiry, and authority-selected
+`session_epoch`. The profile issuance is idempotent with the signaling
+`request_id`: replaying the exact request returns the same profile with
+`created=false`, while adding, omitting, or changing the nested profile for an
+existing signaling request returns `409`. The authority still never signs the
+lease; the Mac host must verify local pairing bindings and sign it before
+Android imports it. Omitting `session_profile` preserves the legacy response
+shape.
+
 `POST /v1/signaling/sessions/{session_id}/authorize` (signaling token) validates
 a role token against the session. It returns `{"role":"host","expires_at":"..."}`
 or `{"role":"client","expires_at":"..."}`. A revoked session, revoked device,

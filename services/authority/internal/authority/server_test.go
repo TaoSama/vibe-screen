@@ -185,9 +185,14 @@ func (s *memoryStore) createSignalingLocked(request SignalingRequest, now time.T
 	if s.devices[request.HostDeviceID] != request.AccountID || s.devices[request.ClientDeviceID] != request.AccountID {
 		return SignalingAdmission{}, ErrNotFound
 	}
+	if request.SessionProfile != nil {
+		if _, err := sessionProfileRequestFromSignaling(request); err != nil {
+			return SignalingAdmission{}, err
+		}
+	}
 	if id, ok := s.requests[request.RequestID]; ok {
 		session := s.sessions[id]
-		if session.request != request {
+		if !sameSignalingAdmissionRequest(session.request, request) {
 			return SignalingAdmission{}, ErrConflict
 		}
 		if session.revoked || !now.Before(session.admission.ExpiresAt) {
@@ -195,6 +200,9 @@ func (s *memoryStore) createSignalingLocked(request SignalingRequest, now time.T
 		}
 		result := session.admission
 		result.Created = false
+		if err := s.attachSignalingSessionProfileLocked(request, &result); err != nil {
+			return SignalingAdmission{}, err
+		}
 		return result, nil
 	}
 	if request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 || request.SessionEpoch <= s.epochFloors[request.HostDeviceID] || request.SessionEpoch <= s.epochFloors[request.ClientDeviceID] {
@@ -204,9 +212,50 @@ func (s *memoryStore) createSignalingLocked(request SignalingRequest, now time.T
 	s.epochFloors[request.ClientDeviceID] = request.SessionEpoch
 	id := "session-" + request.RequestID
 	result := SignalingAdmission{SessionID: id, HostToken: "host-" + id, ClientToken: "client-" + id, ExpiresAt: now.Add(time.Duration(request.TTLSeconds) * time.Second), Created: true}
+	if err := s.attachSignalingSessionProfileLocked(request, &result); err != nil {
+		return SignalingAdmission{}, err
+	}
 	s.sessions[id] = &memorySession{request: request, admission: result}
 	s.requests[request.RequestID] = id
 	return result, nil
+}
+func (s *memoryStore) attachSignalingSessionProfileLocked(request SignalingRequest, admission *SignalingAdmission) error {
+	profileRequestID := signalingProfileRequestID(request.RequestID)
+	if request.SessionProfile == nil {
+		if _, ok := s.profiles[profileRequestID]; ok {
+			return ErrConflict
+		}
+		return nil
+	}
+	profileRequest, err := sessionProfileRequestFromSignaling(request)
+	if err != nil {
+		return err
+	}
+	digest, err := profileRequestDigest(profileRequest)
+	if err != nil {
+		return err
+	}
+	if existing, ok := s.profiles[profileRequestID]; ok {
+		if existing.digest != digest || existing.sessionID != admission.SessionID {
+			return ErrConflict
+		}
+		response, err := sessionProfileResponse(profileRequest, *admission, false)
+		if err != nil {
+			return err
+		}
+		admission.SessionProfile = &response
+		return nil
+	}
+	if !admission.Created {
+		return ErrConflict
+	}
+	response, err := sessionProfileResponse(profileRequest, *admission, true)
+	if err != nil {
+		return err
+	}
+	s.profiles[profileRequestID] = memoryProfile{digest: digest, request: profileRequest, sessionID: admission.SessionID}
+	admission.SessionProfile = &response
+	return nil
 }
 func (s *memoryStore) admissionForMemory(sessionID string, expiresAt time.Time, created bool) SignalingAdmission {
 	return SignalingAdmission{SessionID: sessionID, HostToken: "host-" + sessionID, ClientToken: "client-" + sessionID, ExpiresAt: expiresAt, Created: created}
@@ -1605,6 +1654,35 @@ func TestSessionProfileIssuanceFailsClosedForStaleEpochAndRevokedDevice(t *testi
 	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, revoked), http.StatusForbidden)
 }
 
+func TestSessionProfileIssuanceFailsClosedForHostRevocationAndSuspendedAccount(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(context.Context, *memoryStore, SessionProfileRequest) error
+	}{
+		{name: "host revoked", mutate: func(ctx context.Context, store *memoryStore, profile SessionProfileRequest) error {
+			return store.RevokeDevice(ctx, profile.HostIdentity.DeviceID, 1, time.Now().UTC())
+		}},
+		{name: "account suspended", mutate: func(ctx context.Context, store *memoryStore, profile SessionProfileRequest) error {
+			return store.SuspendAccount(ctx, profile.AccountID, time.Now().UTC())
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMemoryStore()
+			cfg := testAuthorityConfig()
+			server, err := NewServer(cfg, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile := testSessionProfileRequest(t, "profile-request", 11)
+			registerProfileDevices(t, store, profile)
+			if err := test.mutate(context.Background(), store, profile); err != nil {
+				t.Fatal(err)
+			}
+			request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, profile), http.StatusForbidden)
+		})
+	}
+}
+
 func TestSessionProfileIssuanceValidatesIdentityAndLoopbackOnlyInsecureURL(t *testing.T) {
 	store := newMemoryStore()
 	cfg := testAuthorityConfig()
@@ -1622,6 +1700,157 @@ func TestSessionProfileIssuanceValidatesIdentityAndLoopbackOnlyInsecureURL(t *te
 	badURL.SignalingURL = "http://example.test"
 	badURL.AllowInsecureForTesting = true
 	request(t, server.Handler(), http.MethodPost, "/v1/session-authority/profiles", cfg.AdminToken, mustJSON(t, badURL), http.StatusBadRequest)
+}
+
+func TestSignalingAdmissionCanIssueBoundSessionProfile(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "profile-template", 21)
+	registerProfileDevices(t, store, profile)
+	signaling := signalingRequestWithSessionProfile(profile, "signaling-request")
+
+	created := request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusCreated)
+	var admission SignalingAdmission
+	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
+		t.Fatal(err)
+	}
+	if !admission.Created || admission.SessionProfile == nil || !admission.SessionProfile.Created {
+		t.Fatalf("unexpected signaling admission profile response: %#v", admission)
+	}
+	if admission.SessionProfile.SignalingSessionID != admission.SessionID || admission.SessionProfile.HostSignalingToken != admission.HostToken || admission.SessionProfile.ExpiresAt != admission.ExpiresAt {
+		t.Fatalf("session profile did not bind the created signaling session: %#v", admission.SessionProfile)
+	}
+	var lease map[string]any
+	if err := json.Unmarshal(admission.SessionProfile.UnsignedAndroidLease, &lease); err != nil {
+		t.Fatal(err)
+	}
+	if lease["signaling_session_id"] != admission.SessionID || lease["signaling_token"] != admission.ClientToken || lease["session_epoch"] != float64(signaling.SessionEpoch) {
+		t.Fatalf("unsigned lease did not bind the signaling admission: %#v", lease)
+	}
+	if _, ok := lease["lease_signature"]; ok {
+		t.Fatal("authority returned a signed lease; Mac host must sign after local pairing verification")
+	}
+}
+
+func TestSignalingAdmissionSessionProfileReplayIsExactAndRejectsDrift(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "profile-template", 22)
+	registerProfileDevices(t, store, profile)
+	signaling := signalingRequestWithSessionProfile(profile, "signaling-request")
+	created := request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusCreated)
+	replayed := request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusOK)
+	var first, second SignalingAdmission
+	if err := json.Unmarshal(created.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(replayed.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.SessionID != second.SessionID || first.HostToken != second.HostToken || first.ClientToken != second.ClientToken || second.Created || second.SessionProfile == nil || second.SessionProfile.Created {
+		t.Fatalf("idempotent replay changed stable fields: first=%#v second=%#v", first, second)
+	}
+	drifted := signaling
+	drifted.SessionProfile = &SignalingSessionProfileRequest{
+		PairingID:               signaling.SessionProfile.PairingID,
+		HostIdentity:            signaling.SessionProfile.HostIdentity,
+		ClientIdentity:          signaling.SessionProfile.ClientIdentity,
+		SignalingURL:            signaling.SessionProfile.SignalingURL,
+		TranscriptContext:       signaling.SessionProfile.TranscriptContext,
+		ProtocolSessionID:       base64.StdEncoding.EncodeToString([]byte("changed-protocol-session")),
+		ICEServers:              signaling.SessionProfile.ICEServers,
+		AllowInsecureForTesting: signaling.SessionProfile.AllowInsecureForTesting,
+	}
+	request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, drifted), http.StatusConflict)
+	omitted := signaling
+	omitted.SessionProfile = nil
+	request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, omitted), http.StatusConflict)
+}
+
+func TestSignalingAdmissionSessionProfilePreservesLegacyResponseWhenOmitted(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signaling := SignalingRequest{RequestID: "legacy-request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}
+	created := request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusCreated)
+	var body map[string]any
+	if err := json.Unmarshal(created.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["session_profile"]; ok {
+		t.Fatalf("legacy signaling admission unexpectedly returned session_profile: %#v", body)
+	}
+	profile := testSessionProfileRequest(t, "profile-template", signaling.SessionEpoch)
+	profile.HostIdentity.DeviceID = "host"
+	profile.ClientIdentity.DeviceID = "client"
+	withProfile := signalingRequestWithSessionProfile(profile, signaling.RequestID)
+	request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, withProfile), http.StatusConflict)
+}
+
+func TestSignalingAdmissionSessionProfileFailsClosedForRevokedDeviceAndSuspendedAccount(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "profile-template", 23)
+	registerProfileDevices(t, store, profile)
+	if err := store.RevokeDevice(context.Background(), profile.HostIdentity.DeviceID, 1, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	signaling := signalingRequestWithSessionProfile(profile, "revoked-host")
+	request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusForbidden)
+
+	store = newMemoryStore()
+	server, err = NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile = testSessionProfileRequest(t, "profile-template", 24)
+	registerProfileDevices(t, store, profile)
+	if err := store.SuspendAccount(context.Background(), profile.AccountID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	signaling = signalingRequestWithSessionProfile(profile, "suspended-account")
+	request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusForbidden)
+}
+
+func TestSignalingAdmissionSessionProfileValidatesIdentityBinding(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := testSessionProfileRequest(t, "profile-template", 25)
+	registerProfileDevices(t, store, profile)
+	if err := store.RegisterDevice(context.Background(), profile.AccountID, "different-client"); err != nil {
+		t.Fatal(err)
+	}
+	signaling := signalingRequestWithSessionProfile(profile, "identity-mismatch")
+	signaling.ClientDeviceID = "different-client"
+	request(t, server.Handler(), http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, mustJSON(t, signaling), http.StatusBadRequest)
 }
 
 func TestPostgresStoreRejectsUsageOutsideAllocationColumnBounds(t *testing.T) {
@@ -1693,6 +1922,27 @@ func testSessionProfileRequest(t *testing.T, requestID string, epoch uint64) Ses
 		ProtocolSessionID:       base64.StdEncoding.EncodeToString([]byte("protocol-session")),
 		ICEServers:              []LeaseICEServer{{URLs: []string{"stun:stun.example.test"}}},
 		AllowInsecureForTesting: false,
+	}
+}
+
+func signalingRequestWithSessionProfile(profile SessionProfileRequest, requestID string) SignalingRequest {
+	return SignalingRequest{
+		RequestID:      requestID,
+		AccountID:      profile.AccountID,
+		HostDeviceID:   profile.HostIdentity.DeviceID,
+		ClientDeviceID: profile.ClientIdentity.DeviceID,
+		SessionEpoch:   profile.SessionEpoch,
+		TTLSeconds:     profile.TTLSeconds,
+		SessionProfile: &SignalingSessionProfileRequest{
+			PairingID:               profile.PairingID,
+			HostIdentity:            profile.HostIdentity,
+			ClientIdentity:          profile.ClientIdentity,
+			SignalingURL:            profile.SignalingURL,
+			TranscriptContext:       profile.TranscriptContext,
+			ProtocolSessionID:       profile.ProtocolSessionID,
+			ICEServers:              profile.ICEServers,
+			AllowInsecureForTesting: profile.AllowInsecureForTesting,
+		},
 	}
 }
 
