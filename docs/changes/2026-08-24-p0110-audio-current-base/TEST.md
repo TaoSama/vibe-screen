@@ -1,10 +1,10 @@
 # P0110 Android audio current-base owner
 
 Status: current-base Android owner recorded; real USB/LAN audio playback blocked
-Date: 2026-08-30
-Previous record: 2026-08-29
-Source branch: `codex/android-audio-playback-p0110-20260830`
-Base commit: `87e16d8bea4446c1ca449045678f1bafc7fd6cb2` (`origin/main` at current-base refresh)
+Date: 2026-09-01
+Previous record: 2026-08-30
+Source branch: `codex/audio-pcm-product-flow`
+Base commit: `origin/main` at 2026-09-01 branch creation
 
 ## Scope
 
@@ -15,6 +15,18 @@ gate still requires real-device playback evidence from the production session:
 `CAPABILITY_AUDIO`, accepted PCM S16LE `AudioConfig`, Host channel `3` packet
 flow, Android `AudioTrack` start/write evidence, audible or
 instrumentation-backed playback confirmation, and disconnect cleanup.
+
+The 2026-09-01 follow-up adds an offline USB/LAN PCM S16LE product-flow
+contract fixture at
+[`../../../contracts/fixtures/audio/v1/usb-lan-pcm-s16le-product-flow.json`](../../../contracts/fixtures/audio/v1/usb-lan-pcm-s16le-product-flow.json).
+The fixture is intentionally separate from the Phase 3 Internet AUDIO/BULK
+secure-record fixture. It pins Protocol v1 audio format negotiation,
+`sample_rate_hz`, `channel_count`, `frames_per_packet`, `stream_id`,
+`config_epoch`, `session_epoch`, channel `3`, packet boundaries, serialized
+headers, Android `AudioTrack` submission order, and cleanup expectations for
+disconnect/error paths. This is offline contract evidence only; it does not
+prove Microphone/TCC readiness, macOS Host startup, LAN secure-record delivery,
+or real Android speaker playback.
 
 ## PR audit
 
@@ -48,12 +60,20 @@ The machine-checkable summary is
 
 ## Automated checks
 
-The first rows are the 2026-08-30 refresh. The remaining 2026-08-29 and
-2026-08-28 rows are
-retained as historical context for the earlier blocked owner record.
+The first rows are the 2026-09-01 offline contract refresh. The remaining
+2026-08-30, 2026-08-29, and 2026-08-28 rows are retained as historical context
+for the earlier blocked owner record.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
+| `make protocol` | PASS | Buf format/lint/build/breaking and 45 Python protocol/security/shared-model tests passed. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" --tests "dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.usbLanPcmFixtureNegotiatesWritesAndCleansUpOnDisconnect" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.rejectedAudioReconfigurationStopsExistingPlayback" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.malformedAudioPacketAfterAcceptedConfigFailsSessionAndReleasesOutput"` | PASS | Focused Android JVM contract covers the shared USB/LAN PCM fixture, format fields, `AudioConfigResult` bytes, packet parsing, jitter ordering, `AudioTrack` payload submission, disconnect cleanup, config-reject cleanup, and malformed-packet error cleanup. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug` | PASS | Full Android local gate passed on rerun. An earlier run hit one transient non-audio `StreamClientCancellationTest.readySessionRejectsMalformedDisplayWithoutReconnectLoop` `SocketException`; that test passed when rerun directly before the full gate passed. |
+| `make baseline-android-check` | PASS | CI-equivalent Android gate passed: transport module checks, unit tests, lint, debug APK assembly, and release dependency audit. Gradle reported existing configuration-cache serialization problems for two custom transport verification tasks and discarded the cache, but the build completed successfully. |
+| `cd baseline/MacHost && swift build -c release -Xswiftc -file-prefix-map -Xswiftc "$(pwd)/../..=."` | PASS | Release Host build completed locally. |
+| `cd baseline/MacHost && host_bin="$(swift build -c release -Xswiftc -file-prefix-map -Xswiftc "$(pwd)/../..=." --show-bin-path)/Vibe Screen" && "$host_bin" --audio-capture-self-test` | PASS | Release audio self-test consumed the shared USB/LAN PCM fixture and passed config, packetization, decode, lifecycle, error, and stale-generation checks without touching real Microphone/TCC. |
+| `make baseline-macos-self-test` | PASS | Release Host build completed and the standard macOS self-test now includes `Audio capture self-test: PASS` alongside Host, transport, reliability, Protocol v1, video encoder, and Phase 3 real-media self-tests. This remains offline coverage, not USB/LAN playback evidence. |
+| `cd baseline/MacHost && swift test --filter AudioUsbLanPcmFixtureTests` | BLOCKED | Local Command Line Tools environment cannot import `XCTest`: `no such module XCTest`. CI with full Xcode must prove the XCTest fixture. |
 | `python3 -m py_compile scripts/android_audio_current_base_readiness.py scripts/android_audio_readiness_support.py scripts/tests/test_android_audio_current_base_readiness.py` | PASS | Collector and focused test modules compile. |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_android_audio_current_base_readiness -v` | PASS | Collector unit tests verify public redaction, blocked observation semantics, forbidden login-item diagnostic avoidance, and device-lock behavior. |
 | `make android-audio-current-base-readiness EVIDENCE_SERIAL=<ANDROID_SERIAL> EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-08-30-p0110-audio-current-base-refresh` | PASS | Wrote sanitized read-only current-base evidence and a fail-closed owner record without installing/starting the app, changing ADB reverse, clearing logcat, requesting TCC, or running login-item diagnostics. |

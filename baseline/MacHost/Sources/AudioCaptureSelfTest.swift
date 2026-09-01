@@ -5,6 +5,7 @@ enum AudioCaptureSelfTest {
     static func run() -> Bool {
         var failures: [String] = []
         testConfigValidation(failures: &failures)
+        testUsbLanPcmFixture(failures: &failures)
         testPacketizerWireFormat(failures: &failures)
         testPacketDecodeFailures(failures: &failures)
         testBoundedCaptureQueue(failures: &failures)
@@ -15,7 +16,7 @@ enum AudioCaptureSelfTest {
         testStaleCaptureErrorIgnored(failures: &failures)
 
         if failures.isEmpty {
-            print("Audio capture self-test: PASS (config, packetization, decode failures, bounded queue, stop delivery, lifecycle, error forwarding, empty capture, stale error isolation)")
+            print("Audio capture self-test: PASS (config, USB/LAN PCM fixture, packetization, decode failures, bounded queue, stop delivery, lifecycle, error forwarding, empty capture, stale error isolation)")
             return true
         }
         print("Audio capture self-test: FAIL (\(failures.joined(separator: "; "))) ")
@@ -41,6 +42,65 @@ enum AudioCaptureSelfTest {
             }
         } catch {
             failures.append("valid audio config rejected: \(error)")
+        }
+    }
+
+    private static func testUsbLanPcmFixture(failures: inout [String]) {
+        do {
+            let fixture = try AudioSelfTestFixture.load()
+            guard fixture.transportModes == ["usb", "lan"],
+                  fixture.capability == "CAPABILITY_AUDIO",
+                  fixture.protocolChannel.name == "AUDIO",
+                  fixture.protocolChannel.id == 3,
+                  fixture.cleanupExpectations.hostStopReason == MacHostAudioStopReason.reconfigure else {
+                failures.append("USB/LAN PCM fixture metadata mismatch")
+                return
+            }
+            let format = try MacHostAudioFormat(config: fixture.config.message)
+            guard format.streamID == fixture.config.streamID,
+                  format.configEpoch == fixture.config.configEpoch,
+                  format.sampleRateHz == fixture.config.sampleRateHz,
+                  format.channelCount == fixture.config.channelCount,
+                  format.framesPerPacket == fixture.config.framesPerPacket,
+                  format.bytesPerPacket == fixture.config.bytesPerPacket else {
+                failures.append("USB/LAN PCM fixture config mismatch")
+                return
+            }
+            guard try fixture.config.message.serializedData() == Data(audioSelfTestHex: fixture.config.serializedHex),
+                  try fixture.acceptedConfigResult.message.serializedData() == Data(audioSelfTestHex: fixture.acceptedConfigResult.serializedHex) else {
+                failures.append("USB/LAN PCM fixture config bytes mismatch")
+                return
+            }
+            var packetizer = MacHostAudioPacketizer(format: format, sessionEpoch: fixture.sessionEpoch)
+            let packets = try packetizer.append(MacHostAudioCaptureBuffer(
+                pcmS16LE: Data(audioSelfTestHex: fixture.capture.pcmS16LEHex),
+                frameCount: fixture.capture.frameCount,
+                timestampMonotonicNs: fixture.capture.timestampMonotonicNs
+            ))
+            guard packets.count == fixture.packets.count else {
+                failures.append("USB/LAN PCM fixture emitted unexpected packet count")
+                return
+            }
+            for (packet, expected) in zip(packets, fixture.packets) {
+                guard packet.header.streamID == fixture.config.streamID,
+                      packet.header.sessionEpoch == fixture.sessionEpoch,
+                      packet.header.configEpoch == fixture.config.configEpoch,
+                      packet.header.sequence == expected.sequence,
+                      packet.header.frameCount == expected.frameCount,
+                      packet.timestampMonotonicNs == expected.timestampMonotonicNs,
+                      packet.payload == Data(audioSelfTestHex: expected.payloadHex),
+                      packet.serializedFrame == Data(audioSelfTestHex: expected.serializedFrameHex) else {
+                    failures.append("USB/LAN PCM fixture packet mismatch")
+                    return
+                }
+                let decoded = try MacHostAudioPacketCodec.decode(Data(audioSelfTestHex: expected.serializedFrameHex))
+                guard decoded.header == packet.header, decoded.payload == packet.payload else {
+                    failures.append("USB/LAN PCM fixture decode mismatch")
+                    return
+                }
+            }
+        } catch {
+            failures.append("USB/LAN PCM fixture check failed: \(error)")
         }
     }
 
@@ -406,6 +466,189 @@ private final class LockedAudioSelfTestPackets: @unchecked Sendable {
             Thread.sleep(forTimeInterval: 0.01)
         }
         return lock.withAudioSelfTestLock { values.count >= count }
+    }
+}
+
+private struct AudioSelfTestFixture: Decodable {
+    private static let fixtureRelativePath = "contracts/fixtures/audio/v1/usb-lan-pcm-s16le-product-flow.json"
+
+    struct ProtocolChannel: Decodable {
+        let name: String
+        let id: Int
+    }
+
+    struct Config: Decodable {
+        let streamID: UInt64
+        let configEpoch: UInt64
+        let codec: String
+        let sampleRateHz: UInt32
+        let channelCount: UInt32
+        let framesPerPacket: UInt32
+        let bytesPerPacket: Int
+        let serializedHex: String
+
+        private enum CodingKeys: String, CodingKey {
+            case streamID = "stream_id"
+            case configEpoch = "config_epoch"
+            case codec
+            case sampleRateHz = "sample_rate_hz"
+            case channelCount = "channel_count"
+            case framesPerPacket = "frames_per_packet"
+            case bytesPerPacket = "bytes_per_packet"
+            case serializedHex = "serialized_hex"
+        }
+
+        var message: VSAudioConfig {
+            var config = VSAudioConfig()
+            config.streamID = streamID
+            config.configEpoch = configEpoch
+            config.codec = .pcmS16Le
+            config.sampleRateHz = sampleRateHz
+            config.channelCount = channelCount
+            config.framesPerPacket = framesPerPacket
+            return config
+        }
+    }
+
+    struct ConfigResult: Decodable {
+        let streamID: UInt64
+        let configEpoch: UInt64
+        let accepted: Bool
+        let rejectionReason: String
+        let serializedHex: String
+
+        private enum CodingKeys: String, CodingKey {
+            case streamID = "stream_id"
+            case configEpoch = "config_epoch"
+            case accepted
+            case rejectionReason = "rejection_reason"
+            case serializedHex = "serialized_hex"
+        }
+
+        var message: VSAudioConfigResult {
+            var result = VSAudioConfigResult()
+            result.streamID = streamID
+            result.configEpoch = configEpoch
+            result.accepted = accepted
+            result.rejectionReason = rejectionReason
+            return result
+        }
+    }
+
+    struct Capture: Decodable {
+        let frameCount: UInt32
+        let timestampMonotonicNs: UInt64
+        let pcmS16LEHex: String
+
+        private enum CodingKeys: String, CodingKey {
+            case frameCount = "frame_count"
+            case timestampMonotonicNs = "timestamp_monotonic_ns"
+            case pcmS16LEHex = "pcm_s16le_hex"
+        }
+    }
+
+    struct Packet: Decodable {
+        let sequence: UInt64
+        let frameCount: UInt32
+        let timestampMonotonicNs: UInt64
+        let payloadHex: String
+        let serializedFrameHex: String
+
+        private enum CodingKeys: String, CodingKey {
+            case sequence
+            case frameCount = "frame_count"
+            case timestampMonotonicNs = "timestamp_monotonic_ns"
+            case payloadHex = "payload_hex"
+            case serializedFrameHex = "serialized_frame_hex"
+        }
+    }
+
+    struct CleanupExpectations: Decodable {
+        let hostStopReason: String
+
+        private enum CodingKeys: String, CodingKey {
+            case hostStopReason = "host_stop_reason"
+        }
+    }
+
+    let transportModes: [String]
+    let capability: String
+    let protocolChannel: ProtocolChannel
+    let sessionEpoch: UInt64
+    let config: Config
+    let acceptedConfigResult: ConfigResult
+    let capture: Capture
+    let packets: [Packet]
+    let cleanupExpectations: CleanupExpectations
+
+    private enum CodingKeys: String, CodingKey {
+        case transportModes = "transport_modes"
+        case capability
+        case protocolChannel = "protocol_channel"
+        case sessionEpoch = "session_epoch"
+        case config
+        case acceptedConfigResult = "accepted_config_result"
+        case capture
+        case packets
+        case cleanupExpectations = "cleanup_expectations"
+    }
+
+    static func load() throws -> AudioSelfTestFixture {
+        for candidate in bundledFixtureCandidates() {
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try JSONDecoder().decode(AudioSelfTestFixture.self, from: Data(contentsOf: candidate))
+            }
+        }
+
+        let searchRoots = [
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
+            URL(fileURLWithPath: CommandLine.arguments.first ?? FileManager.default.currentDirectoryPath)
+                .deletingLastPathComponent(),
+        ]
+        for root in searchRoots {
+            var cursor = root.standardizedFileURL
+            for _ in 0..<8 {
+                let candidate = cursor.appendingPathComponent(fixtureRelativePath)
+                if FileManager.default.fileExists(atPath: candidate.path) {
+                    return try JSONDecoder().decode(AudioSelfTestFixture.self, from: Data(contentsOf: candidate))
+                }
+                let parent = cursor.deletingLastPathComponent()
+                if parent.path == cursor.path { break }
+                cursor = parent
+            }
+        }
+        throw MacHostAudioError.captureStartFailed("USB/LAN PCM fixture not found")
+    }
+
+    private static func bundledFixtureCandidates() -> [URL] {
+        var candidates: [URL] = []
+        if let resourceURL = Bundle.main.resourceURL {
+            candidates.append(resourceURL.appendingPathComponent(fixtureRelativePath))
+        }
+        #if SWIFT_PACKAGE
+        if let moduleURL = Bundle.module.url(
+            forResource: "usb-lan-pcm-s16le-product-flow",
+            withExtension: "json",
+            subdirectory: "contracts/fixtures/audio/v1"
+        ) {
+            candidates.append(moduleURL)
+        }
+        if let moduleResourceURL = Bundle.module.resourceURL {
+            candidates.append(moduleResourceURL.appendingPathComponent(fixtureRelativePath))
+        }
+        #endif
+        return candidates
+    }
+}
+
+private extension Data {
+    init(audioSelfTestHex: String) {
+        precondition(audioSelfTestHex.count.isMultiple(of: 2))
+        self.init(stride(from: 0, to: audioSelfTestHex.count, by: 2).map { offset in
+            let start = audioSelfTestHex.index(audioSelfTestHex.startIndex, offsetBy: offset)
+            let end = audioSelfTestHex.index(start, offsetBy: 2)
+            return UInt8(audioSelfTestHex[start..<end], radix: 16)!
+        })
     }
 }
 

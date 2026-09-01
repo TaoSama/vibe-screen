@@ -2865,7 +2865,7 @@ class StreamingServer: EncodedFrameSink {
               activeConnectionGeneration == generation,
               connectionProtocolMode == .protocolV1,
               !isStopped else { return }
-        stopProtocolV1Audio(reason: "audio_reconfigure")
+        stopProtocolV1Audio(reason: MacHostAudioStopReason.reconfigure)
         audioGeneration &+= 1
         let currentAudioGeneration = audioGeneration
         do {

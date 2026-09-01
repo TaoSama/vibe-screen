@@ -9,6 +9,7 @@ import dev.telemachus.display.audio.PcmAudioStreamFormat
 import dev.telemachus.display.audio.PcmAudioWriteResult
 import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
 import dev.telemachus.display.audio.encodePacket
+import dev.telemachus.display.audio.loadUsbLanPcmAudioFixture
 import dev.telemachus.display.audio.pcmPayload
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.ProtocolChannel
@@ -144,8 +145,63 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun usbLanPcmFixtureNegotiatesWritesAndCleansUpOnDisconnect() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val writtenPackets = CountDownLatch(fixture.packets.size)
+            val sessionEnded = CountDownLatch(1)
+            audioOutputFactory.onWrite = { writtenPackets.countDown() }
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                        )
+                        write(peer, base(6).setAudioConfig(fixture.audioConfig()).build())
+                        val result = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.AUDIO_CONFIG_RESULT, result.payloadCase)
+                        assertArrayEquals(fixture.acceptedConfigResult.serializedBytes, result.audioConfigResult.toByteArray())
+
+                        fixture.packets.forEach { packet ->
+                            ProtocolV1Framing.write(
+                                peer.getOutputStream(),
+                                ProtocolChannel.AUDIO,
+                                packet.serializedFrameBytes,
+                            )
+                        }
+                        assertTrue(writtenPackets.await(8, TimeUnit.SECONDS))
+                        write(peer, disconnect(id = 7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = { sessionEnded.countDown() }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(1, audioOutputFactory.created.size)
+            assertEquals(
+                fixture.cleanupExpectations.outputEventsAfterConfigPacketDisconnect,
+                audioOutputFactory.created.single().events,
+            )
+            assertEquals(
+                fixture.packets.map { it.payloadBytes.toList() },
+                audioOutputFactory.created.single().writes.map { it.toList() },
+            )
+        }
+    }
+
+    @Test
     fun rejectedAudioReconfigurationStopsExistingPlayback() = runBlocking {
         ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
             val audioOutputFactory = TestPcmAudioOutputFactory()
             val sessionEnded = CountDownLatch(1)
             val acceptedConfig = audioConfig()
@@ -182,7 +238,50 @@ class StreamClientProtocolV1IntegrationTest {
             withTimeout(8_000) { clientJob.await() }
             assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
             assertEquals(1, audioOutputFactory.created.size)
-            assertEquals(listOf("start", "stop", "close"), audioOutputFactory.created.single().events)
+            assertEquals(fixture.cleanupExpectations.outputEventsAfterConfigReject, audioOutputFactory.created.single().events)
+        }
+    }
+
+    @Test
+    fun malformedAudioPacketAfterAcceptedConfigFailsSessionAndReleasesOutput() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                        )
+                        write(peer, base(6).setAudioConfig(fixture.audioConfig()).build())
+                        assertTrue(readEnvelope(peer).audioConfigResult.accepted)
+                        val firstPacket = fixture.packets.first().serializedFrameBytes
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            firstPacket.copyOfRange(0, firstPacket.size - 1),
+                        )
+                    }
+                }
+            var failure: SessionFailure? = null
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = {
+                failure = it
+                sessionEnded.countDown()
+            }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.INVALID_MEDIA_PAYLOAD, checkNotNull(failure).kind)
+            assertEquals(fixture.cleanupExpectations.outputEventsAfterPacketError, audioOutputFactory.created.single().events)
         }
     }
 

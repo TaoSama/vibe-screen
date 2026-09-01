@@ -1,0 +1,58 @@
+{
+  "schema": "dev.vibescreen.audio.usb-lan-pcm-s16le-product-flow/v1",
+  "description": "USB/LAN Protocol v1 PCM S16LE product-flow fixture shared by Swift Host packetization tests and Android playback tests. This fixture is offline only and is not real microphone or speaker evidence.",
+  "transport_modes": ["usb", "lan"],
+  "capability": "CAPABILITY_AUDIO",
+  "protocol_channel": {
+    "name": "AUDIO",
+    "id": 3
+  },
+  "session_epoch": 7,
+  "config": {
+    "stream_id": 27,
+    "config_epoch": 9,
+    "codec": "AUDIO_CODEC_PCM_S16LE",
+    "sample_rate_hz": 48000,
+    "channel_count": 2,
+    "frames_per_packet": 3,
+    "bytes_per_packet": 12,
+    "serialized_hex": "081b100918012080f70228023003"
+  },
+  "accepted_config_result": {
+    "stream_id": 27,
+    "config_epoch": 9,
+    "accepted": true,
+    "rejection_reason": "",
+    "serialized_hex": "081b10091801"
+  },
+  "capture": {
+    "frame_count": 6,
+    "timestamp_monotonic_ns": 123456789,
+    "pcm_s16le_hex": "000102030405060708090a0b101112131415161718191a1b"
+  },
+  "packets": [
+    {
+      "sequence": 0,
+      "frame_count": 3,
+      "timestamp_monotonic_ns": 123456789,
+      "payload_hex": "000102030405060708090a0b",
+      "header_hex": "081b100718092803300c",
+      "serialized_frame_hex": "0a081b100718092803300c000102030405060708090a0b"
+    },
+    {
+      "sequence": 1,
+      "frame_count": 3,
+      "timestamp_monotonic_ns": 123456789,
+      "payload_hex": "101112131415161718191a1b",
+      "header_hex": "081b1007180920012803300c",
+      "serialized_frame_hex": "0c081b1007180920012803300c101112131415161718191a1b"
+    }
+  ],
+  "cleanup_expectations": {
+    "disconnect_stop_reason": "connection_cleanup",
+    "host_stop_reason": "audio_reconfigure",
+    "output_events_after_config_packet_disconnect": ["start", "write", "write", "stop", "close"],
+    "output_events_after_config_reject": ["start", "stop", "close"],
+    "output_events_after_packet_error": ["start", "stop", "close"]
+  }
+}
