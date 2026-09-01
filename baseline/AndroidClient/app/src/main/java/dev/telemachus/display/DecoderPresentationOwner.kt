@@ -259,8 +259,9 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
 
     fun detachCurrentDecoder(): Decoder? {
         configurationGeneration.incrementAndGet()
+        val decoder = decoderUseGate.clear()
         rendererOwner.clearDecoderPresentation()
-        return decoderUseGate.clear()
+        return decoder
     }
 
     fun releaseCurrentDecoder(releaseDecoder: (Decoder) -> Unit) {

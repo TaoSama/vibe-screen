@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -365,6 +366,65 @@ class DecoderPresentationOwnerTest {
     }
 
     @Test
+    fun `detach waits for in flight decoder gate before clearing renderer presentation`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val decoder = Any()
+        val presentation = RendererDecoderPresentation(configEpoch = 62, renderTargetGeneration = renderTarget.generation)
+        val attempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 62)
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val decodeEntered = CountDownLatch(1)
+        val releaseDecode = CountDownLatch(1)
+        val detachStarted = CountDownLatch(1)
+        val detachFinished = CountDownLatch(1)
+        val detachedDecoder = java.util.concurrent.atomic.AtomicReference<Any?>()
+
+        assertTrue(owner.publishLocalDecoder(decoder, attempt))
+        assertEquals(presentation, rendererOwner.currentDecoderPresentation)
+        try {
+            val frameFuture =
+                executor.submit {
+                    owner.routeLocalFrame(
+                        sessionCurrent = true,
+                        configEpoch = 62,
+                        decode = {
+                            decodeEntered.countDown()
+                            assertTrue(releaseDecode.await(1, java.util.concurrent.TimeUnit.SECONDS))
+                        },
+                        onDrop = { fail("current frame should not drop") },
+                    )
+                }
+            assertTrue(decodeEntered.await(1, java.util.concurrent.TimeUnit.SECONDS))
+
+            val detachThread =
+                Thread {
+                    detachStarted.countDown()
+                    detachedDecoder.set(owner.detachCurrentDecoder())
+                    detachFinished.countDown()
+                }
+            detachThread.start()
+            assertTrue(detachStarted.await(1, java.util.concurrent.TimeUnit.SECONDS))
+            waitUntilBlocked(detachThread)
+
+            assertEquals(presentation, rendererOwner.currentDecoderPresentation)
+            assertFalse(detachFinished.await(50, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+            releaseDecode.countDown()
+            frameFuture.get(1, java.util.concurrent.TimeUnit.SECONDS)
+            detachThread.join(1_000)
+
+            assertSame(decoder, detachedDecoder.get())
+            assertNull(rendererOwner.currentDecoderPresentation)
+            assertNull(owner.currentDecoder())
+        } finally {
+            releaseDecode.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `internet presentation rolls back decoder renderer geometry and connected state atomically`() {
         val rendererOwner = RendererOwner()
         val owner = owner(rendererOwner)
@@ -457,6 +517,15 @@ class DecoderPresentationOwnerTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("$relativePath not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun waitUntilBlocked(thread: Thread) {
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(1)
+        while (System.nanoTime() < deadline) {
+            if (thread.state == Thread.State.BLOCKED) return
+            Thread.sleep(10)
+        }
+        fail("Expected detach to wait for the in-flight decoder use")
     }
 
     private data class TestInternetVideoConfiguration(
