@@ -94,17 +94,24 @@ jobs:
       - name: Verify embedded macOS identity and version
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
         run: |
           app=".build/release-artifacts/Vibe Screen.app"
           actual="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
             "$app/Contents/Info.plist")"
           test "$actual" = "$RELEASE_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+            "$app/Contents/Info.plist")" = "dev.telemachus.display"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' \
             "$app/Contents/Info.plist")" = "Vibe Screen"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' \
             "$app/Contents/Info.plist")" = "Vibe Screen"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \
             "$app/Contents/Info.plist")" = "Vibe Screen"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :VibeScreenSourceCommit' \
+            "$app/Contents/Info.plist")" = "$RELEASE_COMMIT"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :VibeScreenSourceDirty' \
+            "$app/Contents/Info.plist")" = "false"
           test -x "$app/Contents/MacOS/Vibe Screen"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

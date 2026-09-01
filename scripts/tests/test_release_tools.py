@@ -1458,6 +1458,23 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             )
         )
 
+    def test_parse_designated_requirement_identifier_accepts_quoted_or_bare_identifier(self) -> None:
+        self.assertEqual(
+            package_macos.parse_designated_requirement_identifier(
+                'identifier "dev.telemachus.display" and certificate root = H"'
+                + package_macos.EXPECTED_SIGNING_LEAF_SHA1
+                + '"'
+            ),
+            "dev.telemachus.display",
+        )
+        self.assertEqual(
+            package_macos.parse_designated_requirement_identifier(
+                "identifier org.webrtc.WebRTC and anchor apple generic"
+            ),
+            "org.webrtc.WebRTC",
+        )
+        self.assertIsNone(package_macos.parse_designated_requirement_identifier("anchor apple generic"))
+
     def test_parse_args_rejects_environment_ad_hoc_without_explicit_cli_option(self) -> None:
         with (
             mock.patch.object(sys, "argv", ["package_macos.py"]),
@@ -1521,6 +1538,31 @@ class MacOSSigningIdentityTests(unittest.TestCase):
         validate_mock.assert_not_called()
         run_mock.assert_not_called()
 
+    def test_main_refuses_dirty_source_before_reading_plist_or_building(self) -> None:
+        arguments = argparse.Namespace(sign_identity="-", sign_identity_explicit=True)
+        with (
+            mock.patch.object(package_macos, "parse_args", return_value=arguments),
+            mock.patch.object(package_macos, "resolve_sign_identity", return_value="-"),
+            mock.patch.object(package_macos, "validate_notice_bundle") as validate_mock,
+            mock.patch.object(
+                package_macos,
+                "collect_source_identity",
+                return_value=package_macos.SourceIdentity(
+                    commit="a" * 40,
+                    tree="b" * 40,
+                    dirty=True,
+                ),
+            ),
+            mock.patch.object(package_macos, "read_source_plist") as plist_mock,
+            mock.patch.object(package_macos, "run") as run_mock,
+        ):
+            with self.assertRaisesRegex(SystemExit, "dirty source tree"):
+                package_macos.main()
+
+        validate_mock.assert_called_once_with(package_macos.REPOSITORY_ROOT)
+        plist_mock.assert_not_called()
+        run_mock.assert_not_called()
+
     def test_clean_codesign_temporary_files_removes_framework_staging_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             framework = Path(temporary_directory) / "WebRTC.framework"
@@ -1582,6 +1624,57 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, r"Versions/A/WebRTC\.cstemp"):
                 package_macos.require_no_codesign_temporary_files(framework)
 
+    def test_codesign_temporary_files_matches_only_cstemp_extension_case_insensitively(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            stale = root / "WebRTC.CSTEMP"
+            nested_stale = root / "WebRTC.cstemp.cstemp"
+            template = root / "Resources" / "foo.cstemplate.dat"
+            template.parent.mkdir()
+            stale.write_bytes(b"stale")
+            nested_stale.write_bytes(b"nested stale")
+            template.write_bytes(b"not a codesign temporary file")
+
+            temporary_files = package_macos.codesign_temporary_files(root)
+
+            self.assertEqual(
+                tuple(path.relative_to(root).as_posix() for path in temporary_files),
+                ("WebRTC.CSTEMP", "WebRTC.cstemp.cstemp"),
+            )
+
+    def test_code_resources_scan_reports_sealed_cstemp_references_without_temp_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            framework = Path(temporary_directory) / "WebRTC.framework"
+            signature_dir = framework / "Versions" / "A" / "_CodeSignature"
+            signature_dir.mkdir(parents=True)
+            with (signature_dir / "CodeResources").open("wb") as code_resources:
+                plistlib.dump(
+                    {
+                        "files": {
+                            "Resources/Info.plist": {"hash": b"stable"},
+                            "Resources/foo.cstemplate.dat": {"hash": b"stable-template"},
+                            "WebRTC.cstemp": {"hash": b"stale"},
+                            "WebRTC.cstemp.cstemp": {"hash": b"nested"},
+                        },
+                        "rules": {"^.*\.cstemp$": True, "cstemplates.dat": True},
+                    },
+                    code_resources,
+                )
+
+            self.assertEqual(package_macos.codesign_temporary_files(framework), ())
+            references = package_macos.codesign_resource_seal_temporary_references(framework)
+
+            self.assertIn("Versions/A/_CodeSignature/CodeResources:$/files/WebRTC.cstemp", references)
+            self.assertIn("Versions/A/_CodeSignature/CodeResources:$/files/WebRTC.cstemp.cstemp", references)
+            self.assertIn(r"Versions/A/_CodeSignature/CodeResources:$/rules/^.*\.cstemp$", references)
+            self.assertNotIn(
+                "Versions/A/_CodeSignature/CodeResources:$/files/Resources/foo.cstemplate.dat",
+                references,
+            )
+            self.assertNotIn("Versions/A/_CodeSignature/CodeResources:$/rules/cstemplates.dat", references)
+            with self.assertRaisesRegex(SystemExit, r"CodeResources.*WebRTC\.cstemp"):
+                package_macos.require_no_codesign_resource_seal_temporary_references(framework)
+
     def test_sign_packaged_app_cleans_framework_and_signs_outer_bundle_last(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
@@ -1603,8 +1696,9 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                     (package_macos.CODESIGN, "-d", "-r-", str(app)),
                     (package_macos.CODESIGN, "-d", "-r-", str(framework)),
                 ):
+                    identifier = "org.webrtc.WebRTC" if command[-1] == str(framework) else "dev.telemachus.display"
                     return (
-                        'designated => identifier "dev.telemachus.display" and '
+                        f'designated => identifier "{identifier}" and '
                         f'certificate root = H"{package_macos.EXPECTED_SIGNING_LEAF_SHA1}"'
                     )
                 return ""
@@ -1759,6 +1853,17 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "designated requirement is missing"):
                     package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
 
+    def test_verify_signed_app_certificate_contract_rejects_wrong_identifier_even_for_ad_hoc(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value='designated => identifier "com.example.OtherHost" and anchor apple generic',
+            ):
+                with self.assertRaisesRegex(SystemExit, "uses identifier 'com.example.OtherHost'"):
+                    package_macos.verify_signed_app_certificate_contract(app, "-")
+
     def test_verify_signed_app_certificate_contract_wraps_codesign_requirement_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
@@ -1767,13 +1872,27 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "inspection failed.*not signed"):
                     package_macos.verify_signed_app_certificate_contract(app, package_macos.EXPECTED_SIGNING_LEAF_SHA1)
 
-    def test_verify_signed_app_certificate_contract_skips_ad_hoc_identity(self) -> None:
+    def test_verify_signed_app_certificate_contract_ad_hoc_accepts_cdhash_only_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
-            with mock.patch.object(package_macos, "run") as run_mock:
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value='designated => cdhash H"14d6c458c817f38dfdf7cc1d31bfdcb1e8e11fa7"',
+            ) as run_mock:
                 package_macos.verify_signed_app_certificate_contract(app, "-")
 
-        run_mock.assert_not_called()
+        run_mock.assert_called_once_with(package_macos.CODESIGN, "-d", "-r-", str(app))
+
+    def test_verify_signed_app_certificate_contract_ad_hoc_accepts_expected_identifier(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            with mock.patch.object(
+                package_macos,
+                "run",
+                return_value='designated => identifier "dev.telemachus.display" and anchor apple generic',
+            ):
+                package_macos.verify_signed_app_certificate_contract(app, "-")
 
     def test_sign_packaged_app_verifies_outer_app_and_framework_requirements(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1789,8 +1908,9 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                     (package_macos.CODESIGN, "-d", "-r-", str(app)),
                     (package_macos.CODESIGN, "-d", "-r-", str(framework)),
                 ):
+                    identifier = "org.webrtc.WebRTC" if command[-1] == str(framework) else "dev.telemachus.display"
                     return (
-                        'designated => identifier "dev.telemachus.display" and '
+                        f'designated => identifier "{identifier}" and '
                         f'certificate leaf = H"{expected}"'
                     )
                 return ""
@@ -1825,7 +1945,7 @@ class MacOSSigningIdentityTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, r"WebRTC\.framework.*expected"):
                     package_macos.sign_packaged_app(app, framework, expected)
 
-    def test_sign_packaged_app_ad_hoc_skips_designated_requirement_checks(self) -> None:
+    def test_sign_packaged_app_ad_hoc_verifies_designated_requirement_identifiers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
             framework = app / "Contents" / "Frameworks" / "WebRTC.framework"
@@ -1834,13 +1954,17 @@ class MacOSSigningIdentityTests(unittest.TestCase):
 
             def fake_run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
                 commands.append(command)
+                if command == (package_macos.CODESIGN, "-d", "-r-", str(app)):
+                    return 'designated => identifier "dev.telemachus.display" and anchor apple generic'
+                if command == (package_macos.CODESIGN, "-d", "-r-", str(framework)):
+                    return 'designated => identifier "org.webrtc.WebRTC" and anchor apple generic'
                 return ""
 
             with mock.patch.object(package_macos, "run", side_effect=fake_run):
                 package_macos.sign_packaged_app(app, framework, "-")
 
-        self.assertNotIn((package_macos.CODESIGN, "-d", "-r-", str(app)), commands)
-        self.assertNotIn((package_macos.CODESIGN, "-d", "-r-", str(framework)), commands)
+        self.assertIn((package_macos.CODESIGN, "-d", "-r-", str(app)), commands)
+        self.assertIn((package_macos.CODESIGN, "-d", "-r-", str(framework)), commands)
 
     def test_verify_reproducible_zip_rechecks_extracted_app_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1888,7 +2012,8 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             root = Path(temporary_directory)
             app = root / "Vibe Screen.app"
             (app / "Contents" / "_CodeSignature").mkdir(parents=True)
-            (app / "Contents" / "_CodeSignature" / "CodeResources").write_text("sealed", encoding="utf-8")
+            with (app / "Contents" / "_CodeSignature" / "CodeResources").open("wb") as code_resources:
+                plistlib.dump({"files": {"Contents/MacOS/Vibe Screen": {"hash": b"stable"}}}, code_resources)
             framework_version = app / "Contents" / "Frameworks" / "WebRTC.framework" / "Versions" / "A"
             framework_version.mkdir(parents=True)
             (framework_version / "WebRTC").write_text("binary", encoding="utf-8")
@@ -1913,6 +2038,22 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             self.assertEqual(command[:5], (package_macos.CODESIGN, "--verify", "--deep", "--strict", "--verbose=2"))
             self.assertEqual(Path(command[5]).name, "Vibe Screen.app")
             self.assertEqual(observed_symlink_targets, ["A"])
+
+    def test_verify_reproducible_zip_fails_closed_when_code_resources_is_malformed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / "Vibe Screen.app"
+            signature_dir = app / "Contents" / "_CodeSignature"
+            signature_dir.mkdir(parents=True)
+            (signature_dir / "CodeResources").write_text("not a plist", encoding="utf-8")
+            archive = root / "Vibe-Screen.zip"
+            package_macos.create_reproducible_zip(app, archive)
+
+            with mock.patch.object(package_macos, "run") as run_mock:
+                with self.assertRaisesRegex(SystemExit, "unreadable or malformed"):
+                    package_macos.verify_reproducible_zip(archive, "Vibe Screen.app")
+
+        run_mock.assert_not_called()
 
     def test_extract_reproducible_zip_rejects_path_traversal_members(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1956,6 +2097,31 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             with mock.patch.object(package_macos, "run", return_value=""):
                 with self.assertRaisesRegex(SystemExit, "Credits.html.cstemp"):
                     package_macos.verify_reproducible_zip(archive, "Vibe Screen.app")
+
+    def test_verify_reproducible_zip_fails_closed_when_code_resources_seals_removed_cstemp(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / "Vibe Screen.app"
+            signature_dir = (
+                app
+                / "Contents"
+                / "Frameworks"
+                / "WebRTC.framework"
+                / "Versions"
+                / "A"
+                / "_CodeSignature"
+            )
+            signature_dir.mkdir(parents=True)
+            with (signature_dir / "CodeResources").open("wb") as code_resources:
+                plistlib.dump({"files": {"WebRTC.cstemp": {"hash": b"stale"}}}, code_resources)
+            archive = root / "Vibe-Screen.zip"
+            package_macos.create_reproducible_zip(app, archive)
+
+            with mock.patch.object(package_macos, "run") as run_mock:
+                with self.assertRaisesRegex(SystemExit, r"CodeResources.*WebRTC\.cstemp"):
+                    package_macos.verify_reproducible_zip(archive, "Vibe Screen.app")
+
+        run_mock.assert_not_called()
 
     def test_main_delegates_final_signing_to_packaged_app_signer(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -2400,6 +2566,9 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn('SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"', package_script)
         self.assertIn('SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"', package_script)
         self.assertIn('SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"', package_script)
+        self.assertIn("if source_identity.dirty:", package_script)
+        self.assertIn("refusing to package macOS Host from a dirty source tree", package_script)
+        self.assertIn("require_no_codesign_resource_seal_temporary_references", package_script)
         self.assertIn('run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))', package_script)
         self.assertIn('SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"', package_script)
         self.assertNotIn("TELEMACHUS_SIGN_IDENTITY", package_script)
@@ -2415,6 +2584,13 @@ class PrepareReleaseTests(unittest.TestCase):
         )
         release_macos_job = workflow_job_body(release_workflow, "macos")
         self.assertIn("timeout-minutes: 30", release_macos_job)
+        self.assertIn('RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}', release_macos_job)
+        self.assertIn("Print :CFBundleIdentifier", release_macos_job)
+        self.assertIn('= "dev.telemachus.display"', release_macos_job)
+        self.assertIn("Print :VibeScreenSourceCommit", release_macos_job)
+        self.assertIn('= "$RELEASE_COMMIT"', release_macos_job)
+        self.assertIn("Print :VibeScreenSourceDirty", release_macos_job)
+        self.assertIn('= "false"', release_macos_job)
         self.assertIn("name: vibe-screen-macos-ad-hoc-signed", phase0_workflow)
         self.assertNotIn(
             "#filePath",
