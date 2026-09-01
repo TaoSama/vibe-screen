@@ -521,6 +521,11 @@ class InternetProductSession internal constructor(
     private fun drainControllerQueue(): Boolean {
         val result =
             controllerSendQueue.drain { event ->
+                if (event.sample.kind == ControllerEventKind.STATE &&
+                    controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)
+                ) {
+                    return@drain true
+                }
                 val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return@drain false
                 val encoded =
                     codec.encodeController(

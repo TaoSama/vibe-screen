@@ -25,8 +25,8 @@ Android treats a new application ID as a different app.
   pauses new retry attempts and input; returning to the foreground resumes
   retry or requests a fresh keyframe without discarding a live session.
 - Input writes use a bounded single-writer scheduler: recovery controls are
-  prioritized, pointer moves coalesce to the newest pending position, and
-  down/up/cancel boundaries retain FIFO order.
+  prioritized, pointer and controller analog moves coalesce to the newest
+  pending state, and touch/controller structural boundaries retain FIFO order.
 - Touch tap, long-press right click, long-press drag, two-finger scroll/pinch,
   external mouse wheel, and external secondary-button events use the existing
   touch path. Secondary mouse clicks are adapted to the host's long-press
@@ -44,8 +44,22 @@ physical keyboard input shows the compatibility message without sending bytes,
 and native pointer move/click are rejected unless Protocol v1 has negotiated the
 pointer capability and installed a session input sink. Wheel and secondary
 mouse button input continue through the existing touch adapters for old peers.
-Physical-stylus drawing-app confirmation and other peripherals remain release
-gates.
+Standard controller forwarding is also independently capability-gated across
+USB, LAN, and Internet. The client maps standard Android gamepad and joystick
+buttons, sticks, triggers, and hat input into Protocol v1 `ControllerEvent`
+messages, keeps lifecycle epochs for up to four active controllers, waits for
+accepted connection acknowledgements before sending controller state through
+an acknowledgement-triggered current-state resynchronization, and emits all-zero
+neutral release state before disconnect or teardown. Mapper, session, Internet
+queue, and protocol behavior are covered by offline tests. If an Internet
+controller disconnects before its connection ACK arrives, the pending neutral
+release state is skipped and the lifecycle is closed by `DISCONNECTED`, because
+the Host has not accepted any non-neutral state for that controller.
+Physical-stylus
+drawing-app confirmation, controller runtime acceptance, and other peripherals
+remain release gates; controller runtime acceptance still requires a named
+physical Android controller and an identity-signed macOS Host with the approved
+virtual HID entitlement plus visible Mac-side response evidence.
 
 Internet mode is exposed as
 a development-preview UI: it scans the one-time pairing offer, completes the

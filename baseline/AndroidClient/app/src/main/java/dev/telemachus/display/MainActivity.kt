@@ -4984,6 +4984,15 @@ class MainActivity : AppCompatActivity() {
                     rejectionReason: String,
                 ) {
                     if (!isCurrentInternetSession()) return
+                    if (accepted && controllerId != null && controllerEpoch != null) {
+                        runOnUiThread {
+                            if (!isCurrentInternetSession()) return@runOnUiThread
+                            internetControllerSessionState.resynchronize()?.let { dispatch ->
+                                sendInternetControllerDispatch(dispatch, "internet controller ack resync")
+                            }
+                        }
+                        return
+                    }
                     val rejectedConnection =
                         ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted) ?: return
                     if (internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)) {

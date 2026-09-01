@@ -1,0 +1,11 @@
+source=/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/controller-contract-salvage
+snapshot_dir=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage
+head=2d39bf7f78eda88aa8813bb18c0068ccb8e6574d
+branch=codex/controller-contract-salvage
+status_file=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/status.short.txt
+diff_file=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/diff.patch
+cached_diff_file=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/cached.diff.patch
+untracked_list=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/untracked-files.txt
+untracked_tar=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/untracked-files.tar
+untracked_sha256=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/untracked-files.sha256
+recovered_untracked_sha256=/Users/luwentao/.codex/worktrees/ff08/vibe-screen/docs/changes/2026-09-01-controller-forwarding-contract/evidence/source-recovery/run-20260901-133809/controller-contract-salvage/recovered-untracked-files.sha256

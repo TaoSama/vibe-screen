@@ -1,0 +1,2145 @@
+diff --git a/README.md b/README.md
+index f9a8b4d5d..0737ab5b4 100644
+--- a/README.md
++++ b/README.md
+@@ -10,10 +10,12 @@
+ > Android builds now upgrade the main USB/LAN session to Protocol v1 while
+ > retaining an explicit legacy fallback. Protocol v1 is now exercised on device
+ > (display selection/switch, HiDPI capture, keyboard/scroll input,
+-> auto-reconnect) and the cross-platform offline gates pass. A two-hour soak has
+-> run with a stable stream, but the host resident-memory no-growth gate and a
+-> native-pointer HID confirmation remain open. Do not treat roadmap items below
+-> as shipped features.
++> auto-reconnect) and the cross-platform offline gates pass, including the
++> controller protocol and virtual-gamepad report paths. A two-hour soak has run
++> with a stable stream, but the host resident-memory no-growth gate, a
++> native-pointer HID confirmation, and physical-controller/approved-entitlement
++> virtual-HID confirmation remain open. Do not treat roadmap items below as
++> shipped features.
+ 
+ Vibe Screen is building a low-latency Mac display and input terminal for
+ Android, HarmonyOS, and iOS. Today this repository contains a runnable native
+@@ -29,7 +31,7 @@ platform scaffolding under active development.
+ | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
+ | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
+ | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage, with fixed-binary device re-verification still gated on macOS permission for the rebuilt Host |
+-| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Physical-stylus drawing-app confirmation, controllers, and other peripherals remain open |
++| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 independently capability-gates stylus pressure/tilt/eraser/barrel/hover and standard controller forwarding across USB, LAN, and Internet. Controller source and offline tests cover 13 buttons, two sticks, two triggers, a hat, lifecycle recovery, and up to four concurrent devices. Physical stylus/controller evidence remains open; controller injection also requires an Apple identity-signed Host with the approved com.apple.developer.hid.virtual.device entitlement and a successful runtime probe. |
+ | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
+ | LAN | Experimental trusted-network mode; authenticated but not encrypted |
+ | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
+@@ -141,10 +143,13 @@ boundaries:
+   where required.
+ - VideoToolbox provides hardware HEVC and H.264 encoding, with AV1 added when
+   supported by host and client hardware.
+-- CGEvent and Accessibility provide the macOS input adapter. Protocol v1 wires
+-  touch-derived gestures, keyboard, native pointer/scroll, pen and eraser
+-  pressure/tilt, barrel buttons, and hover/proximity state. Physical HID mouse
+-  and stylus behavior still require their respective device confirmations.
++- CGEvent and Accessibility provide the macOS adapter for touch-derived
++  gestures, keyboard, native pointer/scroll, and pen/eraser input. Protocol v1
++  controller input uses a virtual IOKit gamepad instead. The Host advertises it
++  only when an Apple identity-signed build contains the approved
++  com.apple.developer.hid.virtual.device entitlement and passes a runtime
++  device probe. Physical HID mouse, stylus, and controller behavior still
++  require their respective device confirmations.
+ - Window management moves the current window or application between physical
+   and virtual displays and supports headless startup.
+ 
+@@ -356,6 +361,18 @@ the verified scroll but still want one confirmation with a physical HID mouse
+ attached to the phone, since synthetic adb pointer motion does not deliver as a
+ hover event.
+ 
++Protocol v1 controller forwarding is implemented across USB, LAN, and Internet
++and covered by offline protocol, Android mapper/scheduler/recovery, and Mac
++state-machine/HID-report tests. The Android client maps the standard 13 buttons,
++dual sticks, analog triggers, and hat; it preserves lifecycle epochs for up to
++four active controllers, delivers structural state FIFO, and coalesces analog
++state. The Mac Host validates the same lifecycle and prepares a virtual IOKit
++gamepad only after its signing/entitlement/runtime gates pass. This is not
++device evidence: the Xiaomi 13 run has no physical controller, Apple approval
++for com.apple.developer.hid.virtual.device is still open, no matching
++identity-signed Host was exercised, and real macOS virtual-HID recognition is
++unverified.
++
+ An opt-in Xiaomi 13 instrumentation pass also drove the production touch path
+ for tap, long-press right click, long-press drag, two-finger scroll, and pinch.
+ It reproduced a shared-`CGEventSource` bug where pinch's Command modifier leaked
+@@ -576,6 +593,10 @@ reconnect or sample error; it is a short regression run, not a replacement for
+ the formal gate. A 2026-08-09 two-hour soak held a stable stream but left the
+ host RSS no-growth gate open (about +18.3 MB); stable self-signing now keeps the
+ host's Screen Recording grant across rebuilds and relaunches.
++Controller forwarding is source- and offline-verified only. The Xiaomi 13
++acceptance runs did not include a physical controller, and the Host-side
++virtual-HID path still requires an Apple identity-signed build with the approved
++entitlement and a successful real-device recognition pass.
+ The viewport/input and window-action records are retained under
+ [2026-08-10-xiaomi13-viewport-input](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-viewport-input/README.md)
+ and
+diff --git a/baseline/AndroidClient/README.md b/baseline/AndroidClient/README.md
+index 0dcf9155d..aa8347665 100644
+--- a/baseline/AndroidClient/README.md
++++ b/baseline/AndroidClient/README.md
+@@ -25,8 +25,8 @@ Android treats a new application ID as a different app.
+   pauses new retry attempts and input; returning to the foreground resumes
+   retry or requests a fresh keyframe without discarding a live session.
+ - Input writes use a bounded single-writer scheduler: recovery controls are
+-  prioritized, pointer moves coalesce to the newest pending position, and
+-  down/up/cancel boundaries retain FIFO order.
++  prioritized, pointer and controller analog moves coalesce to the newest
++  pending state, and touch/controller structural boundaries retain FIFO order.
+ - Touch tap, long-press right click, long-press drag, two-finger scroll/pinch,
+   external mouse wheel, and external secondary-button events use the existing
+   touch path. Secondary mouse clicks are adapted to the host's long-press
+@@ -39,8 +39,15 @@ normalized pressure, signed two-axis tilt, pen/eraser tool kind, two barrel
+ buttons, and hover/proximity state over USB, LAN, and Internet. Extended stylus
+ fields use an independent capability gate, while legacy or unnegotiated peers
+ receive the existing pen-contact/touch behavior instead of unknown protocol
+-bytes. Physical-stylus drawing-app confirmation and other peripherals remain
+-release gates.
++bytes. Standard controller capture is independently capability-gated across
++USB, LAN, and Internet. The client maps 13 buttons, dual sticks, analog
++triggers, and the hat, tracks connect/state/disconnect epochs for up to four
++active controllers, queues structural state through Internet recovery, and
++coalesces analog state. Offline mapper, protocol, scheduler, and recovery tests
++cover this path. Physical-stylus drawing-app confirmation and physical-controller
++evidence remain release gates; the Mac virtual-HID receiver additionally needs
++an Apple identity-signed build with the approved entitlement and has not been
++confirmed with this Xiaomi 13.
+ 
+ Internet mode is exposed as
+ a development-preview UI: it scans the one-time pairing offer, completes the
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt
+index 1a9c6c3fa..c9e153a53 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt
+@@ -176,7 +176,15 @@ internal object ControllerInputMapper {
+     }
+ 
+     fun controllerId(device: InputDevice): String =
+-        stableControllerId(device.descriptor.ifBlank { fallbackDescriptor(device) })
++        stableControllerId(device.descriptor.orEmpty().ifBlank { fallbackDescriptor(device) })
++
++    internal fun fallbackDescriptor(
++        vendorId: Int,
++        productId: Int,
++        name: String,
++        sources: Int,
++        deviceId: Int,
++    ): String = listOf(vendorId, productId, name, sources, deviceId).joinToString(":")
+ 
+     fun isControllerSource(source: Int): Boolean =
+         source.hasSource(InputDevice.SOURCE_GAMEPAD) || source.hasSource(InputDevice.SOURCE_JOYSTICK)
+@@ -270,7 +278,13 @@ internal object ControllerInputMapper {
+         ControllerAxisCalibration.fromDeviceRange(min, max, flat)
+ 
+     private fun fallbackDescriptor(device: InputDevice): String =
+-        "${device.vendorId}:${device.productId}:${device.name}:${device.sources}"
++        fallbackDescriptor(
++            vendorId = device.vendorId,
++            productId = device.productId,
++            name = device.name.orEmpty(),
++            sources = device.sources,
++            deviceId = device.id,
++        )
+ 
+     private fun Int.hasSource(expected: Int): Boolean = this and expected == expected
+ 
+@@ -351,6 +365,17 @@ internal class ControllerSessionState {
+         )
+     }
+ 
++    /** Removes only a lifecycle rejected by the host; a newer epoch is untouched. */
++    fun rejectConnection(
++        controllerId: String,
++        controllerEpoch: Long,
++    ): Boolean = synchronized(lock) {
++        val controller = active[controllerId] ?: return@synchronized false
++        if (controller.epoch != controllerEpoch) return@synchronized false
++        active.remove(controllerId)
++        true
++    }
++
+     fun takeRelease(): ControllerDispatch? = synchronized(lock) {
+         if (active.isEmpty()) return@synchronized null
+         val samples = active.values.sortedBy { it.controllerId }.flatMap { it.releaseSamples() }
+@@ -358,9 +383,9 @@ internal class ControllerSessionState {
+         ControllerDispatch(samples, ControllerDelivery.STRUCTURAL)
+     }
+ 
+-    /** Drops unsent active state after transport loss while preserving this session's epoch history. */
+-    fun discardActiveForTransportLoss() = synchronized(lock) {
+-        active.clear()
++    fun resynchronize(): ControllerDispatch? = synchronized(lock) {
++        val samples = fullStateSnapshots()
++        if (samples.isEmpty()) null else ControllerDispatch(samples, ControllerDelivery.STRUCTURAL)
+     }
+ 
+     /** Resets all controller epochs and active state for a newly negotiated session. */
+@@ -371,6 +396,12 @@ internal class ControllerSessionState {
+ 
+     internal fun activeSnapshots(): List<ControllerStateSample> = synchronized(lock) { fullStateSnapshots() }
+ 
++    internal fun activeControllerIds(): Set<String> = synchronized(lock) { active.keys.toSet() }
++
++    internal fun isFull(): Boolean = synchronized(lock) { active.size >= MAXIMUM_ACTIVE_CONTROLLERS }
++
++    internal fun isActive(controllerId: String): Boolean = synchronized(lock) { controllerId in active }
++
+     private fun attach(controllerId: String): ActiveController? {
+         require(controllerId.isNotBlank())
+         if (active.size >= MAXIMUM_ACTIVE_CONTROLLERS) return null
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+index 39ec42042..9ba9041f9 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+@@ -177,10 +177,10 @@ class MainActivity : AppCompatActivity() {
+     private var pendingInternetPairing: PendingInternetPairing? = null
+     private var pendingInternetPairingIdentity: PendingPairingIdentityAlias? = null
+     @Volatile private var internetGeneration = 0L
+-    private val nextInternetInputId = AtomicLong(0)
++    private val internetInputIds = SessionInputIdSequence()
+     private val nextStreamStylusTrackingId = AtomicLong(0)
+     private val activeInternetInputIds = mutableMapOf<Int, Long>()
+-    private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
++    private val internetStylusInputIds = StylusInputIdTracker(internetInputIds::next)
+     private val streamStylusInputIds = StylusInputIdTracker { nextStreamStylusTrackingId.incrementAndGet() }
+     private val internetStylusGestureRouter = StylusGestureRouter()
+     private val streamStylusGestureRouter = StylusGestureRouter()
+@@ -189,7 +189,7 @@ class MainActivity : AppCompatActivity() {
+     private val stylusReleaseCoordinator = StylusReleaseCoordinator(streamStylusInputIds, internetStylusInputIds)
+     private val controllerSessionState = ControllerSessionState()
+     private val controllerIdsByDeviceId = mutableMapOf<Int, String>()
+-    private val nextInternetControllerInputId = AtomicLong(0)
++    private val controllerNoticeState = ControllerNoticeState()
+     private val inputManager by lazy { getSystemService(Context.INPUT_SERVICE) as InputManager }
+     private val controllerDeviceListener =
+         object : InputManager.InputDeviceListener {
+@@ -404,6 +404,7 @@ class MainActivity : AppCompatActivity() {
+         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
+         finishPendingRightClick()
+         completeCurrentSessionInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
++        controllerIdsByDeviceId.clear()
+         isInForeground = false
+         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+         autoConnectHandler.removeCallbacks(autoConnectRunnable)
+@@ -492,12 +493,11 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+-        val isControllerKey =
+-            ControllerInputMapper.isControllerSource(event.source) &&
+-                (ControllerInputMapper.keyToButton(event.keyCode) != null ||
+-                    ControllerInputMapper.keyToHat(event.keyCode) != null)
+-        if (isControllerKey) {
+-            if (handleControllerKeyEvent(event)) return true
++        if (ControllerInputMapper.isControllerSource(event.source)) {
++            if (!ControllerInputConsumptionPolicy.shouldConsume(isConnected, event.isSystemKey())) {
++                return super.dispatchKeyEvent(event)
++            }
++            return if (handleControllerKeyEvent(event)) true else super.dispatchKeyEvent(event)
+         }
+         if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+         val clientEvent =
+@@ -534,7 +534,12 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+-        if (handleControllerMotionEvent(event)) return true
++        if (ControllerInputMapper.isControllerSource(event.source)) {
++            if (!ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)) {
++                return super.dispatchGenericMotionEvent(event)
++            }
++            return if (handleControllerMotionEvent(event)) true else super.dispatchGenericMotionEvent(event)
++        }
+         return super.dispatchGenericMotionEvent(event)
+     }
+ 
+@@ -1038,7 +1043,7 @@ class MainActivity : AppCompatActivity() {
+                 override fun surfaceDestroyed(holder: SurfaceHolder) {
+                     mainDiag("surfaceDestroyed")
+                     log("Surface destroyed")
+-                    completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED) {
++                    completeCurrentSessionInputBoundary(InputPhase.INPUT_PHASE_CANCELLED) {
+                         // Only release decoder, NOT the connection.
+                         surfaceGeneration.incrementAndGet()
+                         if (currentSurfaceHolder === holder) currentSurfaceHolder = null
+@@ -1177,9 +1182,27 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+     private fun handleControllerMotionEvent(event: MotionEvent): Boolean {
+-        if (!isInForeground || !canSendController()) return false
+         val snapshot = ControllerInputMapper.snapshot(event) ?: return false
+-        controllerIdsByDeviceId[event.deviceId] = snapshot.controllerId
++        if (!isInForeground) return true
++        registerControllerDevice(event.deviceId, snapshot.controllerId)
++        if (!canSendController()) {
++            val hasNegotiatedControllerCapability = hasNegotiatedControllerSession()
++            if (hasNegotiatedControllerCapability) {
++                if (controllerSessionState.isActive(snapshot.controllerId)) {
++                    controllerSessionState.applyMotion(snapshot)?.let { dispatch ->
++                        sendControllerStructuralDuringRecovery(dispatch)
++                    }
++                }
++            } else if (
++                ControllerNoticePolicy.shouldShowUnsupported(
++                    isConnected,
++                    hasNegotiatedControllerCapability,
++                )
++            ) {
++                showControllerUnsupportedOnce()
++            }
++            return true
++        }
+         val dispatch = controllerSessionState.applyMotion(snapshot) ?: return true
+         val admitted = sendControllerDispatch(dispatch)
+         if (!admitted) mainDiag("negotiated controller sink rejected analog state")
+@@ -1187,9 +1210,29 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+     private fun handleControllerKeyEvent(event: KeyEvent): Boolean {
+-        if (!isInForeground || !canSendController()) return false
+         val change = ControllerInputMapper.keyChange(event) ?: return false
+-        controllerIdsByDeviceId[event.deviceId] = change.controllerId
++        if (!isInForeground) return true
++        registerControllerDevice(event.deviceId, change.controllerId)
++        if (!canSendController()) {
++            val hasNegotiatedControllerCapability = hasNegotiatedControllerSession()
++            if (hasNegotiatedControllerCapability) {
++                if (controllerSessionState.isActive(change.controllerId)) {
++                    controllerSessionState.applyKey(change)?.let { dispatch ->
++                        sendControllerStructuralDuringRecovery(dispatch)
++                    }
++                }
++            } else if (
++                event.action == KeyEvent.ACTION_DOWN &&
++                event.repeatCount == 0 &&
++                ControllerNoticePolicy.shouldShowUnsupported(
++                    isConnected,
++                    hasNegotiatedControllerCapability,
++                )
++            ) {
++                showControllerUnsupportedOnce()
++            }
++            return true
++        }
+         val dispatch = controllerSessionState.applyKey(change)
+         if (dispatch != null && !sendControllerDispatch(dispatch)) {
+             mainDiag("negotiated controller sink rejected button/hat state")
+@@ -1201,10 +1244,18 @@ class MainActivity : AppCompatActivity() {
+         val device = InputDevice.getDevice(deviceId) ?: return
+         if (!ControllerInputMapper.isControllerSource(device.sources)) return
+         val controllerId = controllerId(device)
+-        controllerIdsByDeviceId[deviceId] = controllerId
+-        if (!isInForeground || !canSendController()) return
+-        controllerSessionState.connect(controllerId)?.let { dispatch ->
+-            if (!sendControllerDispatch(dispatch)) mainDiag("negotiated controller sink rejected connect")
++        registerControllerDevice(deviceId, controllerId)
++        if (!isInForeground || !canAdmitControllerStructural()) return
++        val wasFull = controllerSessionState.isFull() && !controllerSessionState.isActive(controllerId)
++        val dispatch = controllerSessionState.connect(controllerId)
++        if (dispatch == null) {
++            if (wasFull) showControllerLimitOnce()
++            return
++        }
++        if (!sendControllerDispatch(dispatch)) {
++            mainDiag("negotiated controller sink rejected connect")
++        } else {
++            announceControllerState(R.string.controller_connected_announcement)
+         }
+     }
+ 
+@@ -1212,9 +1263,119 @@ class MainActivity : AppCompatActivity() {
+         InputDevice.getDeviceIds().forEach(::handleControllerDeviceAdded)
+     }
+ 
++    private fun resynchronizeAvailableControllers() {
++        val availableByDeviceId =
++            InputDevice.getDeviceIds().asSequence().mapNotNull { deviceId ->
++                val device = InputDevice.getDevice(deviceId) ?: return@mapNotNull null
++                if (!ControllerInputMapper.isControllerSource(device.sources)) return@mapNotNull null
++                deviceId to controllerId(device)
++            }.toMap()
++        val availableControllerIds = availableByDeviceId.values.toSet()
++        controllerSessionState.activeControllerIds()
++            .filterNot(availableControllerIds::contains)
++            .forEach { controllerId -> releaseController(controllerId, refillAvailableSlot = false) }
++        controllerIdsByDeviceId.clear()
++        controllerIdsByDeviceId.putAll(availableByDeviceId)
++        var connectedController = false
++        availableControllerIds.forEach { controllerId ->
++            if (!controllerSessionState.isActive(controllerId)) {
++                controllerSessionState.connect(controllerId)?.let { dispatch ->
++                    connectedController = true
++                    if (!sendControllerDispatch(dispatch)) {
++                        mainDiag("controller connection resynchronization was rejected")
++                    }
++                }
++            }
++        }
++        if (!connectedController) {
++            controllerSessionState.resynchronize()?.let { dispatch ->
++                if (!sendControllerDispatch(dispatch)) mainDiag("controller state resynchronization was rejected")
++            }
++        }
++    }
++
+     private fun releaseControllerAndFillAvailableSlot(controllerId: String) {
++        releaseController(controllerId, refillAvailableSlot = true)
++    }
++
++    private fun releaseController(
++        controllerId: String,
++        refillAvailableSlot: Boolean,
++    ) {
++        if (!canAdmitControllerStructural()) return
+         val release = controllerSessionState.disconnect(controllerId) ?: return
+-        if (sendControllerDispatch(release)) connectAvailableControllers()
++        if (sendControllerDispatch(release)) {
++            announceControllerState(R.string.controller_disconnected_announcement)
++            controllerNoticeState.resetLimit()
++            if (refillAvailableSlot) connectAvailableControllers()
++        }
++    }
++
++    private fun registerControllerDevice(
++        deviceId: Int,
++        controllerId: String,
++    ) {
++        val previous = controllerIdsByDeviceId.put(deviceId, controllerId)
++        if (previous != null && previous != controllerId) releaseControllerAndFillAvailableSlot(previous)
++    }
++
++    private fun showControllerUnsupportedOnce() {
++        if (controllerNoticeState.shouldShowUnsupported()) {
++            showControllerNotice(R.string.controller_requires_compatible_host)
++        }
++    }
++
++    private fun showControllerLimitOnce() {
++        if (controllerNoticeState.shouldShowLimit()) {
++            showControllerNotice(R.string.controller_limit_reached)
++        }
++    }
++
++    private fun showControllerNotice(messageResource: Int) {
++        Toast.makeText(this, messageResource, Toast.LENGTH_LONG).show()
++        announceControllerState(messageResource)
++    }
++
++    private fun announceControllerState(messageResource: Int) {
++        if (!accessibilityManager.isEnabled) return
++        binding.controlBar.announceForAccessibility(getString(messageResource))
++    }
++
++    private fun handleControllerInputAck(
++        inputId: Long,
++        controllerId: String?,
++        controllerEpoch: Long?,
++        accepted: Boolean,
++        rejectionReason: String,
++    ) {
++        val rejected =
++            ControllerInputAckPolicy.rejectedConnection(
++                controllerId,
++                controllerEpoch,
++                accepted,
++            )
++        if (rejected == null) {
++            mainDiag(
++                "controller input ack input_id=" + inputId +
++                    " accepted=" + accepted +
++                    " tracked=" + (controllerId != null) +
++                    " reason=" + rejectionReason.ifBlank { "none" },
++            )
++            return
++        }
++        if (controllerSessionState.rejectConnection(rejected.controllerId, rejected.controllerEpoch)) {
++            mainDiag(
++                "controller connection rejected input_id=" + inputId +
++                    " epoch=" + rejected.controllerEpoch +
++                    " reason=" + rejectionReason,
++            )
++            if (ControllerInputAckPolicy.isMaximumActiveControllersRejection(rejectionReason)) {
++                controllerNoticeState.resetLimit()
++                showControllerLimitOnce()
++            } else if (controllerNoticeState.shouldShowRejected()) {
++                showControllerNotice(R.string.controller_rejected_by_host)
++            }
++        }
+     }
+ 
+     private fun controllerId(device: InputDevice): String = ControllerInputMapper.controllerId(device)
+@@ -1226,12 +1387,38 @@ class MainActivity : AppCompatActivity() {
+             isConnected && streamClient?.canSendController() == true
+         }
+ 
++    private fun canAdmitControllerStructural(): Boolean =
++        if (prefs.connectionMode == ConnectionMode.INTERNET) {
++            internetSession?.canAdmitControllerStructural() == true
++        } else {
++            canSendController()
++        }
++
++    private fun sendControllerStructuralDuringRecovery(dispatch: ControllerDispatch) {
++        if (dispatch.delivery != ControllerDelivery.STRUCTURAL || !canAdmitControllerStructural()) return
++        if (!sendControllerDispatch(dispatch)) {
++            mainDiag("negotiated controller sink rejected structural recovery state")
++        }
++    }
++
++    private fun hasNegotiatedControllerSession(): Boolean =
++        if (prefs.connectionMode == ConnectionMode.INTERNET) {
++            internetSession?.hasNegotiatedControllerCapability() == true
++        } else {
++            currentSessionBinding().capabilities.controller
++        }
++
+     private fun sendControllerDispatch(dispatch: ControllerDispatch): Boolean {
+         if (prefs.connectionMode != ConnectionMode.INTERNET) {
+-            return streamClient?.sendController(dispatch) == true
++            val client = streamClient ?: return false
++            val generation = activeSessionGeneration
++            if (!isCurrentSession(client, generation) || !client.canSendController()) return false
++            return client.sendController(dispatch)
+         }
+         val session = internetSession ?: return false
+-        if (!session.canSendController()) return false
++        val generation = internetGeneration
++        if (session !== internetSession || generation != internetGeneration) return false
++        if (dispatch.delivery == ControllerDelivery.ANALOG && !session.canSendController()) return false
+         val samples =
+             if (dispatch.delivery == ControllerDelivery.ANALOG) {
+                 controllerSessionState.activeSnapshots()
+@@ -1248,8 +1435,7 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+     private fun toProductControllerEvent(sample: ControllerStateSample): ProductControllerEvent {
+-        val inputId = nextInternetControllerInputId.incrementAndGet()
+-        check(inputId > 0) { "Internet controller input identifier exhausted" }
++        val inputId = internetInputIds.next()
+         val kind =
+             when (sample.kind) {
+                 ControllerEventKind.CONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED
+@@ -2722,6 +2908,7 @@ class MainActivity : AppCompatActivity() {
+     private fun activateSession(client: StreamClient): Long {
+         mainSessionDisplayLifecycle?.invalidate()
+         mainSessionDisplayLifecycle = null
++        resetControllerStateForNewSession()
+         val generation = sessionState.activate(client)
+         streamClient = client
+         activeSessionGeneration = generation
+@@ -2914,7 +3101,9 @@ class MainActivity : AppCompatActivity() {
+                             }
+                         }
+                 ) {
+-                    DecoderStartupCommitResult.Committed -> Unit
++                    DecoderStartupCommitResult.Committed -> {
++                        if (isInForeground && ownerClient.canSendController()) resynchronizeAvailableControllers()
++                    }
+                     DecoderStartupCommitResult.NotCommitted -> {
+                         DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
+                         failConfiguration("stale_decoder_configuration")
+@@ -3274,7 +3463,7 @@ class MainActivity : AppCompatActivity() {
+                     }
+                 } else {
+                     nativeInputSessionState.discard(callbackClient, callbackGeneration)
+-                    controllerSessionState.resetForNewSession()
++                    resetControllerStateForNewSession()
+                     applyDisconnectedSessionUi()
+                 }
+             }
+@@ -3290,7 +3479,7 @@ class MainActivity : AppCompatActivity() {
+             if (!isCurrentSession(callbackClient, callbackGeneration)) return@applied
+             runOnUiThread {
+                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+-                if (callbackClient.canSendController()) connectAvailableControllers()
++                if (callbackClient.canSendController()) resynchronizeAvailableControllers()
+                 if (!AppliedVideoPreferenceProjector.shouldPersist(
+                         appliesClientVideoPreferences = configuration.appliesClientVideoPreferences,
+                         configEpoch = configuration.configEpoch,
+@@ -3368,7 +3557,7 @@ class MainActivity : AppCompatActivity() {
+                             "controller=$controller hostActions=$hostActions",
+                     )
+                 }
+-                if (controller) connectAvailableControllers()
++                if (controller) resynchronizeAvailableControllers()
+                 populateDisplayCapsule(options, selectedId)
+             }
+         }
+@@ -3397,6 +3586,19 @@ class MainActivity : AppCompatActivity() {
+                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+             }
+         }
++        callbackClient.onControllerInputAck = controllerAck@{ inputId, connection, accepted, rejectionReason ->
++            if (!isCurrentSession(callbackClient, callbackGeneration)) return@controllerAck
++            runOnUiThread {
++                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
++                handleControllerInputAck(
++                    inputId,
++                    connection?.controllerId,
++                    connection?.controllerEpoch,
++                    accepted,
++                    rejectionReason,
++                )
++            }
++        }
+ 
+         callbackClient.onStats = stats@{ fps, mbps ->
+             if (!isCurrentSession(callbackClient, callbackGeneration)) return@stats
+@@ -3429,6 +3631,8 @@ class MainActivity : AppCompatActivity() {
+         connectionAttemptInProgress = true
+         internetRoute = null
+         internetSessionEpoch = lease.authoritativeSessionEpoch
++        resetInternetInputStateForNewSession()
++        resetControllerStateForNewSession()
+         val generation = ++internetGeneration
+         internetVideoDecoderLifecycle?.invalidate()
+         internetVideoDecoderLifecycle = null
+@@ -3514,6 +3718,13 @@ class MainActivity : AppCompatActivity() {
+                     videoDecoderLifecycle.onVideoConfiguration(configuration, effect, completion)
+                 }
+ 
++                override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) {
++                    if (!isCurrentInternetSession()) return
++                    runOnUiThread {
++                        if (isCurrentInternetSession()) resynchronizeAvailableControllers()
++                    }
++                }
++
+                 override fun onVideoFrame(frame: ProductVideoFrame) {
+                     if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
+                     videoDecoder?.decode(
+@@ -3525,6 +3736,26 @@ class MainActivity : AppCompatActivity() {
+                     )
+                 }
+ 
++                override fun onInputAck(
++                    inputId: Long,
++                    controllerId: String?,
++                    controllerEpoch: Long?,
++                    accepted: Boolean,
++                    rejectionReason: String,
++                ) {
++                    if (!isCurrentInternetSession()) return
++                    runOnUiThread {
++                        if (!isCurrentInternetSession()) return@runOnUiThread
++                        handleControllerInputAck(
++                            inputId,
++                            controllerId,
++                            controllerEpoch,
++                            accepted,
++                            rejectionReason,
++                        )
++                    }
++                }
++
+                 override fun onFreshSessionRequired(reason: String) {
+                     if (!isCurrentInternetSession()) return
+                     android.util.Log.i(INTERNET_LOG_TAG, "internet_fresh_session_required session_epoch=${lease.authoritativeSessionEpoch}")
+@@ -3761,6 +3992,9 @@ class MainActivity : AppCompatActivity() {
+                     ) {
+                         DecoderStartupCommitResult.Committed -> {
+                             candidate = null
++                            if (isInForeground && sessionReference.get()?.canSendController() == true) {
++                                resynchronizeAvailableControllers()
++                            }
+                             ProductVideoDecision.ACCEPT
+                         }
+                         DecoderStartupCommitResult.NotCommitted ->
+@@ -3875,19 +4109,12 @@ class MainActivity : AppCompatActivity() {
+             binding.internetStateText,
+             getString(R.string.internet_state_format, state.name.lowercase(), routeLabel),
+         )
+-        if (
+-            state == InternetProductSessionState.RECOVERING ||
+-            state == InternetProductSessionState.SUSPENDED
+-        ) {
+-            controllerSessionState.discardActiveForTransportLoss()
+-        }
+         if (state == InternetProductSessionState.ACTIVE && internetSession?.canSendController() == true) {
+-            connectAvailableControllers()
++            resynchronizeAvailableControllers()
+         }
+         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
+             isConnected = false
+-            controllerSessionState.resetForNewSession()
+-            nextInternetControllerInputId.set(0L)
++            resetControllerStateForNewSession()
+             internetStylusGestureRouter.reset()
+             internetStylusInputIds.clear()
+             internetStylusContactRouter.reset()
+@@ -3952,6 +4179,7 @@ class MainActivity : AppCompatActivity() {
+         connectionAttemptInProgress = false
+         internetRoute = null
+         activeInternetInputIds.clear()
++        resetControllerStateForNewSession()
+         internetStylusInputIds.clear()
+         internetStylusGestureRouter.reset()
+         internetStylusContactRouter.reset()
+@@ -4312,7 +4540,7 @@ class MainActivity : AppCompatActivity() {
+ 
+     private fun applyDisconnectedSessionUi() {
+         isConnected = false
+-        controllerSessionState.resetForNewSession()
++        resetControllerStateForNewSession()
+         streamStylusGestureRouter.reset()
+         streamStylusContactRouter.reset()
+         streamStylusInputIds.clear()
+@@ -4543,10 +4771,23 @@ class MainActivity : AppCompatActivity() {
+     ) {
+         controllerSessionState.takeRelease()?.let { release ->
+             if (!sendControllerDispatch(release)) mainDiag("controller release was rejected")
++            controllerNoticeState.resetLimit()
+         }
+         completeCurrentNativeInputBoundary(pointerPhase, afterRelease)
+     }
+ 
++    private fun resetControllerStateForNewSession() {
++        controllerSessionState.resetForNewSession()
++        controllerIdsByDeviceId.clear()
++        controllerNoticeState.resetForNewSession()
++    }
++
++    private fun resetInternetInputStateForNewSession() {
++        activeInternetInputIds.clear()
++        internetStylusInputIds.clear()
++        internetInputIds.resetForNewSession()
++    }
++
+     private fun completeCurrentNativeInputBoundary(
+         pointerPhase: InputPhase,
+         afterRelease: () -> Unit = {},
+@@ -4660,7 +4901,7 @@ class MainActivity : AppCompatActivity() {
+             val pointerId = event.getPointerId(index)
+             val inputId =
+                 when (phase) {
+-                    ProductInputPhase.BEGAN -> nextInternetInputId.incrementAndGet().also { activeInternetInputIds[pointerId] = it }
++                    ProductInputPhase.BEGAN -> internetInputIds.next().also { activeInternetInputIds[pointerId] = it }
+                     else -> activeInternetInputIds[pointerId] ?: return
+                 }
+             val point =
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt
+index b501a584a..4fd0c05dd 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt
+@@ -133,7 +133,7 @@ class OutboundCommandScheduler<C : Any>(
+ 
+         var remainingNanos = (deadlineNs - System.nanoTime()).coerceAtLeast(0L)
+         while (!reserveSlot(kind)) {
+-            if (kind != Kind.MOVE && removeOldestMove()) {
++            if (kind != Kind.MOVE && removeOldestMoveFor(kind)) {
+                 pendingCount--
+                 occupiedCount.decrementAndGet()
+                 if (reserveSlot(kind)) {
+@@ -174,8 +174,21 @@ class OutboundCommandScheduler<C : Any>(
+ 
+             replacePending(kind, command)?.let { return@withLock it }
+ 
++            if (kind == Kind.CONTROLLER_MOVE) {
++                if (reserveSlot(kind)) {
++                    enqueueAdmittedController(kind, command)
++                    return@withLock Submission.ACCEPTED
++                }
++                return@withLock publishCoalescibleOverflow(
++                    kind = kind,
++                    command = command,
++                    overflow = overflowControllerMove,
++                    submissionGeneration = controllerGeneration.get(),
++                )
++            }
++
+             while (!reserveSlot(kind)) {
+-                if (removeOldestMove()) {
++                if (removeOldestMoveFor(kind)) {
+                     pendingCount--
+                     occupiedCount.decrementAndGet()
+                     if (reserveSlot(kind)) {
+@@ -560,8 +573,16 @@ class OutboundCommandScheduler<C : Any>(
+         }
+     }
+ 
+-    private fun removeOldestMove(): Boolean {
+-        val index = touchCommands.indexOfFirst { it.kind.isCoalescibleMove() }
++    private fun removeOldestMoveFor(admittingKind: Kind): Boolean {
++        val index =
++            when (admittingKind) {
++                Kind.STRUCTURAL_TOUCH -> touchCommands.indexOfFirst { it.kind == Kind.MOVE }
++                Kind.CONTROLLER_STRUCTURAL ->
++                    touchCommands.indexOfFirst {
++                        it.kind == Kind.MOVE || it.kind == Kind.CONTROLLER_MOVE
++                    }
++                else -> return false
++            }
+         if (index < 0) return false
+         touchCommands.removeAt(index)
+         return true
+@@ -724,10 +745,10 @@ class OutboundCommandScheduler<C : Any>(
+         when (kind) {
+             Kind.STRUCTURAL_TOUCH,
+             Kind.MOVE,
+-            Kind.CONTROLLER_STRUCTURAL,
+             Kind.CONTROLLER_MOVE,
+             -> capacity - recoveryReservedSlots
+ 
++            Kind.CONTROLLER_STRUCTURAL,
+             Kind.KEYFRAME,
+             Kind.PING,
+             -> capacity
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt
+index 3e6026720..3f5608a72 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt
+@@ -111,6 +111,7 @@ class StreamClient(
+     private var pendingLegacyFirstByte: Int? = null
+     @Volatile private var protocolSession: ProtocolV1Session? = null
+     private val nextInputId = AtomicLong(1L)
++    private val controllerAckTracker = ControllerConnectionAckTracker()
+     private val nextPingSequence = AtomicLong(1L)
+     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
+     private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
+@@ -135,6 +136,8 @@ class StreamClient(
+     internal var onDisplaysAvailable: ((List<StreamDisplayOption>, selectedId: String) -> Unit)? = null
+     internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
+     internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
++    internal var onControllerInputAck:
++        ((inputId: Long, connection: ControllerConnection?, accepted: Boolean, rejectionReason: String) -> Unit)? = null
+     var onStats: ((Double, Double) -> Unit)? = null
+     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
+     var onWriteFailure: ((reason: String) -> Unit)? = null
+@@ -1161,10 +1164,21 @@ class StreamClient(
+                 command =
+                     OutboundCommand.ProtocolBatch { activeSession ->
+                         samples.map { sample ->
+-                            activeSession.controller(
+-                                inputId = nextInputId.getAndIncrement(),
+-                                sample = sample,
+-                            )
++                            val inputId = nextInputId.getAndIncrement()
++                            when (sample.kind) {
++                                ControllerEventKind.CONNECTED -> check(
++                                    controllerAckTracker.recordConnected(
++                                        inputId,
++                                        sample.controllerId,
++                                        sample.controllerEpoch,
++                                    ),
++                                ) { "Controller lifecycle was connected twice" }
++                                ControllerEventKind.DISCONNECTED -> {
++                                    controllerAckTracker.recordDisconnected(sample.controllerId, sample.controllerEpoch)
++                                }
++                                ControllerEventKind.STATE -> Unit
++                            }
++                            activeSession.controller(inputId = inputId, sample = sample)
+                         }
+                     },
+             )
+@@ -1652,6 +1666,15 @@ class StreamClient(
+                     is ProtocolV1Session.Action.HostActionCompleted -> {
+                         onHostActionResult?.invoke(action.accepted, action.rejectionReason)
+                     }
++                    is ProtocolV1Session.Action.ControllerInputAck -> {
++                        val connection = controllerAckTracker.acknowledge(action.inputId)
++                        onControllerInputAck?.invoke(
++                            action.inputId,
++                            connection,
++                            action.accepted,
++                            action.rejectionReason,
++                        )
++                    }
+                    is ProtocolV1Session.Action.Disconnected -> {
+                         pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+                         stopRequested = !action.mayResume
+@@ -1806,6 +1829,7 @@ class StreamClient(
+                 }
+                is ProtocolV1Session.Action.VideoConfigurationRequested,
+                is ProtocolV1Session.Action.PongReceived,
++               is ProtocolV1Session.Action.ControllerInputAck,
+                is ProtocolV1Session.Action.Disconnected,
+                is ProtocolV1Session.Action.DisplaysAvailable,
+                 is ProtocolV1Session.Action.HostActionsAvailable,
+@@ -2044,6 +2068,7 @@ class StreamClient(
+         protocolSession = null
+         pendingLegacyFirstByte = null
+         nextInputId.set(1L)
++        controllerAckTracker.reset()
+     }
+ 
+     private fun cleanupCandidateTransport(
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetControllerSendQueue.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetControllerSendQueue.kt
+index 790ec0264..d451cc1fa 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetControllerSendQueue.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetControllerSendQueue.kt
+@@ -45,13 +45,13 @@ class InternetControllerSendQueue<Event : Any>(
+                 }
+ 
+                 Delivery.FULL_STATE_STRUCTURAL -> {
++                    if (batches.count { it.delivery == Delivery.FULL_STATE_STRUCTURAL } >= maximumStructuralBatches) {
++                        return@synchronized EnqueueResult.STRUCTURAL_OVERFLOW
++                    }
+                     val trailing = batches.lastOrNull()
+                     if (trailing?.delivery == Delivery.ANALOG && trailing.nextIndex == 0 && !trailing.inFlight) {
+                         batches.removeLast()
+                     }
+-                    if (batches.count { it.delivery == Delivery.FULL_STATE_STRUCTURAL } >= maximumStructuralBatches) {
+-                        return@synchronized EnqueueResult.STRUCTURAL_OVERFLOW
+-                    }
+                     batches.addLast(Batch(Delivery.FULL_STATE_STRUCTURAL, copied))
+                     EnqueueResult.ACCEPTED
+                 }
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt
+index 107e01533..f205c9446 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt
+@@ -1,10 +1,12 @@
+ package dev.telemachus.display.internet
+ 
++import dev.telemachus.display.ControllerConnectionAckTracker
+ import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
+ import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
+ import dev.telemachus.display.internet.security.InternetPairingIdentity
+ import dev.telemachus.display.internet.security.SecurityTranscript
+ import dev.vibescreen.protocol.v1.Capability
++import dev.vibescreen.protocol.v1.ControllerEventKind
+ import java.util.concurrent.atomic.AtomicLong
+ import java.util.concurrent.locks.ReentrantLock
+ import kotlin.concurrent.withLock
+@@ -127,10 +129,20 @@ interface InternetProductSessionCallbacks {
+         completion: (ProductVideoDecision) -> Unit,
+     ) = completion(effect.commit { ProductVideoDecision.reject("decoder_not_configured") })
+ 
++    fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) = Unit
++
+     fun onVideoFrame(frame: ProductVideoFrame) = Unit
+ 
+     fun onPong(sequence: Long) = Unit
+ 
++    fun onInputAck(
++        inputId: Long,
++        controllerId: String?,
++        controllerEpoch: Long?,
++        accepted: Boolean,
++        rejectionReason: String,
++    ) = Unit
++
+     fun onFreshSessionRequired(reason: String) = Unit
+ 
+     fun onRevoked(reason: String) = Unit
+@@ -281,6 +293,7 @@ class InternetProductSession internal constructor(
+     private val frameAssembler = ProductMediaFrameAssembler(clock)
+     private val controlSendLock = ReentrantLock(true)
+     private val controllerSendQueue = InternetControllerSendQueue<ProductControllerEvent>()
++    private val controllerAckTracker = ControllerConnectionAckTracker()
+ 
+     init {
+         check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAdmissionBlocked(lease.pairingIdentifier)) {
+@@ -404,24 +417,79 @@ class InternetProductSession internal constructor(
+                 Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+         }
+ 
++    fun hasNegotiatedControllerCapability(): Boolean =
++        synchronized(lock) {
++            acceptsTransportCallbackLocked() &&
++                acceptedSession &&
++                Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
++        }
++
++    fun canAdmitControllerStructural(): Boolean =
++        synchronized(lock) {
++            acceptsTransportCallbackLocked() &&
++                acceptedSession &&
++                state in setOf(
++                    InternetProductSessionState.ACTIVE,
++                    InternetProductSessionState.RECOVERING,
++                    InternetProductSessionState.SUSPENDED,
++                ) &&
++                currentVideoConfiguration != null &&
++                Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
++        }
++
+     fun sendController(
+         events: List<ProductControllerEvent>,
+         delivery: InternetControllerSendQueue.Delivery,
+     ): Boolean =
+         controllerSendGate.withLock {
+             if (events.isEmpty()) return@withLock false
+-            if (!canSendController()) return@withLock false
++            val sendImmediately = canSendController()
++            val queueStructuralForRecovery =
++                delivery == InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL &&
++                    canQueueControllerStructuralForRecovery()
++            if (!sendImmediately && !queueStructuralForRecovery) return@withLock false
+             val enqueueResult = controllerSendQueue.enqueue(events, delivery)
+             if (enqueueResult == InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW) {
+                 fail(IllegalStateException("Controller structural send queue overflowed"))
+                 return@withLock false
+             }
+-            drainControllerQueue()
++            if (!sendImmediately) return@withLock true
++            if (drainControllerQueue()) return@withLock true
++            synchronized(lock) {
++                acceptsTransportCallbackLocked() &&
++                    state in setOf(
++                        InternetProductSessionState.RECOVERING,
++                        InternetProductSessionState.SUSPENDED,
++                    )
++            }
++        }
++
++    private fun canQueueControllerStructuralForRecovery(): Boolean =
++        synchronized(lock) {
++            acceptsTransportCallbackLocked() &&
++                acceptedSession &&
++                state in setOf(InternetProductSessionState.RECOVERING, InternetProductSessionState.SUSPENDED) &&
++                currentVideoConfiguration != null &&
++                Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+         }
+ 
+     private fun drainControllerQueue(): Boolean {
+         val result =
+             controllerSendQueue.drain { event ->
++                when (event.kind) {
++                    ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED -> check(
++                        controllerAckTracker.recordConnected(
++                            event.inputId,
++                            event.controllerId,
++                            event.controllerEpoch,
++                        ),
++                    ) { "Controller lifecycle was connected twice" }
++                    ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED -> {
++                        controllerAckTracker.recordDisconnected(event.controllerId, event.controllerEpoch)
++                    }
++                    ControllerEventKind.CONTROLLER_EVENT_KIND_STATE -> Unit
++                    else -> error("Invalid controller event kind")
++                }
+                 sendApplicationControl {
+                     val streamId = checkNotNull(currentVideoConfiguration).streamId
+                     codec.encodeController(
+@@ -433,9 +501,6 @@ class InternetProductSession internal constructor(
+                     )
+                 }
+             }
+-        if (result.blocked && !canSendController()) {
+-            controllerSendQueue.clear()
+-        }
+         result.failure?.let { fail(it) }
+         return !result.blocked && result.failure == null
+     }
+@@ -599,6 +664,9 @@ class InternetProductSession internal constructor(
+             }
+             is ProductControlMessage.VideoConfiguration -> handleVideoConfiguration(owner, message.value)
+             is ProductControlMessage.Pong -> notifyPongIfOwned(owner, message.sequence)
++            is ProductControlMessage.InputAck -> {
++                notifyInputAckIfOwned(owner, message.inputId, message.accepted, message.rejectionReason)
++            }
+             is ProductControlMessage.Ping -> {
+                 sendRequiredControlIfOwned(owner) {
+                     codec.encodePong(
+@@ -753,7 +821,10 @@ class InternetProductSession internal constructor(
+                     true
+                 }
+             }
+-        if (shouldResume) notifyStateIfOwned(owner, InternetProductSessionState.ACTIVE)
++        if (shouldResume) {
++            controllerSendGate.withLock { drainControllerQueue() }
++            notifyStateIfOwned(owner, InternetProductSessionState.ACTIVE)
++        }
+     }
+ 
+     private fun heartbeatTick() {
+@@ -862,6 +933,7 @@ class InternetProductSession internal constructor(
+                     decision
+                 }
+             var sendFailed = false
++            var appliedConfiguration: ProductVideoConfiguration? = null
+             controlSendLock.withLock {
+                 synchronized(lock) {
+                     if (isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch)) {
+@@ -880,6 +952,7 @@ class InternetProductSession internal constructor(
+                         } else if (effectiveDecision.accepted) {
+                             currentVideoConfiguration = configuration
+                             frameAssembler.startConfiguration(configuration, lease.authoritativeSessionEpoch)
++                            appliedConfiguration = configuration
+                         }
+                     }
+                 }
+@@ -893,6 +966,8 @@ class InternetProductSession internal constructor(
+                     owner,
+                     IllegalStateException("Decoder rejected the active HEVC target"),
+                 )
++            } else {
++                appliedConfiguration?.let(callbacks::onVideoConfigurationApplied)
+             }
+             Unit
+         }
+@@ -1212,16 +1287,6 @@ class InternetProductSession internal constructor(
+                     } else {
+                         if (next == InternetProductSessionState.CLOSED) {
+                             invalidateTransportOwnerLocked()
+-                        } else if (
+-                            next == InternetProductSessionState.SUSPENDED ||
+-                            next == InternetProductSessionState.RECOVERING
+-                        ) {
+-                            // Discard any queued controller events. A suspended or
+-                            // recovering transport cannot deliver them, and after
+-                            // recovery the active controller set is re-synchronized
+-                            // from a fresh full-state snapshot, so stale structural
+-                            // boundaries must never be replayed.
+-                            controllerSendQueue.clear()
+                         }
+                         state = next
+                         true
+@@ -1260,6 +1325,26 @@ class InternetProductSession internal constructor(
+         }
+     }
+ 
++    private fun notifyInputAckIfOwned(
++        owner: TransportOwner,
++        inputId: Long,
++        accepted: Boolean,
++        rejectionReason: String,
++    ) {
++        withLifecycleGate {
++            if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
++                val connection = controllerAckTracker.acknowledge(inputId)
++                callbacks.onInputAck(
++                    inputId,
++                    connection?.controllerId,
++                    connection?.controllerEpoch,
++                    accepted,
++                    rejectionReason,
++                )
++            }
++        }
++    }
++
+     private fun notifyFailureIfOwned(
+         owner: TransportOwner,
+         error: Throwable,
+@@ -1320,6 +1405,7 @@ class InternetProductSession internal constructor(
+         acceptedSession = false
+         expectedNegotiatedCapabilities = emptySet()
+         controllerSendQueue.clear()
++        controllerAckTracker.reset()
+         currentVideoConfiguration = null
+         pendingVideoConfiguration = null
+         nextHeartbeatAtMillis = Long.MAX_VALUE
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/ProtocolV1ProductCodec.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/ProtocolV1ProductCodec.kt
+index e4ef7c1ea..095c0f321 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/ProtocolV1ProductCodec.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/ProtocolV1ProductCodec.kt
+@@ -210,6 +210,12 @@ sealed class ProductControlMessage {
+ 
+     data class Pong(val sequence: Long) : ProductControlMessage()
+ 
++    data class InputAck(
++        val inputId: Long,
++        val accepted: Boolean,
++        val rejectionReason: String,
++    ) : ProductControlMessage()
++
+     data class Ping(val sequence: Long) : ProductControlMessage()
+ 
+     data class Disconnect(val reasonCode: String, val mayResume: Boolean) : ProductControlMessage()
+@@ -380,7 +386,12 @@ class ProtobufProtocolV1ProductCodec(
+                 .setRightTrigger(event.rightTrigger)
+                 .setHatX(event.hatX)
+                 .setHatY(event.hatY)
+-                .setTarget(dev.vibescreen.protocol.v1.InputTarget.newBuilder().setStreamId(streamId))
++                .setTarget(
++                    dev.vibescreen.protocol.v1.InputTarget
++                        .newBuilder()
++                        .setDisplayId(INTERNET_DISPLAY_ID)
++                        .setStreamId(streamId),
++                )
+                 .build()
+         return envelope(messageId, sessionId, sessionEpoch).setControllerEvent(controller).build().toByteArray()
+     }
+@@ -477,6 +488,14 @@ class ProtobufProtocolV1ProductCodec(
+                 }
+                 Envelope.PayloadCase.VIDEO_CONFIG -> ProductControlMessage.VideoConfiguration(envelope.videoConfig.toProduct())
+                 Envelope.PayloadCase.PONG -> ProductControlMessage.Pong(envelope.pong.sequence)
++                Envelope.PayloadCase.INPUT_ACK -> {
++                    val value = envelope.inputAck
++                    require(value.inputId > 0L) { "Input acknowledgement identifier must be positive" }
++                    require(value.accepted || value.rejectionReason.isNotBlank()) {
++                        "Rejected input acknowledgement requires a reason"
++                    }
++                    ProductControlMessage.InputAck(value.inputId, value.accepted, value.rejectionReason)
++                }
+                 Envelope.PayloadCase.PING -> ProductControlMessage.Ping(envelope.ping.sequence)
+                 Envelope.PayloadCase.DISCONNECT_NOTICE -> {
+                     val value = envelope.disconnectNotice
+@@ -609,6 +628,7 @@ class ProtobufProtocolV1ProductCodec(
+         private const val MAX_MEDIA_HEADER_BYTES = InternetMediaRecordContract.MAXIMUM_MEDIA_HEADER_BYTES
+         private const val MAX_VARINT_BYTES = 5
+         private const val MAX_REASON_BYTES = 256
++        private const val INTERNET_DISPLAY_ID = "internet-display"
+         val OFFERED_CLIENT_CAPABILITIES =
+             listOf(
+                 Capability.CAPABILITY_TOUCH,
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt
+index ca901b66f..4401320d4 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt
+@@ -98,6 +98,12 @@ internal class ProtocolV1Session(
+ 
+         data class PongReceived(val sequence: Long) : Action()
+ 
++        data class ControllerInputAck(
++            val inputId: Long,
++            val accepted: Boolean,
++            val rejectionReason: String,
++        ) : Action()
++
+         /**
+          * Host-advertised action catalog for the active session, filtered to
+          * the fixed action ids this client understands. Empty when the host
+@@ -322,6 +328,7 @@ internal class ProtocolV1Session(
+                     ),
+                 )
+             Envelope.PayloadCase.PONG -> listOf(Action.PongReceived(envelope.pong.sequence))
++            Envelope.PayloadCase.INPUT_ACK -> onInputAck(envelope)
+             Envelope.PayloadCase.HOST_ACTION_CATALOG -> onHostActionCatalog(envelope)
+             Envelope.PayloadCase.HOST_ACTION_RESULT -> onHostActionResult(envelope)
+             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
+@@ -351,6 +358,22 @@ internal class ProtocolV1Session(
+         }
+     }
+ 
++    private fun onInputAck(envelope: Envelope): List<Action> {
++        if (!isNegotiated()) throw protocolFailure("InputAck arrived before session negotiation")
++        val acknowledgement = envelope.inputAck
++        if (acknowledgement.inputId <= 0L) throw protocolFailure("InputAck input_id must be positive")
++        if (!acknowledgement.accepted && acknowledgement.rejectionReason.isBlank()) {
++            throw protocolFailure("Rejected InputAck requires a reason")
++        }
++        return listOf(
++            Action.ControllerInputAck(
++                inputId = acknowledgement.inputId,
++                accepted = acknowledgement.accepted,
++                rejectionReason = acknowledgement.rejectionReason,
++            ),
++        )
++    }
++
+     @Synchronized
+     fun ping(sequence: Long): Envelope {
+         require(sequence > 0)
+diff --git a/baseline/AndroidClient/app/src/main/res/values/strings.xml b/baseline/AndroidClient/app/src/main/res/values/strings.xml
+index fb8fa20c4..b855a4c7c 100644
+--- a/baseline/AndroidClient/app/src/main/res/values/strings.xml
++++ b/baseline/AndroidClient/app/src/main/res/values/strings.xml
+@@ -181,6 +181,11 @@
+     <string name="device_health_thermal_unknown">thermal unavailable</string>
+     <string name="device_health_summary">%1$s · %2$s · %3$s · %4$s</string>
+     <string name="device_health_summary_unknown">Battery and thermal status unavailable</string>
++    <string name="controller_requires_compatible_host">This Mac cannot accept controller input. Update Vibe Screen or use a supported signed build.</string>
++    <string name="controller_limit_reached">Controller limit reached. Disconnect one of the four active controllers.</string>
++    <string name="controller_rejected_by_host">The Mac rejected this controller. Reconnect it or restart the session.</string>
++    <string name="controller_connected_announcement">Controller connected</string>
++    <string name="controller_disconnected_announcement">Controller disconnected</string>
+     <string name="overlay_opacity">Overlay Opacity</string>
+     <string name="opacity_default">80%</string>
+     <string name="settings_button_position">Settings Button Position</string>
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerInputMapperTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerInputMapperTest.kt
+index e2888b406..30cb0dc6d 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerInputMapperTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerInputMapperTest.kt
+@@ -43,6 +43,18 @@ class ControllerInputMapperTest {
+         assertTrue(mid > 0.0 && mid < 1.0)
+     }
+ 
++    @Test
++    fun normalizeStickSupportsZeroFlatAndSaturatingFlat() {
++        val zeroFlat = ControllerAxisCalibration(minimum = -1f, maximum = 1f, flat = 0f)
++        assertEquals(0.5, ControllerInputMapper.normalizeStick(0.5f, zeroFlat), 1e-9)
++        assertEquals(-0.5, ControllerInputMapper.normalizeStick(-0.5f, zeroFlat), 1e-9)
++
++        val saturatingFlat = ControllerAxisCalibration(minimum = -1f, maximum = 1f, flat = 2f)
++        assertEquals(0.0, ControllerInputMapper.normalizeStick(1f, saturatingFlat), 0.0)
++        assertEquals(0.0, ControllerInputMapper.normalizeStick(-1f, saturatingFlat), 0.0)
++        assertEquals(0.0, ControllerInputMapper.normalizeTrigger(1f, saturatingFlat), 0.0)
++    }
++
+     @Test
+     fun normalizeStickPreservesReportedFlatAcrossAsymmetricRange() {
+         val calibration = ControllerAxisCalibration(minimum = -0.5f, maximum = 1f, flat = 0.6f)
+@@ -69,6 +81,15 @@ class ControllerInputMapperTest {
+         )
+     }
+ 
++    @Test
++    fun fallbackDescriptorIncludesAndroidDeviceIdentity() {
++        val first = ControllerInputMapper.fallbackDescriptor(1, 2, "Pad", InputDevice.SOURCE_GAMEPAD, 7)
++        val second = ControllerInputMapper.fallbackDescriptor(1, 2, "Pad", InputDevice.SOURCE_GAMEPAD, 8)
++
++        assertFalse(first == second)
++        assertFalse(ControllerInputMapper.stableControllerId(first) == ControllerInputMapper.stableControllerId(second))
++    }
++
+     @Test
+     fun normalizeTriggerMapsFromMinToMax() {
+         val calibration = ControllerAxisCalibration(minimum = 0f, maximum = 255f, flat = 10f)
+@@ -122,6 +143,20 @@ class ControllerInputMapperTest {
+         assertEquals(1L, dispatch.samples.first { it.kind == ControllerEventKind.CONNECTED }.controllerEpoch)
+     }
+ 
++    @Test
++    fun fullStateSnapshotsUseStableControllerIdOrder() {
++        val state = ControllerSessionState()
++        state.connect("controller-z")
++        val second = checkNotNull(state.connect("controller-a"))
++
++        assertEquals(
++            listOf("controller-a", "controller-z"),
++            second.samples
++                .filter { it.kind == ControllerEventKind.STATE }
++                .map { it.controllerId },
++        )
++    }
++
+     @Test
+     fun connectTwiceReturnsNull() {
+         val state = ControllerSessionState()
+@@ -205,6 +240,33 @@ class ControllerInputMapperTest {
+         assertEquals(1 shl ControllerButton.A.bit, stateSample.buttonMask)
+     }
+ 
++    @Test
++    fun applyKeyHatCombinesOppositesAndRestoresMotionHat() {
++        val state = ControllerSessionState()
++        state.connect("c1")
++        state.applyMotion(ControllerMotionSnapshot("c1", listOf(ControllerAxes(hatX = 1))))
++
++        val left = checkNotNull(
++            state.applyKey(ControllerKeyChange.Hat("c1", pressed = true, ControllerHatButton.LEFT)),
++        )
++        assertEquals(-1, left.samples.last { it.controllerId == "c1" }.axes.hatX)
++
++        val right = checkNotNull(
++            state.applyKey(ControllerKeyChange.Hat("c1", pressed = true, ControllerHatButton.RIGHT)),
++        )
++        assertEquals(0, right.samples.last { it.controllerId == "c1" }.axes.hatX)
++
++        val leftReleased = checkNotNull(
++            state.applyKey(ControllerKeyChange.Hat("c1", pressed = false, ControllerHatButton.LEFT)),
++        )
++        assertEquals(1, leftReleased.samples.last { it.controllerId == "c1" }.axes.hatX)
++
++        assertNull(
++            state.applyKey(ControllerKeyChange.Hat("c1", pressed = false, ControllerHatButton.RIGHT)),
++        )
++        assertEquals(1, checkNotNull(state.resynchronize()).samples.single().axes.hatX)
++    }
++
+     @Test
+     fun applyKeyUnchangedButtonReturnsNull() {
+         val state = ControllerSessionState()
+@@ -263,18 +325,32 @@ class ControllerInputMapperTest {
+     }
+ 
+     @Test
+-    fun transportLossDropsActiveStateAndReconnectAdvancesEpoch() {
++    fun rejectedConnectionRemovesOnlyExactEpochAndDoesNotRollBackHistory() {
++        val state = ControllerSessionState()
++        val first = checkNotNull(state.connect("c1")).samples.first { it.kind == ControllerEventKind.CONNECTED }
++
++        assertFalse(state.rejectConnection("c1", first.controllerEpoch + 1))
++        assertTrue(state.isActive("c1"))
++        assertTrue(state.rejectConnection("c1", first.controllerEpoch))
++        assertFalse(state.isActive("c1"))
++
++        val retry = checkNotNull(state.connect("c1")).samples.first { it.kind == ControllerEventKind.CONNECTED }
++        assertEquals(first.controllerEpoch + 1, retry.controllerEpoch)
++    }
++
++    @Test
++    fun sameSessionResynchronizationRetainsActiveEpochAndState() {
+         val state = ControllerSessionState()
+         val first = state.connect("c1")!!.samples.first { it.kind == ControllerEventKind.CONNECTED }
+         assertEquals(1L, first.controllerEpoch)
++        state.applyKey(ControllerKeyChange.Button("c1", pressed = true, ControllerButton.A))
+ 
+-        state.discardActiveForTransportLoss()
++        val resynchronized = checkNotNull(state.resynchronize())
+ 
+-        assertTrue(state.activeSnapshots().isEmpty())
+-        val reconnected = state.connect("c1")!!.samples
+-        val connected = reconnected.first { it.kind == ControllerEventKind.CONNECTED }
+-        assertEquals(2L, connected.controllerEpoch)
+-        assertTrue(reconnected.any { it.kind == ControllerEventKind.STATE && it.controllerEpoch == 2L })
++        assertEquals(ControllerDelivery.STRUCTURAL, resynchronized.delivery)
++        assertEquals(1, resynchronized.samples.size)
++        assertEquals(1L, resynchronized.samples.single().controllerEpoch)
++        assertEquals(1 shl ControllerButton.A.bit, resynchronized.samples.single().buttonMask)
+     }
+ 
+     @Test
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt
+index 93e6c11be..fc58cce28 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt
+@@ -672,14 +672,95 @@ class OutboundCommandSchedulerTest {
+         assertTrue(scheduler.shutdownGracefully(1_000))
+     }
+ 
++    @Test
++    fun controllerStructuralUsesRecoveryReserveDuringTouchSaturation() {
++        val writerEntered = CountDownLatch(1)
++        val releaseWriter = CountDownLatch(1)
++        val written = Collections.synchronizedList(mutableListOf<String>())
++        val scheduler = scheduler(capacity = 4) { command ->
++            if (command == "block") {
++                writerEntered.countDown()
++                releaseWriter.await()
++            }
++            written += command
++        }
++
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "block"))
++        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "touch-1"))
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "touch-2"))
++        assertEquals(
++            OutboundCommandScheduler.Submission.ACCEPTED,
++            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-connected"),
++        )
++        assertEquals(
++            OutboundCommandScheduler.Submission.ACCEPTED,
++            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-disconnected"),
++        )
++        assertEquals(
++            OutboundCommandScheduler.Submission.TIMED_OUT,
++            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-overflow"),
++        )
++
++        releaseWriter.countDown()
++        assertTrue(scheduler.shutdownGracefully(1_000))
++        assertEquals(
++            listOf("block", "touch-1", "touch-2", "controller-connected", "controller-disconnected"),
++            written,
++        )
++    }
++
++    @Test
++    fun controllerStructuralEvictsOldestAnalogDomainWhenCapacityIsFull() {
++        val writerEntered = CountDownLatch(1)
++        val releaseWriter = CountDownLatch(1)
++        val written = Collections.synchronizedList(mutableListOf<String>())
++        val scheduler = scheduler(capacity = 2) { command ->
++            if (command == "block") {
++                writerEntered.countDown()
++                releaseWriter.await()
++            }
++            written += command
++        }
++
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "block"))
++        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(MOVE, "touch-move"))
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_MOVE, "controller-move"))
++        assertEquals(
++            OutboundCommandScheduler.Submission.ACCEPTED_AFTER_COALESCING_MOVE,
++            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-connected"),
++        )
++
++        releaseWriter.countDown()
++        assertTrue(scheduler.shutdownGracefully(1_000))
++        assertEquals(listOf("block", "controller-connected"), written)
++    }
++
+     @Test
+     fun acceptedControllerStructuralIsDrainedDuringGracefulShutdown() {
++        val writerEntered = CountDownLatch(1)
++        val releaseWriter = CountDownLatch(1)
+         val written = Collections.synchronizedList(mutableListOf<String>())
+-        val scheduler = scheduler(capacity = 4) { written += it }
++        val scheduler = scheduler(capacity = 4) { command ->
++            if (command == "block") {
++                writerEntered.countDown()
++                releaseWriter.await()
++            }
++            written += command
++        }
+ 
++        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "block"))
++        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+         assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_STRUCTURAL, "connect"))
+-        assertTrue(scheduler.shutdownGracefully(1_000))
+-        assertTrue(written.contains("connect"))
++        val shutdownResult = AtomicReference<Boolean>()
++        val shutdown = Thread { shutdownResult.set(scheduler.shutdownGracefully(1_000)) }.apply { start() }
++        releaseWriter.countDown()
++        shutdown.join(2_000)
++
++        assertFalse(shutdown.isAlive)
++        assertEquals(true, shutdownResult.get())
++        assertEquals(listOf("block", "connect"), written)
+     }
+ 
+     @Test
+@@ -719,7 +800,7 @@ class OutboundCommandSchedulerTest {
+         releaseCoalescer.countDown()
+         lockHolder.join(1_000)
+         assertEquals(
+-            OutboundCommandScheduler.Submission.ACCEPTED_AFTER_COALESCING_MOVE,
++            OutboundCommandScheduler.Submission.ACCEPTED,
+             scheduler.submit(CONTROLLER_STRUCTURAL, "boundary"),
+         )
+ 
+@@ -733,14 +814,25 @@ class OutboundCommandSchedulerTest {
+     fun controllerLifecycleLockDoesNotDeadlockAgainstShutdown() {
+         val writerEntered = CountDownLatch(1)
+         val releaseWriter = CountDownLatch(1)
++        val shutdownOwnsMainLock = CountDownLatch(1)
++        val allowShutdownToTakeLifecycleLock = CountDownLatch(1)
+         val written = Collections.synchronizedList(mutableListOf<String>())
+-        val scheduler = scheduler(capacity = 4) { command ->
+-            if (command == "block") {
+-                writerEntered.countDown()
+-                releaseWriter.await()
+-            }
+-            written += command
+-        }
++        val scheduler =
++            OutboundCommandScheduler<String>(
++                capacity = 4,
++                writer = { command ->
++                    if (command == "block") {
++                        writerEntered.countDown()
++                        releaseWriter.await()
++                    }
++                    written += command
++                },
++                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
++                beforeControllerLifecycleClose = {
++                    shutdownOwnsMainLock.countDown()
++                    allowShutdownToTakeLifecycleLock.await()
++                },
++            )
+ 
+         scheduler.submit(STRUCTURAL, "block")
+         assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+@@ -750,17 +842,22 @@ class OutboundCommandSchedulerTest {
+             shutdownResult.set(scheduler.shutdownGracefully(2_000))
+         }
+         shutdownThread.start()
+-        // Give shutdown time to acquire controllerLifecycleLock
+-        Thread.sleep(200)
+-        // Submit a controller structural while shutdown is waiting; must not deadlock
+-        val submitResult = scheduler.submit(CONTROLLER_STRUCTURAL, "during-shutdown")
++        assertTrue(shutdownOwnsMainLock.await(1, TimeUnit.SECONDS))
++        val submitResult = AtomicReference<OutboundCommandScheduler.Submission>()
++        val submitThread = Thread {
++            submitResult.set(scheduler.submit(CONTROLLER_STRUCTURAL, "during-shutdown"))
++        }
++        submitThread.start()
++        submitThread.join(1_000)
++        assertFalse(submitThread.isAlive)
++        allowShutdownToTakeLifecycleLock.countDown()
+         releaseWriter.countDown()
+         shutdownThread.join(3_000)
+         assertTrue(shutdownResult.get() == true)
+         // Either accepted and drained, or closed during shutdown
+         assertTrue(
+-            submitResult == OutboundCommandScheduler.Submission.ACCEPTED ||
+-                submitResult == OutboundCommandScheduler.Submission.CLOSED,
++            submitResult.get() == OutboundCommandScheduler.Submission.ACCEPTED ||
++                submitResult.get() == OutboundCommandScheduler.Submission.CLOSED,
+         )
+     }
+ 
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt
+index 781703995..3e15bdca0 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt
+@@ -16,6 +16,7 @@ import dev.vibescreen.protocol.v1.HostActionDescriptor
+ import dev.vibescreen.protocol.v1.HostActionResult
+ import dev.vibescreen.protocol.v1.HostHello
+ import dev.vibescreen.protocol.v1.InputPhase
++import dev.vibescreen.protocol.v1.InputAck
+ import dev.vibescreen.protocol.v1.ListDisplaysResponse
+ import dev.vibescreen.protocol.v1.MediaPacketHeader
+ import dev.vibescreen.protocol.v1.ProtocolError
+@@ -50,6 +51,75 @@ import java.util.concurrent.atomic.AtomicInteger
+ import java.util.concurrent.atomic.AtomicReference
+ 
+ class StreamClientProtocolV1IntegrationTest {
++    @Test
++    fun controllerInputAckIsDeliveredWithoutClosingTheProtocolSession() = runBlocking {
++        ServerSocket(0).use { server ->
++            val videoApplied = CountDownLatch(1)
++            val acknowledgementReceived = CountDownLatch(1)
++            val acknowledgedConnection = AtomicReference<ControllerConnection?>()
++            val acknowledgedAccepted = AtomicBoolean(true)
++            val acknowledgedReason = AtomicReference<String>()
++            val serverJob =
++                async(Dispatchers.IO) {
++                    server.accept().use { peer ->
++                        completeHandshake(
++                            peer,
++                            initialRotation = 0,
++                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
++                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
++                        )
++                        val controller = readEnvelope(peer)
++                        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, controller.payloadCase)
++                        assertEquals(
++                            dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
++                            controller.controllerEvent.kind,
++                        )
++                        write(
++                            peer,
++                            base(6)
++                                .setInputAck(
++                                    InputAck.newBuilder()
++                                        .setInputId(controller.controllerEvent.inputId)
++                                        .setAccepted(false)
++                                        .setRejectionReason("maximum_active_controllers_exceeded"),
++                                ).build(),
++                        )
++                        assertTrue(acknowledgementReceived.await(8, TimeUnit.SECONDS))
++                        write(peer, disconnect(id = 7))
++                    }
++                }
++            val client = StreamClient("127.0.0.1", server.localPort)
++            client.acceptVideoConfigurations()
++            client.onVideoConfigurationApplied = { videoApplied.countDown() }
++            client.onControllerInputAck = { _, connection, accepted, rejectionReason ->
++                acknowledgedConnection.set(connection)
++                acknowledgedAccepted.set(accepted)
++                acknowledgedReason.set(rejectionReason)
++                acknowledgementReceived.countDown()
++            }
++            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
++
++            assertTrue(videoApplied.await(8, TimeUnit.SECONDS))
++            assertTrue(
++                client.sendController(
++                    ControllerDispatch(
++                        samples = listOf(ControllerStateSample("controller-1", 1, ControllerEventKind.CONNECTED)),
++                        delivery = ControllerDelivery.STRUCTURAL,
++                    ),
++                ),
++            )
++            assertTrue(acknowledgementReceived.await(8, TimeUnit.SECONDS))
++            assertEquals(ControllerConnection("controller-1", 1), acknowledgedConnection.get())
++            assertFalse(acknowledgedAccepted.get())
++            assertEquals("maximum_active_controllers_exceeded", acknowledgedReason.get())
++            assertTrue(client.canSendController())
++
++            withTimeout(8_000) { serverJob.await() }
++            withTimeout(8_000) { clientJob.await() }
++            Unit
++        }
++    }
++
+     @Test
+     fun decoderCommitWithholdsAckDropsPrematureMediaThenRequestsKeyframeAndDeliversNewEpoch() = runBlocking {
+         ServerSocket(0).use { server ->
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetControllerSendQueueTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetControllerSendQueueTest.kt
+index 06b5c1595..02474b0d6 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetControllerSendQueueTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetControllerSendQueueTest.kt
+@@ -45,6 +45,27 @@ class InternetControllerSendQueueTest {
+         assertEquals(InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW, queue.enqueue(listOf("s3"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+     }
+ 
++    @Test
++    fun structuralOverflowDoesNotDiscardTrailingAnalog() {
++        val queue = InternetControllerSendQueue<String>(maximumStructuralBatches = 2)
++        queue.enqueue(listOf("s1"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL)
++        queue.enqueue(listOf("s2"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL)
++        queue.enqueue(listOf("analog"), InternetControllerSendQueue.Delivery.ANALOG)
++
++        assertEquals(
++            InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW,
++            queue.enqueue(listOf("s3"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL),
++        )
++        assertEquals(
++            listOf(
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL to listOf("s1"),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL to listOf("s2"),
++                InternetControllerSendQueue.Delivery.ANALOG to listOf("analog"),
++            ),
++            queue.pendingBatches(),
++        )
++    }
++
+     @Test
+     fun drainSendsEventsInOrderUntilBackpressure() {
+         val queue = InternetControllerSendQueue<String>()
+@@ -111,6 +132,56 @@ class InternetControllerSendQueueTest {
+         assertTrue(queue.pendingBatches().isEmpty())
+     }
+ 
++    @Test
++    fun structuralBackpressureKeepsOnlyTheUnsentRemainder() {
++        val queue = InternetControllerSendQueue<String>()
++        queue.enqueue(
++            listOf("connected", "state-1", "state-2"),
++            InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++        )
++
++        val firstAttempt = mutableListOf<String>()
++        val blocked =
++            queue.drain { event ->
++                firstAttempt += event
++                event != "state-2"
++            }
++
++        assertEquals(listOf("connected", "state-1", "state-2"), firstAttempt)
++        assertEquals(2, blocked.sentEvents)
++        assertTrue(blocked.blocked)
++        assertEquals(
++            listOf(
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL to listOf("state-2"),
++            ),
++            queue.pendingBatches(),
++        )
++
++        val retry = mutableListOf<String>()
++        val drained = queue.drain { event -> retry += event; true }
++        assertEquals(listOf("state-2"), retry)
++        assertEquals(1, drained.sentEvents)
++        assertFalse(drained.blocked)
++        assertTrue(queue.pendingBatches().isEmpty())
++    }
++
++    @Test
++    fun structuralDoesNotDiscardPartiallyDrainedTrailingAnalog() {
++        val queue = InternetControllerSendQueue<String>()
++        queue.enqueue(listOf("analog-1", "analog-2"), InternetControllerSendQueue.Delivery.ANALOG)
++        queue.drain { event -> event == "analog-1" }
++
++        queue.enqueue(listOf("structural"), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL)
++
++        assertEquals(
++            listOf(
++                InternetControllerSendQueue.Delivery.ANALOG to listOf("analog-2"),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL to listOf("structural"),
++            ),
++            queue.pendingBatches(),
++        )
++    }
++
+     @Test
+     fun clearRemovesAllPendingBatches() {
+         val queue = InternetControllerSendQueue<String>()
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt
+index 0ccc135f8..fb7a00ac7 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt
+@@ -14,6 +14,7 @@ import dev.vibescreen.protocol.v1.Dimensions
+ import dev.vibescreen.protocol.v1.DeviceRevoked
+ import dev.vibescreen.protocol.v1.Envelope
+ import dev.vibescreen.protocol.v1.HostHello
++import dev.vibescreen.protocol.v1.InputAck
+ import dev.vibescreen.protocol.v1.MediaPacketHeader
+ import dev.vibescreen.protocol.v1.Ping
+ import dev.vibescreen.protocol.v1.ResourceLimits
+@@ -245,10 +246,7 @@ class InternetProductSessionTest {
+         assertEquals(listOf(90, 270), callbacks.configurations.map { it.rotationDegrees })
+ 
+         monitor.available("cellular")
+-        assertTrue(
+-            session.state == InternetProductSessionState.RECOVERING ||
+-                session.state == InternetProductSessionState.SUSPENDED,
+-        )
++        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+         assertEquals(1, callbacks.freshReasons.size)
+         assertEquals(1, callbacks.states.count { it == InternetProductSessionState.RECOVERING })
+         assertEquals(0, peer.restartCalls)
+@@ -612,6 +610,58 @@ class InternetProductSessionTest {
+         assertFalse(payloads.contains(Envelope.PayloadCase.PING))
+     }
+ 
++    @Test
++    fun freshSessionRequestClearsQueuedControllerEventsFromTheOldEpoch() {
++        val peer = ProductFakePeerEngine()
++        val monitor = ProductFakeNetworkMonitor()
++        val callbacks = ProductCallbacks()
++        val session = session(peer, monitor, callbacks)
++        session.start()
++        monitor.available("wifi")
++        peer.observer.onConnected(PeerRoute.DIRECT)
++        peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
++        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
++        peer.receive(videoConfigurationEnvelope(3))
++        assertTrue(
++            session.sendController(
++                listOf(controllerLifecycleEvent(inputId = 1)),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++            ),
++        )
++
++        peer.observer.onDisconnected()
++        assertEquals(InternetProductSessionState.RECOVERING, session.state)
++        assertTrue(
++            session.sendController(
++                listOf(
++                    controllerLifecycleEvent(
++                        inputId = 2,
++                        kind = ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
++                    ),
++                ),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++            ),
++        )
++
++        monitor.available("cellular")
++        assertEquals(InternetProductSessionState.RECOVERING, session.state)
++        assertEquals(1, callbacks.freshReasons.size)
++        peer.observer.onConnected(PeerRoute.RELAY)
++
++        val controllerInputIds =
++            peer.control
++                .map(Envelope::parseFrom)
++                .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
++                .map { it.controllerEvent.inputId }
++        assertEquals(listOf(1L), controllerInputIds)
++        assertFalse(
++            session.sendController(
++                listOf(controllerLifecycleEvent(inputId = 3, controllerEpoch = 2)),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++            ),
++        )
++    }
++
+     @Test
+     fun freshInvalidationAfterControlDecodePreventsLateSessionAcceptanceCommit() {
+         val peer = ProductFakePeerEngine()
+@@ -1610,6 +1660,7 @@ class InternetProductSessionTest {
+         peer.receive(videoConfigurationEnvelope(3))
+ 
+         assertTrue(session.canSendController())
++        assertEquals(1, callbacks.appliedConfigurations.size)
+         val event = controllerLifecycleEvent()
+         assertTrue(session.sendController(listOf(event), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+ 
+@@ -1618,6 +1669,49 @@ class InternetProductSessionTest {
+         assertEquals(1L, lastEnvelope.controllerEvent.inputId)
+         assertEquals("ctrl-1", lastEnvelope.controllerEvent.controllerId)
+         assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, lastEnvelope.controllerEvent.kind)
++        assertEquals("internet-display", lastEnvelope.controllerEvent.target.displayId)
++        assertEquals(5L, lastEnvelope.controllerEvent.target.streamId)
++    }
++
++    @Test
++    fun controllerInputAckReachesCallbackWithoutClosingSession() {
++        val peer = ProductFakePeerEngine()
++        val callbacks = ProductCallbacks()
++        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
++        session.start()
++        peer.observer.onConnected(PeerRoute.DIRECT)
++        peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
++        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
++        peer.receive(videoConfigurationEnvelope(3))
++        assertTrue(
++            session.sendController(
++                listOf(controllerLifecycleEvent(inputId = 17)),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++            ),
++        )
++
++        peer.receive(
++            controlEnvelope(4)
++                .setInputAck(
++                    InputAck.newBuilder()
++                        .setInputId(17)
++                        .setAccepted(false)
++                        .setRejectionReason("maximum_active_controllers_exceeded"),
++                ).build(),
++        )
++
++        assertEquals(InternetProductSessionState.ACTIVE, session.state)
++        assertTrue(session.canSendController())
++        assertEquals(
++            ProductInputAckCallback(
++                inputId = 17,
++                controllerId = "ctrl-1",
++                controllerEpoch = 1,
++                accepted = false,
++                rejectionReason = "maximum_active_controllers_exceeded",
++            ),
++            callbacks.inputAcks.single(),
++        )
+     }
+ 
+     @Test
+@@ -1666,7 +1760,7 @@ class InternetProductSessionTest {
+         assertTrue(session.canSendController())
+ 
+         disconnectOnSend.set(true)
+-        assertFalse(
++        assertTrue(
+             session.sendController(
+                 listOf(controllerLifecycleEvent()),
+                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+@@ -1682,9 +1776,22 @@ class InternetProductSessionTest {
+         disconnectOnSend.set(false)
+         peer.observer.onConnected(PeerRoute.DIRECT)
+         assertEquals(InternetProductSessionState.ACTIVE, session.state)
++        val replayed =
++            peer.control
++                .map(Envelope::parseFrom)
++                .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
++        assertEquals(1, replayed.size)
++        assertEquals(1L, replayed.single().controllerEvent.inputId)
++        assertEquals(1L, replayed.single().controllerEvent.controllerEpoch)
+         assertTrue(
+             session.sendController(
+-                listOf(controllerLifecycleEvent(inputId = 2, controllerEpoch = 2)),
++                listOf(
++                    controllerLifecycleEvent(
++                        inputId = 2,
++                        controllerEpoch = 1,
++                        kind = ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
++                    ),
++                ),
+                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+             ),
+         )
+@@ -1692,12 +1799,12 @@ class InternetProductSessionTest {
+             peer.control
+                 .map(Envelope::parseFrom)
+                 .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
+-        assertEquals(1, delivered.size)
+-        assertEquals(2L, delivered.single().controllerEvent.controllerEpoch)
++        assertEquals(listOf(1L, 2L), delivered.map { it.controllerEvent.inputId })
++        assertEquals(listOf(1L, 1L), delivered.map { it.controllerEvent.controllerEpoch })
+     }
+ 
+     @Test
+-    fun controllerSendRejectedDuringRecoveringAndSuspendedAndNoOldLifecycleReplayedAfterRecovery() {
++    fun controllerStructuralQueuesDuringRecoveryWhileAnalogRemainsRejected() {
+         val peer = ProductFakePeerEngine()
+         val monitor = ProductFakeNetworkMonitor()
+         val callbacks = ProductCallbacks()
+@@ -1708,6 +1815,7 @@ class InternetProductSessionTest {
+         peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
+         peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
+         peer.receive(videoConfigurationEnvelope(3))
++        assertTrue(session.canAdmitControllerStructural())
+ 
+         // Send one structural lifecycle event while active.
+         val connected = controllerLifecycleEvent()
+@@ -1719,30 +1827,82 @@ class InternetProductSessionTest {
+         // Transition to RECOVERING via transport disconnect (network still available).
+         peer.observer.onDisconnected()
+         assertEquals(InternetProductSessionState.RECOVERING, session.state)
++        assertFalse(session.canSendController())
++        assertTrue(session.canAdmitControllerStructural())
+ 
+-        // During RECOVERING the send is rejected and nothing is emitted.
++        // A reliable disconnect boundary is queued during RECOVERING, while
++        // analog state remains replaceable and is rejected until ACTIVE.
+         val controlCountBeforeRecovering = peer.control.size
+-        assertFalse(session.sendController(listOf(connected), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
++        val disconnected =
++            controllerLifecycleEvent(
++                inputId = 2,
++                controllerEpoch = 1,
++                kind = ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
++            )
++        assertTrue(
++            session.sendController(
++                listOf(disconnected),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++            ),
++        )
++        assertFalse(
++            session.sendController(
++                listOf(
++                    controllerLifecycleEvent(
++                        inputId = 3,
++                        controllerEpoch = 1,
++                        kind = ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
++                    ),
++                ),
++                InternetControllerSendQueue.Delivery.ANALOG,
++            ),
++        )
+         assertEquals(controlCountBeforeRecovering, peer.control.size)
+ 
+         // Recover back to ACTIVE.
+         peer.observer.onConnected(PeerRoute.DIRECT)
+         assertEquals(InternetProductSessionState.ACTIVE, session.state)
+ 
+-        // No old structural lifecycle event was replayed after recovery.
+-        val controllerEventCountAfterRecovering = peer.control.count {
+-            Envelope.parseFrom(it).payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT
+-        }
+-        assertEquals(controllerEventCountBefore, controllerEventCountAfterRecovering)
++        val controllerEventsAfterRecovering =
++            peer.control
++                .map(Envelope::parseFrom)
++                .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
++        assertEquals(controllerEventCountBefore + 1, controllerEventsAfterRecovering.size)
++        assertEquals(2L, controllerEventsAfterRecovering.last().controllerEvent.inputId)
++        assertEquals(
++            ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
++            controllerEventsAfterRecovering.last().controllerEvent.kind,
++        )
+ 
+         // Transition to SUSPENDED by losing the active network.
+         monitor.unavailable("wifi")
+         assertEquals(InternetProductSessionState.SUSPENDED, session.state)
++        assertFalse(session.canSendController())
++        assertTrue(session.canAdmitControllerStructural())
+ 
+-        // During SUSPENDED the send is also rejected and nothing is emitted.
++        // SUSPENDED follows the same bounded reliable-structural policy.
+         val controlCountBeforeSuspended = peer.control.size
+-        assertFalse(session.sendController(listOf(connected), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
++        val reconnected = controllerLifecycleEvent(inputId = 4, controllerEpoch = 2)
++        assertTrue(
++            session.sendController(
++                listOf(reconnected),
++                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
++            ),
++        )
+         assertEquals(controlCountBeforeSuspended, peer.control.size)
++
++        peer.observer.onConnected(PeerRoute.DIRECT)
++        assertEquals(InternetProductSessionState.ACTIVE, session.state)
++        assertTrue(callbacks.freshReasons.isEmpty())
++        val controllerEventsAfterSuspended =
++            peer.control
++                .map(Envelope::parseFrom)
++                .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
++        assertEquals(4L, controllerEventsAfterSuspended.last().controllerEvent.inputId)
++        assertEquals(2L, controllerEventsAfterSuspended.last().controllerEvent.controllerEpoch)
++
++        session.close()
++        assertFalse(session.canAdmitControllerStructural())
+     }
+ 
+     private fun session(
+@@ -1936,6 +2096,8 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
+     val freshReasons = mutableListOf<String>()
+     val failures = mutableListOf<Throwable>()
+     val routes = java.util.concurrent.CopyOnWriteArrayList<PeerRoute>()
++    val appliedConfigurations = java.util.concurrent.CopyOnWriteArrayList<ProductVideoConfiguration>()
++    val inputAcks = java.util.concurrent.CopyOnWriteArrayList<ProductInputAckCallback>()
+     var revocationEvents: MutableList<String>? = null
+     override fun onStateChanged(state: InternetProductSessionState) { states += state }
+     override fun onVideoConfiguration(
+@@ -1951,12 +2113,32 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
+         )
+     }
+     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
++    override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) {
++        appliedConfigurations += configuration
++    }
++    override fun onInputAck(
++        inputId: Long,
++        controllerId: String?,
++        controllerEpoch: Long?,
++        accepted: Boolean,
++        rejectionReason: String,
++    ) {
++        inputAcks += ProductInputAckCallback(inputId, controllerId, controllerEpoch, accepted, rejectionReason)
++    }
+     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
+     override fun onFailure(error: Throwable) { failures += error }
+     override fun onRouteSelected(route: PeerRoute) { routes += route }
+     override fun onRevoked(reason: String) { revocationEvents?.add("callback") }
+ }
+ 
++private data class ProductInputAckCallback(
++    val inputId: Long,
++    val controllerId: String?,
++    val controllerEpoch: Long?,
++    val accepted: Boolean,
++    val rejectionReason: String,
++)
++
+ private class ProductFakeNetworkMonitor(
+     private val closeFailure: Throwable? = null,
+ ) : NetworkMonitor {
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/ProtocolV1ProductCodecTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/ProtocolV1ProductCodecTest.kt
+index b1c68f9fa..304e11059 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/ProtocolV1ProductCodecTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/ProtocolV1ProductCodecTest.kt
+@@ -5,6 +5,7 @@ import dev.vibescreen.protocol.v1.Capability
+ import dev.vibescreen.protocol.v1.Codec
+ import dev.vibescreen.protocol.v1.Envelope
+ import dev.vibescreen.protocol.v1.HostHello
++import dev.vibescreen.protocol.v1.InputAck
+ import dev.vibescreen.protocol.v1.MediaPacketHeader
+ import dev.vibescreen.protocol.v1.ResourceLimits
+ import dev.vibescreen.protocol.v1.SessionAccepted
+@@ -123,6 +124,25 @@ class ProtocolV1ProductCodecTest {
+         )
+     }
+ 
++    @Test
++    fun decodesControllerInputAcknowledgement() {
++        val decoded =
++            codec.decodeControl(
++                baseEnvelope(3)
++                    .setInputAck(
++                        InputAck.newBuilder()
++                            .setInputId(42)
++                            .setAccepted(false)
++                            .setRejectionReason("maximum_active_controllers_exceeded"),
++                    ).build()
++                    .toByteArray(),
++            ).message as ProductControlMessage.InputAck
++
++        assertEquals(42L, decoded.inputId)
++        assertEquals(false, decoded.accepted)
++        assertEquals("maximum_active_controllers_exceeded", decoded.rejectionReason)
++    }
++
+     @Test
+     fun decodesMediaRecordUint32LimitsWithoutSignedOverflow() {
+         val unsignedMaximum = -1
+@@ -264,6 +284,7 @@ class ProtocolV1ProductCodecTest {
+         assertEquals(0.75, ce.leftTrigger, 0.0)
+         assertEquals(1, ce.hatX)
+         assertEquals(-1, ce.hatY)
++        assertEquals("internet-display", ce.target.displayId)
+         assertEquals(9L, ce.target.streamId)
+     }
+ 
+diff --git a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt
+index b06dc96c2..5c81840d5 100644
+--- a/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt
++++ b/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt
+@@ -16,6 +16,7 @@ import dev.vibescreen.protocol.v1.HostActionDescriptor
+ import dev.vibescreen.protocol.v1.HostActionResult
+ import dev.vibescreen.protocol.v1.HostHello
+ import dev.vibescreen.protocol.v1.InputPhase
++import dev.vibescreen.protocol.v1.InputAck
+ import dev.vibescreen.protocol.v1.ListDisplaysResponse
+ import dev.vibescreen.protocol.v1.MediaPacketHeader
+ import dev.vibescreen.protocol.v1.Ping
+@@ -510,6 +511,26 @@ class ProtocolV1SessionTest {
+         assertEquals(42L, event.target.streamId)
+     }
+ 
++    @Test
++    fun controllerInputAckIsNonTerminalAfterNegotiation() {
++        val session = controllerStreamingSession()
++        val acknowledgement =
++            base(99)
++                .setInputAck(
++                    InputAck.newBuilder()
++                        .setInputId(201)
++                        .setAccepted(false)
++                        .setRejectionReason("maximum_active_controllers_exceeded"),
++                ).build()
++
++        val action = session.receive(acknowledgement).single() as ProtocolV1Session.Action.ControllerInputAck
++
++        assertEquals(201L, action.inputId)
++        assertFalse(action.accepted)
++        assertEquals("maximum_active_controllers_exceeded", action.rejectionReason)
++        assertTrue(session.canSendController)
++    }
++
+     @Test
+     fun negotiatingKeyboardAndPointerUnlocksNativeInputSenders() {
+         val touchOnly = streamingSession()

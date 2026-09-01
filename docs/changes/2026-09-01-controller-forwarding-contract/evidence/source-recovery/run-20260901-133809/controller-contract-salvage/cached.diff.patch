@@ -1,0 +1,956 @@
+diff --git a/contracts/README.md b/contracts/README.md
+index 155cab805..7371fb600 100644
+--- a/contracts/README.md
++++ b/contracts/README.md
+@@ -85,11 +85,3 @@ Compatibility policy:
+ - binary decoders must accept additive unknown fields, but JSON projections may
+   discard them and are not a field-preserving relay format;
+ - use a new versioned package for an incompatible wire change.
+-
+-`KeyEvent.modifier_mask` keeps its original field and uses capability-gated
+-interpretation. Capability `27` selects the standard USB HID modifier byte
+-(`Control=0x01`, `Shift=0x02`, `Alt=0x04`, `GUI=0x08`, right-side variants in
+-`0x10...0x80`). Without it, peers retain the legacy four-bit layout
+-(`Shift=0x01`, `Control=0x02`, `Alt=0x04`, `GUI=0x08`). New clients collapse
+-right-side modifiers to the equivalent left-side legacy bit; new hosts reject
+-legacy high-nibble bits rather than guessing their meaning.
+diff --git a/contracts/fixtures/messages/v1/README.md b/contracts/fixtures/messages/v1/README.md
+index 0d992d27d..0ca68db83 100644
+--- a/contracts/fixtures/messages/v1/README.md
++++ b/contracts/fixtures/messages/v1/README.md
+@@ -31,7 +31,7 @@ decode a fixture extended with an unknown binary field. Its JSON projection
+ intentionally drops that field, so the test does not claim unknown-field
+ preservation by Swift, Kotlin, or a binary relay.
+ 
+-The four `key_*` fixtures make the capability-gated modifier layouts explicit.
+-`key_usb_hid_control` and `key_usb_hid_shift` require negotiated capability
+-`27` and use `0x01`/`0x02`. `key_legacy_control` and `key_legacy_shift` model a
+-mixed-version session without that capability and use `0x02`/`0x01`.
++The controller fixtures form one complete lifecycle for a stable controller ID
++and epoch: neutral `CONNECTED`, a full `STATE` snapshot, then neutral
++`DISCONNECTED`. `controller_validation.json` pins invalid scalar, reserved-bit,
++and non-neutral lifecycle cases without assigning wire bytes to invalid input.
+diff --git a/contracts/fixtures/messages/v1/bin/controller_connected.binpb b/contracts/fixtures/messages/v1/bin/controller_connected.binpb
+new file mode 100644
+index 0000000000000000000000000000000000000000..614803ce44d6fb682f7a1c3824e6692abba6bd9d
+GIT binary patch
+literal 68
+zcmd;J6cAM6U}R!uVP#|I&|o*1IOX*n=1DBt9O*)W$@zIDMfo{7sYSXKN%<AJh7ybl
+Xj70)mJSmyQ1v!b8y19v&c>-Dh1IQ76
+
+literal 0
+HcmV?d00001
+
+diff --git a/contracts/fixtures/messages/v1/bin/controller_disconnected.binpb b/contracts/fixtures/messages/v1/bin/controller_disconnected.binpb
+new file mode 100644
+index 0000000000000000000000000000000000000000..aa71f7f9cd44ceda3032cb980aba01ef97163a87
+GIT binary patch
+literal 68
+zcmd;J6cAS8U}R!uVP#|I&|o*1JmvKr=1DBt9GOCb$@zIDMfo{7sYSXKN%<AJh7ybl
+X%tZoRJSmyQ1v!b8y19v&c>-Dh1u7AS
+
+literal 0
+HcmV?d00001
+
+diff --git a/contracts/fixtures/messages/v1/bin/controller_state.binpb b/contracts/fixtures/messages/v1/bin/controller_state.binpb
+new file mode 100644
+index 0000000000000000000000000000000000000000..122be0fc258a46462184445eb397ee27d2b6b2c3
+GIT binary patch
+literal 129
+zcmd;J6cAG4U}R!uVP#|I&|o*1H0AXj=1D9W92r7_$@zIDMfo{7sYSXKN%<AJh7ybl
+zOd72Uh74fvV!tJX@xa~@!nk1X31J-A9|&RGu#bc=-q<HFWiS>AaPg#M78m3sR_f*^
+JX66ZK0Ra3}9E$(|
+
+literal 0
+HcmV?d00001
+
+diff --git a/contracts/fixtures/messages/v1/controller_validation.json b/contracts/fixtures/messages/v1/controller_validation.json
+new file mode 100644
+index 000000000..fc97e7d5c
+--- /dev/null
++++ b/contracts/fixtures/messages/v1/controller_validation.json
+@@ -0,0 +1,309 @@
++{
++  "schema": "vibescreen.protocol.v1.ControllerEvent.validation/v1",
++  "buttonMaskDefinedBits": 8191,
++  "buttonBits": {
++    "south": 0,
++    "east": 1,
++    "west": 2,
++    "north": 3,
++    "l1": 4,
++    "r1": 5,
++    "l2Digital": 6,
++    "r2Digital": 7,
++    "select": 8,
++    "start": 9,
++    "guideMode": 10,
++    "l3": 11,
++    "r3": 12
++  },
++  "neutralLifecycleKinds": [
++    "CONTROLLER_EVENT_KIND_CONNECTED",
++    "CONTROLLER_EVENT_KIND_DISCONNECTED"
++  ],
++  "lifecycleNegativeCases": [
++    {
++      "name": "duplicate_connected",
++      "sequence": [
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        },
++        {
++          "inputId": 2,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        }
++      ],
++      "reason": "an active lifecycle cannot be connected twice"
++    },
++    {
++      "name": "state_before_connected",
++      "sequence": [
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 2
++        }
++      ],
++      "reason": "STATE requires an active matching lifecycle"
++    },
++    {
++      "name": "state_after_disconnected",
++      "sequence": [
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        },
++        {
++          "inputId": 2,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 3
++        },
++        {
++          "inputId": 3,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 2
++        }
++      ],
++      "reason": "DISCONNECTED closes the matching lifecycle"
++    },
++    {
++      "name": "reused_controller_epoch",
++      "sequence": [
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        },
++        {
++          "inputId": 2,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 3
++        },
++        {
++          "inputId": 3,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        }
++      ],
++      "reason": "a new lifecycle must use a greater epoch"
++    },
++    {
++      "name": "decreasing_controller_epoch",
++      "sequence": [
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 2,
++          "kindRawValue": 1
++        },
++        {
++          "inputId": 2,
++          "controllerId": "controller-1",
++          "controllerEpoch": 2,
++          "kindRawValue": 3
++        },
++        {
++          "inputId": 3,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        }
++      ],
++      "reason": "a new lifecycle must not decrease the prior epoch"
++    },
++    {
++      "name": "duplicate_input_id",
++      "sequence": [
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        },
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 2
++        }
++      ],
++      "reason": "input_id must not repeat in the session ControllerEvent stream"
++    },
++    {
++      "name": "non_monotonic_input_id",
++      "sequence": [
++        {
++          "inputId": 2,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 1
++        },
++        {
++          "inputId": 1,
++          "controllerId": "controller-1",
++          "controllerEpoch": 1,
++          "kindRawValue": 2
++        }
++      ],
++      "reason": "input_id must strictly increase in the session ControllerEvent stream"
++    }
++  ],
++  "negativeCases": [
++    {
++      "name": "zero_input_id",
++      "event": {
++        "inputId": 0,
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 1
++      },
++      "reason": "input_id must be non-zero"
++    },
++    {
++      "name": "empty_controller_id",
++      "event": {
++        "controllerId": "",
++        "controllerEpoch": 1,
++        "kindRawValue": 1
++      },
++      "reason": "controller_id must be non-empty"
++    },
++    {
++      "name": "overlong_controller_id",
++      "event": {
++        "controllerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++        "controllerEpoch": 1,
++        "kindRawValue": 1
++      },
++      "reason": "controller_id must encode to at most 128 UTF-8 bytes"
++    },
++    {
++      "name": "overlong_controller_id_multibyte_utf8",
++      "event": {
++        "controllerId": "中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中",
++        "controllerEpoch": 1,
++        "kindRawValue": 1
++      },
++      "reason": "controller_id must encode to at most 128 UTF-8 bytes"
++    },
++    {
++      "name": "zero_controller_epoch",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 0,
++        "kindRawValue": 1
++      },
++      "reason": "controller_epoch must be non-zero"
++    },
++    {
++      "name": "unknown_kind",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 99
++      },
++      "reason": "kind must be CONNECTED, STATE, or DISCONNECTED"
++    },
++    {
++      "name": "unspecified_kind",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 0
++      },
++      "reason": "kind must be CONNECTED, STATE, or DISCONNECTED"
++    },
++    {
++      "name": "reserved_button_bit",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 2,
++        "buttonMask": 8192
++      },
++      "reason": "button bits 13-31 are reserved"
++    },
++    {
++      "name": "stick_axis_out_of_range",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 2,
++        "leftStickX": 1.01
++      },
++      "reason": "stick axes must be finite and in [-1, 1]"
++    },
++    {
++      "name": "stick_axis_non_finite",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 2,
++        "leftStickX": 1e400
++      },
++      "reason": "stick axes must be finite and in [-1, 1]"
++    },
++    {
++      "name": "trigger_out_of_range",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 2,
++        "rightTrigger": -0.01
++      },
++      "reason": "triggers must be finite and in [0, 1]"
++    },
++    {
++      "name": "trigger_non_finite",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 2,
++        "rightTrigger": -1e400
++      },
++      "reason": "triggers must be finite and in [0, 1]"
++    },
++    {
++      "name": "invalid_hat_axis",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 2,
++        "hatX": 2
++      },
++      "reason": "hat axes must each be -1, 0, or 1"
++    },
++    {
++      "name": "connected_non_neutral",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 1,
++        "buttonMask": 1
++      },
++      "reason": "CONNECTED must be neutral"
++    },
++    {
++      "name": "disconnected_non_neutral",
++      "event": {
++        "controllerId": "controller-1",
++        "controllerEpoch": 1,
++        "kindRawValue": 3,
++        "leftStickX": 0.5
++      },
++      "reason": "DISCONNECTED must be neutral"
++    }
++  ]
++}
+diff --git a/contracts/fixtures/messages/v1/generate.py b/contracts/fixtures/messages/v1/generate.py
+index 9396c478f..557b7a176 100644
+--- a/contracts/fixtures/messages/v1/generate.py
++++ b/contracts/fixtures/messages/v1/generate.py
+@@ -40,10 +40,9 @@ CONTROL_FIXTURES = (
+     "touch",
+     "stylus",
+     "stylus_extended",
+-    "key_usb_hid_control",
+-    "key_usb_hid_shift",
+-    "key_legacy_control",
+-    "key_legacy_shift",
++    "controller_connected",
++    "controller_state",
++    "controller_disconnected",
+     "ping",
+     "pong",
+     "protocol_error",
+diff --git a/contracts/fixtures/messages/v1/json/controller_connected.json b/contracts/fixtures/messages/v1/json/controller_connected.json
+new file mode 100644
+index 000000000..9f40e9b6a
+--- /dev/null
++++ b/contracts/fixtures/messages/v1/json/controller_connected.json
+@@ -0,0 +1,14 @@
++{
++  "protocolVersion": 1,
++  "messageId": "17",
++  "sessionId": "AQIDBAUGBwg=",
++  "sessionEpoch": "7",
++  "sentAtMonotonicNs": "1000000017",
++  "controllerEvent": {
++    "inputId": "103",
++    "controllerId": "controller-xbox-1",
++    "controllerEpoch": "1",
++    "kind": "CONTROLLER_EVENT_KIND_CONNECTED",
++    "target": {"displayId": "display-main", "streamId": "42"}
++  }
++}
+diff --git a/contracts/fixtures/messages/v1/json/controller_disconnected.json b/contracts/fixtures/messages/v1/json/controller_disconnected.json
+new file mode 100644
+index 000000000..3a373b56b
+--- /dev/null
++++ b/contracts/fixtures/messages/v1/json/controller_disconnected.json
+@@ -0,0 +1,14 @@
++{
++  "protocolVersion": 1,
++  "messageId": "19",
++  "sessionId": "AQIDBAUGBwg=",
++  "sessionEpoch": "7",
++  "sentAtMonotonicNs": "1000000019",
++  "controllerEvent": {
++    "inputId": "105",
++    "controllerId": "controller-xbox-1",
++    "controllerEpoch": "1",
++    "kind": "CONTROLLER_EVENT_KIND_DISCONNECTED",
++    "target": {"displayId": "display-main", "streamId": "42"}
++  }
++}
+diff --git a/contracts/fixtures/messages/v1/json/controller_state.json b/contracts/fixtures/messages/v1/json/controller_state.json
+new file mode 100644
+index 000000000..eaf534554
+--- /dev/null
++++ b/contracts/fixtures/messages/v1/json/controller_state.json
+@@ -0,0 +1,23 @@
++{
++  "protocolVersion": 1,
++  "messageId": "18",
++  "sessionId": "AQIDBAUGBwg=",
++  "sessionEpoch": "7",
++  "sentAtMonotonicNs": "1000000018",
++  "controllerEvent": {
++    "inputId": "104",
++    "controllerId": "controller-xbox-1",
++    "controllerEpoch": "1",
++    "kind": "CONTROLLER_EVENT_KIND_STATE",
++    "buttonMask": 4101,
++    "leftStickX": -0.75,
++    "leftStickY": 0.5,
++    "rightStickX": 0.25,
++    "rightStickY": -0.125,
++    "leftTrigger": 0.375,
++    "rightTrigger": 0.875,
++    "hatX": 1,
++    "hatY": -1,
++    "target": {"displayId": "display-main", "streamId": "42"}
++  }
++}
+diff --git a/contracts/fixtures/messages/v1/manifest.json b/contracts/fixtures/messages/v1/manifest.json
+index db6efc64a..50f9c6bec 100644
+--- a/contracts/fixtures/messages/v1/manifest.json
++++ b/contracts/fixtures/messages/v1/manifest.json
+@@ -223,72 +223,55 @@
+       "source": "json/stylus_extended.json"
+     },
+     {
+-      "binary": "bin/key_usb_hid_control.binpb",
+-      "byteLength": 54,
++      "binary": "bin/controller_connected.binpb",
++      "byteLength": 68,
+       "channel": 1,
+       "expected": {
+         "correlationId": "0",
+         "messageId": "17",
+-        "payloadCase": "keyEvent",
++        "payloadCase": "controllerEvent",
+         "protocolVersion": 1,
+         "sentAtMonotonicNs": "1000000017",
+         "sessionEpoch": "7"
+       },
+       "messageType": "vibescreen.protocol.v1.Envelope",
+-      "name": "key_usb_hid_control",
+-      "sha256": "a5d82717d58ffd9a681fbef29148cba34deb0994841873209b8a5deea329043d",
+-      "source": "json/key_usb_hid_control.json"
++      "name": "controller_connected",
++      "sha256": "a38fe630cc961cc7ae6e92ecbe21753200f9994ef8c82c4b776c8a6d1f565f81",
++      "source": "json/controller_connected.json"
+     },
+     {
+-      "binary": "bin/key_usb_hid_shift.binpb",
+-      "byteLength": 54,
++      "binary": "bin/controller_state.binpb",
++      "byteLength": 129,
+       "channel": 1,
+       "expected": {
+         "correlationId": "0",
+         "messageId": "18",
+-        "payloadCase": "keyEvent",
++        "payloadCase": "controllerEvent",
+         "protocolVersion": 1,
+         "sentAtMonotonicNs": "1000000018",
+         "sessionEpoch": "7"
+       },
+       "messageType": "vibescreen.protocol.v1.Envelope",
+-      "name": "key_usb_hid_shift",
+-      "sha256": "f93053fdac9074d194e603f16da935d79a53d827486daf4e40098d92fea228b9",
+-      "source": "json/key_usb_hid_shift.json"
++      "name": "controller_state",
++      "sha256": "6d048feff77b665b8ffd3d55b71398add4dc2c6ec44d8c42d9caaeb19ecb0fb1",
++      "source": "json/controller_state.json"
+     },
+     {
+-      "binary": "bin/key_legacy_control.binpb",
+-      "byteLength": 54,
++      "binary": "bin/controller_disconnected.binpb",
++      "byteLength": 68,
+       "channel": 1,
+       "expected": {
+         "correlationId": "0",
+         "messageId": "19",
+-        "payloadCase": "keyEvent",
++        "payloadCase": "controllerEvent",
+         "protocolVersion": 1,
+         "sentAtMonotonicNs": "1000000019",
+         "sessionEpoch": "7"
+       },
+       "messageType": "vibescreen.protocol.v1.Envelope",
+-      "name": "key_legacy_control",
+-      "sha256": "b005764e5f6a35634875f21b068e7c26fdb03fdc1700fc222b624cc2a44cea1c",
+-      "source": "json/key_legacy_control.json"
+-    },
+-    {
+-      "binary": "bin/key_legacy_shift.binpb",
+-      "byteLength": 54,
+-      "channel": 1,
+-      "expected": {
+-        "correlationId": "0",
+-        "messageId": "20",
+-        "payloadCase": "keyEvent",
+-        "protocolVersion": 1,
+-        "sentAtMonotonicNs": "1000000020",
+-        "sessionEpoch": "7"
+-      },
+-      "messageType": "vibescreen.protocol.v1.Envelope",
+-      "name": "key_legacy_shift",
+-      "sha256": "4df5dfc8140259fb2124325b81da4df86afaeb101ffd9a8d36a0a91ab19c2d97",
+-      "source": "json/key_legacy_shift.json"
++      "name": "controller_disconnected",
++      "sha256": "a31387769782b6aae99e2f5c3e6c500ad4cee0908fc5ae7c0185c7165b3a538c",
++      "source": "json/controller_disconnected.json"
+     },
+     {
+       "binary": "bin/ping.binpb",
+diff --git a/contracts/proto/vibescreen/protocol/v1/envelope.proto b/contracts/proto/vibescreen/protocol/v1/envelope.proto
+index 7937077d8..7c2db7ff6 100644
+--- a/contracts/proto/vibescreen/protocol/v1/envelope.proto
++++ b/contracts/proto/vibescreen/protocol/v1/envelope.proto
+@@ -59,6 +59,7 @@ message Envelope {
+     KeyEvent key_event = 63;
+     InputAck input_ack = 64;
+     StylusEvent stylus_event = 65;
++    ControllerEvent controller_event = 66;
+     StreamStats stream_stats = 70;
+     TransportStats transport_stats = 71;
+     ErrorReport error_report = 72;
+diff --git a/contracts/proto/vibescreen/protocol/v1/input.proto b/contracts/proto/vibescreen/protocol/v1/input.proto
+index 8ea4883af..ef4b0162b 100644
+--- a/contracts/proto/vibescreen/protocol/v1/input.proto
++++ b/contracts/proto/vibescreen/protocol/v1/input.proto
+@@ -28,6 +28,13 @@ enum StylusContactState {
+   STYLUS_CONTACT_STATE_PROXIMITY = 2;
+ }
+ 
++enum ControllerEventKind {
++  CONTROLLER_EVENT_KIND_UNSPECIFIED = 0;
++  CONTROLLER_EVENT_KIND_CONNECTED = 1;
++  CONTROLLER_EVENT_KIND_STATE = 2;
++  CONTROLLER_EVENT_KIND_DISCONNECTED = 3;
++}
++
+ message NormalizedPoint {
+   double x = 1;
+   double y = 2;
+@@ -79,6 +86,45 @@ message StylusEvent {
+   optional StylusContactState contact_state = 11;
+ }
+ 
++// Controller input requires CAPABILITY_CONTROLLER. input_id must be non-zero
++// and strictly increase within the ControllerEvent subsequence of the current
++// negotiated session. controller_id must encode to 1-128 UTF-8 bytes, be stable
++// and sender-scoped within that session, and must not contain a raw serial
++// number or other sensitive identifier. controller_epoch must be non-zero and
++// strictly increase for the same controller_id within the negotiated session.
++// CONNECTED starts a lifecycle for (controller_id, controller_epoch), STATE is
++// valid only inside that lifecycle, and DISCONNECTED ends it. Reusing or
++// decreasing an epoch for the same controller_id is invalid.
++// Duplicate CONNECTED, STATE before CONNECTED, and STATE after DISCONNECTED
++// are invalid. A new negotiated session resets both monotonic sequences.
++// Kind must be CONNECTED, STATE, or DISCONNECTED; UNSPECIFIED and unknown enum
++// values are invalid. Button bits 0-12 are defined and all higher bits are
++// reserved and must be zero. Stick axes must be finite and in [-1, 1], trigger
++// values must be finite and in [0, 1], and hat axes must each be -1, 0, or 1.
++// CONNECTED and DISCONNECTED are neutral lifecycle markers: button_mask and all
++// axes, triggers, and hat values must be zero. A receiver must synthesize this
++// same neutral state before discarding an active controller on disconnect,
++// session teardown, ownership takeover, or transport loss.
++message ControllerEvent {
++  uint64 input_id = 1;
++  string controller_id = 2;
++  uint64 controller_epoch = 3;
++  ControllerEventKind kind = 4;
++  // Bits 0-12 are south, east, west, north, L1, R1, L2 digital, R2 digital,
++  // select, start, guide/mode, L3, and R3, respectively. Bits 13-31 are
++  // reserved and must be zero.
++  uint32 button_mask = 5;
++  double left_stick_x = 6;
++  double left_stick_y = 7;
++  double right_stick_x = 8;
++  double right_stick_y = 9;
++  double left_trigger = 10;
++  double right_trigger = 11;
++  sint32 hat_x = 12;
++  sint32 hat_y = 13;
++  InputTarget target = 14;
++}
++
+ message PointerEvent {
+   uint64 input_id = 1;
+   InputPhase phase = 2;
+@@ -98,13 +144,6 @@ message KeyEvent {
+   uint64 input_id = 1;
+   uint32 usb_hid_usage = 2;
+   bool pressed = 3;
+-  // When CAPABILITY_USB_HID_MODIFIER_BYTE is negotiated, this is the standard
+-  // USB HID modifier byte: bit 0 Left Control, bit 1 Left Shift, bit 2 Left
+-  // Alt/Option, bit 3 Left GUI/Command, bit 4 Right Control, bit 5 Right Shift,
+-  // bit 6 Right Alt/Option, and bit 7 Right GUI/Command. Without that
+-  // capability, the legacy Protocol v1 layout remains bit 0 Shift, bit 1
+-  // Control, bit 2 Alt/Option, and bit 3 GUI/Command; bits 4-7 are undefined
+-  // and must be zero. Bits 8-31 are reserved and must be zero in either layout.
+   uint32 modifier_mask = 4;
+   string text = 5;
+   InputTarget target = 6;
+diff --git a/contracts/proto/vibescreen/protocol/v1/session.proto b/contracts/proto/vibescreen/protocol/v1/session.proto
+index 0b2cc57b6..d92a427f3 100644
+--- a/contracts/proto/vibescreen/protocol/v1/session.proto
++++ b/contracts/proto/vibescreen/protocol/v1/session.proto
+@@ -38,10 +38,9 @@ enum Capability {
+   // Requires CAPABILITY_STYLUS and enables StylusEvent tool kind, barrel
+   // buttons, and explicit contact/proximity state.
+   CAPABILITY_STYLUS_EXTENDED = 25;
+-  // Value 26 is allocated separately to controller input.
+-  // Requires CAPABILITY_KEYBOARD and negotiates the standard USB HID modifier
+-  // byte for KeyEvent.
+-  CAPABILITY_USB_HID_MODIFIER_BYTE = 27;
++  // Enables lifecycle-scoped ControllerEvent input. Receivers must neutralize
++  // admitted controller state when its lifecycle or session ends.
++  CAPABILITY_CONTROLLER = 26;
+ }
+ 
+ message ClientHello {
+diff --git a/contracts/tests/test_protocol_fixtures.py b/contracts/tests/test_protocol_fixtures.py
+index 445415b86..dc858076c 100644
+--- a/contracts/tests/test_protocol_fixtures.py
++++ b/contracts/tests/test_protocol_fixtures.py
+@@ -14,6 +14,7 @@ CONTRACT_ROOT = Path(__file__).parents[1]
+ FIXTURE_ROOT = CONTRACT_ROOT / "fixtures" / "messages" / "v1"
+ MANIFEST = json.loads((FIXTURE_ROOT / "manifest.json").read_text())
+ STYLUS_VALIDATION = json.loads((FIXTURE_ROOT / "stylus_validation.json").read_text())
++CONTROLLER_VALIDATION = json.loads((FIXTURE_ROOT / "controller_validation.json").read_text())
+ BUF_VERSION = MANIFEST["bufVersion"]
+ BUF_COMMAND = ["go", "run", f"github.com/bufbuild/buf/cmd/buf@{BUF_VERSION}"]
+ FRAME_HEADER_LENGTH = 5
+@@ -152,23 +153,6 @@ class ProtocolFixtureTest(unittest.TestCase):
+             decoded = json.loads(decoded_path.read_text())
+             self.assertEqual(["CAPABILITY_TOUCH"], decoded["clientHello"]["requiredCapabilities"])
+ 
+-    def test_modifier_fixtures_cover_standard_and_legacy_layouts(self) -> None:
+-        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+-        expected = {
+-            "key_usb_hid_control": 0x01,
+-            "key_usb_hid_shift": 0x02,
+-            "key_legacy_control": 0x02,
+-            "key_legacy_shift": 0x01,
+-        }
+-        with tempfile.TemporaryDirectory(prefix="vibescreen-modifier-fixtures-") as temporary:
+-            for name, mask in expected.items():
+-                entry = fixtures[name]
+-                output = Path(temporary) / f"{name}.json"
+-                convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+-                event = json.loads(output.read_text())["keyEvent"]
+-                self.assertEqual(mask, event["modifierMask"], name)
+-
+-
+     def test_rotation_fixtures_cover_initial_and_runtime_values(self) -> None:
+         fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+         with tempfile.TemporaryDirectory(prefix="vibescreen-rotation-fixtures-") as temporary:
+@@ -261,6 +245,162 @@ class ProtocolFixtureTest(unittest.TestCase):
+             self.assertFalse(valid, case["name"])
+             self.assertTrue(case["reason"])
+ 
++
++    def test_controller_fixtures_cover_neutral_lifecycle_and_full_state(self) -> None:
++        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
++        decoded_events: dict[str, dict[str, object]] = {}
++        with tempfile.TemporaryDirectory(prefix="vibescreen-controller-fixtures-") as temporary:
++            temporary_root = Path(temporary)
++            for name in ("controller_connected", "controller_state", "controller_disconnected"):
++                fixture = fixtures[name]
++                decoded_path = temporary_root / f"{name}.json"
++                convert(fixture["messageType"], FIXTURE_ROOT / fixture["binary"], "binpb", decoded_path, "json")
++                decoded_events[name] = json.loads(decoded_path.read_text())["controllerEvent"]
++
++        connected = decoded_events["controller_connected"]
++        state = decoded_events["controller_state"]
++        disconnected = decoded_events["controller_disconnected"]
++        self.assertEqual("CONTROLLER_EVENT_KIND_CONNECTED", connected["kind"])
++        self.assertEqual("CONTROLLER_EVENT_KIND_STATE", state["kind"])
++        self.assertEqual("CONTROLLER_EVENT_KIND_DISCONNECTED", disconnected["kind"])
++        self.assertEqual("controller-xbox-1", state["controllerId"])
++        self.assertEqual("1", state["controllerEpoch"])
++        self.assertEqual(4101, state["buttonMask"])
++        pressed_buttons = {
++            name
++            for name, bit in CONTROLLER_VALIDATION["buttonBits"].items()
++            if state["buttonMask"] & (1 << bit)
++        }
++        self.assertEqual({"south", "west", "r3"}, pressed_buttons)
++        self.assertEqual([-0.75, 0.5, 0.25, -0.125], [state[key] for key in ("leftStickX", "leftStickY", "rightStickX", "rightStickY")])
++        self.assertEqual([0.375, 0.875], [state[key] for key in ("leftTrigger", "rightTrigger")])
++        self.assertEqual([1, -1], [state["hatX"], state["hatY"]])
++        self.assertEqual({"displayId": "display-main", "streamId": "42"}, state["target"])
++        state_fields = {"buttonMask", "leftStickX", "leftStickY", "rightStickX", "rightStickY", "leftTrigger", "rightTrigger", "hatX", "hatY"}
++        self.assertTrue(state_fields.isdisjoint(connected))
++        self.assertTrue(state_fields.isdisjoint(disconnected))
++
++    def test_controller_validation_fixture_covers_invalid_values(self) -> None:
++        self.assertEqual(
++            "vibescreen.protocol.v1.ControllerEvent.validation/v1",
++            CONTROLLER_VALIDATION["schema"],
++        )
++        self.assertEqual(0b1_1111_1111_1111, CONTROLLER_VALIDATION["buttonMaskDefinedBits"])
++        self.assertEqual(
++            {
++                "south": 0,
++                "east": 1,
++                "west": 2,
++                "north": 3,
++                "l1": 4,
++                "r1": 5,
++                "l2Digital": 6,
++                "r2Digital": 7,
++                "select": 8,
++                "start": 9,
++                "guideMode": 10,
++                "l3": 11,
++                "r3": 12,
++            },
++            CONTROLLER_VALIDATION["buttonBits"],
++        )
++        cases = {case["name"]: case for case in CONTROLLER_VALIDATION["negativeCases"]}
++        self.assertEqual(
++            {
++                "zero_input_id",
++                "empty_controller_id",
++                "overlong_controller_id",
++                "overlong_controller_id_multibyte_utf8",
++                "zero_controller_epoch",
++                "unknown_kind",
++                "unspecified_kind",
++                "reserved_button_bit",
++                "stick_axis_out_of_range",
++                "stick_axis_non_finite",
++                "trigger_out_of_range",
++                "trigger_non_finite",
++                "invalid_hat_axis",
++                "connected_non_neutral",
++                "disconnected_non_neutral",
++            },
++            set(cases),
++        )
++        for case in cases.values():
++            event = case["event"]
++            analog = [event.get(key, 0) for key in ("leftStickX", "leftStickY", "rightStickX", "rightStickY", "leftTrigger", "rightTrigger")]
++            lifecycle_neutral = event["kindRawValue"] == 2 or (
++                event.get("buttonMask", 0) == 0
++                and all(value == 0 for value in analog)
++                and event.get("hatX", 0) == 0
++                and event.get("hatY", 0) == 0
++            )
++            valid = (
++                event.get("inputId", 1) > 0
++                and 1 <= len(event["controllerId"].encode("utf-8")) <= 128
++                and event["controllerEpoch"] > 0
++                and event["kindRawValue"] in {1, 2, 3}
++                and event.get("buttonMask", 0) & ~CONTROLLER_VALIDATION["buttonMaskDefinedBits"] == 0
++                and all(math.isfinite(value) for value in analog)
++                and all(-1 <= event.get(key, 0) <= 1 for key in ("leftStickX", "leftStickY", "rightStickX", "rightStickY"))
++                and all(0 <= event.get(key, 0) <= 1 for key in ("leftTrigger", "rightTrigger"))
++                and event.get("hatX", 0) in {-1, 0, 1}
++                and event.get("hatY", 0) in {-1, 0, 1}
++                and lifecycle_neutral
++            )
++            self.assertFalse(valid, case["name"])
++            self.assertTrue(case["reason"])
++
++        lifecycle_cases = {
++            case["name"]: case for case in CONTROLLER_VALIDATION["lifecycleNegativeCases"]
++        }
++        self.assertEqual(
++            {
++                "duplicate_connected",
++                "state_before_connected",
++                "state_after_disconnected",
++                "reused_controller_epoch",
++                "decreasing_controller_epoch",
++                "duplicate_input_id",
++                "non_monotonic_input_id",
++            },
++            set(lifecycle_cases),
++        )
++        for case in lifecycle_cases.values():
++            active_epochs: dict[str, int] = {}
++            last_epochs: dict[str, int] = {}
++            last_input_id = 0
++            valid_sequence = True
++            for event in case["sequence"]:
++                input_id = event["inputId"]
++                if input_id <= last_input_id:
++                    valid_sequence = False
++                    break
++                last_input_id = input_id
++                controller_id = event["controllerId"]
++                controller_epoch = event["controllerEpoch"]
++                kind = event["kindRawValue"]
++                active_epoch = active_epochs.get(controller_id)
++                if kind == 1:
++                    if active_epoch is not None or controller_epoch <= last_epochs.get(controller_id, 0):
++                        valid_sequence = False
++                        break
++                    active_epochs[controller_id] = controller_epoch
++                    last_epochs[controller_id] = controller_epoch
++                elif kind == 2:
++                    if active_epoch != controller_epoch:
++                        valid_sequence = False
++                        break
++                elif kind == 3:
++                    if active_epoch != controller_epoch:
++                        valid_sequence = False
++                        break
++                    del active_epochs[controller_id]
++                else:
++                    valid_sequence = False
++                    break
++            self.assertFalse(valid_sequence, case["name"])
++            self.assertTrue(case["reason"])
++
+     def test_buf_json_projection_accepts_and_discards_unknown_binary_field(self) -> None:
+         client_entry = MANIFEST["controlFixtures"][0]
+         original = (FIXTURE_ROOT / client_entry["binary"]).read_bytes()
+diff --git a/contracts/tests/test_security_contract.py b/contracts/tests/test_security_contract.py
+index dafcda734..8baeb2cf9 100644
+--- a/contracts/tests/test_security_contract.py
++++ b/contracts/tests/test_security_contract.py
+@@ -33,24 +33,6 @@ def enum_values(source: str, enum_name: str) -> dict[str, int]:
+ 
+ 
+ class SecurityContractTest(unittest.TestCase):
+-    def test_usb_hid_modifier_byte_capability_is_additive_value_27(self) -> None:
+-        session_source = (PROTO_ROOT / "session.proto").read_text()
+-        input_source = (PROTO_ROOT / "input.proto").read_text()
+-        capabilities = enum_values(session_source, "Capability")
+-        self.assertEqual(27, capabilities["CAPABILITY_USB_HID_MODIFIER_BYTE"])
+-        self.assertEqual(len(capabilities), len(set(capabilities.values())))
+-        self.assertEqual(
+-            {
+-                "input_id": 1,
+-                "usb_hid_usage": 2,
+-                "pressed": 3,
+-                "modifier_mask": 4,
+-                "text": 5,
+-                "target": 6,
+-            },
+-            message_fields(input_source, "KeyEvent"),
+-        )
+-
+     def test_client_required_capabilities_is_additive_field_nine(self) -> None:
+         source = (PROTO_ROOT / "session.proto").read_text()
+         self.assertEqual(9, message_fields(source, "ClientHello")["required_capabilities"])
+@@ -202,6 +184,56 @@ class SecurityContractTest(unittest.TestCase):
+         self.assertRegex(session_source, r"CAPABILITY_STYLUS\s*=\s*6\s*;")
+         self.assertRegex(session_source, r"CAPABILITY_STYLUS_EXTENDED\s*=\s*25\s*;")
+ 
++
++    def test_controller_event_is_additive_and_lifecycle_scoped(self) -> None:
++        input_source = (PROTO_ROOT / "input.proto").read_text()
++        envelope_source = (PROTO_ROOT / "envelope.proto").read_text()
++        session_source = (PROTO_ROOT / "session.proto").read_text()
++        self.assertEqual(
++            {
++                "input_id": 1,
++                "controller_id": 2,
++                "controller_epoch": 3,
++                "kind": 4,
++                "button_mask": 5,
++                "left_stick_x": 6,
++                "left_stick_y": 7,
++                "right_stick_x": 8,
++                "right_stick_y": 9,
++                "left_trigger": 10,
++                "right_trigger": 11,
++                "hat_x": 12,
++                "hat_y": 13,
++                "target": 14,
++            },
++            message_fields(input_source, "ControllerEvent"),
++        )
++        for name, raw_value in {
++            "CONTROLLER_EVENT_KIND_UNSPECIFIED": 0,
++            "CONTROLLER_EVENT_KIND_CONNECTED": 1,
++            "CONTROLLER_EVENT_KIND_STATE": 2,
++            "CONTROLLER_EVENT_KIND_DISCONNECTED": 3,
++        }.items():
++            self.assertRegex(input_source, rf"{name}\s*=\s*{raw_value}\s*;")
++        declaration = input_source[input_source.index("// Controller input"):input_source.index("message ControllerEvent")]
++        self.assertIn("strictly increase within the ControllerEvent subsequence", declaration)
++        self.assertIn("controller_id must encode to 1-128 UTF-8 bytes", declaration)
++        self.assertIn("must not contain a raw serial", declaration)
++        self.assertIn("controller_epoch must be non-zero and", declaration)
++        self.assertIn("strictly increase for the same controller_id", declaration)
++        self.assertIn("A new negotiated session resets both monotonic sequences.", declaration)
++        self.assertIn("CONNECTED starts a lifecycle", declaration)
++        self.assertIn("CONNECTED and DISCONNECTED are neutral lifecycle markers", declaration)
++        self.assertIn("transport loss", declaration)
++        controller_message = input_source[input_source.index("message ControllerEvent"):input_source.index("message PointerEvent")]
++        self.assertIn(
++            "Bits 0-12 are south, east, west, north, L1, R1, L2 digital, R2 digital,",
++            controller_message,
++        )
++        self.assertIn("select, start, guide/mode, L3, and R3", controller_message)
++        self.assertEqual(66, message_fields(envelope_source, "Envelope")["controller_event"])
++        self.assertRegex(session_source, r"CAPABILITY_CONTROLLER\s*=\s*26\s*;")
++
+     def test_envelope_security_payloads_do_not_reuse_existing_numbers(self) -> None:
+         source = (PROTO_ROOT / "envelope.proto").read_text()
+         fields = message_fields(source, "Envelope")
