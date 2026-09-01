@@ -1,12 +1,14 @@
 package dev.telemachus.display.internet
 
+import dev.telemachus.display.MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES
+
 /**
  * Keeps reliable controller lifecycle boundaries FIFO while treating analog
  * state as replaceable. Every analog batch must be a complete snapshot of all
  * active controllers, so replacing it cannot leave an omitted controller stale.
  */
 internal class InternetControllerSendQueue<Event : Any>(
-    private val maximumStructuralBatches: Int = DEFAULT_MAXIMUM_STRUCTURAL_BATCHES,
+    private val maximumStructuralBatches: Int = MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES,
 ) {
     init {
         require(maximumStructuralBatches > 0)
@@ -116,7 +118,4 @@ internal class InternetControllerSendQueue<Event : Any>(
         val event: Event,
     )
 
-    private companion object {
-        const val DEFAULT_MAXIMUM_STRUCTURAL_BATCHES = 128
-    }
 }

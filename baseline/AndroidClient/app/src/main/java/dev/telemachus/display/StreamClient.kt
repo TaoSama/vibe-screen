@@ -300,6 +300,7 @@ class StreamClient(
             nextInputId = nextInputId,
             submitOutbound = ::submitOutbound,
             controllerConnectionAcks = controllerConnectionAcks,
+            onControllerDeferredOverflow = ::failControllerDeferredOverflow,
         )
     private val terminationDispatcher =
         OnceAsyncDispatcher(
@@ -1673,6 +1674,15 @@ class StreamClient(
     private fun isOutboundAdmitted(submission: OutboundCommandScheduler.Submission): Boolean =
         submission != OutboundCommandScheduler.Submission.TIMED_OUT &&
             submission != OutboundCommandScheduler.Submission.CLOSED
+
+    private fun failControllerDeferredOverflow() {
+        requestConnectionEnd(
+            SessionFailure.protocol(
+                SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                "Controller deferred dispatch queue reached capacity",
+            ),
+        )
+    }
 
 
     private fun writeOutboundCommand(command: StreamOutboundCommand) {

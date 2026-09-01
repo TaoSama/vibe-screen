@@ -15,8 +15,10 @@ import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 class StreamInputDispatcherTest {
@@ -489,6 +491,325 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun mixedPendingDisconnectAndReconnectBatchDefersReconnectBehindCleanup() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+        assertTrue(
+            dispatcher.sendController(
+                ControllerDispatch(
+                    samples =
+                        listOf(
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.DISCONNECTED),
+                            ControllerStateSample("pad-1", 2, ControllerEventKind.CONNECTED),
+                            ControllerStateSample("pad-1", 2, ControllerEventKind.STATE, buttonMask = 1),
+                        ),
+                    delivery = ControllerDelivery.STRUCTURAL,
+                ),
+            ),
+        )
+
+        assertTrue(recorder.submissions[1].protocolEnvelopes(controllerSession).isEmpty())
+        assertEquals(1, dispatcher.deferredControllerDispatchCount())
+
+        val acknowledgement = requireNotNull(tracker.acknowledge(30))
+        tracker.markDisconnectReady(acknowledgement.connection, requireNotNull(acknowledgement.deferredDisconnectInputId))
+        assertTrue(dispatcher.flushControllerDisconnectCleanup())
+
+        val flushed = recorder.submissions[2].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(2, flushed.size)
+        assertEquals(listOf(31L, 32L), flushed.map { it.inputId })
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            ),
+            flushed.map { it.kind },
+        )
+        assertEquals(listOf(1L, 2L), flushed.map { it.controllerEpoch })
+        assertFalse(tracker.isPending("pad-1", 1))
+        assertTrue(tracker.isPending("pad-1", 2))
+    }
+
+    @Test
+    fun mixedReconnectAndPendingDisconnectBatchDefersReconnectBehindCleanup() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+        assertTrue(
+            dispatcher.sendController(
+                ControllerDispatch(
+                    samples =
+                        listOf(
+                            ControllerStateSample("pad-1", 2, ControllerEventKind.CONNECTED),
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.DISCONNECTED),
+                        ),
+                    delivery = ControllerDelivery.STRUCTURAL,
+                ),
+            ),
+        )
+
+        assertTrue(recorder.submissions[1].protocolEnvelopes(controllerSession).isEmpty())
+        assertEquals(1, dispatcher.deferredControllerDispatchCount())
+
+        val acknowledgement = requireNotNull(tracker.acknowledge(30))
+        tracker.markDisconnectReady(acknowledgement.connection, requireNotNull(acknowledgement.deferredDisconnectInputId))
+        assertTrue(dispatcher.flushControllerDisconnectCleanup())
+
+        val flushed = recorder.submissions[2].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(2, flushed.size)
+        assertEquals(listOf(31L, 32L), flushed.map { it.inputId })
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            ),
+            flushed.map { it.kind },
+        )
+        assertEquals(listOf(1L, 2L), flushed.map { it.controllerEpoch })
+        assertFalse(tracker.isPending("pad-1", 1))
+        assertTrue(tracker.isPending("pad-1", 2))
+    }
+
+    @Test
+    fun deferredControllerDispatchCapacityAllowsBoundaryAndFailsClosedOnOverflow() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val overflowCount = AtomicInteger()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+            maximumDeferredControllerDispatches = 2,
+            onControllerDeferredOverflow = { overflowCount.incrementAndGet() },
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+        assertTrue(dispatcher.sendController(controllerDisconnected("pad-1", 1)))
+        assertTrue(recorder.submissions[1].protocolEnvelopes(controllerSession).isEmpty())
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 2)))
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 3)))
+        assertEquals(2, dispatcher.deferredControllerDispatchCount())
+
+        assertFalse(dispatcher.sendController(controllerConnected("pad-1", 4)))
+
+        assertEquals(1, overflowCount.get())
+        assertEquals(0, dispatcher.deferredControllerDispatchCount())
+        assertFalse(tracker.isPending("pad-1", 1))
+        assertNull(tracker.acknowledge(30))
+        assertNull(tracker.nextReadyDisconnect())
+        assertFalse(tracker.hasDeferredDisconnectBefore("pad-1", 5))
+        assertFalse(dispatcher.sendController(controllerConnected("pad-1", 5)))
+        assertEquals(1, overflowCount.get())
+
+        dispatcher.resetControllerState()
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 5)))
+    }
+
+    @Test
+    fun deferredControllerDispatchesFlushRetainedItemsFifoAfterReadyDisconnects() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+            maximumDeferredControllerDispatches = 2,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(
+            dispatcher.sendController(
+                ControllerDispatch(
+                    samples =
+                        listOf(
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED),
+                            ControllerStateSample("pad-2", 1, ControllerEventKind.CONNECTED),
+                        ),
+                    delivery = ControllerDelivery.STRUCTURAL,
+                ),
+            ),
+        )
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+        assertTrue(
+            dispatcher.sendController(
+                ControllerDispatch(
+                    samples =
+                        listOf(
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.DISCONNECTED),
+                            ControllerStateSample("pad-2", 1, ControllerEventKind.DISCONNECTED),
+                        ),
+                    delivery = ControllerDelivery.STRUCTURAL,
+                ),
+            ),
+        )
+        assertTrue(recorder.submissions[1].protocolEnvelopes(controllerSession).isEmpty())
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 2)))
+        assertTrue(dispatcher.sendController(controllerConnected("pad-2", 2)))
+        assertEquals(2, dispatcher.deferredControllerDispatchCount())
+
+        val first = requireNotNull(tracker.acknowledge(30))
+        val second = requireNotNull(tracker.acknowledge(31))
+        tracker.markDisconnectReady(first.connection, requireNotNull(first.deferredDisconnectInputId))
+        tracker.markDisconnectReady(second.connection, requireNotNull(second.deferredDisconnectInputId))
+        assertTrue(dispatcher.flushControllerDisconnectCleanup())
+
+        val flushed = recorder.submissions[2].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(4, flushed.size)
+        assertEquals(listOf(32L, 33L, 34L, 35L), flushed.map { it.inputId })
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            ),
+            flushed.map { it.kind },
+        )
+        assertEquals(listOf("pad-1", "pad-2", "pad-1", "pad-2"), flushed.map { it.controllerId })
+        assertEquals(listOf(1L, 1L, 2L, 2L), flushed.map { it.controllerEpoch })
+        assertEquals(0, dispatcher.deferredControllerDispatchCount())
+    }
+
+    @Test
+    fun deferredAnalogControllerDispatchesKeepLatestSnapshotAtQueueTail() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+            maximumDeferredControllerDispatches = 2,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+        assertTrue(dispatcher.sendController(controllerConnected("pad-2", 1)))
+        recorder.submissions[1].protocolEnvelopes(controllerSession)
+        assertEquals(ControllerConnection("pad-2", 1), tracker.acknowledge(31)?.connection)
+        assertTrue(dispatcher.sendController(controllerDisconnected("pad-1", 1)))
+        assertTrue(recorder.submissions[2].protocolEnvelopes(controllerSession).isEmpty())
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 2)))
+        assertTrue(dispatcher.sendController(controllerState("pad-2", 1, buttonMask = 1)))
+        assertTrue(dispatcher.sendController(controllerState("pad-2", 1, buttonMask = 2)))
+        assertEquals(2, dispatcher.deferredControllerDispatchCount())
+
+        val acknowledgement = requireNotNull(tracker.acknowledge(30))
+        tracker.markDisconnectReady(acknowledgement.connection, requireNotNull(acknowledgement.deferredDisconnectInputId))
+        assertTrue(dispatcher.flushControllerDisconnectCleanup())
+
+        val flushed = recorder.submissions[3].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(3, flushed.size)
+        assertEquals(
+            listOf(
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+            ),
+            flushed.map { it.kind },
+        )
+        assertEquals(2, flushed.last().buttonMask)
+    }
+
+    @Test
+    fun deferredOverflowDuringProtocolBatchBuildReturnsFalseAndCleansState() {
+        val tracker = ControllerConnectionAckTracker()
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+        val overflowCount = AtomicInteger()
+        var hookInvoked = false
+        lateinit var dispatcher: StreamInputDispatcher
+        val recorder = RecordingSubmitter(
+            protocolBuildSession = controllerSession,
+            beforeProtocolBuild = {
+                if (!hookInvoked) {
+                    hookInvoked = true
+                    assertTrue(tracker.recordConnected(20, "pad-1", 1))
+                    assertTrue(tracker.deferDisconnected(21, "pad-1", 1))
+                    assertTrue(dispatcher.sendController(controllerConnected("pad-1", 3)))
+                    assertEquals(1, dispatcher.deferredControllerDispatchCount())
+                }
+            },
+        )
+        dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+            maximumDeferredControllerDispatches = 1,
+            onControllerDeferredOverflow = { overflowCount.incrementAndGet() },
+        )
+
+        assertFalse(dispatcher.sendController(controllerConnected("pad-1", 2)))
+
+        assertEquals(1, overflowCount.get())
+        assertEquals(0, dispatcher.deferredControllerDispatchCount())
+        assertFalse(tracker.isPending("pad-1", 1))
+        assertFalse(tracker.hasDeferredDisconnectBefore("pad-1", 2))
+    }
+
+    @Test
+    fun deferredControllerOverflowClearsStaleEpochReplacementState() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+            maximumDeferredControllerDispatches = 1,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+        assertTrue(dispatcher.sendController(controllerDisconnected("pad-1", 1)))
+        assertTrue(recorder.submissions[1].protocolEnvelopes(controllerSession).isEmpty())
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 2)))
+        assertFalse(dispatcher.sendController(controllerConnected("pad-1", 3)))
+
+        assertFalse(tracker.hasDeferredDisconnectBefore("pad-1", 4))
+        assertFalse(tracker.isPending("pad-1", 1))
+        assertEquals(0, dispatcher.deferredControllerDispatchCount())
+
+        assertFalse(dispatcher.sendController(controllerConnected("pad-1", 4)))
+
+        dispatcher.resetControllerState()
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 4)))
+
+        val replacement = recorder.submissions[2].protocolEnvelopes(controllerSession).single().controllerEvent
+        assertEquals(32L, replacement.inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, replacement.kind)
+        assertEquals(4L, replacement.controllerEpoch)
+        assertTrue(tracker.isPending("pad-1", 4))
+    }
+
+    @Test
     fun rejectedPendingConnectionAckReplaysDeferredReplacementWithoutCleanup() {
         val recorder = RecordingSubmitter()
         val tracker = ControllerConnectionAckTracker()
@@ -584,6 +905,7 @@ class StreamInputDispatcherTest {
 
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
         assertEquals(2, recorder.submissions.size)
+        assertEquals(0, dispatcher.deferredControllerDispatchCount())
         assertFalse(tracker.isPending("pad-1", 1))
         assertFalse(tracker.isPending("pad-1", 2))
     }
@@ -671,11 +993,15 @@ class StreamInputDispatcherTest {
         recorder: RecordingSubmitter,
         tracker: ControllerConnectionAckTracker = ControllerConnectionAckTracker(),
         firstInputId: Long = 1,
+        maximumDeferredControllerDispatches: Int = MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES,
+        onControllerDeferredOverflow: () -> Unit = {},
     ) = StreamInputDispatcher(
         state = { state },
         nextInputId = AtomicLong(firstInputId),
         submitOutbound = recorder::submit,
         controllerConnectionAcks = tracker,
+        maximumDeferredControllerDispatches = maximumDeferredControllerDispatches,
+        onControllerDeferredOverflow = onControllerDeferredOverflow,
     )
 
     private fun negotiatedState(
@@ -719,8 +1045,35 @@ class StreamInputDispatcherTest {
             delivery = ControllerDelivery.STRUCTURAL,
         )
 
+    private fun controllerConnected(
+        controllerId: String,
+        epoch: Long,
+    ) = ControllerDispatch(
+        samples = listOf(ControllerStateSample(controllerId, epoch, ControllerEventKind.CONNECTED)),
+        delivery = ControllerDelivery.STRUCTURAL,
+    )
+
+    private fun controllerDisconnected(
+        controllerId: String,
+        epoch: Long,
+    ) = ControllerDispatch(
+        samples = listOf(ControllerStateSample(controllerId, epoch, ControllerEventKind.DISCONNECTED)),
+        delivery = ControllerDelivery.STRUCTURAL,
+    )
+
+    private fun controllerState(
+        controllerId: String,
+        epoch: Long,
+        buttonMask: Int,
+    ) = ControllerDispatch(
+        samples = listOf(ControllerStateSample(controllerId, epoch, ControllerEventKind.STATE, buttonMask = buttonMask)),
+        delivery = ControllerDelivery.ANALOG,
+    )
+
     private class RecordingSubmitter(
         private val result: OutboundCommandScheduler.Submission = OutboundCommandScheduler.Submission.ACCEPTED,
+        private val protocolBuildSession: ProtocolV1Session? = null,
+        private val beforeProtocolBuild: () -> Unit = {},
     ) {
         data class Submission(
             val kind: OutboundCommandScheduler.Kind,
@@ -743,6 +1096,11 @@ class StreamInputDispatcherTest {
             timeoutMillis: Long,
         ): OutboundCommandScheduler.Submission {
             submissions += Submission(kind, command, timeoutMillis)
+            val session = protocolBuildSession
+            if (session != null && command is StreamOutboundCommand.ProtocolBatch) {
+                beforeProtocolBuild()
+                submissions.last().protocolEnvelopes(session)
+            }
             return result
         }
 
