@@ -34,6 +34,13 @@ CODESIGN = "/usr/bin/codesign"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
 CODESIGN_TEMP_FILE_MARKER = ".cstemp"
+CODESIGN_TEMP_REFERENCE_PATTERN = re.compile(
+    rf"{re.escape(CODESIGN_TEMP_FILE_MARKER)}(?:$|[.$/])",
+    re.IGNORECASE,
+)
+CODE_SIGNATURE_DIR_NAME = "_CodeSignature"
+CODE_RESOURCES_NAME = "CodeResources"
+EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SIGNING_CERTIFICATE_REQUIREMENT_PATTERN = re.compile(
     r'certificate\s+(leaf|root)\s*=\s*H"([0-9A-Fa-f]{40})"'
 )
@@ -419,10 +426,12 @@ def verify_reproducible_zip(
         extracted_app = extract_root / app_bundle_name
         if not extracted_app.is_dir():
             raise SystemExit(f"archive omitted expected app bundle: {app_bundle_name}")
+        require_no_codesign_resource_seal_temporary_references(extracted_app)
         run(CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(extracted_app))
         if sign_identity is not None:
             verify_packaged_app_certificate_contracts(extracted_app, sign_identity)
         require_no_codesign_temporary_files(extracted_app)
+        require_no_codesign_resource_seal_temporary_references(extracted_app)
 
 
 def codesign_temporary_files(root: Path) -> tuple[Path, ...]:
@@ -431,7 +440,7 @@ def codesign_temporary_files(root: Path) -> tuple[Path, ...]:
         return ()
     return tuple(
         sorted(
-            (path for path in root.rglob("*") if CODESIGN_TEMP_FILE_MARKER in path.name),
+            (path for path in root.rglob("*") if value_references_codesign_temporary_file(path.name)),
             key=lambda item: item.relative_to(root).as_posix(),
         )
     )
@@ -458,6 +467,72 @@ def require_no_codesign_temporary_files(root: Path) -> None:
         )
 
 
+def codesign_resource_seal_files(root: Path) -> tuple[Path, ...]:
+    if not root.exists():
+        return ()
+    return tuple(
+        sorted(
+            (
+                path
+                for path in root.rglob(CODE_RESOURCES_NAME)
+                if path.parent.name == CODE_SIGNATURE_DIR_NAME
+            ),
+            key=lambda item: item.relative_to(root).as_posix(),
+        )
+    )
+
+
+def value_references_codesign_temporary_file(value: object) -> bool:
+    return isinstance(value, str) and CODESIGN_TEMP_REFERENCE_PATTERN.search(value) is not None
+
+
+def codesign_resource_seal_temporary_references(root: Path) -> tuple[str, ...]:
+    findings: list[str] = []
+    for manifest in codesign_resource_seal_files(root):
+        try:
+            with manifest.open("rb") as manifest_file:
+                payload = plistlib.load(manifest_file)
+        except (OSError, plistlib.InvalidFileException, ValueError, TypeError) as error:
+            raise SystemExit(
+                f"codesign resource seal is unreadable or malformed at "
+                f"{manifest.relative_to(root).as_posix()}: {error}"
+            ) from error
+        manifest_prefix = manifest.relative_to(root).as_posix()
+        findings.extend(
+            f"{manifest_prefix}:{reference}"
+            for reference in temporary_references_in_plist(payload)
+        )
+    return tuple(findings)
+
+
+def temporary_references_in_plist(value: object, prefix: str = "$") -> tuple[str, ...]:
+    findings: list[str] = []
+    if isinstance(value, dict):
+        for raw_key, item in value.items():
+            key = str(raw_key)
+            path = f"{prefix}/{key}"
+            if value_references_codesign_temporary_file(key):
+                findings.append(path)
+            findings.extend(temporary_references_in_plist(item, path))
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            findings.extend(temporary_references_in_plist(item, f"{prefix}[{index}]"))
+    elif value_references_codesign_temporary_file(value):
+        findings.append(f"{prefix}={value}")
+    return tuple(findings)
+
+
+def require_no_codesign_resource_seal_temporary_references(root: Path) -> None:
+    references = codesign_resource_seal_temporary_references(root)
+    if references:
+        raise SystemExit(
+            f"codesign resource seals in {root} reference temporary files: "
+            f"{', '.join(references)}. Refusing to continue because stale "
+            "CodeResources entries can make strict verification fail and change "
+            "macOS TCC identity matching."
+        )
+
+
 def parse_designated_requirement(output: str) -> str | None:
     for line in output.splitlines():
         if "designated =>" in line:
@@ -465,9 +540,24 @@ def parse_designated_requirement(output: str) -> str | None:
     return None
 
 
-def verify_signed_app_certificate_contract(app_path: Path, sign_identity: str) -> None:
-    if sign_identity == "-":
-        return
+def parse_designated_requirement_identifier(requirement: str | None) -> str | None:
+    if requirement is None:
+        return None
+    quoted = re.search(r'\bidentifier\s+"([^"]+)"', requirement)
+    if quoted is not None:
+        return quoted.group(1)
+    bare = re.search(r"\bidentifier\s+([^\s);]+)", requirement)
+    if bare is not None:
+        return bare.group(1)
+    return None
+
+
+def verify_signed_app_certificate_contract(
+    app_path: Path,
+    sign_identity: str,
+    *,
+    expected_identifier: str = EXPECTED_BUNDLE_ID,
+) -> None:
     try:
         requirement_output = run(CODESIGN, "-d", "-r-", str(app_path))
     except subprocess.CalledProcessError as error:
@@ -478,6 +568,17 @@ def verify_signed_app_certificate_contract(app_path: Path, sign_identity: str) -
     requirement = parse_designated_requirement(requirement_output)
     if not requirement:
         raise SystemExit(f"codesign designated requirement is missing for {app_path}")
+    identifier = parse_designated_requirement_identifier(requirement)
+    if identifier is None and sign_identity == "-":
+        return
+    if identifier != expected_identifier:
+        actual_identifier = identifier or "missing"
+        raise SystemExit(
+            f"codesign designated requirement for {app_path} uses identifier "
+            f"'{actual_identifier}', expected '{expected_identifier}'"
+        )
+    if sign_identity == "-":
+        return
     certificate_hash = parse_signing_certificate_hash(requirement)
     if certificate_hash is None:
         raise SystemExit(
@@ -492,12 +593,18 @@ def verify_signed_app_certificate_contract(app_path: Path, sign_identity: str) -
 
 
 def verify_packaged_app_certificate_contracts(app_path: Path, sign_identity: str) -> None:
-    if sign_identity == "-":
-        return
-    verify_signed_app_certificate_contract(app_path, sign_identity)
+    verify_signed_app_certificate_contract(
+        app_path,
+        sign_identity,
+        expected_identifier=EXPECTED_BUNDLE_ID,
+    )
     web_rtc_framework = app_path / "Contents" / "Frameworks" / WEBRTC_FRAMEWORK_NAME
     if web_rtc_framework.exists():
-        verify_signed_app_certificate_contract(web_rtc_framework, sign_identity)
+        verify_signed_app_certificate_contract(
+            web_rtc_framework,
+            sign_identity,
+            expected_identifier="org.webrtc.WebRTC",
+        )
 
 
 def sign_packaged_app(app_path: Path, web_rtc_framework: Path, sign_identity: str) -> None:
@@ -510,8 +617,10 @@ def sign_packaged_app(app_path: Path, web_rtc_framework: Path, sign_identity: st
         sign_identity,
         str(web_rtc_framework),
     )
+    require_no_codesign_resource_seal_temporary_references(web_rtc_framework)
     run(CODESIGN, "--verify", "--strict", "--verbose=2", str(web_rtc_framework))
     require_no_codesign_temporary_files(web_rtc_framework)
+    require_no_codesign_resource_seal_temporary_references(web_rtc_framework)
     clean_codesign_temporary_files(app_path)
     require_no_codesign_temporary_files(app_path)
     run(
@@ -523,8 +632,10 @@ def sign_packaged_app(app_path: Path, web_rtc_framework: Path, sign_identity: st
         str(HOST_ROOT / "Telemachus.entitlements"),
         str(app_path),
     )
+    require_no_codesign_resource_seal_temporary_references(app_path)
     run(CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
     require_no_codesign_temporary_files(app_path)
+    require_no_codesign_resource_seal_temporary_references(app_path)
     verify_packaged_app_certificate_contracts(app_path, sign_identity)
 
 
@@ -537,6 +648,11 @@ def main() -> int:
     sign_identity = resolve_sign_identity(args.sign_identity)
     validate_notice_bundle(REPOSITORY_ROOT)
     source_identity = collect_source_identity(REPOSITORY_ROOT)
+    if source_identity.dirty:
+        raise SystemExit(
+            "refusing to package macOS Host from a dirty source tree; "
+            "commit or discard local changes before running scripts/package_macos.py"
+        )
     source_plist = read_source_plist()
     version = args.version or str(source_plist["CFBundleShortVersionString"])
     if not version or any(character.isspace() for character in version):
