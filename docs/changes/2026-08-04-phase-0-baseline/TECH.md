@@ -78,9 +78,12 @@ admission closes. `RendererOwner` gates viewport/layout/render target/frame
 admission for the current renderer boundary. This is offline/module evidence
 only: sleeping-Mac wake, router/NIC WOL behavior, Host signing/TCC readiness,
 and retained product logs remain blocked by the WakeHost current-base hardware
-gate. Broader protocol/session ownership, decoder ownership beyond lifecycle
-admission, renderer ownership beyond the current boundary, and UI/product
-session ownership therefore remain to be enforced by additional module
+gate. Decoder ownership beyond lifecycle admission now has focused decoder
+presentation owner coverage, but the Android `MainActivity` platform adapter
+still creates `VideoDecoder` against live `Surface`/`Display` objects and no
+current-source device decoder-lifecycle evidence is attached. Broader
+protocol/session ownership, renderer ownership beyond the current boundary,
+and UI/product session ownership remain to be enforced by additional module
 boundaries before Phase 0 module ownership can be called complete.
 
 ## Protocol v1

@@ -37,7 +37,7 @@ class ProductSessionOwnershipBoundaryContractTest {
         assertTrue(source.contains("productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)"))
         assertTrue(source.contains("if (!productSessionCoordinator.beginConnectionAttempt()) return"))
         assertTrue(source.contains("productSessionCoordinator.endConnectionAttempt()"))
-        assertTrue(source.contains("productSessionCoordinator.setTransportConnected(state.connected)"))
+        assertTrue(source.contains("productSessionCoordinator.setTransportConnected(connected)"))
         assertTrue(source.contains("productSessionCoordinator.requestDisplaySelection(option.id)"))
         assertTrue(source.contains("productSessionCoordinator.requestHostAction(actionId)"))
 

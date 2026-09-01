@@ -213,11 +213,34 @@ class AndroidDecoderLifecycleOwnerTest {
 
     @Test
     fun boundaryOwnerStaysIndependentOfAndroidMainActivityTransportAndCodecLayers() {
-        val source = repositorySource(PRODUCTION_DECODER_LIFECYCLE_OWNER)
+        val source =
+            listOf(
+                PRODUCTION_DECODER_LIFECYCLE_OWNER,
+                PRODUCTION_DECODER_PRESENTATION_OWNER,
+            ).joinToString("\n") { repositorySource(it) }
 
         FORBIDDEN_OWNER_REFERENCES.forEach { reference ->
             assertFalse(
-                "AndroidDecoderLifecycleOwner must not depend on `$reference`",
+                "Decoder owners must not depend on `$reference`",
+                source.contains(reference),
+            )
+        }
+    }
+
+    @Test
+    fun mainActivityDelegatesDecoderPresentationStateToOwner() {
+        val source = repositorySource(MAIN_ACTIVITY)
+
+        assertTrue(source.contains("private val decoderPresentationOwner ="))
+        assertTrue(source.contains("decoderPresentationOwner.publishLocalDecoder"))
+        assertTrue(source.contains("decoderPresentationOwner.publishInternetDecoder"))
+        assertTrue(source.contains("decoderPresentationOwner.routeLocalFrame"))
+        assertTrue(source.contains("decoderPresentationOwner.routeInternetFrame"))
+        assertTrue(source.contains("decoderPresentationOwner.detachCurrentDecoder"))
+
+        FORBIDDEN_MAIN_ACTIVITY_RECLAIMED_INTERNALS.forEach { reference ->
+            assertFalse(
+                "MainActivity must not reclaim decoder owner internal `$reference`",
                 source.contains(reference),
             )
         }
@@ -358,6 +381,10 @@ class AndroidDecoderLifecycleOwnerTest {
         const val CONFIGURATION_TOKEN = "configuration"
         const val PRODUCTION_DECODER_LIFECYCLE_OWNER =
             "app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt"
+        const val PRODUCTION_DECODER_PRESENTATION_OWNER =
+            "app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt"
+        const val MAIN_ACTIVITY =
+            "app/src/main/java/dev/telemachus/display/MainActivity.kt"
 
         val FORBIDDEN_OWNER_REFERENCES =
             listOf(
@@ -371,6 +398,17 @@ class AndroidDecoderLifecycleOwnerTest {
                 "MediaCodec",
                 "StreamProtocolSideEffectOwner",
                 "ProtocolV1Session",
+            )
+        val FORBIDDEN_MAIN_ACTIVITY_RECLAIMED_INTERNALS =
+            listOf(
+                "private val videoDecoderUseGate",
+                "private val decoderConfigurationGeneration",
+                "private var internetVideoConfiguration",
+                "private var currentSurfaceHolder",
+                "private val encodedVideoConfigurationState",
+                "private fun captureInternetDecoderPresentation",
+                "private fun installInternetDecoderPresentation",
+                "private fun restoreInternetDecoderPresentation",
             )
     }
 }
