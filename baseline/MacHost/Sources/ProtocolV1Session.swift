@@ -1775,6 +1775,30 @@ final class ProtocolV1SessionCoordinator {
         )
     }
 
+    // Base-existing display binding helper. Retained for compatibility with the
+    // pre-allocator routing surface; it is not invoked by the current session
+    // flow and is kept out of scope for the isRegisteredWithDisplayAllocator
+    // dead-state removal.
+    private func bindDisplayRoute(
+        displayID: String,
+        streamID: UInt64,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction]? {
+        guard let allocator = configuration.displayAllocator, negotiatedCapabilities.contains(.multiClient) else {
+            return nil
+        }
+        do {
+            try allocator.rebind(streamID: streamID, toDisplayID: displayID, in: sessionKey)
+            return nil
+        } catch {
+            return fail(
+                code: .invalidState,
+                message: "Host display allocator rejected display binding: \(error)",
+                correlationID: correlationID
+            )
+        }
+    }
+
     private func videoConfig(
         configEpoch: UInt64,
         streamID: UInt64,

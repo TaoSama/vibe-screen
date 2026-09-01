@@ -21,6 +21,7 @@ final class MultiClientDisplayAllocator {
     func register(_ key: MultiClientSessionKey, reservedStreamIDs: Set<UInt64> = []) throws {}
     func allocateStream(for displayID: String, in key: MultiClientSessionKey) throws -> UInt64 { 1 }
     func bind(_ binding: MultiClientDisplayStreamBinding, to key: MultiClientSessionKey) throws {}
+    func rebind(streamID: UInt64, toDisplayID displayID: String, in key: MultiClientSessionKey) throws {}
     func disconnect(_ key: MultiClientSessionKey) {}
 }
 typealias HostMultiClientDisplayRouter = MultiClientDisplayAllocator
@@ -181,6 +182,17 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
 
         self.assertEqual(result.status, "fail")
         self.assertIn("MultiClientSessionKey", result.detail)
+
+    def test_detects_missing_allocator_rebind_contract(self) -> None:
+        source = ALLOCATOR_CONTRACT_FIXTURE.replace(
+            "    func rebind(streamID: UInt64, toDisplayID displayID: String, in key: MultiClientSessionKey) throws {}\n",
+            "",
+        )
+
+        result = phase5_host_advanced_adapters.check_allocator_contract(source)
+
+        self.assertEqual(result.status, "fail")
+        self.assertIn("func rebind(streamID:", result.detail)
 
     def test_detects_missing_session_rebind_contract(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

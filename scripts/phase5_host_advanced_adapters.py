@@ -317,6 +317,7 @@ def check_allocator_contract(source: str) -> CheckResult:
             "func register(_ key: MultiClientSessionKey",
             "func allocateStream(for displayID: String, in key: MultiClientSessionKey)",
             "func bind(_ binding: MultiClientDisplayStreamBinding, to key: MultiClientSessionKey)",
+            "func rebind(streamID:",
             "func disconnect(_ key: MultiClientSessionKey)",
             "typealias HostMultiClientDisplayRouter = MultiClientDisplayAllocator",
         ],
