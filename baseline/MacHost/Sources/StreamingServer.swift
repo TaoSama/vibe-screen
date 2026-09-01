@@ -539,7 +539,7 @@ class StreamingServer: EncodedFrameSink {
     private static let protocolV1MaximumClients = 1
     private static let protocolV1MaximumVirtualDisplays = 1
     private static let protocolV1MaximumVideoStreamsPerClient = 1
-    private let protocolV1DisplayRouter = HostMultiClientDisplayRouter(
+    private let protocolV1DisplayAllocator = MultiClientDisplayAllocator(
         maximumClients: StreamingServer.protocolV1MaximumClients,
         maximumStreamsPerClient: StreamingServer.protocolV1MaximumVideoStreamsPerClient
     )
@@ -2213,7 +2213,7 @@ class StreamingServer: EncodedFrameSink {
             displays: protocolV1Displays,
             maximumClients: Self.protocolV1MaximumClients,
             maximumVideoStreamsPerClient: Self.protocolV1MaximumVideoStreamsPerClient,
-            displayRouter: protocolV1DisplayRouter,
+            displayAllocator: protocolV1DisplayAllocator,
             managedPolicy: managedPolicy,
             fileTransferPolicy: filePolicy
         ))

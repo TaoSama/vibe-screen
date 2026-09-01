@@ -17,7 +17,7 @@ enum ProtocolV1SelfTest {
         testHDRColorFallback(failures: &failures)
         testManagedPolicyGate(failures: &failures)
         testMultiDisplaySelection(failures: &failures)
-        testHostMultiClientDisplayRouting(failures: &failures)
+        testHostMultiClientDisplayAllocation(failures: &failures)
         testVirtualDisplayCatalog(failures: &failures)
         testRejections(failures: &failures)
         testInputHeartbeatAndMedia(failures: &failures)
@@ -30,7 +30,7 @@ enum ProtocolV1SelfTest {
         testHostActions(failures: &failures)
         testWakeHost(failures: &failures)
         if failures.isEmpty {
-            print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, multi-client routing, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
+            print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, multi-client allocation, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
             return true
         }
         print("Protocol v1 self-test: FAIL (\(failures.joined(separator: "; ")))")
@@ -578,102 +578,102 @@ enum ProtocolV1SelfTest {
         }
     }
 
-    private static func testHostMultiClientDisplayRouting(failures: inout [String]) {
+    private static func testHostMultiClientDisplayAllocation(failures: inout [String]) {
         do {
-            let router = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
-            let firstKey = HostClientSessionKey(sessionID: Data([0x01]), epoch: 1)
-            let secondKey = HostClientSessionKey(sessionID: Data([0x02]), epoch: 1)
-            let nextFirstKey = HostClientSessionKey(sessionID: Data([0x01]), epoch: 2)
+            let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2)
+            let firstKey = MultiClientSessionKey(sessionID: Data([0x01]), epoch: 1)
+            let secondKey = MultiClientSessionKey(sessionID: Data([0x02]), epoch: 1)
+            let nextFirstKey = MultiClientSessionKey(sessionID: Data([0x01]), epoch: 2)
             do {
-                try router.register(HostClientSessionKey(sessionID: Data(), epoch: 1))
-                failures.append("Host router accepted an empty session id")
+                try allocator.register(MultiClientSessionKey(sessionID: Data(), epoch: 1))
+                failures.append("Host allocator accepted an empty session id")
                 return
-            } catch HostDisplayRouterError.invalidSession {
+            } catch MultiClientDisplayAllocatorError.invalidSession {
                 // expected
             }
             do {
-                try router.register(HostClientSessionKey(sessionID: Data([0x09]), epoch: 0))
-                failures.append("Host router accepted a zero session epoch")
+                try allocator.register(MultiClientSessionKey(sessionID: Data([0x09]), epoch: 0))
+                failures.append("Host allocator accepted a zero session epoch")
                 return
-            } catch HostDisplayRouterError.invalidSession {
+            } catch MultiClientDisplayAllocatorError.invalidSession {
                 // expected
             }
-            try router.register(firstKey)
+            try allocator.register(firstKey)
             do {
-                _ = try router.allocateStream(for: "", in: firstKey)
-                failures.append("Host router accepted an empty display id")
+                _ = try allocator.allocateStream(for: "", in: firstKey)
+                failures.append("Host allocator accepted an empty display id")
                 return
-            } catch HostDisplayRouterError.invalidBinding {
+            } catch MultiClientDisplayAllocatorError.invalidBinding {
                 // expected
             }
-            guard try router.allocateStream(for: "first-display", in: firstKey) == 1,
-                  try router.allocateStream(for: "second-display", in: firstKey) == 2,
-                  try router.allocateStream(for: "first-display", in: firstKey) == 1 else {
-                failures.append("Host router did not allocate or reuse per-display stream ids")
-                return
-            }
-            do {
-                try router.rebind(streamID: 2, toDisplayID: "first-display", in: firstKey)
-                failures.append("Host router allowed two streams in one client to bind one display")
-                return
-            } catch HostDisplayRouterError.duplicateDisplay {
-                // expected
-            }
-            do {
-                _ = try router.allocateStream(for: "third-display", in: firstKey)
-                failures.append("Host router accepted a stream beyond the per-client cap")
-                return
-            } catch HostDisplayRouterError.streamLimitReached(2) {
-                // expected
-            }
-            try router.register(secondKey)
-            guard try router.allocateStream(for: "second-display", in: secondKey) == 1,
-                  router.activeClientCount == 2 else {
-                failures.append("Host router did not isolate stream ids by client")
+            guard try allocator.allocateStream(for: "first-display", in: firstKey) == 1,
+                  try allocator.allocateStream(for: "second-display", in: firstKey) == 2,
+                  try allocator.allocateStream(for: "first-display", in: firstKey) == 1 else {
+                failures.append("Host allocator did not allocate or reuse per-display stream ids")
                 return
             }
             do {
-                try router.register(HostClientSessionKey(sessionID: Data([0x03]), epoch: 1))
-                failures.append("Host router accepted a client beyond the global cap")
+                try allocator.rebind(streamID: 2, toDisplayID: "first-display", in: firstKey)
+                failures.append("Host allocator allowed two streams in one client to bind one display")
                 return
-            } catch HostDisplayRouterError.clientLimitReached(2) {
+            } catch MultiClientDisplayAllocatorError.duplicateDisplay {
                 // expected
             }
-            try router.register(nextFirstKey)
-            guard router.binding(streamID: 1, in: firstKey) == nil,
-                  try router.allocateStream(for: "first-display", in: nextFirstKey) == 1,
-                  router.activeClientCount == 2 else {
-                failures.append("Host router did not replace a lower session epoch")
+            do {
+                _ = try allocator.allocateStream(for: "third-display", in: firstKey)
+                failures.append("Host allocator accepted a stream beyond the per-client cap")
+                return
+            } catch MultiClientDisplayAllocatorError.streamLimitReached(2) {
+                // expected
+            }
+            try allocator.register(secondKey)
+            guard try allocator.allocateStream(for: "second-display", in: secondKey) == 1,
+                  allocator.activeClientCount == 2 else {
+                failures.append("Host allocator did not isolate stream ids by client")
                 return
             }
             do {
-                try router.register(firstKey)
-                failures.append("Host router accepted a stale lower session epoch")
+                try allocator.register(MultiClientSessionKey(sessionID: Data([0x03]), epoch: 1))
+                failures.append("Host allocator accepted a client beyond the global cap")
                 return
-            } catch HostDisplayRouterError.invalidSession {
+            } catch MultiClientDisplayAllocatorError.clientLimitReached(2) {
                 // expected
             }
-            router.disconnect(secondKey)
-            guard router.activeClientCount == 1,
-                  router.binding(streamID: 1, in: nextFirstKey)?.displayID == "first-display",
-                  router.binding(streamID: 1, in: secondKey) == nil else {
-                failures.append("Host router disconnect did not release per-client streams")
+            try allocator.register(nextFirstKey)
+            guard allocator.binding(streamID: 1, in: firstKey) == nil,
+                  try allocator.allocateStream(for: "first-display", in: nextFirstKey) == 1,
+                  allocator.activeClientCount == 2 else {
+                failures.append("Host allocator did not replace a lower session epoch")
                 return
             }
-            router.disconnect(nextFirstKey)
-            guard router.activeClientCount == 0 else {
-                failures.append("Host router did not release the final client route")
+            do {
+                try allocator.register(firstKey)
+                failures.append("Host allocator accepted a stale lower session epoch")
+                return
+            } catch MultiClientDisplayAllocatorError.invalidSession {
+                // expected
+            }
+            allocator.disconnect(secondKey)
+            guard allocator.activeClientCount == 1,
+                  allocator.binding(streamID: 1, in: nextFirstKey)?.displayID == "first-display",
+                  allocator.binding(streamID: 1, in: secondKey) == nil else {
+                failures.append("Host allocator.disconnect did not release per-client streams")
+                return
+            }
+            allocator.disconnect(nextFirstKey)
+            guard allocator.activeClientCount == 0 else {
+                failures.append("Host allocator did not release the final client route")
                 return
             }
 
-            let shared = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+            let shared = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 1)
             let firstSessionID = Data([0x11])
             let secondSessionID = Data([0x22])
             let first = try readySession(
                 sessionID: firstSessionID,
                 sessionEpoch: 1,
                 displayID: "first-display",
-                displayRouter: shared,
+                displayAllocator: shared,
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 1,
                 clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
@@ -682,7 +682,7 @@ enum ProtocolV1SelfTest {
                 sessionID: secondSessionID,
                 sessionEpoch: 1,
                 displayID: "second-display",
-                displayRouter: shared,
+                displayAllocator: shared,
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 1,
                 clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
@@ -715,14 +715,14 @@ enum ProtocolV1SelfTest {
                 return
             }
 
-            let keyRouter = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 1)
+            let keyAllocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 1)
             let firstKeySessionID = Data([0x33])
             let secondKeySessionID = Data([0x44])
             let firstKeySession = try readySession(
                 sessionID: firstKeySessionID,
                 sessionEpoch: 1,
                 displayID: "first-display",
-                displayRouter: keyRouter,
+                displayAllocator: keyAllocator,
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 1,
                 clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
@@ -731,7 +731,7 @@ enum ProtocolV1SelfTest {
                 sessionID: secondKeySessionID,
                 sessionEpoch: 1,
                 displayID: "second-display",
-                displayRouter: keyRouter,
+                displayAllocator: keyAllocator,
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 1,
                 clientCapabilities: [.touch, .multiDisplay, .multiClient, .keyboard, .usbHidModifierByte]
@@ -757,7 +757,7 @@ enum ProtocolV1SelfTest {
 
             let negotiated = makeMultiDisplaySession(
                 hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).union([VSCapability.multiClient]),
-                displayRouter: HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2),
+                displayAllocator: MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2),
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 2
             )
@@ -791,9 +791,9 @@ enum ProtocolV1SelfTest {
                 return
             }
 
-            let duplicateRouter = HostMultiClientDisplayRouter(maximumClients: 2, maximumStreamsPerClient: 2)
+            let duplicateAllocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2)
             let duplicateSession = makeMultiDisplaySession(
-                displayRouter: duplicateRouter,
+                displayAllocator: duplicateAllocator,
                 maximumClients: 2,
                 maximumVideoStreamsPerClient: 2
             )
@@ -806,9 +806,9 @@ enum ProtocolV1SelfTest {
                 payload: .startDisplayRequest(displayRequest(sourceDisplayID: "active-display"))
             ).serializedData())
             try acceptVideoConfig(duplicateSession, configEpoch: 1, streamID: 1, messageID: 3)
-            try duplicateRouter.bind(
-                HostDisplayStreamBinding(displayID: "second-display", streamID: 2),
-                to: HostClientSessionKey(sessionID: Self.sessionID, epoch: Self.sessionEpoch)
+            try duplicateAllocator.bind(
+                MultiClientDisplayStreamBinding(displayID: "second-display", streamID: 2),
+                to: MultiClientSessionKey(sessionID: Self.sessionID, epoch: Self.sessionEpoch)
             )
             let duplicateDisplayActions = duplicateSession.handleControl(try envelope(
                 id: 4,
@@ -834,11 +834,11 @@ enum ProtocolV1SelfTest {
                 payload: .disconnectNotice(notice)
             ).serializedData())
             guard shared.activeClientCount == 0 else {
-                failures.append("Client disconnect did not release its Host router route")
+                failures.append("Client disconnect did not release its Host allocator route")
                 return
             }
         } catch {
-            failures.append("host multi-client display routing test failed: \(error)")
+            failures.append("host multi-client display allocation test failed: \(error)")
         }
     }
 
@@ -2205,7 +2205,7 @@ enum ProtocolV1SelfTest {
         sessionID: Data = Self.sessionID,
         sessionEpoch: UInt64 = Self.sessionEpoch,
         displayID: String = "active-display",
-        displayRouter: HostMultiClientDisplayRouter? = nil,
+        displayAllocator: MultiClientDisplayAllocator? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1
     ) -> ProtocolV1SessionCoordinator {
@@ -2232,13 +2232,13 @@ enum ProtocolV1SelfTest {
         configuration.preferredColorDescription = preferredColorDescription
         configuration.maximumClients = maximumClients
         configuration.maximumVideoStreamsPerClient = maximumVideoStreamsPerClient
-        configuration.displayRouter = displayRouter
+        configuration.displayAllocator = displayAllocator
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
     private static func makeMultiDisplaySession(
         hostCapabilities: Set<VSCapability>? = nil,
-        displayRouter: HostMultiClientDisplayRouter? = nil,
+        displayAllocator: MultiClientDisplayAllocator? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1
     ) -> ProtocolV1SessionCoordinator {
@@ -2282,7 +2282,7 @@ enum ProtocolV1SelfTest {
         )
         configuration.maximumClients = maximumClients
         configuration.maximumVideoStreamsPerClient = maximumVideoStreamsPerClient
-        configuration.displayRouter = displayRouter
+        configuration.displayAllocator = displayAllocator
         return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
@@ -2431,7 +2431,7 @@ enum ProtocolV1SelfTest {
         sessionID: Data = Self.sessionID,
         sessionEpoch: UInt64 = Self.sessionEpoch,
         displayID: String = "active-display",
-        displayRouter: HostMultiClientDisplayRouter? = nil,
+        displayAllocator: MultiClientDisplayAllocator? = nil,
         maximumClients: Int = 1,
         maximumVideoStreamsPerClient: Int = 1,
         clientCapabilities: [VSCapability]
@@ -2440,7 +2440,7 @@ enum ProtocolV1SelfTest {
             sessionID: sessionID,
             sessionEpoch: sessionEpoch,
             displayID: displayID,
-            displayRouter: displayRouter,
+            displayAllocator: displayAllocator,
             maximumClients: maximumClients,
             maximumVideoStreamsPerClient: maximumVideoStreamsPerClient
         )

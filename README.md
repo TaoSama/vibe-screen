@@ -1061,9 +1061,11 @@ increase it.
 - The host-side advanced adapter readiness owner is now the
   `phase5-host-advanced-adapters-gate`. It records the minimum iOS/MacHost
   adapter matrix for multi-client/display allocation, audio, clipboard, file
-  transfer, HDR/color, host actions, wake, and managed policy, and verifies
-  that unsupported Host adapters stay unadvertised or explicitly policy-gated.
-  This is a source/readiness gate only, not iOS device or advanced product-flow
+  transfer, HDR/color, host actions, wake, and managed policy, verifies that the
+  MacHost source has an in-source `MultiClientDisplayAllocator` boundary,
+  and checks that unsupported Host adapters stay unadvertised or explicitly
+  policy-gated. This is a source/readiness gate only, not iOS device,
+  multi-client concurrency, parallel capture, or advanced product-flow
   acceptance.
 - The iOS HDR output / EDR rendering gate now has a dedicated fail-closed
   current-base owner, `ios-hdr-edr-gate`, for retained iPhone/iPad HDR evidence.
