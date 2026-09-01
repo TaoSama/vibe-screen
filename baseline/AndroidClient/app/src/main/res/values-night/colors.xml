@@ -17,14 +17,14 @@
     <color name="accent_bright">#65D992</color>
     <color name="accent_button">#4ADE80</color>
     <color name="on_accent_button">#07100B</color>
-    <color name="accent_wash">#334CAF50</color>
+    <color name="accent_wash">#333DA45C</color>
     <color name="info">#4F9BEB</color>
     <color name="action">#007AFF</color>
     <color name="link">#8FB9FF</color>
     <color name="danger">#E5544B</color>
     <color name="danger_text">#FCA5A5</color>
     <color name="danger_stroke">#7F1D1D</color>
-    <color name="danger_wash">#1AF44336</color>
+    <color name="danger_wash">#1AE5544B</color>
     <color name="warning">#E8A44B</color>
     <color name="warning_wash">#18E8A44B</color>
     <color name="warning_stroke">#66E8A44B</color>
@@ -34,8 +34,8 @@
     <color name="disabled_surface">#394840</color>
     <color name="disabled_on_surface">#7B8981</color>
     <color name="switch_thumb">#FFFFFF</color>
-    <color name="switch_thumb_unchecked">#CCCCCC</color>
-    <color name="switch_track_unchecked">#555555</color>
+    <color name="switch_thumb_unchecked">#F5F5F5</color>
+    <color name="switch_track_unchecked">#747474</color>
     <color name="disconnected_gradient_start">#11241C</color>
     <color name="disconnected_gradient_center">#0C1717</color>
     <color name="disconnected_gradient_end">#050708</color>
