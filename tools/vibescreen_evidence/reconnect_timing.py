@@ -504,7 +504,7 @@ def summarize(
             for reason in attempt.get("blocking_reasons", [])
         ]
 
-    missing_required = [] if blocked_reasons and not attempts else [
+    missing_required = [
         disruption for disruption in required if disruption not in {attempt["disruption"] for attempt in attempts}
     ]
     full_gate_missing = [
