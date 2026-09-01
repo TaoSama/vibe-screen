@@ -12,7 +12,9 @@ import dev.telemachus.display.audio.encodePacket
 import dev.telemachus.display.audio.pcmPayload
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.ProtocolChannel
+import dev.telemachus.display.protocol.ProtocolFrame
 import dev.telemachus.display.protocol.ProtocolV1Framing
+import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.telemachus.display.protocol.TouchSample
 import dev.vibescreen.protocol.v1.AudioCodec
 import dev.vibescreen.protocol.v1.AudioConfig
@@ -30,6 +32,7 @@ import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileAccept
 import dev.vibescreen.protocol.v1.FileChunkHeader
 import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
 import dev.vibescreen.protocol.v1.FileTransferComplete
 import dev.vibescreen.protocol.v1.FileTransferProgress
 import dev.vibescreen.protocol.v1.HostActionCatalog
@@ -39,6 +42,7 @@ import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.ProtocolError
 import dev.vibescreen.protocol.v1.ProtocolErrorCode
@@ -2110,6 +2114,463 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun hostFileOfferDefaultsToReceiverDeniedWithoutApprovalCallback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 43).toByte() })
+            val content = "receiver-default-denied".toByteArray(Charsets.UTF_8)
+            val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "default-denied.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertEquals(transferId, accept.fileAccept.transferId)
+                        assertFalse(accept.fileAccept.accepted)
+                        assertEquals("user_denied", accept.fileAccept.rejectionReason)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onIncomingFileCompleted = { completed.set(it) }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertNull(completed.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileOfferRejectsUnsafeBasenameBeforeReceiverApprovalCallback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 53).toByte() })
+            val content = "unsafe-name".toByteArray(Charsets.UTF_8)
+            val approvalCallbacks = AtomicInteger()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "../escape.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertEquals(transferId, accept.fileAccept.transferId)
+                        assertFalse(accept.fileAccept.accepted)
+                        assertEquals("invalid_file_name", accept.fileAccept.rejectionReason)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { approvalCallbacks.incrementAndGet() }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(0, approvalCallbacks.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileOfferLargerThanNegotiatedLimitRejectsBeforeReceiverApprovalCallback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 57).toByte() })
+            val content = "larger-than-peer-limit".toByteArray(Charsets.UTF_8)
+            val approvalCallbacks = AtomicInteger()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            maxFileBytes = 4,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "too-large.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertEquals(transferId, accept.fileAccept.transferId)
+                        assertFalse(accept.fileAccept.accepted)
+                        assertEquals("file_too_large", accept.fileAccept.rejectionReason)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { approvalCallbacks.incrementAndGet() }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(0, approvalCallbacks.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun hostManagedPolicyDenialRejectsIncomingFileOfferAndEndsSession() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 58).toByte() })
+            val content = "managed-denied-file".toByteArray(Charsets.UTF_8)
+            val approvalCallbacks = AtomicInteger()
+            val sessionEnded = CountDownLatch(1)
+            val sessionFailure = AtomicReference<SessionFailure?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeManagedPolicyHandshake(
+                            peer = peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            hostManagedStatus = managedPolicyStatus(fileTransferAllowed = false),
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 7,
+                                transferId = transferId,
+                                fileName = "managed-denied.txt",
+                                content = content,
+                            ),
+                        )
+                        val error = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.PROTOCOL_ERROR, error.payloadCase)
+                        assertEquals(ProtocolErrorCode.PROTOCOL_ERROR_CODE_INVALID_STATE, error.protocolError.code)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { approvalCallbacks.incrementAndGet() }
+            client.onSessionEnded = { failure ->
+                sessionFailure.set(failure)
+                sessionEnded.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.INVALID_PEER_MESSAGE, checkNotNull(sessionFailure.get()).kind)
+            assertEquals(0, approvalCallbacks.get())
+            assertFalse(client.canTransferFiles)
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileOfferRejectsStaleSessionEpochChunkAndCleansTransfer() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 63).toByte() })
+            val content = "stale-epoch-file".toByteArray(Charsets.UTF_8)
+            val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
+            val sessionEnded = CountDownLatch(1)
+            val sessionFailure = AtomicReference<SessionFailure?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "stale-epoch.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.BULK,
+                            fileChunk(
+                                transferId = transferId,
+                                offset = 0,
+                                payload = content,
+                                final = true,
+                                sessionEpoch = 6,
+                            ),
+                        )
+                        val cancel = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancel.payloadCase)
+                        assertEquals(transferId, cancel.fileTransferCancel.transferId)
+                        assertEquals("stale_session_epoch", cancel.fileTransferCancel.reasonCode)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
+            client.onIncomingFileCompleted = { completed.set(it) }
+            client.onSessionEnded = { failure ->
+                sessionFailure.set(failure)
+                sessionEnded.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.TRANSPORT_CLOSED, checkNotNull(sessionFailure.get()).kind)
+            assertNull(completed.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileOfferRejectsChunkWithUnexpectedOffset() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 64).toByte() })
+            val content = "unexpected-offset-file".toByteArray(Charsets.UTF_8)
+            val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
+            val sessionEnded = CountDownLatch(1)
+            val sessionFailure = AtomicReference<SessionFailure?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "unexpected-offset.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.BULK,
+                            fileChunk(
+                                transferId = transferId,
+                                offset = 1,
+                                payload = content,
+                                final = true,
+                            ),
+                        )
+                        val cancel = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancel.payloadCase)
+                        assertEquals(transferId, cancel.fileTransferCancel.transferId)
+                        assertEquals("unexpected_offset", cancel.fileTransferCancel.reasonCode)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
+            client.onIncomingFileCompleted = { completed.set(it) }
+            client.onSessionEnded = { failure ->
+                sessionFailure.set(failure)
+                sessionEnded.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.TRANSPORT_CLOSED, checkNotNull(sessionFailure.get()).kind)
+            assertNull(completed.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileOfferRejectsChunkWithMismatchedDigest() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 65).toByte() })
+            val content = "digest-mismatch-file".toByteArray(Charsets.UTF_8)
+            val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
+            val sessionEnded = CountDownLatch(1)
+            val sessionFailure = AtomicReference<SessionFailure?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "digest-mismatch.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.BULK,
+                            corruptedFileChunk(
+                                transferId = transferId,
+                                offset = 0,
+                                payload = content,
+                                final = true,
+                            ),
+                        )
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
+            client.onIncomingFileCompleted = { completed.set(it) }
+            client.onSessionEnded = { failure ->
+                sessionFailure.set(failure)
+                sessionEnded.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.INVALID_MEDIA_PAYLOAD, checkNotNull(sessionFailure.get()).kind)
+            assertNull(completed.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun hostFileCancelCancelsIncomingTransferAndNotifiesResult() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 66).toByte() })
+            val content = "host-cancel-file".toByteArray(Charsets.UTF_8)
+            val resultSeen = CountDownLatch(1)
+            val acceptedResult = AtomicBoolean(true)
+            val resultReason = AtomicReference<String>()
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "host-cancel.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        write(peer, fileCancel(7, transferId, "peer_cancelled"))
+                        assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                        assertFalse(sessionEnded.await(250, TimeUnit.MILLISECONDS))
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
+            client.onFileTransferResult = { accepted, reason ->
+                acceptedResult.set(accepted)
+                resultReason.set(reason)
+                resultSeen.countDown()
+            }
+            client.onSessionEnded = { sessionEnded.countDown() }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertFalse(acceptedResult.get())
+            assertEquals("peer_cancelled", resultReason.get())
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            Unit
+        }
+    }
+
+    @Test
     fun hostFileOfferDoesNotBlockOutboundCommandsWhileAwaitingUserDecision() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
@@ -2269,6 +2730,156 @@ class StreamClientProtocolV1IntegrationTest {
                 assertTrue(client.offerFile(source, "text/plain"))
                 assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
                 assertTrue(acceptedResult.get())
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                source.delete()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clientFileOfferSendsNextChunkOnlyAfterPeerProgress() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "progress-gated-file".toByteArray(Charsets.UTF_8)
+            val source = File.createTempFile("vibescreen-progress-gated", ".txt")
+            source.writeBytes(content)
+            val connected = CountDownLatch(1)
+            val resultSeen = CountDownLatch(1)
+            val acceptedResult = AtomicBoolean(false)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        connected.countDown()
+                        val offerEnvelope = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_OFFER, offerEnvelope.payloadCase)
+                        val offer = offerEnvelope.fileOffer
+                        write(peer, fileAccept(6, offer.transferId, accepted = true, maximumChunkBytes = 8))
+
+                        val firstFrame = ProtocolV1Framing.read(peer.getInputStream())
+                        assertEquals(ProtocolChannel.BULK, firstFrame.channel)
+                        val firstChunk = ProtocolV1Framing.decodeFileChunk(firstFrame.payload)
+                        assertEquals(offer.transferId, firstChunk.header.transferId)
+                        assertEquals(0L, firstChunk.header.offset)
+                        assertEquals(8, firstChunk.payload.size)
+                        assertFalse(firstChunk.header.final)
+                        peer.soTimeout = 300
+                        assertNull(readProtocolFrameOrNull(peer))
+
+                        peer.soTimeout = 3_000
+                        write(peer, fileProgress(7, offer.transferId, firstChunk.header.payloadLength.toLong()))
+                        val secondFrame = ProtocolV1Framing.read(peer.getInputStream())
+                        assertEquals(ProtocolChannel.BULK, secondFrame.channel)
+                        val secondChunk = ProtocolV1Framing.decodeFileChunk(secondFrame.payload)
+                        assertEquals(8L, secondChunk.header.offset)
+                        assertFalse(secondChunk.header.final)
+                        write(peer, fileProgress(8, offer.transferId, secondChunk.header.offset + secondChunk.header.payloadLength))
+
+                        val thirdFrame = ProtocolV1Framing.read(peer.getInputStream())
+                        assertEquals(ProtocolChannel.BULK, thirdFrame.channel)
+                        val thirdChunk = ProtocolV1Framing.decodeFileChunk(thirdFrame.payload)
+                        assertEquals(16L, thirdChunk.header.offset)
+                        assertTrue(thirdChunk.header.final)
+                        assertEquals(content.toList(), (firstChunk.payload + secondChunk.payload + thirdChunk.payload).toList())
+                        write(peer, fileProgress(9, offer.transferId, content.size.toLong()))
+                        write(
+                            peer,
+                            fileComplete(
+                                id = 10,
+                                transferId = offer.transferId,
+                                accepted = true,
+                                sha256 = offer.sha256,
+                            ),
+                        )
+                        write(peer, disconnect(11))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { connectedStatus -> if (connectedStatus) connected.countDown() }
+            client.onFileTransferResult = { accepted, _ ->
+                acceptedResult.set(accepted)
+                resultSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(connected.await(8, TimeUnit.SECONDS))
+                assertTrue(client.offerFile(source, "text/plain"))
+                assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                assertTrue(acceptedResult.get())
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                source.delete()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clientFileOfferCancelsWhenPeerReportsUnexpectedProgress() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "unexpected-progress-client-file".toByteArray(Charsets.UTF_8)
+            val source = File.createTempFile("vibescreen-unexpected-progress", ".txt")
+            source.writeBytes(content)
+            val connected = CountDownLatch(1)
+            val resultSeen = CountDownLatch(1)
+            val acceptedResult = AtomicBoolean(true)
+            val reason = AtomicReference<String>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        connected.countDown()
+                        val offerEnvelope = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_OFFER, offerEnvelope.payloadCase)
+                        val offer = offerEnvelope.fileOffer
+                        write(peer, fileAccept(6, offer.transferId, accepted = true, maximumChunkBytes = 8))
+                        val firstFrame = ProtocolV1Framing.read(peer.getInputStream())
+                        val firstChunk = ProtocolV1Framing.decodeFileChunk(firstFrame.payload)
+                        assertEquals(8, firstChunk.header.payloadLength)
+
+                        write(peer, fileProgress(7, offer.transferId, 1))
+                        val cancel = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancel.payloadCase)
+                        assertEquals(offer.transferId, cancel.fileTransferCancel.transferId)
+                        assertEquals("unexpected_progress", cancel.fileTransferCancel.reasonCode)
+                        peer.soTimeout = 300
+                        assertNull(readProtocolFrameOrNull(peer))
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { connectedStatus -> if (connectedStatus) connected.countDown() }
+            client.onFileTransferResult = { accepted, rejectionReason ->
+                acceptedResult.set(accepted)
+                reason.set(rejectionReason)
+                resultSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(connected.await(8, TimeUnit.SECONDS))
+                assertTrue(client.offerFile(source, "text/plain"))
+                assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                assertFalse(acceptedResult.get())
+                assertEquals("unexpected_progress", reason.get())
                 withTimeout(8_000) { serverJob.await() }
             } finally {
                 source.delete()
@@ -2635,6 +3246,62 @@ class StreamClientProtocolV1IntegrationTest {
         assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
     }
 
+    private fun completeManagedPolicyHandshake(
+        peer: Socket,
+        initialRotation: Int,
+        hostCapabilities: List<Capability>,
+        negotiatedCapabilities: List<Capability>,
+        hostManagedStatus: ManagedPolicyStatus,
+        expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        maxFileBytes: Long = 0L,
+        maxFileChunkBytes: Int = 0,
+        displays: List<DisplayDescriptor> = listOf(display()),
+        videoConfigEpoch: Long = 3,
+    ) {
+        assertTrue(Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities)
+        assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
+        peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
+        peer.getOutputStream().flush()
+        val clientHello = readEnvelope(peer)
+        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
+        assertEquals(expectedClientCapabilities.toSet(), clientHello.clientHello.capabilitiesList.toSet())
+        assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
+        write(
+            peer,
+            hostHello(
+                1,
+                hostCapabilities,
+                maxClipboardBytes = maxClipboardBytes,
+                maxFileBytes = maxFileBytes,
+                maxFileChunkBytes = maxFileChunkBytes,
+            ),
+        )
+        write(
+            peer,
+            sessionAccepted(
+                2,
+                negotiatedCapabilities,
+                maxClipboardBytes = maxClipboardBytes,
+                maxFileBytes = maxFileBytes,
+                maxFileChunkBytes = maxFileChunkBytes,
+            ),
+        )
+        assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
+        val clientPolicy = readEnvelope(peer)
+        assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, clientPolicy.payloadCase)
+        write(peer, managedPolicyStatus(3, hostManagedStatus))
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
+        write(peer, displayList(4, displays))
+        assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
+        write(peer, startDisplay(5, displays.first()))
+        write(peer, videoConfig(6, initialRotation, configEpoch = videoConfigEpoch))
+        val result = readEnvelope(peer)
+        assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
+        assertTrue(result.videoConfigResult.accepted)
+        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
+    }
+
     private fun StreamClient.forceLegacyFallbackForTest() {
         val method = javaClass.getDeclaredMethod("configureLegacyMode", Integer::class.java)
         method.isAccessible = true
@@ -2752,6 +3419,15 @@ class StreamClientProtocolV1IntegrationTest {
     private fun readEnvelopeOrNull(peer: Socket): Envelope? =
         try {
             readEnvelope(peer)
+        } catch (_: SocketTimeoutException) {
+            null
+        } catch (_: IOException) {
+            null
+        }
+
+    private fun readProtocolFrameOrNull(peer: Socket): ProtocolFrame? =
+        try {
+            ProtocolV1Framing.read(peer.getInputStream())
         } catch (_: SocketTimeoutException) {
             null
         } catch (_: IOException) {
@@ -3212,19 +3888,67 @@ class StreamClientProtocolV1IntegrationTest {
                 .setSha256(sha256),
         ).build()
 
+    private fun fileCancel(
+        id: Long,
+        transferId: ByteString,
+        reasonCode: String,
+    ): Envelope =
+        base(id).setFileTransferCancel(
+            FileTransferCancel.newBuilder()
+                .setTransferId(transferId)
+                .setReasonCode(reasonCode),
+        ).build()
+
+    private fun managedPolicyStatus(
+        id: Long,
+        status: ManagedPolicyStatus,
+    ): Envelope = base(id).setManagedPolicyStatus(status).build()
+
+    private fun managedPolicyStatus(
+        fileTransferAllowed: Boolean = true,
+        maximumFileBytes: Long = ProtocolV1Session.ManagedPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
+    ): ManagedPolicyStatus =
+        ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+            isManaged = true,
+            fileTransferAllowed = fileTransferAllowed,
+            maximumFileBytes = maximumFileBytes,
+            allowedHosts = setOf(TEST_HOST_ID),
+            allowedHostsRestricted = true,
+        ).toStatus()
+
     private fun fileChunk(
         transferId: ByteString,
         offset: Long,
         payload: ByteArray,
         final: Boolean,
+        sessionEpoch: Long = 7,
     ): ByteArray =
         ProtocolV1Framing.encodeFileChunk(
             FileChunkHeader.newBuilder()
                 .setTransferId(transferId)
                 .setOffset(offset)
                 .setPayloadLength(payload.size)
-                .setSessionEpoch(7)
+                .setSessionEpoch(sessionEpoch)
                 .setChunkSha256(ByteString.copyFrom(sha256(payload)))
+                .setFinal(final)
+                .build(),
+            payload,
+        )
+
+    private fun corruptedFileChunk(
+        transferId: ByteString,
+        offset: Long,
+        payload: ByteArray,
+        final: Boolean,
+        sessionEpoch: Long = 7,
+    ): ByteArray =
+        ProtocolV1Framing.encodeFileChunk(
+            FileChunkHeader.newBuilder()
+                .setTransferId(transferId)
+                .setOffset(offset)
+                .setPayloadLength(payload.size)
+                .setSessionEpoch(sessionEpoch)
+                .setChunkSha256(ByteString.copyFrom(ByteArray(32) { 0x7f }))
                 .setFinal(final)
                 .build(),
             payload,

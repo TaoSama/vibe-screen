@@ -1264,10 +1264,17 @@ class StreamClient(
                         )
                     }
                 val completion = CompletableFuture<Unit>()
+                val session = protocolSessionOwner.currentSession
+                    ?: throw SessionProtocolException(
+                        SessionFailure.protocol(
+                            SessionFailureKind.INVALID_MEDIA_PAYLOAD,
+                            "Protocol bulk frame received after session cleanup",
+                        ),
+                    )
                 val submission = submitOutbound(
                     kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
                     command = StreamOutboundCommand.ProtocolBulk(
-                        session = checkNotNull(protocolSessionOwner.currentSession),
+                        session = session,
                         connectionGeneration = protocolSessionOwner.connectionEpoch,
                         chunk = chunk,
                         completion = completion,
@@ -2115,6 +2122,7 @@ class StreamClient(
                 ownerToken = session,
                 connectionGeneration = connectionGeneration,
                 offer = offer,
+                negotiatedPolicy = session.negotiatedFilePolicy,
             )?.let { response ->
                 if (!isCurrentProtocolSession(session, connectionGeneration)) return
                 session.fileAccept(response)?.let {

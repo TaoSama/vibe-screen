@@ -426,7 +426,7 @@ internal fun fileTransferFailure(
     cause: Throwable? = null,
 ): FileTransferException = FileTransferException(reasonCode, message, cause)
 
-private const val SHA256_BYTES = 32
+internal const val SHA256_BYTES = 32
 
 private fun UUID.toBytes(): ByteArray {
     val buffer = java.nio.ByteBuffer.allocate(16)
