@@ -60,6 +60,26 @@ VideoToolbox H.264/HEVC is owned by #251, and Host advanced adapters are owned
 by #253. Passing status plus evidence under the wrong owner still fails closed,
 so the #290 aggregate cannot accidentally close those open readiness gates.
 
+## File transfer and WebRTC bulk current-base readiness
+
+The file-transfer/WebRTC bulk aggregate owner is
+`current-base-file-transfer-bulk`, the current-base successor to the merged
+file-transfer readiness baseline. Use it to summarize the existing Android
+USB/LAN file-transfer child gate and the Phase 3 WebRTC bulk product-flow child
+gate without running device or Host collectors:
+
+```sh
+make file-transfer-bulk-current-base-gate \
+  EVIDENCE_DIR=.build/evidence/file-transfer-bulk-current-base
+```
+
+The target writes `file-transfer-bulk-current-base-manifest.json` and
+`file-transfer-bulk-current-base-gate.json`. Missing child gate JSON produces a
+blocked placeholder. The aggregate exits successfully for a default blocked
+summary unless `FILE_TRANSFER_BULK_CURRENT_BASE_REQUIRE_PASS=1` is set. It never
+claims the separate clipboard gate and never treats USB/LAN evidence as public
+Internet WebRTC bulk proof.
+
 ## Phase 0 stable-release aggregate gate
 
 The Phase 0 stable-release aggregate gate is intentionally separate from the

@@ -138,6 +138,37 @@ the README gate. An incremental run may return `verdict=pass` for the requested
 scenario and `can_close_requested_scope=true`, but it must still keep
 `can_close_timing_gate=false` until all three disruption scenarios pass.
 
+### File Transfer And WebRTC Bulk Gates
+
+The current-base aggregate owner for file transfer and WebRTC bulk is
+`current-base-file-transfer-bulk`. Generate its fail-closed summary before
+claiming that both child gates are ready on the current source:
+
+```bash
+make file-transfer-bulk-current-base-gate \
+  EVIDENCE_DIR=.build/evidence/file-transfer-bulk-current-base
+```
+
+The aggregate consumes existing child gate reports only. The Android USB/LAN side
+is the `file-transfer-android-smoke` gate; the Internet side is
+`phase3-webrtc-bulk-product-flow`. Missing child reports produce blocked
+placeholders. The aggregate does not run ADB, start the macOS Host, or inspect
+TCC/Keychain state, so it is safe to run as an offline current-base summary.
+
+USB/LAN file-transfer acceptance still requires a retained real-device package
+with device identity, signed/TCC-authorized Host readiness, Protocol v1
+`CAPABILITY_FILE_TRANSFER`, Android SAF sender selection to a macOS saved file,
+macOS sender selection to Android Downloads, receiver approval on both sides,
+matching SHA-256 digests, progress/cancel or backpressure behavior, and
+disconnect cleanup. Nubia P0110 evidence must remain labeled as nubia P0110 /
+pacific / Android 16 / SDK 36.
+
+WebRTC bulk product-flow acceptance is separate: it requires a real public
+Internet route over `vibescreen.bulk.v1`, retained route and deployed remote TURN
+evidence, bounded backlog and payload-limit evidence, the release prerequisite
+checklist, and a secret/plaintext scan of archived artifacts. A P0110-only
+USB/LAN record or clipboard-only record cannot close the WebRTC bulk child gate.
+
 For the Protocol v1 Android audio playback gate, keep a dedicated
 `android-audio-playback-observations.json` beside the raw Host log, Android
 logcat, private Android diag log, device/build metadata, ADB reverse state, and

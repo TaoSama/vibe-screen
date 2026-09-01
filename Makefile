@@ -94,6 +94,11 @@ FILE_TRANSFER_ANDROID_SMOKE_LAN_PREFLIGHT_JSON ?= $(EVIDENCE_DIR)/trusted-lan-pr
 FILE_TRANSFER_ANDROID_SMOKE_ANDROID_INSTRUMENTATION_LOG ?= $(EVIDENCE_DIR)/android-file-transfer-instrumentation.txt
 FILE_TRANSFER_ANDROID_SMOKE_PRODUCT_JSON ?= $(EVIDENCE_DIR)/file-transfer-product-e2e.json
 FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS ?=
+FILE_TRANSFER_BULK_CURRENT_BASE_MANIFEST_JSON ?= $(EVIDENCE_DIR)/file-transfer-bulk-current-base-manifest.json
+FILE_TRANSFER_BULK_CURRENT_BASE_GATE_JSON ?= $(EVIDENCE_DIR)/file-transfer-bulk-current-base-gate.json
+FILE_TRANSFER_BULK_CURRENT_BASE_ANDROID_GATE_JSON ?= $(FILE_TRANSFER_ANDROID_SMOKE_GATE_JSON)
+FILE_TRANSFER_BULK_CURRENT_BASE_WEBRTC_GATE_JSON ?= $(PHASE3_WEBRTC_BULK_GATE_JSON)
+FILE_TRANSFER_BULK_CURRENT_BASE_REQUIRE_PASS ?=
 HOST_PID ?=
 PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
@@ -239,6 +244,8 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	evidence-tools-test \
 	release-tools-test \
 	file-transfer-android-smoke \
+	file-transfer-bulk-current-base-manifest \
+	file-transfer-bulk-current-base-gate \
 	phase0-module-ownership-gate \
 	phase0-stable-release-gate \
 	require-evidence-serial \
@@ -1139,6 +1146,27 @@ file-transfer-android-smoke:
 	status=$$?; \
 	if [ $$status -ne 0 ]; then \
 		if [ -z "$(strip $(FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS))" ] && [ $$status -eq 2 ]; then exit 0; fi; \
+		exit $$status; \
+	fi
+
+file-transfer-bulk-current-base-manifest:
+	@mkdir -p "$(dir $(FILE_TRANSFER_BULK_CURRENT_BASE_MANIFEST_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.file_transfer_bulk_current_base_manifest \
+		--output "$(FILE_TRANSFER_BULK_CURRENT_BASE_MANIFEST_JSON)" \
+		$(if $(wildcard $(FILE_TRANSFER_BULK_CURRENT_BASE_ANDROID_GATE_JSON)),--file-transfer-android-smoke-gate "$(FILE_TRANSFER_BULK_CURRENT_BASE_ANDROID_GATE_JSON)",) \
+		$(if $(wildcard $(FILE_TRANSFER_BULK_CURRENT_BASE_WEBRTC_GATE_JSON)),--webrtc-bulk-product-flow-gate "$(FILE_TRANSFER_BULK_CURRENT_BASE_WEBRTC_GATE_JSON)",) \
+		-- make file-transfer-bulk-current-base-gate EVIDENCE_DIR=$(EVIDENCE_DIR)
+
+file-transfer-bulk-current-base-gate:
+	@test -f "$(FILE_TRANSFER_BULK_CURRENT_BASE_MANIFEST_JSON)" || $(MAKE) file-transfer-bulk-current-base-manifest EVIDENCE_DIR="$(EVIDENCE_DIR)"
+	@mkdir -p "$(dir $(FILE_TRANSFER_BULK_CURRENT_BASE_GATE_JSON))"
+	@set +e; \
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.file_transfer_bulk_current_base_gate \
+		--manifest "$(FILE_TRANSFER_BULK_CURRENT_BASE_MANIFEST_JSON)" \
+		--output "$(FILE_TRANSFER_BULK_CURRENT_BASE_GATE_JSON)"; \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		if [ -z "$(filter 1 true yes,$(FILE_TRANSFER_BULK_CURRENT_BASE_REQUIRE_PASS))" ] && [ $$status -eq 1 ]; then exit 0; fi; \
 		exit $$status; \
 	fi
 

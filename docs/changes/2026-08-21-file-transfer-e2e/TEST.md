@@ -94,6 +94,36 @@ The MacHost package sources compiled before the test target failed to build.
   acceptance remain open.
 - Public Internet/WebRTC bulk DataChannel file-transfer acceptance remains open.
 
+## Current-base aggregate owner
+
+The current-base successor owner for the open file-transfer and WebRTC bulk
+boundary is `current-base-file-transfer-bulk`. Run the fail-closed aggregate
+before making a current-base claim that spans Android USB/LAN file transfer and
+public Internet WebRTC bulk transfer:
+
+```bash
+make file-transfer-bulk-current-base-gate \
+  EVIDENCE_DIR=.build/evidence/file-transfer-bulk-current-base
+```
+
+The target writes `file-transfer-bulk-current-base-manifest.json` and
+`file-transfer-bulk-current-base-gate.json`. It is an aggregate only: it reads
+the existing `file-transfer-android-smoke` and
+`phase3-webrtc-bulk-product-flow` child gate reports when they exist, or records
+blocked placeholders when they do not. It does not run ADB, start the Host, or
+inspect TCC/Keychain state.
+
+A pass requires both child gates to pass from retained product evidence. Nubia
+P0110 can contribute to the Android USB/LAN file-transfer child gate when that
+child report proves sender selection, explicit receiver approval, saved files,
+progress/cancel or backpressure behavior, disconnect cleanup, and matching
+SHA-256 on both endpoints. The same P0110 USB/LAN record cannot close the
+public-Internet WebRTC bulk child gate; that gate requires its own real public
+Internet product flow over `vibescreen.bulk.v1` with deployed remote TURN route,
+privacy scan, bounded-backlog evidence, and the release prerequisite checklist
+retained by the child gate. Clipboard remains a separate gate and is never
+claimed by this aggregate.
+
 ## 2026-08-22 Nubia P0110 readiness rerun
 
 Evidence:
