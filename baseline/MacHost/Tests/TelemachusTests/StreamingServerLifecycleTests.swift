@@ -856,8 +856,10 @@ final class StreamingServerLifecycleTests: XCTestCase {
         )
         configure(server)
         try server.start()
-        let port = try XCTUnwrap(server.listeningPort)
-        XCTAssertNotEqual(port, 0)
+        guard let port = server.listeningPort, port != 0 else {
+            server.stop()
+            throw TestError.invalidListeningPort
+        }
         return (server, port)
     }
 
@@ -1234,6 +1236,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
     private enum TestError: Error {
         case connectionClosed
+        case invalidListeningPort
     }
 }
 
