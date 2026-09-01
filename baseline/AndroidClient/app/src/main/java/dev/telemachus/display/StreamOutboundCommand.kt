@@ -77,7 +77,7 @@ internal sealed interface StreamOutboundCommand {
         val decision: StreamVideoConfigurationDecision,
     ) : StreamOutboundCommand
 
-    data class ProtocolWakeHostCompletion(
+    class ProtocolWakeHostCompletion(
         val session: ProtocolV1Session,
         val connectionGeneration: Long,
         val requestId: ByteString,

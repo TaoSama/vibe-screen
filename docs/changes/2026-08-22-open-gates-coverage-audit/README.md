@@ -133,9 +133,8 @@ change product status.
 - Phase 0 module ownership extraction: #259 is the current-base owner gate for
   StreamClient local session, input, Protocol v1 action, protocol-session
   ownership, media routing, Android Protocol v1 file-transfer/WakeHost
-  side-effect owner checks, and file-transfer product ownership. Wake-host
-  product ownership, decoder/renderer, and UI/product-session boundaries still
-  need focused owners.
+  side-effect owner checks, and file-transfer/WakeHost product ownership.
+  Decoder/renderer and UI/product-session boundaries still need focused owners.
 
 ## Practical next queue
 

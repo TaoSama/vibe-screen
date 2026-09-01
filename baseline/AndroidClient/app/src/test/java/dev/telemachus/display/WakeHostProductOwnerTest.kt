@@ -24,6 +24,14 @@ import java.util.concurrent.RejectedExecutionException
 
 class WakeHostProductOwnerTest {
     @Test
+    fun `completion command cannot be copied around one time claim state`() {
+        val methods = StreamOutboundCommand.ProtocolWakeHostCompletion::class.java.methods.map { it.name }.toSet()
+
+        assertFalse(methods.contains("copy"))
+        assertFalse(methods.contains("copy\$default"))
+    }
+
+    @Test
     fun `wake host advertisement follows policy and authorization secret`() {
         val session = wakeHostStreamingSession()
         val denied = OwnerHarness(session = session, policy = StaticWakeHostPolicy(false))
