@@ -62,7 +62,7 @@ class FileTransferSessionTest {
     }
 
     @Test
-    fun incomingManagerDefaultsToUserDeniedUntilExplicitApproval() {
+    fun incomingManagerDeniesWhenApprovalCallbackReturnsFalse() {
         val manager = IncomingFileTransferManager(FileTransferPolicy(), temporaryDirectory()) { false }
 
         val failure = assertFileTransferFailure("user_denied") {
@@ -166,6 +166,55 @@ class FileTransferSessionTest {
         assertFileTransferFailure("chunk_digest_mismatch") { FileChunk.fromFrame(corrupted) }
 
         manager.cancel(offer.transferId)
+        assertEquals(0, manager.activeTransferCount())
+        assertTrue(directory.listFiles()?.isEmpty() == true)
+    }
+
+    @Test
+    fun incomingManagerRejectsChunkSizeLengthAndFinalFlagBoundaries() {
+        assertFileTransferFailure("chunk_too_large") {
+            acceptedIncomingManager(maximumChunkBytes = 2).let { (manager, offer) ->
+                manager.append(chunk(offer, offset = 0, payload = "hel".toByteArray(), final = false), 7)
+            }
+        }
+
+        assertFileTransferFailure("exceeds_declared_length") {
+            acceptedIncomingManager().let { (manager, offer) ->
+                manager.append(chunk(offer, offset = 0, payload = "hello!".toByteArray(), final = true), 7)
+            }
+        }
+
+        assertFileTransferFailure("invalid_final_flag") {
+            acceptedIncomingManager().let { (manager, offer) ->
+                manager.append(chunk(offer, offset = 0, payload = "he".toByteArray(), final = true), 7)
+            }
+        }
+
+        assertFileTransferFailure("invalid_final_flag") {
+            acceptedIncomingManager().let { (manager, offer) ->
+                manager.append(chunk(offer, offset = 0, payload = "hello".toByteArray(), final = false), 7)
+            }
+        }
+    }
+
+    @Test
+    fun incomingManagerRejectsFinalDigestMismatchAndCleansStagingFile() {
+        val directory = temporaryDirectory()
+        val manager =
+            IncomingFileTransferManager(
+                policy = FileTransferPolicy(maximumChunkBytes = 8),
+                directory = directory,
+            ) { true }
+        val payload = "hello".toByteArray()
+        val offer = offer(payload = payload)
+            .toBuilder()
+            .setSha256(sha256("wrong".toByteArray()))
+            .build()
+        manager.accept(offer, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(), sessionEpoch = 7)
+        assertEquals(5L, manager.append(chunk(offer, offset = 0, payload = payload, final = true), 7))
+
+        assertFileTransferFailure("digest_mismatch") { manager.finish(offer.transferId) }
+
         assertEquals(0, manager.activeTransferCount())
         assertTrue(directory.listFiles()?.isEmpty() == true)
     }
@@ -343,6 +392,47 @@ class FileTransferSessionTest {
     }
 
     @Test
+    fun outgoingTransferRejectsUnexpectedProgressAndCancelBlocksFurtherChunks() {
+        val file = File(temporaryDirectory(), "send.txt")
+        file.writeBytes("hello".toByteArray())
+        val transfer = OutgoingFileTransfer(
+            file = file,
+            mimeType = "text/plain",
+            policy = FileTransferPolicy(maximumChunkBytes = 3),
+        )
+
+        val first = requireNotNull(transfer.nextChunk(maximumBytes = 2, sessionEpoch = 7))
+        assertEquals(2L, first.header.offset + first.header.payloadLength)
+        assertEquals("unexpected_progress", transfer.acknowledgeOffset(5))
+        transfer.cancel()
+
+        assertFileTransferFailure("unknown_transfer") { transfer.nextChunk(maximumBytes = 2, sessionEpoch = 7) }
+    }
+
+    @Test
+    fun incomingManagerCancelAllRemovesEveryActiveStagingFile() {
+        val directory = temporaryDirectory()
+        val manager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(maximumConcurrentTransfers = 2),
+            directory = directory,
+        ) { true }
+        val first = offer(payload = "first".toByteArray())
+        val second = offer(payload = "second".toByteArray())
+            .toBuilder()
+            .setTransferId(ByteString.copyFrom(byteArrayOf(9, 8, 7, 6)))
+            .build()
+        manager.accept(first, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(maximumConcurrentTransfers = 2), sessionEpoch = 7)
+        manager.accept(second, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(maximumConcurrentTransfers = 2), sessionEpoch = 7)
+        assertEquals(2, manager.activeTransferCount())
+        assertEquals(2, directory.listFiles()?.size)
+
+        manager.cancelAll()
+
+        assertEquals(0, manager.activeTransferCount())
+        assertTrue(directory.listFiles()?.isEmpty() == true)
+    }
+
+    @Test
     fun bulkTransportFrameCarriesFileChunkPayload() {
         val offer = offer(payload = "hello".toByteArray())
         val framePayload = chunk(offer, offset = 0, payload = "hello".toByteArray(), final = true).toFrame()
@@ -355,6 +445,23 @@ class FileTransferSessionTest {
 
     private fun temporaryDirectory(): File =
         Files.createTempDirectory("vibescreen-file-transfer-test-").toFile().also { it.deleteOnExit() }
+
+    private fun acceptedIncomingManager(
+        maximumChunkBytes: Int = 8,
+    ): Pair<IncomingFileTransferManager, FileOffer> {
+        val manager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(maximumChunkBytes = maximumChunkBytes),
+            directory = temporaryDirectory(),
+        ) { true }
+        val offer = offer(payload = "hello".toByteArray())
+        manager.accept(
+            offer,
+            remotePolicy = RemoteManagedPolicy.UNMANAGED,
+            negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = maximumChunkBytes),
+            sessionEpoch = 7,
+        )
+        return manager to offer
+    }
 
     private fun offer(
         fileName: String = "hello.txt",

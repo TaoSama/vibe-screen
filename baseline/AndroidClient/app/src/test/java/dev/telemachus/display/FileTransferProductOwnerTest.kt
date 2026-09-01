@@ -49,6 +49,104 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `incoming offers default to user denied when receiver has no approval callback`() {
+        val gate = FakePendingOfferGate()
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(gate = gate, store = store)
+        owner.activateSession()
+        val offer = offer(id = 101, payload = "needs-approval".toByteArray())
+
+        val rejected = owner.receiveFileOffer(Any(), connectionGeneration = 1, offer = offer)
+
+        assertFalse(requireNotNull(rejected).accepted)
+        assertEquals("user_denied", rejected.rejectionReason)
+        assertNull(owner.claimFileOfferDecision(offer))
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
+    fun `incoming offer decision rejects when receiver denies approval`() {
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(store = store)
+        owner.activateSession()
+        val offer = offer(id = 105, payload = "denied".toByteArray())
+
+        val rejected = owner.decideFileOffer(
+            offer = offer,
+            acceptedByUser = false,
+            negotiatedPolicy = FileTransferPolicy(),
+            sessionEpoch = 1,
+        )
+
+        assertFalse(rejected.accepted)
+        assertEquals("user_denied", rejected.rejectionReason)
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
+    fun `incoming offers fail closed before receiver approval for unsafe metadata`() {
+        val gate = FakePendingOfferGate()
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(
+            gate = gate,
+            store = store,
+            fileTransferPolicy = FileTransferPolicy(maximumFileBytes = 4),
+        )
+        val session = Any()
+        val callbacks = mutableListOf<FileOffer>()
+        owner.onFileOffer = { callbacks += it }
+        owner.activateSession()
+
+        val unsafeName = owner.receiveFileOffer(
+            ownerToken = session,
+            connectionGeneration = 1,
+            offer = offer(id = 102, payload = "ok".toByteArray(), fileName = "../escape.txt"),
+        )
+        val invalidDigest = owner.receiveFileOffer(
+            ownerToken = session,
+            connectionGeneration = 1,
+            offer = offer(id = 103, payload = "ok".toByteArray())
+                .toBuilder()
+                .setSha256(ByteString.copyFrom(byteArrayOf(1, 2, 3)))
+                .build(),
+        )
+        val tooLarge = owner.receiveFileOffer(
+            ownerToken = session,
+            connectionGeneration = 1,
+            offer = offer(id = 104, payload = "large".toByteArray()),
+        )
+
+        assertEquals("invalid_file_name", requireNotNull(unsafeName).rejectionReason)
+        assertEquals("invalid_digest", requireNotNull(invalidDigest).rejectionReason)
+        assertEquals("file_too_large", requireNotNull(tooLarge).rejectionReason)
+        assertTrue(callbacks.isEmpty())
+        assertNull(owner.claimFileOfferDecision(offer(id = 102, payload = "ok".toByteArray(), fileName = "../escape.txt")))
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
+    fun `incoming offer larger than negotiated policy rejects before receiver approval`() {
+        val gate = FakePendingOfferGate()
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(gate = gate, store = store)
+        val session = Any()
+        val callbacks = mutableListOf<FileOffer>()
+        owner.onFileOffer = { callbacks += it }
+        owner.activateSession()
+
+        val rejected = owner.receiveFileOffer(
+            ownerToken = session,
+            connectionGeneration = 1,
+            offer = offer(id = 106, payload = "larger-than-negotiated".toByteArray()),
+            negotiatedPolicy = FileTransferPolicy(maximumFileBytes = 4),
+        )
+
+        assertEquals("file_too_large", requireNotNull(rejected).rejectionReason)
+        assertTrue(callbacks.isEmpty())
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
     fun `disconnect cleanup cancels incoming outgoing and pending product state`() {
         val gate = FakePendingOfferGate()
         val store = FakeIncomingTransferStore(stagingDirectory())
@@ -527,6 +625,113 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `outgoing chunks advance only after peer progress acknowledgement`() {
+        val owner = owner()
+        owner.activateSession()
+        val source = File(stagingDirectory(), "progress.txt").also { it.writeText("progress") }
+        val prepared = owner.prepareOutgoingFile(
+            file = source,
+            mimeType = "text/plain",
+            negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        val first = owner.handleFileAccept(
+            FileAccept.newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(true)
+                .setMaximumChunkBytes(4)
+                .build(),
+            sessionEpoch = 12,
+        )
+        assertEquals(0L, requireNotNull(first.chunk).header.offset)
+        assertEquals(4, first.chunk.payload.size)
+        assertFalse(first.chunk.header.final)
+
+        val second = owner.handleFileProgress(
+            FileTransferProgress.newBuilder()
+                .setTransferId(transferId)
+                .setReceivedBytes(4)
+                .build(),
+            sessionEpoch = 12,
+        )
+        assertEquals(4L, requireNotNull(second.chunk).header.offset)
+        assertEquals(4, second.chunk.payload.size)
+        assertTrue(second.chunk.header.final)
+        assertEquals(12L, second.chunk.header.sessionEpoch)
+    }
+
+    @Test
+    fun `unexpected file progress cancels outgoing transfer and reports backpressure failure`() {
+        val owner = owner()
+        owner.activateSession()
+        val source = File(stagingDirectory(), "unexpected-progress.txt").also { it.writeText("progress") }
+        val prepared = owner.prepareOutgoingFile(
+            file = source,
+            mimeType = "text/plain",
+            negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+        assertNotNull(
+            owner.handleFileAccept(
+                FileAccept.newBuilder()
+                    .setTransferId(transferId)
+                    .setAccepted(true)
+                    .setMaximumChunkBytes(4)
+                    .build(),
+                sessionEpoch = 12,
+            ).chunk,
+        )
+
+        val rejected = owner.handleFileProgress(
+            FileTransferProgress.newBuilder()
+                .setTransferId(transferId)
+                .setReceivedBytes(1)
+                .build(),
+            sessionEpoch = 12,
+        )
+
+        assertEquals(transferId, rejected.cancelTransferId)
+        assertEquals("unexpected_progress", rejected.cancelReasonCode)
+        assertEquals(FileTransferProductOwner.TransferResult(false, "unexpected_progress"), rejected.result)
+        assertEquals(0, owner.activeOutgoingTransferCount())
+        assertNull(owner.handleFileProgress(FileTransferProgress.newBuilder().setTransferId(transferId).setReceivedBytes(4).build(), 12).result)
+    }
+
+    @Test
+    fun `outgoing complete rejects mismatched final digest and cancels transfer`() {
+        val outgoing = FakeOutgoingTransferStore(id = 106, payload = "digest".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        owner.activateSession()
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "digest.txt").also { it.writeText("digest") },
+            "text/plain",
+            FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        val update = owner.handleFileComplete(
+            FileTransferComplete.newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(true)
+                .setSha256(ByteString.copyFrom(ByteArray(32) { 0x7f.toByte() }))
+                .build(),
+        )
+
+        assertEquals(transferId, update.cancelTransferId)
+        assertEquals("digest_mismatch", update.cancelReasonCode)
+        assertEquals(FileTransferProductOwner.TransferResult(false, "digest_mismatch"), update.result)
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(0, owner.activeOutgoingTransferCount())
+    }
+
+    @Test
     fun `late outgoing terminal messages after drain do not notify again`() {
         val outgoing = FakeOutgoingTransferStore(id = 97, payload = "late-terminal".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -656,16 +861,19 @@ class FileTransferProductOwnerTest {
     private fun owner(
         gate: FakePendingOfferGate = FakePendingOfferGate(),
         store: FakeIncomingTransferStore = FakeIncomingTransferStore(stagingDirectory()),
+        fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
         outgoing: FileTransferProductOwner.OutgoingTransferStore? = null,
     ): FileTransferProductOwner {
         if (outgoing == null) {
             return FileTransferProductOwner(
+                fileTransferPolicy = fileTransferPolicy,
                 stagingDirectory = ::stagingDirectory,
                 pendingOfferGate = gate,
                 incomingManagerFactory = FileTransferProductOwner.IncomingManagerFactory { _, _, _ -> store },
             )
         }
         return FileTransferProductOwner(
+            fileTransferPolicy = fileTransferPolicy,
             stagingDirectory = ::stagingDirectory,
             pendingOfferGate = gate,
             incomingManagerFactory = FileTransferProductOwner.IncomingManagerFactory { _, _, _ -> store },
