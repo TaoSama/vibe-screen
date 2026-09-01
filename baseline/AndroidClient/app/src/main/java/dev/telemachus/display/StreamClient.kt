@@ -1436,7 +1436,9 @@ class StreamClient(
         val submission =
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                command = StreamOutboundCommand.ProtocolBatch(
+                    onUnavailable = { completion(false) },
+                ) { activeSession ->
                     completion(activeSession.expireClipboardRequest(id))
                     emptyList()
                 },
@@ -2626,8 +2628,11 @@ class StreamClient(
 
     fun respondToFileOffer(offer: FileOffer, accepted: Boolean): Boolean {
         val owner = fileTransferProductOwner.claimFileOfferDecision(offer) ?: return false
-        val session = owner.ownerToken as? ProtocolV1Session ?: return false
-        if (wireMode != WireMode.V1 || !session.canTransferFiles) return false
+        val session = owner.ownerToken as? ProtocolV1Session
+        if (session == null || wireMode != WireMode.V1 || !session.canTransferFiles) {
+            fileTransferProductOwner.releaseFileOfferDecision(offer)
+            return false
+        }
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
             command = StreamOutboundCommand.ProtocolFileOfferDecision(

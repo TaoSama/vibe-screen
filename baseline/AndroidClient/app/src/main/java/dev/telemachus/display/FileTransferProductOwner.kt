@@ -166,6 +166,7 @@ internal class FileTransferProductOwner(
                         completed = manager.finish(chunk.header.transferId),
                     )
                 } catch (failure: FileTransferException) {
+                    manager.cancel(chunk.header.transferId)
                     IncomingChunkResult.Rejected(
                         transferId = chunk.header.transferId,
                         reasonCode = failure.reasonCode,

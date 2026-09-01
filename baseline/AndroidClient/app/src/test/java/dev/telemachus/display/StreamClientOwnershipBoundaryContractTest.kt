@@ -75,6 +75,44 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `clipboard expiry completion is notified when queued batch loses its session`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val expireMethod = streamClient.indexOf("fun expireClipboardRequest(")
+        val protocolBatch = streamClient.indexOf("StreamOutboundCommand.ProtocolBatch(", expireMethod)
+        val unavailableCompletion = streamClient.indexOf("onUnavailable = { completion(false) }", protocolBatch)
+        val buildCallback = streamClient.indexOf(") { activeSession ->", unavailableCompletion)
+        val expireCall = streamClient.indexOf("completion(activeSession.expireClipboardRequest(id))", buildCallback)
+
+        assertTrue("StreamClient must keep expireClipboardRequest", expireMethod >= 0)
+        assertTrue("expireClipboardRequest must queue a protocol batch", protocolBatch > expireMethod)
+        assertTrue("queued clipboard expiry must notify false if the session disappears", unavailableCompletion > protocolBatch)
+        assertTrue("clipboard expiry must keep trailing lambda bound to the batch build callback", buildCallback > unavailableCompletion)
+        assertTrue("clipboard expiry must only complete true/false from an active session inside build", expireCall > buildCallback)
+    }
+
+    @Test
+    fun `file offer decisions release claimed offers when capability guard fails`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val respondMethod = streamClient.indexOf("fun respondToFileOffer(")
+        val claim = streamClient.indexOf("fileTransferProductOwner.claimFileOfferDecision(offer)", respondMethod)
+        val nullableSession = streamClient.indexOf("val session = owner.ownerToken as? ProtocolV1Session", claim)
+        val capabilityGuard = streamClient.indexOf("if (session == null || wireMode != WireMode.V1 || !session.canTransferFiles)", nullableSession)
+        val guardRelease = streamClient.indexOf("fileTransferProductOwner.releaseFileOfferDecision(offer)", capabilityGuard)
+        val guardReturn = streamClient.indexOf("return false", guardRelease)
+        val submit = streamClient.indexOf("val submission = submitOutbound(", guardReturn)
+        val backpressureRelease = streamClient.indexOf("fileTransferProductOwner.releaseFileOfferDecision(offer)", submit)
+
+        assertTrue("StreamClient must keep respondToFileOffer", respondMethod >= 0)
+        assertTrue("respondToFileOffer must claim the pending offer before sending a decision", claim > respondMethod)
+        assertTrue("respondToFileOffer must preserve nullable session guard after claim", nullableSession > claim)
+        assertTrue("respondToFileOffer must gate stale session, wire mode, and capability together", capabilityGuard > nullableSession)
+        assertTrue("respondToFileOffer must release claimed offers when the capability guard fails", guardRelease > capabilityGuard)
+        assertTrue("respondToFileOffer must stop after releasing a failed guard claim", guardReturn > guardRelease)
+        assertTrue("respondToFileOffer must submit only after guard release handling", submit > guardReturn)
+        assertTrue("respondToFileOffer must still release claimed offers on outbound backpressure", backpressureRelease > submit)
+    }
+
+    @Test
     fun `extracted owners stay out of android ui transport socket and decoder layers`() {
         BOUNDARY_OWNER_RULES.forEach { rule ->
             val ownerSource = source(rule.path)

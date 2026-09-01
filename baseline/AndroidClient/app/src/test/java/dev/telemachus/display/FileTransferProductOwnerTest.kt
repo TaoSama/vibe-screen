@@ -115,6 +115,34 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `incoming finish failures fail closed and cancel the transfer`() {
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(store = store)
+        val offer = offer(id = 33, payload = "incomplete".toByteArray())
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 4,
+            ).accepted,
+        )
+
+        val finishFailure = FileTransferException("incomplete_file", "Missing transfer chunk")
+        store.finishFailure = finishFailure
+        val result = owner.receiveIncomingChunk(chunk(offer, payload = "incomplete".toByteArray(), final = true), true, 4)
+
+        assertTrue(result is FileTransferProductOwner.IncomingChunkResult.Rejected)
+        result as FileTransferProductOwner.IncomingChunkResult.Rejected
+        assertEquals("incomplete_file", result.reasonCode)
+        assertEquals(offer.transferId, result.transferId)
+        assertEquals(finishFailure, result.failure)
+        assertEquals(listOf(offer.transferId), store.cancelledTransfers)
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
     fun `duplicate transfer ids fail closed before product callbacks or storage writes multiply`() {
         val gate = FakePendingOfferGate(maximumPendingOffers = 1)
         val store = FakeIncomingTransferStore(stagingDirectory())
@@ -605,6 +633,7 @@ class FileTransferProductOwnerTest {
         var cancelAllCount = 0
             private set
         var appendFailure: IOException? = null
+        var finishFailure: FileTransferException? = null
 
         override fun accept(
             offer: FileOffer,
@@ -635,6 +664,7 @@ class FileTransferProductOwnerTest {
         }
 
         override fun finish(transferId: ByteString): CompletedIncomingFile {
+            finishFailure?.let { throw it }
             val offer = activeOffers.remove(transferId)
                 ?: throw FileTransferException("unknown_transfer", "Unknown file transfer")
             val file = File(directory, offer.fileName).also { it.writeBytes(ByteArray(0)) }
