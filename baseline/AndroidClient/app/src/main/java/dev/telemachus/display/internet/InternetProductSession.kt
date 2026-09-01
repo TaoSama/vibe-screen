@@ -1,6 +1,7 @@
 package dev.telemachus.display.internet
 
 import dev.telemachus.display.ControllerConnectionAckTracker
+import dev.telemachus.display.ControllerDispatchOrdering
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
@@ -457,12 +458,13 @@ class InternetProductSession internal constructor(
     ): Boolean =
         controllerSendGate.withLock {
             if (events.isEmpty()) return@withLock false
+            val orderedEvents = orderControllerEventsBeforeQueueing(events)
             val sendImmediately = synchronized(lock) { canSendControllerLocked() }
             val queueStructuralForRecovery =
                 delivery == InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL &&
                     synchronized(lock) { canQueueControllerStructuralForRecoveryLocked() }
             if (!sendImmediately && !queueStructuralForRecovery) return@withLock false
-            val enqueueResult = controllerSendQueue.enqueue(events, delivery)
+            val enqueueResult = controllerSendQueue.enqueue(orderedEvents, delivery)
             if (enqueueResult == InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW) {
                 fail(IllegalStateException("Controller structural send queue overflowed"))
                 return@withLock false
@@ -470,6 +472,15 @@ class InternetProductSession internal constructor(
             if (!sendImmediately) return@withLock true
             drainControllerQueue() || synchronized(lock) { state in CONTROLLER_STRUCTURAL_STATES }
         }
+
+    private fun orderControllerEventsBeforeQueueing(events: List<ProductControllerEvent>): List<ProductControllerEvent> {
+        val samples = events.map { it.sample }
+        val orderedSamples = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(samples)
+        if (orderedSamples === samples) return events
+        return events
+            .map { it.inputId }
+            .zip(orderedSamples) { inputId, sample -> ProductControllerEvent(inputId, sample) }
+    }
 
     fun requestKeyframe(reason: String): Boolean {
         val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
@@ -559,6 +570,9 @@ class InternetProductSession internal constructor(
                         }
                         ControllerEventKind.STATE -> return@drain true
                     }
+                }
+                if (controllerConnectionAcks.hasDeferredDisconnects()) {
+                    return@drain false
                 }
                 sendControllerEvent(event)
             }

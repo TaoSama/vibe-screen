@@ -364,7 +364,8 @@ internal class StreamInputDispatcher(
         var deferringRemainder = false
         for ((index, sample) in dispatch.samples.withIndex()) {
             val connection = ControllerConnection(sample.controllerId, sample.controllerEpoch)
-            if (deferringRemainder) {
+            val hasDeferredDisconnects = controllerConnectionAcks.hasDeferredDisconnects()
+            if (deferringRemainder || hasDeferredDisconnects) {
                 if (sample.kind != ControllerEventKind.CONNECTED && controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch)) {
                     if (!deferPendingControllerDisconnect(sample)) {
                         // STATE is recovered by an ACK-triggered full-state resync.
@@ -374,11 +375,12 @@ internal class StreamInputDispatcher(
                 }
                 continue
             }
-            if (
-                controllerConnectionAcks.hasDeferredDisconnectBefore(sample.controllerId, sample.controllerEpoch) ||
-                hasPendingDisconnectBeforeLater(dispatch.samples, index, sample)
-            ) {
+            if (controllerConnectionAcks.hasDeferredDisconnectBefore(sample.controllerId, sample.controllerEpoch)) {
                 deferringRemainder = true
+                deferredSamples += sample
+                continue
+            }
+            if (ControllerDispatchOrdering.hasLaterLowerEpochDisconnect(dispatch.samples, index, sample)) {
                 deferredSamples += sample
                 continue
             }
@@ -388,6 +390,8 @@ internal class StreamInputDispatcher(
             if (sample.kind != ControllerEventKind.CONNECTED && isPendingConnection) {
                 if (!deferPendingControllerDisconnect(sample)) {
                     // STATE is recovered by an ACK-triggered full-state resync.
+                } else {
+                    deferringRemainder = true
                 }
                 continue
             }
@@ -406,9 +410,14 @@ internal class StreamInputDispatcher(
             envelopes += activeSession.controller(inputId = inputId, sample = sample)
         }
         if (deferredSamples.isNotEmpty()) {
-            if (!enqueueDeferredControllerDispatch(dispatch.copy(samples = deferredSamples))) {
-                failControllerDeferredOverflow()
-                return emptyList()
+            val deferredDispatch = dispatch.copy(samples = deferredSamples)
+            if (controllerConnectionAcks.hasDeferredDisconnects() || isBlockedByDeferredDisconnect(deferredDispatch)) {
+                if (!enqueueDeferredControllerDispatch(deferredDispatch)) {
+                    failControllerDeferredOverflow()
+                    return emptyList()
+                }
+            } else {
+                envelopes += buildControllerEnvelopes(activeSession, deferredDispatch)
             }
         }
         return envelopes
@@ -423,17 +432,6 @@ internal class StreamInputDispatcher(
             sample.controllerEpoch,
         )
         return true
-    }
-
-    private fun hasPendingDisconnectBeforeLater(
-        samples: List<ControllerStateSample>,
-        index: Int,
-        sample: ControllerStateSample,
-    ): Boolean = samples.asSequence().drop(index + 1).any { later ->
-        later.kind == ControllerEventKind.DISCONNECTED &&
-            later.controllerId == sample.controllerId &&
-            later.controllerEpoch < sample.controllerEpoch &&
-            controllerConnectionAcks.isPending(later.controllerId, later.controllerEpoch)
     }
 
     private fun buildControllerDisconnectCleanupEnvelopes(
