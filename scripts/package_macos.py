@@ -42,7 +42,8 @@ CODE_SIGNATURE_DIR_NAME = "_CodeSignature"
 CODE_RESOURCES_NAME = "CodeResources"
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SIGNING_CERTIFICATE_REQUIREMENT_PATTERN = re.compile(
-    r'certificate\s+(leaf|root)\s*=\s*H"([0-9A-Fa-f]{40})"'
+    r'certificate\s+leaf\s*=\s*H"([0-9A-Fa-f]{40})"',
+    re.IGNORECASE,
 )
 REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
 SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
@@ -72,6 +73,12 @@ class SourceIdentity:
 class CodesigningIdentity:
     sha1: str
     name: str
+
+
+@dataclass(frozen=True)
+class DesignatedRequirementContract:
+    identifier: str
+    leaf_sha1: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,13 +169,143 @@ def dedupe_codesigning_identities_by_sha1(
 def parse_signing_certificate_hash(requirement: str | None) -> str | None:
     if requirement is None:
         return None
-    matches = SIGNING_CERTIFICATE_REQUIREMENT_PATTERN.findall(requirement)
-    for certificate_kind, sha1 in matches:
-        if certificate_kind == "leaf":
-            return sha1.upper()
-    for certificate_kind, sha1 in matches:
-        if certificate_kind == "root":
-            return sha1.upper()
+    match = SIGNING_CERTIFICATE_REQUIREMENT_PATTERN.search(requirement)
+    return normalize_sha1(match.group(1)) if match is not None else None
+
+
+def strip_balanced_outer_parentheses(value: str) -> str:
+    result = value.strip()
+    while result.startswith("(") and result.endswith(")"):
+        depth = 0
+        in_quote = False
+        wraps_entire_value = True
+        for index, character in enumerate(result):
+            if character == '"':
+                in_quote = not in_quote
+            elif not in_quote:
+                if character == "(":
+                    depth += 1
+                elif character == ")":
+                    depth -= 1
+                    if depth == 0 and index != len(result) - 1:
+                        wraps_entire_value = False
+                        break
+                    if depth < 0:
+                        wraps_entire_value = False
+                        break
+        if not wraps_entire_value or depth != 0:
+            break
+        result = result[1:-1].strip()
+    return result
+
+
+def split_requirement_and_clauses(requirement: str) -> tuple[str, ...]:
+    normalized = strip_balanced_outer_parentheses(re.sub(r"\s+", " ", requirement.strip()))
+    clauses: list[str] = []
+    start = 0
+    depth = 0
+    in_quote = False
+    index = 0
+    while index < len(normalized):
+        character = normalized[index]
+        if character == '"':
+            in_quote = not in_quote
+            index += 1
+            continue
+        if not in_quote:
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                depth -= 1
+                if depth < 0:
+                    raise ValueError("codesign designated requirement has unbalanced parentheses")
+            elif depth == 0 and is_requirement_operator_at(normalized, index, "and"):
+                end = index + 3
+                clauses.append(strip_balanced_outer_parentheses(normalized[start:index]))
+                start = end
+                index = end
+                continue
+        index += 1
+    if in_quote or depth != 0:
+        raise ValueError("codesign designated requirement has unbalanced syntax")
+    clauses.append(strip_balanced_outer_parentheses(normalized[start:]))
+    return tuple(clauses)
+
+
+def is_requirement_operator_at(requirement: str, index: int, operator: str) -> bool:
+    end = index + len(operator)
+    if requirement[index:end].lower() != operator:
+        return False
+    before = requirement[index - 1] if index > 0 else " "
+    after = requirement[end] if end < len(requirement) else " "
+    return not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_")
+
+
+def parse_designated_requirement_contract(
+    requirement: str | None,
+) -> DesignatedRequirementContract:
+    if requirement is None or not requirement.strip():
+        raise ValueError("codesign designated requirement is missing")
+    if re.search(r"(?i)\bor\b", requirement):
+        raise ValueError("codesign designated requirement must not contain OR clauses")
+    clauses = split_requirement_and_clauses(requirement)
+    if len(clauses) != 2:
+        raise ValueError(
+            "codesign designated requirement must contain exactly identifier and "
+            "certificate leaf clauses joined by AND"
+        )
+    identifier: str | None = None
+    leaf_sha1: str | None = None
+    unexpected: list[str] = []
+    for clause in clauses:
+        identifier_match = re.fullmatch(r'(?i)identifier\s+(?:"([^"]+)"|([A-Za-z0-9._-]+))', clause)
+        if identifier_match is not None:
+            if identifier is not None:
+                unexpected.append(clause)
+            else:
+                identifier = identifier_match.group(1) or identifier_match.group(2)
+            continue
+        leaf_match = re.fullmatch(r'(?i)certificate\s+leaf\s*=\s*H"([0-9A-Fa-f]{40})"', clause)
+        if leaf_match is not None:
+            if leaf_sha1 is not None:
+                unexpected.append(clause)
+            else:
+                leaf_sha1 = normalize_sha1(leaf_match.group(1))
+            continue
+        unexpected.append(clause)
+    if unexpected:
+        raise ValueError(
+            "codesign designated requirement contains unsupported clause: "
+            + "; ".join(unexpected)
+        )
+    if identifier is None:
+        raise ValueError("codesign designated requirement is missing an identifier clause")
+    if leaf_sha1 is None:
+        raise ValueError("codesign designated requirement is missing a certificate leaf clause")
+    return DesignatedRequirementContract(identifier=identifier, leaf_sha1=leaf_sha1)
+
+
+def canonical_designated_requirement_contract_error(
+    requirement: str | None,
+    *,
+    expected_identifier: str = EXPECTED_BUNDLE_ID,
+    expected_leaf_sha1: str = EXPECTED_SIGNING_LEAF_SHA1,
+) -> str | None:
+    try:
+        contract = parse_designated_requirement_contract(requirement)
+    except ValueError as error:
+        return str(error)
+    if contract.identifier != expected_identifier:
+        return (
+            "codesign designated requirement uses identifier "
+            f"'{contract.identifier}', expected '{expected_identifier}'"
+        )
+    expected_leaf = normalize_sha1(expected_leaf_sha1)
+    if contract.leaf_sha1 != expected_leaf:
+        return (
+            "codesign designated requirement uses certificate leaf SHA-1 "
+            f"'{contract.leaf_sha1}', expected '{expected_leaf}'"
+        )
     return None
 
 
@@ -580,28 +717,20 @@ def verify_signed_app_certificate_contract(
     requirement = parse_designated_requirement(requirement_output)
     if not requirement:
         raise SystemExit(f"codesign designated requirement is missing for {app_path}")
-    identifier = parse_designated_requirement_identifier(requirement)
-    if identifier is None and sign_identity == "-":
-        return
-    if identifier != expected_identifier:
-        actual_identifier = identifier or "missing"
-        raise SystemExit(
-            f"codesign designated requirement for {app_path} uses identifier "
-            f"'{actual_identifier}', expected '{expected_identifier}'"
-        )
     if sign_identity == "-":
+        identifier = parse_designated_requirement_identifier(requirement)
+        if identifier is not None and identifier != expected_identifier:
+            raise SystemExit(
+                f"codesign designated requirement for {app_path} uses identifier "
+                f"'{identifier}', expected '{expected_identifier}'"
+            )
         return
-    certificate_hash = parse_signing_certificate_hash(requirement)
-    if certificate_hash is None:
-        raise SystemExit(
-            f"codesign designated requirement for {app_path} does not contain a "
-            "valid certificate leaf/root SHA-1"
-        )
-    if certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
-        raise SystemExit(
-            f"codesign designated requirement for {app_path} uses certificate SHA-1 "
-            f"'{certificate_hash}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
-        )
+    contract_error = canonical_designated_requirement_contract_error(
+        requirement,
+        expected_identifier=expected_identifier,
+    )
+    if contract_error:
+        raise SystemExit(f"codesign designated requirement for {app_path} is not canonical: {contract_error}")
 
 
 def verify_packaged_app_certificate_contracts(app_path: Path, sign_identity: str) -> None:

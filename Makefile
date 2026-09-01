@@ -233,6 +233,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	baseline-macos-app \
 	baseline-macos-dev-install \
 	baseline-macos-host-preflight \
+	baseline-macos-launch \
 	baseline-macos-host-readiness \
 	baseline-macos-touch-preflight \
 	baseline-android-test \
@@ -580,6 +581,9 @@ baseline-macos-dev-install:
 
 baseline-macos-host-preflight:
 	python3 scripts/macos_dev_host.py preflight
+
+baseline-macos-launch:
+	python3 scripts/macos_dev_host.py launch
 
 baseline-macos-host-readiness:
 	mkdir -p $(EVIDENCE_DIR)

@@ -39,6 +39,7 @@ Host with a stable signing identity:
 ```bash
 make baseline-macos-dev-install
 make baseline-macos-host-preflight
+make baseline-macos-launch
 ```
 
 The packaging and preflight chain is fail-closed before any device evidence can
@@ -47,8 +48,14 @@ provenance for the current commit/tree with `VibeScreenSourceDirty=false`, keep
 `CFBundleIdentifier=dev.telemachus.display`, retain a designated requirement
 bound to the historical signing leaf, pass `codesign --verify --deep --strict`,
 and contain no `*.cstemp*` files or `_CodeSignature/CodeResources` references
-to codesign temporary paths. A bundle that fails any of those checks must be
-rebuilt instead of reused for TCC or device evidence.
+to codesign temporary paths. The current checkout must also contain the macOS
+permission prompt contract commit and pass
+`swift scripts/verify_macos_permission_prompt_contract.swift` before install,
+preflight, readiness, launch, or any device gate can consume the Host. A bundle
+that fails any of those checks must be rebuilt instead of reused for TCC or
+device evidence. `make baseline-macos-launch` runs the same preflight first and
+only opens `/Applications/Vibe Screen.app`; direct launches from
+`.build/release-artifacts/` are not valid device-evidence setup.
 
 If the configured identity is missing, the preflight blocks with
 `codesign identity 'Vibe Screen Dev' not found in the keychain`. Restore or

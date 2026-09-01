@@ -109,8 +109,9 @@ fields decide whether the matching runtime run may begin.
 `can_close_runtime_gates=true` only means the shared Host prerequisite snapshot
 itself passed; each runtime gate still needs its own retained device evidence.
 
-Then launch the packaged Host, establish the selected USB or trusted-LAN
-Protocol v1 session, and exercise at least these runtime probes:
+Then launch the packaged Host with `make baseline-macos-launch`, establish the
+selected USB or trusted-LAN Protocol v1 session, and exercise at least these
+runtime probes:
 
 - packaged Host launch on the recorded Mac row;
 - display list and selected-display start;

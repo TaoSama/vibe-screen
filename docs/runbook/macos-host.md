@@ -40,6 +40,11 @@ readiness only.
    only install an artifact you built or obtained from the project's official
    release channel.
 
+This release-artifact path is for ordinary manual use. Host-backed device
+evidence must use the source-bound development install, preflight, and guarded
+launcher described below instead of opening Finder or build-output artifacts
+directly.
+
 The current bundle identifier is `dev.telemachus.display`. Keep the app at the
 same path across upgrades so macOS has the best chance of retaining its privacy
 grants.
@@ -107,10 +112,11 @@ Vibe Screen requests two independent permissions:
   legacy fallback session still does not carry keyboard or native-mouse
   messages.
 
-Grant both in **System Settings → Privacy & Security**, then quit and reopen
-Vibe Screen. The app rechecks permission while it is running, but a relaunch is
-the most reliable path after a new grant. Never grant Accessibility to an
-untrusted build: it can synthesize system-wide input.
+Grant both in **System Settings → Privacy & Security**, then quit Vibe Screen.
+For device evidence, restart it with `make baseline-macos-launch` so the same
+source-bound preflight runs before launch. The app rechecks permission while it
+is running, but a relaunch is the most reliable path after a new grant. Never
+grant Accessibility to an untrusted build: it can synthesize system-wide input.
 
 ## Host-backed device gate preflight
 
@@ -134,15 +140,20 @@ same pinned leaf. A missing or drifted `Vibe Screen Dev` identity means the Host
 cannot be rebuilt or reinstalled as the TCC-compatible stable signed binary.
 `baseline-macos-touch-preflight` is a compatibility alias for the same check.
 Both targets exit non-zero if any installed-bundle, source-provenance, or
-permission check is missing. The preflight is read-only and must not open System
-Settings or request macOS privacy prompts. After restoring the exact historical
-leaf and reinstalling the Host, run it first; the expected path is that existing
-Screen Recording and Accessibility TCC grants are reused without new approval.
+permission check is missing. The source checkout must contain the permission
+prompt contract commit and pass
+`swift scripts/verify_macos_permission_prompt_contract.swift`; the legacy
+`--allow-source-mismatch` flag is rejected and cannot authorize Host evidence.
+The preflight is read-only and must not open System Settings or request macOS
+privacy prompts. After restoring the exact historical leaf and reinstalling the
+Host, run it first; the expected path is that existing Screen Recording and
+Accessibility TCC grants are reused without new approval.
 Only when the generated report proves those historical authorization rows are
 absent should a user explicitly open **System Settings -> Privacy & Security ->
 Screen & System Audio Recording** and **Accessibility**, grant the installed
-`/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run the
-preflight again. A report produced without a stable installed Host identity, TCC
+`/Applications/Vibe Screen.app`, quit Vibe Screen, restart it with
+`make baseline-macos-launch`, then run the preflight again. A report produced
+without a stable installed Host identity, TCC
 authorization, or matching source provenance cannot close USB, LAN, Host RSS,
 native-pointer, stylus, controller, rotation, login/headless, or compatibility
 gates.
@@ -223,9 +234,15 @@ the Host or modify macOS privacy state.
    adb -s <serial> shell getprop ro.product.model
    ```
 
-3. Select **USB** in Vibe Screen, choose **Extended Display** or **Current Main
+3. Start the installed Host through the guarded launcher:
+
+   ```bash
+   make baseline-macos-launch
+   ```
+
+4. Select **USB** in Vibe Screen, choose **Extended Display** or **Current Main
    Display**, then click **Start**.
-4. The host configures `adb reverse tcp:54321 tcp:54321` and brings the Android
+5. The host configures `adb reverse tcp:54321 tcp:54321` and brings the Android
    client to the foreground. If automatic setup fails, run:
 
    ```bash
@@ -362,11 +379,12 @@ and a reachable administrator intervention path.
 3. Remove the legacy `/Applications/Telemachus.app` if present, then install the
    new `/Applications/Vibe Screen.app`; do not keep both bundles or run from a
    changing Downloads path.
-4. Reopen it, verify the displayed version, permissions, display mode, and one
-   USB connection.
+4. For device evidence, reopen it with `make baseline-macos-launch`, then verify
+   the displayed version, permissions, display mode, and one USB connection.
 5. If capture or input stopped after replacement, remove the stale Vibe Screen
    entry from the relevant Privacy & Security pane, add the new app again, and
-   relaunch. Toggling the old entry off/on may preserve a stale code identity.
+   relaunch through `make baseline-macos-launch`. Toggling the old entry off/on
+   may preserve a stale code identity.
 
 Settings are stored in macOS user defaults and are not removed by replacing the
 app. To roll back, quit the new version and restore the previous verified app
@@ -440,7 +458,8 @@ Loopback-only TCP 54321 listeners are not LAN evidence.
 
 ### Capture is black, frozen, or unavailable
 
-- Recheck Screen Recording permission and relaunch.
+- Recheck Screen Recording permission and relaunch through
+  `make baseline-macos-launch` before collecting evidence.
 - Switch from Extended Display to Current Main Display.
 - Attach a physical or dummy display for a headless Mac.
 - After a macOS update, assume the private virtual-display API may have changed
@@ -554,6 +573,11 @@ that SHA-1 when the keychain contains multiple display names. Passing
 preview artifact and should not be used for iterative device reruns. Public
 distribution still requires a project-controlled Developer ID signature and
 Apple notarization.
+
+Use `make baseline-macos-launch` to start Host-backed evidence runs. It runs the
+same preflight first and only opens `/Applications/Vibe Screen.app`; launching a
+bundle directly from `.build/release-artifacts/` bypasses the install-location
+and current-source checks and is not valid evidence setup.
 
 ## Known limitations
 

@@ -81,8 +81,8 @@ replace the current-base owner gate.
    CONNECTED/STATE/DISCONNECTED lifecycle, up to four active controllers, and
    all-zero neutral release on disconnect) in both orientations.
 10. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
-   and wake the Mac, and restart the host. Confirm reconnect within the target
-   and that no prior-epoch frame renders.
+   and wake the Mac, and restart the host with `make baseline-macos-launch`.
+   Confirm reconnect within the target and that no prior-epoch frame renders.
 11. Run eight hours at the target mode. Archive timestamped logs and metrics;
    reject any unbounded latency, queue, RSS, or thermal throttling trend.
 12. Measure glass-to-glass and input latency with an external high-frame-rate
