@@ -25,11 +25,29 @@ class TrafficKeyDerivationZeroizationTest {
                 "f014c1e536fdd26670c84a0737526b2fc6052ca0b08be2e5d5197fc126e4c46",
             listOf(keys.hostControl, keys.deviceControl, keys.hostMedia, keys.deviceMedia).joinToString("") { it.toHex() },
         )
+        assertEquals(
+            "75c2d9de0303ce4867fc7c408e0c40fe3d3862659acccd7eca02b031372d08ff" +
+                "e6c04365acb8cf207f96b3e7f4ba0394070213885741eb7d0998a2312a94208f" +
+                "bc3cdce0774b08432ecaa5a9ae582fee9a9ce769a041a16fdff7595f413482ad0" +
+                "4e2beb4ac97f1f648c55b8b619cb408207c896b1efeb99a29c636a4181c2cfd",
+            listOf(keys.hostAudio, keys.deviceAudio, keys.hostBulk, keys.deviceBulk).joinToString("") { it.toHex() },
+        )
         assertTrue(observed.isNotEmpty())
         assertTrue(observed.all(ByteArray::isZeroized))
 
         keys.close()
-        assertTrue(listOf(keys.hostControl, keys.deviceControl, keys.hostMedia, keys.deviceMedia).all(ByteArray::isZeroized))
+        assertTrue(
+            listOf(
+                keys.hostControl,
+                keys.deviceControl,
+                keys.hostMedia,
+                keys.deviceMedia,
+                keys.hostAudio,
+                keys.deviceAudio,
+                keys.hostBulk,
+                keys.deviceBulk,
+            ).all(ByteArray::isZeroized),
+        )
     }
 
     @Test
