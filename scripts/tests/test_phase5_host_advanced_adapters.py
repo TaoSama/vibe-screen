@@ -31,6 +31,7 @@ if maximumClients > 1 && normalizedConfiguration.displayAllocator == nil {
     hostCapabilities.remove(.multiClient)
 }
 displayAllocator.register(sessionKey, reservedStreamIDs: reservedDisplayStreamIDs())
+displayAllocator.allocateStream(for: "display", in: sessionKey)
 displayAllocator.binding(streamID: streamID, in: sessionKey)
 displayAllocator.disconnect(sessionKey)
 """
