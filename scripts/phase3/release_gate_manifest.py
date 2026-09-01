@@ -97,6 +97,7 @@ REQUIRED_FRESH_SESSION_FIELDS = (
     "recovery_completed_at_monotonic_ms",
 )
 REVOCATION_SUMMARY_GATE_FIELDS = (
+    "status",
     "evidence_kind",
     "chain_id",
     "tombstone_id",
@@ -391,6 +392,8 @@ def _validate_soak(gate: Mapping[str, Any], path: str) -> list[str]:
 def _validate_revocation(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
+    if gate.get("status") != "pass":
+        errors.append(f"{path}.status: expected pass")
     for field in (
         "authority_tombstone_observed",
         "signaling_rejection_observed",

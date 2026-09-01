@@ -12,6 +12,7 @@ from scripts.phase3.release_gate_manifest import (
     SCHEMA,
     gate_matrix,
     main,
+    revocation_summary_to_manifest_gate,
     validate_manifest,
 )
 
@@ -207,6 +208,24 @@ def passing_manifest() -> dict[str, object]:
 
 
 class ReleaseGateManifestTests(unittest.TestCase):
+    def revocation_summary(self, status: str) -> dict[str, object]:
+        return {
+            "status": status,
+            "evidence_kind": "live_production",
+            "chain_id": "chain-1",
+            "tombstone_id": "tombstone-1",
+            "allocation_id": "allocation-1",
+            "authority_tombstone_observed": True,
+            "signaling_rejection_observed": True,
+            "future_turn_credential_rejected": True,
+            "same_allocation_turn_credential_rejected": True,
+            "stale_credential_reuse_rejected": True,
+            "active_allocation_disconnected": True,
+            "post_revocation_traffic_denied": True,
+            "post_revocation_packet_count_zero": True,
+            "revocation_chain_consistent": True,
+        }
+
     def test_gate_matrix_lists_every_gate_as_open(self) -> None:
         matrix = gate_matrix()
         self.assertEqual({item["gate"] for item in matrix}, EXPECTED_GATE_NAMES)
@@ -549,6 +568,33 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertIn("gates.cross_service_revocation.chain_id: expected non-empty string", errors)
         self.assertIn("gates.cross_service_revocation.tombstone_id: expected non-empty string", errors)
         self.assertIn("gates.cross_service_revocation.allocation_id: expected non-empty string", errors)
+
+    def test_cross_service_revocation_rejects_fail_summary_even_when_observations_pass(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["cross_service_revocation"]  # type: ignore[index]
+        gate.update(revocation_summary_to_manifest_gate(self.revocation_summary("fail")))
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn("gates.cross_service_revocation.status: expected pass", errors)
+
+    def test_cross_service_revocation_rejects_blocked_summary_even_when_observations_pass(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["cross_service_revocation"]  # type: ignore[index]
+        gate.update(revocation_summary_to_manifest_gate(self.revocation_summary("blocked")))
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn("gates.cross_service_revocation.status: expected pass", errors)
+
+    def test_cross_service_revocation_validator_requires_pass_status(self) -> None:
+        gate = passing_manifest()["gates"]["cross_service_revocation"]  # type: ignore[index]
+        gate.update(revocation_summary_to_manifest_gate(self.revocation_summary("fail")))
+        rule = next(rule for rule in GATE_RULES if rule.name == "cross_service_revocation")
+
+        errors = rule.validate(gate, "gates.cross_service_revocation")
+
+        self.assertIn("gates.cross_service_revocation.status: expected pass", errors)
 
     def test_unknown_gate_fails_closed(self) -> None:
         manifest = passing_manifest()
