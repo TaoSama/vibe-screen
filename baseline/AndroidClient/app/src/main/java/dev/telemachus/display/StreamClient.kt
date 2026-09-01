@@ -1623,6 +1623,7 @@ class StreamClient(
         kind: OutboundCommandScheduler.Kind,
         command: StreamOutboundCommand,
         timeoutMillis: Long = 0,
+        failOnTimeout: Boolean = true,
     ): OutboundCommandScheduler.Submission {
         val submission =
             try {
@@ -1633,6 +1634,7 @@ class StreamClient(
                 return OutboundCommandScheduler.Submission.CLOSED
             }
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT &&
+            failOnTimeout &&
             kind != OutboundCommandScheduler.Kind.MOVE &&
             kind != OutboundCommandScheduler.Kind.PING
         ) {
@@ -2578,7 +2580,14 @@ class StreamClient(
                 )
                 return false
             }
-            FileTransferProductOwner.StartOutgoingResult.Stale -> return false
+            is FileTransferProductOwner.StartOutgoingResult.Stale -> {
+                startResult.reasonCode?.let { reason ->
+                    fileTransferProductOwner.notifyFileTransferResult(
+                        FileTransferProductOwner.TransferResult(accepted = false, reason = reason),
+                    )
+                }
+                return false
+            }
         }
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
@@ -2589,6 +2598,7 @@ class StreamClient(
                 prepared = prepared,
             ),
             timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+            failOnTimeout = false,
         )
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
             submission == OutboundCommandScheduler.Submission.CLOSED
@@ -2598,6 +2608,14 @@ class StreamClient(
                 prepared = prepared,
                 reasonCode = "outbound_backpressure",
             )?.let(fileTransferProductOwner::notifyFileTransferResult)
+            if (submission == OutboundCommandScheduler.Submission.TIMED_OUT) {
+                requestConnectionEnd(
+                    SessionFailure.protocol(
+                        SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                        "Outbound queue saturated while preserving ${OutboundCommandScheduler.Kind.FILE_TRANSFER}",
+                    ),
+                )
+            }
             return false
         }
         return true

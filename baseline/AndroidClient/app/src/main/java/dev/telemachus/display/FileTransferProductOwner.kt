@@ -16,6 +16,7 @@ import dev.vibescreen.protocol.v1.FileTransferProgress
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import java.io.File
 import java.io.IOException
+import java.util.IdentityHashMap
 
 /** Owns Android file-transfer product state while the wire/session boundary stays outside. */
 internal class FileTransferProductOwner(
@@ -33,6 +34,7 @@ internal class FileTransferProductOwner(
     private var incomingFileTransfers: IncomingTransferStore? = null
     private val preparedOutgoingTransfers = LinkedHashSet<OutgoingTransferStore>()
     private val outgoingFileTransfers = LinkedHashMap<ByteString, OutgoingTransferStore>()
+    private val terminatedOutgoingTransfers = IdentityHashMap<OutgoingTransferStore, String>()
     private var remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
 
     @Volatile var onFileOffer: ((FileOffer) -> Unit)? = null
@@ -48,11 +50,11 @@ internal class FileTransferProductOwner(
             previousIncoming = incomingFileTransfers
             incomingFileTransfers = newIncomingFileTransfers
             remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
-            previousOutgoing = drainOutgoingLocked()
+            previousOutgoing = drainOutgoingLocked("session_deactivated")
         }
         previousIncoming?.cancelAll()
         previousOutgoing.cancelAll()
-        notifyActiveTransfers(previousOutgoing, "session_deactivated")
+        notifyOutgoingTransfers(previousOutgoing)
         pendingOfferGate.clearFileOffers()
     }
 
@@ -63,11 +65,11 @@ internal class FileTransferProductOwner(
             previousIncoming = incomingFileTransfers
             incomingFileTransfers = null
             remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
-            previousOutgoing = drainOutgoingLocked()
+            previousOutgoing = drainOutgoingLocked(reasonCode)
         }
         previousIncoming?.cancelAll()
         previousOutgoing.cancelAll()
-        notifyActiveTransfers(previousOutgoing, reasonCode)
+        notifyOutgoingTransfers(previousOutgoing)
         pendingOfferGate.clearFileOffers()
     }
 
@@ -79,13 +81,13 @@ internal class FileTransferProductOwner(
             remoteManagedPolicy = RemoteManagedPolicy(status)
             if (!fileTransferPolicy.applying(remoteManagedPolicy).allowed) {
                 incomingToCancel = incomingFileTransfers
-                outgoingToCancel = drainOutgoingLocked()
+                outgoingToCancel = drainOutgoingLocked("policy_denied")
                 clearPendingOffers = true
             }
         }
         incomingToCancel?.cancelAll()
         outgoingToCancel.cancelAll()
-        notifyActiveTransfers(outgoingToCancel, "policy_denied")
+        notifyOutgoingTransfers(outgoingToCancel)
         if (clearPendingOffers) pendingOfferGate.clearFileOffers()
     }
 
@@ -240,7 +242,8 @@ internal class FileTransferProductOwner(
         val result = synchronized(lock) {
             val transfer = prepared.transfer
             when {
-                !preparedOutgoingTransfers.remove(transfer) -> StartOutgoingResult.Stale
+                !preparedOutgoingTransfers.remove(transfer) ->
+                    StartOutgoingResult.Stale(terminatedOutgoingTransfers.remove(transfer))
                 !canTransferFiles -> {
                     transferToCancel = transfer
                     StartOutgoingResult.Rejected("policy_denied")
@@ -284,10 +287,16 @@ internal class FileTransferProductOwner(
         prepared: PreparedOutgoingTransfer,
         reasonCode: String,
     ): TransferResult? {
-        val transferToCancel = synchronized(lock) {
+        val transferToCancel: OutgoingTransferStore?
+        val staleReason: String?
+        synchronized(lock) {
             val transfer = outgoingFileTransfers[transferId]
-            if (transfer === prepared.transfer) outgoingFileTransfers.remove(transferId) else null
-        } ?: return null
+            transferToCancel = if (transfer === prepared.transfer) outgoingFileTransfers.remove(transferId) else null
+            staleReason = if (transferToCancel == null) terminatedOutgoingTransfers.remove(prepared.transfer) else null
+        }
+        if (transferToCancel == null) {
+            return staleReason?.let { _ -> TransferResult(accepted = false, reason = reasonCode) }
+        }
         transferToCancel.cancel()
         return TransferResult(accepted = false, reason = reasonCode)
     }
@@ -394,11 +403,13 @@ internal class FileTransferProductOwner(
         }
     }
 
-    private fun drainOutgoingLocked(): OutgoingDrain {
+    private fun drainOutgoingLocked(reasonCode: String): OutgoingDrain {
         val prepared = preparedOutgoingTransfers.toList()
         val active = outgoingFileTransfers.values.toList()
         preparedOutgoingTransfers.clear()
         outgoingFileTransfers.clear()
+        prepared.forEach { terminatedOutgoingTransfers[it] = reasonCode }
+        active.forEach { terminatedOutgoingTransfers[it] = reasonCode }
         return OutgoingDrain(prepared = prepared, active = active)
     }
 
@@ -418,8 +429,14 @@ internal class FileTransferProductOwner(
         }
     }
 
-    private fun notifyActiveTransfers(drain: OutgoingDrain, reasonCode: String) {
-        drain.active.forEach { notifyFileTransferResult(TransferResult(accepted = false, reason = reasonCode)) }
+    private fun notifyOutgoingTransfers(drain: OutgoingDrain) {
+        val outgoing = LinkedHashSet<OutgoingTransferStore>()
+        outgoing += drain.prepared
+        outgoing += drain.active
+        outgoing.forEach {
+            val reason = terminatedOutgoingTransfers.remove(it) ?: return@forEach
+            notifyFileTransferResult(TransferResult(accepted = false, reason = reason))
+        }
     }
 
     private fun rejectedFileAccept(transferId: ByteString, reasonCode: String): FileAccept =
@@ -558,7 +575,7 @@ internal class FileTransferProductOwner(
     sealed class StartOutgoingResult {
         data class Started(val offer: FileOffer) : StartOutgoingResult()
         data class Rejected(val reasonCode: String) : StartOutgoingResult()
-        data object Stale : StartOutgoingResult()
+        data class Stale(val reasonCode: String?) : StartOutgoingResult()
     }
 
     sealed class IncomingChunkResult {

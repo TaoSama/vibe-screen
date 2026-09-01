@@ -241,12 +241,12 @@ class FileTransferProductOwnerTest {
         owner.clear()
 
         assertEquals(1, outgoing.cancelCount)
-        assertTrue(results.isEmpty())
+        assertEquals(listOf(false to "connection_cleanup"), results)
         assertEquals(0, owner.activeOutgoingTransferCount())
         owner.cancelPreparedOutgoing(prepared.transfer)
         assertEquals(1, outgoing.cancelCount)
         assertEquals(
-            FileTransferProductOwner.StartOutgoingResult.Stale,
+            FileTransferProductOwner.StartOutgoingResult.Stale(null),
             owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
         )
         assertEquals(1, outgoing.cancelCount)
@@ -295,6 +295,30 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `activate session notifies session deactivated for previous prepared outgoing transfers`() {
+        val outgoing = FakeOutgoingTransferStore(id = 95, payload = "prepared-activate".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        val results = mutableListOf<Pair<Boolean, String>>()
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        owner.activateSession()
+
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "prepared-activate.txt").also { it.writeText("prepared-activate") },
+            "text/plain",
+            FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+
+        owner.activateSession()
+
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(listOf(false to "session_deactivated"), results)
+        assertEquals(
+            FileTransferProductOwner.StartOutgoingResult.Stale(null),
+            owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
+        )
+    }
+
+    @Test
     fun `managed policy denial cancels prepared outgoing before start`() {
         val outgoing = FakeOutgoingTransferStore(id = 10, payload = "managed-pending".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -317,11 +341,11 @@ class FileTransferProductOwnerTest {
         )
 
         assertEquals(1, outgoing.cancelCount)
-        assertTrue(results.isEmpty())
+        assertEquals(listOf(false to "policy_denied"), results)
         owner.cancelPreparedOutgoing(prepared.transfer)
         assertEquals(1, outgoing.cancelCount)
         assertEquals(
-            FileTransferProductOwner.StartOutgoingResult.Stale,
+            FileTransferProductOwner.StartOutgoingResult.Stale(null),
             owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
         )
         assertEquals(1, outgoing.cancelCount)
@@ -450,7 +474,7 @@ class FileTransferProductOwnerTest {
 
         assertEquals(1, outgoing.cancelCount)
         assertEquals(
-            FileTransferProductOwner.StartOutgoingResult.Stale,
+            FileTransferProductOwner.StartOutgoingResult.Stale(null),
             owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
         )
         assertEquals(1, outgoing.cancelCount)
@@ -470,7 +494,7 @@ class FileTransferProductOwnerTest {
 
         assertTrue(owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true) is FileTransferProductOwner.StartOutgoingResult.Started)
         assertEquals(
-            FileTransferProductOwner.StartOutgoingResult.Stale,
+            FileTransferProductOwner.StartOutgoingResult.Stale(null),
             owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
         )
         owner.cancelPreparedOutgoing(prepared.transfer)
