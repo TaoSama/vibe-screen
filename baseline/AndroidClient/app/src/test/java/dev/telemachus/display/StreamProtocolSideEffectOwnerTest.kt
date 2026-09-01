@@ -10,6 +10,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class StreamProtocolSideEffectOwnerTest {
     @Test
@@ -158,6 +161,59 @@ class StreamProtocolSideEffectOwnerTest {
         assertTrue(owner.trackFileOffer(transfer, session, 3L))
         owner.clear()
         assertNull(owner.claimFileOffer(transfer))
+    }
+
+    @Test
+    fun `run if current permits reentrant owner calls while holding current owner`() {
+        val session = session()
+        val owner = alwaysCurrentOwner(session = session, maximumPendingFileOffers = 1)
+        val transfer = ByteString.copyFromUtf8("transfer")
+
+        val admitted = owner.runIfCurrent(session, 1L) {
+            owner.trackFileOffer(transfer, session, 1L)
+        }
+
+        assertTrue(admitted == true)
+        val claimed = owner.claimFileOffer(transfer)
+        assertTrue(claimed?.session === session)
+        assertEquals(1L, claimed?.connectionGeneration)
+    }
+
+    @Test
+    fun `run if current releases owner lock before side effect completes`() {
+        val session = session()
+        val owner = alwaysCurrentOwner(session = session)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val clearReturned = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val sideEffect = executor.submit<Boolean> {
+                owner.runIfCurrent(session, 1L) {
+                    entered.countDown()
+                    assertTrue(release.await(5, TimeUnit.SECONDS))
+                    true
+                } ?: false
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+
+            val clear = executor.submit {
+                owner.clear()
+                clearReturned.countDown()
+            }
+
+            assertTrue(clearReturned.await(5, TimeUnit.SECONDS))
+            assertFalse(owner.isCurrent(session, 1L))
+
+            release.countDown()
+            assertTrue(sideEffect.get(5, TimeUnit.SECONDS))
+            clear.get(5, TimeUnit.SECONDS)
+            assertFalse(owner.isCurrent(session, 1L))
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
     }
 
     @Test
