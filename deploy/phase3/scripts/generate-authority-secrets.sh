@@ -23,6 +23,6 @@ postgres_password=$(tr -d '\r\n' < "$secret_dir/postgres_password.txt")
 database_url="postgres://authority:$postgres_password@postgres:5432/vibe_authority?sslmode=disable"
 printf '%s\n' "$database_url" > "$secret_dir/migration_database_url.txt"
 printf '%s\n' "$database_url" > "$secret_dir/database_url.txt"
-chmod 0444 "$secret_dir"/*.txt
+chmod 0600 "$secret_dir"/*.txt
 
-echo "generated container-readable local Authority secrets under $secret_dir"
+echo "generated operator-readable local Authority secrets under $secret_dir"
