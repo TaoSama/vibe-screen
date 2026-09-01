@@ -8,6 +8,7 @@ import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.IncomingFileTransferManager
 import dev.telemachus.display.protocol.OutgoingFileTransfer
 import dev.telemachus.display.protocol.RemoteManagedPolicy
+import dev.telemachus.display.protocol.SHA256_BYTES
 import dev.vibescreen.protocol.v1.FileAccept
 import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.FileTransferCancel
@@ -95,11 +96,14 @@ internal class FileTransferProductOwner(
         ownerToken: Any,
         connectionGeneration: Long,
         offer: FileOffer,
+        negotiatedPolicy: FileTransferPolicy = fileTransferPolicy,
     ): FileAccept? {
         val callback = synchronized(lock) {
             if (incomingFileTransfers == null) return rejectedFileAccept(offer.transferId, "policy_denied")
-            if (!fileTransferPolicy.applying(remoteManagedPolicy).allowed) {
-                return rejectedFileAccept(offer.transferId, "policy_denied")
+            val effectivePolicy = negotiatedPolicy.applying(remoteManagedPolicy)
+            val rejectionReason = validateIncomingOffer(offer, effectivePolicy)
+            if (rejectionReason != null) {
+                return rejectedFileAccept(offer.transferId, rejectionReason)
             }
             onFileOffer ?: return rejectedFileAccept(offer.transferId, "user_denied")
         }
@@ -464,6 +468,19 @@ internal class FileTransferProductOwner(
             .setAccepted(false)
             .setRejectionReason(reasonCode)
             .build()
+
+    private fun validateIncomingOffer(
+        offer: FileOffer,
+        effectivePolicy: FileTransferPolicy,
+    ): String? =
+        when {
+            !effectivePolicy.allowed || effectivePolicy.maximumFileBytes <= 0L -> "policy_denied"
+            offer.transferId.isEmpty -> "invalid_transfer_id"
+            !IncomingFileTransferManager.isSafeFileName(offer.fileName) -> "invalid_file_name"
+            offer.sha256.size() != SHA256_BYTES -> "invalid_digest"
+            offer.byteLength > effectivePolicy.maximumFileBytes -> "file_too_large"
+            else -> null
+        }
 
     fun interface IncomingManagerFactory {
         fun create(

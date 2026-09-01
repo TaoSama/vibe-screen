@@ -260,3 +260,31 @@ destination-file SHA-256 equality, positive session epoch, or cancel cleanup.
 The Phase 0 stable-release aggregate now tracks this as its own required
 `file_transfer_android_product_e2e` gate instead of burying file transfer only in
 the broader module-ownership blocker.
+
+## 2026-09-01 Android USB/LAN product-flow offline contract refresh
+
+This refresh is limited to the Android USB/LAN Protocol v1 product-flow owner,
+session, and StreamClient socket boundaries. It does not modify or claim the
+separate public Internet/WebRTC bulk aggregate gate, schema, or evidence, and it
+does not claim a real Android/macOS product E2E pass.
+
+Focused JVM coverage now pins the fail-closed product-flow contracts for receiver
+approval default denial, safe basename and digest validation before receiver UI
+callbacks, deny-wins managed policy rejection, ordered progress-driven outgoing
+chunks, per-chunk and final SHA-256 checks, stale session-epoch rejection,
+progress backpressure cancellation, and cancel/disconnect cleanup. The Android
+socket integration tests exercise both host-to-client and client-to-host
+Protocol v1 file-transfer flows over the shared USB/LAN framing path; device,
+Host, TCC, Keychain, ADB, and signed-bundle evidence remain outside this offline
+refresh.
+
+Commands used for the focused offline contract refresh:
+
+    cd baseline/AndroidClient
+    ./gradlew testDebugUnitTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest
+    ./gradlew -q testDebugUnitTest lintDebug assembleDebug >/tmp/vibescreen-gradle-full-after-p2.log 2>&1; code=$?; tail -80 /tmp/vibescreen-gradle-full-after-p2.log; echo GRADLE_EXIT_CODE=$code; exit $code
+
+Result: passed locally on 2026-09-01 from branch
+`codex/android-file-transfer-product-flow`, then passed again after rebasing on
+current `origin/main` (`f1fde5fdb`). The full Android unit/lint/assemble
+regression reported `GRADLE_EXIT_CODE=0`.
