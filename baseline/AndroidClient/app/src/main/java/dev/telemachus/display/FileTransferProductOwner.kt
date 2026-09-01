@@ -317,7 +317,9 @@ internal class FileTransferProductOwner(
             transfer.applyAcceptedMaximumChunkBytes(response.maximumChunkBytes)
             return nextOutgoingChunk(response.transferId, transfer, sessionEpoch)
         }
-        synchronized(lock) { outgoingFileTransfers.remove(response.transferId) }?.cancel()
+        val transferToCancel = synchronized(lock) { outgoingFileTransfers.remove(response.transferId) }
+            ?: return OutgoingUpdate()
+        transferToCancel.cancel()
         return OutgoingUpdate(result = TransferResult(accepted = false, reason = response.rejectionReason))
     }
 
@@ -330,7 +332,14 @@ internal class FileTransferProductOwner(
         return if (rejectionReason == null) {
             nextOutgoingChunk(progress.transferId, transfer, sessionEpoch)
         } else {
-            synchronized(lock) { outgoingFileTransfers.remove(progress.transferId) }?.cancel()
+            val transferToCancel = synchronized(lock) {
+                if (outgoingFileTransfers[progress.transferId] === transfer) {
+                    outgoingFileTransfers.remove(progress.transferId)
+                } else {
+                    null
+                }
+            } ?: return OutgoingUpdate()
+            transferToCancel.cancel()
             OutgoingUpdate(
                 cancelTransferId = progress.transferId,
                 cancelReasonCode = rejectionReason,
@@ -339,32 +348,36 @@ internal class FileTransferProductOwner(
         }
     }
 
-    fun handleFileCancel(cancellation: FileTransferCancel): TransferResult {
+    fun handleFileCancel(cancellation: FileTransferCancel): TransferResult? {
         val manager: IncomingTransferStore?
         val outgoing: OutgoingTransferStore?
         synchronized(lock) {
             manager = incomingFileTransfers
             outgoing = outgoingFileTransfers.remove(cancellation.transferId)
         }
-        manager?.cancel(cancellation.transferId)
+        val cancelledIncoming = manager?.cancel(cancellation.transferId) == true
         outgoing?.cancel()
-        return TransferResult(accepted = false, reason = cancellation.reasonCode)
+        return if (cancelledIncoming || outgoing != null) {
+            TransferResult(accepted = false, reason = cancellation.reasonCode)
+        } else {
+            null
+        }
     }
 
     fun handleFileComplete(result: FileTransferComplete): OutgoingUpdate {
         val transfer = synchronized(lock) { outgoingFileTransfers.remove(result.transferId) }
-        transfer?.cancel()
+        transfer ?: return OutgoingUpdate()
+        transfer.cancel()
         val reason = when {
             !result.accepted -> result.rejectionReason
-            transfer == null -> "unknown_transfer"
             !transfer.hasCompletedAcknowledgement() -> "incomplete_file"
             transfer.offer.sha256 != result.sha256 -> "digest_mismatch"
             else -> ""
         }
         val accepted = result.accepted && reason.isEmpty()
         return OutgoingUpdate(
-            cancelTransferId = if (transfer != null && result.accepted && reason.isNotEmpty()) result.transferId else null,
-            cancelReasonCode = if (transfer != null && result.accepted && reason.isNotEmpty()) reason else null,
+            cancelTransferId = if (result.accepted && reason.isNotEmpty()) result.transferId else null,
+            cancelReasonCode = if (result.accepted && reason.isNotEmpty()) reason else null,
             result = TransferResult(accepted = accepted, reason = reason),
         )
     }
@@ -472,7 +485,7 @@ internal class FileTransferProductOwner(
 
         fun finish(transferId: ByteString): CompletedIncomingFile
 
-        fun cancel(transferId: ByteString)
+        fun cancel(transferId: ByteString): Boolean
 
         fun cancelAll()
 
@@ -493,7 +506,7 @@ internal class FileTransferProductOwner(
 
         override fun finish(transferId: ByteString): CompletedIncomingFile = manager.finish(transferId)
 
-        override fun cancel(transferId: ByteString) = manager.cancel(transferId)
+        override fun cancel(transferId: ByteString): Boolean = manager.cancel(transferId)
 
         override fun cancelAll() = manager.cancelAll()
 

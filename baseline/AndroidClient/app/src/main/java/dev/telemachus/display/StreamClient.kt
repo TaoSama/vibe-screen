@@ -2163,9 +2163,8 @@ class StreamClient(
             cancellation: dev.vibescreen.protocol.v1.FileTransferCancel,
         ) {
             if (!isCurrentProtocolSession(session, connectionGeneration)) return
-            fileTransferProductOwner.notifyFileTransferResult(
-                fileTransferProductOwner.handleFileCancel(cancellation),
-            )
+            fileTransferProductOwner.handleFileCancel(cancellation)
+                ?.let(fileTransferProductOwner::notifyFileTransferResult)
         }
 
         override fun onFileCompleteReceived(

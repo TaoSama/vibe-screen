@@ -11,6 +11,9 @@ import dev.telemachus.display.protocol.sha256
 import dev.vibescreen.protocol.v1.FileAccept
 import dev.vibescreen.protocol.v1.FileChunkHeader
 import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.FileTransferProgress
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -524,6 +527,83 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `late outgoing terminal messages after drain do not notify again`() {
+        val outgoing = FakeOutgoingTransferStore(id = 97, payload = "late-terminal".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        val results = mutableListOf<Pair<Boolean, String>>()
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        owner.activateSession()
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "late-terminal.txt").also { it.writeText("late-terminal") },
+            "text/plain",
+            FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        owner.clear(reasonCode = "session_deactivated")
+        owner.handleFileAccept(
+            FileAccept.newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(false)
+                .setRejectionReason("host_rejected")
+                .build(),
+            sessionEpoch = 7,
+        ).result?.let(owner::notifyFileTransferResult)
+        owner.handleFileProgress(
+            FileTransferProgress.newBuilder()
+                .setTransferId(transferId)
+                .setReceivedBytes(1)
+                .build(),
+            sessionEpoch = 7,
+        ).result?.let(owner::notifyFileTransferResult)
+        owner.handleFileCancel(
+            FileTransferCancel.newBuilder()
+                .setTransferId(transferId)
+                .setReasonCode("host_cancelled")
+                .build(),
+        )?.let(owner::notifyFileTransferResult)
+        owner.handleFileComplete(
+            FileTransferComplete.newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(true)
+                .setSha256(outgoing.offer.sha256)
+                .build(),
+        ).result?.let(owner::notifyFileTransferResult)
+
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(listOf(false to "session_deactivated"), results)
+    }
+
+    @Test
+    fun `file cancel still reports when it cancels an incoming transfer`() {
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(store = store)
+        owner.activateSession()
+        val offer = offer(id = 98, payload = "incoming-cancel".toByteArray())
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+
+        val result = owner.handleFileCancel(
+            FileTransferCancel.newBuilder()
+                .setTransferId(offer.transferId)
+                .setReasonCode("host_cancelled")
+                .build(),
+        )
+
+        assertEquals(FileTransferProductOwner.TransferResult(false, "host_cancelled"), result)
+        assertEquals(listOf(offer.transferId), store.cancelledTransfers)
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
     fun `cancel prepared outgoing releases unstarted transfer exactly once`() {
         val outgoing = FakeOutgoingTransferStore(id = 11, payload = "cancel-prepared".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -671,9 +751,10 @@ class FileTransferProductOwnerTest {
             return CompletedIncomingFile(transferId, offer.fileName, offer.mimeType, file, offer.sha256)
         }
 
-        override fun cancel(transferId: ByteString) {
-            activeOffers.remove(transferId)
-            cancelledTransfers += transferId
+        override fun cancel(transferId: ByteString): Boolean {
+            val removed = activeOffers.remove(transferId) != null
+            if (removed) cancelledTransfers += transferId
+            return removed
         }
 
         override fun cancelAll() {
