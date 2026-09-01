@@ -53,7 +53,7 @@ class SessionAutomaticRetryCleanupAdapterTest {
 
     private fun coordinator(adapter: SessionAutomaticRetryCleanupAdapter) =
         SessionAutomaticRetryCoordinator(
-            postAutomaticRetry = {},
+            postAutomaticRetry = { _ -> },
             cancelPendingAutomaticRetry = adapter::cleanup,
             handleServerShutdown = {},
         )

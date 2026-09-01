@@ -674,6 +674,57 @@ class StreamClientCancellationTest {
         override fun setSoTimeout(timeout: Int) = Unit
     }
 
+    @Test
+    fun retryableFailureSuggestsReconnectDelayWithinBoundedBackoffRange() =
+        runBlocking {
+            val deviceName = "test-device"
+            val requestSize = 37 + deviceName.toByteArray().size
+            ServerSocket(0).use { server ->
+                val serverObservedEof = CountDownLatch(1)
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { socket ->
+                            socket.getInputStream().readNBytes(requestSize)
+                            socket.getOutputStream().apply {
+                                write(byteArrayOf(0x53, 0x53, 0x57, 0x52, 0x00))
+                                flush()
+                            }
+                            while (socket.getInputStream().read() >= 0) {
+                                // Wait for client termination.
+                            }
+                            serverObservedEof.countDown()
+                        }
+                    }
+                val retries = mutableListOf<Long>()
+                val client =
+                    StreamClient(
+                        host = "127.0.0.1",
+                        port = server.localPort,
+                        socketFactory = { FailAfterBytesSocket(requestSize) },
+                    ).apply {
+                        onReconnectSuggested = { retries += it }
+                    }
+
+                client.connectWireless(ByteArray(32), deviceName)
+
+                assertTrue(serverObservedEof.await(1, TimeUnit.SECONDS))
+                serverJob.await()
+                assertEquals(1, retries.size)
+                val delayMs = retries.first()
+                val minDelay = (ReconnectBackoff.INITIAL_DELAY_MS * (1.0 - ReconnectBackoff.DEFAULT_JITTER_RATIO)).toLong()
+                val maxDelay = (ReconnectBackoff.INITIAL_DELAY_MS * (1.0 + ReconnectBackoff.DEFAULT_JITTER_RATIO)).toLong()
+                assertTrue(
+                    "reconnect delay $delayMs not within first-attempt bounded range [$minDelay, $maxDelay]",
+                    delayMs in minDelay..maxDelay,
+                )
+                assertTrue(
+                    "reconnect delay $delayMs exceeds maximum backoff ${ReconnectBackoff.MAXIMUM_DELAY_MS}",
+                    delayMs <= ReconnectBackoff.MAXIMUM_DELAY_MS,
+                )
+                client.disconnect()
+            }
+        }
+
     private class LegacyProbeTimeoutSocket : Socket() {
         private val output = ByteArrayOutputStream()
         private val input =

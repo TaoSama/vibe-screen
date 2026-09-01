@@ -1,0 +1,50 @@
+{
+  "artifact_paths": [
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-31-p0110-usb-reconnect-backoff-fix-blocked/adb-reverse-before.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-31-p0110-usb-reconnect-backoff-fix-blocked/android-pid-before.txt",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-31-p0110-usb-reconnect-backoff-fix-blocked/device-info.json",
+    "docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-31-p0110-usb-reconnect-backoff-fix-blocked/host-54321-listener.txt"
+  ],
+  "attempts": [],
+  "blocked_reasons": [
+    "Host listener is not observed on TCP port 54321; Vibe Screen.app is running but requires Screen Recording TCC permission and an explicit start action before listening",
+    "No Host stream, display configuration, or first decoded frame was observed"
+  ],
+  "can_close_requested_scope": false,
+  "can_close_timing_gate": false,
+  "device": {
+    "target": "Nubia P0110 / pacific / Android 16 / SDK 36 / REDACTED_P0110_USB_SERIAL"
+  },
+  "full_gate_missing_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "full_gate_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "host": {},
+  "kind": "reconnect_timing_gate",
+  "missing_required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "notes": "Blocked readiness record only. Candidate source routes StreamClient reconnect suggestions through SessionAutomaticRetryCoordinator, lets USB and wireless automatic retry consumers use the coordinator-selected delay, and keeps the full reconnect timing gate open because no Protocol v1 recovery or first decoded frame was observed.",
+  "profile": "phase1-reconnect-within-3s",
+  "reasons": [
+    "Host listener is not observed on TCP port 54321; Vibe Screen.app is running but requires Screen Recording TCC permission and an explicit start action before listening",
+    "No Host stream, display configuration, or first decoded frame was observed"
+  ],
+  "required_disruptions": [
+    "client-kill",
+    "adb-reverse-disconnect",
+    "lan-network-interrupt"
+  ],
+  "run_id": "reconnect-backoff-fix-blocked-20260831",
+  "schema_version": "vibescreen.evidence/v1",
+  "threshold_ms": 3000.0,
+  "verdict": "blocked"
+}

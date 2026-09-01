@@ -111,7 +111,7 @@ class HeartbeatMonitor(
 class ReconnectBackoff(
     private val initialDelayMs: Long = INITIAL_DELAY_MS,
     private val maximumDelayMs: Long = MAXIMUM_DELAY_MS,
-    private val jitterRatio: Double = 0.20,
+    private val jitterRatio: Double = DEFAULT_JITTER_RATIO,
 ) {
     private var nextAttempt = 0
 
@@ -149,6 +149,7 @@ class ReconnectBackoff(
     companion object {
         const val INITIAL_DELAY_MS = 500L
         const val MAXIMUM_DELAY_MS = 3_000L
+        const val DEFAULT_JITTER_RATIO = 0.20
         private const val MAX_SHIFT = 20
     }
 }
