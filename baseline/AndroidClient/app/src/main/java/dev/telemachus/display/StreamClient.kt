@@ -699,6 +699,7 @@ class StreamClient(
                 protocolSessionOwner.activate(session)
                 nextInputId.set(1L)
                 controllerConnectionAcks.reset()
+                inputDispatcher.resetControllerState()
                 writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
                 emitTelemetry(
@@ -751,6 +752,7 @@ class StreamClient(
             recordProtocolAudioStopped("legacy_fallback")
         }
         controllerConnectionAcks.reset()
+        inputDispatcher.resetControllerState()
         pendingLegacyFirstByte = firstByte
         advertiseAvcOnlyIfNeeded()
         advertiseFrameMetadataSupport()
@@ -2045,9 +2047,17 @@ class StreamClient(
             accepted: Boolean,
             rejectionReason: String,
         ) {
-            controllerConnectionAcks.acknowledge(inputId)?.let { connection ->
+            val acknowledgement = controllerConnectionAcks.acknowledge(inputId)
+            if (accepted && acknowledgement?.deferredDisconnectInputId != null) {
+                controllerConnectionAcks.markDisconnectReady(
+                    acknowledgement.connection,
+                    acknowledgement.deferredDisconnectInputId,
+                )
+            }
+            acknowledgement?.connection?.let { connection ->
                 onControllerInputAck?.invoke(connection, accepted, rejectionReason)
             }
+            if (acknowledgement != null) inputDispatcher.flushControllerDisconnectCleanup()
         }
 
         override fun onHostActionsAvailable(actions: List<ProtocolV1Session.HostAction>) {
@@ -2632,6 +2642,7 @@ class StreamClient(
         fileTransferProductOwner.clear()
         protocolSessionOwner.clear()
         controllerConnectionAcks.reset()
+        inputDispatcher.resetControllerState()
         pendingLegacyFirstByte = null
         lanSecureRecordSession?.close()
         lanSecureRecordSession = null

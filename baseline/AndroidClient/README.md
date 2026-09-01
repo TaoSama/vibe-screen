@@ -50,11 +50,12 @@ buttons, sticks, triggers, and hat input into Protocol v1 `ControllerEvent`
 messages, keeps lifecycle epochs for up to four active controllers, waits for
 accepted connection acknowledgements before sending controller state through
 an acknowledgement-triggered current-state resynchronization, and emits all-zero
-neutral release state before disconnect or teardown. Mapper, session, Internet
-queue, and protocol behavior are covered by offline tests. If an Internet
-controller disconnects before its connection ACK arrives, the pending neutral
-release state is skipped and the lifecycle is closed by `DISCONNECTED`, because
-the Host has not accepted any non-neutral state for that controller.
+neutral release state before disconnect or teardown. Mapper, session, USB/LAN
+dispatcher, Internet queue, and protocol behavior are covered by offline tests.
+If a controller disconnects before its connection ACK arrives, the pending neutral
+release state is skipped and the client sends exactly one deferred
+`DISCONNECTED` cleanup only after the Host accepts the `CONNECTED` event;
+rejected, stale, or closed sessions suppress that cleanup.
 Physical-stylus
 drawing-app confirmation, controller runtime acceptance, and other peripherals
 remain release gates; controller runtime acceptance still requires a named

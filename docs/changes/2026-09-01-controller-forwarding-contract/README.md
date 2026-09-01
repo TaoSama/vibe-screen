@@ -71,17 +71,24 @@ The recovered behavior is represented in current source by these main files:
 - `baseline/MacHost/Sources/GameControllerInput.swift`
 - `baseline/MacHost/Sources/GameControllerVirtualHID.swift`
 
-The salvage review also exposed one Internet-specific parity gap that was not
-safe to leave as documentation-only: Internet controller batches could place a
-`STATE` event behind a new `CONNECTED` event before the Host accepted that
-controller lifecycle. The recovered mainline now drops same-connection `STATE`
-events while the connection acknowledgement is pending and relies on
-`MainActivity` to send a fresh full-state resynchronization when the accepted
-ACK is correlated back to that controller. This matches the USB/LAN behavior
-without replaying a stale queued state snapshot.
-Focused Internet session tests cover ACK-before-state ordering, transport
-backpressure before ACK tracking, disconnect while a connection ACK is pending,
-and mixed pending/accepted controller state dispatch.
+The salvage review also exposed an Android controller acknowledgement parity
+gap that was not safe to leave as documentation-only: controller batches could
+place a `STATE` or `DISCONNECTED` event behind a new `CONNECTED` event before
+the Host accepted that controller lifecycle. The recovered mainline now
+suppresses all non-`CONNECTED` events for a controller while its connection
+acknowledgement is pending across both the USB/LAN dispatcher and Internet
+session paths. Same-connection `STATE` is dropped and recovered by
+`MainActivity` through an acknowledgement-triggered full-state
+resynchronization. A pending `DISCONNECTED` is deferred as exactly one cleanup
+event that is sent only after the Host accepts the matching `CONNECTED`;
+rejected, stale, and closed-session ACK paths do not emit cleanup. Newer epochs
+for the same controller wait behind the accepted old-epoch cleanup so Host
+lifecycle ordering remains valid.
+Focused Android session tests cover ACK-before-state ordering, USB/LAN and
+Internet deferred disconnect cleanup, transport backpressure before ACK
+tracking, stale/rejected/closed ACK cleanup suppression, same-controller epoch
+replacement ordering, rejected-ACK replay without cleanup, session reset
+cleanup, and cleanup backpressure retention.
 
 The Android README was updated to document the now-current controller forwarding
 behavior and its blocked runtime acceptance boundary.
@@ -104,7 +111,7 @@ Required checks:
 
 ```bash
 make protocol
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract contracts.tests.test_controller_reference -v
 cd baseline/AndroidClient && ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
@@ -115,17 +122,17 @@ gate.
 ## Verification Results
 
 Executed from current branch `codex/controller-forwarding-contract-20260901`
-after fast-forwarding to `origin/main` commit
-`f1fde5fdbd4f7148e992bfe4e7a5cdcfef87f484`.
+rebased on `origin/main` commit
+`3c1db3e905873be632eeed3b1530df3016344141`.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.internet.InternetProductSessionTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest` | PASS | Focused Internet controller ACK gate and MainActivity resync regression tests passed |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.internet.InternetProductSessionTest --tests dev.telemachus.display.ControllerSessionFeedbackTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest` | PASS | Focused Android controller ACK gate, deferred disconnect cleanup, tracker, USB/LAN dispatcher, MainActivity resync, StreamClient integration, and Protocol v1 session tests passed |
 | `make protocol` | PASS | 45 protocol/fixture/security/shared-model tests passed after Buf format/lint/build/breaking checks |
-| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract -v` | PASS | 29 targeted protocol fixture and security contract tests passed |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract contracts.tests.test_controller_reference -v` | PASS | Targeted protocol fixture, security contract, and controller reference tests passed |
+| `cd baseline/MacHost && swift test --filter ProtocolV1SessionTests && swift test --filter GameController && swift test --filter InternetProductSessionTests && swift test --filter InternetProductProtocolCodecTests && swift test --filter StreamingServerLifecycleTests && swift test --filter IOKitVirtualGamepadDeviceTests` | BLOCKED | Local Command Line Tools Swift environment cannot import XCTest, so Mac offline XCTest did not run in this worktree |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest` | PASS | Android JVM unit tests built and passed |
-| `cd baseline/AndroidClient && ./gradlew --no-daemon lintDebug assembleDebug` | PASS | Lint report generated and debug APK assembled |
-| `cd baseline/AndroidClient && ./gradlew --no-daemon :transport:check assembleDebugAndroidTest` | PASS | Transport boundary checks and instrumentation APK assembly passed |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon lintDebug assembleDebug :transport:check assembleDebugAndroidTest` | PASS | Android lint, debug APK assembly, transport module check, and debug instrumentation APK assembly completed without installing or launching an app |
 
 No ADB command was run, no Host process was started, and no TCC or Keychain
 state was touched during this recovery.

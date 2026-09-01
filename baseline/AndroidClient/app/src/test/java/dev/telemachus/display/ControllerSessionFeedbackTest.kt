@@ -20,10 +20,32 @@ class ControllerSessionFeedbackTest {
         assertTrue(tracker.isPending("c1", 1))
         assertFalse(tracker.isPending("c2", 1))
 
-        assertEquals(ControllerConnection("c1", 1), tracker.acknowledge(7))
+        assertEquals(ControllerConnection("c1", 1), tracker.acknowledge(7)?.connection)
         assertFalse(tracker.isPending("c1", 1))
         assertNull(tracker.acknowledge(7))
         assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test
+    fun deferredDisconnectIsReportedOnlyWhenPendingConnectionIsAcknowledged() {
+        val tracker = ControllerConnectionAckTracker()
+
+        assertTrue(tracker.recordConnected(7, "c1", 1))
+        assertTrue(tracker.deferDisconnected(9, "c1", 1))
+        assertFalse(tracker.deferDisconnected(10, "c1", 1))
+        assertTrue(tracker.hasDeferredDisconnectBefore("c1", 2))
+
+        val acknowledged = tracker.acknowledge(7)
+
+        assertEquals(ControllerConnection("c1", 1), acknowledged?.connection)
+        assertEquals(9L, acknowledged?.deferredDisconnectInputId)
+        tracker.markDisconnectReady(requireNotNull(acknowledged).connection, acknowledged.deferredDisconnectInputId!!)
+        assertTrue(tracker.hasDeferredDisconnectBefore("c1", 2))
+        assertEquals(DeferredControllerDisconnect(9, ControllerConnection("c1", 1)), tracker.nextReadyDisconnect())
+        tracker.recordDisconnected("c1", 1)
+        assertNull(tracker.nextReadyDisconnect())
+        assertFalse(tracker.hasDeferredDisconnectBefore("c1", 2))
+        assertNull(tracker.acknowledge(7))
     }
 
     @Test
@@ -32,14 +54,21 @@ class ControllerSessionFeedbackTest {
         tracker.recordConnected(7, "c1", 1)
         tracker.recordConnected(8, "c2", 1)
 
+        tracker.deferDisconnected(9, "c1", 1)
         tracker.recordDisconnected("c1", 1)
         assertFalse(tracker.isPending("c1", 1))
+        assertFalse(tracker.hasDeferredDisconnectBefore("c1", 2))
+        assertNull(tracker.nextReadyDisconnect())
         assertTrue(tracker.isPending("c2", 1))
         assertNull(tracker.acknowledge(7))
         assertEquals(1, tracker.pendingCount())
 
+        val acknowledged = requireNotNull(tracker.acknowledge(8))
+        tracker.markDisconnectReady(acknowledged.connection, 10)
+
         tracker.reset()
-        assertNull(tracker.acknowledge(8))
+        assertFalse(tracker.hasDeferredDisconnectBefore("c2", 2))
+        assertNull(tracker.nextReadyDisconnect())
         assertEquals(0, tracker.pendingCount())
     }
 
