@@ -2,6 +2,42 @@ import Foundation
 import VideoToolbox
 import CoreMedia
 import os
+import VibeScreenProtocol
+
+enum VideoEncoderCodecSupport {
+    static func streamCodec(for codec: VSCodec) -> StreamCodec? {
+        switch codec {
+        case .hevc: return .hevc
+        case .h264: return .h264
+        case .av1, .unspecified, .UNRECOGNIZED: return nil
+        }
+    }
+
+    static func hasEncodingImplementation(for codec: VSCodec) -> Bool {
+        streamCodec(for: codec) != nil
+    }
+
+    static func videoToolboxCodecType(for codec: StreamCodec) -> CMVideoCodecType {
+        switch codec {
+        case .hevc: return kCMVideoCodecType_HEVC
+        case .h264: return kCMVideoCodecType_H264
+        }
+    }
+
+    static func profileLevel(for codec: StreamCodec) -> CFString {
+        switch codec {
+        case .hevc: return kVTProfileLevel_HEVC_Main_AutoLevel
+        case .h264: return kVTProfileLevel_H264_Main_AutoLevel
+        }
+    }
+
+    static func displayName(for codec: StreamCodec) -> String {
+        switch codec {
+        case .hevc: return "H.265"
+        case .h264: return "H.264"
+        }
+    }
+}
 
 enum VideoEncoderSDRColorMetadata {
     static let compressionProperties: [(key: CFString, value: CFTypeRef)] = [
@@ -551,7 +587,7 @@ class VideoEncoder {
             allocator: kCFAllocatorDefault,
             width: Int32(width),
             height: Int32(height),
-            codecType: codec == .hevc ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264,
+            codecType: VideoEncoderCodecSupport.videoToolboxCodecType(for: codec),
             encoderSpecification: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true] as CFDictionary,
             imageBufferAttributes: nil,
             compressedDataAllocator: nil,
@@ -573,10 +609,11 @@ class VideoEncoder {
         // (Baseline/Main/High all accept Main-constrained streams' feature
         // set we use). High adds 8x8 transform that some low-end vendor OMX
         // decoders reject — not worth the marginal gain for screen content.
-        let profile: CFString = codec == .hevc
-            ? kVTProfileLevel_HEVC_Main_AutoLevel
-            : kVTProfileLevel_H264_Main_AutoLevel
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
+        VTSessionSetProperty(
+            session,
+            key: kVTCompressionPropertyKey_ProfileLevel,
+            value: VideoEncoderCodecSupport.profileLevel(for: codec)
+        )
 
         for status in VideoEncoderSDRColorMetadata.apply(to: session) where status != noErr {
             debugLog("VideoToolbox SDR color metadata property rejected: \(status)")
@@ -626,7 +663,10 @@ class VideoEncoder {
         }
 
         let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
-        debugLog("VideoToolbox encoder configured (\(codec == .hevc ? "H.265" : "H.264"), \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
+        debugLog(
+            "VideoToolbox encoder configured (\(VideoEncoderCodecSupport.displayName(for: codec)), "
+                + "\(bitrateMbps)Mbps, \(frameRate)fps, \(mode))"
+        )
     }
 
     private static func qualityValue(for quality: String, gamingBoost: Bool) -> Float {

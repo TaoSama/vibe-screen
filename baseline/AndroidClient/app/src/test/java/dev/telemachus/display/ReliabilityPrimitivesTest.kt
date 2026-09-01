@@ -84,10 +84,33 @@ class ReliabilityPrimitivesTest {
             listOf(StreamCodec.HEVC, StreamCodec.H264),
             CodecFallbackPolicy.candidates(hasUsableHevcDecoder = true, hasUsableAv1Decoder = true),
         )
+        assertEquals(
+            listOf(StreamCodec.HEVC, StreamCodec.H264),
+            CodecFallbackPolicy.candidates(
+                hasUsableHevcDecoder = true,
+                hasUsableAv1Decoder = true,
+                av1FrameAdmissionEnabled = true,
+            ),
+        )
+        assertEquals(
+            listOf(StreamCodec.HEVC, StreamCodec.H264),
+            CodecFallbackPolicy.candidates(
+                hasUsableHevcDecoder = true,
+                hasUsableAv1Decoder = false,
+                av1FrameAdmissionEnabled = true,
+            ),
+        )
 
         CodecFallbackPolicy.recordStructuralUnsupported(StreamCodec.HEVC)
 
         assertTrue(CodecFallbackPolicy.shouldUseH264(hasUsableHevcDecoder = true))
-        assertEquals(listOf(StreamCodec.H264), CodecFallbackPolicy.candidates(true))
+        assertEquals(
+            listOf(StreamCodec.H264),
+            CodecFallbackPolicy.candidates(
+                hasUsableHevcDecoder = true,
+                hasUsableAv1Decoder = true,
+                av1FrameAdmissionEnabled = true,
+            ),
+        )
     }
 }

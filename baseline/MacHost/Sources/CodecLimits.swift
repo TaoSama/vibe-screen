@@ -20,14 +20,20 @@ struct VideoCodecCapabilitySnapshot: Equatable {
     let h264HardwareEncoderAvailable: Bool
     let hevcHardwareEncoderAvailable: Bool
     let av1HardwareEncoderAvailable: Bool
+    let av1EncoderImplementationAvailable: Bool
 
     static let stableDefault = VideoCodecCapabilitySnapshot(
         h264HardwareEncoderAvailable: true,
         hevcHardwareEncoderAvailable: true,
-        av1HardwareEncoderAvailable: false
+        av1HardwareEncoderAvailable: false,
+        av1EncoderImplementationAvailable: false
     )
 
-    static func probe(width: Int = 640, height: Int = 480) -> VideoCodecCapabilitySnapshot {
+    static func probe(
+        width: Int = 640,
+        height: Int = 480,
+        av1EncoderImplementationAvailable: Bool = VideoEncoderCodecSupport.hasEncodingImplementation(for: .av1)
+    ) -> VideoCodecCapabilitySnapshot {
         VideoCodecCapabilitySnapshot(
             h264HardwareEncoderAvailable: Self.canCreateHardwareEncoder(
                 codecType: kCMVideoCodecType_H264,
@@ -43,17 +49,25 @@ struct VideoCodecCapabilitySnapshot: Equatable {
                 codecType: kCMVideoCodecType_AV1,
                 width: width,
                 height: height
-            )
+            ),
+            av1EncoderImplementationAvailable: av1EncoderImplementationAvailable
         )
+    }
+
+    var av1StreamAdmissionAvailable: Bool {
+        av1HardwareEncoderAvailable
+            && av1EncoderImplementationAvailable
+            && VideoEncoderCodecSupport.hasEncodingImplementation(for: .av1)
     }
 
     var protocolV1SupportedCodecs: [VSCodec] {
         var codecs: [VSCodec] = []
         if hevcHardwareEncoderAvailable { codecs.append(.hevc) }
         if h264HardwareEncoderAvailable { codecs.append(.h264) }
-        // AV1 remains intentionally unadvertised until the Host has a real
-        // AV1 encoder implementation and matching frame packaging. A hardware
-        // capability probe alone is not enough to admit a Protocol v1 stream.
+        // AV1 remains intentionally unadvertised until both VideoToolbox and
+        // the Host's encoder/frame-packaging implementation are available. A
+        // hardware capability probe alone is not enough to admit a stream.
+        if av1StreamAdmissionAvailable { codecs.append(.av1) }
         return codecs
     }
 
@@ -94,11 +108,7 @@ struct VideoCodecCapabilitySnapshot: Equatable {
 
 enum VideoCodecAdmissionPolicy {
     static func streamCodec(for codec: VSCodec) -> StreamCodec? {
-        switch codec {
-        case .hevc: return .hevc
-        case .h264: return .h264
-        case .av1, .unspecified, .UNRECOGNIZED: return nil
-        }
+        VideoEncoderCodecSupport.streamCodec(for: codec)
     }
 
     static func protocolCodecs(

@@ -6,7 +6,8 @@ final class CodecLimitsTests: XCTestCase {
         let snapshot = VideoCodecCapabilitySnapshot(
             h264HardwareEncoderAvailable: true,
             hevcHardwareEncoderAvailable: true,
-            av1HardwareEncoderAvailable: true
+            av1HardwareEncoderAvailable: true,
+            av1EncoderImplementationAvailable: false
         )
 
         XCTAssertEqual(snapshot.protocolV1SupportedCodecs, [.hevc, .h264])
@@ -18,6 +19,43 @@ final class CodecLimitsTests: XCTestCase {
             [.hevc, .h264]
         )
         XCTAssertNil(VideoCodecAdmissionPolicy.streamCodec(for: .av1))
+    }
+
+    func testAV1RequiresHardwareAndEncoderImplementationBeforeProtocolAdmission() {
+        let hardwareOnly = VideoCodecCapabilitySnapshot(
+            h264HardwareEncoderAvailable: true,
+            hevcHardwareEncoderAvailable: true,
+            av1HardwareEncoderAvailable: true,
+            av1EncoderImplementationAvailable: false
+        )
+        let implementationOnly = VideoCodecCapabilitySnapshot(
+            h264HardwareEncoderAvailable: true,
+            hevcHardwareEncoderAvailable: true,
+            av1HardwareEncoderAvailable: false,
+            av1EncoderImplementationAvailable: true
+        )
+        let bothReady = VideoCodecCapabilitySnapshot(
+            h264HardwareEncoderAvailable: true,
+            hevcHardwareEncoderAvailable: true,
+            av1HardwareEncoderAvailable: true,
+            av1EncoderImplementationAvailable: true
+        )
+
+        XCTAssertFalse(hardwareOnly.av1StreamAdmissionAvailable)
+        XCTAssertFalse(implementationOnly.av1StreamAdmissionAvailable)
+        XCTAssertFalse(
+            bothReady.av1StreamAdmissionAvailable,
+            "AV1 must stay out of Host admission until StreamCodec and encoder mapping exist"
+        )
+        XCTAssertEqual(hardwareOnly.protocolV1SupportedCodecs, [.hevc, .h264])
+        XCTAssertEqual(implementationOnly.protocolV1SupportedCodecs, [.hevc, .h264])
+        XCTAssertEqual(bothReady.protocolV1SupportedCodecs, [.hevc, .h264])
+    }
+
+    func testCurrentHostHasNoAV1EncodingImplementationMapping() {
+        XCTAssertTrue(VideoEncoderCodecSupport.hasEncodingImplementation(for: .hevc))
+        XCTAssertTrue(VideoEncoderCodecSupport.hasEncodingImplementation(for: .h264))
+        XCTAssertFalse(VideoEncoderCodecSupport.hasEncodingImplementation(for: .av1))
     }
 
     func testBooxPanelClampsToFitAvcLimit() {

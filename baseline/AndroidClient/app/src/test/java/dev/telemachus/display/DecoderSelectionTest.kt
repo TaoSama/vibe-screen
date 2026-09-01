@@ -49,6 +49,39 @@ class DecoderSelectionTest {
     }
 
     @Test
+    fun softwareAv1DecodersAreNotUsableForRealtimeAdmission() {
+        listOf("c2.android.av1.decoder", "OMX.google.av1.decoder").forEach { name ->
+            val result =
+                DecoderSelector.select(
+                    MediaFormat.MIMETYPE_VIDEO_AV1,
+                    DecoderCatalogSnapshot(listOf(DecoderProbe(name, true, true))),
+                )
+
+            assertEquals(name, DecoderSelectionResult.UnsupportedTarget, result)
+        }
+    }
+
+    @Test
+    fun av1SelectsHardwareForSupportedSizeEvenWhenTargetRateIsUnsupported() {
+        val result =
+            DecoderSelector.select(
+                MediaFormat.MIMETYPE_VIDEO_AV1,
+                DecoderCatalogSnapshot(
+                    probes =
+                        listOf(
+                            DecoderProbe("c2.android.av1.decoder", true, true),
+                            DecoderProbe("c2.vendor.av1.decoder", true, false),
+                        ),
+                ),
+            )
+
+        assertEquals(
+            DecoderSelectionResult.Selected("c2.vendor.av1.decoder", supportsTargetRate = false),
+            result,
+        )
+    }
+
+    @Test
     fun incompleteCapabilityProbeDoesNotClaimStructuralUnsupported() {
         val result =
             DecoderSelector.select(
@@ -91,10 +124,26 @@ class DecoderSelectionTest {
 
     @Test
     fun av1ProbeDoesNotEnterAdvertisedCandidatesBeforeAdmissionIsEnabled() {
+        val hardwareOnly =
+            CodecRuntimeAdmissionSnapshot(
+                hasUsableHevcDecoder = true,
+                hasUsableAv1Decoder = true,
+                av1FrameAdmissionEnabled = false,
+            )
+        val frameFlagOnly = hardwareOnly.copy(av1FrameAdmissionEnabled = true)
+
         assertEquals(
             listOf(StreamCodec.HEVC, StreamCodec.H264),
-            CodecFallbackPolicy.candidates(hasUsableHevcDecoder = true, hasUsableAv1Decoder = true),
+            CodecFallbackPolicy.candidates(hardwareOnly),
         )
+        assertEquals(
+            listOf(StreamCodec.HEVC, StreamCodec.H264),
+            CodecFallbackPolicy.candidates(frameFlagOnly),
+        )
+        assertFalse(frameFlagOnly.av1StreamAdmissionAvailable)
+        assertTrue(StreamCodecAdmissionSupport.hasFrameAdmissionImplementation(StreamCodec.HEVC))
+        assertTrue(StreamCodecAdmissionSupport.hasFrameAdmissionImplementation(StreamCodec.H264))
+        assertFalse(StreamCodecAdmissionSupport.hasFrameAdmissionImplementation(StreamCodec.AV1))
         assertEquals(StreamCodec.AV1, MediaFormat.MIMETYPE_VIDEO_AV1.toStreamCodec())
         assertEquals(Codec.CODEC_HEVC, StreamCodec.HEVC.toProtocolCodecOrNull())
         assertEquals(ProductVideoCodec.HEVC, StreamCodec.HEVC.toProductVideoCodecOrNull())

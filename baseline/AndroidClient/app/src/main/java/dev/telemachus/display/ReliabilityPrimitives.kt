@@ -160,6 +160,25 @@ enum class StreamCodec {
     AV1,
 }
 
+data class CodecRuntimeAdmissionSnapshot(
+    val hasUsableHevcDecoder: Boolean,
+    val hasUsableAv1Decoder: Boolean,
+    val av1FrameAdmissionEnabled: Boolean = false,
+) {
+    val av1StreamAdmissionAvailable: Boolean
+        get() = hasUsableAv1Decoder &&
+            av1FrameAdmissionEnabled &&
+            StreamCodecAdmissionSupport.hasFrameAdmissionImplementation(StreamCodec.AV1)
+}
+
+internal object StreamCodecAdmissionSupport {
+    fun hasFrameAdmissionImplementation(codec: StreamCodec): Boolean =
+        when (codec) {
+            StreamCodec.HEVC, StreamCodec.H264 -> true
+            StreamCodec.AV1 -> false
+        }
+}
+
 /**
  * Records a process-local structural HEVC target incompatibility. The next
  * connection uses the explicit AVC-only wire offer instead of silently changing
@@ -175,16 +194,29 @@ object CodecFallbackPolicy {
     fun shouldUseH264(hasUsableHevcDecoder: Boolean): Boolean =
         !hasUsableHevcDecoder || hevcFailedAtRuntime
 
-    fun candidates(
-        hasUsableHevcDecoder: Boolean,
-        @Suppress("UNUSED_PARAMETER")
-        hasUsableAv1Decoder: Boolean = false,
-    ): List<StreamCodec> =
-        if (shouldUseH264(hasUsableHevcDecoder)) {
+    fun candidates(snapshot: CodecRuntimeAdmissionSnapshot): List<StreamCodec> =
+        if (shouldUseH264(snapshot.hasUsableHevcDecoder)) {
             listOf(StreamCodec.H264)
         } else {
-            listOf(StreamCodec.HEVC, StreamCodec.H264)
+            buildList {
+                add(StreamCodec.HEVC)
+                if (snapshot.av1StreamAdmissionAvailable) add(StreamCodec.AV1)
+                add(StreamCodec.H264)
+            }
         }
+
+    fun candidates(
+        hasUsableHevcDecoder: Boolean,
+        hasUsableAv1Decoder: Boolean = false,
+        av1FrameAdmissionEnabled: Boolean = false,
+    ): List<StreamCodec> =
+        candidates(
+            CodecRuntimeAdmissionSnapshot(
+                hasUsableHevcDecoder = hasUsableHevcDecoder,
+                hasUsableAv1Decoder = hasUsableAv1Decoder,
+                av1FrameAdmissionEnabled = av1FrameAdmissionEnabled,
+            ),
+        )
 
     internal fun resetForTest() {
         hevcFailedAtRuntime = false

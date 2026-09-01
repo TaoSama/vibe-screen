@@ -56,6 +56,58 @@ The covered contract is:
 No AV1-capable macOS Host stream, Android MediaCodec stream, or iOS
 VideoToolbox stream was run. The README AV1 gate remains open.
 
+## 2026-09-01 runtime-admission foundation
+
+The current-source foundation now separates runtime codec discovery from product
+stream admission on all three active surfaces without promoting AV1 to a shipped
+codec:
+
+- macOS Host has an explicit av1EncoderImplementationAvailable gate in
+  VideoCodecCapabilitySnapshot; AV1 can only enter Protocol v1 supported-codec
+  output when the VideoToolbox hardware probe, the Host encoder/frame packaging
+  implementation gate, and the concrete VideoEncoder codec mapping are all true.
+  The current Host mapping remains absent, StreamCodec still has no AV1 case,
+  and StreamingServer.swift still advertises only HEVC/H.264.
+- Android has a CodecRuntimeAdmissionSnapshot that records usable HEVC/AV1
+  decoder discovery separately from av1FrameAdmissionEnabled and the concrete
+  StreamCodec frame-admission implementation check. Software AV1 decoders are
+  not treated as usable for realtime admission, and the current AV1 frame
+  implementation check remains false, so USB/LAN/Internet product offers remain
+  HEVC/H.264 only and received AV1 Internet VideoConfig remains rejected.
+- iOS has a VideoDecodeCapabilitySnapshot and VideoToolbox hardware decode
+  probe adapter. The Core validator can generate AV1 SDR decode capabilities
+  only when hardware and implementation gates are both true; the current
+  VideoDecoder implementation gate remains false and configure(.av1) still
+  throws unsupportedCodec(.av1).
+  The AV1 decode implementation availability source lives in VibeScreenCore and
+  is applied inside VideoDecodeCapabilitySnapshot admission, so manually
+  constructed snapshots with hardware=true and caller flag=true still fail
+  closed until that shared implementation gate changes.
+
+This change is offline-only. It did not run ADB, did not install or start the
+macOS Host, did not request or reset privacy permissions, and did not operate on
+certificates or keychains. It does not add Vibe Screen AV1 negotiation evidence,
+MediaCodec configuration evidence, a first decoded AV1 frame, sustained AV1
+playback, reconnect behavior, or any macOS Host AV1 encoder path.
+
+Allowed-command verification for this foundation:
+
+- `git diff --check` passed.
+- `PYTHONPATH=tools python3 -m unittest tools.tests.test_av1_current_base_gate -v`
+  passed 7 tests.
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest --tests dev.telemachus.display.internet.InternetProductSessionTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.protocol.VideoColorNegotiationTest`
+  completed with `BUILD SUCCESSFUL`.
+- `cd apps/ios && swift build` passed.
+- `cd baseline/MacHost && swift build` passed.
+- `make protocol` passed 45 Python protocol-contract tests.
+- `cd apps/ios && swift test --filter VideoConfigValidatorTests` was blocked by
+  the local Command Line Tools environment with `no such module 'XCTest'`.
+- `cd baseline/MacHost && swift test --filter CodecLimitsTests --filter ProtocolV1SessionTests --filter InternetProductProtocolCodecTests`
+  was blocked by the same local `XCTest` module availability issue.
+- `xcodebuild -project apps/ios/VibeScreen.xcodeproj -scheme VibeScreenApp -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build`
+  was blocked because the active developer directory is
+  `/Library/Developer/CommandLineTools`, not a full Xcode installation.
+
 The retained blocked evidence records are
 [`evidence/2026-08-21-av1-offline-blocked/README.md`](evidence/2026-08-21-av1-offline-blocked/README.md)
 and

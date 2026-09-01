@@ -66,6 +66,9 @@ ANDROID_INTERNET_SESSION_TESTS_PATH = (
 IOS_MEDIA_GATE_SELF_TEST_PATH = (
     REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenCore/VideoMediaGateSelfTest.swift"
 )
+IOS_VIDEO_CONFIG_VALIDATOR_TESTS_PATH = (
+    REPOSITORY_ROOT / "apps/ios/Tests/VibeScreenCoreTests/VideoConfigValidatorTests.swift"
+)
 IOS_SELF_TEST_PATH = REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenIOSSelfTest/main.swift"
 
 
@@ -80,9 +83,11 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("Android MediaCodec HEVC/H.264 decode", row)
         self.assertIn("AV1 is a later-phase/backlog codec", row)
         self.assertIn("not a current Host/device stream codec", row)
-        self.assertIn("Protocol v1 only reserves CODEC_AV1", row)
+        self.assertIn("Protocol v1 reserves CODEC_AV1", row)
+        self.assertIn("runtime-admission foundation is in place", row)
         self.assertIn("the current Host does not advertise AV1", row)
         self.assertIn("Android does not offer AV1 in product sessions", row)
+        self.assertIn("iOS does not advertise AV1 decode capability", row)
         self.assertIn("no AV1 real-stream Host/device acceptance is recorded", row)
         self.assertIn("docs/changes/2026-08-21-av1-codec-capability/TEST.md", row)
         self.assertNotIn("AV1 when supported", row)
@@ -96,9 +101,12 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertRegex(codec_limits, r"enum\s+StreamCodec\s*\{[^}]*case\s+hevc[^}]*case\s+h264")
         self.assertNotRegex(codec_limits, r"enum\s+StreamCodec\s*\{[^}]*case\s+av1")
         self.assertIn("av1HardwareEncoderAvailable", codec_limits)
-        self.assertIn("AV1 remains intentionally unadvertised", codec_limits)
-        self.assertIn("case .av1, .unspecified, .UNRECOGNIZED: return nil", codec_limits)
-        self.assertNotIn("codecs.append(.av1)", codec_limits)
+        self.assertIn("av1EncoderImplementationAvailable", codec_limits)
+        self.assertIn("av1StreamAdmissionAvailable", codec_limits)
+        self.assertIn("hardware capability probe alone is not enough", codec_limits)
+        self.assertIn("if av1StreamAdmissionAvailable { codecs.append(.av1) }", codec_limits)
+        self.assertIn("case .av1, .unspecified, .UNRECOGNIZED: return nil", video_encoder)
+        self.assertIn("hasEncodingImplementation(for codec: VSCodec)", video_encoder)
         self.assertNotIn("kCMVideoCodecType_AV1", video_encoder)
         self.assertIn("supportedCodecs: [.hevc, .h264]", streaming_server)
         self.assertNotIn("supportedCodecs: [.av1", streaming_server)
@@ -109,6 +117,10 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         main_activity = ANDROID_MAIN_ACTIVITY_PATH.read_text(encoding="utf-8")
 
         self.assertIn("Diagnostic-only until AV1 frame admission is explicitly enabled", codec_capabilities)
+        self.assertIn("av1FrameAdmissionEnabled = false", codec_capabilities)
+        self.assertIn("av1StreamAdmissionAvailable", reliability)
+        self.assertIn("StreamCodecAdmissionSupport", reliability)
+        self.assertIn("StreamCodec.AV1 -> false", reliability)
         self.assertIn("MediaFormat.MIMETYPE_VIDEO_AV1 -> StreamCodec.AV1", codec_capabilities)
         self.assertIn("StreamCodec.AV1 -> null", codec_capabilities)
         self.assertIn(
@@ -123,8 +135,15 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         decoder = IOS_VIDEO_DECODER_PATH.read_text(encoding="utf-8")
 
         self.assertIn("case .h264, .hevc, .av1: true", validator)
+        self.assertIn("enum VideoDecodeImplementationSupport", validator)
+        self.assertIn("av1DecoderImplementationAvailable", validator)
+        self.assertIn("av1StreamAdmissionAvailable", validator)
+        self.assertIn("VideoDecodeImplementationSupport.hasDecodeImplementation(for: .av1)", validator)
+        self.assertIn("case .av1, .unspecified, .UNRECOGNIZED: return false", validator)
         self.assertIn("throw VideoConfigValidationError.unsupportedDecodeProfile", validator)
+        self.assertIn("VideoDecodeImplementationSupport.hasDecodeImplementation(for: codec)", decoder)
         self.assertNotIn("kCMVideoCodecType_AV1", decoder)
+        self.assertNotIn("VideoDecoderCodecSupport", decoder)
         self.assertIn("throw VideoDecoderError.unsupportedCodec(codec)", decoder)
 
     def test_native_behavior_tests_cover_current_av1_admission_boundary(self) -> None:
@@ -134,14 +153,20 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         android_decoder_tests = ANDROID_DECODER_SELECTION_TESTS_PATH.read_text(encoding="utf-8")
         android_internet_tests = ANDROID_INTERNET_SESSION_TESTS_PATH.read_text(encoding="utf-8")
         ios_media_gate_self_test = IOS_MEDIA_GATE_SELF_TEST_PATH.read_text(encoding="utf-8")
+        ios_video_config_validator_tests = IOS_VIDEO_CONFIG_VALIDATOR_TESTS_PATH.read_text(encoding="utf-8")
         ios_self_test = IOS_SELF_TEST_PATH.read_text(encoding="utf-8")
 
         self.assertIn("testAV1CapabilityProbeDoesNotAdvertiseUnsupportedStreamCodec", codec_limits_tests)
+        self.assertIn("testAV1RequiresHardwareAndEncoderImplementationBeforeProtocolAdmission", codec_limits_tests)
         self.assertIn("testAV1OfferFallsBackToLocallyEncodableCodec", protocol_session_tests)
         self.assertIn("testAV1OnlyOfferFailsClosedUntilHostEncoderExists", protocol_session_tests)
         self.assertIn("testInternetProductVideoConfigurationRejectsAV1UntilEncoderExists", internet_codec_tests)
         self.assertIn("av1ProbeDoesNotEnterAdvertisedCandidatesBeforeAdmissionIsEnabled", android_decoder_tests)
+        self.assertIn("softwareAv1DecodersAreNotUsableForRealtimeAdmission", android_decoder_tests)
         self.assertIn("av1VideoConfigurationRejectionIsReportedBeforeMediaActivation", android_internet_tests)
+        self.assertIn("testAV1ProtocolKnownButRequiresRuntimeDecodeAdmission", ios_video_config_validator_tests)
+        self.assertIn("testDecodeImplementationSupportKeepsCurrentProtocolCodecsAtHevcAndH264", ios_video_config_validator_tests)
+        self.assertIn("testAV1FallsBackToFirstAvailableSdrCapability", ios_video_config_validator_tests)
         self.assertIn("AV1 config was accepted without an AV1 decode capability", ios_media_gate_self_test)
         self.assertIn("AV1 decoder configuration was accepted without an implementation", ios_self_test)
 
