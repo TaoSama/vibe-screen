@@ -3190,11 +3190,12 @@ private final class Harness {
     }
 
     private func sentControlPayload<T>(_ extract: (VSEnvelope) -> T?) -> T? {
-        engine.sentPlaintext.lazy.compactMap { item -> T? in
-            guard item.channel == .control,
-                  let envelope = try? VSEnvelope(serializedBytes: item.payload) else { return nil }
-            return extract(envelope)
-        }.first
+        for item in engine.sentPlaintext where item.channel == .control {
+            guard let envelope = try? VSEnvelope(serializedBytes: item.payload),
+                  let result = extract(envelope) else { continue }
+            return result
+        }
+        return nil
     }
 
     func waitForPong(sequence: UInt64) -> Bool {
