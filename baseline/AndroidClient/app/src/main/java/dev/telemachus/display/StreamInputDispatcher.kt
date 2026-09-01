@@ -392,6 +392,10 @@ internal class StreamInputDispatcher(
             val isPendingConnection =
                 connection in seenConnectedInBatch ||
                     controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch)
+            if (sample.kind == ControllerEventKind.CONNECTED && isPendingConnection) {
+                consumedWithoutWire = true
+                continue
+            }
             if (sample.kind != ControllerEventKind.CONNECTED && isPendingConnection) {
                 afterPendingNonConnectedDetected(sample)
                 val disposition = controllerConnectionAcks.consumePendingNonConnected(sample.controllerId, sample.controllerEpoch, sample.kind)

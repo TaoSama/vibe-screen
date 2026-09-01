@@ -588,6 +588,12 @@ class InternetProductSession internal constructor(
         if (controllerConnectionAcks.hasDeferredDisconnectFor(event.sample.controllerId, event.sample.controllerEpoch)) {
             return true
         }
+        if (
+            event.sample.kind == ControllerEventKind.CONNECTED &&
+            controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)
+        ) {
+            return true
+        }
         if (event.sample.kind != ControllerEventKind.CONNECTED) {
             when (
                 controllerConnectionAcks.consumePendingNonConnected(

@@ -960,6 +960,61 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun duplicateConnectedInSameBatchIsConsumedWhilePending() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(
+            dispatcher.sendController(
+                ControllerDispatch(
+                    samples =
+                        listOf(
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED),
+                            ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED),
+                        ),
+                    delivery = ControllerDelivery.STRUCTURAL,
+                ),
+            ),
+        )
+
+        val sent = recorder.controllerEventBatches(controllerSession).single().map { it.controllerEvent }
+        assertEquals(1, sent.size)
+        assertEquals(30L, sent.single().inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, sent.single().kind)
+        assertTrue(tracker.isPending("pad-1", 1))
+    }
+
+    @Test
+    fun duplicateConnectedInLaterPendingBatchIsConsumedWithoutAllocatingInputId() {
+        val recorder = RecordingSubmitter()
+        val tracker = ControllerConnectionAckTracker()
+        val dispatcher = dispatcher(
+            state = negotiatedState(controller = true),
+            recorder = recorder,
+            tracker = tracker,
+            firstInputId = 30,
+        )
+        val controllerSession = streamingSession(Capability.CAPABILITY_CONTROLLER)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+        recorder.submissions[0].protocolEnvelopes(controllerSession)
+
+        assertTrue(dispatcher.sendController(controllerConnected("pad-1", 1)))
+
+        val sent = recorder.controllerEventBatches(controllerSession).single().single().controllerEvent
+        assertEquals(30L, sent.inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, sent.kind)
+        assertTrue(tracker.isPending("pad-1", 1))
+    }
+
+    @Test
     fun disconnectedAckRaceAfterPendingCheckStillSendsDisconnectOnWire() {
         val recorder = RecordingSubmitter()
         val tracker = ControllerConnectionAckTracker()

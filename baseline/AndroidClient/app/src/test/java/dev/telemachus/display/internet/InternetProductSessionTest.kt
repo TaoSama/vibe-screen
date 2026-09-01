@@ -809,6 +809,61 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun duplicateConnectedInSameBatchIsConsumedWhilePending() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(
+                    ProductControllerEvent(31, controllerSample(kind = ControllerEventKind.CONNECTED)),
+                    ProductControllerEvent(32, controllerSample(kind = ControllerEventKind.CONNECTED)),
+                ),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+
+        val sent = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(1, sent.size)
+        assertEquals(31L, sent.single().inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, sent.single().kind)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun duplicateConnectedInLaterPendingBatchIsConsumedEvenWhenInputIdIsReused() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(31, controllerSample(kind = ControllerEventKind.CONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(31, controllerSample(kind = ControllerEventKind.CONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+
+        val sent = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(1, sent.size)
+        assertEquals(31L, sent.single().inputId)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, sent.single().kind)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
     fun deferredDisconnectDoesNotBlockOtherControllerAndUsesActualSendOrderInputIds() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
