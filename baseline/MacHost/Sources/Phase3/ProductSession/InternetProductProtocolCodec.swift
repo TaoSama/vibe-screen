@@ -375,17 +375,26 @@ struct InternetProductProtocolCodec {
         accepted.sessionID = sessionID
         accepted.sessionEpoch = sessionEpoch
         accepted.heartbeatIntervalMs = heartbeatIntervalMilliseconds
-        accepted.negotiatedCapabilities = (
-            Array(Self.requiredCapabilities)
-                + (inputEnabled && peerSupportsTouch ? [.touch] : [])
-                + (inputEnabled && peerSupportsStylus ? [.stylus] : [])
-                + (inputEnabled && peerSupportsStylus && peerSupportsStylusExtended
-                    ? [.stylusExtended]
-                    : [])
-                + (controllerAvailable && peerSupportsController ? [.controller] : [])
-                + (baseNegotiatedCapabilities.contains(.clipboard) ? [.clipboard] : [])
-                + (baseNegotiatedCapabilities.contains(.managedConfiguration) ? [.managedConfiguration] : [])
-        ).sorted { $0.rawValue < $1.rawValue }
+        var negotiatedCapabilities = Self.requiredCapabilities
+        if inputEnabled && peerSupportsTouch {
+            negotiatedCapabilities.insert(.touch)
+        }
+        if inputEnabled && peerSupportsStylus {
+            negotiatedCapabilities.insert(.stylus)
+        }
+        if inputEnabled && peerSupportsStylus && peerSupportsStylusExtended {
+            negotiatedCapabilities.insert(.stylusExtended)
+        }
+        if controllerAvailable && peerSupportsController {
+            negotiatedCapabilities.insert(.controller)
+        }
+        if baseNegotiatedCapabilities.contains(.clipboard) {
+            negotiatedCapabilities.insert(.clipboard)
+        }
+        if baseNegotiatedCapabilities.contains(.managedConfiguration) {
+            negotiatedCapabilities.insert(.managedConfiguration)
+        }
+        accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
                 "media record limits were not negotiated before session acceptance"
