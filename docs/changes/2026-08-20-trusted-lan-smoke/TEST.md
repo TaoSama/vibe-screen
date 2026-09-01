@@ -282,6 +282,45 @@ Focused checks for this current-base owner record:
 | `make protocol` | PASS, 45 tests | Covers current Protocol v1 schema, fixtures, TCP framing, and security contract checks. |
 | `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-31-p0110-lan-preflight-current-base-blocked` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
 
+## 2026-08-31 Codex task current-base preflight recheck
+
+The `codex/trusted-lan-codex-task-20260831` branch was created from
+`origin/main` commit `28b9d1a59ef026b45ada3cd7e665ef09ea9a7523` in a clean
+worktree. This retained bundle is a blocked snapshot for that collection
+revision, even when the PR branch later merges newer `origin/main` revisions.
+The read-only trusted-LAN preflight ran on the Nubia P0110 / pacific /
+Android 16 / SDK 36 device (`<device-serial>`) without launching Host, pairing,
+streaming, reconnect, changing Wi-Fi credentials, modifying TCC, or running any
+login-item diagnostic. The collector first ran `pgrep -x sfltool` and observed
+no process; it did not run `/usr/bin/sfltool dumpbtm`.
+
+The real trusted-LAN smoke remains blocked before Host launch or pairing:
+Wi-Fi is enabled but not associated, `wlan0` has no carrier or IPv4 address,
+Android has no `wlan0` route to a Mac LAN IPv4 candidate, and Host stable
+signing is blocked because the `Vibe Screen Dev` codesigning identity is
+unavailable. The installed `/Applications/Vibe Screen.app` also failed codesign
+resource inspection, no TCP `54321` listener was observed, and Screen Recording
+and Accessibility TCC were not evaluated because stable signing failed. A
+blocked reconnect timing summary was retained with `can_close_timing_gate=false`
+and no required disruption exercised.
+
+No real trusted-LAN stream, secure-record negotiation, decoder output,
+reconnect, latency, stability, or Host RSS evidence was observed. The retained
+artifact bundle is
+[`evidence/2026-08-31-p0110-lan-preflight-codex-task-blocked/README.md`](evidence/2026-08-31-p0110-lan-preflight-codex-task-blocked/README.md).
+
+Focused checks for this Codex task owner record:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `make evidence-trusted-lan-preflight EVIDENCE_SERIAL=<device-serial> EVIDENCE_DIR=/private/tmp/vibe-screen-trusted-lan-codex-task-20260831/lan` | BLOCKED, exit 2 | Confirmed Nubia P0110/pacific identity, recorded Wi-Fi/wlan0/route blockers and Host signing blocker, and stopped before Host launch or pairing. |
+| `make baseline-macos-host-readiness EVIDENCE_DIR=/private/tmp/vibe-screen-trusted-lan-codex-task-20260831/host` | BLOCKED, exit 2 | `can_start_trusted_lan_gate=false`; stable signing, TCC evaluation, Host listener, virtual HID, and evidence-grade Host readiness remained blocked. The default command did not probe login items. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing --blocked ...` | BLOCKED, exit 3 | Wrote `reconnect-timing-summary.json` with `can_close_timing_gate=false` and no disruption exercised. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_trusted_lan_preflight tools.tests.test_trusted_lan_smoke tools.tests.test_adb tools.tests.test_reconnect_timing -v` | PASS, 89 tests | Covers trusted-LAN preflight redaction, blocked/pass smoke evidence classification, explicit-serial ADB boundaries, and blocked/pass reconnect timing classification. |
+| `make protocol` | PASS, 45 tests | Covers current Protocol v1 schemas, fixtures, TCP framing, shared model manifest, and security contract checks. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest` | PASS | Covers Android LAN secure-record framing, token admission, wireless security reporting, and authenticated handshake behavior. |
+| `make trusted-lan-smoke-evidence-check EVIDENCE_DIR=docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-31-p0110-lan-preflight-codex-task-blocked` | PASS as `blocked` | Confirms the retained package is valid blocked evidence and cannot close trusted-LAN stream or reconnect gates. |
+
 ## 2026-08-22 fail-closed preflight
 
 The current `origin/main` revision `a8346626f07de98a54508c2d05ba138d0c969ef0`
