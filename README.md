@@ -1032,6 +1032,12 @@ increase it.
   progress-driven backpressure, and cancel/disconnect cleanup. This is offline
   and self-test evidence only: no Android real-device file-transfer acceptance,
   public-Internet run, or WebRTC bulk DataChannel path is claimed.
+  The fail-closed `make file-transfer-bulk-current-base-gate` aggregate tracks
+  the current-base successor owner for both the Android USB/LAN file-transfer
+  child gate and the public-Internet WebRTC bulk child gate. It consumes existing
+  child gate reports only, never runs device or Host collectors, never closes the
+  separate clipboard gate, and treats Nubia P0110 evidence as USB/LAN-only unless
+  a real Internet WebRTC bulk product-flow gate independently passes.
 - The macOS Host and Android client now wire authenticated Protocol v1
   WakeHostRequest messages to real UDP Wake-on-LAN magic-packet senders. Wake
   remains default-deny, is advertised only when an HMAC authorizer is available,
