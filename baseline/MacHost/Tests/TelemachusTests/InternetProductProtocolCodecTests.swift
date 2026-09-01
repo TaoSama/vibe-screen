@@ -113,7 +113,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.stylus))
         XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.audio))
         XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.clipboard))
-        XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.fileTransfer))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.fileTransfer))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.managedConfiguration))
         XCTAssertEqual(
             acceptedEnvelope.sessionAccepted.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes,
             UInt32(negotiatedMaximum)
@@ -125,6 +126,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.audio))
         XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.clipboard))
         XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.fileTransfer))
+        XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.managedConfiguration))
 
         let encoded = try codec.mediaFrame(
             payload: Data(repeating: 0x41, count: 256 * 1_024),
