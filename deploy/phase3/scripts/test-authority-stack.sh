@@ -26,7 +26,7 @@ cleanup() {
   if [[ $status -ne 0 ]]; then
     compose ps >&2 || true
     diagnostic_log=$work_dir/failure.log
-    compose logs --no-color authority-migrate authority postgres > "$diagnostic_log" 2>&1 || true
+    compose logs --no-color authority-secrets-init authority-migrate authority postgres > "$diagnostic_log" 2>&1 || true
     safe_to_print=true
     while IFS= read -r secret_file; do
       secret=$(tr -d '\r\n' < "$secret_file")
@@ -67,7 +67,7 @@ wait_for_status() {
   done
   echo "timed out waiting for $endpoint status $expected" >&2
   compose ps >&2
-  compose logs --no-color authority postgres >&2
+  compose logs --no-color authority-secrets-init authority postgres >&2
   return 1
 }
 

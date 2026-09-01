@@ -12,6 +12,8 @@ x-authority-container: &authority-container
   mem_limit: 256m
   cpus: 1.0
   stop_grace_period: 30s
+  tmpfs:
+    - /tmp:size=16m,mode=0700,uid=65532,gid=65532
   logging:
     driver: json-file
     options:
@@ -19,22 +21,81 @@ x-authority-container: &authority-container
       max-file: "3"
 
 services:
+  authority-secrets-init:
+    image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        umask 077
+        copy_secret() {
+          source_name=$$1
+          target_dir=$$2
+          target_name=$$3
+          mkdir -p "$$target_dir"
+          chmod 0755 "$$target_dir"
+          temporary="$$target_dir/.$$target_name.tmp"
+          cp "/run/secrets/$$source_name" "$$temporary"
+          chmod 0400 "$$temporary"
+          chown 65532:65532 "$$temporary"
+          mv "$$temporary" "$$target_dir/$$target_name"
+        }
+        copy_secret migration_database_url /out/migrate migration_database_url
+        copy_secret database_url /out/authority database_url
+        copy_secret admin_token /out/authority admin_token
+        copy_secret signaling_token /out/authority signaling_token
+        copy_secret relay_token /out/authority relay_token
+        copy_secret coturn_token /out/authority coturn_token
+        copy_secret role_token_secret /out/authority role_token_secret
+    network_mode: none
+    secrets:
+      - migration_database_url
+      - database_url
+      - admin_token
+      - signaling_token
+      - relay_token
+      - coturn_token
+      - role_token_secret
+    volumes:
+      - authority-migrate-runtime-secrets:/out/migrate
+      - authority-runtime-secrets:/out/authority
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=0700
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.5
+    restart: "no"
+
   authority-migrate:
     <<: *authority-container
     restart: "no"
+    depends_on:
+      authority-secrets-init:
+        condition: service_completed_successfully
     command:
       - --migrate
       - /usr/share/vibe-screen/migrations
     environment:
       VIBE_AUTHORITY_DATABASE_URL_FILE: /run/secrets/migration_database_url
       VIBE_AUTHORITY_DATABASE_TLS_MODE: verify-full
-    secrets:
-      - migration_database_url
+    volumes:
+      - authority-migrate-runtime-secrets:/run/secrets:ro
 
   authority:
     <<: *authority-container
     restart: unless-stopped
     depends_on:
+      authority-secrets-init:
+        condition: service_completed_successfully
       authority-migrate:
         condition: service_completed_successfully
     environment:
@@ -45,15 +106,9 @@ services:
       VIBE_AUTHORITY_RELAY_TOKEN_FILE: /run/secrets/relay_token
       VIBE_AUTHORITY_COTURN_TOKEN_FILE: /run/secrets/coturn_token
       VIBE_AUTHORITY_ROLE_TOKEN_SECRET_FILE: /run/secrets/role_token_secret
-    secrets:
-      - database_url
-      - admin_token
-      - signaling_token
-      - relay_token
-      - coturn_token
-      - role_token_secret
     volumes:
       - ${VIBE_AUTHORITY_CONFIG_FILE:-./config/authority.production.json}:/etc/vibe-screen/authority.json:ro
+      - authority-runtime-secrets:/run/secrets:ro
     ports:
       - "127.0.0.1:8091:8091/tcp"
     healthcheck:
@@ -78,3 +133,7 @@ secrets:
     file: ${VIBE_AUTHORITY_COTURN_TOKEN_FILE:?set the coturn token secret file}
   role_token_secret:
     file: ${VIBE_AUTHORITY_ROLE_TOKEN_SECRET_FILE:?set the role-token secret file}
+
+volumes:
+  authority-migrate-runtime-secrets:
+  authority-runtime-secrets:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import unittest
@@ -10,12 +11,17 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "deploy/phase3"
+RELAY_LOCAL_COMPOSE = DEPLOY / "docker-compose.yml"
 RELAY_PRODUCTION_COMPOSE = DEPLOY / "docker-compose.production.yml"
+AUTHORITY_LOCAL_COMPOSE = DEPLOY / "docker-compose.authority.yml"
 AUTHORITY_PRODUCTION_COMPOSE = DEPLOY / "docker-compose.authority.production.yml"
 RELAY_PRODUCTION_CONFIG = DEPLOY / "config/relay.production.example.json"
 AUTHORITY_PRODUCTION_CONFIG = DEPLOY / "config/authority.production.example.json"
 COTURN_PRODUCTION_CONFIG = DEPLOY / "coturn/production.conf"
 START_COTURN = DEPLOY / "scripts/start-coturn.sh"
+GENERATE_RELAY_SECRETS = DEPLOY / "scripts/generate-secrets.sh"
+GENERATE_AUTHORITY_SECRETS = DEPLOY / "scripts/generate-authority-secrets.sh"
+TEST_AUTHORITY_STACK = DEPLOY / "scripts/test-authority-stack.sh"
 
 PROHIBITED_RELAY_BUILD_MARKERS = (
     "build:",
@@ -43,13 +49,20 @@ EXPECTED_COTURN_DENIES = {
     "denied-peer-ip=198.18.0.0-198.19.255.255",
     "denied-peer-ip=198.51.100.0-198.51.100.255",
     "denied-peer-ip=203.0.113.0-203.0.113.255",
+    "denied-peer-ip=224.0.0.0-239.255.255.255",
     "denied-peer-ip=240.0.0.0-255.255.255.255",
-    "denied-peer-ip=::",
-    "denied-peer-ip=::1",
+    "denied-peer-ip=0:0:0:0:0:0:0:0-ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
+    "denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff",
+    "denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=100::-100::ffff:ffff:ffff:ffff",
+    "denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=2001:db8::-2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
 }
 
 
@@ -119,6 +132,100 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("start_period: 5s", service_section(compose, "signaling"))
         self.assertIn("start_period: 5s", service_section(compose, "relay"))
 
+    def test_coturn_production_container_is_hardened_and_bounded(self) -> None:
+        coturn = service_section(read(RELAY_PRODUCTION_COMPOSE), "coturn")
+
+        self.assertIn("user: \"65532:65532\"", coturn)
+        self.assertIn("read_only: true", coturn)
+        self.assertIn("cap_drop:\n      - ALL", coturn)
+        self.assertIn("no-new-privileges:true", coturn)
+        self.assertIn("tmpfs:\n      - /tmp:size=16m,mode=0700,uid=65532,gid=65532", coturn)
+        self.assertIn("pids_limit: 256", coturn)
+        self.assertIn("mem_limit: 512m", coturn)
+        self.assertIn("cpus: 2.0", coturn)
+
+    def test_production_compose_projects_mount_secrets_for_non_root_containers(self) -> None:
+        local_combined = "\n".join((read(RELAY_LOCAL_COMPOSE), read(AUTHORITY_LOCAL_COMPOSE)))
+        relay_compose = read(RELAY_PRODUCTION_COMPOSE)
+        authority_compose = read(AUTHORITY_PRODUCTION_COMPOSE)
+        combined = "\n".join((local_combined, relay_compose, authority_compose))
+
+        self.assertIn("phase3-secrets-init:", relay_compose)
+        self.assertIn("authority-secrets-init:", authority_compose)
+        self.assertIn('user: "0:0"', combined)
+        self.assertIn("network_mode: none", combined)
+        self.assertIn("cap_add:\n      - CHOWN\n      - DAC_READ_SEARCH", combined)
+        self.assertEqual(4, combined.count("- DAC_READ_SEARCH"))
+        self.assertNotIn("- DAC_READ_SEARCH", service_section(read(RELAY_LOCAL_COMPOSE), "relay-data-init"))
+        for compose_text, service in (
+            (read(RELAY_LOCAL_COMPOSE), "relay-secrets-init"),
+            (relay_compose, "phase3-secrets-init"),
+            (read(AUTHORITY_LOCAL_COMPOSE), "authority-secrets-init"),
+            (authority_compose, "authority-secrets-init"),
+        ):
+            with self.subTest(service=service):
+                self.assertIn("cap_add:\n      - CHOWN\n      - DAC_READ_SEARCH", service_section(compose_text, service))
+        self.assertEqual(4, combined.count("umask 077"))
+        self.assertIn("chmod \"$$mode\" \"$$temporary\"\n          chown \"$$owner\" \"$$temporary\"", relay_compose)
+        self.assertIn("chmod 0400 \"$$temporary\"\n          chown 65532:65532 \"$$temporary\"", authority_compose)
+
+        expected_secret_copies = (
+            ("signaling_migration_database_url", "/out/signaling-migrate", "0400"),
+            ("signaling_database_url", "/out/signaling", "0400"),
+            ("signaling_issuer_token", "/out/signaling", "0400"),
+            ("signaling_metrics_token", "/out/signaling", "0400"),
+            ("signaling_authority_token", "/out/signaling", "0400"),
+            ("relay_migration_database_url", "/out/relay-migrate", "0400"),
+            ("relay_database_url", "/out/relay", "0400"),
+            ("turn_secret", "/out/relay", "0400"),
+            ("client_token", "/out/relay", "0400"),
+            ("usage_token", "/out/relay", "0400"),
+            ("metrics_token", "/out/relay", "0400"),
+            ("admin_token", "/out/relay", "0400"),
+            ("authority_token", "/out/relay", "0400"),
+            ("turn_secret", "/out/coturn", "0400"),
+            ("tls_certificate", "/out/coturn", "0444"),
+            ("tls_private_key", "/out/coturn", "0400"),
+            ("migration_database_url", "/out/migrate", None),
+            ("database_url", "/out/authority", None),
+            ("admin_token", "/out/authority", None),
+            ("signaling_token", "/out/authority", None),
+            ("relay_token", "/out/authority", None),
+            ("coturn_token", "/out/authority", None),
+            ("role_token_secret", "/out/authority", None),
+        )
+        for secret_name, target_dir, mode in expected_secret_copies:
+            with self.subTest(secret_name=secret_name, target_dir=target_dir):
+                if mode is None:
+                    self.assertIn(f"copy_secret {secret_name} {target_dir} {secret_name}", combined)
+                else:
+                    self.assertIn(
+                        f"copy_secret {secret_name} {target_dir} {secret_name} 65532:65532 {mode}",
+                        combined,
+                    )
+
+        for volume_mount in (
+            "signaling-migrate-runtime-secrets:/run/secrets:ro",
+            "signaling-runtime-secrets:/run/secrets:ro",
+            "relay-migrate-runtime-secrets:/run/secrets:ro",
+            "relay-runtime-secrets:/run/secrets:ro",
+            "coturn-runtime-secrets:/run/secrets:ro",
+            "authority-migrate-runtime-secrets:/run/secrets:ro",
+            "authority-runtime-secrets:/run/secrets:ro",
+        ):
+            with self.subTest(volume_mount=volume_mount):
+                self.assertIn(volume_mount, combined)
+
+    def test_authority_stack_failure_diagnostics_include_secret_initializer(self) -> None:
+        script = read(TEST_AUTHORITY_STACK)
+
+        self.assertIn(
+            "compose logs --no-color authority-secrets-init authority-migrate authority postgres",
+            script,
+        )
+        self.assertIn("compose logs --no-color authority-secrets-init authority postgres", script)
+        self.assertIn("suppressed Authority container diagnostics containing a generated secret", script)
+
     def test_authority_production_profile_requires_digest_tls_and_loopback_http(self) -> None:
         compose = read(AUTHORITY_PRODUCTION_COMPOSE)
 
@@ -133,12 +240,14 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn('"127.0.0.1:8091:8091/tcp"', compose)
         self.assertIn("read_only: true", compose)
         self.assertIn("no-new-privileges:true", compose)
+        self.assertIn("tmpfs:\n    - /tmp:size=16m,mode=0700,uid=65532,gid=65532", compose)
         self.assertNotIn("build:", compose)
 
     def test_coturn_production_profile_keeps_fail_closed_network_policy(self) -> None:
         lines = non_comment_coturn_lines()
 
         self.assertTrue(EXPECTED_COTURN_DENIES.issubset(lines))
+        self.assertNotIn("denied-peer-ip=::", lines)
         allowed_peer_lines = sorted(line for line in lines if line.startswith("allowed-peer-ip="))
         self.assertEqual([], allowed_peer_lines)
         self.assertNotIn("no-auth", lines)
@@ -156,6 +265,31 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("user-quota=12", lines)
         self.assertIn("total-quota=1000", lines)
         self.assertIn("max-bps=20000000", lines)
+
+    def test_local_secret_generators_create_operator_only_source_files(self) -> None:
+        cases = (
+            (GENERATE_RELAY_SECRETS, "VIBE_RELAY_SECRETS_DIR", 6),
+            (GENERATE_AUTHORITY_SECRETS, "VIBE_AUTHORITY_SECRETS_DIR", 8),
+        )
+        for script, env_name, expected_count in cases:
+            with self.subTest(script=script.name), tempfile.TemporaryDirectory() as directory_name:
+                secret_dir = Path(directory_name) / "secrets"
+                result = subprocess.run(
+                    ["sh", str(script)],
+                    env={**os.environ, env_name: str(secret_dir)},
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(secret_dir.stat().st_mode & 0o777, 0o700)
+                files = sorted(secret_dir.glob("*.txt"))
+                self.assertEqual(len(files), expected_count)
+                for secret_file in files:
+                    with self.subTest(secret_file=secret_file.name):
+                        self.assertEqual(secret_file.stat().st_mode & 0o777, 0o600)
+                self.assertNotIn("container-readable", result.stdout)
 
     def test_relay_production_example_remains_public_and_bounded(self) -> None:
         config = json.loads(read(RELAY_PRODUCTION_CONFIG))
