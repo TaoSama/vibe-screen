@@ -10,6 +10,7 @@ make local, synthetic, or blocked evidence into a pass.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import re
@@ -29,6 +30,7 @@ CANDIDATE_PAIR_PATTERN = re.compile(
 )
 SUPPORTED_CANDIDATE_TYPES = {"host", "srflx", "prflx", "relay"}
 SUPPORTED_CANDIDATE_PROTOCOLS = {"udp", "tcp", "tls"}
+LIVE_PRODUCTION_EVIDENCE_KIND = "live_production"
 DETERMINISTIC_IMPAIRMENT_TOOL_MARKERS = (
     "network_profile",
     "deterministic",
@@ -54,6 +56,12 @@ class GateRule:
     description: str
     required_fields: tuple[str, ...]
     validate: Callable[[Mapping[str, Any], str], list[str]]
+
+
+@dataclass(frozen=True)
+class EvidenceChecksumIndex:
+    root: Path
+    checksums: Mapping[str, str]
 
 
 COMMON_GATE_REQUIRED_FIELDS = (
@@ -95,6 +103,29 @@ REQUIRED_FRESH_SESSION_FIELDS = (
     "recovery_started_at_monotonic_ms",
     "recovery_completed_at_monotonic_ms",
 )
+REVOCATION_SUMMARY_GATE_FIELDS = (
+    "status",
+    "evidence_kind",
+    "chain_id",
+    "tombstone_id",
+    "allocation_id",
+    "device_revoked",
+    "session_revoked",
+    "authority_tombstone_observed",
+    "signaling_rejection_observed",
+    "future_turn_credential_rejected",
+    "same_allocation_turn_credential_rejected",
+    "stale_credential_reuse_rejected",
+    "post_revocation_packet_count_zero",
+    "revocation_chain_consistent",
+)
+REVOCATION_SUMMARY_GATE_ALIASES = {
+    "active_session_disconnected": "signaling_rejection_observed",
+    "direct_reconnect_rejected": "future_turn_credential_rejected",
+    "relay_reconnect_rejected": "future_turn_credential_rejected",
+    "turn_allocation_disconnected": "active_allocation_disconnected",
+    "post_revocation_traffic_rejected": "post_revocation_traffic_denied",
+}
 
 
 def _as_mapping(value: Any, path: str, errors: list[str]) -> Mapping[str, Any]:
@@ -163,6 +194,17 @@ def _require_integer_at_least(value: Any, path: str, minimum: int, errors: list[
 def _require_not_local_only(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
     for field in COMMON_GATE_REQUIRED_FIELDS:
         _require_bool(gate.get(field, False), f"{path}.{field}", False, errors)
+
+
+def revocation_summary_to_manifest_gate(summary: Mapping[str, Any]) -> dict[str, Any]:
+    gate = {field: summary.get(field) for field in REVOCATION_SUMMARY_GATE_FIELDS}
+    gate.update(
+        {
+            gate_field: summary.get(summary_field)
+            for gate_field, summary_field in REVOCATION_SUMMARY_GATE_ALIASES.items()
+        }
+    )
+    return gate
 
 
 def _is_public_hostname_or_ip(value: str) -> bool:
@@ -359,8 +401,27 @@ def _validate_soak(gate: Mapping[str, Any], path: str) -> list[str]:
 def _validate_revocation(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
-    for field in ("active_session_disconnected", "direct_reconnect_rejected", "relay_reconnect_rejected", "turn_allocation_disconnected"):
+    for field in (
+        "device_revoked",
+        "session_revoked",
+        "authority_tombstone_observed",
+        "signaling_rejection_observed",
+        "future_turn_credential_rejected",
+        "same_allocation_turn_credential_rejected",
+        "stale_credential_reuse_rejected",
+        "active_session_disconnected",
+        "direct_reconnect_rejected",
+        "relay_reconnect_rejected",
+        "turn_allocation_disconnected",
+        "post_revocation_traffic_rejected",
+        "post_revocation_packet_count_zero",
+    ):
         _require_bool(gate.get(field), f"{path}.{field}", True, errors)
+    if gate.get("evidence_kind") != LIVE_PRODUCTION_EVIDENCE_KIND:
+        errors.append(f"{path}.evidence_kind: expected {LIVE_PRODUCTION_EVIDENCE_KIND}")
+    _require_bool(gate.get("revocation_chain_consistent"), f"{path}.revocation_chain_consistent", True, errors)
+    for field in ("chain_id", "tombstone_id", "allocation_id"):
+        _require_nonempty_string(gate.get(field), f"{path}.{field}", errors)
     return errors
 
 
@@ -486,10 +547,24 @@ GATE_RULES: tuple[GateRule, ...] = (
         "Revocation propagates through signaling and TURN and terminates active use.",
         COMMON_GATE_REQUIRED_FIELDS
         + (
+            "evidence_kind",
+            "chain_id",
+            "tombstone_id",
+            "allocation_id",
+            "device_revoked",
+            "session_revoked",
+            "authority_tombstone_observed",
+            "signaling_rejection_observed",
+            "future_turn_credential_rejected",
+            "same_allocation_turn_credential_rejected",
+            "stale_credential_reuse_rejected",
             "active_session_disconnected",
             "direct_reconnect_rejected",
             "relay_reconnect_rejected",
             "turn_allocation_disconnected",
+            "post_revocation_traffic_rejected",
+            "post_revocation_packet_count_zero",
+            "revocation_chain_consistent",
         ),
         _validate_revocation,
     ),
@@ -560,44 +635,120 @@ def gate_matrix() -> list[dict[str, object]]:
     ]
 
 
+def _normalize_relative_evidence_path(value: str) -> str | None:
+    candidate = Path(value)
+    if candidate.is_absolute() or ".." in candidate.parts or candidate == Path(""):
+        return None
+    return candidate.as_posix()
+
+
+def _load_evidence_checksum_index(
+    evidence_root: Path | None, errors: list[str]
+) -> EvidenceChecksumIndex | None:
+    if evidence_root is None:
+        return None
+    try:
+        root = evidence_root.resolve()
+    except (OSError, RuntimeError):
+        errors.append("evidence_root: evidence root could not be resolved")
+        return None
+
+    checksum_path = root / "SHA256SUMS"
+    checksums: dict[str, str] = {}
+    if not checksum_path.is_file():
+        errors.append("SHA256SUMS: missing under evidence root")
+        return EvidenceChecksumIndex(root=root, checksums=checksums)
+    try:
+        checksum_path.resolve().relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        errors.append("SHA256SUMS: expected file under evidence root")
+        return EvidenceChecksumIndex(root=root, checksums=checksums)
+
+    try:
+        lines = checksum_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        errors.append(f"SHA256SUMS: cannot read checksum manifest: {error}")
+        return EvidenceChecksumIndex(root=root, checksums=checksums)
+
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if "  " not in line:
+            errors.append(f"SHA256SUMS line {line_number}: malformed checksum line")
+            continue
+        digest, relative_path = line.split("  ", maxsplit=1)
+        if (
+            not digest
+            or not relative_path
+            or "  " in relative_path
+            or digest.strip() != digest
+            or relative_path.strip() != relative_path
+            or any(character.isspace() for character in relative_path)
+        ):
+            errors.append(f"SHA256SUMS line {line_number}: malformed checksum line")
+            continue
+        if not HEX_SHA256.fullmatch(digest):
+            errors.append(f"SHA256SUMS line {line_number}: expected lowercase SHA-256")
+            continue
+        normalized = _normalize_relative_evidence_path(relative_path)
+        if normalized is None:
+            errors.append(f"SHA256SUMS line {line_number}: expected relative path under evidence root")
+            continue
+        try:
+            (root / normalized).resolve().relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            errors.append(f"SHA256SUMS line {line_number}: expected relative path under evidence root")
+            continue
+        if normalized in checksums:
+            errors.append(f"SHA256SUMS line {line_number}: duplicate checksum entry for {normalized}")
+            continue
+        checksums[normalized] = digest
+    return EvidenceChecksumIndex(root=root, checksums=checksums)
+
+
 def _validate_evidence_files(
     gate: Mapping[str, Any],
     path: str,
     errors: list[str],
-    evidence_root: Path | None,
+    checksum_index: EvidenceChecksumIndex | None,
 ) -> None:
     files = _as_list(gate.get("evidence_files"), f"{path}.evidence_files", errors)
     if not files:
         errors.append(f"{path}.evidence_files: expected at least one evidence file")
         return
-    root: Path | None = None
-    if evidence_root is not None:
-        try:
-            root = evidence_root.resolve()
-        except (OSError, RuntimeError):
-            errors.append(f"{path}.evidence_files: evidence root could not be resolved")
-            return
     for index, item in enumerate(files):
         file_path = _require_nonempty_string(item, f"{path}.evidence_files[{index}]", errors)
         if not file_path:
             continue
-        candidate = Path(file_path)
-        if candidate.is_absolute() or ".." in candidate.parts:
-            errors.append(f"{path}.evidence_files[{index}]: expected repository-relative file path")
+        normalized = _normalize_relative_evidence_path(file_path)
+        if normalized is None:
+            errors.append(f"{path}.evidence_files[{index}]: expected relative file path under evidence root")
             continue
-        if root is not None:
+        if checksum_index is not None:
             try:
-                resolved_candidate = (root / candidate).resolve()
+                resolved_candidate = (checksum_index.root / normalized).resolve()
             except (OSError, RuntimeError):
                 errors.append(f"{path}.evidence_files[{index}]: expected file under evidence root")
                 continue
             try:
-                resolved_candidate.relative_to(root)
+                resolved_candidate.relative_to(checksum_index.root)
             except ValueError:
                 errors.append(f"{path}.evidence_files[{index}]: expected file under evidence root")
                 continue
             if not resolved_candidate.is_file():
                 errors.append(f"{path}.evidence_files[{index}]: file does not exist under evidence root")
+                continue
+            expected_digest = checksum_index.checksums.get(normalized)
+            if expected_digest is None:
+                errors.append(f"{path}.evidence_files[{index}]: missing checksum entry in SHA256SUMS")
+                continue
+            try:
+                actual_digest = hashlib.sha256(resolved_candidate.read_bytes()).hexdigest()
+            except OSError as error:
+                errors.append(f"{path}.evidence_files[{index}]: cannot read evidence file: {error}")
+                continue
+            if actual_digest != expected_digest:
+                errors.append(f"{path}.evidence_files[{index}]: SHA256SUMS hash mismatch")
 
 
 def _validate_device_identity(document: Mapping[str, Any], errors: list[str]) -> None:
@@ -668,6 +819,7 @@ def validate_manifest(document: Mapping[str, Any], *, evidence_root: Path | None
     _validate_claims(document, errors)
 
     gates = _as_mapping(document.get("gates"), "gates", errors)
+    checksum_index = _load_evidence_checksum_index(evidence_root, errors)
     allowed_gates = {rule.name for rule in GATE_RULES}
     for gate_name in gates:
         if gate_name not in allowed_gates:
@@ -682,7 +834,7 @@ def validate_manifest(document: Mapping[str, Any], *, evidence_root: Path | None
         for field in rule.required_fields:
             if field not in gate:
                 errors.append(f"{gate_path}.{field}: missing required field")
-        _validate_evidence_files(gate, gate_path, errors, evidence_root)
+        _validate_evidence_files(gate, gate_path, errors, checksum_index)
         errors.extend(rule.validate(gate, gate_path))
 
     return errors

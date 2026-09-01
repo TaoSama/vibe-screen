@@ -91,6 +91,13 @@ class Phase3InternetSoakTests(unittest.TestCase):
                 "status": "pass",
                 "missing": [],
                 "failures": [],
+                "evidence_kind": "live_production",
+                "public_internet_path": True,
+                "remote_turn_deployment": True,
+                "synthetic_fixture": False,
+                "revocation_chain_consistent": True,
+                "device_revoked": True,
+                "session_revoked": True,
                 "active_allocation_disconnected": True,
                 "stale_credential_reuse_rejected": True,
                 "post_revocation_traffic_denied": True,
@@ -267,6 +274,67 @@ class Phase3InternetSoakTests(unittest.TestCase):
 
         self.assertEqual(gate["verdict"], "fail")
         self.assertTrue(gate["criteria"]["network_handoff"]["plaintext_fallback_observed"])
+
+    def test_revocation_summary_must_be_live_production_chain(self) -> None:
+        inputs = self.complete_inputs()
+        _write(
+            inputs["revocation_path"],
+            {
+                "status": "pass",
+                "missing": [],
+                "failures": [],
+                "evidence_kind": "offline_fixture",
+                "public_internet_path": True,
+                "remote_turn_deployment": True,
+                "synthetic_fixture": True,
+                "revocation_chain_consistent": False,
+                "device_revoked": True,
+                "session_revoked": True,
+                "active_allocation_disconnected": True,
+                "stale_credential_reuse_rejected": True,
+                "post_revocation_traffic_denied": True,
+                "relayed_packets_after_revocation": 0,
+            },
+        )
+
+        gate = derive_gate(**inputs)
+
+        self.assertEqual(gate["verdict"], "blocked")
+        revocation = gate["criteria"]["revocation"]
+        self.assertFalse(revocation["passed"])
+        self.assertFalse(revocation["live_production"])
+        self.assertTrue(revocation["synthetic_fixture"])
+        self.assertFalse(revocation["revocation_chain_consistent"])
+
+    def test_revocation_summary_must_explicitly_revoke_device_and_session(self) -> None:
+        inputs = self.complete_inputs()
+        _write(
+            inputs["revocation_path"],
+            {
+                "status": "pass",
+                "missing": [],
+                "failures": [],
+                "evidence_kind": "live_production",
+                "public_internet_path": True,
+                "remote_turn_deployment": True,
+                "synthetic_fixture": False,
+                "revocation_chain_consistent": True,
+                "device_revoked": False,
+                "session_revoked": False,
+                "active_allocation_disconnected": True,
+                "stale_credential_reuse_rejected": True,
+                "post_revocation_traffic_denied": True,
+                "relayed_packets_after_revocation": 0,
+            },
+        )
+
+        gate = derive_gate(**inputs)
+
+        self.assertEqual(gate["verdict"], "blocked")
+        revocation = gate["criteria"]["revocation"]
+        self.assertFalse(revocation["passed"])
+        self.assertFalse(revocation["device_revoked"])
+        self.assertFalse(revocation["session_revoked"])
 
     def test_secret_like_report_is_failed(self) -> None:
         inputs = self.complete_inputs()

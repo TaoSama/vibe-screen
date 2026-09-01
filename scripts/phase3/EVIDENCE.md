@@ -42,12 +42,24 @@ evidence exists but live allocation or data-plane proof is missing, `1` when the
 report proves unsafe post-revocation behavior, and `2` for malformed or unsafe
 evidence. The input schema is
 `dev.vibescreen.phase3-revocation-propagation/v1`; reports must prove Authority
-audit visibility, signaling long-poll wakeup rejection, future relay credential
-rejection, post-revocation same-allocation credential retry rejection, stale TURN credential
-rejection, active allocation disconnect, and zero post-revocation relayed
-packets. Reports must not contain TURN passwords, bearer tokens, private keys,
-or other raw secret material. A blocked summary is evidence of the remaining
-deployment gap, not a release pass.
+audit visibility, Authority tombstone persistence, signaling long-poll wakeup
+rejection, future relay credential rejection, post-revocation same-allocation
+credential retry rejection, stale TURN credential rejection, active allocation
+disconnect, and zero post-revocation relayed packets. A passing report must also
+classify its source as `live_production`, record public Internet plus deployed
+remote TURN evidence, mark `synthetic_fixture=false`, and bind the Authority
+tombstone, signaling rejection, TURN credential rejection, coturn disconnect,
+and post-disconnect traffic denial to the same `chain_id`, `tombstone_id`, and
+`allocation_id`. Local control-plane or offline-fixture reports are accepted only
+as blocked readiness evidence. Reports must not contain TURN passwords, bearer
+tokens, private keys, or other raw secret material. A blocked summary is evidence
+of the remaining deployment gap, not a release pass.
+
+`release_gate_manifest.py --evidence-root <dir>` validates every referenced
+`evidence_files` entry against `<dir>/SHA256SUMS`. Each entry must stay relative
+to that evidence root, have exactly one lowercase SHA-256 line, and match the
+current file bytes. Missing manifests, duplicate entries, malformed hashes, path
+escapes, and hash mismatches fail closed.
 
 The `phase3-coturn-reconciliation-product-slice` target compiles and tests the
 local operator slice for the coturn exporter/reconciliation/disconnect boundary.

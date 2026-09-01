@@ -6,7 +6,11 @@
     "topology": "blocked",
     "authority_url_kind": "local-service-tests",
     "coturn_source_id": "turn-node-1",
-    "deployment_id": "no-production-coturn-disconnect-or-data-plane-proof"
+    "deployment_id": "no-production-coturn-disconnect-or-data-plane-proof",
+    "evidence_kind": "local_control_plane",
+    "public_internet_path": false,
+    "remote_turn_deployment": false,
+    "synthetic_fixture": false
   },
   "authority_revocation": {
     "device_revoked": true,
