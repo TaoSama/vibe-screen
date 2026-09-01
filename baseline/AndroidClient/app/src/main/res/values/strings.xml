@@ -270,9 +270,9 @@
     <string name="connection_guidance_usb_route_unavailable_prefix">The Android-to-Mac route is unavailable.</string>
     <string name="connection_guidance_usb_timeout_prefix">Confirm Vibe Screen is listening on port %1$d on your Mac.</string>
     <string name="connection_guidance_usb_unknown_prefix">Check Vibe Screen on your Mac and retry.</string>
-    <string name="connection_guidance_usb_recovery_usb">%1$s Keep the USB data cable connected, authorize USB debugging, then run adb reverse tcp:%2$d tcp:%2$d on the Mac.</string>
-    <string name="connection_guidance_usb_recovery_wireless_adb">%1$s Keep Wireless debugging enabled, run adb connect &lt;device-ip&gt;:&lt;wireless-adb-port&gt; on the Mac, authorize the connection, then run adb reverse tcp:%2$d tcp:%2$d.</string>
-    <string name="connection_guidance_usb_recovery_unavailable">%1$s Enable Developer options and connect either a USB data cable with USB debugging or Wireless debugging. For Wireless debugging, run adb connect &lt;device-ip&gt;:&lt;wireless-adb-port&gt;; then run adb reverse tcp:%2$d tcp:%2$d.</string>
+    <string name="connection_guidance_usb_recovery_usb">%1$s Keep the USB cable connected, authorize USB debugging, then run adb reverse tcp:%2$d tcp:%2$d.</string>
+    <string name="connection_guidance_usb_recovery_wireless_adb">%1$s Keep Wireless debugging on, run adb connect &lt;device-ip&gt;:&lt;port&gt;, then adb reverse tcp:%2$d tcp:%2$d.</string>
+    <string name="connection_guidance_usb_recovery_unavailable">%1$s Enable USB or Wireless debugging, connect the device, then run adb reverse tcp:%2$d tcp:%2$d.</string>
     <string name="connection_guidance_lan_host_unavailable_message">Open Vibe Screen on your Mac in LAN mode. Confirm both devices use the same trusted Wi-Fi, the saved host address and port %1$d are current, and the macOS firewall allows Vibe Screen, then reconnect or scan a fresh QR code.</string>
     <string name="connection_guidance_lan_network_unavailable_message">Reconnect both devices to the same trusted Wi-Fi and disable VPN or guest-network isolation. Verify the saved Mac address and port %1$d, then reconnect.</string>
     <string name="connection_guidance_lan_timeout_message">Confirm Vibe Screen is listening in LAN mode on port %1$d, both devices remain on the same trusted Wi-Fi, and the macOS firewall allows the connection, then retry.</string>

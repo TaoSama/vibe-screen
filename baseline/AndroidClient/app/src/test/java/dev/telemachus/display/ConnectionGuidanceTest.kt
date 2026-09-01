@@ -1,10 +1,12 @@
 package dev.telemachus.display
 
+import java.io.File
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -245,6 +247,22 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun usbRecoveryCopyKeepsExecutableAdbReverseCommand() {
+        val resources =
+            listOf(
+                "connection_guidance_usb_recovery_usb",
+                "connection_guidance_usb_recovery_wireless_adb",
+                "connection_guidance_usb_recovery_unavailable",
+            )
+        val strings = stringsXml()
+
+        resources.forEach { name ->
+            val text = strings.stringResource(name)
+            assertTrue(text, text.contains("adb reverse tcp:%2\$d tcp:%2\$d"))
+        }
+    }
+
+    @Test
     fun nestedConnectNoRouteAndUnknownHostCausesAreClassified() {
         val cases =
             listOf(
@@ -413,7 +431,35 @@ class ConnectionGuidanceTest {
         vararg args: Any,
     ) = ConnectionGuidanceText(resourceId, args.toList())
 
+    private fun stringsXml(): File {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            STRINGS_XML_PATHS
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("strings.xml not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun File.stringResource(name: String): String {
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(this)
+        val strings = document.getElementsByTagName("string")
+        for (index in 0 until strings.length) {
+            val node = strings.item(index)
+            if (node.attributes?.getNamedItem("name")?.nodeValue == name) return node.textContent
+        }
+        error("String resource not found: $name")
+    }
+
     private companion object {
+        val STRINGS_XML_PATHS =
+            listOf(
+                "app/src/main/res/values/strings.xml",
+                "baseline/AndroidClient/app/src/main/res/values/strings.xml",
+            )
+
         val USB_ONLY_RESOURCES =
             setOf(
                 R.string.connection_guidance_usb_open_mac_prefix,
