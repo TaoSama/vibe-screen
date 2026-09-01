@@ -48,7 +48,52 @@ class DecoderUseGateTest {
             assertSame(decoder, clearFuture.get(1, TimeUnit.SECONDS))
             assertNull(gate.current())
         } finally {
+            releaseUse.countDown()
             executor.shutdownNow()
+            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun clearCallbackRunsWhileHoldingGateLockSoInstallCannotInterleave() {
+        val decoder = Any()
+        val replacement = Any()
+        val gate = DecoderUseGate<Any>()
+        val callbackEntered = CountDownLatch(1)
+        val releaseCallback = CountDownLatch(1)
+        val installEntered = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        assertTrue(gate.installIf(decoder) { true })
+        try {
+            var installThread: Thread? = null
+            val clearFuture =
+                executor.submit<Any?> {
+                    gate.clear {
+                        callbackEntered.countDown()
+                        assertTrue(releaseCallback.await(5, TimeUnit.SECONDS))
+                    }
+                }
+            assertTrue(callbackEntered.await(1, TimeUnit.SECONDS))
+
+            val installFuture =
+                executor.submit<Boolean> {
+                    installThread = Thread.currentThread()
+                    installEntered.countDown()
+                    gate.installIf(replacement) { true }
+                }
+            assertTrue(installEntered.await(1, TimeUnit.SECONDS))
+            waitUntilBlocked(requireNotNull(installThread))
+            assertFalse(installFuture.isDone)
+
+            releaseCallback.countDown()
+            assertSame(decoder, clearFuture.get(1, TimeUnit.SECONDS))
+            assertTrue(installFuture.get(1, TimeUnit.SECONDS))
+            assertSame(replacement, gate.current())
+        } finally {
+            releaseCallback.countDown()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
         }
     }
 
@@ -89,5 +134,57 @@ class DecoderUseGateTest {
         assertSame(second, gate.current())
         assertTrue(gate.replaceIfCurrent(first, second) { true })
         assertSame(second, gate.current())
+    }
+
+    @Test
+    fun compareAndSetSuccessCallbackRunsWhileHoldingGateLockSoInstallCannotInterleave() {
+        val decoder = Any()
+        val replacement = Any()
+        val gate = DecoderUseGate<Any>()
+        val callbackEntered = CountDownLatch(1)
+        val releaseCallback = CountDownLatch(1)
+        val installEntered = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        assertTrue(gate.installIf(decoder) { true })
+        try {
+            var installThread: Thread? = null
+            val compareFuture =
+                executor.submit<Boolean> {
+                    gate.compareAndSet(decoder, null) {
+                        callbackEntered.countDown()
+                        assertTrue(releaseCallback.await(5, TimeUnit.SECONDS))
+                    }
+                }
+            assertTrue(callbackEntered.await(1, TimeUnit.SECONDS))
+
+            val installFuture =
+                executor.submit<Boolean> {
+                    installThread = Thread.currentThread()
+                    installEntered.countDown()
+                    gate.installIf(replacement) { true }
+                }
+            assertTrue(installEntered.await(1, TimeUnit.SECONDS))
+            waitUntilBlocked(requireNotNull(installThread))
+            assertFalse(installFuture.isDone)
+
+            releaseCallback.countDown()
+            assertTrue(compareFuture.get(1, TimeUnit.SECONDS))
+            assertTrue(installFuture.get(1, TimeUnit.SECONDS))
+            assertSame(replacement, gate.current())
+        } finally {
+            releaseCallback.countDown()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(1, TimeUnit.SECONDS))
+        }
+    }
+
+    private fun waitUntilBlocked(thread: Thread) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)
+        while (System.nanoTime() < deadline) {
+            if (thread.state == Thread.State.BLOCKED) return
+            Thread.sleep(10)
+        }
+        throw AssertionError("Expected competing install to wait for the decoder gate")
     }
 }
