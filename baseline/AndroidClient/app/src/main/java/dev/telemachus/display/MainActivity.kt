@@ -1332,7 +1332,7 @@ class MainActivity : AppCompatActivity() {
     ): Boolean {
         val session = targetSession ?: return false
         val orderedDispatch = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)
-        val events = orderedDispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
+        val events = orderedDispatch.samples.map { sample -> ProductControllerEvent(sample) }
         val delivery =
             when (orderedDispatch.delivery) {
                 ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
@@ -5061,6 +5061,7 @@ class MainActivity : AppCompatActivity() {
                             internetProfileStore.isRevoked(pairingIdentifier)
                     },
                     internetRevocationCoordinator,
+                    nextControllerInputId = internetInputIds::next,
                 )
             sessionReference.set(created)
             internetNetworkMonitor = monitor

@@ -301,6 +301,7 @@ class StreamClient(
             submitOutbound = ::submitOutbound,
             controllerConnectionAcks = controllerConnectionAcks,
             onControllerDeferredOverflow = ::failControllerDeferredOverflow,
+            onControllerAckTimeout = ::failControllerAckTimeout,
         )
     private val terminationDispatcher =
         OnceAsyncDispatcher(
@@ -1002,6 +1003,7 @@ class StreamClient(
             try {
                 while (protocolSessionOwner.isConnected) {
                     if (wireMode == WireMode.V1) {
+                        inputDispatcher.expireControllerAckTimeouts()
                         receiveV1Frame(input)
                         continue
                     }
@@ -1684,6 +1686,16 @@ class StreamClient(
         )
     }
 
+    private fun failControllerAckTimeout(expired: List<ControllerConnection>) {
+        val expiredConnections = expired.joinToString(",") { "${it.controllerId}:${it.controllerEpoch}" }
+        requestConnectionEnd(
+            SessionFailure.protocol(
+                SessionFailureKind.INVALID_PEER_MESSAGE,
+                "Controller input acknowledgement timed out: $expiredConnections",
+            ),
+        )
+    }
+
 
     private fun writeOutboundCommand(command: StreamOutboundCommand) {
         val out = transportOwner.activeConnection()?.output ?: throw IOException("session output is closed")
@@ -2058,11 +2070,8 @@ class StreamClient(
             rejectionReason: String,
         ) {
             val acknowledgement = controllerConnectionAcks.acknowledge(inputId)
-            if (accepted && acknowledgement?.deferredDisconnectInputId != null) {
-                controllerConnectionAcks.markDisconnectReady(
-                    acknowledgement.connection,
-                    acknowledgement.deferredDisconnectInputId,
-                )
+            if (accepted && acknowledgement?.hasDeferredDisconnect == true) {
+                controllerConnectionAcks.markDisconnectReady(acknowledgement.connection)
             }
             acknowledgement?.connection?.let { connection ->
                 onControllerInputAck?.invoke(connection, accepted, rejectionReason)

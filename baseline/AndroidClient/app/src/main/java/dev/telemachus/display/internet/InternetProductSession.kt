@@ -4,6 +4,7 @@ import dev.telemachus.display.ControllerConnectionAckTracker
 import dev.telemachus.display.ControllerDispatchOrdering
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.SessionInputIdSequence
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.AdvancedChannelAdmission
@@ -125,11 +126,13 @@ data class ProductVideoFrame(
 )
 
 internal data class ProductControllerEvent(
-    val inputId: Long,
+    val inputId: Long?,
     val sample: ControllerStateSample,
 ) {
+    constructor(sample: ControllerStateSample) : this(null, sample)
+
     init {
-        require(inputId > 0) { "Controller input identifier must be positive" }
+        require(inputId == null || inputId > 0) { "Controller input identifier must be positive" }
     }
 }
 
@@ -285,6 +288,7 @@ class InternetProductSession internal constructor(
     private val callbacks: InternetProductSessionCallbacks,
     private val revocationStore: InternetProductRevocationStore,
     private val revocationCoordinator: InternetProductRevocationCoordinator,
+    private val nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
     private val testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
 ) : AutoCloseable {
     private val lock = Any()
@@ -312,6 +316,7 @@ class InternetProductSession internal constructor(
     private val controllerSendGate = ReentrantLock(true)
     private val controllerSendQueue = InternetControllerSendQueue<ProductControllerEvent>()
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
+    private val minimumNextControllerInputId = AtomicLong(1)
     private val advancedChannelGate =
         AdvancedChannelSecurityGate(
             initialOwner = advancedChannelOwner(transportOwner),
@@ -380,6 +385,7 @@ class InternetProductSession internal constructor(
         transport.tick()
         expirePendingVideoConfiguration()
         expirePendingMediaFrame()
+        expirePendingControllerConnections()
         heartbeatTick()
     }
 
@@ -477,9 +483,7 @@ class InternetProductSession internal constructor(
         val samples = events.map { it.sample }
         val orderedSamples = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(samples)
         if (orderedSamples === samples) return events
-        return events
-            .map { it.inputId }
-            .zip(orderedSamples) { inputId, sample -> ProductControllerEvent(inputId, sample) }
+        return events.map { it.inputId }.zip(orderedSamples) { inputId, sample -> ProductControllerEvent(inputId, sample) }
     }
 
     fun requestKeyframe(reason: String): Boolean {
@@ -536,7 +540,6 @@ class InternetProductSession internal constructor(
                 try {
                     sendControllerEvent(
                         ProductControllerEvent(
-                            pendingDisconnect.inputId,
                             ControllerStateSample(
                                 controllerId = pendingDisconnect.connection.controllerId,
                                 controllerEpoch = pendingDisconnect.connection.controllerEpoch,
@@ -551,44 +554,54 @@ class InternetProductSession internal constructor(
             if (!sent) return false
         }
         val result =
-            controllerSendQueue.drain { event ->
-                if (event.sample.kind == ControllerEventKind.CONNECTED &&
-                    controllerConnectionAcks.hasDeferredDisconnectBefore(event.sample.controllerId, event.sample.controllerEpoch)
-                ) {
-                    return@drain false
-                }
-                if (controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)) {
-                    when (event.sample.kind) {
-                        ControllerEventKind.CONNECTED -> Unit
-                        ControllerEventKind.DISCONNECTED -> {
-                            controllerConnectionAcks.deferDisconnected(
-                                event.inputId,
-                                event.sample.controllerId,
-                                event.sample.controllerEpoch,
-                            )
-                            return@drain true
-                        }
-                        ControllerEventKind.STATE -> return@drain true
-                    }
-                }
-                if (controllerConnectionAcks.hasDeferredDisconnects()) {
-                    return@drain false
-                }
-                sendControllerEvent(event)
-            }
+            controllerSendQueue.drainSelectable(
+                canSend = ::canSendControllerEvent,
+                sharesOrderingKey = ::sharesControllerOrderingKey,
+                send = ::sendAdmittedControllerEvent,
+            )
         result.failure?.let { fail(it) }
         return !result.blocked && result.failure == null
     }
 
+    private fun canSendControllerEvent(event: ProductControllerEvent): Boolean =
+        !controllerConnectionAcks.hasDeferredDisconnectBefore(event.sample.controllerId, event.sample.controllerEpoch)
+
+    private fun sharesControllerOrderingKey(
+        first: ProductControllerEvent,
+        second: ProductControllerEvent,
+    ): Boolean = first.sample.controllerId == second.sample.controllerId
+
+    private fun sendAdmittedControllerEvent(event: ProductControllerEvent): Boolean {
+        if (controllerConnectionAcks.hasDeferredDisconnectFor(event.sample.controllerId, event.sample.controllerEpoch)) {
+            return true
+        }
+        if (controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)) {
+            when (event.sample.kind) {
+                ControllerEventKind.CONNECTED -> Unit
+                ControllerEventKind.DISCONNECTED -> {
+                    controllerConnectionAcks.deferDisconnected(
+                        event.sample.controllerId,
+                        event.sample.controllerEpoch,
+                    )
+                    return true
+                }
+                ControllerEventKind.STATE -> return true
+            }
+        }
+        return sendControllerEvent(event)
+    }
+
     private fun sendControllerEvent(event: ProductControllerEvent): Boolean {
         val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
+        val inputId = event.inputId ?: allocateControllerInputId()
+        event.inputId?.let(::reserveControllerInputId)
         val encoded =
             codec.encodeController(
                 nextMessageId(),
                 lease.protocolSessionId,
                 lease.authoritativeSessionEpoch,
                 streamId,
-                event.inputId,
+                inputId,
                 event.sample,
             )
         val sent = sendOptionalApplicationControl(encoded)
@@ -596,9 +609,10 @@ class InternetProductSession internal constructor(
             when (event.sample.kind) {
                 ControllerEventKind.CONNECTED -> check(
                     controllerConnectionAcks.recordConnected(
-                        event.inputId,
+                        inputId,
                         event.sample.controllerId,
                         event.sample.controllerEpoch,
+                        clock.nowMillis(),
                     ),
                 ) { "duplicate controller CONNECTED input id" }
                 ControllerEventKind.DISCONNECTED -> {
@@ -608,6 +622,35 @@ class InternetProductSession internal constructor(
             }
         }
         return sent
+    }
+
+    private fun allocateControllerInputId(): Long {
+        while (true) {
+            val candidate = nextControllerInputId()
+            val floor = minimumNextControllerInputId.get()
+            val inputId = maxOf(candidate, floor)
+            check(inputId > 0 && inputId < Long.MAX_VALUE) { "Controller input identifier exhausted" }
+            if (minimumNextControllerInputId.compareAndSet(floor, inputId + 1)) return inputId
+        }
+    }
+
+    private fun reserveControllerInputId(inputId: Long) {
+        check(inputId < Long.MAX_VALUE) { "Controller input identifier exhausted" }
+        while (true) {
+            val floor = minimumNextControllerInputId.get()
+            if (floor > inputId) return
+            if (minimumNextControllerInputId.compareAndSet(floor, inputId + 1)) return
+        }
+    }
+
+    private fun expirePendingControllerConnections() {
+        controllerSendGate.withLock {
+            val expired = controllerConnectionAcks.expirePendingConnections(clock.nowMillis())
+            if (expired.isEmpty()) return
+            controllerSendQueue.clear()
+            controllerConnectionAcks.reset()
+            fail(IllegalStateException("Controller input acknowledgement timed out"))
+        }
     }
 
     private fun sendOptionalApplicationControl(payload: ByteArray): Boolean =
@@ -1507,11 +1550,8 @@ class InternetProductSession internal constructor(
                     val acknowledgement =
                         controllerConnectionAcks.acknowledge(inputId).also { acknowledged ->
                             if (acknowledged != null) shouldDrainControllerQueue = true
-                            if (accepted && acknowledged?.deferredDisconnectInputId != null) {
-                                controllerConnectionAcks.markDisconnectReady(
-                                    acknowledged.connection,
-                                    acknowledged.deferredDisconnectInputId,
-                                )
+                            if (accepted && acknowledged?.hasDeferredDisconnect == true) {
+                                controllerConnectionAcks.markDisconnectReady(acknowledged.connection)
                                 shouldDrainControllerQueue = true
                             }
                         }
@@ -1654,6 +1694,7 @@ class InternetProductSession internal constructor(
             callbacks: InternetProductSessionCallbacks,
             revocationStore: InternetProductRevocationStore,
             revocationCoordinator: InternetProductRevocationCoordinator,
+            nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
         ): InternetProductSession {
             require(localDeviceId == storedSessionFactory.localDeviceId) {
                 "Stored security identity does not match the product session identity"
@@ -1696,6 +1737,7 @@ class InternetProductSession internal constructor(
                     callbacks,
                     revocationStore,
                     revocationCoordinator,
+                    nextControllerInputId,
                 )
             } catch (failure: Throwable) {
                 stored.close()

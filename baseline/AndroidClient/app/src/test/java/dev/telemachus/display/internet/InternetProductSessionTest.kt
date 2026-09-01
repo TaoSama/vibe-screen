@@ -2,6 +2,7 @@ package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerAxes
+import dev.telemachus.display.CONTROLLER_CONNECTION_ACK_TIMEOUT_MS
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
@@ -34,6 +35,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.security.SecureRandom
 
@@ -478,7 +480,8 @@ class InternetProductSessionTest {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
-        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        val nextControllerInputId = monotonicControllerInputIds(24)
+        val session = session(peer, monitor, callbacks, codec = controllerCodec, nextControllerInputId = nextControllerInputId)
         activateWithVideo(session, peer, monitor, controller = true)
 
         assertTrue(
@@ -490,8 +493,8 @@ class InternetProductSessionTest {
         assertTrue(
             session.sendController(
                 listOf(
-                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.STATE)),
-                    ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.DISCONNECTED)),
+                    ProductControllerEvent(controllerSample(kind = ControllerEventKind.STATE)),
+                    ProductControllerEvent(controllerSample(kind = ControllerEventKind.DISCONNECTED)),
                 ),
                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
             ),
@@ -514,7 +517,7 @@ class InternetProductSessionTest {
         assertEquals(2, afterAck.size)
         assertEquals(21L, afterAck[0].inputId)
         assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, afterAck[0].kind)
-        assertEquals(23L, afterAck[1].inputId)
+        assertEquals(24L, afterAck[1].inputId)
         assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, afterAck[1].kind)
         assertEquals("pad-1", afterAck[1].controllerId)
         assertEquals(3L, afterAck[1].controllerEpoch)
@@ -575,7 +578,8 @@ class InternetProductSessionTest {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
-        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        val nextControllerInputId = monotonicControllerInputIds(22)
+        val session = session(peer, monitor, callbacks, codec = controllerCodec, nextControllerInputId = nextControllerInputId)
         activateWithVideo(session, peer, monitor, controller = true)
 
         assertTrue(
@@ -587,8 +591,8 @@ class InternetProductSessionTest {
         assertTrue(
             session.sendController(
                 listOf(
-                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
-                    ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
+                    ProductControllerEvent(controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
+                    ProductControllerEvent(controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
                 ),
                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
             ),
@@ -620,7 +624,8 @@ class InternetProductSessionTest {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
-        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        val nextControllerInputId = monotonicControllerInputIds(22)
+        val session = session(peer, monitor, callbacks, codec = controllerCodec, nextControllerInputId = nextControllerInputId)
         activateWithVideo(session, peer, monitor, controller = true)
 
         assertTrue(
@@ -632,8 +637,8 @@ class InternetProductSessionTest {
         assertTrue(
             session.sendController(
                 listOf(
-                    ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
-                    ProductControllerEvent(23, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
+                    ProductControllerEvent(controllerSample(kind = ControllerEventKind.CONNECTED, controllerEpoch = 4)),
+                    ProductControllerEvent(controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerEpoch = 3)),
                 ),
                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
             ),
@@ -713,11 +718,12 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun deferredDisconnectBlocksOtherControllerUntilCleanupPreservesInputIdOrder() {
+    fun deferredDisconnectDoesNotBlockOtherControllerAndUsesActualSendOrderInputIds() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val callbacks = ProductCallbacks()
-        val session = session(peer, monitor, callbacks, codec = controllerCodec)
+        val nextControllerInputId = monotonicControllerInputIds(24)
+        val session = session(peer, monitor, callbacks, codec = controllerCodec, nextControllerInputId = nextControllerInputId)
         activateWithVideo(session, peer, monitor, controller = true)
 
         assertTrue(
@@ -728,7 +734,7 @@ class InternetProductSessionTest {
         )
         assertTrue(
             session.sendController(
-                listOf(ProductControllerEvent(22, controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerId = "pad-1"))),
+                listOf(ProductControllerEvent(controllerSample(kind = ControllerEventKind.DISCONNECTED, controllerId = "pad-1"))),
                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
             ),
         )
@@ -738,7 +744,10 @@ class InternetProductSessionTest {
                 InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
             ),
         )
-        assertEquals(1, peer.controllerEvents().size)
+        val beforeAck = peer.controllerEvents().map { it.controllerEvent }
+        assertEquals(2, beforeAck.size)
+        assertEquals(listOf(21L, 23L), beforeAck.map { it.inputId })
+        assertEquals(listOf("pad-1", "pad-2"), beforeAck.map { it.controllerId })
 
         peer.receive(
             controlEnvelope(4)
@@ -748,18 +757,72 @@ class InternetProductSessionTest {
 
         val controllers = peer.controllerEvents().map { it.controllerEvent }
         assertEquals(3, controllers.size)
-        assertEquals(listOf(21L, 22L, 23L), controllers.map { it.inputId })
+        assertEquals(listOf(21L, 23L, 24L), controllers.map { it.inputId })
         assertEquals(
             listOf(
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
-                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
             ),
             controllers.map { it.kind },
         )
-        assertEquals(listOf("pad-1", "pad-1", "pad-2"), controllers.map { it.controllerId })
+        assertEquals(listOf("pad-1", "pad-2", "pad-1"), controllers.map { it.controllerId })
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
         assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun tickExpiresPendingControllerConnectionWithoutNewInputAndLateAckIsNoOp() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val clock = ProductFakeClock(0)
+        val nextControllerInputId = monotonicControllerInputIds(22)
+        val session = session(
+            peer,
+            monitor,
+            callbacks,
+            clock = clock,
+            codec = controllerCodec,
+            nextControllerInputId = nextControllerInputId,
+        )
+        activateWithVideo(session, peer, monitor, controller = true)
+
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(21, controllerSample(kind = ControllerEventKind.CONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertTrue(
+            session.sendController(
+                listOf(ProductControllerEvent(controllerSample(kind = ControllerEventKind.DISCONNECTED))),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        assertEquals(1, peer.controllerEvents().size)
+
+        clock.now = CONTROLLER_CONNECTION_ACK_TIMEOUT_MS - 1
+        session.tick()
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+        assertEquals(0, peer.closeCalls)
+        assertEquals(1, peer.controllerEvents().size)
+
+        clock.now = CONTROLLER_CONNECTION_ACK_TIMEOUT_MS
+        session.tick()
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, peer.closeCalls)
+        assertEquals("Controller input acknowledgement timed out", callbacks.failures.single().message)
+        assertEquals(1, peer.controllerEvents().size)
+
+        peer.receive(
+            controlEnvelope(4)
+                .setInputAck(InputAck.newBuilder().setInputId(21).setAccepted(true))
+                .build(),
+        )
+        assertTrue(callbacks.inputAcks.isEmpty())
+        assertEquals(1, peer.controllerEvents().size)
     }
 
     @Test
@@ -2500,6 +2563,7 @@ class InternetProductSessionTest {
         revocationCoordinator: InternetProductRevocationCoordinator = InternetProductRevocationCoordinator(),
         revocationStore: InternetProductRevocationStore = ProductRevocationStore(),
         codec: ProtocolV1ProductCodec = this.codec,
+        nextControllerInputId: () -> Long = { error("Unexpected controller input id allocation") },
     ) = InternetProductSession(
         lease = lease,
         configuration =
@@ -2515,8 +2579,14 @@ class InternetProductSessionTest {
         callbacks = callbacks,
         revocationStore = revocationStore,
         revocationCoordinator = revocationCoordinator,
+        nextControllerInputId = nextControllerInputId,
         testHooks = testHooks,
     )
+
+    private fun monotonicControllerInputIds(first: Long): () -> Long {
+        val next = AtomicLong(first)
+        return { next.getAndIncrement() }
+    }
 
     private fun activateWithVideo(
         session: InternetProductSession,
