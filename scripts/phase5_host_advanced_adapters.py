@@ -362,6 +362,7 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
                 "hostCapabilities.remove(.multiClient)",
                 "displayAllocator.register(sessionKey",
                 "displayAllocator.allocateStream(for:",
+                "displayAllocator.rebind(streamID:",
                 "displayAllocator.binding(streamID:",
                 "displayAllocator.disconnect(sessionKey)",
             ],

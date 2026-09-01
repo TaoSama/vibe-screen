@@ -285,8 +285,6 @@ final class ProtocolV1SessionCoordinator {
     /// managed remote status with clipboard_allowed=false denies clipboard
     /// transfer for the active session and clears any staged clipboard state.
     private var remoteManagedClipboardAllowed = true
-    private var isRegisteredWithDisplayAllocator = false
-
     init(configuration: ProtocolV1SessionConfiguration) {
         precondition(!configuration.sessionID.isEmpty)
         precondition(configuration.sessionEpoch > 0)
@@ -1325,7 +1323,6 @@ final class ProtocolV1SessionCoordinator {
 
     private func releaseRouteLocked() {
         displayAllocator.disconnect(sessionKey)
-        isRegisteredWithDisplayAllocator = false
     }
 
     private func routeDisplayFailure(
@@ -1570,7 +1567,6 @@ final class ProtocolV1SessionCoordinator {
         remoteManagedClipboardAllowed = managedPolicyResolver.effectivePolicy.clipboardAllowed
         do {
             try displayAllocator.register(sessionKey, reservedStreamIDs: reservedDisplayStreamIDs())
-            isRegisteredWithDisplayAllocator = true
         } catch MultiClientDisplayAllocatorError.clientLimitReached {
             return fail(
                 code: .resourceExhausted,
@@ -1777,26 +1773,6 @@ final class ProtocolV1SessionCoordinator {
             height: configuration.displayHeight,
             rotation: configuration.rotation
         )
-    }
-
-    private func bindDisplayRoute(
-        displayID: String,
-        streamID: UInt64,
-        correlationID: UInt64
-    ) -> [ProtocolV1SessionAction]? {
-        guard let allocator = configuration.displayAllocator, negotiatedCapabilities.contains(.multiClient) else {
-            return nil
-        }
-        do {
-            try allocator.rebind(streamID: streamID, toDisplayID: displayID, in: sessionKey)
-            return nil
-        } catch {
-            return fail(
-                code: .invalidState,
-                message: "Host display allocator rejected display binding: \(error)",
-                correlationID: correlationID
-            )
-        }
     }
 
     private func videoConfig(

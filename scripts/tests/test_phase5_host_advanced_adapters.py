@@ -32,6 +32,7 @@ if maximumClients > 1 && normalizedConfiguration.displayAllocator == nil {
 }
 displayAllocator.register(sessionKey, reservedStreamIDs: reservedDisplayStreamIDs())
 displayAllocator.allocateStream(for: "display", in: sessionKey)
+displayAllocator.rebind(streamID: streamID, toDisplayID: "display", in: sessionKey)
 displayAllocator.binding(streamID: streamID, in: sessionKey)
 displayAllocator.disconnect(sessionKey)
 """
@@ -180,6 +181,42 @@ class Phase5HostAdvancedAdaptersTests(unittest.TestCase):
 
         self.assertEqual(result.status, "fail")
         self.assertIn("MultiClientSessionKey", result.detail)
+
+    def test_detects_missing_session_rebind_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name)
+            protocol_session = PROTOCOL_SESSION_ALLOCATOR_FIXTURE.replace(
+                'displayAllocator.rebind(streamID: streamID, toDisplayID: "display", in: sessionKey)\n',
+                "",
+            )
+            capability_body = (
+                "static func productionHostCapabilities(maximumClients: Int = 1) {\n"
+                "if fileTransferAllowed && managedPolicy.fileTransferAllowed {}\n"
+                "if wakeHostAvailable && managedPolicy.wakeAllowed {}\n"
+                "if managedPolicy.clipboardAllowed {}\n"
+                "if touchEnabled && managedPolicy.hostActionsAllowed {}\n"
+                "if hdrVideoAvailable {}\n"
+                "if audioCaptureAvailable && managedPolicy.audioAllowed {}\n"
+                "if maximumClients > 1 { capabilities.insert(.multiClient) }\n"
+                ".colorManagement .multiDisplay .clientVideoControl\n"
+                "return capabilities\n"
+                "}\n"
+            )
+            write_minimal_contract_repo(repo, capability_body)
+            (repo / phase5_host_advanced_adapters.PROTOCOL_SESSION).write_text(
+                capability_body + protocol_session,
+                encoding="utf-8",
+            )
+
+            report = phase5_host_advanced_adapters.build_report(repo)
+
+        self.assertEqual(report["verdict"], "fail")
+        failed = [check for check in report["checks"] if check["status"] == "fail"]
+        self.assertEqual(
+            [check["name"] for check in failed],
+            ["protocol-session-requires-shared-allocator-for-multiclient"],
+        )
+        self.assertIn("displayAllocator.rebind(streamID:", failed[0]["detail"])
 
     def test_cli_writes_json_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

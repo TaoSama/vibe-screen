@@ -166,8 +166,8 @@ evidence and PR text.
 The host-side advanced-adapter readiness gate is source-only. It verifies that
 the Phase 5 adapter matrix is documented, that production Host capabilities keep
 unaccepted adapters unadvertised or policy-gated, and that the MacHost source has
-the standalone `MultiClientDisplayAllocator` boundary used by Protocol v1
-session tests. It does not prove iOS hardware behavior, simultaneous clients,
+the standalone `MultiClientDisplayAllocator` boundary wired through Protocol v1
+session source. It does not prove iOS hardware behavior, simultaneous clients,
 parallel capture, or multiple live Host streams.
 
 ```sh
