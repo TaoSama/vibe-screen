@@ -368,6 +368,64 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun connectionDetailsLinkIsKeyboardFocusable() {
+        val connectionDetails = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/showAdvanced\"")
+
+        assertTrue(
+            "Connection details expands inline recovery guidance, so keyboard and D-pad users need a focus target",
+            connectionDetails.contains("android:focusable=\"true\""),
+        )
+        assertTrue(
+            "Connection details should remain reachable when navigating with hardware keyboard focus",
+            connectionDetails.contains("android:focusableInTouchMode=\"true\""),
+        )
+        assertTrue(
+            "Connection details should keep the 48dp touch target minimum",
+            connectionDetails.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Connection details needs a visible keyboard and D-pad focus indicator",
+            connectionDetails.contains("android:background=\"?attr/selectableItemBackgroundBorderless\""),
+        )
+    }
+
+    @Test
+    fun internetDisconnectButtonCanGrowForLargeFontLabels() {
+        val disconnectButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/internetDisconnectButton\"")
+
+        assertTrue(
+            "Internet disconnect copy may wrap at large font scale, so height must not be fixed",
+            disconnectButton.contains("android:layout_height=\"wrap_content\""),
+        )
+        assertTrue(
+            "Internet disconnect button still needs the 48dp touch target minimum",
+            disconnectButton.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Internet disconnect copy should be allowed to use a second line instead of clipping",
+            disconnectButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
+    fun internetRevokeButtonCanGrowForLargeFontLabels() {
+        val revokeButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/internetRevokeButton\"")
+
+        assertTrue(
+            "Internet revoke copy is long enough to wrap at large font scale, so height must not be fixed",
+            revokeButton.contains("android:layout_height=\"wrap_content\""),
+        )
+        assertTrue(
+            "Internet revoke button still needs the 48dp touch target minimum",
+            revokeButton.contains("android:minHeight=\"48dp\""),
+        )
+        assertTrue(
+            "Internet revoke copy should be allowed to use a second line instead of clipping",
+            revokeButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
     fun overlayOpacityOnlyDimsTheStatsOverlay() {
         val source = mainActivitySource()
         val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")
@@ -697,6 +755,62 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun userVisibleAuxiliaryErrorsDoNotExposeRawProtocolReasons() {
+        val source = mainActivitySource()
+        val decoderFailure = extractMethod(source, "private fun reportDecoderInitializationFailure")
+        val hostActionResult = extractCallback(source, "callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->")
+        val fileTransferResult = extractCallback(source, "callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->")
+
+        assertTrue(
+            "decoder details should remain in diagnostics",
+            decoderFailure.contains("Decoder init FAILED: \${error.message}"),
+        )
+        assertFalse(
+            "decoder exception messages must not be appended to the visible status",
+            decoderFailure.contains("Video decoder failed: \${error.message}"),
+        )
+        assertTrue(
+            "visible decoder status should use fixed recovery copy",
+            decoderFailure.contains("R.string.connection_guidance_video_decoder_recovery_title"),
+        )
+
+        assertFalse(
+            "Host action rejection reason is a protocol/debug value, not user copy",
+            hostActionResult.contains("host_action_rejected_with_reason"),
+        )
+        assertFalse(
+            "Host action toast must not interpolate the raw rejection reason",
+            hostActionResult.contains("getString(R.string.host_action_rejected, rejectionReason)") ||
+                hostActionResult.contains("getString(R.string.host_action_rejected_with_reason, rejectionReason)"),
+        )
+        assertTrue(hostActionResult.contains("hostActionFailureMessageId(rejectionReason)"))
+        assertTrue(
+            "Host action guidance should handle the Mac Host localized permission rejection",
+            source.contains("rejectionReason.contains(\"Accessibility permission\", ignoreCase = true)"),
+        )
+        assertTrue(
+            "Host action guidance should handle the Mac Host localized focused-window rejection",
+            source.contains("rejectionReason.contains(\"focused window\", ignoreCase = true)"),
+        )
+
+        assertFalse(
+            "File transfer reason is a protocol/debug value, not user copy",
+            fileTransferResult.contains("file_transfer_failed_with_reason"),
+        )
+        assertTrue(fileTransferResult.contains("fileTransferFailureMessageId(reason)"))
+    }
+
+    @Test
+    fun transientFeedbackUsesDedupedToastSurface() {
+        val source = mainActivitySource()
+        val directToastCount = countOccurrences(source, "Toast.makeText(")
+
+        assertTrue(source.contains("private fun showDedupedToast"))
+        assertTrue(source.contains("TOAST_DEDUP_WINDOW_MS"))
+        assertTrue("Only the deduped helper should call Toast.makeText directly", directToastCount == 1)
+    }
+
+    @Test
     fun internetProfileSummaryUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
@@ -1016,8 +1130,10 @@ class MainActivityTerminalGuidanceContractTest {
                 .takeWhile { !it.isWhitespace() && it != '>' }
         val closeMarker = "</$elementName>"
         val closeEnd = source.indexOf(closeMarker, idIndex)
-        require(closeEnd >= 0) { "XML element end not found: $idAttribute" }
-        return source.substring(openStart, closeEnd + closeMarker.length)
+        if (closeEnd >= 0) return source.substring(openStart, closeEnd + closeMarker.length)
+        val selfClosingEnd = source.indexOf("/>", idIndex)
+        require(selfClosingEnd >= 0) { "XML element end not found: $idAttribute" }
+        return source.substring(openStart, selfClosingEnd + 2)
     }
 
     private companion object {

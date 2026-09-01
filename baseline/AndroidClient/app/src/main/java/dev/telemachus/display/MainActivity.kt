@@ -38,6 +38,7 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.EditText
 import android.widget.PopupMenu
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
 import androidx.constraintlayout.widget.ConstraintSet
@@ -221,7 +222,7 @@ class MainActivity : AppCompatActivity() {
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var pingJob: kotlinx.coroutines.Job? = null
     private var isInForeground = false
-    private val sessionState = SessionState<StreamClient>()
+    private val productSessionCoordinator = ProductSessionCoordinator<StreamClient>()
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private val streamControllerSessionState = ControllerSessionState()
@@ -270,7 +271,8 @@ class MainActivity : AppCompatActivity() {
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
     private var isConnected = false // Track connection state to prevent checklist conflicts
-    private var connectionAttemptInProgress = false
+    private val connectionAttemptInProgress: Boolean
+        get() = productSessionCoordinator.renderState().connectionAttemptInProgress
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
     private var connectionDetailsVisible = false
@@ -288,6 +290,8 @@ class MainActivity : AppCompatActivity() {
     private val clipboardRequestHandler = Handler(Looper.getMainLooper())
     private val fileTransferApprovalHandler = Handler(Looper.getMainLooper())
     private var clipboardRequestTimeout: Runnable? = null
+    private var lastToastMessage: String? = null
+    private var lastToastShownAtMs = 0L
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
         Runnable {
@@ -297,10 +301,14 @@ class MainActivity : AppCompatActivity() {
         }
     private val touchExplorationStateChangeListener =
         AccessibilityManager.TouchExplorationStateChangeListener(::reconcileTouchExplorationState)
-    private var availableDisplays = emptyList<StreamDisplayOption>()
-    private var selectedDisplayId = ""
-    private var pendingDisplaySelectionId: String? = null
-    private var availableHostActions = emptyList<HostActionOption>()
+    private val availableDisplays: List<StreamDisplayOption>
+        get() = productSessionCoordinator.renderState().displays
+    private val selectedDisplayId: String
+        get() = productSessionCoordinator.renderState().selectedDisplayId
+    private val pendingDisplaySelectionId: String?
+        get() = productSessionCoordinator.renderState().pendingDisplayId
+    private val availableHostActions: List<HostActionOption>
+        get() = productSessionCoordinator.renderState().hostActions
     private val threeFingerGestureClassifier = ThreeFingerGestureClassifier()
     private var customGestureTouchSequenceActive = false
     private var customGestureActionCommitted = false
@@ -311,6 +319,7 @@ class MainActivity : AppCompatActivity() {
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private var pendingOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var pendingIncomingFileDecision: (() -> Unit)? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -436,6 +445,7 @@ class MainActivity : AppCompatActivity() {
         resetCustomGestureTouchState()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
+        rejectPendingIncomingFileOffer()
         applyStreamingWindowState(connected = isConnected, foreground = false)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
@@ -1489,6 +1499,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             clearUsbConnectionGuidance()
+            pendingTerminalGuidance = null
             updateStatus("Checking for your Mac…")
             automaticUsbConnect = false
             connect(host, port, automatic = false)
@@ -1556,6 +1567,22 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             LiveRegionTextApplier.apply(binding.statusText, status)
         }
+    }
+
+    private fun showDedupedToast(
+        @StringRes messageId: Int,
+        duration: Int = Toast.LENGTH_SHORT,
+    ) = showDedupedToast(getString(messageId), duration)
+
+    private fun showDedupedToast(
+        message: String,
+        duration: Int = Toast.LENGTH_SHORT,
+    ) {
+        val now = SystemClock.uptimeMillis()
+        if (message == lastToastMessage && now - lastToastShownAtMs < TOAST_DEDUP_WINDOW_MS) return
+        lastToastMessage = message
+        lastToastShownAtMs = now
+        Toast.makeText(this, message, duration).show()
     }
 
     private fun showUsbConnectionGuidance(guidance: ConnectionGuidance) {
@@ -1986,9 +2013,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showDisconnectedStreamUi() {
         connectionStatusAnnouncements.reset()
-        // Keep one stable layout while the USB retry loop runs. Showing system
-        // bars or changing orientation here resized/recreated the Activity and
-        // made the waiting state visibly flash.
+        // configChanges covers orientation|screenSize|screenLayout, so
+        // releasing the forced streaming orientation back to the sensor does
+        // not recreate the Activity. This lets the disconnected connection
+        // panel follow the device's physical orientation.
+        resetOrientationToSensor()
         enableFullscreenMode()
         // Keep the video viewport laid out so the SurfaceView holds a live
         // surface while waiting to connect. The opaque backdrop above it hides
@@ -2121,9 +2150,10 @@ class MainActivity : AppCompatActivity() {
         displays: List<StreamDisplayOption>,
         selectedId: String,
     ) {
-        availableDisplays = displays
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = null
+        val client = streamClient
+        if (client != null) {
+            productSessionCoordinator.onDisplaysAvailable(client, activeSessionGeneration, displays, selectedId)
+        }
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
         refreshDisplayCapsuleLabel()
@@ -2134,15 +2164,14 @@ class MainActivity : AppCompatActivity() {
         selectedId: String,
         pendingId: String,
     ) {
-        if (pendingId == selectedId || availableDisplays.none { it.id == pendingId }) return
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = pendingId
+        val client = streamClient ?: return
+        if (!productSessionCoordinator.onDisplaySelectionPending(client, activeSessionGeneration, selectedId, pendingId)) return
         refreshDisplayCapsuleLabel()
     }
 
     private fun confirmDisplaySelection(selectedId: String) {
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = null
+        val client = streamClient ?: return
+        if (!productSessionCoordinator.onDisplaySelectionConfirmed(client, activeSessionGeneration, selectedId)) return
         refreshDisplayCapsuleLabel()
     }
 
@@ -2151,13 +2180,13 @@ class MainActivity : AppCompatActivity() {
         rejectedId: String,
         reason: String,
     ) {
-        selectedDisplayId = selectedId
-        pendingDisplaySelectionId = null
+        val client = streamClient ?: return
+        if (!productSessionCoordinator.onDisplaySelectionRejected(client, activeSessionGeneration, selectedId)) return
         refreshDisplayCapsuleLabel()
         val active =
             DisplayCapsulePolicy.capsuleLabel(availableDisplays, selectedDisplayId)
                 .ifEmpty { getString(R.string.display_capsule_placeholder) }
-        Toast.makeText(this, getString(R.string.display_switch_request_failed, active), Toast.LENGTH_SHORT).show()
+        showDedupedToast(getString(R.string.display_switch_request_failed, active))
         mainDiag("capsule selectDisplay rejected target=$rejectedId active=$selectedId reason=$reason")
     }
 
@@ -2229,15 +2258,19 @@ class MainActivity : AppCompatActivity() {
                 return@setOnMenuItemClickListener true
             }
             val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
-            if (option.id != selectedDisplayId) {
-                mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
-                val previousDisplayId = selectedDisplayId
-                if (streamClient?.selectDisplay(option.id) == true) {
-                    markDisplaySelectionPending(previousDisplayId, option.id)
-                    Toast.makeText(this, R.string.display_switch_request_sent, Toast.LENGTH_SHORT).show()
-                } else {
-                    rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
+            when (val command = productSessionCoordinator.requestDisplaySelection(option.id)) {
+                ProductSessionCoordinator.Command.None -> Unit
+                is ProductSessionCoordinator.Command.SelectDisplay -> {
+                    val previousDisplayId = command.previousDisplayId
+                    mainDiag("capsule selectDisplay target=${option.id} from=$previousDisplayId")
+                    if (streamClient?.selectDisplay(option.id) == true) {
+                        markDisplaySelectionPending(previousDisplayId, option.id)
+                        showDedupedToast(R.string.display_switch_request_sent)
+                    } else {
+                        rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
+                    }
                 }
+                is ProductSessionCoordinator.Command.InvokeHostAction -> Unit
             }
             true
         }
@@ -2262,25 +2295,34 @@ class MainActivity : AppCompatActivity() {
      * menu is built lazily in showHostActionsMenu() from the stored list.
      */
     private fun populateHostActions(actions: List<HostActionOption>) {
-        availableHostActions = HostActionMenuPolicy.supportedActions(actions)
-        val available =
-            HostActionMenuPolicy.isAvailable(
-                currentSessionBinding().capabilities.hostActions,
-                availableHostActions,
+        val client = streamClient
+        if (client != null) {
+            productSessionCoordinator.onHostActionsAvailable(client, activeSessionGeneration, actions)
+            productSessionCoordinator.setRuntimeAvailability(
+                client,
+                activeSessionGeneration,
+                hostActions = client.canInvokeHostActions,
             )
-        binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
-        binding.controlHostActionsButton.isEnabled = available
+        }
+        val state = productSessionCoordinator.renderState()
+        binding.controlHostActionsButton.visibility = if (state.hostActionsVisible) View.VISIBLE else View.GONE
+        binding.controlHostActionsButton.isEnabled = state.hostActionsEnabled
         applyControlBarLayout()
     }
 
     /** Clipboard is absent from legacy and unnegotiated sessions. */
     private fun refreshClipboardControl() {
         val client = streamClient
-        val available =
-            client != null &&
-                ClipboardMenuPolicy.isAvailable(currentSessionBinding().capabilities.clipboard)
-        binding.controlClipboardButton.visibility = if (available) View.VISIBLE else View.GONE
-        binding.controlClipboardButton.isEnabled = available && client?.canSendClipboard == true
+        if (client != null) {
+            productSessionCoordinator.setRuntimeAvailability(
+                client,
+                activeSessionGeneration,
+                clipboard = client.canSendClipboard,
+            )
+        }
+        val state = productSessionCoordinator.renderState()
+        binding.controlClipboardButton.visibility = if (state.clipboardVisible) View.VISIBLE else View.GONE
+        binding.controlClipboardButton.isEnabled = state.clipboardEnabled
         updateClipboardAccessibilityLabel(client, activeSessionGeneration)
         applyControlBarLayout()
     }
@@ -2302,15 +2344,16 @@ class MainActivity : AppCompatActivity() {
     /** File transfer is absent from legacy and unnegotiated sessions. */
     private fun refreshFileTransferControl() {
         val client = streamClient
-        val available =
-            client != null &&
-                client.canTransferFiles &&
-                ClientControlAvailability.isSupported(
-                    ClientControl.FILE_TRANSFER,
-                    currentSessionBinding().capabilities,
-                )
-        binding.controlFileTransferButton.visibility = if (available) View.VISIBLE else View.GONE
-        binding.controlFileTransferButton.isEnabled = available
+        if (client != null) {
+            productSessionCoordinator.setRuntimeAvailability(
+                client,
+                activeSessionGeneration,
+                fileTransfer = client.canTransferFiles,
+            )
+        }
+        val state = productSessionCoordinator.renderState()
+        binding.controlFileTransferButton.visibility = if (state.fileTransferVisible) View.VISIBLE else View.GONE
+        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled
         applyControlBarLayout()
     }
 
@@ -2320,7 +2363,7 @@ class MainActivity : AppCompatActivity() {
             !currentSessionBinding().capabilities.fileTransfer ||
             !client.canTransferFiles
         ) {
-            Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
         val intent =
@@ -2330,7 +2373,7 @@ class MainActivity : AppCompatActivity() {
         runCatching { startActivityForResult(intent, REQ_FILE_TRANSFER_OPEN) }
             .onFailure { failure ->
                 mainDiag("file transfer picker failed: " + failure.javaClass.simpleName)
-                Toast.makeText(this, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+                showDedupedToast(R.string.file_transfer_pick_failed)
             }
     }
 
@@ -2347,7 +2390,7 @@ class MainActivity : AppCompatActivity() {
             !currentSessionBinding().capabilities.fileTransfer ||
             !client.canTransferFiles
         ) {
-            Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
         val maximumFileBytes = client.negotiatedMaxFileBytes
@@ -2374,14 +2417,12 @@ class MainActivity : AppCompatActivity() {
                     sent.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                         discardPendingOutgoingFileTransfer()
-                        Toast.makeText(this@MainActivity, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+                        showDedupedToast(R.string.file_transfer_pick_failed)
                         return@withContext
                     }
-                Toast.makeText(
-                    this@MainActivity,
+                showDedupedToast(
                     if (sentValue) R.string.file_transfer_sent_to_mac else R.string.file_transfer_send_failed,
-                    Toast.LENGTH_SHORT,
-                ).show()
+                )
                 if (!sentValue) discardPendingOutgoingFileTransfer()
             }
         }
@@ -2431,26 +2472,8 @@ class MainActivity : AppCompatActivity() {
             }
         }.getOrNull()
 
-    private fun safeOutgoingFileName(displayName: String?): String {
-        val candidate =
-            displayName
-                ?.substringAfterLast('/')
-                ?.substringAfterLast('\\')
-                ?.replace('\u0000', '_')
-                ?.trim()
-                ?.take(MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
-                .orEmpty()
-        return if (candidate.isNotEmpty() &&
-            candidate != "." &&
-            candidate != ".." &&
-            !candidate.contains('/') &&
-            !candidate.contains('\\')
-        ) {
-            candidate
-        } else {
-            "transfer.bin"
-        }
-    }
+    private fun safeOutgoingFileName(displayName: String?): String =
+        AppSpecificDownloadsSaver.safeDisplayName(displayName, MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
 
     private fun promptIncomingFileOffer(
         client: StreamClient,
@@ -2458,7 +2481,12 @@ class MainActivity : AppCompatActivity() {
         offer: dev.vibescreen.protocol.v1.FileOffer,
     ) {
         runOnUiThread {
-            if (!isCurrentSession(client, generation) || !client.canTransferFiles) {
+            if (!isInForeground ||
+                isFinishing ||
+                isDestroyed ||
+                !isCurrentSession(client, generation) ||
+                !client.canTransferFiles
+            ) {
                 client.respondToFileOffer(offer, accepted = false)
                 return@runOnUiThread
             }
@@ -2468,13 +2496,20 @@ class MainActivity : AppCompatActivity() {
             }
 
             var decided = false
-            val timeout = Runnable {
-                if (pendingIncomingFileDialog == null || decided) return@Runnable
-                decided = true
-                pendingIncomingFileDialog?.dismiss()
-                pendingIncomingFileDialog = null
-                client.respondToFileOffer(offer, accepted = false)
-                Toast.makeText(this, R.string.file_transfer_offer_expired, Toast.LENGTH_SHORT).show()
+            lateinit var timeout: Runnable
+            val rejectDecision = {
+                if (pendingIncomingFileDialog != null && !decided) {
+                    decided = true
+                    fileTransferApprovalHandler.removeCallbacks(timeout)
+                    pendingIncomingFileDialog?.dismiss()
+                    pendingIncomingFileDialog = null
+                    pendingIncomingFileDecision = null
+                    client.respondToFileOffer(offer, accepted = false)
+                }
+            }
+            timeout = Runnable {
+                rejectDecision()
+                showDedupedToast(R.string.file_transfer_offer_expired)
             }
             val dialog =
                 MaterialAlertDialogBuilder(this)
@@ -2491,31 +2526,24 @@ class MainActivity : AppCompatActivity() {
                         if (decided) return@setPositiveButton
                         decided = true
                         pendingIncomingFileDialog = null
+                        pendingIncomingFileDecision = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
                         client.respondToFileOffer(offer, accepted = true)
                     }
-                    .setNegativeButton(R.string.file_transfer_reject) { _, _ ->
-                        if (decided) return@setNegativeButton
-                        decided = true
-                        pendingIncomingFileDialog = null
-                        fileTransferApprovalHandler.removeCallbacks(timeout)
-                        client.respondToFileOffer(offer, accepted = false)
-                    }
-                    .setOnCancelListener {
-                        if (decided) return@setOnCancelListener
-                        decided = true
-                        pendingIncomingFileDialog = null
-                        fileTransferApprovalHandler.removeCallbacks(timeout)
-                        client.respondToFileOffer(offer, accepted = false)
-                    }
+                    .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
+                    .setOnCancelListener { rejectDecision() }
             pendingIncomingFileDialog = showImmersiveDialog(dialog)
+            pendingIncomingFileDecision = rejectDecision
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
     }
 
     private fun safeIncomingDisplayName(fileName: String): String =
-        fileName.takeIf { it.isNotBlank() }?.take(MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS) ?:
-            getString(R.string.file_transfer_unknown_name)
+        AppSpecificDownloadsSaver.safeDisplayName(
+            fileName,
+            MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+            fallback = getString(R.string.file_transfer_unknown_name),
+        )
 
     private fun readableByteCount(bytes: Long): String {
         if (bytes < 1024L) return getString(R.string.file_transfer_size_bytes, bytes)
@@ -2542,11 +2570,10 @@ class MainActivity : AppCompatActivity() {
                             "file transfer saved bytes=$stagedBytes " +
                                 "transfer_id=${completed.transferId.shortDebugId()}",
                         )
-                        Toast.makeText(
-                            this@MainActivity,
+                        showDedupedToast(
                             getString(fileTransferSavedMessage(), displayName),
                             Toast.LENGTH_LONG,
-                        ).show()
+                        )
                     }
                     .onFailure { failure ->
                         mainDiag(
@@ -2554,11 +2581,10 @@ class MainActivity : AppCompatActivity() {
                                 "transfer_id=${completed.transferId.shortDebugId()} " +
                                 failure.javaClass.simpleName,
                         )
-                        Toast.makeText(
-                            this@MainActivity,
+                        showDedupedToast(
                             getString(R.string.file_transfer_save_failed, displayName),
                             Toast.LENGTH_LONG,
-                        ).show()
+                        )
                     }
             }
         }
@@ -2568,6 +2594,7 @@ class MainActivity : AppCompatActivity() {
         completed: dev.telemachus.display.protocol.CompletedIncomingFile,
         displayName: String,
     ): Uri {
+        AppSpecificDownloadsSaver.validateDisplayName(displayName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values =
                 ContentValues().apply {
@@ -2582,9 +2609,11 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { output ->
                     copyFileTo(completed.stagingFile, output)
                 } ?: throw IOException("Unable to open downloads entry")
-                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.also {
-                    contentResolver.update(uri, it, null, null)
-                }
+                val published =
+                    ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.let {
+                        contentResolver.update(uri, it, null, null)
+                    }
+                if (published <= 0) throw IOException("Unable to publish downloads entry")
                 return uri
             } catch (failure: Throwable) {
                 runCatching { contentResolver.delete(uri, null, null) }
@@ -2594,11 +2623,13 @@ class MainActivity : AppCompatActivity() {
 
         val downloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: throw IOException("Downloads directory is unavailable")
-        if (!downloads.exists() && !downloads.mkdirs()) {
-            throw IOException("Unable to create downloads directory")
-        }
-        val target = File(downloads, displayName)
-        FileOutputStream(target).use { output -> copyFileTo(completed.stagingFile, output) }
+        val target =
+            AppSpecificDownloadsSaver.save(
+                source = completed.stagingFile,
+                downloads = downloads,
+                displayName = displayName,
+                copy = ::copyFileTo,
+            )
         return Uri.fromFile(target)
     }
 
@@ -2635,6 +2666,10 @@ class MainActivity : AppCompatActivity() {
     private fun discardPendingOutgoingFileTransfer() {
         pendingOutgoingFileTransfer?.deleteRecursivelyBestEffort()
         pendingOutgoingFileTransfer = null
+    }
+
+    private fun rejectPendingIncomingFileOffer() {
+        pendingIncomingFileDecision?.invoke()
     }
 
     private fun File.deleteRecursivelyBestEffort() {
@@ -2725,20 +2760,16 @@ class MainActivity : AppCompatActivity() {
                     ?.toString()
             }.getOrNull()
         if (!ClipboardMenuPolicy.canSend(text)) {
-            Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_empty)
             return true
         }
         val clipboardText = requireNotNull(text)
         if (!ClipboardMenuPolicy.isWithinSizeLimit(clipboardText, client.negotiatedMaxClipboardBytes)) {
-            Toast.makeText(this, R.string.clipboard_too_large, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_too_large)
             return true
         }
         val sent = client.offerClipboard(clipboardText)
-        Toast.makeText(
-            this,
-            if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed,
-            Toast.LENGTH_SHORT,
-        ).show()
+        showDedupedToast(if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed)
         return true
     }
 
@@ -2754,14 +2785,14 @@ class MainActivity : AppCompatActivity() {
         }
         val offer = clipboardApprovalState.offerForRequest(client, generation)
         if (offer == null) {
-            Toast.makeText(this, R.string.clipboard_mac_unavailable, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_mac_unavailable)
             return true
         }
         if (!clipboardApprovalState.approveOffer(client, generation, offer.changeId) ||
             !client.requestClipboard(offer.changeId)
         ) {
             clipboardApprovalState.cancelOfferApproval(client, generation, offer.changeId)
-            Toast.makeText(this, R.string.clipboard_receive_failed, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_receive_failed)
         } else {
             scheduleClipboardRequestTimeout(client, generation, offer.changeId)
             refreshClipboardControl()
@@ -2830,15 +2861,44 @@ class MainActivity : AppCompatActivity() {
                     ClipData.newPlainText(getString(R.string.clipboard_plain_text_label), text),
                 )
             }
-        Toast.makeText(
-            this,
-            if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed,
-            Toast.LENGTH_SHORT,
-        ).show()
+        showDedupedToast(if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed)
         result.exceptionOrNull()?.let { error ->
             mainDiag("clipboard write failed: " + error.javaClass.simpleName)
         }
     }
+
+    private fun fileTransferFailureMessageId(reason: String): Int =
+        when (reason) {
+            "policy_denied" -> R.string.file_transfer_failed_policy_denied
+            "user_denied" -> R.string.file_transfer_failed_user_denied
+            "file_too_large" -> R.string.file_transfer_failed_too_large
+            "concurrent_limit",
+            "temporary_space_limit",
+            -> R.string.file_transfer_failed_temporary_limit
+            "digest_mismatch",
+            "chunk_digest_mismatch",
+            "invalid_digest",
+            -> R.string.file_transfer_failed_verification
+            "incomplete_file",
+            "unexpected_offset",
+            "exceeds_declared_length",
+            "chunk_length_mismatch",
+            "empty_chunk",
+            -> R.string.file_transfer_failed_incomplete
+            "host_shutdown" -> R.string.file_transfer_failed_host_closed
+            else -> R.string.file_transfer_failed
+        }
+
+    private fun hostActionFailureMessageId(rejectionReason: String): Int =
+        when {
+            rejectionReason == "accessibility_permission_required" ||
+                rejectionReason.contains("Accessibility permission", ignoreCase = true) ->
+                R.string.host_action_rejected_permission
+            rejectionReason == "no_focused_window" ||
+                rejectionReason.contains("focused window", ignoreCase = true) ->
+                R.string.host_action_rejected_no_window
+            else -> R.string.host_action_rejected
+        }
 
     private fun scheduleClipboardRequestTimeout(
         client: StreamClient,
@@ -2858,7 +2918,7 @@ class MainActivity : AppCompatActivity() {
                             return@runOnUiThread
                         }
                         refreshClipboardControl()
-                        Toast.makeText(this, R.string.clipboard_request_timed_out, Toast.LENGTH_SHORT).show()
+                        showDedupedToast(R.string.clipboard_request_timed_out)
                     }
                 }
                 if (!submitted && clipboardApprovalState.cancelOfferApproval(client, generation, exactChangeId)) {
@@ -3011,17 +3071,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun invokeHostActionIfAvailable(actionId: String, label: String) {
-        val supportedActions = availableHostActions
-        val actionIsCurrent =
-            HostActionMenuPolicy.isAvailable(
-                currentSessionBinding().capabilities.hostActions,
-                supportedActions,
-            ) && supportedActions.any { it.id == actionId }
         val client = streamClient
-        if (!actionIsCurrent || client == null) return
-        mainDiag("capsule invokeHostAction id=$actionId")
-        client.invokeHostAction(actionId)
-        Toast.makeText(this, getString(R.string.host_action_sent, label), Toast.LENGTH_SHORT).show()
+        if (client == null) return
+        productSessionCoordinator.setRuntimeAvailability(
+            client,
+            activeSessionGeneration,
+            hostActions = client.canInvokeHostActions,
+        )
+        when (productSessionCoordinator.requestHostAction(actionId)) {
+            ProductSessionCoordinator.Command.None -> return
+            is ProductSessionCoordinator.Command.SelectDisplay -> return
+            is ProductSessionCoordinator.Command.InvokeHostAction -> {
+                mainDiag("capsule invokeHostAction id=$actionId")
+                client.invokeHostAction(actionId)
+                showDedupedToast(getString(R.string.host_action_sent, label))
+            }
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")
@@ -3212,7 +3277,7 @@ class MainActivity : AppCompatActivity() {
                     VideoPreferenceFeedbackKind.FRAME_RATE -> R.string.video_frame_rate_request_sent
                     VideoPreferenceFeedbackKind.BITRATE -> R.string.video_bitrate_request_sent
                 }
-            Toast.makeText(this, messageId, Toast.LENGTH_SHORT).show()
+            showDedupedToast(messageId)
         }
 
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -3812,7 +3877,7 @@ class MainActivity : AppCompatActivity() {
         managedCustomGesturesAllowed = true
         managedHostActionsAllowed = true
         resetCustomGestureTouchState()
-        val generation = sessionState.activate(client)
+        val generation = productSessionCoordinator.activate(client)
         streamClient = client
         activeSessionGeneration = generation
         clipboardApprovalState.activate(client, generation)
@@ -3822,12 +3887,10 @@ class MainActivity : AppCompatActivity() {
     private fun isCurrentSession(
         client: StreamClient,
         generation: Long,
-    ): Boolean = sessionState.accepts(client, generation)
+    ): Boolean = productSessionCoordinator.accepts(client, generation)
 
     private fun currentSessionBinding(): ClientSessionBinding {
-        val client = streamClient ?: return ClientSessionBinding.LEGACY_TOUCH_ONLY
-        return sessionState.binding(client, activeSessionGeneration)
-            ?: ClientSessionBinding.LEGACY_TOUCH_ONLY
+        return productSessionCoordinator.currentBinding()
     }
 
     /** Protocol-v1 integration point; capabilities and their sender install atomically. */
@@ -3835,7 +3898,7 @@ class MainActivity : AppCompatActivity() {
         client: StreamClient,
         generation: Long,
         binding: ClientSessionBinding,
-    ): Boolean = sessionState.updateNegotiatedSession(client, generation, binding)
+    ): Boolean = productSessionCoordinator.updateNegotiatedSession(client, generation, binding)
 
     private fun initializeDecoder(
         holder: SurfaceHolder,
@@ -3893,164 +3956,94 @@ class MainActivity : AppCompatActivity() {
             }
         val mime =
             if (ownerClient.streamCodecIsHevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+        val attempt =
+            DecoderLifecycleAttempt(
+                sessionToken = ownerClient,
+                sessionGeneration = ownerGeneration,
+                surfaceToken = holder,
+                surfaceGeneration = expectedSurfaceGeneration,
+                configurationToken = videoConfiguration,
+                configurationGeneration = expectedConfigurationGeneration,
+                configEpoch = expectedConfigEpoch,
+                codec = mime.toStreamCodec(),
+                failSessionOnFailure = configurationCompletion == null,
+                isConfigurationCurrent = isConfigurationCurrent,
+            )
+        val decoderLifecycleOwner = mainSessionDecoderLifecycleOwner(attempt)
         DECODER_LIFECYCLE_EXECUTOR.execute {
-            if (videoDecoder != null ||
-                !surface.isValid ||
-                surfaceGeneration.get() != expectedSurfaceGeneration ||
-                decoderConfigurationGeneration.get() != expectedConfigurationGeneration ||
-                !encodedVideoConfigurationState.isCurrent(videoConfiguration) ||
-                !isCurrentSession(ownerClient, ownerGeneration)
-            ) {
-                if (isCurrentSession(ownerClient, ownerGeneration) &&
-                    encodedVideoConfigurationState.isCurrent(videoConfiguration)
-                ) {
+            when (val admission = decoderLifecycleOwner.admitAttempt(attempt)) {
+                DecoderLifecycleAttemptAdmission.Start -> Unit
+                DecoderLifecycleAttemptAdmission.RetryWhenSurfaceReady -> {
                     retryWhenSurfaceReady()
-                } else {
-                    failConfiguration("stale_decoder_configuration")
+                    return@execute
                 }
-                return@execute
+                is DecoderLifecycleAttemptAdmission.Failed -> {
+                    failConfiguration(admission.reason)
+                    return@execute
+                }
             }
             val decoder =
                 try {
                     createConfiguredDecoder(
-                        holder = holder,
                         surface = surface,
                         displayObj = displayObj,
                         width = width,
                         height = height,
                         mime = mime,
                         scaleMode = scaleMode,
-                        ownerClient = ownerClient,
-                        ownerGeneration = ownerGeneration,
-                        expectedConfigEpoch = expectedConfigEpoch,
-                        expectedConfigurationGeneration = expectedConfigurationGeneration,
-                        expectedSurfaceGeneration = expectedSurfaceGeneration,
+                        attempt = attempt,
+                        decoderLifecycleOwner = decoderLifecycleOwner,
+                        onFrameDecoded = ownerClient::releaseBuffer,
+                        onActiveKeyframeRequired = { force, reason ->
+                            ownerClient.requestKeyframe(force = force, reason = reason)
+                        },
+                        onActiveCodecFailure = { identity, failure ->
+                            decoderLifecycleOwner.recordActiveStructuralFailure(identity, attempt, failure)
+                            ownerClient.failCurrentSession(failure.reason)
+                        },
                     )
                 } catch (e: Exception) {
                     runOnUiThread {
-                        if (surface.isValid &&
-                            surfaceGeneration.get() == expectedSurfaceGeneration &&
-                            decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
-                            encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
-                            isConfigurationCurrent() &&
-                            isCurrentSession(ownerClient, ownerGeneration)
-                        ) {
-                            if (e is DecoderInitializationException) {
-                                CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
-                                    codec = mime.toStreamCodec(),
-                                    failure = e.failure,
-                                    isCurrentConfiguration = {
-                                        surface.isValid &&
-                                            surfaceGeneration.get() == expectedSurfaceGeneration &&
-                                            decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
-                                            encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
-                                            isConfigurationCurrent() &&
-                                            isCurrentSession(ownerClient, ownerGeneration)
-                                    },
-                                )
-                            }
-                            reportDecoderInitializationFailure(
-                                error = e,
-                                ownerClient = ownerClient,
-                                ownerGeneration = ownerGeneration,
-                                failSession = configurationCompletion == null,
-                            )
-                            failConfiguration(e.message ?: "decoder_configuration_failure")
-                        } else if (isCurrentSession(ownerClient, ownerGeneration) &&
-                            encodedVideoConfigurationState.isCurrent(videoConfiguration)
-                        ) {
-                            retryWhenSurfaceReady()
-                        } else {
-                            failConfiguration("stale_decoder_configuration")
+                        when (val result = decoderLifecycleOwner.handleCreationFailure(attempt, e)) {
+                            DecoderLifecycleCommitResult.Configured ->
+                                error("Decoder creation failure cannot produce a configured result")
+                            DecoderLifecycleCommitResult.RetryWhenSurfaceReady -> retryWhenSurfaceReady()
+                            is DecoderLifecycleCommitResult.Failed -> failConfiguration(result.reason)
                         }
                     }
                     return@execute
                 }
             runOnUiThread {
-                if (!surface.isValid ||
-                    surfaceGeneration.get() != expectedSurfaceGeneration ||
-                    decoderConfigurationGeneration.get() != expectedConfigurationGeneration ||
-                    !encodedVideoConfigurationState.isCurrent(videoConfiguration) ||
-                    !isConfigurationCurrent() ||
-                    !isCurrentSession(ownerClient, ownerGeneration) ||
-                    videoDecoder != null
-                ) {
-                    DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
-                    if (isCurrentSession(ownerClient, ownerGeneration) &&
-                        encodedVideoConfigurationState.isCurrent(videoConfiguration)
-                    ) {
-                        retryWhenSurfaceReady()
-                    } else {
-                        failConfiguration("stale_decoder_configuration")
-                    }
-                    return@runOnUiThread
-                }
-                try {
-                    decoder.updateScaleMode(prefs.videoScaleMode)
-                } catch (failure: RuntimeException) {
-                    DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
-                    failConfiguration(failure.message ?: "decoder_configuration_failure")
-                    return@runOnUiThread
-                }
                 when (
-                    val startupResult =
-                        decoder.commitStartup {
-                            tryPublishConfigurationCommit {
-                                if (!videoDecoderRef.compareAndSet(null, decoder)) {
-                                    false
-                                } else {
-                                    activeDecoderConfigEpoch = expectedConfigEpoch
-                                    true
-                                }
-                            }
-                        }
+                    val result =
+                        decoderLifecycleOwner.commitCreatedDecoder(
+                            attempt = attempt,
+                            decoder = decoder,
+                            publishConfigurationCommit = tryPublishConfigurationCommit,
+                        )
                 ) {
-                    DecoderStartupCommitResult.Committed -> Unit
-                    DecoderStartupCommitResult.NotCommitted -> {
-                        DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
-                        failConfiguration("stale_decoder_configuration")
+                    DecoderLifecycleCommitResult.Configured -> {
+                        if (configurationCompletion != null) {
+                            completeConfiguration(MainSessionDecoderConfigurationResult.Configured)
+                            mainDiag("Decoder configuration committed ${width}x$height epoch=$expectedConfigEpoch")
+                            return@runOnUiThread
+                        }
+                    }
+                    DecoderLifecycleCommitResult.RetryWhenSurfaceReady -> {
+                        retryWhenSurfaceReady()
                         return@runOnUiThread
                     }
-                    is DecoderStartupCommitResult.Failed -> {
-                        CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
-                            codec = mime.toStreamCodec(),
-                            failure = startupResult.failure,
-                            isCurrentConfiguration = {
-                                surface.isValid &&
-                                    surfaceGeneration.get() == expectedSurfaceGeneration &&
-                                    decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
-                                    encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
-                                    isConfigurationCurrent() &&
-                                    isCurrentSession(ownerClient, ownerGeneration)
-                            },
-                        )
-                        reportDecoderInitializationFailure(
-                            error = DecoderInitializationException(startupResult.failure),
-                            ownerClient = ownerClient,
-                            ownerGeneration = ownerGeneration,
-                            failSession = configurationCompletion == null,
-                        )
-                        DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
-                        failConfiguration(startupResult.reason)
+                    is DecoderLifecycleCommitResult.Failed -> {
+                        failConfiguration(result.reason)
                         return@runOnUiThread
                     }
-                }
-                if (configurationCompletion != null) {
-                    completeConfiguration(MainSessionDecoderConfigurationResult.Configured)
-                    mainDiag("Decoder configuration committed ${width}x$height epoch=$expectedConfigEpoch")
-                    return@runOnUiThread
                 }
                 try {
                     ownerClient.requestKeyframe(force = true, reason = "decoder initialized")
                     mainDiag("Decoder initialized OK ${width}x$height mime=$mime, videoDecoder=$decoder")
                     log("✅ Decoder initialized ${width}x$height $mime (${displayObj?.refreshRate ?: 60f}Hz)")
                 } catch (e: Exception) {
-                    if (surface.isValid &&
-                        surfaceGeneration.get() == expectedSurfaceGeneration &&
-                        decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
-                        isCurrentSession(ownerClient, ownerGeneration) &&
-                        videoDecoder === decoder
-                    ) {
+                    if (decoderLifecycleOwner.runIfActive(decoder, attempt) {}) {
                         reportDecoderInitializationFailure(e, ownerClient, ownerGeneration)
                     }
                 }
@@ -4058,73 +4051,247 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun mainSessionDecoderLifecycleOwner(
+        attempt: DecoderLifecycleAttempt,
+    ): AndroidDecoderLifecycleOwner<VideoDecoder> {
+        val ownerClient = attempt.sessionToken as StreamClient
+        val holder = attempt.surfaceToken as SurfaceHolder
+        val surface = holder.surface
+        val videoConfiguration = attempt.configurationToken as EncodedVideoConfigurationSnapshot
+        return AndroidDecoderLifecycleOwner(
+            object : AndroidDecoderLifecyclePort<VideoDecoder> {
+                override fun hasBlockingActiveDecoder(attempt: DecoderLifecycleAttempt): Boolean =
+                    !attempt.allowsActiveDecoderReplacement && videoDecoder != null
+
+                override fun isAttemptCurrent(attempt: DecoderLifecycleAttempt): Boolean =
+                    surface.isValid &&
+                        surfaceGeneration.get() == attempt.surfaceGeneration &&
+                        decoderConfigurationGeneration.get() == attempt.configurationGeneration &&
+                        encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
+                        isCurrentSession(ownerClient, attempt.sessionGeneration)
+
+                override fun canRetryAttempt(attempt: DecoderLifecycleAttempt): Boolean =
+                    isCurrentSession(ownerClient, attempt.sessionGeneration) &&
+                        encodedVideoConfigurationState.isCurrent(videoConfiguration)
+
+                override fun isPublishedDecoderCurrent(
+                    decoder: VideoDecoder,
+                    attempt: DecoderLifecycleAttempt,
+                ): Boolean =
+                    isCurrentSession(ownerClient, attempt.sessionGeneration) &&
+                        videoDecoder === decoder &&
+                        activeDecoderConfigEpoch == attempt.configEpoch &&
+                        decoderConfigurationGeneration.get() == attempt.configurationGeneration &&
+                        encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
+                        currentSurfaceHolder === holder &&
+                        surface.isValid &&
+                        surfaceGeneration.get() == attempt.surfaceGeneration
+
+                override fun updateScaleMode(decoder: VideoDecoder) {
+                    decoder.updateScaleMode(prefs.videoScaleMode)
+                }
+
+                override fun commitStartup(
+                    decoder: VideoDecoder,
+                    publish: () -> Boolean,
+                ): DecoderStartupCommitResult = decoder.commitStartup(publish)
+
+                override fun publishDecoder(
+                    decoder: VideoDecoder,
+                    attempt: DecoderLifecycleAttempt,
+                ): Boolean =
+                    videoDecoderRef.compareAndSet(null, decoder).also { published ->
+                        if (published) activeDecoderConfigEpoch = attempt.configEpoch
+                    }
+
+                override fun releaseDecoder(decoder: VideoDecoder) {
+                    releaseDecoderAsync(decoder)
+                }
+
+                override fun recordStructuralFailure(
+                    codec: StreamCodec,
+                    failure: DecoderFailure,
+                    isCurrentConfiguration: () -> Boolean,
+                ): Boolean =
+                    CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                        codec = codec,
+                        failure = failure,
+                        isCurrentConfiguration = isCurrentConfiguration,
+                    )
+
+                override fun reportInitializationFailure(
+                    error: Exception,
+                    failSession: Boolean,
+                ) {
+                    reportDecoderInitializationFailure(error, ownerClient, attempt.sessionGeneration, failSession)
+                }
+            },
+        )
+    }
+
     private fun createConfiguredDecoder(
-        holder: SurfaceHolder,
         surface: android.view.Surface,
         displayObj: android.view.Display?,
         width: Int,
         height: Int,
         mime: String,
         scaleMode: VideoScaleMode,
-        ownerClient: StreamClient,
-        ownerGeneration: Long,
-        expectedConfigEpoch: Long,
-        expectedConfigurationGeneration: Long,
-        expectedSurfaceGeneration: Long,
-    ): VideoDecoder {
-        fun isCurrentDecoderCallback(
-            identity: VideoDecoder,
-            generation: Long,
+        attempt: DecoderLifecycleAttempt,
+        decoderLifecycleOwner: AndroidDecoderLifecycleOwner<VideoDecoder>,
+        onFrameDecoded: (ByteArray) -> Unit = {},
+        onActiveKeyframeRequired: (force: Boolean, reason: String) -> Unit,
+        onActiveCodecFailure: (VideoDecoder, DecoderFailure) -> Unit,
+    ): VideoDecoder =
+        VideoDecoder(
+            surface = surface,
+            display = displayObj,
+            initialWidth = width,
+            initialHeight = height,
+            mime = mime,
+            initialScaleMode = scaleMode,
+            onFrameDecoded = { _, buffer -> onFrameDecoded(buffer) },
+            onKeyframeRequired = { identity, force, reason ->
+                runOnUiThread {
+                    decoderLifecycleOwner.runIfActive(identity, attempt) {
+                        onActiveKeyframeRequired(force, reason)
+                    }
+                }
+            },
+            onCodecFailure = { identity, failure ->
+                runOnUiThread {
+                    decoderLifecycleOwner.runIfActive(identity, attempt) {
+                        onActiveCodecFailure(identity, failure)
+                    }
+                }
+            },
+        )
+
+    private fun internetDecoderLifecycleOwner(
+        attempt: DecoderLifecycleAttempt,
+        sessionReference: AtomicReference<InternetProductSession?>,
+        previousRequestedOrientation: Int,
+        previousStreamingWindowEnabled: Boolean,
+    ): AndroidDecoderLifecycleOwner<VideoDecoder> {
+        val configuration = attempt.configurationToken as ProductVideoConfiguration
+        val holder = attempt.surfaceToken as SurfaceHolder
+        val surface = holder.surface
+        val previousActiveDecoderConfigEpoch = activeDecoderConfigEpoch
+        fun isCurrentInternetSession(): Boolean =
+            attempt.sessionGeneration == internetGeneration && internetSession === sessionReference.get()
+        fun isCurrentInternetConfiguration(attempt: DecoderLifecycleAttempt): Boolean =
+            attempt.isConfigurationCurrent() &&
+                decoderConfigurationGeneration.get() == attempt.configurationGeneration
+        fun isPublishedInternetDecoderCurrent(
+            decoder: VideoDecoder,
+            attempt: DecoderLifecycleAttempt,
         ): Boolean =
-            isCurrentSession(ownerClient, generation) &&
-                videoDecoder === identity &&
-                activeDecoderConfigEpoch == expectedConfigEpoch &&
-                decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
-                encodedVideoConfigurationState.snapshot()?.configEpoch == expectedConfigEpoch &&
+            isCurrentInternetSession() &&
+                isCurrentInternetConfiguration(attempt) &&
+                videoDecoder === decoder &&
+                activeDecoderConfigEpoch == attempt.configEpoch &&
+                internetVideoConfiguration?.configEpoch == attempt.configEpoch &&
                 currentSurfaceHolder === holder &&
                 surface.isValid &&
-                surfaceGeneration.get() == expectedSurfaceGeneration
+                surfaceGeneration.get() == attempt.surfaceGeneration
 
-        val decoder =
-            VideoDecoder(
-                surface = surface,
-                display = displayObj,
-                initialWidth = width,
-                initialHeight = height,
-                mime = mime,
-                initialScaleMode = scaleMode,
-                onFrameDecoded = { _, buffer -> ownerClient.releaseBuffer(buffer) },
-                onKeyframeRequired = { identity, force, reason ->
-                    val callbackBinding =
-                        ActiveDecoderCallbackBinding(identity, ownerGeneration, ::isCurrentDecoderCallback)
-                    runOnUiThread {
-                        callbackBinding.runIfActive {
-                            ownerClient.requestKeyframe(force = force, reason = reason)
-                        }
-                    }
-                },
-                onCodecFailure = { identity, failure ->
-                    val callbackBinding =
-                        ActiveDecoderCallbackBinding(identity, ownerGeneration, ::isCurrentDecoderCallback)
-                    runOnUiThread {
-                        callbackBinding.runIfActive {
-                            CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
-                                codec = mime.toStreamCodec(),
-                                failure = failure,
-                                isCurrentConfiguration = callbackBinding::isActive,
+        return AndroidDecoderLifecycleOwner(
+            object : AndroidDecoderLifecyclePort<VideoDecoder> {
+                override fun hasBlockingActiveDecoder(attempt: DecoderLifecycleAttempt): Boolean =
+                    !attempt.allowsActiveDecoderReplacement && videoDecoder != null
+
+                override fun isAttemptCurrent(attempt: DecoderLifecycleAttempt): Boolean =
+                    isCurrentInternetSession() &&
+                        isCurrentInternetConfiguration(attempt) &&
+                        currentSurfaceHolder === holder &&
+                        surface.isValid &&
+                        surfaceGeneration.get() == attempt.surfaceGeneration
+
+                override fun canRetryAttempt(attempt: DecoderLifecycleAttempt): Boolean =
+                    isCurrentInternetSession() && isCurrentInternetConfiguration(attempt)
+
+                override fun isPublishedDecoderCurrent(
+                    decoder: VideoDecoder,
+                    attempt: DecoderLifecycleAttempt,
+                ): Boolean = isPublishedInternetDecoderCurrent(decoder, attempt)
+
+                override fun updateScaleMode(decoder: VideoDecoder) {
+                    decoder.updateScaleMode(prefs.videoScaleMode)
+                }
+
+                override fun commitStartup(
+                    decoder: VideoDecoder,
+                    publish: () -> Boolean,
+                ): DecoderStartupCommitResult = decoder.commitStartup(publish)
+
+                override fun publishDecoder(
+                    decoder: VideoDecoder,
+                    attempt: DecoderLifecycleAttempt,
+                ): Boolean {
+                    val nextPresentation =
+                        InternetDecoderPresentationState(
+                            decoder = decoder,
+                            configuration = configuration,
+                            displayWidth = configuration.width,
+                            displayHeight = configuration.height,
+                            displayRotation = configuration.rotationDegrees,
+                            connected = true,
+                        )
+                    commitInternetDecoderPresentation(
+                        nextState = nextPresentation,
+                        captureState = ::captureInternetDecoderPresentation,
+                        installState = ::installInternetDecoderPresentation,
+                        restoreState = { attempted, previous ->
+                            restoreInternetDecoderPresentation(
+                                attempted = attempted,
+                                previous = previous,
+                                previousActiveDecoderConfigEpoch = previousActiveDecoderConfigEpoch,
+                                previousRequestedOrientation = previousRequestedOrientation,
+                                previousStreamingWindowEnabled = previousStreamingWindowEnabled,
                             )
-                            ownerClient.failCurrentSession(failure.reason)
+                        },
+                    ) { previousPresentation ->
+                        activeDecoderConfigEpoch = attempt.configEpoch
+                        applyRotation(configuration.rotationDegrees)
+                        binding.surfaceView.post {
+                            if (isPublishedInternetDecoderCurrent(decoder, attempt)) {
+                                sessionReference.get()?.requestKeyframe("decoder initialized")
+                            }
                         }
+                        setStreamingWindowState(true)
+                        binding.resolutionText.text =
+                            getString(R.string.resolution_format, configuration.width, configuration.height)
+                        binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
+                        showConnectedStreamUi()
+                        previousPresentation.decoder?.let(::releaseDecoderAsync)
                     }
-                },
-            )
-        try {
-            decoder.updateScaleMode(scaleMode)
-            return decoder
-        } catch (e: Exception) {
-            decoder.release()
-            throw e
-        }
+                    return true
+                }
+
+                override fun releaseDecoder(decoder: VideoDecoder) {
+                    releaseDecoderAsync(decoder)
+                }
+
+                override fun recordStructuralFailure(
+                    codec: StreamCodec,
+                    failure: DecoderFailure,
+                    isCurrentConfiguration: () -> Boolean,
+                ): Boolean =
+                    CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                        codec = codec,
+                        failure = failure,
+                        isCurrentConfiguration = isCurrentConfiguration,
+                    )
+
+                override fun reportInitializationFailure(
+                    error: Exception,
+                    failSession: Boolean,
+                ) {
+                    if (isCurrentInternetSession()) {
+                        showInternetFailure(error)
+                    }
+                }
+            },
+        )
     }
 
     private fun reportDecoderInitializationFailure(
@@ -4136,7 +4303,7 @@ class MainActivity : AppCompatActivity() {
         mainDiag("Decoder init FAILED: ${error.message}")
         log("❌ Failed to initialize decoder: ${error.message}")
         if (isCurrentSession(ownerClient, ownerGeneration)) {
-            updateStatus("Video decoder failed: ${error.message}")
+            updateStatus(getString(R.string.connection_guidance_video_decoder_recovery_title))
             if (failSession) {
                 ownerClient.failCurrentSession("codec_configuration_failure")
             }
@@ -4154,6 +4321,10 @@ class MainActivity : AppCompatActivity() {
         decoderConfigurationGeneration.incrementAndGet()
         activeDecoderConfigEpoch = 0L
         val decoder = videoDecoderRef.getAndSet(null) ?: return
+        releaseDecoderAsync(decoder)
+    }
+
+    private fun releaseDecoderAsync(decoder: VideoDecoder) {
         DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
     }
 
@@ -4329,6 +4500,7 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@connectionStatus
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)
                 isConnected = connected
                 applyStreamingWindowState(connected = connected, foreground = isInForeground)
                 if (connected) {
@@ -4397,7 +4569,7 @@ class MainActivity : AppCompatActivity() {
                         lastAnnouncedConfigEpoch = lastAppliedVideoPreferenceConfigEpoch,
                     )
                 ) {
-                    Toast.makeText(this, R.string.video_preferences_applied, Toast.LENGTH_SHORT).show()
+                    showDedupedToast(R.string.video_preferences_applied)
                 }
                 lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
                 mainDiag(
@@ -4462,6 +4634,13 @@ class MainActivity : AppCompatActivity() {
                         callbackClient,
                         callbackGeneration,
                         ClientSessionBinding(capabilities, sink),
+                    )
+                    productSessionCoordinator.setRuntimeAvailability(
+                        callbackClient,
+                        callbackGeneration,
+                        clipboard = callbackClient.canSendClipboard,
+                        fileTransfer = callbackClient.canTransferFiles,
+                        hostActions = callbackClient.canInvokeHostActions,
                     )
                     // HostActionCatalog may arrive before ListDisplaysResponse.
                     // Re-evaluate the cached catalog after capability promotion so
@@ -4541,6 +4720,13 @@ class MainActivity : AppCompatActivity() {
                     callbackGeneration,
                     ClientSessionBinding(capabilities, binding.inputSink),
                 )
+                productSessionCoordinator.setRuntimeAvailability(
+                    callbackClient,
+                    callbackGeneration,
+                    clipboard = callbackClient.canSendClipboard,
+                    fileTransfer = callbackClient.canTransferFiles,
+                    hostActions = callbackClient.canInvokeHostActions,
+                )
                 if (!clipboard) {
                     cancelClipboardRequestTimeout()
                     clipboardApprovalState.clear()
@@ -4573,15 +4759,13 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 mainDiag("onHostActionResult: accepted=$accepted reason=$rejectionReason")
-                val message =
+                val messageId =
                     if (accepted) {
-                        getString(R.string.host_action_accepted)
-                    } else if (rejectionReason.isNotBlank()) {
-                        getString(R.string.host_action_rejected_with_reason, rejectionReason)
+                        R.string.host_action_accepted
                     } else {
-                        getString(R.string.host_action_rejected)
+                        hostActionFailureMessageId(rejectionReason)
                     }
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                showDedupedToast(messageId)
             }
         }
 
@@ -4662,13 +4846,12 @@ class MainActivity : AppCompatActivity() {
                 discardPendingOutgoingFileTransfer()
                 val message =
                     if (accepted) {
-                        getString(R.string.file_transfer_completed)
-                    } else if (reason.isNotBlank()) {
-                        getString(R.string.file_transfer_failed_with_reason, reason)
+                        R.string.file_transfer_completed
                     } else {
-                        getString(R.string.file_transfer_failed)
+                        fileTransferFailureMessageId(reason)
                     }
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                mainDiag("onFileTransferResult: accepted=$accepted reason=$reason")
+                showDedupedToast(message)
             }
         }
 
@@ -4731,7 +4914,7 @@ class MainActivity : AppCompatActivity() {
                 IllegalStateException("Import a lease newer than epoch $requiredFreshInternetEpoch"),
             )
         }
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         internetRoute = null
         internetSessionEpoch = lease.authoritativeSessionEpoch
         resetInternetInputStateForNewSession()
@@ -4828,6 +5011,13 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onVideoFrame(frame: ProductVideoFrame) {
                     if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
+                    if (frame.configEpoch != activeDecoderConfigEpoch) {
+                        mainDiag(
+                            "INTERNET FRAME DROPPED: config epoch ${frame.configEpoch} does not match decoder epoch " +
+                                activeDecoderConfigEpoch,
+                        )
+                        return
+                    }
                     videoDecoder?.decode(
                         frame.payload,
                         frame.payload.size,
@@ -4936,14 +5126,18 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } finally {
-                    if (generation == internetGeneration) connectionAttemptInProgress = false
+                    if (generation == internetGeneration) {
+                        runOnUiThread {
+                            if (generation == internetGeneration) productSessionCoordinator.endConnectionAttempt()
+                        }
+                    }
                 }
             }
         } catch (failure: Throwable) {
             if (generation != internetGeneration) return
             videoDecoderLifecycle.invalidate("session_start_failed")
             if (internetVideoDecoderLifecycle === videoDecoderLifecycle) internetVideoDecoderLifecycle = null
-            connectionAttemptInProgress = false
+            productSessionCoordinator.endConnectionAttempt()
             monitor.close()
             requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, lease.authoritativeSessionEpoch)
             android.util.Log.e(INTERNET_LOG_TAG, "internet_session_error type=${failure.javaClass.simpleName}")
@@ -4976,165 +5170,95 @@ class MainActivity : AppCompatActivity() {
         if (holder == null || !holder.surface.isValid) return ProductVideoDecision.reject("surface_unavailable")
         val surface = holder.surface
         val expectedSurfaceGeneration = surfaceGeneration.get()
-        fun isCurrentDecoderCallback(
-            identity: VideoDecoder,
-            sessionGeneration: Long,
-        ): Boolean =
-            sessionGeneration == internetGeneration &&
-                internetSession === sessionReference.get() &&
-                videoDecoder === identity &&
-                internetVideoConfiguration?.configEpoch == configuration.configEpoch &&
-                currentSurfaceHolder === holder &&
-                surface.isValid &&
-                surfaceGeneration.get() == expectedSurfaceGeneration
-
-        var candidate: VideoDecoder? = null
+        val expectedConfigurationGeneration = decoderConfigurationGeneration.incrementAndGet()
+        val previousRequestedOrientation = requestedOrientation
+        val previousStreamingWindowEnabled = isStreamingWindowStateEnabled()
+        val attempt =
+            DecoderLifecycleAttempt(
+                sessionToken = sessionReference.get() ?: return ProductVideoDecision.reject("stale_session"),
+                sessionGeneration = generation,
+                surfaceToken = holder,
+                surfaceGeneration = expectedSurfaceGeneration,
+                configurationToken = configuration,
+                configurationGeneration = expectedConfigurationGeneration,
+                configEpoch = configuration.configEpoch,
+                codec = mime.toStreamCodec(),
+                failSessionOnFailure = false,
+                allowsActiveDecoderReplacement = true,
+                isConfigurationCurrent = isConfigurationCurrent,
+            )
+        val decoderLifecycleOwner =
+            internetDecoderLifecycleOwner(
+                attempt = attempt,
+                sessionReference = sessionReference,
+                previousRequestedOrientation = previousRequestedOrientation,
+                previousStreamingWindowEnabled = previousStreamingWindowEnabled,
+            )
+        when (val admission = decoderLifecycleOwner.admitAttempt(attempt)) {
+            DecoderLifecycleAttemptAdmission.Start -> Unit
+            DecoderLifecycleAttemptAdmission.RetryWhenSurfaceReady ->
+                return ProductVideoDecision.reject("surface_unavailable")
+            is DecoderLifecycleAttemptAdmission.Failed -> return ProductVideoDecision.reject(admission.reason)
+        }
         return try {
             val displayObject =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display else {
                     @Suppress("DEPRECATION")
                     windowManager.defaultDisplay
                 }
-            candidate =
-                VideoDecoder(
+            val configuredDecoder =
+                createConfiguredDecoder(
                     surface = surface,
-                    display = displayObject,
-                    initialWidth = configuration.width,
-                    initialHeight = configuration.height,
+                    displayObj = displayObject,
+                    width = configuration.width,
+                    height = configuration.height,
                     mime = mime,
-                    onKeyframeRequired = { identity, _, reason ->
-                        val callbackBinding =
-                            ActiveDecoderCallbackBinding(identity, generation, ::isCurrentDecoderCallback)
-                        runOnUiThread {
-                            callbackBinding.runIfActive { sessionReference.get()?.requestKeyframe(reason) }
-                        }
+                    scaleMode = prefs.videoScaleMode,
+                    attempt = attempt,
+                    decoderLifecycleOwner = decoderLifecycleOwner,
+                    onActiveKeyframeRequired = { _, reason ->
+                        sessionReference.get()?.requestKeyframe(reason)
                     },
-                    onCodecFailure = { identity, failure ->
-                        val callbackBinding =
-                            ActiveDecoderCallbackBinding(identity, generation, ::isCurrentDecoderCallback)
-                        runOnUiThread {
-                            callbackBinding.runIfActive {
-                                CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
-                                    codec = mime.toStreamCodec(),
-                                    failure = failure,
-                                    isCurrentConfiguration = callbackBinding::isActive,
-                                )
-                                showInternetFailure(IllegalStateException("Decoder failed: ${failure.reason}"))
-                            }
-                        }
+                    onActiveCodecFailure = { identity, failure ->
+                        decoderLifecycleOwner.recordActiveStructuralFailure(identity, attempt, failure)
+                        showInternetFailure(IllegalStateException("Decoder failed: ${failure.reason}"))
                     },
                 )
-            val configuredDecoder = checkNotNull(candidate)
-            val decision =
-                commitConfiguration {
-                    when (
-                        val startupResult =
-                            configuredDecoder.commitStartup {
-                                if (!isCurrent() ||
-                                    !isConfigurationCurrent() ||
-                                    currentSurfaceHolder !== holder ||
-                                    !surface.isValid ||
-                                    surfaceGeneration.get() != expectedSurfaceGeneration
-                                ) {
-                                    false
-                                } else {
-                                    val nextPresentation =
-                                        InternetDecoderPresentationState(
-                                            decoder = configuredDecoder,
-                                            configuration = configuration,
-                                            displayWidth = configuration.width,
-                                            displayHeight = configuration.height,
-                                            displayRotation = configuration.rotationDegrees,
-                                            connected = true,
-                                        )
-                                    val previousRequestedOrientation = requestedOrientation
-                                    val previousStreamingWindowEnabled = isStreamingWindowStateEnabled()
-                                    commitInternetDecoderPresentation(
-                                        nextState = nextPresentation,
-                                        captureState = ::captureInternetDecoderPresentation,
-                                        installState = ::installInternetDecoderPresentation,
-                                        restoreState = { attempted, previous ->
-                                            restoreInternetDecoderPresentation(
-                                                attempted = attempted,
-                                                previous = previous,
-                                                previousRequestedOrientation = previousRequestedOrientation,
-                                                previousStreamingWindowEnabled = previousStreamingWindowEnabled,
-                                            )
-                                        },
-                                    ) { previousPresentation ->
-                                        applyRotation(configuration.rotationDegrees)
-                                        binding.surfaceView.post {
-                                            val callbackBinding =
-                                                ActiveDecoderCallbackBinding(
-                                                    configuredDecoder,
-                                                    generation,
-                                                ) { identity, sessionGeneration ->
-                                                    sessionGeneration == internetGeneration &&
-                                                        internetSession === sessionReference.get() &&
-                                                        videoDecoder === identity
-                                                }
-                                            callbackBinding.runIfActive {
-                                                sessionReference.get()?.requestKeyframe("decoder initialized")
-                                            }
-                                        }
-                                        setStreamingWindowState(true)
-                                        binding.resolutionText.text =
-                                            getString(R.string.resolution_format, configuration.width, configuration.height)
-                                        binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
-                                        showConnectedStreamUi()
-                                        previousPresentation.decoder?.let { decoder ->
-                                            DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
-                                        }
+            var publishedDecision: ProductVideoDecision? = null
+            when (
+                val result =
+                    decoderLifecycleOwner.commitCreatedDecoder(
+                        attempt = attempt,
+                        decoder = configuredDecoder,
+                        publishConfigurationCommit = { publish ->
+                            val decision =
+                                commitConfiguration {
+                                    if (publish()) {
+                                        ProductVideoDecision.ACCEPT
+                                    } else {
+                                        ProductVideoDecision.reject("stale_decoder_configuration")
                                     }
-                                    true
                                 }
-                            }
-                    ) {
-                        DecoderStartupCommitResult.Committed -> {
-                            candidate = null
-                            ProductVideoDecision.ACCEPT
-                        }
-                        DecoderStartupCommitResult.NotCommitted ->
-                            ProductVideoDecision.reject("stale_decoder_configuration")
-                        is DecoderStartupCommitResult.Failed ->
-                            ProductVideoDecision.reject(startupResult.reason).also {
-                                CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
-                                    codec = mime.toStreamCodec(),
-                                    failure = startupResult.failure,
-                                    isCurrentConfiguration = {
-                                        isCurrent() &&
-                                            isConfigurationCurrent() &&
-                                            currentSurfaceHolder === holder &&
-                                            surface.isValid &&
-                                            surfaceGeneration.get() == expectedSurfaceGeneration
-                                    },
-                                )
-                            }
-                    }
-                }
-            candidate?.release()
-            decision
-        } catch (failure: Throwable) {
-            candidate?.let { failedCandidate ->
-                if (videoDecoder === failedCandidate) videoDecoder = null
-                failedCandidate.release()
-            }
-            if (isCurrent()) {
-                if (failure is DecoderInitializationException) {
-                    CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
-                        codec = mime.toStreamCodec(),
-                        failure = failure.failure,
-                        isCurrentConfiguration = {
-                            isCurrent() &&
-                                isConfigurationCurrent() &&
-                                currentSurfaceHolder === holder &&
-                                surface.isValid &&
-                                surfaceGeneration.get() == expectedSurfaceGeneration
+                            publishedDecision = decision
+                            decision.accepted
                         },
                     )
-                }
+            ) {
+                DecoderLifecycleCommitResult.Configured -> publishedDecision ?: ProductVideoDecision.ACCEPT
+                DecoderLifecycleCommitResult.RetryWhenSurfaceReady -> ProductVideoDecision.reject("surface_unavailable")
+                is DecoderLifecycleCommitResult.Failed ->
+                    publishedDecision
+                        ?.takeUnless { it.accepted }
+                        ?: ProductVideoDecision.reject(result.reason)
             }
-            ProductVideoDecision.reject(failure.message ?: "decoder_configuration_failure")
+        } catch (failure: Throwable) {
+            when (val result = decoderLifecycleOwner.handleCreationFailure(attempt, failure)) {
+                DecoderLifecycleCommitResult.Configured ->
+                    ProductVideoDecision.reject("decoder_configuration_failure")
+                DecoderLifecycleCommitResult.RetryWhenSurfaceReady ->
+                    ProductVideoDecision.reject("surface_unavailable")
+                is DecoderLifecycleCommitResult.Failed -> ProductVideoDecision.reject(result.reason)
+            }
         }
     }
 
@@ -5157,11 +5281,13 @@ class MainActivity : AppCompatActivity() {
         displayHeight = state.displayHeight
         displayRotation = state.displayRotation
         isConnected = state.connected
+        productSessionCoordinator.setTransportConnected(state.connected)
     }
 
     private fun restoreInternetDecoderPresentation(
         attempted: InternetDecoderPresentationState<VideoDecoder, ProductVideoConfiguration>,
         previous: InternetDecoderPresentationState<VideoDecoder, ProductVideoConfiguration>,
+        previousActiveDecoderConfigEpoch: Long,
         previousRequestedOrientation: Int,
         previousStreamingWindowEnabled: Boolean,
     ) {
@@ -5170,6 +5296,7 @@ class MainActivity : AppCompatActivity() {
                 videoDecoder === previous.decoder,
         ) { "Internet decoder changed while presentation rollback was in progress" }
         installInternetDecoderPresentation(previous)
+        activeDecoderConfigEpoch = previousActiveDecoderConfigEpoch
         requestedOrientation = previousRequestedOrientation
         binding.surfaceView.apply {
             rotation = prefs.clientRotation.degrees.toFloat()
@@ -5208,6 +5335,7 @@ class MainActivity : AppCompatActivity() {
         )
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
+            productSessionCoordinator.setTransportConnected(false)
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
             internetStylusContactRouter.reset()
@@ -5257,18 +5385,22 @@ class MainActivity : AppCompatActivity() {
         val tickJob = internetTickJob
         val session = internetSession
         val networkMonitor = internetNetworkMonitor
-        val decoder = videoDecoder
+        val decoder = videoDecoderRef.getAndSet(null)
+        decoderConfigurationGeneration.incrementAndGet()
+        activeDecoderConfigEpoch = 0L
         var sessionCloseFailure: Throwable? = null
         try {
             session?.close()
         } catch (failure: PendingRevocationBarrierException) {
             val recoveredReason = session?.retryPendingRevocationBarrier()
             if (recoveredReason != null) {
+                decoder?.let(::releaseDecoderAsync)
                 disconnectInternet(showIdle = false)
                 revokeInternetPairing(recoveredReason, tombstonePersisted = true)
                 return
             }
             if (session?.hasUndurableRevocationBarrier() != true) {
+                decoder?.let(::releaseDecoderAsync)
                 disconnectInternet(showIdle)
                 return
             }
@@ -5282,19 +5414,19 @@ class MainActivity : AppCompatActivity() {
         internetSession = null
         QUARANTINED_INTERNET_SESSION.compareAndSet(session, null)
         internetNetworkMonitor = null
-        videoDecoder = null
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
         isConnected = false
+        productSessionCoordinator.setTransportConnected(false)
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
             { networkMonitor?.close() },
-            { decoder?.release() },
+            { decoder?.let(::releaseDecoderAsync) },
             {
                 setStreamingWindowState(false)
                 binding.internetDisconnectButton.visibility = View.GONE
@@ -5320,8 +5452,12 @@ class MainActivity : AppCompatActivity() {
         internetVideoDecoderLifecycle = null
         internetTickJob = null
         internetNetworkMonitor = null
-        videoDecoder = null
-        connectionAttemptInProgress = false
+        if (videoDecoderRef.get() === decoder) {
+            videoDecoderRef.compareAndSet(decoder, null)
+        }
+        decoderConfigurationGeneration.incrementAndGet()
+        activeDecoderConfigEpoch = 0L
+        productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         activeInternetInputIds.clear()
         internetStylusInputIds.clear()
@@ -5332,6 +5468,7 @@ class MainActivity : AppCompatActivity() {
         displayHeight = 0
         displayRotation = 0
         isConnected = false
+        productSessionCoordinator.setTransportConnected(false)
         val quarantinedSession = requireNotNull(internetSession)
         check(
             QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
@@ -5340,7 +5477,7 @@ class MainActivity : AppCompatActivity() {
         listOf<() -> Unit>(
             { tickJob?.cancel() },
             { networkMonitor?.close() },
-            { decoder?.release() },
+            { decoder?.let(::releaseDecoderAsync) },
         ).forEach { cleanup ->
             try {
                 cleanup()
@@ -5465,8 +5602,8 @@ class MainActivity : AppCompatActivity() {
             pendingAutomaticReconnectDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS
             return
         }
-        if (isConnected || connectionAttemptInProgress) return
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
+        pendingTerminalGuidance = null
         val callbackClient = StreamClient(
             host,
             port,
@@ -5512,7 +5649,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    connectionAttemptInProgress = false
+                    productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
                         automaticRetryEnabled = wirelessAutoReconnectEnabled,
                         disconnected = !isConnected,
@@ -5559,11 +5696,11 @@ class MainActivity : AppCompatActivity() {
         val generation = activeSessionGeneration
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
             client?.disconnect()
-            if (client != null) sessionState.invalidate(client, generation)
+            if (client != null) productSessionCoordinator.invalidate(client, generation)
             if (streamClient === client) streamClient = null
         }
         disconnectInternet(showIdle = false)
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         clearUsbConnectionGuidance()
         applyDisconnectedSessionUi()
     }
@@ -5577,10 +5714,10 @@ class MainActivity : AppCompatActivity() {
             scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
             return
         }
-        if (isConnected || connectionAttemptInProgress) return
-        connectionAttemptInProgress = true
+        if (!productSessionCoordinator.beginConnectionAttempt()) return
         hasAttemptedUsbConnection = true
         clearUsbConnectionGuidance()
+        pendingTerminalGuidance = null
         if (prefs.connectionMode == ConnectionMode.USB) {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
@@ -5607,7 +5744,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    connectionAttemptInProgress = false
+                    productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
                         automaticRetryEnabled = automaticUsbConnect,
                         disconnected = !isConnected,
@@ -5640,10 +5777,10 @@ class MainActivity : AppCompatActivity() {
         val generation = activeSessionGeneration
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
             client?.disconnect()
-            if (client != null) sessionState.invalidate(client, generation)
+            if (client != null) productSessionCoordinator.invalidate(client, generation)
             if (streamClient === client) streamClient = null
         }
-        connectionAttemptInProgress = false
+        productSessionCoordinator.endConnectionAttempt()
         applyDisconnectedSessionUi()
         log("Disconnected")
     }
@@ -5659,9 +5796,7 @@ class MainActivity : AppCompatActivity() {
         streamStylusInputIds.clear()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
-        // Drop any host-action state so a stale window-actions button never
-        // lingers into the next session.
-        availableHostActions = emptyList()
+        productSessionCoordinator.clearDisconnectedUiState()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
         cancelClipboardRequestTimeout()
@@ -5670,9 +5805,6 @@ class MainActivity : AppCompatActivity() {
         binding.controlClipboardButton.isEnabled = false
         binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
-        availableDisplays = emptyList()
-        selectedDisplayId = ""
-        pendingDisplaySelectionId = null
         DisplayCapsuleViewBinder.bind(
             resources = resources,
             selector = binding.displayCapsuleGroup,
@@ -6469,9 +6601,8 @@ class MainActivity : AppCompatActivity() {
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         cancelClipboardRequestTimeout()
+        rejectPendingIncomingFileOffer()
         fileTransferApprovalHandler.removeCallbacksAndMessages(null)
-        pendingIncomingFileDialog?.dismiss()
-        pendingIncomingFileDialog = null
         discardPendingOutgoingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
@@ -6512,6 +6643,7 @@ class MainActivity : AppCompatActivity() {
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
+        private const val TOAST_DEDUP_WINDOW_MS = 1_500L
         private const val DISPLAY_MENU_SHOW_DELAY_MS = 120L
         private const val DISPLAY_MENU_SELECTION_GUARD_MS = 300L
 

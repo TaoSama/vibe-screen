@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.SocketAddress
 import java.net.ServerSocket
@@ -343,8 +344,42 @@ class StreamClientCancellationTest {
                 StreamClient("127.0.0.1", unusedPort).connect()
                 fail("Expected the refused connection to be propagated")
             } catch (expected: Exception) {
+                assertTrue(expected is ConnectException)
                 assertTrue(expected.message.orEmpty().isNotBlank())
             }
+        }
+
+    @Test
+    fun legacyFallbackConnectFailureKeepsHostUnavailableGuidance() =
+        runBlocking {
+            val failures = mutableListOf<SessionFailure>()
+            val first = LegacyProbeTimeoutSocket()
+            val second = ConnectRefusedSocket()
+            val sockets = listOf(first, second).iterator()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = 54321,
+                    socketFactory = { sockets.next() },
+                ).apply {
+                    onSessionEnded = { failures += it }
+                }
+
+            try {
+                client.connect()
+                fail("Expected legacy fallback connect failure")
+            } catch (expected: IOException) {
+                assertFalse(expected is ConnectException)
+                assertEquals("Mac connection closed before display configuration", expected.message)
+            }
+
+            assertEquals("Mac connection closed before display configuration", failures.single().detail)
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    failures.single(),
+                    ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                )
+            assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
         }
 
     @Test
@@ -689,6 +724,34 @@ class StreamClientCancellationTest {
                 client.disconnect()
             }
         }
+
+    private class LegacyProbeTimeoutSocket : Socket() {
+        private val output = ByteArrayOutputStream()
+        private val input =
+            object : InputStream() {
+                override fun read(): Int {
+                    throw java.net.SocketTimeoutException("protocol probe timed out")
+                }
+            }
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) = Unit
+
+        override fun getOutputStream(): OutputStream = output
+
+        override fun getInputStream(): InputStream = input
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private class ConnectRefusedSocket : Socket() {
+        override fun connect(endpoint: SocketAddress?, timeout: Int) {
+            throw ConnectException("Connection refused")
+        }
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+    }
 
     private companion object {
         const val FAKE_SERVER_SYNC_TIMEOUT_SECONDS = 5L

@@ -30,6 +30,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(onStop, "autoConnectHandler.removeCallbacks(autoConnectRunnable)")
         assertContains(onStop, "wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)")
         assertBefore(onStop, "completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)", "isInForeground = false")
+        assertBefore(onStop, "isInForeground = false", "rejectPendingIncomingFileOffer()")
         assertBefore(onStop, "applyStreamingWindowState(connected = isConnected, foreground = false)", "super.onStop()")
     }
 
@@ -129,6 +130,27 @@ class MainActivityControllerForwardingContractTest {
         assertBefore(touchHandler, "if (!isInForeground) return", "consumeHiddenControlRevealGesture(event)")
         assertBefore(touchHandler, "if (!isInForeground) return", "prefs.connectionMode == ConnectionMode.INTERNET")
         assertBefore(touchHandler, "if (!isInForeground) return", "forwardMotionTouch(view, event)")
+    }
+
+    @Test
+    fun incomingFileOffersAreRejectedBeforeShowingApprovalWhenBackgrounded() {
+        val source = mainActivitySource()
+        val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer")
+        val onStop = extractMethod(source, "override fun onStop")
+        val onDestroy = extractMethod(source, "override fun onDestroy")
+
+        assertContains(promptOffer, "if (!isInForeground ||")
+        assertContains(promptOffer, "isFinishing ||")
+        assertContains(promptOffer, "isDestroyed ||")
+        assertContains(promptOffer, "!isCurrentSession(client, generation) ||")
+        assertContains(promptOffer, "!client.canTransferFiles")
+        assertBefore(promptOffer, "if (!isInForeground", "pendingIncomingFileDialog != null")
+        assertBefore(promptOffer, "if (!isInForeground", "showImmersiveDialog(dialog)")
+        assertContains(onStop, "rejectPendingIncomingFileOffer()")
+        assertBefore(onStop, "isInForeground = false", "rejectPendingIncomingFileOffer()")
+        assertContains(onDestroy, "rejectPendingIncomingFileOffer()")
+        assertContains(onDestroy, "fileTransferApprovalHandler.removeCallbacksAndMessages(null)")
+        assertBefore(onDestroy, "rejectPendingIncomingFileOffer()", "fileTransferApprovalHandler.removeCallbacksAndMessages(null)")
     }
 
     @Test

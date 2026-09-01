@@ -8,9 +8,11 @@ import hashlib
 import os
 import plistlib
 import platform
+import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -27,15 +29,25 @@ ARTIFACT_NAME = "Vibe-Screen"
 EXECUTABLE_NAME = PRODUCT_NAME
 DEFAULT_SIGN_IDENTITY = "Vibe Screen Dev"
 SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"
+EXPECTED_SIGNING_LEAF_SHA1 = "9AAE572BF6D764E3436A6109197D345B5A87998C"
 CODESIGN = "/usr/bin/codesign"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
 CODESIGN_TEMP_FILE_MARKER = ".cstemp"
+SIGNING_CERTIFICATE_REQUIREMENT_PATTERN = re.compile(
+    r'certificate\s+(leaf|root)\s*=\s*H"([0-9A-Fa-f]{40})"'
+)
 REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
 SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
 SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"
 SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"
 PREFLIGHT_EXTERNAL_COMMAND_TIMEOUT_SECONDS = 30
+AD_HOC_PREVIEW_NOTICE_NAME = "AD_HOC_PREVIEW_NOT_FOR_TCC_OR_DEVICE_EVIDENCE.txt"
+AD_HOC_PREVIEW_WARNING = (
+    "WARNING: created an explicit ad-hoc signed macOS preview artifact. "
+    "It changes the designated requirement and must not be used for macOS TCC "
+    "or device-acceptance evidence."
+)
 
 
 @dataclass(frozen=True)
@@ -43,6 +55,12 @@ class SourceIdentity:
     commit: str
     tree: str
     dirty: bool
+
+
+@dataclass(frozen=True)
+class CodesigningIdentity:
+    sha1: str
+    name: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,7 +79,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--sign-identity",
-        default=os.environ.get(SIGN_IDENTITY_ENV, DEFAULT_SIGN_IDENTITY),
+        default=None,
         help=(
             "codesign identity; '-' produces a local ad-hoc signature. "
             f"Defaults to ${SIGN_IDENTITY_ENV} or the stable "
@@ -72,7 +90,11 @@ def parse_args() -> argparse.Namespace:
             "any other missing identity fails fast instead of silently degrading."
         ),
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.sign_identity_explicit = args.sign_identity is not None
+    if args.sign_identity is None:
+        args.sign_identity = os.environ.get(SIGN_IDENTITY_ENV, DEFAULT_SIGN_IDENTITY)
+    return args
 
 
 def run(*command: str, cwd: Path | None = None, timeout: float | None = None) -> str:
@@ -94,18 +116,63 @@ def command_text(command: tuple[str, ...] | list[str] | str) -> str:
     return " ".join(command)
 
 
-def resolve_sign_identity(requested: str) -> str:
-    """Return a usable codesign identity.
+def normalize_sha1(value: str) -> str:
+    return value.replace(" ", "").upper()
 
-    The default identity ('Vibe Screen Dev') keeps the signing hash stable across
-    local rebuilds so macOS Screen Recording/Accessibility grants survive. An
-    ad-hoc signature (requested with '-') is only used when the operator passes
-    it explicitly; any other missing identity fails fast so a local rebuild does
-    not silently invalidate TCC grants. CI workflows must pass '--sign-identity -'
-    explicitly to produce ad-hoc signed preview artifacts.
+
+def is_sha1(value: str) -> bool:
+    return re.fullmatch(r"[0-9A-Fa-f]{40}", normalize_sha1(value)) is not None
+
+
+def parse_codesigning_identities(output: str) -> tuple[CodesigningIdentity, ...]:
+    identities: list[CodesigningIdentity] = []
+    for raw_line in output.splitlines():
+        match = re.match(r'^\s*\d+\)\s+([0-9A-Fa-f]{40})\s+"(.+)"\s*$', raw_line)
+        if match is None:
+            continue
+        identities.append(
+            CodesigningIdentity(
+                sha1=normalize_sha1(match.group(1)),
+                name=match.group(2),
+            )
+        )
+    return tuple(identities)
+
+
+def dedupe_codesigning_identities_by_sha1(
+    identities: tuple[CodesigningIdentity, ...] | list[CodesigningIdentity],
+) -> tuple[CodesigningIdentity, ...]:
+    unique: dict[str, CodesigningIdentity] = {}
+    for identity in identities:
+        unique.setdefault(identity.sha1, identity)
+    return tuple(unique.values())
+
+
+def parse_signing_certificate_hash(requirement: str | None) -> str | None:
+    if requirement is None:
+        return None
+    matches = SIGNING_CERTIFICATE_REQUIREMENT_PATTERN.findall(requirement)
+    for certificate_kind, sha1 in matches:
+        if certificate_kind == "leaf":
+            return sha1.upper()
+    for certificate_kind, sha1 in matches:
+        if certificate_kind == "root":
+            return sha1.upper()
+    return None
+
+
+def resolve_sign_identity(requested: str) -> str:
+    """Return a usable codesign identity argument.
+
+    The local development Host must use the historical leaf certificate SHA-1 so
+    the designated requirement, and therefore macOS Screen Recording/Accessibility
+    grants, stay reusable across rebuilds. An ad-hoc signature (requested with
+    '-') is only used when the operator passes it explicitly; CI workflows must
+    pass '--sign-identity -' explicitly to produce ad-hoc signed preview artifacts.
     """
     if requested == "-":
         return requested
+    requested_normalized = normalize_sha1(requested)
     lookup_command = ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning")
     try:
         lookup = subprocess.run(
@@ -123,27 +190,70 @@ def resolve_sign_identity(requested: str) -> str:
             f"codesign identity '{requested}' is available. Unlock or repair the "
             "keychain, then rerun preflight."
         ) from error
-    quoted_identity = f'"{requested}"'
-    matching_identities = [
-        line.strip()
-        for line in lookup.stdout.splitlines()
-        if line.strip().endswith(quoted_identity)
+    if lookup.returncode != 0:
+        detail = lookup.stdout.strip() or "no output"
+        raise SystemExit(
+            "security find-identity -v -p codesigning failed while resolving "
+            f"codesign identity '{requested}': {detail}"
+        )
+    identities = dedupe_codesigning_identities_by_sha1(parse_codesigning_identities(lookup.stdout))
+    matching_expected_leaf = [
+        identity for identity in identities if identity.sha1 == EXPECTED_SIGNING_LEAF_SHA1
     ]
-    if lookup.returncode == 0 and len(matching_identities) == 1:
-        return requested
-    if lookup.returncode == 0 and len(matching_identities) > 1:
+    if lookup.returncode == 0 and is_sha1(requested):
+        if requested_normalized != EXPECTED_SIGNING_LEAF_SHA1:
+            raise SystemExit(
+                f"codesign identity SHA-1 '{requested_normalized}' is not the pinned "
+                f"Vibe Screen Host signing leaf '{EXPECTED_SIGNING_LEAF_SHA1}'."
+            )
+        if len(matching_expected_leaf) == 1:
+            return EXPECTED_SIGNING_LEAF_SHA1
+        raise SystemExit(
+            f"pinned Vibe Screen Host signing leaf '{EXPECTED_SIGNING_LEAF_SHA1}' "
+            "not found in the keychain."
+        )
+    matching_name = [identity for identity in identities if identity.name == requested]
+    if lookup.returncode == 0 and len(matching_name) == 1:
+        identity = matching_name[0]
+        if identity.sha1 == EXPECTED_SIGNING_LEAF_SHA1:
+            return EXPECTED_SIGNING_LEAF_SHA1
+        raise SystemExit(
+            f"codesign identity '{requested}' has leaf SHA-1 '{identity.sha1}', "
+            f"expected '{EXPECTED_SIGNING_LEAF_SHA1}'. Refusing to replace the "
+            "historically authorized Host signing leaf."
+        )
+    if lookup.returncode == 0 and len(matching_name) > 1:
         raise SystemExit(
             f"multiple codesign identities named '{requested}' were found in the keychain. "
-            "Remove or rename duplicates so local builds keep one stable certificate "
-            "leaf hash for macOS Screen Recording/Accessibility grants."
+            f"Use the pinned SHA-1 '{EXPECTED_SIGNING_LEAF_SHA1}' or remove duplicates "
+            "so local builds cannot drift to a different certificate leaf."
         )
     raise SystemExit(
         f"codesign identity '{requested}' not found in the keychain. "
-        f"Create the '{DEFAULT_SIGN_IDENTITY}' self-signed identity (or set "
-        f"${SIGN_IDENTITY_ENV} to an existing identity), or pass "
-        "'--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the "
-        "code-signing hash on every rebuild and invalidates macOS Screen "
-        "Recording/Accessibility grants."
+        f"Import the Vibe Screen Host signing certificate with leaf SHA-1 "
+        f"'{EXPECTED_SIGNING_LEAF_SHA1}' (or set ${SIGN_IDENTITY_ENV} to that "
+        "SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview "
+        "build. Ad-hoc signing changes the designated requirement and cannot "
+        "reuse macOS Screen Recording/Accessibility grants."
+    )
+
+
+def require_explicit_ad_hoc_preview(sign_identity: str, *, explicit_cli_option: bool) -> None:
+    if sign_identity == "-" and not explicit_cli_option:
+        raise SystemExit(
+            f"${SIGN_IDENTITY_ENV}=- is not accepted for macOS packaging. Pass "
+            "--sign-identity - explicitly only when creating an ad-hoc preview "
+            "artifact; stable local builds must resolve to the pinned Vibe Screen "
+            f"Host signing leaf '{EXPECTED_SIGNING_LEAF_SHA1}'."
+        )
+
+
+def write_ad_hoc_preview_notice(resources_dir: Path, sign_identity: str) -> None:
+    if sign_identity != "-":
+        return
+    (resources_dir / AD_HOC_PREVIEW_NOTICE_NAME).write_text(
+        AD_HOC_PREVIEW_WARNING + "\n",
+        encoding="utf-8",
     )
 
 
@@ -297,7 +407,12 @@ def extract_reproducible_zip(archive_path: Path, destination: Path) -> None:
                 target.chmod(stat.S_IMODE(mode))
 
 
-def verify_reproducible_zip(archive_path: Path, app_bundle_name: str) -> None:
+def verify_reproducible_zip(
+    archive_path: Path,
+    app_bundle_name: str,
+    *,
+    sign_identity: str | None = None,
+) -> None:
     with tempfile.TemporaryDirectory(prefix="vibe-screen-archive-verify.") as temporary_directory:
         extract_root = Path(temporary_directory)
         extract_reproducible_zip(archive_path, extract_root)
@@ -305,6 +420,8 @@ def verify_reproducible_zip(archive_path: Path, app_bundle_name: str) -> None:
         if not extracted_app.is_dir():
             raise SystemExit(f"archive omitted expected app bundle: {app_bundle_name}")
         run(CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(extracted_app))
+        if sign_identity is not None:
+            verify_packaged_app_certificate_contracts(extracted_app, sign_identity)
         require_no_codesign_temporary_files(extracted_app)
 
 
@@ -341,6 +458,48 @@ def require_no_codesign_temporary_files(root: Path) -> None:
         )
 
 
+def parse_designated_requirement(output: str) -> str | None:
+    for line in output.splitlines():
+        if "designated =>" in line:
+            return line.split("designated =>", 1)[1].strip()
+    return None
+
+
+def verify_signed_app_certificate_contract(app_path: Path, sign_identity: str) -> None:
+    if sign_identity == "-":
+        return
+    try:
+        requirement_output = run(CODESIGN, "-d", "-r-", str(app_path))
+    except subprocess.CalledProcessError as error:
+        detail = error.output.strip() if error.output else "no output"
+        raise SystemExit(
+            f"codesign designated requirement inspection failed for {app_path}: {detail}"
+        ) from error
+    requirement = parse_designated_requirement(requirement_output)
+    if not requirement:
+        raise SystemExit(f"codesign designated requirement is missing for {app_path}")
+    certificate_hash = parse_signing_certificate_hash(requirement)
+    if certificate_hash is None:
+        raise SystemExit(
+            f"codesign designated requirement for {app_path} does not contain a "
+            "valid certificate leaf/root SHA-1"
+        )
+    if certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
+        raise SystemExit(
+            f"codesign designated requirement for {app_path} uses certificate SHA-1 "
+            f"'{certificate_hash}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+        )
+
+
+def verify_packaged_app_certificate_contracts(app_path: Path, sign_identity: str) -> None:
+    if sign_identity == "-":
+        return
+    verify_signed_app_certificate_contract(app_path, sign_identity)
+    web_rtc_framework = app_path / "Contents" / "Frameworks" / WEBRTC_FRAMEWORK_NAME
+    if web_rtc_framework.exists():
+        verify_signed_app_certificate_contract(web_rtc_framework, sign_identity)
+
+
 def sign_packaged_app(app_path: Path, web_rtc_framework: Path, sign_identity: str) -> None:
     clean_codesign_temporary_files(web_rtc_framework)
     require_no_codesign_temporary_files(web_rtc_framework)
@@ -366,10 +525,15 @@ def sign_packaged_app(app_path: Path, web_rtc_framework: Path, sign_identity: st
     )
     run(CODESIGN, "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
     require_no_codesign_temporary_files(app_path)
+    verify_packaged_app_certificate_contracts(app_path, sign_identity)
 
 
 def main() -> int:
     args = parse_args()
+    require_explicit_ad_hoc_preview(
+        args.sign_identity,
+        explicit_cli_option=getattr(args, "sign_identity_explicit", False),
+    )
     sign_identity = resolve_sign_identity(args.sign_identity)
     validate_notice_bundle(REPOSITORY_ROOT)
     source_identity = collect_source_identity(REPOSITORY_ROOT)
@@ -421,6 +585,7 @@ def main() -> int:
     shutil.copy2(HOST_ROOT / "Resources" / "Credits.html", resources_dir)
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "LICENSE", resources_dir / "LICENSE.txt")
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "NOTICE", resources_dir / "NOTICE.txt")
+    write_ad_hoc_preview_notice(resources_dir, sign_identity)
     web_rtc_framework = binary_dir / WEBRTC_FRAMEWORK_NAME
     resource_bundle = binary_dir / RESOURCE_BUNDLE_NAME
     if not web_rtc_framework.is_dir():
@@ -447,11 +612,13 @@ def main() -> int:
     sign_packaged_app(app_path, frameworks_dir / WEBRTC_FRAMEWORK_NAME, sign_identity)
     normalize_mtimes(app_path)
     create_reproducible_zip(app_path, archive_path)
-    verify_reproducible_zip(archive_path, f"{PRODUCT_NAME}.app")
+    verify_reproducible_zip(archive_path, f"{PRODUCT_NAME}.app", sign_identity=sign_identity)
     checksum_path.write_text(
         f"{sha256(archive_path)}  {archive_path.name}\n",
         encoding="utf-8",
     )
+    if sign_identity == "-":
+        print(AD_HOC_PREVIEW_WARNING, file=sys.stderr)
     print(app_path)
     print(archive_path)
     print(checksum_path)

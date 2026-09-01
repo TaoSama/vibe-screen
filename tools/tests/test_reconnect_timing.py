@@ -238,6 +238,10 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             {DISRUPTION_CLIENT_KILL, DISRUPTION_ADB_REVERSE, DISRUPTION_LAN_NETWORK},
         )
         self.assertEqual(summary["reasons"], ["Host 54321 listener unavailable"])
+        self.assertEqual(
+            summary["missing_required_disruptions"],
+            summary["required_disruptions"],
+        )
 
     def test_parses_android_diag_after_disruption_start(self) -> None:
         events = parse_android_diag_events(
