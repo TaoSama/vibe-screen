@@ -38,6 +38,7 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.EditText
 import android.widget.PopupMenu
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
 import androidx.constraintlayout.widget.ConstraintSet
@@ -295,6 +296,8 @@ class MainActivity : AppCompatActivity() {
     private val clipboardRequestHandler = Handler(Looper.getMainLooper())
     private val fileTransferApprovalHandler = Handler(Looper.getMainLooper())
     private var clipboardRequestTimeout: Runnable? = null
+    private var lastToastMessage: String? = null
+    private var lastToastShownAtMs = 0L
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
         Runnable {
@@ -1502,6 +1505,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             clearUsbConnectionGuidance()
+            pendingTerminalGuidance = null
             updateStatus("Checking for your Mac…")
             automaticUsbConnect = false
             connect(host, port, automatic = false)
@@ -1569,6 +1573,22 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             LiveRegionTextApplier.apply(binding.statusText, status)
         }
+    }
+
+    private fun showDedupedToast(
+        @StringRes messageId: Int,
+        duration: Int = Toast.LENGTH_SHORT,
+    ) = showDedupedToast(getString(messageId), duration)
+
+    private fun showDedupedToast(
+        message: String,
+        duration: Int = Toast.LENGTH_SHORT,
+    ) {
+        val now = SystemClock.uptimeMillis()
+        if (message == lastToastMessage && now - lastToastShownAtMs < TOAST_DEDUP_WINDOW_MS) return
+        lastToastMessage = message
+        lastToastShownAtMs = now
+        Toast.makeText(this, message, duration).show()
     }
 
     private fun showUsbConnectionGuidance(guidance: ConnectionGuidance) {
@@ -2172,7 +2192,7 @@ class MainActivity : AppCompatActivity() {
         val active =
             DisplayCapsulePolicy.capsuleLabel(availableDisplays, selectedDisplayId)
                 .ifEmpty { getString(R.string.display_capsule_placeholder) }
-        Toast.makeText(this, getString(R.string.display_switch_request_failed, active), Toast.LENGTH_SHORT).show()
+        showDedupedToast(getString(R.string.display_switch_request_failed, active))
         mainDiag("capsule selectDisplay rejected target=$rejectedId active=$selectedId reason=$reason")
     }
 
@@ -2251,7 +2271,7 @@ class MainActivity : AppCompatActivity() {
                     mainDiag("capsule selectDisplay target=${option.id} from=$previousDisplayId")
                     if (streamClient?.selectDisplay(option.id) == true) {
                         markDisplaySelectionPending(previousDisplayId, option.id)
-                        Toast.makeText(this, R.string.display_switch_request_sent, Toast.LENGTH_SHORT).show()
+                        showDedupedToast(R.string.display_switch_request_sent)
                     } else {
                         rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
                     }
@@ -2349,7 +2369,7 @@ class MainActivity : AppCompatActivity() {
             !currentSessionBinding().capabilities.fileTransfer ||
             !client.canTransferFiles
         ) {
-            Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
         val intent =
@@ -2359,7 +2379,7 @@ class MainActivity : AppCompatActivity() {
         runCatching { startActivityForResult(intent, REQ_FILE_TRANSFER_OPEN) }
             .onFailure { failure ->
                 mainDiag("file transfer picker failed: " + failure.javaClass.simpleName)
-                Toast.makeText(this, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+                showDedupedToast(R.string.file_transfer_pick_failed)
             }
     }
 
@@ -2376,7 +2396,7 @@ class MainActivity : AppCompatActivity() {
             !currentSessionBinding().capabilities.fileTransfer ||
             !client.canTransferFiles
         ) {
-            Toast.makeText(this, R.string.file_transfer_unavailable, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
         val maximumFileBytes = client.negotiatedMaxFileBytes
@@ -2403,14 +2423,12 @@ class MainActivity : AppCompatActivity() {
                     sent.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                         discardPendingOutgoingFileTransfer()
-                        Toast.makeText(this@MainActivity, R.string.file_transfer_pick_failed, Toast.LENGTH_SHORT).show()
+                        showDedupedToast(R.string.file_transfer_pick_failed)
                         return@withContext
                     }
-                Toast.makeText(
-                    this@MainActivity,
+                showDedupedToast(
                     if (sentValue) R.string.file_transfer_sent_to_mac else R.string.file_transfer_send_failed,
-                    Toast.LENGTH_SHORT,
-                ).show()
+                )
                 if (!sentValue) discardPendingOutgoingFileTransfer()
             }
         }
@@ -2497,7 +2515,7 @@ class MainActivity : AppCompatActivity() {
             }
             timeout = Runnable {
                 rejectDecision()
-                Toast.makeText(this, R.string.file_transfer_offer_expired, Toast.LENGTH_SHORT).show()
+                showDedupedToast(R.string.file_transfer_offer_expired)
             }
             val dialog =
                 MaterialAlertDialogBuilder(this)
@@ -2558,11 +2576,10 @@ class MainActivity : AppCompatActivity() {
                             "file transfer saved bytes=$stagedBytes " +
                                 "transfer_id=${completed.transferId.shortDebugId()}",
                         )
-                        Toast.makeText(
-                            this@MainActivity,
+                        showDedupedToast(
                             getString(fileTransferSavedMessage(), displayName),
                             Toast.LENGTH_LONG,
-                        ).show()
+                        )
                     }
                     .onFailure { failure ->
                         mainDiag(
@@ -2570,11 +2587,10 @@ class MainActivity : AppCompatActivity() {
                                 "transfer_id=${completed.transferId.shortDebugId()} " +
                                 failure.javaClass.simpleName,
                         )
-                        Toast.makeText(
-                            this@MainActivity,
+                        showDedupedToast(
                             getString(R.string.file_transfer_save_failed, displayName),
                             Toast.LENGTH_LONG,
-                        ).show()
+                        )
                     }
             }
         }
@@ -2750,20 +2766,16 @@ class MainActivity : AppCompatActivity() {
                     ?.toString()
             }.getOrNull()
         if (!ClipboardMenuPolicy.canSend(text)) {
-            Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_empty)
             return true
         }
         val clipboardText = requireNotNull(text)
         if (!ClipboardMenuPolicy.isWithinSizeLimit(clipboardText, client.negotiatedMaxClipboardBytes)) {
-            Toast.makeText(this, R.string.clipboard_too_large, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_too_large)
             return true
         }
         val sent = client.offerClipboard(clipboardText)
-        Toast.makeText(
-            this,
-            if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed,
-            Toast.LENGTH_SHORT,
-        ).show()
+        showDedupedToast(if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed)
         return true
     }
 
@@ -2779,14 +2791,14 @@ class MainActivity : AppCompatActivity() {
         }
         val offer = clipboardApprovalState.offerForRequest(client, generation)
         if (offer == null) {
-            Toast.makeText(this, R.string.clipboard_mac_unavailable, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_mac_unavailable)
             return true
         }
         if (!clipboardApprovalState.approveOffer(client, generation, offer.changeId) ||
             !client.requestClipboard(offer.changeId)
         ) {
             clipboardApprovalState.cancelOfferApproval(client, generation, offer.changeId)
-            Toast.makeText(this, R.string.clipboard_receive_failed, Toast.LENGTH_SHORT).show()
+            showDedupedToast(R.string.clipboard_receive_failed)
         } else {
             scheduleClipboardRequestTimeout(client, generation, offer.changeId)
             refreshClipboardControl()
@@ -2855,15 +2867,44 @@ class MainActivity : AppCompatActivity() {
                     ClipData.newPlainText(getString(R.string.clipboard_plain_text_label), text),
                 )
             }
-        Toast.makeText(
-            this,
-            if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed,
-            Toast.LENGTH_SHORT,
-        ).show()
+        showDedupedToast(if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed)
         result.exceptionOrNull()?.let { error ->
             mainDiag("clipboard write failed: " + error.javaClass.simpleName)
         }
     }
+
+    private fun fileTransferFailureMessageId(reason: String): Int =
+        when (reason) {
+            "policy_denied" -> R.string.file_transfer_failed_policy_denied
+            "user_denied" -> R.string.file_transfer_failed_user_denied
+            "file_too_large" -> R.string.file_transfer_failed_too_large
+            "concurrent_limit",
+            "temporary_space_limit",
+            -> R.string.file_transfer_failed_temporary_limit
+            "digest_mismatch",
+            "chunk_digest_mismatch",
+            "invalid_digest",
+            -> R.string.file_transfer_failed_verification
+            "incomplete_file",
+            "unexpected_offset",
+            "exceeds_declared_length",
+            "chunk_length_mismatch",
+            "empty_chunk",
+            -> R.string.file_transfer_failed_incomplete
+            "host_shutdown" -> R.string.file_transfer_failed_host_closed
+            else -> R.string.file_transfer_failed
+        }
+
+    private fun hostActionFailureMessageId(rejectionReason: String): Int =
+        when {
+            rejectionReason == "accessibility_permission_required" ||
+                rejectionReason.contains("Accessibility permission", ignoreCase = true) ->
+                R.string.host_action_rejected_permission
+            rejectionReason == "no_focused_window" ||
+                rejectionReason.contains("focused window", ignoreCase = true) ->
+                R.string.host_action_rejected_no_window
+            else -> R.string.host_action_rejected
+        }
 
     private fun scheduleClipboardRequestTimeout(
         client: StreamClient,
@@ -2883,7 +2924,7 @@ class MainActivity : AppCompatActivity() {
                             return@runOnUiThread
                         }
                         refreshClipboardControl()
-                        Toast.makeText(this, R.string.clipboard_request_timed_out, Toast.LENGTH_SHORT).show()
+                        showDedupedToast(R.string.clipboard_request_timed_out)
                     }
                 }
                 if (!submitted && clipboardApprovalState.cancelOfferApproval(client, generation, exactChangeId)) {
@@ -3049,7 +3090,7 @@ class MainActivity : AppCompatActivity() {
             is ProductSessionCoordinator.Command.InvokeHostAction -> {
                 mainDiag("capsule invokeHostAction id=$actionId")
                 client.invokeHostAction(actionId)
-                Toast.makeText(this, getString(R.string.host_action_sent, label), Toast.LENGTH_SHORT).show()
+                showDedupedToast(getString(R.string.host_action_sent, label))
             }
         }
     }
@@ -3242,7 +3283,7 @@ class MainActivity : AppCompatActivity() {
                     VideoPreferenceFeedbackKind.FRAME_RATE -> R.string.video_frame_rate_request_sent
                     VideoPreferenceFeedbackKind.BITRATE -> R.string.video_bitrate_request_sent
                 }
-            Toast.makeText(this, messageId, Toast.LENGTH_SHORT).show()
+            showDedupedToast(messageId)
         }
 
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -4268,7 +4309,7 @@ class MainActivity : AppCompatActivity() {
         mainDiag("Decoder init FAILED: ${error.message}")
         log("❌ Failed to initialize decoder: ${error.message}")
         if (isCurrentSession(ownerClient, ownerGeneration)) {
-            updateStatus("Video decoder failed: ${error.message}")
+            updateStatus(getString(R.string.connection_guidance_video_decoder_recovery_title))
             if (failSession) {
                 ownerClient.failCurrentSession("codec_configuration_failure")
             }
@@ -4538,7 +4579,7 @@ class MainActivity : AppCompatActivity() {
                         lastAnnouncedConfigEpoch = lastAppliedVideoPreferenceConfigEpoch,
                     )
                 ) {
-                    Toast.makeText(this, R.string.video_preferences_applied, Toast.LENGTH_SHORT).show()
+                    showDedupedToast(R.string.video_preferences_applied)
                 }
                 lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
                 mainDiag(
@@ -4728,15 +4769,13 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 mainDiag("onHostActionResult: accepted=$accepted reason=$rejectionReason")
-                val message =
+                val messageId =
                     if (accepted) {
-                        getString(R.string.host_action_accepted)
-                    } else if (rejectionReason.isNotBlank()) {
-                        getString(R.string.host_action_rejected_with_reason, rejectionReason)
+                        R.string.host_action_accepted
                     } else {
-                        getString(R.string.host_action_rejected)
+                        hostActionFailureMessageId(rejectionReason)
                     }
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                showDedupedToast(messageId)
             }
         }
 
@@ -4817,13 +4856,12 @@ class MainActivity : AppCompatActivity() {
                 discardPendingOutgoingFileTransfer()
                 val message =
                     if (accepted) {
-                        getString(R.string.file_transfer_completed)
-                    } else if (reason.isNotBlank()) {
-                        getString(R.string.file_transfer_failed_with_reason, reason)
+                        R.string.file_transfer_completed
                     } else {
-                        getString(R.string.file_transfer_failed)
+                        fileTransferFailureMessageId(reason)
                     }
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                mainDiag("onFileTransferResult: accepted=$accepted reason=$reason")
+                showDedupedToast(message)
             }
         }
 
@@ -5575,6 +5613,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (!productSessionCoordinator.beginConnectionAttempt()) return
+        pendingTerminalGuidance = null
         val callbackClient = StreamClient(
             host,
             port,
@@ -5690,6 +5729,7 @@ class MainActivity : AppCompatActivity() {
         if (!productSessionCoordinator.beginConnectionAttempt()) return
         hasAttemptedUsbConnection = true
         clearUsbConnectionGuidance()
+        pendingTerminalGuidance = null
         if (prefs.connectionMode == ConnectionMode.USB) {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
@@ -6615,6 +6655,7 @@ class MainActivity : AppCompatActivity() {
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
+        private const val TOAST_DEDUP_WINDOW_MS = 1_500L
         private const val DISPLAY_MENU_SHOW_DELAY_MS = 120L
         private const val DISPLAY_MENU_SELECTION_GUARD_MS = 300L
 

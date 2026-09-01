@@ -135,7 +135,8 @@
     <string name="host_action_accepted">Done</string>
     <!-- Toast shown when the host rejects the window action. -->
     <string name="host_action_rejected">Couldn\u2019t complete that action</string>
-    <string name="host_action_rejected_with_reason">Couldn\u2019t complete that action: %1$s</string>
+    <string name="host_action_rejected_permission">Enable window control permission on your Mac, then try again.</string>
+    <string name="host_action_rejected_no_window">Select a movable window on your Mac, then try again.</string>
     <!-- Clipboard control in the streaming control bar. -->
     <string name="control_clipboard">Clipboard</string>
     <string name="control_file_transfer">File transfer</string>
@@ -262,17 +263,17 @@
     <string name="connection_guidance_mac_ended_session_message">Mac ended the session</string>
     <string name="connection_guidance_user_disconnected_message">Disconnected by user</string>
     <string name="connection_guidance_mac_unavailable_title">Mac app unavailable</string>
-    <string name="connection_guidance_adb_route_unavailable_title">ADB route unavailable</string>
+    <string name="connection_guidance_adb_route_unavailable_title">USB route unavailable</string>
     <string name="connection_guidance_network_unavailable_title">Network unavailable</string>
     <string name="connection_guidance_timeout_title">Connection timed out</string>
     <string name="connection_guidance_failed_title">Connection failed</string>
     <string name="connection_guidance_usb_open_mac_prefix">Open Vibe Screen on your Mac.</string>
     <string name="connection_guidance_usb_route_unavailable_prefix">The Android-to-Mac route is unavailable.</string>
-    <string name="connection_guidance_usb_timeout_prefix">Confirm Vibe Screen is listening on port %1$d on your Mac.</string>
+    <string name="connection_guidance_usb_timeout_prefix">Confirm Vibe Screen is ready for USB connections on your Mac.</string>
     <string name="connection_guidance_usb_unknown_prefix">Check Vibe Screen on your Mac and retry.</string>
-    <string name="connection_guidance_usb_recovery_usb">%1$s Keep the USB cable connected, authorize USB debugging, then run adb reverse tcp:%2$d tcp:%2$d.</string>
-    <string name="connection_guidance_usb_recovery_wireless_adb">%1$s Keep Wireless debugging on, run adb connect &lt;device-ip&gt;:&lt;port&gt;, then adb reverse tcp:%2$d tcp:%2$d.</string>
-    <string name="connection_guidance_usb_recovery_unavailable">%1$s Enable USB or Wireless debugging, connect the device, then run adb reverse tcp:%2$d tcp:%2$d.</string>
+    <string name="connection_guidance_usb_recovery_usb">%1$s Keep the USB data cable connected, accept the debugging prompt on this device, then use the Mac app’s USB repair action and retry.</string>
+    <string name="connection_guidance_usb_recovery_wireless_adb">%1$s Keep Wireless debugging enabled, approve the Mac on this device, then use the Mac app’s USB repair action and retry.</string>
+    <string name="connection_guidance_usb_recovery_unavailable">%1$s Enable Developer options, connect a USB data cable with USB debugging or turn on Wireless debugging, approve the Mac, then retry from the Mac app.</string>
     <string name="connection_guidance_lan_host_unavailable_message">Open Vibe Screen on your Mac in LAN mode. Confirm both devices use the same trusted Wi-Fi, the saved host address and port %1$d are current, and the macOS firewall allows Vibe Screen, then reconnect or scan a fresh QR code.</string>
     <string name="connection_guidance_lan_network_unavailable_message">Reconnect both devices to the same trusted Wi-Fi and disable VPN or guest-network isolation. Verify the saved Mac address and port %1$d, then reconnect.</string>
     <string name="connection_guidance_lan_timeout_message">Confirm Vibe Screen is listening in LAN mode on port %1$d, both devices remain on the same trusted Wi-Fi, and the macOS firewall allows the connection, then retry.</string>
@@ -364,5 +365,11 @@
     <string name="file_transfer_save_failed">Could not save %1$s</string>
     <string name="file_transfer_completed">File transfer completed</string>
     <string name="file_transfer_failed">File transfer failed</string>
-    <string name="file_transfer_failed_with_reason">File transfer failed: %1$s</string>
+    <string name="file_transfer_failed_policy_denied">File transfer is blocked by this session\u2019s policy.</string>
+    <string name="file_transfer_failed_user_denied">File transfer was declined.</string>
+    <string name="file_transfer_failed_too_large">This file is too large for the current session.</string>
+    <string name="file_transfer_failed_temporary_limit">File transfer is busy. Try again after the current transfer finishes.</string>
+    <string name="file_transfer_failed_verification">File verification failed. Try sending it again.</string>
+    <string name="file_transfer_failed_incomplete">The file transfer did not finish. Try again.</string>
+    <string name="file_transfer_failed_host_closed">The Mac ended the session before the file transfer finished.</string>
 </resources>
