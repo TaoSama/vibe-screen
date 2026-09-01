@@ -50,17 +50,21 @@ internal class StreamProtocolSideEffectOwner(
             acceptsConnectionGeneration(connectionGeneration)
     }
 
-    @Synchronized
     fun <T> runIfCurrent(
         session: ProtocolV1Session,
         connectionGeneration: Long,
         block: () -> T,
-    ): T? =
-        if (isCurrent(session, connectionGeneration)) {
-            block()
-        } else {
-            null
+    ): T? {
+        val current = synchronized(this) {
+            val owner = activeOwner
+            owner != null &&
+                isConnected() &&
+                owner.session === session &&
+                owner.connectionGeneration == connectionGeneration &&
+                acceptsConnectionGeneration(connectionGeneration)
         }
+        return if (current) block() else null
+    }
 
     @Synchronized
     fun trackFileOffer(
@@ -84,6 +88,11 @@ internal class StreamProtocolSideEffectOwner(
     @Synchronized
     fun releaseFileOffer(transferId: ByteString) {
         pendingFileOffers.remove(transferId)
+    }
+
+    @Synchronized
+    fun clearFileOffers() {
+        pendingFileOffers.clear()
     }
 
     @Synchronized

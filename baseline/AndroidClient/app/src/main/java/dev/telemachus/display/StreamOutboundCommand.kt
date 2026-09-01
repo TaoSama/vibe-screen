@@ -2,7 +2,6 @@ package dev.telemachus.display
 
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.FileChunk
-import dev.telemachus.display.protocol.OutgoingFileTransfer
 import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileOffer
@@ -31,6 +30,7 @@ internal sealed interface StreamOutboundCommand {
     ) : StreamOutboundCommand
 
     class ProtocolBatch(
+        val onUnavailable: (() -> Unit)? = null,
         val build: (ProtocolV1Session) -> List<Envelope>,
     ) : StreamOutboundCommand
 
@@ -43,7 +43,7 @@ internal sealed interface StreamOutboundCommand {
         val session: ProtocolV1Session,
         val connectionGeneration: Long,
         val offer: FileOffer,
-        val transfer: OutgoingFileTransfer,
+        val prepared: FileTransferProductOwner.PreparedOutgoingTransfer,
     ) : StreamOutboundCommand
 
     data class ProtocolReceive(

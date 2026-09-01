@@ -11,10 +11,8 @@ import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
 import dev.telemachus.display.audio.encodePacket
 import dev.telemachus.display.audio.pcmPayload
 import dev.telemachus.display.protocol.FileTransferPolicy
-import dev.telemachus.display.protocol.OutgoingFileTransfer
 import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.ProtocolV1Framing
-import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.telemachus.display.protocol.TouchSample
 import dev.vibescreen.protocol.v1.AudioCodec
 import dev.vibescreen.protocol.v1.AudioConfig
@@ -73,7 +71,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -2346,13 +2343,17 @@ class StreamClientProtocolV1IntegrationTest {
         val source = File.createTempFile("vibescreen-fallback-offer", ".txt")
         source.writeText("fallback-file")
         val client = StreamClient("127.0.0.1", 1)
-        val transfer =
-            OutgoingFileTransfer(
-                file = source,
-                mimeType = "text/plain",
-                policy = FileTransferPolicy(),
-                remotePolicy = RemoteManagedPolicy.UNMANAGED,
-            )
+        val fileTransferProductOwner = client.fileTransferProductOwnerForTest()
+        fileTransferProductOwner.activateSession()
+        val prepared = fileTransferProductOwner.prepareOutgoingFile(
+            file = source,
+            mimeType = "text/plain",
+            negotiatedPolicy = FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        assertTrue(
+            fileTransferProductOwner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+                is FileTransferProductOwner.StartOutgoingResult.Started,
+        )
         val resultSeen = CountDownLatch(1)
         val rejectionReason = AtomicReference<String>()
         client.onFileTransferResult = { accepted, reason ->
@@ -2362,13 +2363,11 @@ class StreamClientProtocolV1IntegrationTest {
             }
         }
         try {
-            client.outgoingFileTransfersForTest()[transfer.offer.transferId] = transfer
-
             client.forceLegacyFallbackForTest()
 
             assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
             assertEquals("session_deactivated", rejectionReason.get())
-            assertTrue(client.outgoingFileTransfersForTest().isEmpty())
+            assertEquals(0, fileTransferProductOwner.activeOutgoingTransferCount())
         } finally {
             source.delete()
         }
@@ -2642,11 +2641,10 @@ class StreamClientProtocolV1IntegrationTest {
         method.invoke(this, null)
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun StreamClient.outgoingFileTransfersForTest(): ConcurrentHashMap<ByteString, OutgoingFileTransfer> {
-        val field = javaClass.getDeclaredField("outgoingFileTransfers")
+    private fun StreamClient.fileTransferProductOwnerForTest(): FileTransferProductOwner {
+        val field = javaClass.getDeclaredField("fileTransferProductOwner")
         field.isAccessible = true
-        return field.get(this) as ConcurrentHashMap<ByteString, OutgoingFileTransfer>
+        return field.get(this) as FileTransferProductOwner
     }
 
     private fun beginHandshake(
