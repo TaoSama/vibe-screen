@@ -231,25 +231,26 @@ internal class IncomingFileTransferManager(
     }
 
     @Synchronized
-    fun cancel(transferId: ByteString) {
-        cancelLocked(transferId)
+    fun cancel(transferId: ByteString): Boolean {
+        return cancelLocked(transferId)
     }
 
     @Synchronized
     fun cancelAll() {
-        transfers.keys.toList().forEach(::cancelLocked)
+        transfers.keys.toList().forEach { cancelLocked(it) }
     }
 
     @Synchronized
     fun activeTransferCount(): Int = transfers.size
 
-    private fun cancelLocked(transferId: ByteString) {
-        val state = transfers.remove(transferId) ?: return
+    private fun cancelLocked(transferId: ByteString): Boolean {
+        val state = transfers.remove(transferId) ?: return false
         try {
             state.handle.close()
         } catch (_: IOException) {
         }
         state.file.delete()
+        return true
     }
 
     private fun validateOffer(offer: FileOffer, effective: FileTransferPolicy) {
