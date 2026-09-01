@@ -61,3 +61,9 @@ func createRateDeviceIDs(request CreateSessionRequest) []string {
 	}
 	return []string{hostDeviceID, clientDeviceID}
 }
+
+func localCreateRateRequest(request CreateSessionRequest) CreateSessionRequest {
+	request.HostDeviceID = ""
+	request.ClientDeviceID = ""
+	return request
+}

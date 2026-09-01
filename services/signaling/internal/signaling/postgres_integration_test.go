@@ -209,6 +209,115 @@ func TestPostgresAuthorityReplayWithoutLocalStateFailsClosed(t *testing.T) {
 	}
 }
 
+func TestPostgresAuthorityFinalizeFailureInvalidatesAuthorityAdmission(t *testing.T) {
+	var createCalls atomic.Int32
+	var invalidations atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			call := createCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID: "shared-authority-session", HostToken: fmt.Sprintf("host-token-%d", call), ClientToken: fmt.Sprintf("client-token-%d", call),
+				ExpiresAt: time.Now().Add(time.Hour).UTC(), Created: true,
+			})
+		case r.URL.Path == "/v1/signaling/sessions/shared-authority-session" && r.Method == http.MethodDelete:
+			invalidations.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.authority = authority
+	ctx := context.Background()
+
+	_, created, err := store.Create(ctx, CreateSessionRequest{
+		RequestID: "first-request", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "device-1", SessionEpoch: 1,
+	})
+	if err != nil || !created {
+		t.Fatalf("first create created=%t err=%v", created, err)
+	}
+	_, _, err = store.Create(ctx, CreateSessionRequest{
+		RequestID: "second-request", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "device-1", SessionEpoch: 2,
+	})
+	if !errors.Is(err, ErrAuthorityUnavailable) {
+		t.Fatalf("conflicting create error=%v, want ErrAuthorityUnavailable", err)
+	}
+	if createCalls.Load() != 2 {
+		t.Fatalf("authority create calls=%d, want 2", createCalls.Load())
+	}
+	if invalidations.Load() != 1 {
+		t.Fatalf("authority invalidations=%d, want 1", invalidations.Load())
+	}
+	var reservations int
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_sessions WHERE session_id LIKE $1", authorityReservationPrefix+"%").Scan(&reservations); err != nil {
+		t.Fatal(err)
+	}
+	if reservations != 0 {
+		t.Fatalf("conflicting admission left reservations=%d, want zero", reservations)
+	}
+}
+
+func TestPostgresAuthorityReservationCleanupPreservesPrimaryError(t *testing.T) {
+	tests := []struct {
+		name        string
+		status      int
+		admission   *authoritySignalingAdmission
+		wantPrimary error
+	}{
+		{name: "authority create fails", status: http.StatusServiceUnavailable, wantPrimary: ErrAuthorityUnavailable},
+		{name: "authority replay after reservation", status: http.StatusOK, wantPrimary: ErrInvalidated, admission: &authoritySignalingAdmission{
+			SessionID: "reserved-replay-session", HostToken: "host-token-replay", ClientToken: "client-token-replay",
+			ExpiresAt: time.Now().Add(time.Hour).UTC(), Created: false,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var store *PostgresStore
+			authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				store.pool.Close()
+				if tt.admission != nil {
+					w.Header().Set("Content-Type", "application/json")
+				}
+				w.WriteHeader(tt.status)
+				if tt.admission != nil {
+					_ = json.NewEncoder(w).Encode(tt.admission)
+				}
+			}))
+			defer authorityServer.Close()
+
+			cfg := testAuthorityConfig(authorityServer.URL)
+			store, _ = openSignalingIntegrationStore(t, cfg)
+			authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store.authority = authority
+			_, _, err = store.Create(context.Background(), CreateSessionRequest{
+				RequestID: "cleanup-primary-error", TTL: time.Minute,
+				AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "device-1", SessionEpoch: 1,
+			})
+			if !errors.Is(err, tt.wantPrimary) {
+				t.Fatalf("create error=%v, want %v", err, tt.wantPrimary)
+			}
+			if !errors.Is(err, ErrStorage) {
+				t.Fatalf("create error=%v, want cleanup ErrStorage preserved", err)
+			}
+		})
+	}
+}
+
 func TestPostgresAuthorityPendingReservationRejectsConflictingReplay(t *testing.T) {
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
@@ -719,21 +828,60 @@ func TestPostgresCreateRateLimitIsSharedAcrossInstances(t *testing.T) {
 	if accepted != cfg.SessionCreatesPerMinute || limited != len(stores)-cfg.SessionCreatesPerMinute {
 		t.Fatalf("accepted=%d limited=%d, want accepted=%d limited=%d", accepted, limited, cfg.SessionCreatesPerMinute, len(stores)-cfg.SessionCreatesPerMinute)
 	}
-	var hostTokens, clientTokens int
-	if err := first.pool.QueryRow(ctx, "SELECT tokens_available FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2", "host-shared", createSessionAction).Scan(&hostTokens); err != nil {
+	var localTokens int
+	if err := first.pool.QueryRow(ctx, "SELECT tokens_available FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2", localDevelopmentDeviceID, createSessionAction).Scan(&localTokens); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.pool.QueryRow(ctx, "SELECT tokens_available FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2", "client-shared", createSessionAction).Scan(&clientTokens); err != nil {
+	if localTokens != 0 {
+		t.Fatalf("local_tokens=%d want 0", localTokens)
+	}
+}
+
+func TestPostgresLocalCreateRateLimitIgnoresCallerDeviceIDs(t *testing.T) {
+	cfg := testConfig()
+	cfg.SessionCreatesPerMinute = 1
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+
+	_, created, err := store.Create(ctx, CreateSessionRequest{
+		RequestID:      "local-rate-1",
+		TTL:            time.Minute,
+		HostDeviceID:   "caller-host-1",
+		ClientDeviceID: "caller-client-1",
+	})
+	if err != nil || !created {
+		t.Fatalf("initial create created=%t err=%v", created, err)
+	}
+	_, _, err = store.Create(ctx, CreateSessionRequest{
+		RequestID:      "local-rate-2",
+		TTL:            time.Minute,
+		HostDeviceID:   "caller-host-2",
+		ClientDeviceID: "caller-client-2",
+	})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("second local create error=%v, want ErrRateLimited", err)
+	}
+	var localRows, callerRows int
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2", localDevelopmentDeviceID, createSessionAction).Scan(&localRows); err != nil {
 		t.Fatal(err)
 	}
-	if hostTokens != 0 || clientTokens != 0 {
-		t.Fatalf("host_tokens=%d client_tokens=%d want 0", hostTokens, clientTokens)
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_device_action_rates WHERE device_id LIKE 'caller-%' AND action=$1", createSessionAction).Scan(&callerRows); err != nil {
+		t.Fatal(err)
+	}
+	if localRows != 1 || callerRows != 0 {
+		t.Fatalf("local_rows=%d caller_rows=%d, want local_rows=1 caller_rows=0", localRows, callerRows)
 	}
 }
 
 func TestPostgresCreateRateLimitIsSharedAcrossServerInstances(t *testing.T) {
 	var authorityCalls atomic.Int32
+	var invalidations atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/signaling/sessions/authority-rate-") && r.Method == http.MethodDelete {
+			invalidations.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		var request authoritySignalingRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Errorf("decode authority request: %v", err)
@@ -810,8 +958,63 @@ func TestPostgresCreateRateLimitIsSharedAcrossServerInstances(t *testing.T) {
 	if accepted != cfg.SessionCreatesPerMinute || limited != len(servers)-cfg.SessionCreatesPerMinute {
 		t.Fatalf("accepted=%d limited=%d, want accepted=%d limited=%d", accepted, limited, cfg.SessionCreatesPerMinute, len(servers)-cfg.SessionCreatesPerMinute)
 	}
-	if got := int(authorityCalls.Load()); got != accepted {
-		t.Fatalf("authority calls=%d, want accepted creates only %d", got, accepted)
+	if got := int(authorityCalls.Load()); got != len(servers) {
+		t.Fatalf("authority calls=%d, want one admission attempt per create %d", got, len(servers))
+	}
+	if got := int(invalidations.Load()); got != limited {
+		t.Fatalf("authority invalidations=%d, want rate-limited admissions %d", got, limited)
+	}
+}
+
+func TestPostgresAuthorityFailureDoesNotConsumeCreateRateRows(t *testing.T) {
+	var createCalls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		call := createCalls.Add(1)
+		if call <= 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID: "authority-after-failures", HostToken: "host-token-1", ClientToken: "client-token-1",
+			ExpiresAt: time.Now().Add(time.Hour).UTC(), Created: true,
+		})
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	cfg.SessionCreatesPerMinute = 1
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.authority = authority
+	request := CreateSessionRequest{
+		RequestID: "authority-failure-rate", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-rate", ClientDeviceID: "client-rate", SessionEpoch: 1,
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, _, err := store.Create(ctx, request); !errors.Is(err, ErrAuthorityUnavailable) {
+			t.Fatalf("authority failure %d error=%v, want ErrAuthorityUnavailable", i+1, err)
+		}
+	}
+	var rateRows, reservations int
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_device_action_rates WHERE device_id IN ($1,$2)", "host-rate", "client-rate").Scan(&rateRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_sessions WHERE session_id LIKE $1", authorityReservationPrefix+"%").Scan(&reservations); err != nil {
+		t.Fatal(err)
+	}
+	if rateRows != 0 || reservations != 0 {
+		t.Fatalf("authority failures left rate_rows=%d reservations=%d, want zero", rateRows, reservations)
+	}
+	_, created, err := store.Create(ctx, request)
+	if err != nil || !created {
+		t.Fatalf("create after authority failures created=%t err=%v", created, err)
 	}
 }
 
@@ -832,7 +1035,7 @@ func TestPostgresCreateRateReplayAndWindowReset(t *testing.T) {
 	if _, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "create-rate-blocked", TTL: time.Minute, HostDeviceID: "host-rate", ClientDeviceID: "client-rate-2"}); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("blocked create error=%v, want ErrRateLimited", err)
 	}
-	if _, err := store.pool.Exec(ctx, "UPDATE signaling_device_action_rates SET refilled_at=now()-interval '61 seconds' WHERE device_id IN ($1,$2)", "host-rate", "client-rate"); err != nil {
+	if _, err := store.pool.Exec(ctx, "UPDATE signaling_device_action_rates SET refilled_at=now()-interval '61 seconds' WHERE device_id=$1", localDevelopmentDeviceID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "create-rate-reset", TTL: time.Minute, HostDeviceID: "host-rate", ClientDeviceID: "client-rate-3"}); err != nil {

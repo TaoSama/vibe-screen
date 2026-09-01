@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,10 @@ import (
 func TestPostgresAuthorityConcurrentCreateWithAuthorityRateLimitDoesNotReturnStorageError(t *testing.T) {
 	var authorityCalls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/signaling/sessions/authority-rate-") && r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		var request authoritySignalingRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Errorf("decode authority request: %v", err)
@@ -113,6 +118,79 @@ func TestPostgresAuthorityConcurrentCreateWithAuthorityRateLimitDoesNotReturnSto
 	}
 	if got := int(authorityCalls.Load()); got != numCreates {
 		t.Fatalf("authority calls=%d, want %d", got, numCreates)
+	}
+}
+
+func TestPostgresAuthorityRateLimitAfterAdmissionInvalidatesAuthoritySession(t *testing.T) {
+	var authorityCalls atomic.Int32
+	var invalidations atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			var request authoritySignalingRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode authority request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			authorityCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID:   fmt.Sprintf("authority-rate-%d", request.SessionEpoch),
+				HostToken:   fmt.Sprintf("host-token-%d", request.SessionEpoch),
+				ClientToken: fmt.Sprintf("client-token-%d", request.SessionEpoch),
+				ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+				Created:     true,
+			})
+		case strings.HasPrefix(r.URL.Path, "/v1/signaling/sessions/authority-rate-2") && r.Method == http.MethodDelete:
+			invalidations.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	cfg.SessionCreatesPerMinute = 1
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.authority = authority
+
+	_, created, err := store.Create(ctx, CreateSessionRequest{
+		RequestID: "rate-limited-1", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-rate", ClientDeviceID: "client-rate", SessionEpoch: 1,
+	})
+	if err != nil || !created {
+		t.Fatalf("initial create created=%t err=%v", created, err)
+	}
+	_, _, err = store.Create(ctx, CreateSessionRequest{
+		RequestID: "rate-limited-2", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-rate", ClientDeviceID: "client-rate-2", SessionEpoch: 2,
+	})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("second create error=%v, want ErrRateLimited", err)
+	}
+	if got := authorityCalls.Load(); got != 2 {
+		t.Fatalf("authority calls=%d, want 2", got)
+	}
+	if got := invalidations.Load(); got != 1 {
+		t.Fatalf("authority invalidations=%d, want 1", got)
+	}
+	var localRows, reservations int
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_sessions WHERE request_id=$1 OR session_id=$2", "rate-limited-2", "authority-rate-2").Scan(&localRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM signaling_sessions WHERE session_id LIKE $1", authorityReservationPrefix+"%").Scan(&reservations); err != nil {
+		t.Fatal(err)
+	}
+	if localRows != 0 || reservations != 0 {
+		t.Fatalf("rate-limited admission left local_rows=%d reservations=%d, want zero", localRows, reservations)
 	}
 }
 

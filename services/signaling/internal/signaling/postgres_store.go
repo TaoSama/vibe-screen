@@ -219,7 +219,7 @@ func (s *PostgresStore) createLocal(ctx context.Context, request CreateSessionRe
 		if err := s.enforceCapacityTx(ctx, tx); err != nil {
 			return err
 		}
-		if err := s.allowCreateTx(ctx, tx, request); err != nil {
+		if err := s.allowCreateTx(ctx, tx, localCreateRateRequest(request)); err != nil {
 			return err
 		}
 		sessionID, err := randomToken(16)
@@ -255,15 +255,33 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 	})
 	if err != nil {
 		if reserved {
-			s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+			if cleanupErr := s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID); cleanupErr != nil {
+				return SessionResponse{}, false, errors.Join(err, cleanupErr)
+			}
 		}
 		return SessionResponse{}, false, err
 	}
 	if reserved && !admission.Created {
-		s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+		if cleanupErr := s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID); cleanupErr != nil {
+			return SessionResponse{}, false, errors.Join(ErrInvalidated, cleanupErr)
+		}
 		return SessionResponse{}, false, ErrInvalidated
 	}
-	return s.finalizeAuthorityAdmission(ctx, request, admission)
+	response, created, err := s.finalizeAuthorityAdmission(ctx, request, admission)
+	if err != nil {
+		var cleanupErr error
+		if reserved {
+			cleanupErr = s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+		}
+		var invalidateErr error
+		if admission.Created {
+			invalidateErr = invalidateAuthorityAdmission(s.authority, admission.SessionID)
+		}
+		if cleanupErr != nil || invalidateErr != nil {
+			return SessionResponse{}, false, errors.Join(err, cleanupErr, invalidateErr)
+		}
+	}
+	return response, created, err
 }
 
 func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request CreateSessionRequest) (storedSession, bool, error) {
@@ -291,9 +309,6 @@ func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request Cre
 			return err
 		}
 		if err := s.enforceCapacityTx(ctx, tx); err != nil {
-			return err
-		}
-		if err := s.allowCreateTx(ctx, tx, request); err != nil {
 			return err
 		}
 		reservationID, err := randomToken(16)
@@ -336,6 +351,11 @@ func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request 
 				if err := s.ensureAuthoritySessionIDAvailableTx(ctx, tx, admission.SessionID); err != nil {
 					return err
 				}
+				if admission.Created {
+					if err := s.allowCreateTx(ctx, tx, request); err != nil {
+						return err
+					}
+				}
 				if _, err := tx.Exec(ctx, "UPDATE signaling_sessions SET session_id=$2, ttl_seconds=$3, expires_at=$4 WHERE session_id=$1", existing.Response.SessionID, admission.SessionID, int64(request.TTL/time.Second), admission.ExpiresAt); err != nil {
 					return err
 				}
@@ -362,6 +382,11 @@ func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request 
 		if err := s.ensureAuthoritySessionIDAvailableTx(ctx, tx, admission.SessionID); err != nil {
 			return err
 		}
+		if admission.Created {
+			if err := s.allowCreateTx(ctx, tx, request); err != nil {
+				return err
+			}
+		}
 		_, err = tx.Exec(ctx, "INSERT INTO signaling_sessions(session_id,request_id,ttl_seconds,expires_at,host_token,device_token,created_at) VALUES ($1,$2,$3,$4,NULL,NULL,$5)", admission.SessionID, request.RequestID, int64(request.TTL/time.Second), admission.ExpiresAt, s.now().UTC())
 		if err != nil {
 			return err
@@ -387,13 +412,13 @@ func isAuthorityReservation(sessionID string) bool {
 	return strings.HasPrefix(sessionID, authorityReservationPrefix)
 }
 
-func (s *PostgresStore) cleanupAuthorityReservation(requestID, sessionID string) {
+func (s *PostgresStore) cleanupAuthorityReservation(requestID, sessionID string) error {
 	if !isAuthorityReservation(sessionID) {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
 	defer cancel()
-	_ = s.createTransaction(ctx, func(tx pgx.Tx) error {
+	return s.createTransaction(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "DELETE FROM signaling_sessions WHERE request_id=$1 AND session_id=$2", requestID, sessionID)
 		return err
 	})

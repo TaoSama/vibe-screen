@@ -494,9 +494,11 @@ shipped:
   recovery for mismatched floors remain open.
 - PostgreSQL durable signaling routing is implemented, including cross-instance
   message delivery, connection-scoped long-poll waiter leases that can be
-  reclaimed after a failed instance loses its database backend, and shared
-  per-device/action session-create rate rows for instances using the same
-  database. Throughput under multiple replicas, production load-balancer
+  reclaimed after a failed instance loses its database backend, shared
+  per-device/action session-create rate rows for production-authority creates
+  after Authority admission, and one shared `local_development` bucket for local
+  creates. Create-rate rows are removed after two minutes of idle time based on
+  `refilled_at`. Throughput under multiple replicas, production load-balancer
   behavior, and multi-region consistency remain unproved.
 - Per-message remote authority authorization and the global PostgreSQL advisory-lock
   create serialization are fail-closed correctness choices, not a

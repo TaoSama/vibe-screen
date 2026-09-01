@@ -232,6 +232,13 @@ func (c *AuthorityClient) InvalidateSession(ctx context.Context, sessionID strin
 	return nil
 }
 
+func invalidateAuthorityAdmission(authority *AuthorityClient, sessionID string) error {
+	// This is a compensating rollback after authority admission has succeeded
+	// but local commit failed. It must not inherit caller cancellation;
+	// InvalidateSession still applies the bounded authority request timeout.
+	return authority.InvalidateSession(context.Background(), sessionID)
+}
+
 // Ready verifies that the authority storage and schema are ready. It returns
 // no dependency details to the signaling readiness endpoint.
 func (c *AuthorityClient) Ready(ctx context.Context) error {

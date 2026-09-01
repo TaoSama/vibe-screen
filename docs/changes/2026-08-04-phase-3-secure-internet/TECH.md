@@ -389,11 +389,13 @@ These are release blockers, not accepted architecture:
   message publish and poll, serializes creates through one global PostgreSQL
   advisory lock to prevent orphan admissions at store capacity, and applies
   session-create limits through shared per-device/action PostgreSQL token-bucket
-  rows before calling the authority. Create paths acquire that lock before
-  opening their serializable transaction so queued creators observe a fresh
-  database snapshot; cleanup paths that delete session or create-rate rows use
-  the same lock so background cleanup cannot repeatedly invalidate queued create
-  snapshots. The signaling PostgreSQL store has
+  rows after Authority admits the session. If the local limiter rejects an
+  admitted session, signaling invalidates that Authority session before
+  returning `429`. Create paths acquire the lock before opening their
+  serializable transaction so queued creators observe a fresh database snapshot;
+  cleanup paths that delete session or create-rate rows use the same lock so
+  background cleanup cannot repeatedly invalidate queued create snapshots. The
+  signaling PostgreSQL store has
   cross-instance delivery coverage and reclaims crashed long-poll waiter slots
   through connection-scoped database leases. These are fail-closed correctness
   choices, not evidence of multi-instance throughput, production load-balancer

@@ -130,10 +130,12 @@ not retain the bearer token as a local fallback.
 
 With `store_backend: postgres`, the short-lived routing state, request-ID
 idempotency record, invalidation tombstone, message cursor, per-role message
-rate window, and per-device session-create token bucket are backed by
-PostgreSQL and survive a signaling process restart until TTL cleanup. Long-poll
-waiter leases are stored in PostgreSQL and are
-reclaimed when their listener backend disappears. Waiter leases are tied to the
+rate window, and session-create token bucket rows are backed by PostgreSQL.
+Routing state survives a signaling process restart until session TTL cleanup;
+session-create token bucket rows are removed separately after two minutes of
+idle time based on `refilled_at`. Long-poll waiter leases are stored in
+PostgreSQL and are reclaimed when their listener backend disappears. Waiter
+leases are tied to the
 PostgreSQL listener backend PID and start timestamp; another instance clears a
 lease only after that backend disappears, so a crashed or killed signaling
 process cannot permanently consume the per-role waiter slot. Replaying the same
@@ -246,7 +248,7 @@ All JSON fields are required. Unknown fields fail startup.
 | `store_backend` | `memory` for local process state or `postgres` for PostgreSQL-backed routing. `production_authority` requires `postgres` |
 | `session_ttl_seconds`, `max_session_ttl_seconds` | Default and authority-selectable upper TTL. In `production_authority` mode `max_session_ttl_seconds` must not exceed the authority's `maximum_session_ttl_seconds` |
 | `max_active_sessions` | Hard session/reserved-tombstone cap in the active store |
-| `session_creates_per_minute` | Session-create token-bucket cap. The memory backend enforces it per process; the PostgreSQL backend enforces it through shared device/action rows for each authenticated host and client device identity |
+| `session_creates_per_minute` | Session-create token-bucket cap. Local-development creates use one shared local bucket; production-authority creates use shared device/action rows for each authenticated host and client device identity after Authority admits the session |
 | `messages_per_minute` | Per-role, per-session publish cap |
 | `max_request_body_bytes` | HTTP JSON body cap |
 | `max_sdp_bytes` | Single offer or answer cap |

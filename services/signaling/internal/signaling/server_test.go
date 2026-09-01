@@ -410,6 +410,42 @@ func TestCreateSessionRateLimitIsStoreOwned(t *testing.T) {
 	}
 }
 
+func TestMemoryLocalCreateRateLimitIgnoresCallerDeviceIDs(t *testing.T) {
+	cfg := testConfig()
+	cfg.SessionCreatesPerMinute = 1
+	store := NewMemoryStore(cfg, nil)
+	ctx := context.Background()
+
+	_, created, err := store.Create(ctx, CreateSessionRequest{
+		RequestID:      "local-rate-1",
+		TTL:            time.Minute,
+		HostDeviceID:   "caller-host-1",
+		ClientDeviceID: "caller-client-1",
+	})
+	if err != nil || !created {
+		t.Fatalf("initial create created=%t err=%v", created, err)
+	}
+	_, _, err = store.Create(ctx, CreateSessionRequest{
+		RequestID:      "local-rate-2",
+		TTL:            time.Minute,
+		HostDeviceID:   "caller-host-2",
+		ClientDeviceID: "caller-client-2",
+	})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("second local create error=%v, want ErrRateLimited", err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if _, ok := store.createRates[localDevelopmentDeviceID]; !ok {
+		t.Fatalf("local create did not use %q bucket: %#v", localDevelopmentDeviceID, store.createRates)
+	}
+	for _, deviceID := range []string{"caller-host-1", "caller-client-1", "caller-host-2", "caller-client-2"} {
+		if _, ok := store.createRates[deviceID]; ok {
+			t.Fatalf("local create used caller-controlled device bucket %q: %#v", deviceID, store.createRates)
+		}
+	}
+}
+
 func TestCreateRateDeviceIDs(t *testing.T) {
 	tests := []struct {
 		name    string

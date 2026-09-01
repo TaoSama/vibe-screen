@@ -94,7 +94,7 @@ func (s *MemoryStore) createLocal(request CreateSessionRequest) (SessionResponse
 	if len(s.sessions) >= s.maxSessions {
 		return SessionResponse{}, false, ErrCapacity
 	}
-	if !s.allowCreateLocked(request) {
+	if !s.allowCreateLocked(localCreateRateRequest(request)) {
 		return SessionResponse{}, false, ErrRateLimited
 	}
 	sessionID, err := randomToken(16)
@@ -129,8 +129,8 @@ func (s *MemoryStore) createLocal(request CreateSessionRequest) (SessionResponse
 // HTTP call runs outside the store lock; the returned admission is then
 // recorded locally under the lock.
 func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSessionRequest) (SessionResponse, bool, error) {
-	// Serialize authority-backed creates so local capacity is reserved before
-	// the durable authority admission is created. The main store lock remains
+	// Serialize authority-backed creates so local capacity is checked before
+	// issuing a new durable authority admission. The main store lock remains
 	// available to message and polling paths while the HTTP call is in flight.
 	s.authorityCreateMu.Lock()
 	defer s.authorityCreateMu.Unlock()
@@ -151,10 +151,6 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 		s.mu.Unlock()
 		return SessionResponse{}, false, ErrCapacity
 	}
-	if !replay && !s.allowCreateLocked(request) {
-		s.mu.Unlock()
-		return SessionResponse{}, false, ErrRateLimited
-	}
 	s.mu.Unlock()
 
 	admission, err := s.authority.CreateSession(ctx, authoritySignalingRequest{
@@ -168,6 +164,14 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 	if err != nil {
 		return SessionResponse{}, false, err
 	}
+	failAdmission := func(err error) (SessionResponse, bool, error) {
+		if admission.Created {
+			if invalidateErr := invalidateAuthorityAdmission(s.authority, admission.SessionID); invalidateErr != nil {
+				err = errors.Join(err, invalidateErr)
+			}
+		}
+		return SessionResponse{}, false, err
+	}
 	response := SessionResponse{
 		SessionID:   admission.SessionID,
 		HostToken:   admission.HostToken,
@@ -177,29 +181,33 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 	// Role tokens are returned only from the latest authority response. The
 	// production store never retains them for local authorization fallback.
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.cleanupLocked(s.now())
 	if sessionID, ok := s.requestSessions[request.RequestID]; ok {
 		if sessionID != admission.SessionID {
-			return SessionResponse{}, false, ErrAuthorityUnavailable
+			s.mu.Unlock()
+			return failAdmission(ErrAuthorityUnavailable)
 		}
 		existing := s.sessions[sessionID]
 		if existing == nil {
-			return SessionResponse{}, false, ErrAuthorityUnavailable
+			s.mu.Unlock()
+			return failAdmission(ErrAuthorityUnavailable)
 		}
 		if existing.invalidated {
-			return SessionResponse{}, false, ErrInvalidated
+			s.mu.Unlock()
+			return failAdmission(ErrInvalidated)
 		}
 		// Only a replay of this same request/session may refresh the local
 		// expiry. The authority remains the lifecycle source of truth, so both
 		// extensions and fail-closed shortenings must update the local gate.
 		if admission.Created {
-			return SessionResponse{}, false, ErrAuthorityUnavailable
+			s.mu.Unlock()
+			return failAdmission(ErrAuthorityUnavailable)
 		}
 		if !admission.ExpiresAt.Equal(existing.response.ExpiresAt) {
 			existing.response.ExpiresAt = admission.ExpiresAt
 			notifySessionLocked(existing)
 		}
+		s.mu.Unlock()
 		return response, admission.Created, nil
 	}
 	// The authority can durably replay an admission after this process has
@@ -207,13 +215,20 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 	// that old session would permit a second offer generation under the same
 	// session epoch, so require the owner to issue a fresh request instead.
 	if !admission.Created {
+		s.mu.Unlock()
 		return SessionResponse{}, false, ErrInvalidated
 	}
 	if existing, ok := s.sessions[admission.SessionID]; ok {
 		if existing.requestID != request.RequestID {
-			return SessionResponse{}, false, ErrAuthorityUnavailable
+			s.mu.Unlock()
+			return failAdmission(ErrAuthorityUnavailable)
 		}
-		return SessionResponse{}, false, ErrConflict
+		s.mu.Unlock()
+		return failAdmission(ErrConflict)
+	}
+	if !s.allowCreateLocked(request) {
+		s.mu.Unlock()
+		return failAdmission(ErrRateLimited)
 	}
 	s.sessions[admission.SessionID] = &session{
 		requestID: request.RequestID, ttlSeconds: int64(request.TTL / time.Second),
@@ -224,6 +239,7 @@ func (s *MemoryStore) createAuthority(ctx context.Context, request CreateSession
 		rates:          map[Role]rateWindow{}, waiters: map[Role]int{}, notify: make(chan struct{}),
 	}
 	s.requestSessions[request.RequestID] = admission.SessionID
+	s.mu.Unlock()
 	return response, admission.Created, nil
 }
 

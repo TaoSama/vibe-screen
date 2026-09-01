@@ -67,11 +67,13 @@ mandatory even when signaling authentication succeeds.
   unique keys; a future protocol version should add duplicate-key rejection
   before accepting untrusted public issuance.
 - Process memory and crash dumps can contain live SDP, ICE candidates,
-  request/session identifiers, and local-mode role tokens until TTL cleanup.
-  PostgreSQL active rows are removed by TTL cleanup, but WAL, snapshots, and
-  backups may retain those values until their separate encrypted retention and
-  purge controls run. Disable core dumps, restrict process/database debugging,
-  encrypt backups, and keep retention short.
+  request/session identifiers, and local-mode role tokens until session TTL
+  cleanup. PostgreSQL routing rows are removed by TTL cleanup, while
+  session-create token bucket rows are removed after two minutes of idle time
+  based on `refilled_at`. WAL, snapshots, and backups may retain those values
+  until their separate encrypted retention and purge controls run. Disable core
+  dumps, restrict process/database debugging, encrypt backups, and keep
+  retention short.
 
 ## Security test gates
 

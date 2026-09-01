@@ -162,7 +162,7 @@ cleanup; Go heap reclamation does not guarantee immediate byte-level erasure.
   that delete session or create-rate rows also use the same lock so background
   cleanup cannot force repeated create-transaction serialization failures. Do
   not claim multi-instance throughput.
-- In `production_authority`, session-create limiter tokens are consumed before
-  the outbound Authority create call and are not refunded on Authority errors;
-  this intentionally fails closed during dependency degradation instead of
-  allowing unbounded retry traffic toward Authority.
+- In `production_authority`, session-create limiter tokens are consumed only
+  after Authority admits the session. Authority failures do not consume local
+  create-rate quota. If the local limiter rejects an admitted session, signaling
+  invalidates that Authority session before returning `429`.
