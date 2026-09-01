@@ -2,13 +2,16 @@ package dev.telemachus.display
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import dev.telemachus.display.internet.security.InternetPairingOffer
 import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.InternetPairingRequest
 import dev.telemachus.display.internet.security.InternetPairingURL
+import dev.telemachus.display.internet.security.canonicalPairingRequestParts
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
 import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.KeyPair
@@ -52,10 +55,16 @@ internal class TestHostAuthority {
         return TestPairingOffer(
             encodedUrl = encoded,
             pairingIdentifier = sha256(offerId).hex(),
-            offerId = offerId,
+            offer =
+                InternetPairingOffer(
+                    offerId = offerId.copyOf(),
+                    oneTimeCredential = oneTimeCredential.copyOf(),
+                    expiresAtUnixSeconds = expiresAt,
+                    hostIdentity = hostIdentity,
+                    challenge = challenge.copyOf(),
+                    hostEphemeralPublicKey = publicPoint(ephemeral),
+                ),
             oneTimeCredential = oneTimeCredential,
-            challenge = challenge,
-            expiresAt = expiresAt,
             hostEphemeral = ephemeral,
         )
     }
@@ -79,11 +88,11 @@ internal class TestHostAuthority {
         val resultDigest =
             transcriptDigest(
                 RESULT_DOMAIN,
-                *(parts + request.requestSignature + request.bootstrapMac + byteArrayOf(1) + keyId.toByteArray()),
+                *(parts + request.requestSignature + request.bootstrapMac + byteArrayOf(1) + keyId.utf8()),
             )
         return InternetPairingAcceptance(
             accepted = true,
-            offerId = offer.offerId.copyOf(),
+            offerId = offer.offer.offerId.copyOf(),
             hostIdentity = hostIdentity,
             sessionContext = transcriptDigest(SESSION_CONTEXT_DOMAIN, *parts),
             sessionKeyId = keyId,
@@ -107,23 +116,23 @@ internal class TestHostAuthority {
             transcriptDigest(
                 LEASE_DOMAIN,
                 u64(1),
-                offer.pairingIdentifier.toByteArray(),
-                hostIdentity.deviceId.toByteArray(),
-                hostIdentity.keyId.toByteArray(),
-                request.deviceIdentity.deviceId.toByteArray(),
-                request.deviceIdentity.keyId.toByteArray(),
-                signalingUrl.toByteArray(),
-                sessionId.toByteArray(),
+                offer.pairingIdentifier.utf8(),
+                hostIdentity.deviceId.utf8(),
+                hostIdentity.keyId.utf8(),
+                request.deviceIdentity.deviceId.utf8(),
+                request.deviceIdentity.keyId.utf8(),
+                signalingUrl.utf8(),
+                sessionId.utf8(),
                 u64(sessionEpoch),
                 u64(hostIdentity.keyEpoch),
                 u64(request.deviceIdentity.keyEpoch),
                 u64(expiresAt),
                 context,
                 protocolSessionId,
-                token.toByteArray(),
+                token.utf8(),
                 u64(1),
                 u64(1),
-                iceUrl.toByteArray(),
+                iceUrl.utf8(),
                 byteArrayOf(0),
                 byteArrayOf(0),
                 byteArrayOf(1),
@@ -167,25 +176,9 @@ internal class TestHostAuthority {
     private fun pairingParts(
         offer: TestPairingOffer,
         request: InternetPairingRequest,
-    ): Array<ByteArray> =
-        arrayOf(
-            u64(1),
-            u64(1),
-            "host".toByteArray(),
-            "device".toByteArray(),
-            canonicalList(listOf("ECDSA_P256_SHA256")),
-            canonicalList(listOf("ECDH_P256")),
-            canonicalList(listOf("AES_256_GCM")),
-            canonicalList(listOf("application_e2ee", "control_data_channel", "media_data_channel", "peer_identity")),
-            offer.offerId,
-            offer.challenge,
-            u64(offer.expiresAt),
-            *identityParts(hostIdentity),
-            publicPoint(offer.hostEphemeral),
-            *identityParts(request.deviceIdentity),
-            request.deviceName.toByteArray(),
-            request.deviceEphemeralPublicKey,
-        )
+    ): Array<ByteArray> {
+        return canonicalPairingRequestParts(offer.offer, request.deviceIdentity, request.deviceName, request.deviceEphemeralPublicKey)
+    }
 
     private fun randomBytes(size: Int) = ByteArray(size).also(random::nextBytes)
 }
@@ -193,10 +186,8 @@ internal class TestHostAuthority {
 internal data class TestPairingOffer(
     val encodedUrl: String,
     val pairingIdentifier: String,
-    val offerId: ByteArray,
+    val offer: InternetPairingOffer,
     val oneTimeCredential: ByteArray,
-    val challenge: ByteArray,
-    val expiresAt: Long,
     val hostEphemeral: KeyPair,
 )
 
@@ -255,27 +246,12 @@ private fun verify(publicKey: ByteArray, digest: ByteArray, signature: ByteArray
 
 private fun transcriptDigest(domain: String, vararg parts: ByteArray): ByteArray {
     val output = ByteArrayOutputStream()
-    listOf("vibescreen/identity/v1".toByteArray(), domain.toByteArray(), *parts).forEach { part ->
+    listOf("vibescreen/identity/v1".utf8(), domain.utf8(), *parts).forEach { part ->
         output.write(u64(part.size.toLong()))
         output.write(part)
     }
     return sha256(output.toByteArray())
 }
-
-private fun identityParts(identity: InternetPairingIdentity): Array<ByteArray> =
-    arrayOf(
-        identity.deviceId.toByteArray(),
-        identity.keyId.toByteArray(),
-        u64(identity.keyEpoch),
-        identity.signatureAlgorithm.toByteArray(),
-        identity.signingPublicKey,
-    )
-
-private fun canonicalList(values: List<String>): ByteArray =
-    ByteBuffer.allocate(8 + values.sumOf { 8 + it.toByteArray().size }).apply {
-        putLong(values.size.toLong())
-        values.forEach { value -> value.toByteArray().also { putLong(it.size.toLong()); put(it) } }
-    }.array()
 
 private fun u64(value: Long): ByteArray = ByteBuffer.allocate(8).putLong(value).array()
 private fun hmac(key: ByteArray, value: ByteArray): ByteArray =
@@ -297,6 +273,7 @@ private fun sha256(value: ByteArray): ByteArray = MessageDigest.getInstance("SHA
 private fun ByteArray.hex(): String = joinToString("") { "%02x".format(it) }
 private fun ByteArray.base64(): String = Base64.getEncoder().encodeToString(this)
 private fun ByteArray.base64Url(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(this)
+private fun String.utf8(): ByteArray = toByteArray(StandardCharsets.UTF_8)
 
 private const val REQUEST_DOMAIN = "vibescreen/pairing-request/v1"
 private const val BOOTSTRAP_DOMAIN = "vibescreen/pairing-bootstrap/v1"

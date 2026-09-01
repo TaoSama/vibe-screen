@@ -2,7 +2,6 @@ package dev.telemachus.display.internet.security
 
 import com.google.gson.JsonParser
 import java.math.BigInteger
-import java.nio.ByteBuffer
 import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.KeyPair
@@ -476,6 +475,15 @@ private class Fixture(
     val challenge = ByteArray(32) { (it + 41).toByte() }
     val hostIdentity = identity("host-1", hostSigning)
     private val deviceIdentity = identity("device-1", deviceSigning)
+    private val offer =
+        InternetPairingOffer(
+            offerId = offerId.copyOf(),
+            oneTimeCredential = oneTime.copyOf(),
+            expiresAtUnixSeconds = expiresAt,
+            hostIdentity = hostIdentity,
+            challenge = challenge.copyOf(),
+            hostEphemeralPublicKey = encodePublic(hostEphemeral),
+        )
     val url =
         InternetPairingURL.create(
             offerId,
@@ -514,24 +522,7 @@ private class Fixture(
     }
 
     private fun parts(request: InternetPairingRequest): Array<ByteArray> =
-        arrayOf(
-            u64(1), u64(1), "host".toByteArray(), "device".toByteArray(),
-            canonicalList(listOf("ECDSA_P256_SHA256")), canonicalList(listOf("ECDH_P256")),
-            canonicalList(listOf("AES_256_GCM")),
-            canonicalList(
-                listOf(
-                    "application_e2ee",
-                    "audio_data_channel",
-                    "bulk_data_channel",
-                    "control_data_channel",
-                    "media_data_channel",
-                    "peer_identity",
-                ),
-            ),
-            offerId, challenge, u64(expiresAt),
-            *identityParts(hostIdentity), encodePublic(hostEphemeral),
-            *identityParts(request.deviceIdentity), request.deviceName.toByteArray(), request.deviceEphemeralPublicKey,
-        )
+        canonicalPairingRequestParts(offer, request.deviceIdentity, request.deviceName, request.deviceEphemeralPublicKey)
 }
 
 private data class HostResult(
@@ -619,18 +610,6 @@ private fun ecdh(privateKey: PrivateKey, publicKey: ByteArray): ByteArray =
 
 private fun sign(privateKey: PrivateKey, digest: ByteArray): ByteArray =
     Signature.getInstance("NONEwithECDSA").run { initSign(privateKey); update(digest); sign() }
-
-private fun identityParts(identity: InternetPairingIdentity) =
-    arrayOf(
-        identity.deviceId.toByteArray(), identity.keyId.toByteArray(), u64(identity.keyEpoch),
-        identity.signatureAlgorithm.toByteArray(), identity.signingPublicKey,
-    )
-
-private fun canonicalList(values: List<String>): ByteArray =
-    ByteBuffer.allocate(8 + values.sumOf { 8 + it.toByteArray().size }).apply {
-        putLong(values.size.toLong())
-        values.forEach { value -> value.toByteArray().also { putLong(it.size.toLong()); put(it) } }
-    }.array()
 
 private fun digest(domain: String, vararg parts: ByteArray): ByteArray = SecurityTranscript.digest(domain, *parts)
 private fun u64(value: Long): ByteArray = SecurityTranscript.uint64(value)
