@@ -35,6 +35,87 @@ MIN_ANDROID_STATES = 8
 MIN_HOST_STATES = 8
 REMOTE_EVIDENCE_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 SESSION_FAILURE_ENUM_RE = re.compile(r"\benum\s+class\s+SessionFailureKind\b")
+REQUIRED_ACTIONABLE_CONTRACTS = {
+    "host_screen_recording_denied": {
+        "title": "Screen Recording permission denied",
+        "body": (
+            "The macOS Host cannot capture a display because Screen Recording permission "
+            "is missing or stale for the installed app identity."
+        ),
+        "action": (
+            "Grant Screen Recording to the installed Vibe Screen app in System Settings, "
+            "quit, reopen, and rerun the Host preflight."
+        ),
+    },
+    "accessibility_denied_or_limited": {
+        "title": "Accessibility permission denied",
+        "body": (
+            "macOS input injection or window movement is unavailable because Accessibility "
+            "is not granted to the stable signed Host app."
+        ),
+        "action": (
+            "Grant Accessibility to the stable signed installed app, quit and reopen "
+            "Vibe Screen, then retry input or window movement."
+        ),
+    },
+    "adb_reverse_missing": {
+        "title": "ADB reverse route missing",
+        "body": (
+            "USB mode cannot reach the Mac because the Android-to-Mac reverse route for "
+            "TCP 54321 is missing, refused, or stale."
+        ),
+        "action": (
+            "Reconnect or authorize the Android device, use the Mac app USB repair action "
+            "to restore the reverse route, then retry."
+        ),
+    },
+    "usb_disconnected": {
+        "title": "USB device disconnected",
+        "body": (
+            "The Android device is no longer reachable over the authorized USB debugging "
+            "transport, so the client cannot use the local stream route."
+        ),
+        "action": (
+            "Reconnect the cable, unlock and authorize the phone, wait for the Mac app "
+            "to repair USB routing, then retry."
+        ),
+    },
+    "lan_route_unavailable": {
+        "title": "LAN route unavailable",
+        "body": (
+            "Trusted LAN cannot route from the Android device to the saved Mac address "
+            "and port on the same private network."
+        ),
+        "action": (
+            "Reconnect both devices to the same trusted Wi-Fi, disable VPN or guest "
+            "isolation, verify the saved Mac address and port, then reconnect."
+        ),
+    },
+    "tcp_54321_unavailable": {
+        "title": "TCP 54321 unavailable",
+        "body": (
+            "The Host is not reachable on TCP port 54321 because the listener is absent, "
+            "failed to start, or the port is occupied."
+        ),
+        "action": (
+            "Start or restart Vibe Screen on the Mac. If another process is listening "
+            "on TCP 54321, stop it and restart Vibe Screen."
+        ),
+    },
+    "stale_epoch_or_session_errors": {
+        "title": "Stale session epoch",
+        "body": (
+            "The client rejected data from an older Protocol v1 session or configuration "
+            "epoch to protect the current stream state."
+        ),
+        "action": (
+            "Reconnect for a fresh session epoch; if it repeats, update both devices "
+            "and collect logs instead of treating recovery as device-verified."
+        ),
+    },
+}
+REQUIRED_ACTIONABLE_CONTRACT_CODES = frozenset(REQUIRED_ACTIONABLE_CONTRACTS)
+REQUIRED_CONTRACT_FIELDS = ("code", "title", "body", "action")
 
 REQUIRED_STATE_FIELDS = (
     "id",
@@ -268,6 +349,58 @@ def _evidence_path(reference: str) -> str | None:
     return path or None
 
 
+def _evidence_anchor(reference: str) -> str | None:
+    stripped = reference.strip()
+    if "#" not in stripped or REMOTE_EVIDENCE_RE.match(stripped):
+        return None
+    anchor = stripped.split("#", 1)[1]
+    return anchor or None
+
+
+def _markdown_anchor_base(heading: str) -> str:
+    text = re.sub(r"^#{1,6}\s+", "", heading.strip())
+    text = re.sub(r"\s+#+\s*$", "", text).strip().lower()
+    text = text.replace("`", "")
+    characters: list[str] = []
+    previous_hyphen = False
+    for character in text:
+        if character.isalnum() or character == "_":
+            characters.append(character)
+            previous_hyphen = False
+        elif character.isspace() or character == "-":
+            if not previous_hyphen:
+                characters.append("-")
+                previous_hyphen = True
+    return "".join(characters).strip("-")
+
+
+def _markdown_heading_anchors(path: Path) -> set[str]:
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return anchors
+    for line in lines:
+        match = re.match(r"^ {0,3}#{1,6}\s+.+$", line)
+        if match is None:
+            continue
+        base = _markdown_anchor_base(line)
+        if not base:
+            continue
+        duplicate_index = counts.get(base, 0)
+        anchor = base if duplicate_index == 0 else f"{base}-{duplicate_index}"
+        counts[base] = duplicate_index + 1
+        anchors.add(anchor)
+    return anchors
+
+
+def _has_markdown_anchor(path: Path, anchor: str) -> bool:
+    if path.suffix.lower() not in {".md", ".markdown"}:
+        return True
+    return anchor in _markdown_heading_anchors(path)
+
+
 def _path_is_inside(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
@@ -304,6 +437,8 @@ def _validate_state(
     state: dict[str, Any],
     index: int,
     ids: set[str],
+    contract_codes: dict[str, str],
+    covered_contract_codes: set[str],
     errors: list[str],
     *,
     repository_root: Path | None = None,
@@ -354,6 +489,7 @@ def _validate_state(
         errors.append(f"{prefix}.readme_gate_closure: must be false")
 
     offline_evidence = _string_list(state.get("offline_evidence"))
+    has_local_offline_evidence = False
     if not offline_evidence:
         errors.append(f"{prefix}.offline_evidence: must contain at least one reference")
     elif repository_root is not None:
@@ -367,8 +503,82 @@ def _validate_state(
                 errors.append(
                     f"{prefix}.offline_evidence: missing repository path {relative_path}"
                 )
+            elif evidence_path.is_file():
+                anchor = _evidence_anchor(reference)
+                has_valid_anchor = anchor is None or _has_markdown_anchor(evidence_path, anchor)
+                if not has_valid_anchor:
+                    errors.append(
+                        f"{prefix}.offline_evidence: missing markdown anchor "
+                        f"{relative_path}#{anchor}"
+                    )
+                else:
+                    has_local_offline_evidence = True
     if "localizedDescription" == str(state.get("user_visible_copy")).strip():
         errors.append(f"{prefix}.user_visible_copy: must not be a bare localizedDescription")
+
+    contract = state.get("contract")
+    if contract is not None:
+        if not isinstance(contract, dict):
+            errors.append(f"{prefix}.contract: must be an object when present")
+        else:
+            for field in REQUIRED_CONTRACT_FIELDS:
+                if not _non_empty_string(contract.get(field)):
+                    errors.append(f"{prefix}.contract.{field}: must be a non-empty string")
+            code = contract.get("code")
+            if _non_empty_string(code):
+                raw_code = str(code)
+                normalized_code = raw_code.strip()
+                if raw_code != normalized_code:
+                    errors.append(
+                        f"{prefix}.contract.code: must not contain surrounding whitespace"
+                    )
+                is_duplicate_contract_code = raw_code in contract_codes
+                if raw_code in contract_codes:
+                    errors.append(
+                        f"{prefix}.contract.code: duplicate contract code {raw_code} "
+                        f"already used by {contract_codes[raw_code]}"
+                    )
+                else:
+                    contract_codes[raw_code] = str(state_id)
+                if raw_code not in REQUIRED_ACTIONABLE_CONTRACT_CODES:
+                    errors.append(f"{prefix}.contract.code: unsupported contract code {raw_code}")
+                else:
+                    expected_contract = REQUIRED_ACTIONABLE_CONTRACTS[raw_code]
+                    has_required_contract_values = True
+                    for field, expected_value in expected_contract.items():
+                        if contract.get(field) != expected_value:
+                            has_required_contract_values = False
+                            errors.append(
+                                f"{prefix}.contract.{field}: required contract {raw_code} "
+                                "must match the stable value"
+                            )
+                    has_required_gate_status = state.get("gate_status") == "covered-offline"
+                    has_required_evidence = has_local_offline_evidence
+                    has_required_readme_boundary = state.get("readme_gate_closure") is False
+                    if not has_required_gate_status:
+                        errors.append(
+                            f"{prefix}.gate_status: required contract {raw_code} "
+                            "must be covered-offline"
+                        )
+                    if not has_required_evidence:
+                        errors.append(
+                            f"{prefix}.offline_evidence: required contract {raw_code} "
+                            "must cite local offline evidence"
+                        )
+                    if not has_required_readme_boundary:
+                        errors.append(
+                            f"{prefix}.readme_gate_closure: required contract {raw_code} "
+                            "must stay false for offline coverage"
+                        )
+                    if (
+                        has_required_contract_values
+                        and
+                        has_required_gate_status
+                        and has_required_evidence
+                        and has_required_readme_boundary
+                        and not is_duplicate_contract_code
+                    ):
+                        covered_contract_codes.add(raw_code)
 
     android_failure_kinds = state.get("android_session_failure_kinds", [])
     if android_failure_kinds is None:
@@ -403,8 +613,18 @@ def evaluate(
                 errors.append(f"states[{index}]: must be an object")
 
     ids: set[str] = set()
+    contract_codes: dict[str, str] = {}
+    covered_contract_codes: set[str] = set()
     for index, state in enumerate(states):
-        _validate_state(state, index, ids, errors, repository_root=repository_root)
+        _validate_state(
+            state,
+            index,
+            ids,
+            contract_codes,
+            covered_contract_codes,
+            errors,
+            repository_root=repository_root,
+        )
 
     android_state_ids = _state_id_set(states, "android")
     host_state_ids = _state_id_set(states, "macos_host")
@@ -426,6 +646,12 @@ def evaluate(
         for kind in missing_session_failure_kinds:
             errors.append(f"android_session_failure_kinds: missing {kind}")
 
+    missing_contract_codes = sorted(
+        REQUIRED_ACTIONABLE_CONTRACT_CODES.difference(contract_codes)
+    )
+    for code in missing_contract_codes:
+        errors.append(f"required_actionable_contracts: missing {code}")
+
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": REPORT_KIND,
@@ -437,6 +663,9 @@ def evaluate(
         "android_state_count": len(android_state_ids),
         "macos_host_state_count": len(host_state_ids),
         "reviewed_open_prs": _integer_list(matrix.get("reviewed_open_prs")),
+        "required_actionable_contract_codes": sorted(REQUIRED_ACTIONABLE_CONTRACT_CODES),
+        "covered_actionable_contract_codes": sorted(covered_contract_codes),
+        "missing_actionable_contract_codes": missing_contract_codes,
         "covered_android_session_failure_kinds": sorted(covered_session_failure_kinds),
         "missing_android_session_failure_kinds": missing_session_failure_kinds,
         "errors": errors,

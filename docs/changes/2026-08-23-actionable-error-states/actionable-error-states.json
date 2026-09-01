@@ -35,9 +35,41 @@
       "ui_surface": "USB inline connection guidance panel",
       "user_visible_copy": "connection_guidance_adb_route_unavailable_title plus connection_guidance_usb_route_unavailable_prefix and the active ADB recovery resource",
       "user_action": "Reconnect or authorize the Android device, use the Mac app's USB repair action, then retry.",
+      "contract": {
+        "code": "adb_reverse_missing",
+        "title": "ADB reverse route missing",
+        "body": "USB mode cannot reach the Mac because the Android-to-Mac reverse route for TCP 54321 is missing, refused, or stale.",
+        "action": "Reconnect or authorize the Android device, use the Mac app USB repair action to restore the reverse route, then retry."
+      },
       "retry_behavior": "bounded_auto_retry",
       "offline_evidence": [
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "docs/runbook/macos-host.md#adb-is-missing-or-reverse-forwarding-disappeared"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-usb-disconnected",
+      "platform": "android",
+      "system_state": "USB mode loses the authorized phone connection or has no usable USB transport before the client can reach the Mac route.",
+      "failed_layer": "USB physical/debugging transport",
+      "source_classifier": "ConnectionGuidanceFactory.networkUnreachable or usbRouteUnavailable with USB context; Host setup diagnostics for missing authorized devices remain a separate Host-side row",
+      "android_session_failure_kinds": [],
+      "ui_surface": "USB inline connection guidance panel",
+      "user_visible_copy": "connection_guidance_adb_route_unavailable_title plus connection_guidance_usb_route_unavailable_prefix and the active USB recovery resource",
+      "user_action": "Reconnect the USB cable, unlock and authorize the Android device, wait for the Mac app to repair the route, then retry.",
+      "contract": {
+        "code": "usb_disconnected",
+        "title": "USB device disconnected",
+        "body": "The Android device is no longer reachable over the authorized USB debugging transport, so the client cannot use the local stream route.",
+        "action": "Reconnect the cable, unlock and authorize the phone, wait for the Mac app to repair USB routing, then retry."
+      },
+      "retry_behavior": "bounded_auto_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
+        "docs/runbook/android-client.md#actionable-failure-checks",
         "docs/runbook/macos-host.md#adb-is-missing-or-reverse-forwarding-disappeared"
       ],
       "device_evidence_status": "open",
@@ -54,12 +86,45 @@
       "ui_surface": "Wireless repair surface",
       "user_visible_copy": "connection_guidance_network_unavailable_title plus connection_guidance_lan_network_unavailable_message",
       "user_action": "Reconnect both devices to the same trusted Wi-Fi, disable VPN or guest isolation, verify the saved Mac address and port, then reconnect.",
+      "contract": {
+        "code": "lan_route_unavailable",
+        "title": "LAN route unavailable",
+        "body": "Trusted LAN cannot route from the Android device to the saved Mac address and port on the same private network.",
+        "action": "Reconnect both devices to the same trusted Wi-Fi, disable VPN or guest isolation, verify the saved Mac address and port, then reconnect."
+      },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
         "docs/changes/2026-08-20-trusted-lan-smoke/TEST.md"
       ],
       "device_evidence_status": "blocked",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-stale-epoch-or-session",
+      "platform": "android",
+      "system_state": "Protocol v1 media, audio, file-transfer, clipboard, or action data belongs to an older session/config epoch and must be rejected or dropped instead of mutating the active session.",
+      "failed_layer": "Protocol v1 session/config epoch admission",
+      "source_classifier": "RendererOwner, StreamMediaFrameRouter, ProtocolV1Session, file-transfer, audio, clipboard, and action dispatch stale-epoch guards",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Protocol diagnostics and reconnect guidance when stale epochs repeat or become terminal",
+      "user_visible_copy": "Fresh-session guidance: reconnect the current session and update both peers if stale epoch rejection repeats.",
+      "user_action": "Reconnect to force a fresh session epoch; if the stale-epoch error repeats, update Vibe Screen on both devices and collect logs before claiming device recovery.",
+      "contract": {
+        "code": "stale_epoch_or_session_errors",
+        "title": "Stale session epoch",
+        "body": "The client rejected data from an older Protocol v1 session or configuration epoch to protect the current stream state.",
+        "action": "Reconnect for a fresh session epoch; if it repeats, update both devices and collect logs instead of treating recovery as device-verified."
+      },
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/RendererOwnerTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/FileTransferSessionTest.kt"
+      ],
+      "device_evidence_status": "open",
       "gate_status": "covered-offline",
       "readme_gate_closure": false
     },
@@ -215,13 +280,19 @@
       "ui_surface": "Host onboarding view and startup alert",
       "user_visible_copy": "Allow Screen & System Audio Recording / Screen Recording and relaunch Vibe Screen",
       "user_action": "Grant the installed Vibe Screen app Screen Recording in System Settings, quit, reopen, and rerun the Host preflight.",
+      "contract": {
+        "code": "host_screen_recording_denied",
+        "title": "Screen Recording permission denied",
+        "body": "The macOS Host cannot capture a display because Screen Recording permission is missing or stale for the installed app identity.",
+        "action": "Grant Screen Recording to the installed Vibe Screen app in System Settings, quit, reopen, and rerun the Host preflight."
+      },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
         "baseline/MacHost/Sources/PermissionOnboardingView.swift",
         "docs/runbook/macos-host.md#first-run-permissions"
       ],
       "device_evidence_status": "blocked",
-      "gate_status": "open",
+      "gate_status": "covered-offline",
       "readme_gate_closure": false
     },
     {
@@ -234,6 +305,12 @@
       "ui_surface": "Host onboarding/settings copy and runtime logs",
       "user_visible_copy": "Enable input and window control; Accessibility lets tablet gestures control the Mac and lets Vibe Screen move and restore windows.",
       "user_action": "Grant Accessibility to the stable signed installed app, quit and reopen Vibe Screen, then retry input or window movement.",
+      "contract": {
+        "code": "accessibility_denied_or_limited",
+        "title": "Accessibility permission denied",
+        "body": "macOS input injection or window movement is unavailable because Accessibility is not granted to the stable signed Host app.",
+        "action": "Grant Accessibility to the stable signed installed app, quit and reopen Vibe Screen, then retry input or window movement."
+      },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
         "baseline/MacHost/Sources/PermissionOnboardingView.swift",
@@ -264,15 +341,21 @@
       "readme_gate_closure": false
     },
     {
-      "id": "macos-port-in-use",
+      "id": "macos-tcp-54321-unavailable",
       "platform": "macos_host",
-      "system_state": "TCP port 54321 is already bound by another process or a previous Host instance.",
+      "system_state": "TCP port 54321 is not available to clients because the Host listener is not running, cannot bind, or is already bound by another process or previous Host instance.",
       "failed_layer": "Host listener startup",
-      "source_classifier": "NWListener .failed state for an occupied port / SingleInstanceProcessLockError.alreadyRunning",
+      "source_classifier": "NWListener startup/listening state, listener readiness preflight, and SingleInstanceProcessLockError.alreadyRunning",
       "android_session_failure_kinds": [],
       "ui_surface": "Host startup alert and troubleshooting runbook",
-      "user_visible_copy": "Quit the conflicting process or choose another port in both Host and client.",
-      "user_action": "Run lsof -nP -iTCP:54321 -sTCP:LISTEN, stop the conflicting listener, then restart Vibe Screen.",
+      "user_visible_copy": "Start Vibe Screen on the Mac, or quit the conflicting process that owns TCP 54321 before retrying.",
+      "user_action": "Start or restart Vibe Screen on the Mac. If lsof -nP -iTCP:54321 -sTCP:LISTEN shows another listener, stop it and restart Vibe Screen.",
+      "contract": {
+        "code": "tcp_54321_unavailable",
+        "title": "TCP 54321 unavailable",
+        "body": "The Host is not reachable on TCP port 54321 because the listener is absent, failed to start, or the port is occupied.",
+        "action": "Start or restart Vibe Screen on the Mac. If another process is listening on TCP 54321, stop it and restart Vibe Screen."
+      },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
         "baseline/MacHost/Sources/StreamingServer.swift",
@@ -280,7 +363,7 @@
         "docs/runbook/macos-host.md#port-54321-is-already-in-use"
       ],
       "device_evidence_status": "open",
-      "gate_status": "open",
+      "gate_status": "covered-offline",
       "readme_gate_closure": false
     },
     {
