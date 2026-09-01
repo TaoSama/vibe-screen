@@ -45,6 +45,9 @@ def source_identity(
 
 
 class MacOSDevHostMetadataTests(unittest.TestCase):
+    def test_expected_bundle_id_comes_from_packaging_contract(self) -> None:
+        self.assertEqual(macos_dev_host.EXPECTED_BUNDLE_ID, macos_dev_host.package_macos.EXPECTED_BUNDLE_ID)
+
     def test_run_best_effort_reports_missing_executable(self) -> None:
         with mock.patch.object(macos_dev_host.subprocess, "run", side_effect=FileNotFoundError("/missing/vibe-screen-tool")):
             exit_code, output = macos_dev_host.run_best_effort("/missing/vibe-screen-tool")
@@ -977,6 +980,51 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             ):
                 with self.assertRaisesRegex(SystemExit, "bad signature"):
                     macos_dev_host.collect_signing_metadata(app)
+
+    def test_collect_signing_metadata_refuses_codesign_temporary_files_before_codesign(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            MacOSDevHostInstallTests.write_app(app, executable=b"binary")
+            stale = (
+                app
+                / "Contents"
+                / "Frameworks"
+                / "WebRTC.framework"
+                / "Versions"
+                / "A"
+                / "WebRTC.cstemp"
+            )
+            stale.parent.mkdir(parents=True)
+            stale.write_bytes(b"stale")
+
+            with mock.patch.object(macos_dev_host, "run") as run_mock:
+                with self.assertRaisesRegex(SystemExit, r"WebRTC\.cstemp"):
+                    macos_dev_host.collect_signing_metadata(app)
+
+        run_mock.assert_not_called()
+
+    def test_collect_signing_metadata_refuses_code_resources_cstemp_reference_before_codesign(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / "Vibe Screen.app"
+            MacOSDevHostInstallTests.write_app(app, executable=b"binary")
+            signature_dir = (
+                app
+                / "Contents"
+                / "Frameworks"
+                / "WebRTC.framework"
+                / "Versions"
+                / "A"
+                / "_CodeSignature"
+            )
+            signature_dir.mkdir(parents=True)
+            with (signature_dir / "CodeResources").open("wb") as code_resources:
+                plistlib.dump({"files": {"WebRTC.cstemp": {"hash": b"stale"}}}, code_resources)
+
+            with mock.patch.object(macos_dev_host, "run") as run_mock:
+                with self.assertRaisesRegex(SystemExit, r"CodeResources.*WebRTC\.cstemp"):
+                    macos_dev_host.collect_signing_metadata(app)
+
+        run_mock.assert_not_called()
 
     def test_install_command_checks_installed_identity_against_configured_identity(self) -> None:
         args = mock.Mock(
@@ -3287,6 +3335,37 @@ class MacOSDevHostInstallTests(unittest.TestCase):
                         expected_sign_identity="Vibe Screen Dev",
                         source_identity=source_identity(),
                     )
+
+            self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
+
+    def test_safe_replace_app_restores_existing_app_when_staged_code_resources_seals_cstemp(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source.app"
+            install = root / "Vibe Screen.app"
+            self.write_app(source, executable=b"new")
+            self.write_app(install, executable=b"old")
+            signature_dir = (
+                source
+                / "Contents"
+                / "Frameworks"
+                / "WebRTC.framework"
+                / "Versions"
+                / "A"
+                / "_CodeSignature"
+            )
+            signature_dir.mkdir(parents=True)
+            with (signature_dir / "CodeResources").open("wb") as code_resources:
+                plistlib.dump({"files": {"WebRTC.cstemp": {"hash": b"stale"}}}, code_resources)
+
+            with self.assertRaisesRegex(SystemExit, r"CodeResources.*WebRTC\.cstemp"):
+                macos_dev_host.safe_replace_app(
+                    source,
+                    install,
+                    macos_dev_host.EXPECTED_BUNDLE_ID,
+                    expected_sign_identity="Vibe Screen Dev",
+                    source_identity=source_identity(),
+                )
 
             self.assertEqual((install / "Contents/MacOS/Vibe Screen").read_bytes(), b"old")
 

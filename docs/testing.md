@@ -41,6 +41,15 @@ make baseline-macos-dev-install
 make baseline-macos-host-preflight
 ```
 
+The packaging and preflight chain is fail-closed before any device evidence can
+use a Host bundle. The package must come from a clean checkout, embed source
+provenance for the current commit/tree with `VibeScreenSourceDirty=false`, keep
+`CFBundleIdentifier=dev.telemachus.display`, retain a designated requirement
+bound to the historical signing leaf, pass `codesign --verify --deep --strict`,
+and contain no `*.cstemp*` files or `_CodeSignature/CodeResources` references
+to codesign temporary paths. A bundle that fails any of those checks must be
+rebuilt instead of reused for TCC or device evidence.
+
 If the configured identity is missing, the preflight blocks with
 `codesign identity 'Vibe Screen Dev' not found in the keychain`. Restore or
 import the historical Code Signing certificate material whose leaf SHA-1 is

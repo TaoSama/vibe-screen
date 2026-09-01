@@ -37,7 +37,7 @@ TCC_DATABASE_NAME = "TCC" + ".db"
 SYSTEM_TCC_DATABASE = Path("/Library") / TCC_SUPPORT_DIR / TCC_SERVICE_DIR / TCC_DATABASE_NAME
 USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
-EXPECTED_BUNDLE_ID = "dev.telemachus.display"
+EXPECTED_BUNDLE_ID = package_macos.EXPECTED_BUNDLE_ID
 EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
@@ -880,6 +880,8 @@ class LogReadiness:
 
 def collect_signing_metadata(app_path: Path) -> SigningMetadata:
     require_expected_bundle(app_path, EXPECTED_BUNDLE_ID)
+    package_macos.require_no_codesign_temporary_files(app_path)
+    package_macos.require_no_codesign_resource_seal_temporary_references(app_path)
     plist = read_bundle_plist(app_path)
     try:
         run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path))
