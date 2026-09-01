@@ -254,6 +254,26 @@ final class LatestFrameMailbox<Element> {
         }
     }
 
+    /// Forces the mailbox to drop dependent frames until the next keyframe.
+    /// Downstream transmit failures and queue drops can invalidate the current
+    /// prediction chain after the mailbox has already handed off a frame.
+    func requireKeyframe(generation: UInt64, sessionEpoch: UInt64) {
+        lock.withLock {
+            guard state.accepting,
+                  state.generation == generation,
+                  state.sessionEpoch == sessionEpoch else { return }
+            if let pending = state.pending, isKeyframe(pending) {
+                state.requiresKeyframe = false
+            } else if state.pending != nil {
+                state.pending = nil
+                state.droppedCount += 1
+                state.requiresKeyframe = true
+            } else {
+                state.requiresKeyframe = true
+            }
+        }
+    }
+
     /// Returns true when another frame arrived during the preceding drain.
     func finishDrain(generation: UInt64, sessionEpoch: UInt64) -> Bool {
         lock.withLock {
@@ -3319,6 +3339,10 @@ class StreamingServer: EncodedFrameSink {
             ]
         )
         if result.requiresKeyframe {
+            frameMailbox.requireKeyframe(
+                generation: clientGeneration,
+                sessionEpoch: epoch
+            )
             onKeyframeRequested?(true, clientGeneration)
         }
     }
@@ -3350,11 +3374,19 @@ class StreamingServer: EncodedFrameSink {
             // streaming frame is decodable, and the pipeline stays alive.
             sendInFlight = false
             _ = pendingFrames.reset(requiresKeyframe: true)
+            frameMailbox.requireKeyframe(
+                generation: frame.clientGeneration,
+                sessionEpoch: frame.sessionEpoch
+            )
             onKeyframeRequested?(false, frame.clientGeneration)
             return
         } catch {
             sendInFlight = false
             let dependentDrops = pendingFrames.reset(requiresKeyframe: true)
+            frameMailbox.requireKeyframe(
+                generation: frame.clientGeneration,
+                sessionEpoch: frame.sessionEpoch
+            )
             droppedFrames += UInt64(dependentDrops + 1)
             recordTelemetry(
                 "frame_encode_failed",
@@ -3376,6 +3408,10 @@ class StreamingServer: EncodedFrameSink {
                 if let error {
                     let dependentDrops = self.pendingFrames.reset(
                         requiresKeyframe: true
+                    )
+                    self.frameMailbox.requireKeyframe(
+                        generation: frame.clientGeneration,
+                        sessionEpoch: frame.sessionEpoch
                     )
                     self.droppedFrames += UInt64(dependentDrops + 1)
                     self.recordTelemetry(
