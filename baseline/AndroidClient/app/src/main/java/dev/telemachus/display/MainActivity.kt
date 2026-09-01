@@ -136,6 +136,7 @@ internal class EncodedVideoConfigurationState {
 internal data class InternetDecoderPresentationState<Decoder, Configuration>(
     val decoder: Decoder?,
     val configuration: Configuration?,
+    val rendererPresentation: RendererDecoderPresentation?,
     val displayWidth: Int,
     val displayHeight: Int,
     val displayRotation: Int,
@@ -145,13 +146,13 @@ internal data class InternetDecoderPresentationState<Decoder, Configuration>(
 internal fun <State> commitInternetDecoderPresentation(
     nextState: State,
     captureState: () -> State,
-    installState: (State) -> Unit,
+    installState: (State) -> Boolean,
     restoreState: (attempted: State, previous: State) -> Unit,
     presentState: (previous: State) -> Unit,
-): State {
+): State? {
     val previousState = captureState()
+    if (!installState(nextState)) return null
     try {
-        installState(nextState)
         presentState(previousState)
     } catch (failure: Throwable) {
         try {
@@ -170,17 +171,15 @@ class MainActivity : AppCompatActivity() {
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
-    private val videoDecoderRef = AtomicReference<VideoDecoder?>()
-    private val rendererViewportState =
-        RendererViewportState(
+    private val videoDecoderUseGate = DecoderUseGate<VideoDecoder>()
+    private val rendererOwner =
+        RendererOwner(
             scaleMode = { prefs.videoScaleMode },
             renderRotation = { prefs.clientRotation },
         )
-    private val surfaceGeneration = AtomicLong()
     private val decoderConfigurationGeneration = AtomicLong()
-    private var videoDecoder: VideoDecoder?
-        get() = videoDecoderRef.get()
-        set(value) = videoDecoderRef.set(value)
+    private val videoDecoder: VideoDecoder?
+        get() = videoDecoderUseGate.current()
     private val internetDeviceId by lazy { prefs.internetDeviceId }
     private val internetProfileStore by lazy { InternetSessionProfileStore(applicationContext) }
     private val internetRevocationCoordinator = InternetProductRevocationCoordinator.processShared()
@@ -216,10 +215,12 @@ class MainActivity : AppCompatActivity() {
     private var currentSurfaceHolder: SurfaceHolder? = null
     private var mainSessionDisplayLifecycle: MainSessionDisplayLifecycle? = null
     private val encodedVideoConfigurationState = EncodedVideoConfigurationState()
-    @Volatile private var activeDecoderConfigEpoch = 0L
-    private var displayWidth = 0 // Logical display geometry used by viewport/input mapping
-    private var displayHeight = 0 // Logical display geometry used by viewport/input mapping
-    private var displayRotation = 0 // 0, 90, 180, 270 degrees
+    private val displayWidth: Int
+        get() = rendererOwner.displayWidth
+    private val displayHeight: Int
+        get() = rendererOwner.displayHeight
+    private val displayRotation: Int
+        get() = rendererOwner.displayRotation
     private var pingJob: kotlinx.coroutines.Job? = null
     private var isInForeground = false
     private val productSessionCoordinator = ProductSessionCoordinator<StreamClient>()
@@ -1079,7 +1080,7 @@ class MainActivity : AppCompatActivity() {
                     // Don't initialize decoder here — wait for display config
                     // from the server so we use the correct resolution.
                     // Store the holder so we can initialize later.
-                    if (currentSurfaceHolder !== holder) surfaceGeneration.incrementAndGet()
+                    rendererOwner.publishRenderTarget(holder)
                     currentSurfaceHolder = holder
                     // If we already have a video configuration (reconnect case), init now.
                     if (videoDecoder == null) {
@@ -1114,7 +1115,7 @@ class MainActivity : AppCompatActivity() {
                     log("Surface destroyed")
                     completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED) {
                         // Only release decoder, NOT the connection.
-                        surfaceGeneration.incrementAndGet()
+                        rendererOwner.invalidateRenderTarget(holder)
                         if (currentSurfaceHolder === holder) currentSurfaceHolder = null
                         releaseVideoDecoderAsync()
                     }
@@ -3942,7 +3943,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val surface = holder.surface
-        val expectedSurfaceGeneration = surfaceGeneration.get()
+        val expectedSurfaceGeneration =
+            rendererOwner.snapshotRenderTarget(holder)?.generation ?: run {
+                retryWhenSurfaceReady()
+                return
+            }
         val expectedConfigurationGeneration = decoderConfigurationGeneration.incrementAndGet()
         val width = videoConfiguration.width
         val height = videoConfiguration.height
@@ -4065,7 +4070,7 @@ class MainActivity : AppCompatActivity() {
 
                 override fun isAttemptCurrent(attempt: DecoderLifecycleAttempt): Boolean =
                     surface.isValid &&
-                        surfaceGeneration.get() == attempt.surfaceGeneration &&
+                        rendererOwner.acceptsRenderTarget(holder, attempt.surfaceGeneration) &&
                         decoderConfigurationGeneration.get() == attempt.configurationGeneration &&
                         encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
                         isCurrentSession(ownerClient, attempt.sessionGeneration)
@@ -4080,12 +4085,12 @@ class MainActivity : AppCompatActivity() {
                 ): Boolean =
                     isCurrentSession(ownerClient, attempt.sessionGeneration) &&
                         videoDecoder === decoder &&
-                        activeDecoderConfigEpoch == attempt.configEpoch &&
+                        rendererOwner.activeDecoderConfigEpoch == attempt.configEpoch &&
                         decoderConfigurationGeneration.get() == attempt.configurationGeneration &&
                         encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
                         currentSurfaceHolder === holder &&
                         surface.isValid &&
-                        surfaceGeneration.get() == attempt.surfaceGeneration
+                        rendererOwner.acceptsRenderTarget(holder, attempt.surfaceGeneration)
 
                 override fun updateScaleMode(decoder: VideoDecoder) {
                     decoder.updateScaleMode(prefs.videoScaleMode)
@@ -4099,10 +4104,16 @@ class MainActivity : AppCompatActivity() {
                 override fun publishDecoder(
                     decoder: VideoDecoder,
                     attempt: DecoderLifecycleAttempt,
-                ): Boolean =
-                    videoDecoderRef.compareAndSet(null, decoder).also { published ->
-                        if (published) activeDecoderConfigEpoch = attempt.configEpoch
+                ): Boolean {
+                    return videoDecoderUseGate.installIf(decoder) {
+                        rendererOwner.commitDecoderPresentation(
+                            RendererDecoderPresentation(
+                                configEpoch = attempt.configEpoch,
+                                renderTargetGeneration = attempt.surfaceGeneration,
+                            ),
+                        )
                     }
+                }
 
                 override fun releaseDecoder(decoder: VideoDecoder) {
                     releaseDecoderAsync(decoder)
@@ -4175,7 +4186,6 @@ class MainActivity : AppCompatActivity() {
         val configuration = attempt.configurationToken as ProductVideoConfiguration
         val holder = attempt.surfaceToken as SurfaceHolder
         val surface = holder.surface
-        val previousActiveDecoderConfigEpoch = activeDecoderConfigEpoch
         fun isCurrentInternetSession(): Boolean =
             attempt.sessionGeneration == internetGeneration && internetSession === sessionReference.get()
         fun isCurrentInternetConfiguration(attempt: DecoderLifecycleAttempt): Boolean =
@@ -4188,11 +4198,11 @@ class MainActivity : AppCompatActivity() {
             isCurrentInternetSession() &&
                 isCurrentInternetConfiguration(attempt) &&
                 videoDecoder === decoder &&
-                activeDecoderConfigEpoch == attempt.configEpoch &&
+                rendererOwner.activeDecoderConfigEpoch == attempt.configEpoch &&
                 internetVideoConfiguration?.configEpoch == attempt.configEpoch &&
                 currentSurfaceHolder === holder &&
                 surface.isValid &&
-                surfaceGeneration.get() == attempt.surfaceGeneration
+                rendererOwner.acceptsRenderTarget(holder, attempt.surfaceGeneration)
 
         return AndroidDecoderLifecycleOwner(
             object : AndroidDecoderLifecyclePort<VideoDecoder> {
@@ -4204,7 +4214,7 @@ class MainActivity : AppCompatActivity() {
                         isCurrentInternetConfiguration(attempt) &&
                         currentSurfaceHolder === holder &&
                         surface.isValid &&
-                        surfaceGeneration.get() == attempt.surfaceGeneration
+                        rendererOwner.acceptsRenderTarget(holder, attempt.surfaceGeneration)
 
                 override fun canRetryAttempt(attempt: DecoderLifecycleAttempt): Boolean =
                     isCurrentInternetSession() && isCurrentInternetConfiguration(attempt)
@@ -4231,6 +4241,11 @@ class MainActivity : AppCompatActivity() {
                         InternetDecoderPresentationState(
                             decoder = decoder,
                             configuration = configuration,
+                            rendererPresentation =
+                                RendererDecoderPresentation(
+                                    configEpoch = attempt.configEpoch,
+                                    renderTargetGeneration = attempt.surfaceGeneration,
+                                ),
                             displayWidth = configuration.width,
                             displayHeight = configuration.height,
                             displayRotation = configuration.rotationDegrees,
@@ -4244,13 +4259,11 @@ class MainActivity : AppCompatActivity() {
                             restoreInternetDecoderPresentation(
                                 attempted = attempted,
                                 previous = previous,
-                                previousActiveDecoderConfigEpoch = previousActiveDecoderConfigEpoch,
                                 previousRequestedOrientation = previousRequestedOrientation,
                                 previousStreamingWindowEnabled = previousStreamingWindowEnabled,
                             )
                         },
                     ) { previousPresentation ->
-                        activeDecoderConfigEpoch = attempt.configEpoch
                         applyRotation(configuration.rotationDegrees)
                         binding.surfaceView.post {
                             if (isPublishedInternetDecoderCurrent(decoder, attempt)) {
@@ -4263,7 +4276,7 @@ class MainActivity : AppCompatActivity() {
                         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
                         showConnectedStreamUi()
                         previousPresentation.decoder?.let(::releaseDecoderAsync)
-                    }
+                    } ?: return false
                     return true
                 }
 
@@ -4313,14 +4326,14 @@ class MainActivity : AppCompatActivity() {
     private fun applyVideoScaleMode(mode: VideoScaleMode) {
         prefs.videoScaleMode = mode
         DECODER_LIFECYCLE_EXECUTOR.execute {
-            videoDecoder?.updateScaleMode(mode)
+            videoDecoderUseGate.withCurrent { decoder -> decoder.updateScaleMode(mode) }
         }
     }
 
     private fun releaseVideoDecoderAsync() {
         decoderConfigurationGeneration.incrementAndGet()
-        activeDecoderConfigEpoch = 0L
-        val decoder = videoDecoderRef.getAndSet(null) ?: return
+        rendererOwner.clearDecoderPresentation()
+        val decoder = videoDecoderUseGate.clear() ?: return
         releaseDecoderAsync(decoder)
     }
 
@@ -4409,9 +4422,13 @@ class MainActivity : AppCompatActivity() {
                         "onDisplayGeometry: ${geometry.logicalWidth}x${geometry.logicalHeight} " +
                             "@ ${geometry.rotation}°",
                     )
-                    displayWidth = geometry.logicalWidth
-                    displayHeight = geometry.logicalHeight
-                    displayRotation = geometry.rotation
+                    rendererOwner.updateDisplayGeometry(
+                        RendererDisplayGeometry(
+                            width = geometry.logicalWidth,
+                            height = geometry.logicalHeight,
+                            rotation = geometry.rotation,
+                        ),
+                    )
                     binding.resolutionText.text =
                         getString(R.string.resolution_format, geometry.logicalWidth, geometry.logicalHeight)
                     binding.connectButton.isEnabled = false
@@ -4435,24 +4452,47 @@ class MainActivity : AppCompatActivity() {
                 sessionEpoch,
                 configEpoch,
             ->
-            if (!isCurrentSession(callbackClient, callbackGeneration)) {
-                callbackClient.releaseBuffer(frameData)
-                return@frame
+            fun handleDrop(decision: RendererFramePresentationDecision.Drop) {
+                when (decision.reason) {
+                    RendererFrameDropReason.STALE_CONFIG_EPOCH ->
+                        mainDiag(
+                            "FRAME DROPPED: config epoch $configEpoch does not match decoder epoch " +
+                                rendererOwner.activeDecoderConfigEpoch,
+                        )
+                    RendererFrameDropReason.DECODER_NOT_CONFIGURED,
+                    RendererFrameDropReason.DECODER_UNAVAILABLE,
+                    -> mainDiag("FRAME DROPPED: videoDecoder is null!")
+                    RendererFrameDropReason.STALE_SESSION,
+                    RendererFrameDropReason.STALE_SESSION_EPOCH,
+                    -> Unit
+                }
+                if (decision.releaseFrame) callbackClient.releaseBuffer(frameData)
             }
-            if (configEpoch != activeDecoderConfigEpoch) {
-                mainDiag(
-                    "FRAME DROPPED: config epoch $configEpoch does not match decoder epoch " +
-                        activeDecoderConfigEpoch,
-                )
-                callbackClient.releaseBuffer(frameData)
-                return@frame
-            }
-            val dec = videoDecoder
-            if (dec != null) {
-                dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
-            } else {
-                mainDiag("FRAME DROPPED: videoDecoder is null!")
-                callbackClient.releaseBuffer(frameData)
+
+            val usedDecoder =
+                videoDecoderUseGate.withCurrent { dec ->
+                    when (
+                        val decision =
+                            rendererOwner.localFrameDecision(
+                                sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                                configEpoch = configEpoch,
+                                decoderAvailable = true,
+                            )
+                    ) {
+                        RendererFramePresentationDecision.Present ->
+                            dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
+                        is RendererFramePresentationDecision.Drop -> handleDrop(decision)
+                    }
+                    true
+                } ?: false
+            if (!usedDecoder) {
+                val decision =
+                    rendererOwner.localFrameDecision(
+                        sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                        configEpoch = configEpoch,
+                        decoderAvailable = false,
+                    )
+                if (decision is RendererFramePresentationDecision.Drop) handleDrop(decision)
             }
         }
 
@@ -5010,21 +5050,36 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onVideoFrame(frame: ProductVideoFrame) {
-                    if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
-                    if (frame.configEpoch != activeDecoderConfigEpoch) {
-                        mainDiag(
-                            "INTERNET FRAME DROPPED: config epoch ${frame.configEpoch} does not match decoder epoch " +
-                                activeDecoderConfigEpoch,
+                    val usedDecoder =
+                        videoDecoderUseGate.withCurrent { dec ->
+                            when (
+                                rendererOwner.internetFrameDecision(
+                                    sessionCurrent = isCurrentInternetSession(),
+                                    frameSessionEpoch = frame.sessionEpoch,
+                                    activeSessionEpoch = internetSessionEpoch,
+                                    decoderAvailable = true,
+                                )
+                            ) {
+                                RendererFramePresentationDecision.Present ->
+                                    dec.decode(
+                                        frame.payload,
+                                        frame.payload.size,
+                                        System.nanoTime(),
+                                        frame.keyframe,
+                                        frame.sessionEpoch,
+                                    )
+                                is RendererFramePresentationDecision.Drop -> Unit
+                            }
+                            true
+                        } ?: false
+                    if (!usedDecoder) {
+                        rendererOwner.internetFrameDecision(
+                            sessionCurrent = isCurrentInternetSession(),
+                            frameSessionEpoch = frame.sessionEpoch,
+                            activeSessionEpoch = internetSessionEpoch,
+                            decoderAvailable = false,
                         )
-                        return
                     }
-                    videoDecoder?.decode(
-                        frame.payload,
-                        frame.payload.size,
-                        System.nanoTime(),
-                        frame.keyframe,
-                        frame.sessionEpoch,
-                    )
                 }
 
                 override fun onInputAck(
@@ -5169,7 +5224,9 @@ class MainActivity : AppCompatActivity() {
         val holder = currentSurfaceHolder
         if (holder == null || !holder.surface.isValid) return ProductVideoDecision.reject("surface_unavailable")
         val surface = holder.surface
-        val expectedSurfaceGeneration = surfaceGeneration.get()
+        val expectedSurfaceGeneration =
+            rendererOwner.snapshotRenderTarget(holder)?.generation
+                ?: return ProductVideoDecision.reject("surface_unavailable")
         val expectedConfigurationGeneration = decoderConfigurationGeneration.incrementAndGet()
         val previousRequestedOrientation = requestedOrientation
         val previousStreamingWindowEnabled = isStreamingWindowStateEnabled()
@@ -5266,6 +5323,7 @@ class MainActivity : AppCompatActivity() {
         InternetDecoderPresentationState(
             decoder = videoDecoder,
             configuration = internetVideoConfiguration,
+            rendererPresentation = rendererOwner.currentDecoderPresentation,
             displayWidth = displayWidth,
             displayHeight = displayHeight,
             displayRotation = displayRotation,
@@ -5274,29 +5332,55 @@ class MainActivity : AppCompatActivity() {
 
     private fun installInternetDecoderPresentation(
         state: InternetDecoderPresentationState<VideoDecoder, ProductVideoConfiguration>,
-    ) {
-        videoDecoder = state.decoder
+    ): Boolean {
+        if (!videoDecoderUseGate.installIf(state.decoder) {
+                rendererOwner.installDecoderPresentation(state.rendererPresentation)
+            }
+        ) {
+            return false
+        }
         internetVideoConfiguration = state.configuration
-        displayWidth = state.displayWidth
-        displayHeight = state.displayHeight
-        displayRotation = state.displayRotation
+        if (state.displayWidth > 0 && state.displayHeight > 0) {
+            rendererOwner.updateDisplayGeometry(
+                RendererDisplayGeometry(
+                    width = state.displayWidth,
+                    height = state.displayHeight,
+                    rotation = state.displayRotation,
+                ),
+            )
+        } else {
+            rendererOwner.clearDisplayGeometry()
+        }
         isConnected = state.connected
         productSessionCoordinator.setTransportConnected(state.connected)
+        return true
     }
 
     private fun restoreInternetDecoderPresentation(
         attempted: InternetDecoderPresentationState<VideoDecoder, ProductVideoConfiguration>,
         previous: InternetDecoderPresentationState<VideoDecoder, ProductVideoConfiguration>,
-        previousActiveDecoderConfigEpoch: Long,
         previousRequestedOrientation: Int,
         previousStreamingWindowEnabled: Boolean,
     ) {
         check(
-            videoDecoderRef.compareAndSet(attempted.decoder, previous.decoder) ||
-                videoDecoder === previous.decoder,
+            videoDecoderUseGate.replaceIfCurrent(attempted.decoder, previous.decoder) {
+                rendererOwner.installDecoderPresentation(previous.rendererPresentation)
+            },
         ) { "Internet decoder changed while presentation rollback was in progress" }
-        installInternetDecoderPresentation(previous)
-        activeDecoderConfigEpoch = previousActiveDecoderConfigEpoch
+        internetVideoConfiguration = previous.configuration
+        if (previous.displayWidth > 0 && previous.displayHeight > 0) {
+            rendererOwner.updateDisplayGeometry(
+                RendererDisplayGeometry(
+                    width = previous.displayWidth,
+                    height = previous.displayHeight,
+                    rotation = previous.displayRotation,
+                ),
+            )
+        } else {
+            rendererOwner.clearDisplayGeometry()
+        }
+        isConnected = previous.connected
+        productSessionCoordinator.setTransportConnected(previous.connected)
         requestedOrientation = previousRequestedOrientation
         binding.surfaceView.apply {
             rotation = prefs.clientRotation.degrees.toFloat()
@@ -5385,9 +5469,9 @@ class MainActivity : AppCompatActivity() {
         val tickJob = internetTickJob
         val session = internetSession
         val networkMonitor = internetNetworkMonitor
-        val decoder = videoDecoderRef.getAndSet(null)
+        val decoder = videoDecoderUseGate.clear()
+        rendererOwner.clearDecoderPresentation()
         decoderConfigurationGeneration.incrementAndGet()
-        activeDecoderConfigEpoch = 0L
         var sessionCloseFailure: Throwable? = null
         try {
             session?.close()
@@ -5418,8 +5502,7 @@ class MainActivity : AppCompatActivity() {
         internetRoute = null
         resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
-        displayWidth = 0
-        displayHeight = 0
+        rendererOwner.clearDisplayGeometry()
         isConnected = false
         productSessionCoordinator.setTransportConnected(false)
         runBestEffort(
@@ -5452,11 +5535,9 @@ class MainActivity : AppCompatActivity() {
         internetVideoDecoderLifecycle = null
         internetTickJob = null
         internetNetworkMonitor = null
-        if (videoDecoderRef.get() === decoder) {
-            videoDecoderRef.compareAndSet(decoder, null)
-        }
+        videoDecoderUseGate.compareAndSet(decoder, null)
+        rendererOwner.clearDecoderPresentation()
         decoderConfigurationGeneration.incrementAndGet()
-        activeDecoderConfigEpoch = 0L
         productSessionCoordinator.endConnectionAttempt()
         internetRoute = null
         activeInternetInputIds.clear()
@@ -5464,9 +5545,7 @@ class MainActivity : AppCompatActivity() {
         internetStylusGestureRouter.reset()
         internetStylusContactRouter.reset()
         internetVideoConfiguration = null
-        displayWidth = 0
-        displayHeight = 0
-        displayRotation = 0
+        rendererOwner.clearDisplayGeometry()
         isConnected = false
         productSessionCoordinator.setTransportConnected(false)
         val quarantinedSession = requireNotNull(internetSession)
@@ -5815,11 +5894,9 @@ class MainActivity : AppCompatActivity() {
         )
         applyControlBarLayout()
         encodedVideoConfigurationState.clear()
-        activeDecoderConfigEpoch = 0L
         lastAppliedVideoPreferenceConfigEpoch = 0L
-        displayWidth = 0
-        displayHeight = 0
-        displayRotation = 0
+        rendererOwner.clearDecoderPresentation()
+        rendererOwner.clearDisplayGeometry()
         setStreamingWindowState(false)
         stopPingTimer()
         releaseVideoDecoderAsync()
@@ -6314,11 +6391,7 @@ class MainActivity : AppCompatActivity() {
         val parentHeight = binding.root.height
         if (parentWidth <= 0 || parentHeight <= 0) return
 
-        rendererViewportState.updateDisplaySize(displayWidth, displayHeight)
-        rendererViewportState.updateParentSize(parentWidth, parentHeight)
-        rendererViewportState.updateScaleMode()
-        rendererViewportState.updateRenderRotation()
-        val layout = checkNotNull(rendererViewportState.currentLayout)
+        val layout = rendererOwner.updateViewportParent(parentWidth, parentHeight) ?: return
 
         val viewportParams =
             binding.videoViewport.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
