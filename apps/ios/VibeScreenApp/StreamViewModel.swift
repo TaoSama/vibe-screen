@@ -82,6 +82,8 @@ final class StreamViewModel: ObservableObject {
     var reconnectTask: Task<Void, Never>?
     var activePairing: TrustedLANPairing?
     var connectionGeneration: UInt64?
+    var sessionLocalManagedPolicy: ManagedPolicy?
+    var sessionManagedPolicy: ManagedPolicy?
     var deliveryGate = OwnedDeliveryGate()
     var sessionOwner: SessionOwner?
     var closingSessionOwner: SessionOwner?
@@ -225,6 +227,8 @@ final class StreamViewModel: ObservableObject {
         if let sessionKey { registry.disconnect(sessionKey) }
         if resetState { state.reset() }
         sessionKey = nil
+        sessionLocalManagedPolicy = nil
+        sessionManagedPolicy = nil
         managedConfiguration.clearRemotePolicy()
         negotiatedCapabilities = []
         negotiatedLimits = VSResourceLimits()
@@ -292,7 +296,7 @@ final class StreamViewModel: ObservableObject {
             }
             let content = try clipboard.prepareOutgoing(
                 originDeviceID: deviceID,
-                policy: managedConfiguration.policy
+                policy: currentManagedPolicy
             )
             sendInBackground { factory in
                 factory.clipboardContent(
@@ -305,7 +309,7 @@ final class StreamViewModel: ObservableObject {
     }
 
     func approveRemoteClipboard() {
-        do { try clipboard.approvePending(policy: managedConfiguration.policy) }
+        do { try clipboard.approvePending(policy: currentManagedPolicy) }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -316,7 +320,7 @@ final class StreamViewModel: ObservableObject {
         }
         do {
             let negotiatedFileBytes = negotiatedLimits.maximumFileBytes == 0 ?
-                managedConfiguration.policy.maximumFileBytes : negotiatedLimits.maximumFileBytes
+                currentManagedPolicy.maximumFileBytes : negotiatedLimits.maximumFileBytes
             let negotiatedChunkBytes = negotiatedLimits.maximumFileChunkBytes == 0 ?
                 64 * 1_024 : Int(negotiatedLimits.maximumFileChunkBytes)
             let scopedFile = try SecurityScopedOutgoingFile(
@@ -326,7 +330,7 @@ final class StreamViewModel: ObservableObject {
                     maximumFileBytes: negotiatedFileBytes,
                     maximumChunkBytes: min(64 * 1_024, negotiatedChunkBytes)
                 ),
-                managedPolicy: managedConfiguration.policy
+                managedPolicy: currentManagedPolicy
             )
             let transfer = scopedFile.transfer
             outgoingFiles[transfer.offer.transferID] = scopedFile
@@ -347,7 +351,7 @@ final class StreamViewModel: ObservableObject {
     func approveIncomingFile() {
         guard let offer = pendingFileOffers.values.first, let incomingFiles else { return }
         do {
-            let response = try incomingFiles.accept(offer, managedPolicy: managedConfiguration.policy)
+            let response = try incomingFiles.accept(offer, managedPolicy: currentManagedPolicy)
             pendingFileName = nil
             sendInBackground { factory in
                 factory.fileAccept(
@@ -388,7 +392,7 @@ final class StreamViewModel: ObservableObject {
                 try await WakeOnLANClient.send(
                     macAddress: macAddress,
                     isPaired: UserDefaults.standard.bool(forKey: "hasAuthorizedHostIdentity"),
-                    policy: managedConfiguration.policy
+                    policy: currentManagedPolicy
                 )
             } catch { errorMessage = error.localizedDescription }
         }
@@ -398,7 +402,7 @@ final class StreamViewModel: ObservableObject {
         do {
             let profile = try gestureProfile.validated(
                 availableHostActions: Set(availableHostActions),
-                policy: managedConfiguration.policy
+                policy: currentManagedPolicy
             )
             guard let action = profile.mappings.first(where: { $0.trigger == trigger })?.action else { return }
             switch action {
@@ -422,7 +426,7 @@ final class StreamViewModel: ObservableObject {
         do {
             gestureProfile = try gestureProfile.validated(
                 availableHostActions: Set(availableHostActions),
-                policy: managedConfiguration.policy
+                policy: currentManagedPolicy
             )
             if let data = try? JSONEncoder().encode(gestureProfile) {
                 UserDefaults.standard.set(data, forKey: "gestureProfile")

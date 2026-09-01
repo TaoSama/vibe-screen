@@ -1051,9 +1051,12 @@ increase it.
 - Managed configuration now has an offline-verified deny-wins product-policy
   model across macOS Host, Android, and iOS: Protocol v1 carries complete
   restriction results, local parse errors fail closed, allowlists intersect,
-  and `DeniedHosts` wins over `AllowedHosts`. This is source/unit/self-test
-  evidence only; real Apple MDM profile delivery and managed App Configuration
-  injection remain open gates.
+  and `DeniedHosts` wins over `AllowedHosts`. macOS and iOS read typed managed
+  configuration at their platform defaults, and Android declares, parses, and
+  snapshots Android Enterprise app restrictions into each production
+  `StreamClient` Protocol v1 session. This is source/unit/self-test evidence
+  only; real Apple MDM profile delivery, iOS managed App Configuration
+  injection, and Android Enterprise app-restrictions delivery remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,

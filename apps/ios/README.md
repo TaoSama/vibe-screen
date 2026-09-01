@@ -206,7 +206,11 @@ currently no key migration step.
   `com.apple.configuration.managed`. Supported deny-wins keys are
   `ClipboardAllowed`, `FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
   `CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`, and
-  `AllowedHosts`. Invalid types fail closed.
+  `AllowedHosts`, and `DeniedHosts`. Invalid types fail closed. The local
+  managed configuration is snapshotted when a stream session starts; later
+  remote managed-policy status is combined into that session snapshot with
+  deny-wins semantics, so mid-session local profile reloads do not silently
+  weaken or tighten the active connection.
 
 ## Advanced feature use
 

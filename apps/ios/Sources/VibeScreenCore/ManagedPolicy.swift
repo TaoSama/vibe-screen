@@ -157,53 +157,22 @@ public struct ManagedPolicy: Equatable, Sendable {
     }
 
     public init(managedConfiguration: [String: Any]?) throws {
-        guard let configuration = managedConfiguration, !configuration.isEmpty else {
+        let parsed = try ManagedConfigurationSchema.parse(managedConfiguration)
+        guard let configuration = parsed else {
             self = .unmanaged
             return
         }
-        func requiredBool(_ key: String) throws -> Bool {
-            guard let value = configuration[key] else { return false }
-            guard let value = value as? Bool else { throw ManagedPolicyError.invalidType(key) }
-            return value
-        }
-        let maximum: UInt64
-        if let value = configuration[Keys.maximumFileBytes] {
-            guard let number = value as? NSNumber, number.int64Value >= 0 else {
-                throw ManagedPolicyError.invalidType(Keys.maximumFileBytes)
-            }
-            maximum = UInt64(number.int64Value)
-        } else {
-            maximum = 0
-        }
-        let hosts: Set<String>
-        if let value = configuration[Keys.allowedHosts] {
-            guard let strings = value as? [String] else {
-                throw ManagedPolicyError.invalidType(Keys.allowedHosts)
-            }
-            hosts = Set(strings.filter { !Self.isBlankHost($0) })
-        } else {
-            hosts = []
-        }
-        let deniedHosts: Set<String>
-        if let value = configuration[Keys.deniedHosts] {
-            guard let strings = value as? [String] else {
-                throw ManagedPolicyError.invalidType(Keys.deniedHosts)
-            }
-            deniedHosts = Set(strings.filter { !Self.isBlankHost($0) })
-        } else {
-            deniedHosts = []
-        }
         self.init(
             isManaged: true,
-            clipboardAllowed: try requiredBool(Keys.clipboardAllowed),
-            fileTransferAllowed: try requiredBool(Keys.fileTransferAllowed),
-            audioAllowed: try requiredBool(Keys.audioAllowed),
-            wakeAllowed: try requiredBool(Keys.wakeAllowed),
-            customGesturesAllowed: try requiredBool(Keys.customGesturesAllowed),
-            hostActionsAllowed: try requiredBool(Keys.hostActionsAllowed),
-            maximumFileBytes: maximum,
-            allowedHosts: hosts,
-            deniedHosts: deniedHosts
+            clipboardAllowed: configuration.clipboardAllowed,
+            fileTransferAllowed: configuration.fileTransferAllowed,
+            audioAllowed: configuration.audioAllowed,
+            wakeAllowed: configuration.wakeAllowed,
+            customGesturesAllowed: configuration.customGesturesAllowed,
+            hostActionsAllowed: configuration.hostActionsAllowed,
+            maximumFileBytes: configuration.maximumFileBytes,
+            allowedHosts: configuration.allowedHosts,
+            deniedHosts: configuration.deniedHosts
         )
     }
 
@@ -425,6 +394,76 @@ public struct ManagedPolicy: Equatable, Sendable {
         static let maximumFileBytes = "MaximumFileBytes"
         static let allowedHosts = "AllowedHosts"
         static let deniedHosts = "DeniedHosts"
+    }
+
+    public struct ManagedConfigurationSchema: Equatable, Sendable {
+        public static let managedConfigurationKey = "com.apple.configuration.managed"
+
+        public let clipboardAllowed: Bool
+        public let fileTransferAllowed: Bool
+        public let audioAllowed: Bool
+        public let wakeAllowed: Bool
+        public let customGesturesAllowed: Bool
+        public let hostActionsAllowed: Bool
+        public let maximumFileBytes: UInt64
+        public let allowedHosts: Set<String>
+        public let deniedHosts: Set<String>
+
+        public static func parse(_ raw: [String: Any]?) throws -> ManagedConfigurationSchema? {
+            guard let raw, !raw.isEmpty else { return nil }
+            return ManagedConfigurationSchema(
+                clipboardAllowed: try requiredBool(Keys.clipboardAllowed, in: raw),
+                fileTransferAllowed: try requiredBool(Keys.fileTransferAllowed, in: raw),
+                audioAllowed: try requiredBool(Keys.audioAllowed, in: raw),
+                wakeAllowed: try requiredBool(Keys.wakeAllowed, in: raw),
+                customGesturesAllowed: try requiredBool(Keys.customGesturesAllowed, in: raw),
+                hostActionsAllowed: try requiredBool(Keys.hostActionsAllowed, in: raw),
+                maximumFileBytes: try optionalUInt64(Keys.maximumFileBytes, in: raw) ?? 0,
+                allowedHosts: try optionalStringSet(Keys.allowedHosts, in: raw) ?? [],
+                deniedHosts: try optionalStringSet(Keys.deniedHosts, in: raw) ?? []
+            )
+        }
+
+        private static func requiredBool(_ key: String, in raw: [String: Any]) throws -> Bool {
+            guard let value = raw[key] else { return false }
+            guard let value = value as? Bool else { throw ManagedPolicyError.invalidType(key) }
+            return value
+        }
+
+        private static func optionalUInt64(_ key: String, in raw: [String: Any]) throws -> UInt64? {
+            guard let value = raw[key] else { return nil }
+            guard let number = value as? NSNumber, !Self.isBooleanNumber(number) else {
+                throw ManagedPolicyError.invalidType(key)
+            }
+            switch String(cString: number.objCType) {
+            case "c", "s", "i", "l", "q":
+                let signedValue = number.int64Value
+                guard signedValue >= 0 else { throw ManagedPolicyError.invalidType(key) }
+                return UInt64(signedValue)
+            case "C", "S", "I", "L", "Q":
+                return number.uint64Value
+            default:
+                break
+            }
+            let doubleValue = number.doubleValue
+            guard doubleValue.isFinite,
+                  doubleValue >= 0,
+                  doubleValue < Double(UInt64.max),
+                  doubleValue.rounded(.towardZero) == doubleValue else {
+                throw ManagedPolicyError.invalidType(key)
+            }
+            return UInt64(doubleValue)
+        }
+
+        private static func optionalStringSet(_ key: String, in raw: [String: Any]) throws -> Set<String>? {
+            guard let value = raw[key] else { return nil }
+            guard let strings = value as? [String] else { throw ManagedPolicyError.invalidType(key) }
+            return Set(strings.filter { !ManagedPolicy.isBlankHost($0) })
+        }
+
+        private static func isBooleanNumber(_ number: NSNumber) -> Bool {
+            CFGetTypeID(number) == CFBooleanGetTypeID()
+        }
     }
 }
 

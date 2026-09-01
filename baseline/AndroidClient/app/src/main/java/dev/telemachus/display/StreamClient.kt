@@ -119,8 +119,42 @@ class StreamClient(
     private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
     private val wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
 ) {
+    internal constructor(
+        host: String,
+        port: Int,
+        context: Context? = null,
+        socketFactory: () -> Socket = ::Socket,
+        videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
+        videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
+        terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
+        wakeHostExecutor: Executor = WAKE_HOST_EXECUTOR,
+        advertiseController: Boolean = false,
+        advertisePeripheralInputFramework: Boolean = false,
+        wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
+        wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
+        managedPolicyProvider: () -> ProtocolV1Session.ManagedPolicy,
+    ) : this(
+        host = host,
+        port = port,
+        context = context,
+        socketFactory = socketFactory,
+        videoConfigurationCommitTimeoutMs = videoConfigurationCommitTimeoutMs,
+        videoConfigurationTimeoutExecutor = videoConfigurationTimeoutExecutor,
+        terminationExecutor = terminationExecutor,
+        wakeHostExecutor = wakeHostExecutor,
+        advertiseController = advertiseController,
+        advertisePeripheralInputFramework = advertisePeripheralInputFramework,
+        wakeHostPolicy = wakeHostPolicy,
+        wakeHostPacketSender = wakeHostPacketSender,
+    ) {
+        this.managedPolicyProvider = managedPolicyProvider
+    }
+
     internal val actualPort: Int = port
     internal var audioPlayer: ProtocolPcmAudioPlayer = ProtocolPcmAudioPlayer(AndroidAudioTrackOutputFactory())
+    private var managedPolicyProvider: () -> ProtocolV1Session.ManagedPolicy = {
+        context?.let { ManagedConfigurationProvider(it).loadPolicy() } ?: ProtocolV1Session.ManagedPolicy.UNMANAGED
+    }
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
 
     /** Owns Protocol v1 session lifecycle, epochs, side-effect admission, and retry-transition state. */
@@ -730,6 +764,7 @@ class StreamClient(
                 CodecCapabilities.advertisedStreamCodecs.mapNotNull(StreamCodec::toProtocolCodecOrNull),
             advertiseController = advertiseController,
             advertisePeripheralInputFramework = advertisePeripheralInputFramework,
+            localManagedPolicy = managedPolicyProvider(),
             fileTransferPolicy = fileTransferProductOwner.fileTransferPolicy,
             advertiseWakeHost = wakeHostProductOwner.canAdvertiseWakeHost(),
         ).also {

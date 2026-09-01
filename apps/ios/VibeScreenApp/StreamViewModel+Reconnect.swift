@@ -14,6 +14,8 @@ extension StreamViewModel {
         let owner = SessionOwner(connectionOwner: connectionOwner)
         deliveryGate.reset(to: connectionOwner)
         sessionOwner = owner
+        sessionLocalManagedPolicy = policy
+        sessionManagedPolicy = policy
         connectionGeneration = generation
         controlOutbox.activate(owner: owner)
         setConnecting(true)
