@@ -1961,25 +1961,7 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private func closeLocked() {
-        phase = .closed
-        resetSessionOwnedStateLocked()
-    }
-
-    private func resetSessionOwnedStateLocked() {
-        if isRegisteredWithDisplayAllocator {
-            displayAllocator.disconnect(sessionKey)
-            isRegisteredWithDisplayAllocator = false
-        }
-        _ = stylusSequenceState.consumeReset()
-        resetControllerState()
-        audioState.reset()
-        pendingHostActionInvocations.removeAll()
-        pendingWakeHostRequests.removeAll()
-        clipboardCore?.reset()
-        remoteManagedClipboardAllowed = true
-        managedPolicyResolver.clearRemote()
-        negotiatedFileTransferPolicy = configuration.fileTransferPolicy
-        peerResourceLimits = VSResourceLimits()
+        closeLocked(phase: .closed)
     }
 
     private func unsupportedCapability(_ message: String, _ correlationID: UInt64) -> [ProtocolV1SessionAction] {

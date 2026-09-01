@@ -39,7 +39,7 @@ Build complete!
 Host self-test: PASS (display identity/catalog, input/window geometry, startup/recovery policy, callback generation, fallback replacement, ADB device selection)
 Transport self-test: PASS (config=true, keyframe=true, pong=true, touch=true, malformedTouchRejected=true, portConflict=true, codecNegotiations=1, protocolV1Lifecycle=true, protocolV1ReadyLifecycle=true, protocolV1PreReadyStops=true, fileApprovalDispatch=true, error=none)
 Reliability self-test: PASS (queue, epoch, heartbeat/backoff, codec, JSONL)
-Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, multi-client routing, epoch, targeted input, heartbeat, graceful disconnect, error, media)
+Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, multi-client allocation, epoch, targeted input, heartbeat, graceful disconnect, error, media)
 video encoder self-test passed (encoded callbacks: 1)
 ```
 
