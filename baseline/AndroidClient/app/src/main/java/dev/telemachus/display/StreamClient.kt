@@ -3113,7 +3113,7 @@ class StreamClient(
         private const val INITIAL_AUDIO_PROGRESS_LOG_PACKETS = 4L
         private const val AUDIO_PROGRESS_LOG_INTERVAL_PACKETS = 64L
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
-        private const val HEARTBEAT_TIMEOUT_MS = 3_500L
+        private const val HEARTBEAT_TIMEOUT_MS = 2_000L
         private const val MIN_DISPLAY_DIMENSION = 16
         private const val MAX_DISPLAY_DIMENSION = 8_192
         private val VALID_DISPLAY_ROTATIONS = setOf(0, 90, 180, 270)

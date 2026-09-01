@@ -85,6 +85,105 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun reconnectSuggestionRoutesThroughSingleRetryCoordinator() {
+        val source = mainActivitySource()
+        val reconnectCallback = extractCallback(source, "callbackClient.onReconnectSuggested = reconnect@")
+        val compactCallback = reconnectCallback.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "StreamClient reconnect suggestions must feed the session retry coordinator",
+            compactCallback.contains("retryCoordinator.onReconnectSuggested(delayMs)"),
+        )
+        assertFalse(
+            "Reconnect callback must not independently schedule USB retries",
+            reconnectCallback.contains("scheduleAutomaticUsbConnect"),
+        )
+        assertFalse(
+            "Reconnect callback must not independently schedule wireless retries",
+            reconnectCallback.contains("scheduleWirelessReconnect"),
+        )
+        assertFalse(
+            "Reconnect callback must not store a shared pending retry delay outside the coordinator",
+            reconnectCallback.contains("pendingAutomaticReconnectDelayMs"),
+        )
+        assertFalse(
+            "MainActivity must not keep a second wireless ReconnectBackoff owner",
+            source.contains("initialWirelessReconnectBackoff"),
+        )
+    }
+
+    @Test
+    fun automaticRetryConsumersUseCoordinatorSuggestedDelay() {
+        val source = mainActivitySource()
+        val usbConnect = extractMethod(source, "private fun connect")
+        val wirelessConnect = extractMethod(source, "private fun connectWireless")
+        val usbRetryConsumer = extractBlockAfterMarker(usbConnect, "createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration)")
+        val wirelessRetryConsumer = extractBlockAfterMarker(wirelessConnect, "createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration)")
+
+        assertTrue(
+            "USB retry consumer must accept the coordinator delay parameter",
+            usbRetryConsumer.contains("{ delayMs: Long ->"),
+        )
+        assertTrue(
+            "USB retry consumer must schedule with the suggested delay",
+            usbRetryConsumer.contains("scheduleAutomaticUsbConnect(delayMs)"),
+        )
+        assertFalse(
+            "USB retry consumer must not fall back to the old fixed or shared pending delay path",
+            usbRetryConsumer.contains("pendingAutomaticReconnectDelayMs") ||
+                usbRetryConsumer.contains("pendingWirelessReconnectDelayMs"),
+        )
+        assertTrue(
+            "Wireless retry consumer must accept the coordinator delay parameter",
+            wirelessRetryConsumer.contains("{ delayMs: Long ->"),
+        )
+        assertTrue(
+            "Wireless retry consumer must schedule with the suggested delay",
+            wirelessRetryConsumer.contains("scheduleWirelessReconnect(delayMs)"),
+        )
+    }
+
+    @Test
+    fun backgroundWirelessReconnectKeepsCoordinatorSelectedDelayForForegroundResume() {
+        val source = mainActivitySource()
+        val onStart = extractMethod(source, "override fun onStart")
+        val scheduleWirelessReconnect = extractMethod(source, "private fun scheduleWirelessReconnect")
+        val compactScheduler = scheduleWirelessReconnect.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Wireless retry scheduler must clamp the coordinator-selected delay before storing it",
+            compactScheduler.contains("valdelayMs=suggestedDelayMs.coerceIn(1L,WIRELESS_RECONNECT_MAXIMUM_DELAY_MS)"),
+        )
+        assertTrue(
+            "Wireless retry scheduler must keep the selected delay if retry becomes eligible while backgrounded",
+            compactScheduler.contains("if(!isInForeground){pendingAutomaticReconnectDelayMs=delayMsreturn}"),
+        )
+        assertTrue(
+            "Foreground start must use the pending coordinator-selected delay",
+            onStart.contains("pendingAutomaticReconnectDelayMs?.let(::scheduleWirelessReconnect)"),
+        )
+    }
+
+    @Test
+    fun automaticUsbRetryClampsSuggestedDelayToBackoffBudget() {
+        val scheduleAutomaticUsbConnect = extractMethod(mainActivitySource(), "private fun scheduleAutomaticUsbConnect")
+        val compact = scheduleAutomaticUsbConnect.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "USB retry scheduler must clamp any suggested delay into the reconnect backoff budget",
+            compact.contains("delayMs.coerceIn(1L,ReconnectBackoff.MAXIMUM_DELAY_MS)"),
+        )
+        assertTrue(
+            "USB retry scheduler must post the clamped delay",
+            compact.contains("postDelayed(autoConnectRunnable,boundedDelayMs)"),
+        )
+        assertFalse(
+            "USB retry scheduler must not post raw unbounded delays",
+            compact.contains("postDelayed(autoConnectRunnable,delayMs)"),
+        )
+    }
+
+    @Test
     fun terminalGuidanceUsesModeSpecificInlineSurfaces() {
         val presenter = extractMethod(mainActivitySource(), "private fun showTerminalConnectionGuidance")
         val compact = presenter.replace(Regex("\\s+"), "")

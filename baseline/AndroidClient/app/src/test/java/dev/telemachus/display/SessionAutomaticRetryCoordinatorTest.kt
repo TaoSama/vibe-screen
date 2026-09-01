@@ -119,6 +119,110 @@ class SessionAutomaticRetryCoordinatorTest {
         assertEquals(1, unintentionalScheduler.cancelCount)
     }
 
+    @Test
+    fun `reconnect suggestion before finally schedules exactly once with the suggested delay`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+        val suggestedDelay = 487L
+
+        coordinator.onReconnectSuggested(suggestedDelay)
+        coordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = true)
+
+        assertEquals(1, scheduler.postCount)
+        assertEquals(suggestedDelay, scheduler.lastPostedDelayMs)
+        assertTrue(scheduler.hasPendingWork)
+    }
+
+    @Test
+    fun `finally before reconnect suggestion replaces the active retry with the suggested delay`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+        val suggestedDelay = 512L
+
+        coordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = true)
+        val defaultDelay = scheduler.lastPostedDelayMs
+        coordinator.onReconnectSuggested(suggestedDelay)
+
+        assertEquals(2, scheduler.postCount)
+        assertEquals(suggestedDelay, scheduler.lastPostedDelayMs)
+        assertTrue(defaultDelay in 1L..ReconnectBackoff.MAXIMUM_DELAY_MS)
+        assertTrue(scheduler.hasPendingWork)
+    }
+
+    @Test
+    fun `late reconnect suggestion does not schedule after finally found no retry work`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+        val connectedScheduler = FakeUsbScheduler()
+        val connectedCoordinator = coordinator(connectedScheduler)
+
+        coordinator.onConnectionFinally(automaticRetryEnabled = false, disconnected = true)
+        coordinator.onReconnectSuggested(512L)
+        connectedCoordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = false)
+        connectedCoordinator.onReconnectSuggested(512L)
+
+        assertEquals(0, scheduler.postCount)
+        assertFalse(scheduler.hasPendingWork)
+        assertEquals(0, connectedScheduler.postCount)
+        assertFalse(connectedScheduler.hasPendingWork)
+    }
+
+    @Test
+    fun `non-retryable terminal failure prevents later reconnect suggestion from scheduling`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+
+        coordinator.onSessionEnded(SessionFailure.protocol(SessionFailureKind.INVALID_DISPLAY, "bad"))
+        coordinator.onReconnectSuggested(500L)
+        coordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = true)
+
+        assertEquals(0, scheduler.postCount)
+        assertEquals(1, scheduler.cancelCount)
+        assertFalse(scheduler.hasPendingWork)
+    }
+
+    @Test
+    fun `cancel pending retry clears scheduled work and prevents further posts`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+
+        coordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = true)
+        assertTrue(scheduler.hasPendingWork)
+        coordinator.onSessionEnded(SessionFailure.serverShutdown())
+        coordinator.onReconnectSuggested(500L)
+
+        assertFalse(scheduler.hasPendingWork)
+        assertEquals(1, scheduler.postCount)
+        assertEquals(1, scheduler.cancelCount)
+    }
+
+    @Test
+    fun `finally uses bounded default delay when no suggestion has arrived`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+
+        coordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = true)
+
+        assertEquals(1, scheduler.postCount)
+        val delay = checkNotNull(scheduler.lastPostedDelayMs)
+        assertTrue(
+            "default delay $delay must be within [1, ${ReconnectBackoff.MAXIMUM_DELAY_MS}]",
+            delay in 1L..ReconnectBackoff.MAXIMUM_DELAY_MS,
+        )
+    }
+
+    @Test
+    fun `reconnect suggestion delay is passed through unchanged`() {
+        val scheduler = FakeUsbScheduler()
+        val coordinator = coordinator(scheduler)
+        val delay = 1_234L
+
+        coordinator.onReconnectSuggested(delay)
+        coordinator.onConnectionFinally(automaticRetryEnabled = true, disconnected = true)
+
+        assertEquals(delay, scheduler.lastPostedDelayMs)
+    }
+
     private fun coordinator(scheduler: FakeRetryScheduler) =
         SessionAutomaticRetryCoordinator(
             postAutomaticRetry = scheduler::post,
@@ -131,8 +235,9 @@ class SessionAutomaticRetryCoordinatorTest {
         val cancelCount: Int
         val shutdownCount: Int
         val hasPendingWork: Boolean
+        val lastPostedDelayMs: Long?
 
-        fun post()
+        fun post(delayMs: Long)
 
         fun cancel()
 
@@ -148,6 +253,7 @@ class SessionAutomaticRetryCoordinatorTest {
         private var cancels = 0
         private var shutdowns = 0
         private var pending = false
+        private var lastDelay: Long? = null
 
         final override val postCount: Int
             get() = posts
@@ -157,10 +263,13 @@ class SessionAutomaticRetryCoordinatorTest {
             get() = shutdowns
         final override val hasPendingWork: Boolean
             get() = pending
+        final override val lastPostedDelayMs: Long?
+            get() = lastDelay
 
-        override fun post() {
+        override fun post(delayMs: Long) {
             posts++
             pending = true
+            lastDelay = delayMs
         }
 
         override fun cancel() {
