@@ -1,0 +1,1 @@
+/sdcard/tablet-landscape-night-font13.png: 1 file pulled, 0 skipped. 23.3 MB/s (246816 bytes in 0.010s)

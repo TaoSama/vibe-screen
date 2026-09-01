@@ -1,0 +1,1 @@
+/sdcard/tablet-portrait-day-font13.png: 1 file pulled, 0 skipped. 23.6 MB/s (235884 bytes in 0.010s)

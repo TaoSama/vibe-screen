@@ -465,6 +465,30 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun modeToggleButtonsCanWrapWithoutForcedTwoLineHeight() {
+        listOf("modeUSB", "modeWireless", "modeInternet").forEach { id ->
+            val button = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should allow labels to use a second line when needed",
+                button.contains("android:maxLines=\"2\""),
+            )
+            assertTrue(
+                "$id must retain the 48dp Material touch target minimum",
+                button.contains("android:minHeight=\"48dp\""),
+            )
+            assertFalse(
+                "$id must not force every label to occupy two text lines",
+                button.contains("android:lines="),
+            )
+            assertFalse(
+                "$id should rely on logical padding for RTL-safe layout",
+                button.contains("android:paddingLeft=") || button.contains("android:paddingRight="),
+            )
+        }
+    }
+
+    @Test
     fun overlayOpacityOnlyDimsTheStatsOverlay() {
         val source = mainActivitySource()
         val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")

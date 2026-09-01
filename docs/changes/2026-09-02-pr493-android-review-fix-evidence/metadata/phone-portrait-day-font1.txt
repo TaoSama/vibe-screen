@@ -1,0 +1,30 @@
+utc=2026-09-01T23:39:49Z
+local=2026-09-02 07:39:49 CST
+-- devices --
+List of devices attached
+EP0110PZ0B9110300B	device
+
+-- wm size --
+Physical size: 1264x2800
+-- wm density --
+Physical density: 560
+-- font_scale --
+1.0
+-- night mode --
+Night mode: no
+-- rotation --
+accelerometer_rotation=0
+user_rotation=0
+-- reverse --
+
+-- current focus --
+  mCurrentFocus=Window{4ed2ce4 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{252844419 u0 dev.telemachus.display/.MainActivity t771}
+  DisplayFrames w=1264 h=2800 r=0
+label=phone-portrait-day-font1
+form_factor_note=physical P0110 phone geometry
+wm_size=1264x2800
+wm_density=560
+rotation=0
+night=no
+font_scale=1.0

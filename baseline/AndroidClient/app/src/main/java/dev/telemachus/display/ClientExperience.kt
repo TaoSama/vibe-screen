@@ -1019,9 +1019,9 @@ internal object ClipboardMenuPolicy {
 
 /**
  * Pure layout policy for the connection panel's header/actions split. The
-* panel stacks the brand/title header above the connection actions in a single
-* column by default; when there is enough horizontal room (landscape) it places
- * the header beside the actions in two weighted columns. Keeping the geometry
+ * panel stacks the brand/title header above the connection actions in a single
+ * column by default; when there is enough horizontal room it places the header
+ * beside the actions in two weighted columns. Keeping the geometry
  * here lets the orientation, sizing, and weight decisions be unit-tested
  * without inflating any Android view.
  */
@@ -1056,8 +1056,8 @@ internal object ConnectionPanelLayoutPolicy {
     const val HEADER_WEIGHT = 40f
     const val ACTIONS_WEIGHT = 60f
     /**
-     * @param twoColumn whether the current configuration opts into the
-     *   side-by-side layout (typically true in landscape).
+     * @param twoColumn whether the current width-qualified configuration opts
+     *   into the side-by-side layout.
      * @param columnGapPx spacing to insert between the columns when they sit
      *   side by side; ignored in the stacked layout.
      */
@@ -1068,17 +1068,17 @@ internal object ConnectionPanelLayoutPolicy {
         if (twoColumn) {
             Layout(
                 contentOrientation = Orientation.HORIZONTAL,
-                contentGravity = Gravity.CENTER_VERTICAL,
+                contentGravity = Gravity.TOP,
                 header = Column(widthMatchParent = false, weight = HEADER_WEIGHT),
                 actions = Column(widthMatchParent = false, weight = ACTIONS_WEIGHT),
                 columnGapPx = columnGapPx.coerceAtLeast(0),
             )
         } else {
             // Stacked: both children keep their original full-width, unweighted
-            // visual so portrait renders exactly as before.
+            // visual while staying anchored to the scroll origin.
             Layout(
                 contentOrientation = Orientation.VERTICAL,
-                contentGravity = Gravity.CENTER_VERTICAL,
+                contentGravity = Gravity.TOP,
                 header = Column(widthMatchParent = true, weight = 0f),
                 actions = Column(widthMatchParent = true, weight = 0f),
                 columnGapPx = 0,

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Connection panel stays single-column by default. Wide landscape
-         windows opt into two columns via values-w600dp-land. -->
+    <!-- Connection panel stays single-column in narrow windows. Width-qualified
+         resources opt into the two-column split when there is room. -->
     <bool name="connection_panel_two_column">false</bool>
     <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>

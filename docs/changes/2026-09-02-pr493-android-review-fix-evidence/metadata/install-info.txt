@@ -1,0 +1,7 @@
+-- package version --
+    versionCode=100000 minSdk=26 targetSdk=34
+    versionName=0.0.0
+    lastUpdateTime=2026-09-02 07:39:40
+      firstInstallTime=2026-09-01 13:17:12
+-- apk sha256 --
+e7e268ea8218af3e751f9af53632a0b992be85e731ffe313fc7128e8fa241647  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk

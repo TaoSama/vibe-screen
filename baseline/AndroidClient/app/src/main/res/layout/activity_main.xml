@@ -435,7 +435,7 @@
             android:id="@+id/connectionContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
+            android:gravity="top"
             android:orientation="vertical"
             android:paddingStart="@dimen/connection_panel_horizontal_padding"
             android:paddingTop="@dimen/connection_panel_padding_top"
@@ -538,13 +538,10 @@
                     android:textAllCaps="false"
                     android:singleLine="false"
                     android:ellipsize="none"
-                    android:lines="2"
                     android:maxLines="2"
                     android:minHeight="48dp"
                     android:gravity="center"
-                    android:paddingLeft="2dp"
                     android:paddingStart="2dp"
-                    android:paddingRight="2dp"
                     android:paddingEnd="2dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
@@ -555,7 +552,7 @@
                     app:autoSizeMinTextSize="12sp"
                     app:autoSizeTextType="uniform"
                     app:backgroundTint="@color/mode_toggle_bg"
-                    app:strokeColor="@color/outline_strong"
+                    app:strokeColor="@color/mode_toggle_stroke"
                     app:strokeWidth="1dp" />
 
                 <com.google.android.material.button.MaterialButton
@@ -568,13 +565,10 @@
                     android:textAllCaps="false"
                     android:singleLine="false"
                     android:ellipsize="none"
-                    android:lines="2"
                     android:maxLines="2"
                     android:minHeight="48dp"
                     android:gravity="center"
-                    android:paddingLeft="2dp"
                     android:paddingStart="2dp"
-                    android:paddingRight="2dp"
                     android:paddingEnd="2dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
@@ -585,7 +579,7 @@
                     app:autoSizeMinTextSize="12sp"
                     app:autoSizeTextType="uniform"
                     app:backgroundTint="@color/mode_toggle_bg"
-                    app:strokeColor="@color/outline_strong"
+                    app:strokeColor="@color/mode_toggle_stroke"
                     app:strokeWidth="1dp" />
 
                 <com.google.android.material.button.MaterialButton
@@ -598,13 +592,10 @@
                     android:textAllCaps="false"
                     android:singleLine="false"
                     android:ellipsize="none"
-                    android:lines="2"
                     android:maxLines="2"
                     android:minHeight="48dp"
                     android:gravity="center"
-                    android:paddingLeft="2dp"
                     android:paddingStart="2dp"
-                    android:paddingRight="2dp"
                     android:paddingEnd="2dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
@@ -615,7 +606,7 @@
                     app:autoSizeMinTextSize="12sp"
                     app:autoSizeTextType="uniform"
                     app:backgroundTint="@color/mode_toggle_bg"
-                    app:strokeColor="@color/outline_strong"
+                    app:strokeColor="@color/mode_toggle_stroke"
                     app:strokeWidth="1dp" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
@@ -1245,7 +1236,7 @@
                         android:text="@string/internet_prefer_direct"
                         android:textColor="@color/internet_route_text"
                         app:backgroundTint="@color/mode_toggle_bg"
-                        app:strokeColor="@color/outline_strong"
+                        app:strokeColor="@color/mode_toggle_stroke"
                         app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -1262,7 +1253,7 @@
                         android:text="@string/internet_force_turn"
                         android:textColor="@color/internet_route_text"
                         app:backgroundTint="@color/mode_toggle_bg"
-                        app:strokeColor="@color/outline_strong"
+                        app:strokeColor="@color/mode_toggle_stroke"
                         app:strokeWidth="1dp" />
                 </com.google.android.material.button.MaterialButtonToggleGroup>
 

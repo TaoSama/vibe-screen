@@ -1,0 +1,28 @@
+utc=2026-09-01T23:58:10Z
+local=2026-09-02 07:58:10 CST
+-- devices --
+List of devices attached
+EP0110PZ0B9110300B	device
+
+-- wm size --
+Physical size: 1264x2800
+-- wm density --
+Physical density: 560
+-- font_scale --
+1.0
+-- night mode --
+Night mode: no
+-- rotation --
+accelerometer_rotation=0
+user_rotation=0
+lock 0
+-- reverse --
+
+-- current focus --
+  overrideConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.46929 fontWeightAdjustment=0}
+  mCurrentFocus=Window{9bf4f0f u0 com.android.launcher3/com.obric.feature.ObricLauncher}
+  mFocusedApp=ActivityRecord{109066153 u0 com.android.launcher3/com.obric.feature.ObricLauncher t770}
+      overrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+  DisplayFrames w=1264 h=2800 r=0
+    mRotation=0 mDeferredRotationPauseCount=0
+  mGlobalConfiguration={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.46929 fontWeightAdjustment=0}

@@ -1,0 +1,15 @@
+# Android-only log summary
+
+Captured after the 16-screenshot matrix. Raw device-wide logcat was intentionally
+not retained because it includes unrelated system and third-party application
+traffic.
+
+Relevant app observation:
+
+- The Android client repeatedly attempted the localhost USB route while no Host
+  route was allowed for this run.
+- Expected failure shape: StreamClient reported java.net.ConnectException /
+  ECONNREFUSED when connecting to 127.0.0.1:54321.
+- No Host app, adb reverse, TCC, keychain, or macOS privacy flow was used.
+- No Android FATAL EXCEPTION or AndroidRuntime crash was observed for the
+  client during the matrix run.
