@@ -45,8 +45,8 @@ internal class DecoderUseGate<Decoder> {
         admit: () -> Boolean,
     ): Boolean =
         synchronized(lock) {
-            when (current) {
-                expected -> {
+            when {
+                current === expected -> {
                     if (!admit()) {
                         false
                     } else {
@@ -54,7 +54,7 @@ internal class DecoderUseGate<Decoder> {
                         true
                     }
                 }
-                update -> admit()
+                current === update -> admit()
                 else -> false
             }
         }

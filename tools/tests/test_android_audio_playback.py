@@ -157,7 +157,7 @@ class AndroidAudioPlaybackEvidenceTest(unittest.TestCase):
             [item["field"] for item in summary["blocking_reasons"]],
         )
 
-    def test_insufficient_when_audible_confirmation_is_missing_after_logs(self) -> None:
+    def test_blocks_when_audible_confirmation_is_missing_after_logs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             evidence_dir = Path(tmpdir)
             record = self.complete_record()
@@ -166,8 +166,11 @@ class AndroidAudioPlaybackEvidenceTest(unittest.TestCase):
 
             summary = summarize(record, evidence_dir=evidence_dir)
 
-        self.assertEqual(summary["verdict"], "insufficient")
-        self.assertEqual(summary["blocking_reasons"], [])
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            "playback_output_confirmed",
+            [item["field"] for item in summary["blocking_reasons"]],
+        )
         self.assertFalse(summary["can_close_android_audio_playback_gate"])
 
     def test_android_only_logs_cannot_close_gate(self) -> None:

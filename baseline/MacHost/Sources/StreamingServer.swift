@@ -815,7 +815,7 @@ class StreamingServer: EncodedFrameSink {
         protocolV1OutgoingFiles.values.forEach { $0.cancel() }
         protocolV1OutgoingFiles.removeAll()
         protocolV1RemoteManagedPolicy = .unmanaged
-        inputBuffer.removeAll(keepingCapacity: true)
+        discardInputBufferStorage()
         inputBuffer.append(initialPlaintext)
         isReceiving = false
         droppedFrames = 0
@@ -896,9 +896,10 @@ class StreamingServer: EncodedFrameSink {
             sessionEpoch: sessionEpochGate.current,
             accepting: false
         )
+        resetFramePipelineForConnectionBoundary()
         codecNegotiationGeneration = nil
         clientCallbackGeneration.advance(to: activeConnectionGeneration)
-        inputBuffer.removeAll(keepingCapacity: true)
+        discardInputBufferStorage()
         connectionProtocolMode = .legacy
         stopProtocolV1Audio(reason: "connection_ended")
         protocolV1Session?.close()
@@ -1840,6 +1841,49 @@ class StreamingServer: EncodedFrameSink {
         return snapshot
     }
 
+    /// Snapshot used by lifecycle tests to prove disconnects do not leave the
+    /// frame pipeline wedged on an old connection.
+    func framePipelineSnapshotForSelfTest() -> (
+        generation: UInt64,
+        sendInFlight: Bool,
+        pendingFrameCount: Int,
+        requiresKeyframe: Bool
+    ) {
+        frameQueue.sync {
+            (
+                framePipelineGeneration,
+                sendInFlight,
+                pendingFrames.count,
+                pendingFrames.requiresKeyframe
+            )
+        }
+    }
+
+    @discardableResult
+    func stageFramePipelineBacklogForSelfTest() -> Bool {
+        var context: (connection: NWConnection, generation: UInt64, epoch: UInt64)?
+        performOnNetworkQueue {
+            guard let connection = self.connection else { return }
+            context = (connection, self.activeConnectionGeneration, self.sessionEpochGate.current)
+        }
+        guard let context else { return false }
+        frameQueue.sync {
+            sendInFlight = true
+            let frame = PendingFrame(
+                data: Data([0xA5]),
+                timestamp: 1,
+                isKeyframe: true,
+                connection: context.connection,
+                generation: framePipelineGeneration,
+                clientGeneration: context.generation,
+                sessionEpoch: context.epoch,
+                packetChannel: .control
+            )
+            _ = pendingFrames.enqueue(frame)
+        }
+        return true
+    }
+
     func observeAcceptedConnectionsForSelfTest(
         _ observer: ((NWConnection) -> Void)?
     ) {
@@ -1888,7 +1932,7 @@ class StreamingServer: EncodedFrameSink {
 
             if error != nil || isComplete {
                 self.isReceiving = false
-                self.inputBuffer.removeAll(keepingCapacity: true)
+                self.discardInputBufferStorage()
                 self.connectionEnded(conn)
                 return
             }
@@ -1956,7 +2000,7 @@ class StreamingServer: EncodedFrameSink {
                 let pointerCount = Int(inputByte(at: 1))
                 guard pointerCount == 1 || pointerCount == 2 else {
                     debugLog("Invalid touch pointer count: \(pointerCount)")
-                    inputBuffer.removeAll(keepingCapacity: true)
+                    discardInputBufferStorage()
                     connection.cancel()
                     return
                 }
@@ -2175,7 +2219,7 @@ class StreamingServer: EncodedFrameSink {
               !isStopped,
               let session = protocolV1Session else { return }
         let bytes = inputBuffer
-        inputBuffer.removeAll(keepingCapacity: true)
+        discardInputBufferStorage()
         do {
             for frame in try protocolV1Framer.append(bytes) {
                 let actions: [ProtocolV1SessionAction]
@@ -3613,6 +3657,7 @@ class StreamingServer: EncodedFrameSink {
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
         clearProtocolV1FileTransfers()
+        discardInputBufferStorage()
         stopProtocolV1Audio(reason: "server_stop")
         if activeConnectionGeneration == generation {
             activeConnectionGeneration &+= 1
@@ -3643,11 +3688,7 @@ class StreamingServer: EncodedFrameSink {
             sessionEpoch: sessionEpochGate.current,
             accepting: false
         )
-        frameQueue.sync {
-            framePipelineGeneration &+= 1
-            sendInFlight = false
-            _ = pendingFrames.reset(requiresKeyframe: true)
-        }
+        resetFramePipelineForConnectionBoundary()
         recoveryController.stop()
         receiveQueue.sync {}
 
@@ -3666,6 +3707,18 @@ class StreamingServer: EncodedFrameSink {
     private func clearProtocolV1FileTransfers() {
         cancelProtocolV1ActiveFileTransfers()
         protocolV1IncomingFiles = nil
+    }
+
+    private func discardInputBufferStorage() {
+        inputBuffer = Data()
+    }
+
+    private func resetFramePipelineForConnectionBoundary() {
+        frameQueue.sync {
+            framePipelineGeneration &+= 1
+            sendInFlight = false
+            _ = pendingFrames.reset(requiresKeyframe: true)
+        }
     }
 
     private func cancelProtocolV1ActiveFileTransfers() {
