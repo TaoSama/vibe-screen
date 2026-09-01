@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/file-transfer-bulk-current-base-gate.schema.json",
+  "title": "Vibe Screen file-transfer and WebRTC bulk current-base readiness gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "generated_at",
+    "derivation_status",
+    "verdict",
+    "gate_closed",
+    "can_close_android_usb_lan_file_transfer",
+    "can_close_webrtc_bulk_product_flow",
+    "can_close_current_base_aggregate",
+    "can_claim_clipboard_gate",
+    "run_id",
+    "owner",
+    "source",
+    "checks",
+    "blockers",
+    "not_proven",
+    "safety",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "file_transfer_bulk_current_base_readiness_gate"},
+    "generated_at": {"type": "string"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "gate_closed": {"type": "boolean"},
+    "can_close_android_usb_lan_file_transfer": {"type": "boolean"},
+    "can_close_webrtc_bulk_product_flow": {"type": "boolean"},
+    "can_close_current_base_aggregate": {"type": "boolean"},
+    "can_claim_clipboard_gate": {"const": false},
+    "run_id": {"type": ["string", "null"]},
+    "owner": {"type": ["object", "null"]},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest"],
+      "properties": {"manifest": {"type": ["string", "null"]}}
+    },
+    "checks": {"type": "object"},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "not_proven": {"type": "array", "items": {"type": "string"}},
+    "safety": {"type": "object"},
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}

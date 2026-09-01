@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/file-transfer-bulk-current-base-manifest.schema.json",
+  "title": "Vibe Screen file-transfer and WebRTC bulk current-base readiness manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "source_root",
+    "owner",
+    "source_docs",
+    "evidence_boundary",
+    "child_gates",
+    "limitations",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "file_transfer_bulk_current_base_readiness_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "source_root": {"type": "string", "minLength": 1},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate", "readiness_baseline_pr", "repository", "child_gates", "adjacent_gate_boundaries"],
+      "properties": {
+        "aggregate": {"const": "current-base-file-transfer-bulk"},
+        "readiness_baseline_pr": {"const": "#265"},
+        "repository": {"const": "TaoSama/vibe-screen"},
+        "child_gates": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "adjacent_gate_boundaries": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "source_docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths", "missing"],
+      "properties": {
+        "paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "missing": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "evidence_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "p0110_can_close_usb_lan_file_transfer",
+        "p0110_can_close_webrtc_bulk_public_internet",
+        "clipboard_is_separate_gate",
+        "aggregate_claims_clipboard_gate",
+        "aggregate_runs_external_collectors"
+      ],
+      "properties": {
+        "p0110_can_close_usb_lan_file_transfer": {"type": "boolean"},
+        "p0110_can_close_webrtc_bulk_public_internet": {"type": "boolean"},
+        "clipboard_is_separate_gate": {"type": "boolean"},
+        "aggregate_claims_clipboard_gate": {"type": "boolean"},
+        "aggregate_runs_external_collectors": {"type": "boolean"}
+      }
+    },
+    "child_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["android_usb_lan_file_transfer", "webrtc_bulk_product_flow"],
+      "properties": {
+        "android_usb_lan_file_transfer": {"$ref": "#/$defs/child_gate"},
+        "webrtc_bulk_product_flow": {"$ref": "#/$defs/child_gate"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "child_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_gate",
+        "path",
+        "present",
+        "kind",
+        "verdict",
+        "gate_closed",
+        "required_flag",
+        "can_close",
+        "requirement",
+        "blockers",
+        "not_proven"
+      ],
+      "properties": {
+        "source_gate": {"type": "string", "minLength": 1},
+        "path": {"type": ["string", "null"]},
+        "present": {"type": "boolean"},
+        "kind": {"type": ["string", "null"]},
+        "verdict": {"type": "string"},
+        "gate_closed": {"type": "boolean"},
+        "required_flag": {"type": "string", "minLength": 1},
+        "can_close": {"type": "boolean"},
+        "requirement": {"type": "string", "minLength": 1},
+        "blockers": {"type": "array", "items": {"type": "string"}},
+        "not_proven": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

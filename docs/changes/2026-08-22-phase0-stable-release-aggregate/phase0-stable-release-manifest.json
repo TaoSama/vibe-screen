@@ -240,12 +240,15 @@
       "evidence_paths": [
         "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
-        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json"
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
+        "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
+        "tools/vibescreen_evidence/file_transfer_bulk_current_base_manifest.py"
       ],
       "owner_prs": [],
       "blockers": [
         "Host readiness is blocked on stable signing, source provenance, read-only TCC verification, virtual HID entitlement, and login/headless readiness.",
-        "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup."
+        "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup.",
+        "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass."
       ]
     },
     {
