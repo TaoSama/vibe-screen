@@ -132,7 +132,7 @@ class InternetPairingCoordinator(
         try {
             validateOffer(offer, clock.instant().epochSecond)
             val ephemeral = generateEphemeral(secureRandom)
-            val parts = canonicalParts(offer, signer.publicIdentity, deviceName, publicPoint(ephemeral))
+            val parts = canonicalPairingRequestParts(offer, signer.publicIdentity, deviceName, publicPoint(ephemeral))
             val requestSignature = signer.signTranscriptDigest(SecurityTranscript.digest(REQUEST_DOMAIN, *parts))
             require(requestSignature.size in 1..MAX_ECDSA_DER_BYTES) { "Device pairing signature is invalid" }
             val bootstrapMac = hmac(offer.oneTimeCredential, SecurityTranscript.digest(BOOTSTRAP_DOMAIN, *(parts + requestSignature)))
@@ -393,7 +393,7 @@ private fun validateOffer(offer: InternetPairingOffer, now: Long) {
     validateP256PublicKey(offer.hostEphemeralPublicKey)
 }
 
-private fun canonicalParts(
+internal fun canonicalPairingRequestParts(
     offer: InternetPairingOffer,
     deviceIdentity: InternetPairingIdentity,
     deviceName: String,
