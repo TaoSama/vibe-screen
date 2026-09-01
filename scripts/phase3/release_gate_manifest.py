@@ -29,6 +29,7 @@ CANDIDATE_PAIR_PATTERN = re.compile(
 )
 SUPPORTED_CANDIDATE_TYPES = {"host", "srflx", "prflx", "relay"}
 SUPPORTED_CANDIDATE_PROTOCOLS = {"udp", "tcp", "tls"}
+LIVE_PRODUCTION_EVIDENCE_KIND = "live_production"
 DETERMINISTIC_IMPAIRMENT_TOOL_MARKERS = (
     "network_profile",
     "deterministic",
@@ -95,6 +96,26 @@ REQUIRED_FRESH_SESSION_FIELDS = (
     "recovery_started_at_monotonic_ms",
     "recovery_completed_at_monotonic_ms",
 )
+REVOCATION_SUMMARY_GATE_FIELDS = (
+    "evidence_kind",
+    "chain_id",
+    "tombstone_id",
+    "allocation_id",
+    "authority_tombstone_observed",
+    "signaling_rejection_observed",
+    "future_turn_credential_rejected",
+    "same_allocation_turn_credential_rejected",
+    "stale_credential_reuse_rejected",
+    "post_revocation_packet_count_zero",
+    "revocation_chain_consistent",
+)
+REVOCATION_SUMMARY_GATE_ALIASES = {
+    "active_session_disconnected": "signaling_rejection_observed",
+    "direct_reconnect_rejected": "future_turn_credential_rejected",
+    "relay_reconnect_rejected": "future_turn_credential_rejected",
+    "turn_allocation_disconnected": "active_allocation_disconnected",
+    "post_revocation_traffic_rejected": "post_revocation_traffic_denied",
+}
 
 
 def _as_mapping(value: Any, path: str, errors: list[str]) -> Mapping[str, Any]:
@@ -163,6 +184,17 @@ def _require_integer_at_least(value: Any, path: str, minimum: int, errors: list[
 def _require_not_local_only(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
     for field in COMMON_GATE_REQUIRED_FIELDS:
         _require_bool(gate.get(field, False), f"{path}.{field}", False, errors)
+
+
+def revocation_summary_to_manifest_gate(summary: Mapping[str, Any]) -> dict[str, Any]:
+    gate = {field: summary.get(field) for field in REVOCATION_SUMMARY_GATE_FIELDS}
+    gate.update(
+        {
+            gate_field: summary.get(summary_field)
+            for gate_field, summary_field in REVOCATION_SUMMARY_GATE_ALIASES.items()
+        }
+    )
+    return gate
 
 
 def _is_public_hostname_or_ip(value: str) -> bool:
@@ -359,8 +391,25 @@ def _validate_soak(gate: Mapping[str, Any], path: str) -> list[str]:
 def _validate_revocation(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
-    for field in ("active_session_disconnected", "direct_reconnect_rejected", "relay_reconnect_rejected", "turn_allocation_disconnected"):
+    for field in (
+        "authority_tombstone_observed",
+        "signaling_rejection_observed",
+        "future_turn_credential_rejected",
+        "same_allocation_turn_credential_rejected",
+        "stale_credential_reuse_rejected",
+        "active_session_disconnected",
+        "direct_reconnect_rejected",
+        "relay_reconnect_rejected",
+        "turn_allocation_disconnected",
+        "post_revocation_traffic_rejected",
+        "post_revocation_packet_count_zero",
+    ):
         _require_bool(gate.get(field), f"{path}.{field}", True, errors)
+    if gate.get("evidence_kind") != LIVE_PRODUCTION_EVIDENCE_KIND:
+        errors.append(f"{path}.evidence_kind: expected {LIVE_PRODUCTION_EVIDENCE_KIND}")
+    _require_bool(gate.get("revocation_chain_consistent"), f"{path}.revocation_chain_consistent", True, errors)
+    for field in ("chain_id", "tombstone_id", "allocation_id"):
+        _require_nonempty_string(gate.get(field), f"{path}.{field}", errors)
     return errors
 
 
@@ -486,10 +535,22 @@ GATE_RULES: tuple[GateRule, ...] = (
         "Revocation propagates through signaling and TURN and terminates active use.",
         COMMON_GATE_REQUIRED_FIELDS
         + (
+            "evidence_kind",
+            "chain_id",
+            "tombstone_id",
+            "allocation_id",
+            "authority_tombstone_observed",
+            "signaling_rejection_observed",
+            "future_turn_credential_rejected",
+            "same_allocation_turn_credential_rejected",
+            "stale_credential_reuse_rejected",
             "active_session_disconnected",
             "direct_reconnect_rejected",
             "relay_reconnect_rejected",
             "turn_allocation_disconnected",
+            "post_revocation_traffic_rejected",
+            "post_revocation_packet_count_zero",
+            "revocation_chain_consistent",
         ),
         _validate_revocation,
     ),

@@ -27,7 +27,7 @@
       "sha256": "db6f021c542cda7cfc4928c9f808a559e61d80c95b0edd2e9da8b151cb64e9b4"
     },
     {
-      "bytes": 1377,
+      "bytes": 1525,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -37,10 +37,10 @@
       ],
       "path": "revocation-propagation-current-base-blocked.json",
       "result": "pass",
-      "sha256": "d6cf892e97f44cce8bd0c75f6f3ee215b15c6c490391ac29c84d1267c774eb45"
+      "sha256": "80f16059ba81593c0c7dfdd996a09926a2cd6a4c976973becbf443f81ea91572"
     },
     {
-      "bytes": 467,
+      "bytes": 2265,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -50,7 +50,7 @@
       ],
       "path": "revocation-propagation-current-base-summary.json",
       "result": "pass",
-      "sha256": "6df1b0fbb02d38b9e682e768e960d1334009f02e99de99815c09ba9f3213801f"
+      "sha256": "18728cfd8f0ad9cc283f30d73808950ad796133e63b249afd88769ebb076a0e8"
     }
   ],
   "categories": [

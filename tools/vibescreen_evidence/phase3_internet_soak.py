@@ -502,16 +502,38 @@ def _evaluate_revocation(report: dict[str, Any] | None, reasons: list[str]) -> d
     missing = report.get("missing")
     failures = report.get("failures")
     post_packets = _finite_number(_soak_value(report, ("relayed_packets_after_revocation",), ("data_plane", "relayed_packets_after_revocation")))
+    live_production = report.get("evidence_kind") == "live_production"
+    public_internet = report.get("public_internet_path") is True
+    remote_turn = report.get("remote_turn_deployment") is True
+    non_synthetic = report.get("synthetic_fixture") is False
+    chain_consistent = report.get("revocation_chain_consistent") is True
     disconnect = report.get("active_allocation_disconnected") is True or _get(report, "coturn_allocation", "disconnect_observed") is True
     stale = report.get("stale_credential_reuse_rejected") is True or _get(report, "relay_credential", "stale_credential_reuse_rejected") is True
     packet_denial = report.get("post_revocation_traffic_denied") is True or _get(report, "data_plane", "post_revocation_traffic_denied") is True
     summary_clean = missing in (None, []) and failures in (None, [])
-    passed = _status_pass(report) and summary_clean and disconnect and stale and packet_denial and (post_packets in (None, 0))
+    passed = (
+        _status_pass(report)
+        and summary_clean
+        and live_production
+        and public_internet
+        and remote_turn
+        and non_synthetic
+        and chain_consistent
+        and disconnect
+        and stale
+        and packet_denial
+        and (post_packets == 0)
+    )
     if not passed:
-        reasons.append("revocation report does not prove active allocation disconnect, stale credential rejection, and zero post-revocation relay packets")
+        reasons.append("revocation report does not prove live production chain binding, active allocation disconnect, stale credential rejection, and zero post-revocation relay packets")
     return {
         "status_pass": _status_pass(report),
         "summary_clean": summary_clean,
+        "live_production": live_production,
+        "public_internet_path": public_internet,
+        "remote_turn_deployment": remote_turn,
+        "synthetic_fixture": report.get("synthetic_fixture"),
+        "revocation_chain_consistent": chain_consistent,
         "active_allocation_disconnected": disconnect,
         "stale_credential_reuse_rejected": stale,
         "post_revocation_traffic_denied": packet_denial,

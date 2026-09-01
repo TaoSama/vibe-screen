@@ -81,17 +81,31 @@ not prove a production coturn exporter, production scheduler, provider billing
 reconciliation, production coturn process integration, or real data-plane
 allocation termination.
 The Phase 3 revocation propagation verifier now pins the evidence contract for
-Authority/signaling/relay/coturn propagation. It passes only when a report proves
-Authority audit visibility, signaling long-poll wakeup rejection, future and
-post-revocation same-allocation relay credential rejection, stale issued TURN credential
-rejection, active allocation disconnect, and zero relayed post-revocation
-packets; a missing live deployment observation returns a blocked status. The
-2026-08-25 current-base blocked record documents that the local service tests
-cover Authority-backed signaling, bounded long-poll reauthorization, future and
-post-revocation same-allocation relay credential rejection, relay `/v1/usage` Authority
-admission/revocation rejection, and strict coturn registry/CLI helper behavior,
-but not deployed coturn allocation teardown, stale credential reuse denial, or
-packet-denial behavior.
+Authority/signaling/relay/coturn propagation. It passes only when a single
+privacy-reviewed report is explicitly classified as `live_production`, records a
+public Internet path, records a deployed remote TURN service, and marks
+`synthetic_fixture=false`. The report must then bind every hop to the same
+`chain_id`, Authority `tombstone_id`, and coturn `allocation_id`, with timestamps
+ordered from Authority tombstone persistence through signaling rejection, TURN
+credential rejection, coturn allocation disconnect, and post-disconnect traffic
+denial. A report must prove Authority tombstone persistence and audit visibility,
+signaling long-poll wakeup rejection, future and post-revocation same-allocation
+relay credential rejection, stale issued TURN credential rejection, active
+allocation disconnect, post-revocation traffic rejection after that disconnect,
+and zero relayed post-revocation packets. Missing live deployment observations
+return `blocked`; contradictory chain identifiers, synthetic evidence presented
+as production, or post-revocation relay packets return `fail`. The
+`cross_service_revocation` release manifest gate mirrors that contract with live
+evidence classification, chain/tombstone/allocation identifiers, explicit
+Authority/signaling/TURN/coturn/data-plane booleans, and
+`revocation_chain_consistent=true`. Offline fixtures and local control-plane
+reports are valid blocked-readiness artifacts only; they cannot close the public
+Internet release or soak gates. The 2026-08-25 current-base blocked record
+documents that the local service tests cover Authority-backed signaling, bounded
+long-poll reauthorization, future and post-revocation same-allocation relay
+credential rejection, relay `/v1/usage` Authority admission/revocation rejection,
+and strict coturn registry/CLI helper behavior, but not deployed coturn
+allocation teardown, stale credential reuse denial, or packet-denial behavior.
 
 The production end-to-end enforcement release gate has its own aggregate owner
 contract:

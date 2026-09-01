@@ -128,10 +128,22 @@ def passing_manifest() -> dict[str, object]:
             },
             "cross_service_revocation": gate_defaults
             | {
+                "evidence_kind": "live_production",
+                "chain_id": "chain-1",
+                "tombstone_id": "tombstone-1",
+                "allocation_id": "allocation-1",
+                "authority_tombstone_observed": True,
+                "signaling_rejection_observed": True,
+                "future_turn_credential_rejected": True,
+                "same_allocation_turn_credential_rejected": True,
+                "stale_credential_reuse_rejected": True,
                 "active_session_disconnected": True,
                 "direct_reconnect_rejected": True,
                 "relay_reconnect_rejected": True,
                 "turn_allocation_disconnected": True,
+                "post_revocation_traffic_rejected": True,
+                "post_revocation_packet_count_zero": True,
+                "revocation_chain_consistent": True,
             },
             "packet_capture_confidentiality": gate_defaults
             | {
@@ -210,6 +222,8 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertIn("no_steady_latency_growth", by_gate["two_hour_mixed_route_soak"])
         self.assertIn("aead", by_gate["webrtc_datachannel_record_layer"])
         self.assertIn("product_flows", by_gate["webrtc_datachannel_record_layer"])
+        self.assertIn("stale_credential_reuse_rejected", by_gate["cross_service_revocation"])
+        self.assertIn("revocation_chain_consistent", by_gate["cross_service_revocation"])
 
     def test_complete_manifest_passes_with_existing_evidence_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -498,6 +512,43 @@ class ReleaseGateManifestTests(unittest.TestCase):
             "gates.network_handoff_recovery.recovery_seconds: expected to match monotonic recovery interval",
             validate_manifest(manifest),
         )
+
+    def test_cross_service_revocation_requires_live_chain_detail(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["cross_service_revocation"]  # type: ignore[index]
+        gate["evidence_kind"] = "offline_fixture"
+        gate["stale_credential_reuse_rejected"] = False
+        gate["post_revocation_packet_count_zero"] = False
+        gate["revocation_chain_consistent"] = False
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn("gates.cross_service_revocation.evidence_kind: expected live_production", errors)
+        self.assertIn(
+            "gates.cross_service_revocation.stale_credential_reuse_rejected: expected true",
+            errors,
+        )
+        self.assertIn(
+            "gates.cross_service_revocation.post_revocation_packet_count_zero: expected true",
+            errors,
+        )
+        self.assertIn(
+            "gates.cross_service_revocation.revocation_chain_consistent: expected true",
+            errors,
+        )
+
+    def test_cross_service_revocation_requires_chain_identifiers(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["cross_service_revocation"]  # type: ignore[index]
+        del gate["chain_id"]
+        gate["tombstone_id"] = ""
+        del gate["allocation_id"]
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn("gates.cross_service_revocation.chain_id: expected non-empty string", errors)
+        self.assertIn("gates.cross_service_revocation.tombstone_id: expected non-empty string", errors)
+        self.assertIn("gates.cross_service_revocation.allocation_id: expected non-empty string", errors)
 
     def test_unknown_gate_fails_closed(self) -> None:
         manifest = passing_manifest()
