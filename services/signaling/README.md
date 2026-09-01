@@ -130,9 +130,12 @@ not retain the bearer token as a local fallback.
 
 With `store_backend: postgres`, the short-lived routing state, request-ID
 idempotency record, invalidation tombstone, message cursor, per-role message
-rate window are backed by PostgreSQL and survive a signaling process restart
-until TTL cleanup. Long-poll waiter leases are stored in PostgreSQL and are
-reclaimed when their listener backend disappears. Waiter leases are tied to the
+rate window, and session-create token bucket rows are backed by PostgreSQL.
+Routing state survives a signaling process restart until session TTL cleanup;
+session-create token bucket rows are removed separately after two minutes of
+idle time based on `refilled_at`. Long-poll waiter leases are stored in
+PostgreSQL and are reclaimed when their listener backend disappears. Waiter
+leases are tied to the
 PostgreSQL listener backend PID and start timestamp; another instance clears a
 lease only after that backend disappears, so a crashed or killed signaling
 process cannot permanently consume the per-role waiter slot. Replaying the same
@@ -245,7 +248,7 @@ All JSON fields are required. Unknown fields fail startup.
 | `store_backend` | `memory` for local process state or `postgres` for PostgreSQL-backed routing. `production_authority` requires `postgres` |
 | `session_ttl_seconds`, `max_session_ttl_seconds` | Default and authority-selectable upper TTL. In `production_authority` mode `max_session_ttl_seconds` must not exceed the authority's `maximum_session_ttl_seconds` |
 | `max_active_sessions` | Hard session/reserved-tombstone cap in the active store |
-| `session_creates_per_minute` | Global trusted-authority request cap per process |
+| `session_creates_per_minute` | Session-create token-bucket cap. Local-development creates use one shared local bucket; production-authority creates use shared device/action rows for each authenticated host and client device identity after Authority admits the session |
 | `messages_per_minute` | Per-role, per-session publish cap |
 | `max_request_body_bytes` | HTTP JSON body cap |
 | `max_sdp_bytes` | Single offer or answer cap |
@@ -385,10 +388,11 @@ slice, not accepted production behavior:
   epoch operate in different scopes; their interaction is not yet unified.
 - PostgreSQL durable routing is implemented for `production_authority`, including
   cross-instance message delivery through `LISTEN`/`NOTIFY`, transaction-level
-  session state locks, and connection-scoped waiter leases that can be reclaimed
-  after an instance loses its database backend. Multi-instance throughput, public
-  ingress behavior, and rolling deployment behavior are still not proven.
-  `session_creates_per_minute` remains a process-local cap.
+  session state locks, connection-scoped waiter leases that can be reclaimed
+  after an instance loses its database backend, and shared per-device/action
+  create-rate rows. Multi-instance throughput, public ingress behavior, rolling
+  deployment behavior, load-balancer behavior, and multi-region consistency are
+  still not proven.
   Local integration tests cover two store instances sharing routing, long-poll
   wakeups, and invalidation tombstones.
 - Per-message remote authorization against the authority and the global

@@ -16,22 +16,24 @@ import (
 
 const (
 	requiredSignalingSchemaVersion  int64 = 1
-	requiredSignalingSchemaChecksum       = "abcef4848672c58e22efe996d924ddc8d5126c9668021b7d5fb83bf76af66129"
+	requiredSignalingSchemaChecksum       = "755b1da0e06c6cfe59f4d2fe65ddf8c7327e4238ef487355c900118aaf6a97ec"
 	authorityReservationPrefix            = "pending-authority-"
+	postgresCreateLockID                  = 838433003
 	postgresNotifyTimeout                 = 250 * time.Millisecond
 	postgresBackgroundTimeout             = 10 * time.Second
 	maximumDatabaseClockSkew              = 5 * time.Second
 )
 
 type PostgresStore struct {
-	pool              *pgxpool.Pool
-	authority         *AuthorityClient
-	maxSessions       int
-	messagesPerMinute int
-	maxCandidates     int
-	maxWaiters        int
-	notificationSlots chan struct{}
-	now               func() time.Time
+	pool                    *pgxpool.Pool
+	authority               *AuthorityClient
+	maxSessions             int
+	sessionCreatesPerMinute int
+	messagesPerMinute       int
+	maxCandidates           int
+	maxWaiters              int
+	notificationSlots       chan struct{}
+	now                     func() time.Time
 }
 
 type storedSession struct {
@@ -61,14 +63,15 @@ func OpenPostgresStore(ctx context.Context, cfg Config, authority *AuthorityClie
 		return nil, fmt.Errorf("open signaling database: %w", err)
 	}
 	store := &PostgresStore{
-		pool:              pool,
-		authority:         authority,
-		maxSessions:       cfg.MaxActiveSessions,
-		messagesPerMinute: cfg.MessagesPerMinute,
-		maxCandidates:     cfg.MaxCandidatesPerRole,
-		maxWaiters:        cfg.MaxWaitersPerRole,
-		notificationSlots: make(chan struct{}, notificationSlotLimit(pool.Stat().MaxConns())),
-		now:               time.Now,
+		pool:                    pool,
+		authority:               authority,
+		maxSessions:             cfg.MaxActiveSessions,
+		sessionCreatesPerMinute: cfg.SessionCreatesPerMinute,
+		messagesPerMinute:       cfg.MessagesPerMinute,
+		maxCandidates:           cfg.MaxCandidatesPerRole,
+		maxWaiters:              cfg.MaxWaitersPerRole,
+		notificationSlots:       make(chan struct{}, notificationSlotLimit(pool.Stat().MaxConns())),
+		now:                     time.Now,
 	}
 	if err := store.Ready(ctx); err != nil {
 		pool.Close()
@@ -99,13 +102,13 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		return fmt.Errorf("%w: schema version/checksum mismatch", ErrStorage)
 	}
 	var complete bool
-	if err := s.pool.QueryRow(ctx, "SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name", []string{"signaling_schema_migrations", "signaling_sessions", "signaling_messages", "signaling_role_rates", "signaling_waiter_leases"}).Scan(&complete); err != nil {
+	if err := s.pool.QueryRow(ctx, "SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name", []string{"signaling_schema_migrations", "signaling_sessions", "signaling_messages", "signaling_role_rates", "signaling_waiter_leases", "signaling_device_action_rates"}).Scan(&complete); err != nil {
 		return fmt.Errorf("%w: structure probe: %v", ErrStorage, err)
 	}
 	if !complete {
 		return fmt.Errorf("%w: required signaling relation is missing", ErrStorage)
 	}
-	if _, err := s.pool.Exec(ctx, "SELECT s.session_id,s.request_id,s.ttl_seconds,s.expires_at,s.host_token,s.device_token,s.invalidated,s.created_at,m.session_id,m.sender_role,m.message_id,m.message_type,m.sdp,m.candidate,m.sequence,m.created_at,r.session_id,r.role,r.window_started_at,r.message_count,w.session_id,w.role,w.lease_id,w.backend_pid,w.backend_started_at,w.registered_at FROM signaling_sessions s,signaling_messages m,signaling_role_rates r,signaling_waiter_leases w LIMIT 0"); err != nil {
+	if _, err := s.pool.Exec(ctx, "SELECT s.session_id,s.request_id,s.ttl_seconds,s.expires_at,s.host_token,s.device_token,s.invalidated,s.created_at,m.session_id,m.sender_role,m.message_id,m.message_type,m.sdp,m.candidate,m.sequence,m.created_at,r.session_id,r.role,r.window_started_at,r.message_count,w.session_id,w.role,w.lease_id,w.backend_pid,w.backend_started_at,w.registered_at,d.device_id,d.action,d.refilled_at,d.tokens_available FROM signaling_sessions s,signaling_messages m,signaling_role_rates r,signaling_waiter_leases w,signaling_device_action_rates d LIMIT 0"); err != nil {
 		return fmt.Errorf("%w: required signaling column is missing: %v", ErrStorage, err)
 	}
 	requiredConstraints := []string{
@@ -127,6 +130,8 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"signaling_waiter_leases_role_check",
 		"signaling_waiter_leases_backend_pid_check",
 		"signaling_waiter_leases_pkey",
+		"signaling_device_action_rates_tokens_available_check",
+		"signaling_device_action_rates_pkey",
 	}
 	var constraints int
 	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM pg_constraint WHERE connamespace=current_schema()::regnamespace AND conname=ANY($1)", requiredConstraints).Scan(&constraints); err != nil || constraints != len(requiredConstraints) {
@@ -138,6 +143,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages", "signaling_messages",
 		"signaling_role_rates", "signaling_role_rates", "signaling_role_rates", "signaling_role_rates",
 		"signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases", "signaling_waiter_leases",
+		"signaling_device_action_rates", "signaling_device_action_rates", "signaling_device_action_rates", "signaling_device_action_rates",
 	}
 	columns := []string{
 		"version", "checksum_sha256",
@@ -145,6 +151,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"session_id", "sender_role", "message_id", "message_type", "sdp", "candidate", "sequence",
 		"session_id", "role", "window_started_at", "message_count",
 		"session_id", "role", "lease_id", "backend_pid", "backend_started_at", "registered_at",
+		"device_id", "action", "refilled_at", "tokens_available",
 	}
 	types := []string{
 		"bigint", "text",
@@ -152,6 +159,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"text", "text", "text", "text", "text", "jsonb", "bigint",
 		"text", "text", "timestamp with time zone", "integer",
 		"text", "text", "text", "integer", "timestamp with time zone", "timestamp with time zone",
+		"text", "text", "timestamp with time zone", "integer",
 	}
 	nullable := []string{
 		"NO", "NO",
@@ -159,6 +167,7 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		"NO", "NO", "NO", "NO", "NO", "YES", "NO",
 		"NO", "NO", "NO", "NO",
 		"NO", "NO", "NO", "NO", "NO", "NO",
+		"NO", "NO", "NO", "NO",
 	}
 	if err := s.pool.QueryRow(ctx, "SELECT count(*)=$5 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[]) AS expected(table_name,column_name,data_type,is_nullable) JOIN information_schema.columns actual ON actual.table_schema=current_schema() AND actual.table_name=expected.table_name AND actual.column_name=expected.column_name AND actual.data_type=expected.data_type AND actual.is_nullable=expected.is_nullable", tables, columns, types, nullable, len(tables)).Scan(&complete); err != nil || !complete {
 		return fmt.Errorf("%w: required signaling column signature mismatch", ErrStorage)
@@ -189,10 +198,7 @@ func (s *PostgresStore) Create(ctx context.Context, request CreateSessionRequest
 func (s *PostgresStore) createLocal(ctx context.Context, request CreateSessionRequest) (SessionResponse, bool, error) {
 	response := SessionResponse{}
 	created := false
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
-			return err
-		}
+	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
 		if err := s.cleanupTx(ctx, tx); err != nil {
 			return err
 		}
@@ -211,6 +217,9 @@ func (s *PostgresStore) createLocal(ctx context.Context, request CreateSessionRe
 			return err
 		}
 		if err := s.enforceCapacityTx(ctx, tx); err != nil {
+			return err
+		}
+		if err := s.allowCreateTx(ctx, tx, localCreateRateRequest(request)); err != nil {
 			return err
 		}
 		sessionID, err := randomToken(16)
@@ -246,24 +255,39 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 	})
 	if err != nil {
 		if reserved {
-			s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+			if cleanupErr := s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID); cleanupErr != nil {
+				return SessionResponse{}, false, errors.Join(err, cleanupErr)
+			}
 		}
 		return SessionResponse{}, false, err
 	}
 	if reserved && !admission.Created {
-		s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+		if cleanupErr := s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID); cleanupErr != nil {
+			return SessionResponse{}, false, errors.Join(ErrInvalidated, cleanupErr)
+		}
 		return SessionResponse{}, false, ErrInvalidated
 	}
-	return s.finalizeAuthorityAdmission(ctx, request, admission)
+	response, created, err := s.finalizeAuthorityAdmission(ctx, request, admission)
+	if err != nil {
+		var cleanupErr error
+		if reserved {
+			cleanupErr = s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+		}
+		var invalidateErr error
+		if admission.Created {
+			invalidateErr = invalidateAuthorityAdmission(s.authority, admission.SessionID)
+		}
+		if cleanupErr != nil || invalidateErr != nil {
+			return SessionResponse{}, false, errors.Join(err, cleanupErr, invalidateErr)
+		}
+	}
+	return response, created, err
 }
 
 func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request CreateSessionRequest) (storedSession, bool, error) {
 	reservation := storedSession{}
 	reserved := false
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
-			return err
-		}
+	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
 		if err := s.cleanupTx(ctx, tx); err != nil {
 			return err
 		}
@@ -311,10 +335,7 @@ func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request Cre
 func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request CreateSessionRequest, admission authoritySignalingAdmission) (SessionResponse, bool, error) {
 	response := SessionResponse{SessionID: admission.SessionID, HostToken: admission.HostToken, DeviceToken: admission.ClientToken, ExpiresAt: admission.ExpiresAt}
 	created := false
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
-			return err
-		}
+	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
 		if err := s.cleanupTx(ctx, tx); err != nil {
 			return err
 		}
@@ -329,6 +350,11 @@ func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request 
 			if isAuthorityReservation(existing.Response.SessionID) {
 				if err := s.ensureAuthoritySessionIDAvailableTx(ctx, tx, admission.SessionID); err != nil {
 					return err
+				}
+				if admission.Created {
+					if err := s.allowCreateTx(ctx, tx, request); err != nil {
+						return err
+					}
 				}
 				if _, err := tx.Exec(ctx, "UPDATE signaling_sessions SET session_id=$2, ttl_seconds=$3, expires_at=$4 WHERE session_id=$1", existing.Response.SessionID, admission.SessionID, int64(request.TTL/time.Second), admission.ExpiresAt); err != nil {
 					return err
@@ -356,6 +382,11 @@ func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request 
 		if err := s.ensureAuthoritySessionIDAvailableTx(ctx, tx, admission.SessionID); err != nil {
 			return err
 		}
+		if admission.Created {
+			if err := s.allowCreateTx(ctx, tx, request); err != nil {
+				return err
+			}
+		}
 		_, err = tx.Exec(ctx, "INSERT INTO signaling_sessions(session_id,request_id,ttl_seconds,expires_at,host_token,device_token,created_at) VALUES ($1,$2,$3,$4,NULL,NULL,$5)", admission.SessionID, request.RequestID, int64(request.TTL/time.Second), admission.ExpiresAt, s.now().UTC())
 		if err != nil {
 			return err
@@ -381,13 +412,13 @@ func isAuthorityReservation(sessionID string) bool {
 	return strings.HasPrefix(sessionID, authorityReservationPrefix)
 }
 
-func (s *PostgresStore) cleanupAuthorityReservation(requestID, sessionID string) {
+func (s *PostgresStore) cleanupAuthorityReservation(requestID, sessionID string) error {
 	if !isAuthorityReservation(sessionID) {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
 	defer cancel()
-	_ = s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.createTransaction(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, "DELETE FROM signaling_sessions WHERE request_id=$1 AND session_id=$2", requestID, sessionID)
 		return err
 	})
@@ -401,9 +432,6 @@ func (s *PostgresStore) Invalidate(ctx context.Context, sessionID string) (bool,
 	}
 	invalidated := false
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if err := s.cleanupTx(ctx, tx); err != nil {
-			return err
-		}
 		current, err := s.sessionByIDTx(ctx, tx, sessionID)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) && s.authority != nil {
@@ -461,10 +489,7 @@ func (s *PostgresStore) Authorize(ctx context.Context, sessionID, token string) 
 }
 
 func (s *PostgresStore) ensureAuthorityRoutingSession(ctx context.Context, sessionID string, expiresAt time.Time) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
-			return err
-		}
+	return s.createTransaction(ctx, func(tx pgx.Tx) error {
 		if err := s.cleanupTx(ctx, tx); err != nil {
 			return err
 		}
@@ -493,9 +518,6 @@ func (s *PostgresStore) AddMessageAuthorized(ctx context.Context, sessionID stri
 	event := Event{}
 	created := false
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if err := s.cleanupTx(ctx, tx); err != nil {
-			return err
-		}
 		current, err := s.sessionByIDTx(ctx, tx, sessionID)
 		if err != nil {
 			return err
@@ -606,9 +628,6 @@ func (s *PostgresStore) pollOnce(ctx context.Context, sessionID string, role Rol
 	var events []Event
 	next := after
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if err := s.cleanupTx(ctx, tx); err != nil {
-			return err
-		}
 		current, err := s.sessionByIDTx(ctx, tx, sessionID)
 		if err != nil {
 			return err
@@ -650,7 +669,7 @@ func (s *PostgresStore) Cleanup() int {
 	removed := 0
 	ctx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
 	defer cancel()
-	_ = s.transaction(ctx, func(tx pgx.Tx) error {
+	_ = s.createTransaction(ctx, func(tx pgx.Tx) error {
 		var err error
 		removed, err = s.cleanupTxCount(ctx, tx)
 		return err
@@ -659,17 +678,17 @@ func (s *PostgresStore) Cleanup() int {
 }
 
 func (s *PostgresStore) stats(ctx context.Context) (StoreStats, error) {
-	if _, err := s.pool.Exec(ctx, "DELETE FROM signaling_sessions WHERE expires_at<=now()"); err != nil {
-		return StoreStats{}, err
-	}
 	var stats StoreStats
-	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*) FILTER (WHERE NOT invalidated), COUNT(*) FILTER (WHERE invalidated), COUNT(*) FROM signaling_sessions").Scan(&stats.ActiveSessions, &stats.Tombstones, &stats.ReservedRecords); err != nil {
-		return StoreStats{}, err
-	}
-	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM signaling_waiter_leases").Scan(&stats.BlockedWaiters); err != nil {
-		return StoreStats{}, err
-	}
-	return stats, nil
+	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
+		if _, err := s.cleanupExpiredSessionsTx(ctx, tx); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, "SELECT COUNT(*) FILTER (WHERE NOT invalidated), COUNT(*) FILTER (WHERE invalidated), COUNT(*) FROM signaling_sessions").Scan(&stats.ActiveSessions, &stats.Tombstones, &stats.ReservedRecords); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, "SELECT COUNT(*) FROM signaling_waiter_leases").Scan(&stats.BlockedWaiters)
+	})
+	return stats, err
 }
 
 func (s *PostgresStore) loadSession(ctx context.Context, sessionID string) (storedSession, error) {
@@ -800,6 +819,36 @@ func (s *PostgresStore) allowRateTx(ctx context.Context, tx pgx.Tx, sessionID st
 		return ErrRateLimited
 	}
 	_, err = tx.Exec(ctx, "UPDATE signaling_role_rates SET message_count=message_count+1 WHERE session_id=$1 AND role=$2", sessionID, role)
+	return err
+}
+
+func (s *PostgresStore) allowCreateTx(ctx context.Context, tx pgx.Tx, request CreateSessionRequest) error {
+	for _, deviceID := range createRateDeviceIDs(request) {
+		if err := s.allowDeviceActionTx(ctx, tx, deviceID, createSessionAction, s.sessionCreatesPerMinute); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *PostgresStore) allowDeviceActionTx(ctx context.Context, tx pgx.Tx, deviceID, action string, limit int) error {
+	now := s.now().UTC()
+	bucket := tokenBucket{}
+	err := tx.QueryRow(ctx, "SELECT refilled_at,tokens_available FROM signaling_device_action_rates WHERE device_id=$1 AND action=$2 FOR UPDATE", deviceID, action).Scan(&bucket.refilledAt, &bucket.tokensAvailable)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		if !consumeTokenBucket(&bucket, now, limit) {
+			return ErrRateLimited
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO signaling_device_action_rates(device_id,action,refilled_at,tokens_available) VALUES ($1,$2,$3,$4)", deviceID, action, bucket.refilledAt, bucket.tokensAvailable)
+		return err
+	}
+	if !consumeTokenBucket(&bucket, now, limit) {
+		return ErrRateLimited
+	}
+	_, err = tx.Exec(ctx, "UPDATE signaling_device_action_rates SET refilled_at=$3,tokens_available=$4 WHERE device_id=$1 AND action=$2", deviceID, action, bucket.refilledAt, bucket.tokensAvailable)
 	return err
 }
 
@@ -983,6 +1032,9 @@ func (s *PostgresStore) cleanupTxCount(ctx context.Context, tx pgx.Tx) (int, err
 	if _, err := tx.Exec(ctx, "DELETE FROM signaling_waiter_leases l WHERE NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.pid=l.backend_pid AND a.backend_start=l.backend_started_at)"); err != nil {
 		return 0, err
 	}
+	if _, err := tx.Exec(ctx, "DELETE FROM signaling_device_action_rates WHERE ctid IN (SELECT ctid FROM signaling_device_action_rates WHERE refilled_at<=$1 LIMIT $2)", s.now().UTC().Add(-rateLimitIdleRetention), postgresRateCleanupLimit); err != nil {
+		return 0, err
+	}
 	return s.cleanupExpiredSessionsTx(ctx, tx)
 }
 
@@ -1009,8 +1061,43 @@ func (s *PostgresStore) transaction(ctx context.Context, operation func(pgx.Tx) 
 	return storageError("signaling transaction retry exhausted", last)
 }
 
+func (s *PostgresStore) createTransaction(ctx context.Context, operation func(pgx.Tx) error) error {
+	connection, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return storageError("acquire signaling create lock connection", err)
+	}
+	defer connection.Release()
+	if _, err := connection.Exec(ctx, "SELECT pg_advisory_lock($1)", postgresCreateLockID); err != nil {
+		return storageError("lock signaling create", err)
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
+		defer cancel()
+		_, _ = connection.Exec(unlockCtx, "SELECT pg_advisory_unlock($1)", postgresCreateLockID)
+	}()
+
+	const maximumAttempts = 3
+	var last error
+	for attempt := 0; attempt < maximumAttempts; attempt++ {
+		last = s.transactionOnceOnConnection(ctx, connection, operation)
+		if last == nil || !retryableTransactionError(last) {
+			return storageError("signaling create transaction", last)
+		}
+		if err := ctx.Err(); err != nil {
+			return storageError("signaling create transaction canceled", err)
+		}
+	}
+	return storageError("signaling create transaction retry exhausted", last)
+}
+
 func (s *PostgresStore) transactionOnce(ctx context.Context, operation func(pgx.Tx) error) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	return s.transactionOnceOnConnection(ctx, s.pool, operation)
+}
+
+func (s *PostgresStore) transactionOnceOnConnection(ctx context.Context, connection interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}, operation func(pgx.Tx) error) error {
+	tx, err := connection.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return err
 	}

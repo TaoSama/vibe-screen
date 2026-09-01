@@ -36,8 +36,6 @@ type Server struct {
 	authority                 *AuthorityClient
 	metrics                   Metrics
 	ready                     atomic.Bool
-	createMu                  sync.Mutex
-	createRate                rateWindow
 	authorityReadinessMu      sync.Mutex
 	authorityReadinessAt      time.Time
 	authorityReadinessErr     error
@@ -247,10 +245,6 @@ type createSessionRequest struct {
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if !authorized(r, s.cfg.IssuerToken) {
 		s.reject(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	if !s.allowCreate() {
-		s.reject(w, http.StatusTooManyRequests, "session creation rate limit exceeded")
 		return
 	}
 	var request createSessionRequest
@@ -503,20 +497,6 @@ func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, destination 
 		return errors.New("request body must contain one JSON object")
 	}
 	return nil
-}
-
-func (s *Server) allowCreate() bool {
-	now := s.now()
-	s.createMu.Lock()
-	defer s.createMu.Unlock()
-	if s.createRate.started.IsZero() || now.Sub(s.createRate.started) >= time.Minute {
-		s.createRate = rateWindow{started: now}
-	}
-	if s.createRate.count >= s.cfg.SessionCreatesPerMinute {
-		return false
-	}
-	s.createRate.count++
-	return true
 }
 
 func (s *Server) writeStoreError(w http.ResponseWriter, err error) {

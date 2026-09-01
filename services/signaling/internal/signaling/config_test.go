@@ -122,6 +122,14 @@ func TestConfigRejectsSessionTTLDurationOverflow(t *testing.T) {
 	}
 }
 
+func TestConfigRejectsSessionCreateRateOverflow(t *testing.T) {
+	cfg := testConfig()
+	cfg.SessionCreatesPerMinute = math.MaxInt32 + 1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "PostgreSQL integer") {
+		t.Fatalf("overflowing session create rate error = %v", err)
+	}
+}
+
 func TestLoadEnvironmentValueReadsExclusiveFile(t *testing.T) {
 	const variable = "VIBE_SIGNALING_TEST_SECRET"
 	secretPath := filepath.Join(t.TempDir(), "secret")

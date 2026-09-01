@@ -396,7 +396,7 @@ func resetAuthorityDatabase(t *testing.T, databaseURL string) {
 
 func resetSignalingDatabase(t *testing.T, databaseURL string) {
 	t.Helper()
-	const statement = "TRUNCATE signaling_waiter_leases, signaling_role_rates, signaling_messages, signaling_sessions RESTART IDENTITY CASCADE"
+	const statement = "TRUNCATE signaling_waiter_leases, signaling_device_action_rates, signaling_role_rates, signaling_messages, signaling_sessions RESTART IDENTITY CASCADE"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "psql", databaseURL, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet", "--command", statement)

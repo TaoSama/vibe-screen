@@ -185,6 +185,30 @@ func TestAuthorityClientInvalidateMissingSessionIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestInvalidateAuthorityAdmissionIgnoresCallerCancellation(t *testing.T) {
+	var called atomic.Int32
+	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		called.Add(1)
+		if r.Method != http.MethodDelete {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := client.InvalidateSession(canceled, "sess-1"); !errors.Is(err, ErrAuthorityUnavailable) {
+		t.Fatalf("direct invalidation with canceled context error=%v, want ErrAuthorityUnavailable", err)
+	}
+	called.Store(0)
+	if err := invalidateAuthorityAdmission(client, "sess-1"); err != nil {
+		t.Fatalf("compensating invalidation failed: %v", err)
+	}
+	if called.Load() != 1 {
+		t.Fatalf("compensating invalidation calls=%d, want 1", called.Load())
+	}
+}
+
 func TestAuthorityClientFailClosedOnNon2xx(t *testing.T) {
 	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
