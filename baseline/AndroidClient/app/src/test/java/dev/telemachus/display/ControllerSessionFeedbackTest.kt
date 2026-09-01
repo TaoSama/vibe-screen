@@ -89,6 +89,33 @@ class ControllerSessionFeedbackTest {
     }
 
     @Test
+    fun pendingNonConnectedConsumptionIsAtomicWithAcknowledgementState() {
+        val tracker = ControllerConnectionAckTracker()
+        assertTrue(tracker.recordConnected(7, "c1", 1, nowMillis = 100))
+
+        assertEquals(
+            PendingControllerInputDisposition.CONSUMED_PENDING_STATE,
+            tracker.consumePendingNonConnected("c1", 1, ControllerEventKind.STATE),
+        )
+        assertTrue(tracker.isPending("c1", 1))
+        assertEquals(
+            PendingControllerInputDisposition.DEFERRED_PENDING_DISCONNECT,
+            tracker.consumePendingNonConnected("c1", 1, ControllerEventKind.DISCONNECTED),
+        )
+        assertEquals(
+            PendingControllerInputDisposition.DUPLICATE_PENDING_DISCONNECT,
+            tracker.consumePendingNonConnected("c1", 1, ControllerEventKind.DISCONNECTED),
+        )
+
+        val acknowledged = requireNotNull(tracker.acknowledge(7))
+        assertTrue(acknowledged.hasDeferredDisconnect)
+        assertEquals(
+            PendingControllerInputDisposition.NOT_PENDING,
+            tracker.consumePendingNonConnected("c1", 1, ControllerEventKind.DISCONNECTED),
+        )
+    }
+
+    @Test
     fun rejectionPolicyAcceptsOnlyExactMaximumControllerReason() {
         assertNull(
             ControllerInputAckPolicy.rejectedConnection(

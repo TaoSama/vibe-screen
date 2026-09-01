@@ -4,6 +4,7 @@ import dev.telemachus.display.ControllerConnectionAckTracker
 import dev.telemachus.display.ControllerDispatchOrdering
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.PendingControllerInputDisposition
 import dev.telemachus.display.SessionInputIdSequence
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
@@ -480,10 +481,23 @@ class InternetProductSession internal constructor(
         }
 
     private fun orderControllerEventsBeforeQueueing(events: List<ProductControllerEvent>): List<ProductControllerEvent> {
-        val samples = events.map { it.sample }
-        val orderedSamples = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(samples)
-        if (orderedSamples === samples) return events
-        return events.map { it.inputId }.zip(orderedSamples) { inputId, sample -> ProductControllerEvent(inputId, sample) }
+        if (events.size < 2) return events
+        val remaining = events.toMutableList()
+        val ordered = ArrayList<ProductControllerEvent>(events.size)
+        var changed = false
+        while (remaining.isNotEmpty()) {
+            val nextIndex =
+                remaining.indices.firstOrNull { index ->
+                    !ControllerDispatchOrdering.hasLaterLowerEpochDisconnect(
+                        remaining.map { it.sample },
+                        index,
+                        remaining[index].sample,
+                    )
+                } ?: 0
+            if (nextIndex != 0) changed = true
+            ordered += remaining.removeAt(nextIndex)
+        }
+        return if (changed) ordered else events
     }
 
     fun requestKeyframe(reason: String): Boolean {
@@ -575,17 +589,19 @@ class InternetProductSession internal constructor(
         if (controllerConnectionAcks.hasDeferredDisconnectFor(event.sample.controllerId, event.sample.controllerEpoch)) {
             return true
         }
-        if (controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)) {
-            when (event.sample.kind) {
-                ControllerEventKind.CONNECTED -> Unit
-                ControllerEventKind.DISCONNECTED -> {
-                    controllerConnectionAcks.deferDisconnected(
-                        event.sample.controllerId,
-                        event.sample.controllerEpoch,
-                    )
-                    return true
-                }
-                ControllerEventKind.STATE -> return true
+        if (event.sample.kind != ControllerEventKind.CONNECTED) {
+            when (
+                controllerConnectionAcks.consumePendingNonConnected(
+                    event.sample.controllerId,
+                    event.sample.controllerEpoch,
+                    event.sample.kind,
+                )
+            ) {
+                PendingControllerInputDisposition.NOT_PENDING -> Unit
+                PendingControllerInputDisposition.CONSUMED_PENDING_STATE,
+                PendingControllerInputDisposition.DEFERRED_PENDING_DISCONNECT,
+                PendingControllerInputDisposition.DUPLICATE_PENDING_DISCONNECT,
+                -> return true
             }
         }
         return sendControllerEvent(event)

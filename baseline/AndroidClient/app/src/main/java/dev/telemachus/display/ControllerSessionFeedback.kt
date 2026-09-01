@@ -7,6 +7,13 @@ internal const val MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES = 128
 
 internal const val CONTROLLER_CONNECTION_ACK_TIMEOUT_MS = 2_000L
 
+internal enum class PendingControllerInputDisposition {
+    NOT_PENDING,
+    CONSUMED_PENDING_STATE,
+    DEFERRED_PENDING_DISCONNECT,
+    DUPLICATE_PENDING_DISCONNECT,
+}
+
 internal data class ControllerConnection(
     val controllerId: String,
     val controllerEpoch: Long,
@@ -51,6 +58,22 @@ internal class ControllerConnectionAckTracker {
         val connection = ControllerConnection(controllerId, controllerEpoch)
         if (connection !in inputIdsByConnection) return@synchronized false
         pendingDisconnectsByConnection.add(connection)
+    }
+
+    fun consumePendingNonConnected(
+        controllerId: String,
+        controllerEpoch: Long,
+        kind: ControllerEventKind,
+    ): PendingControllerInputDisposition = synchronized(lock) {
+        require(kind != ControllerEventKind.CONNECTED)
+        val connection = ControllerConnection(controllerId, controllerEpoch)
+        if (connection !in inputIdsByConnection) return@synchronized PendingControllerInputDisposition.NOT_PENDING
+        if (kind == ControllerEventKind.STATE) return@synchronized PendingControllerInputDisposition.CONSUMED_PENDING_STATE
+        if (pendingDisconnectsByConnection.add(connection)) {
+            PendingControllerInputDisposition.DEFERRED_PENDING_DISCONNECT
+        } else {
+            PendingControllerInputDisposition.DUPLICATE_PENDING_DISCONNECT
+        }
     }
 
     fun hasDeferredDisconnectBefore(
