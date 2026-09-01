@@ -2656,7 +2656,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 rotationDegrees: settings.rotation
             ),
             inputEnabled: settings.touchEnabled,
-            controllerAvailable: gameControllerRuntime.factory != nil
+            controllerAvailable: gameControllerRuntime.factory != nil,
+            managedPolicy: ManagedConfigurationProvider().loadPolicy()
         )
     }
 
@@ -2706,11 +2707,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 )
                 if state == .closed {
+                    self.clipboardController?.unbind()
                     self.applyInternetSessionState(state)
                     await self.stopServer(preserveRecoveryState: true)
                     return
                 }
                 self.applyInternetSessionState(state)
+                switch state {
+                case .streaming:
+                    self.clipboardController?.bind(
+                        server: session,
+                        generation: session.currentSessionEpoch,
+                        transport: .secureInternet,
+                        clipboardAvailable: session.clipboardAvailable
+                    )
+                case .recovering, .failed, .revoked, .closed:
+                    self.clipboardController?.unbind()
+                case .idle, .connecting, .authenticating, .awaitingVideoConfiguration:
+                    break
+                }
             }
         }
         session.onError = { [weak self, weak session] error in
@@ -2861,9 +2876,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
+                self.clipboardController?.unbind()
                 self.settings.internetStatus = .revoked
                 self.settings.clientConnected = false
                 await self.stopServer(preserveRecoveryState: true)
+            }
+        }
+        session.onClipboardOfferReceived = { [weak self, weak session] offer in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.handleOffer(
+                    offer,
+                    generation: session.currentSessionEpoch
+                )
+            }
+        }
+        session.onClipboardContentReceived = { [weak self, weak session] content in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.handleContent(
+                    content,
+                    generation: session.currentSessionEpoch
+                )
+            }
+        }
+        session.onClipboardDirectContentReceived = { [weak self, weak session] content in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.handleDirectContent(
+                    content,
+                    generation: session.currentSessionEpoch
+                )
+            }
+        }
+        session.onRemoteManagedPolicyChanged = { [weak self, weak session] _ in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.bind(
+                    server: session,
+                    generation: session.currentSessionEpoch,
+                    transport: .secureInternet,
+                    clipboardAvailable: session.clipboardAvailable
+                )
             }
         }
 

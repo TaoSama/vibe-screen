@@ -1,6 +1,8 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ClipboardContentData
+import dev.telemachus.display.ClipboardOfferData
 import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
@@ -11,12 +13,15 @@ import dev.telemachus.display.internet.security.pairingSha256
 import dev.telemachus.display.internet.security.publicPoint
 import dev.telemachus.display.internet.security.toPairingHex
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ResourceLimits
@@ -806,6 +811,163 @@ class InternetProductSessionTest {
         assertArrayEquals(byteArrayOf(0xA1.toByte(), 0xA2.toByte()), callbacks.audio.single())
         assertArrayEquals(byteArrayOf(0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte()), callbacks.bulk.single())
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun clipboardNegotiatesAndTransfersContentOverInternetControlChannel() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, clipboard = true)
+
+        assertTrue(session.canSendClipboard())
+        assertEquals(InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES, session.negotiatedMaxClipboardBytes())
+        assertTrue(session.offerClipboard("from android"))
+        val offer = peer.clipboardOffers().single().clipboardOffer
+        assertEquals("device-1", offer.originDeviceId)
+        assertEquals(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN, offer.mimeType)
+        assertEquals("from android".toByteArray(Charsets.UTF_8).size.toLong(), offer.byteLength)
+
+        peer.receive(controlEnvelope(4).setClipboardRequest(
+            dev.vibescreen.protocol.v1.ClipboardRequest.newBuilder().setChangeId(offer.changeId),
+        ).build())
+        val outgoingContent = peer.clipboardContents().single().clipboardContent
+        assertEquals(offer.changeId, outgoingContent.changeId)
+        assertEquals("device-1", outgoingContent.originDeviceId)
+        assertArrayEquals("from android".toByteArray(Charsets.UTF_8), outgoingContent.content.toByteArray())
+
+        val hostText = "from host".toByteArray(Charsets.UTF_8)
+        val hostOffer = clipboardOffer(hostText)
+        peer.receive(controlEnvelope(5).setClipboardOffer(hostOffer).build())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(1, callbacks.clipboardOffers.size)
+        assertArrayEquals(hostOffer.changeId.toByteArray(), callbacks.clipboardOffers.single().changeId)
+
+        assertTrue(session.requestClipboard(hostOffer.changeId.toByteArray()))
+        assertEquals(hostOffer.changeId, peer.clipboardRequests().single().clipboardRequest.changeId)
+        peer.receive(controlEnvelope(6).setClipboardContent(clipboardContent(hostOffer.changeId, hostText)).build())
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        val received = callbacks.clipboardContents.single()
+        assertFalse(received.pending)
+        assertArrayEquals(hostText, received.content)
+        assertArrayEquals(hostOffer.changeId.toByteArray(), received.changeId)
+    }
+
+    @Test
+    fun clipboardUnavailableUntilVideoConfigurationIsAccepted() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        val hello = hostHello()
+            .addCapabilities(Capability.CAPABILITY_CLIPBOARD)
+            .addCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+            .setResourceLimits(mediaRecordLimits(maximumClipboardBytes = InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES))
+        val accepted = sessionAccepted()
+            .addNegotiatedCapabilities(Capability.CAPABILITY_CLIPBOARD)
+            .addNegotiatedCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+            .setNegotiatedResourceLimits(mediaRecordLimits(maximumClipboardBytes = InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES))
+
+        peer.receive(controlEnvelope(1).setHostHello(hello).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(accepted).build())
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertFalse(session.canSendClipboard())
+        assertFalse(session.offerClipboard("too early"))
+        peer.receive(controlEnvelope(3).setClipboardContent(
+            clipboardContent(
+                ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_CHANGE_ID_BYTES) { 0x44 }),
+                "too early".toByteArray(Charsets.UTF_8),
+            ),
+        ).build())
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+    }
+
+    @Test
+    fun clipboardContentSupportsOneMiBTextPlusControlEnvelopeOverhead() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, clipboard = true)
+        val text = "a".repeat(InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES.toInt())
+
+        assertTrue(session.offerClipboard(text))
+        val offer = peer.clipboardOffers().single().clipboardOffer
+        peer.receive(controlEnvelope(4).setClipboardRequest(
+            dev.vibescreen.protocol.v1.ClipboardRequest.newBuilder().setChangeId(offer.changeId),
+        ).build())
+
+        val contentEnvelope = Envelope.parseFrom(peer.control.last())
+        assertEquals(Envelope.PayloadCase.CLIPBOARD_CONTENT, contentEnvelope.payloadCase)
+        assertEquals(InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES.toInt(), contentEnvelope.clipboardContent.content.size())
+        assertTrue(peer.control.last().size > InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun directClipboardContentIsPendingAndInvalidDigestFailsClosed() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, clipboard = true)
+
+        val directChangeId = ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_CHANGE_ID_BYTES) { (0x40 + it).toByte() })
+        val directText = "direct host content".toByteArray(Charsets.UTF_8)
+        peer.receive(controlEnvelope(4).setClipboardContent(clipboardContent(directChangeId, directText)).build())
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        val direct = callbacks.clipboardContents.single()
+        assertTrue(direct.pending)
+        assertArrayEquals(directText, direct.content)
+
+        val badDigestChangeId = ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_CHANGE_ID_BYTES) { (0x60 + it).toByte() })
+        peer.receive(
+            controlEnvelope(5)
+                .setClipboardContent(
+                    clipboardContent(badDigestChangeId, "bad".toByteArray(Charsets.UTF_8))
+                        .toBuilder()
+                        .setSha256(ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_SHA256_BYTES) { 0x7f }))
+                        .build(),
+                ).build(),
+        )
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, peer.closeCalls)
+        assertEquals(1, callbacks.failures.size)
+    }
+
+    @Test
+    fun remoteManagedPolicyDenyDisablesClipboardWithoutClosingActiveVideoSession() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, clipboard = true)
+        val beforePolicy = peer.control.size
+
+        peer.receive(controlEnvelope(4).setManagedPolicyStatus(
+            managedPolicyStatus(clipboardAllowed = false, allowedHosts = setOf("host-1")),
+        ).build())
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertFalse(session.canSendClipboard())
+        assertFalse(session.offerClipboard("blocked"))
+        assertEquals(beforePolicy, peer.control.size)
+        assertEquals(1, callbacks.managedPolicies.size)
+        assertFalse(callbacks.managedPolicies.single().clipboardAllowed)
+        assertTrue(callbacks.failures.isEmpty())
+        assertEquals(0, peer.closeCalls)
+
+        peer.receive(controlEnvelope(5).setPing(Ping.newBuilder().setSequence(77)).build())
+        assertEquals(77L, peer.pongs().single().pong.sequence)
     }
 
     @Test
@@ -2074,6 +2236,7 @@ class InternetProductSessionTest {
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
         controller: Boolean = false,
+        clipboard: Boolean = false,
     ) {
         session.start()
         monitor.available("wifi")
@@ -2083,6 +2246,16 @@ class InternetProductSessionTest {
         if (controller) {
             hello.addCapabilities(Capability.CAPABILITY_CONTROLLER)
             accepted.addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER)
+        }
+        if (clipboard) {
+            hello
+                .addCapabilities(Capability.CAPABILITY_CLIPBOARD)
+                .addCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+                .setResourceLimits(mediaRecordLimits(maximumClipboardBytes = InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES))
+            accepted
+                .addNegotiatedCapabilities(Capability.CAPABILITY_CLIPBOARD)
+                .addNegotiatedCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+                .setNegotiatedResourceLimits(mediaRecordLimits(maximumClipboardBytes = InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES))
         }
         peer.receive(controlEnvelope(1).setHostHello(hello).build())
         peer.receive(controlEnvelope(2).setSessionAccepted(accepted).build())
@@ -2152,10 +2325,49 @@ class InternetProductSessionTest {
 
     private fun mediaRecordLimits(
         maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+        maximumClipboardBytes: Long = 0L,
     ): ResourceLimits.Builder =
         ResourceLimits
             .newBuilder()
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+            .setMaximumClipboardBytes(maximumClipboardBytes)
+
+    private fun clipboardOffer(
+        content: ByteArray,
+        changeId: ByteString = ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_CHANGE_ID_BYTES) { (0x20 + it).toByte() }),
+    ): ClipboardOffer =
+        ClipboardOffer
+            .newBuilder()
+            .setChangeId(changeId)
+            .setOriginDeviceId("host-1")
+            .setMimeType(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN)
+            .setByteLength(content.size.toLong())
+            .setSha256(ByteString.copyFrom(InternetClipboard.sha256(content)))
+            .build()
+
+    private fun clipboardContent(
+        changeId: ByteString,
+        content: ByteArray,
+    ): ClipboardContent =
+        ClipboardContent
+            .newBuilder()
+            .setChangeId(changeId)
+            .setOriginDeviceId("host-1")
+            .setMimeType(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN)
+            .setContent(ByteString.copyFrom(content))
+            .setSha256(ByteString.copyFrom(InternetClipboard.sha256(content)))
+            .build()
+
+    private fun managedPolicyStatus(
+        clipboardAllowed: Boolean,
+        allowedHosts: Set<String> = emptySet(),
+    ): ManagedPolicyStatus =
+        InternetManagedPolicy.UNMANAGED.copy(
+            isManaged = true,
+            clipboardAllowed = clipboardAllowed,
+            allowedHosts = allowedHosts,
+            allowedHostsRestricted = allowedHosts.isNotEmpty(),
+        ).toStatus()
 
     private fun media(
         frameId: Long,
@@ -2263,6 +2475,9 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     val freshReasons = mutableListOf<String>()
     val failures = mutableListOf<Throwable>()
     val routes = java.util.concurrent.CopyOnWriteArrayList<PeerRoute>()
+    val clipboardOffers = mutableListOf<ClipboardOfferData>()
+    val clipboardContents = mutableListOf<ClipboardContentData>()
+    val managedPolicies = mutableListOf<ManagedPolicyStatus>()
     var revocationEvents: MutableList<String>? = null
     override fun onStateChanged(state: InternetProductSessionState) { states += state }
     override fun onVideoConfiguration(
@@ -2292,6 +2507,9 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onAudioRecord(payload: ByteArray) { audio += payload }
     override fun onBulkRecord(payload: ByteArray) { bulk += payload }
+    override fun onClipboardOffered(offer: ClipboardOfferData) { clipboardOffers += offer }
+    override fun onClipboardContent(content: ClipboardContentData) { clipboardContents += content }
+    override fun onManagedPolicyReceived(status: ManagedPolicyStatus) { managedPolicies += status }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }
     override fun onRouteSelected(route: PeerRoute) { routes += route }
@@ -2371,4 +2589,24 @@ private class ProductFakePeerEngine(
         control
             .map(Envelope::parseFrom)
             .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
+
+    fun clipboardOffers(): List<Envelope> =
+        control
+            .map(Envelope::parseFrom)
+            .filter { it.payloadCase == Envelope.PayloadCase.CLIPBOARD_OFFER }
+
+    fun clipboardRequests(): List<Envelope> =
+        control
+            .map(Envelope::parseFrom)
+            .filter { it.payloadCase == Envelope.PayloadCase.CLIPBOARD_REQUEST }
+
+    fun clipboardContents(): List<Envelope> =
+        control
+            .map(Envelope::parseFrom)
+            .filter { it.payloadCase == Envelope.PayloadCase.CLIPBOARD_CONTENT }
+
+    fun pongs(): List<Envelope> =
+        control
+            .map(Envelope::parseFrom)
+            .filter { it.payloadCase == Envelope.PayloadCase.PONG }
 }

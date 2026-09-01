@@ -382,8 +382,10 @@ struct EncodedInternetFrame: Equatable {
 }
 
 struct InternetTransportLimits: Equatable {
+    private static let standardMaximumControlMessageBytes = 1_024 * 1_024 + 64 * 1_024
+
     static let standard = InternetTransportLimits(
-        maximumControlMessageBytes: 256 * 1_024,
+        maximumControlMessageBytes: standardMaximumControlMessageBytes,
         maximumBufferedControlBytes: 2 * 1_024 * 1_024,
         maximumBufferedControlMessages: 256,
         maximumMediaFrameBytes: 16 * 1_024 * 1_024,

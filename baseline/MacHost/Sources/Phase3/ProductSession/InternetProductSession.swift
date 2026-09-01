@@ -110,6 +110,10 @@ final class InternetProductSession: EncodedFrameSink {
     ) -> Void)?
     var onAudioRecordReceived: ((Data) -> Void)?
     var onBulkRecordReceived: ((Data) -> Void)?
+    var onClipboardOfferReceived: ((ClipboardOfferMetadata) -> Void)?
+    var onClipboardContentReceived: ((ValidatedClipboardContent) -> Void)?
+    var onClipboardDirectContentReceived: ((ValidatedClipboardContent) -> Void)?
+    var onRemoteManagedPolicyChanged: ((VSManagedPolicyStatus) -> Void)?
     var onRevoked: (() -> Void)?
     /// Composition must deliver this signed tombstone to the session authority
     /// and peer. Local persistence remains fail-closed even if propagation is delayed.
@@ -138,6 +142,13 @@ final class InternetProductSession: EncodedFrameSink {
     private var peerSupportsStylus = false
     private var peerSupportsStylusExtended = false
     private var peerSupportsController = false
+    private var peerSupportsClipboard = false
+    private var peerSupportsManagedConfiguration = false
+    private var remoteManagedClipboardAllowed = true
+    private var managedPolicyResolver = ManagedPolicyResolver()
+    private var clipboardCore: ClipboardCore?
+    private var negotiatedCapabilities: Set<VSCapability> = []
+    private var baseNegotiatedCapabilities: Set<VSCapability> = []
     private var stylusSequenceState = StylusSequenceState()
     private var adaptiveRequestSequence = InternetAdaptiveRequestSequence()
     private var pendingAdaptiveRequest: InternetAdaptiveRequestToken?
@@ -154,6 +165,14 @@ final class InternetProductSession: EncodedFrameSink {
 
     var currentSessionEpoch: UInt64 {
         performSync { codec?.sessionEpoch ?? 0 }
+    }
+
+    var clipboardAvailable: Bool {
+        performSync { isClipboardAvailable }
+    }
+
+    var negotiatedMaximumClipboardBytes: Int {
+        performSync { codec?.negotiatedMaximumClipboardBytes ?? 0 }
     }
 
     init(
@@ -208,12 +227,9 @@ final class InternetProductSession: EncodedFrameSink {
             transport = nil
             codec = nil
             activePath = nil
-            peerSupportsTouch = false
-            peerSupportsStylus = false
-            peerSupportsStylusExtended = false
-            peerSupportsController = false
             transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
+            resetProductNegotiationState()
             resetAdaptiveVideoState()
             configuration = nil
             let changed = state != .closed
@@ -239,12 +255,9 @@ final class InternetProductSession: EncodedFrameSink {
             transport = nil
             codec = nil
             activePath = nil
-            peerSupportsTouch = false
-            peerSupportsStylus = false
-            peerSupportsStylusExtended = false
-            peerSupportsController = false
             transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
+            resetProductNegotiationState()
             resetAdaptiveVideoState()
             let changed = state != .revoked
             state = .revoked
@@ -326,6 +339,56 @@ final class InternetProductSession: EncodedFrameSink {
     @discardableResult
     func sendBulkRecord(_ payload: Data, transferID: Data) -> Bool {
         sendAdvancedRecord(payload, binding: .bulk(transferID: transferID))
+    }
+
+    @discardableResult
+    func shareClipboard(text: String) -> Bool {
+        do {
+            return try performSync {
+                guard isClipboardAvailable, var codec, let clipboardCore else { return false }
+                let offer = try clipboardCore.prepareOffer(text: text)
+                try sendControl(codec.clipboardOffer(offer))
+                self.codec = codec
+                return true
+            }
+        } catch let error as InternetProductSessionError {
+            performSync { fail(error) }
+            return false
+        } catch let error as InternetProductProtocolError {
+            performSync { fail(.protocolFailure(error)) }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    func requestClipboardContent(changeID: Data) -> Bool {
+        do {
+            return try performSync {
+                guard isClipboardAvailable, var codec, let clipboardCore else { return false }
+                let request = try clipboardCore.requestContent(for: changeID)
+                try sendControl(codec.clipboardRequest(request))
+                self.codec = codec
+                return true
+            }
+        } catch let error as InternetProductSessionError {
+            performSync { fail(error) }
+            return false
+        } catch let error as InternetProductProtocolError {
+            performSync { fail(.protocolFailure(error)) }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    func expireClipboardRequest(changeID: Data) -> Bool {
+        performSync {
+            guard isClipboardAvailable, let clipboardCore else { return false }
+            return clipboardCore.expireRequest(for: changeID)
+        }
     }
 
     func snapshotState() -> InternetProductSessionState {
@@ -556,6 +619,7 @@ final class InternetProductSession: EncodedFrameSink {
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
             controllerAvailable: configuration.controllerAvailable,
+            managedPolicy: configuration.managedPolicy,
             limits: configuration.limits
         )
         let transport = WebRTCInternetTransport(
@@ -571,12 +635,9 @@ final class InternetProductSession: EncodedFrameSink {
         self.codec = codec
         self.transport = transport
         activePath = nil
-        peerSupportsTouch = false
-        peerSupportsStylus = false
-        peerSupportsStylusExtended = false
-        peerSupportsController = false
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
+        resetProductNegotiationState(localPolicy: configuration.managedPolicy)
         resetAdaptiveVideoState()
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
@@ -720,6 +781,23 @@ final class InternetProductSession: EncodedFrameSink {
                     && hello.capabilities.contains(.stylusExtended)
                 peerSupportsController = codec.controllerAvailable
                     && hello.capabilities.contains(.controller)
+                peerSupportsClipboard = hello.capabilities.contains(.clipboard)
+                peerSupportsManagedConfiguration = hello.capabilities.contains(.managedConfiguration)
+                baseNegotiatedCapabilities = codec.baseNegotiatedCapabilities
+                negotiatedCapabilities = policyFilteredCapabilities(
+                    baseNegotiatedCapabilities,
+                    policy: managedPolicyResolver.effectivePolicy
+                )
+                remoteManagedClipboardAllowed = managedPolicyResolver.effectivePolicy.clipboardAllowed
+                if negotiatedCapabilities.contains(.clipboard) {
+                    clipboardCore = ClipboardCore(
+                        maximumBytes: codec.negotiatedMaximumClipboardBytes,
+                        localDeviceID: configuration?.hostDeviceID ?? codec.hostID,
+                        remoteDeviceID: codec.peerDeviceID
+                    )
+                } else {
+                    clipboardCore = nil
+                }
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
@@ -728,6 +806,11 @@ final class InternetProductSession: EncodedFrameSink {
                     peerSupportsStylusExtended: peerSupportsStylusExtended,
                     peerSupportsController: peerSupportsController
                 ))
+                if peerSupportsManagedConfiguration {
+                    try sendControl(codec.managedPolicyStatus(
+                        managedPolicyResolver.localPolicy.protocolStatus
+                    ))
+                }
                 try sendControl(codec.videoConfiguration())
                 self.codec = codec
                 setState(.awaitingVideoConfiguration)
@@ -826,6 +909,25 @@ final class InternetProductSession: EncodedFrameSink {
                     codec: &codec
                 )
 
+            case .clipboardOffer(let offer) where isStreaming:
+                self.codec = codec
+                try routeClipboardOffer(offer)
+
+            case .clipboardRequest(let request) where isStreaming:
+                try routeClipboardRequest(
+                    request,
+                    correlationID: envelope.messageID,
+                    codec: &codec
+                )
+
+            case .clipboardContent(let content) where isStreaming:
+                self.codec = codec
+                try routeClipboardContent(content)
+
+            case .managedPolicyStatus(let status) where isStreaming || state == .awaitingVideoConfiguration:
+                self.codec = codec
+                try applyRemoteManagedPolicy(status)
+
             case .disconnectNotice(let notice):
                 self.codec = codec
                 if notice.mayResume {
@@ -845,6 +947,10 @@ final class InternetProductSession: EncodedFrameSink {
                 case .touchEvent: payloadName = "TouchEvent"
                 case .stylusEvent: payloadName = "StylusEvent"
                 case .controllerEvent: payloadName = "ControllerEvent"
+                case .clipboardOffer: payloadName = "ClipboardOffer"
+                case .clipboardRequest: payloadName = "ClipboardRequest"
+                case .clipboardContent: payloadName = "ClipboardContent"
+                case .managedPolicyStatus: payloadName = "ManagedPolicyStatus"
                 case .disconnectNotice: payloadName = "DisconnectNotice"
                 case nil: payloadName = "empty payload"
                 default: payloadName = "unsupported payload"
@@ -1036,6 +1142,71 @@ final class InternetProductSession: EncodedFrameSink {
         }
     }
 
+    private func routeClipboardOffer(_ offer: VSClipboardOffer) throws {
+        guard isClipboardAvailable, let clipboardCore else {
+            throw InternetProductProtocolError.missingCapability(.clipboard)
+        }
+        do {
+            let metadata = try clipboardCore.handleOffer(offer)
+            onClipboardOfferReceived?(metadata)
+        } catch {
+            throw InternetProductProtocolError.invalidClipboard
+        }
+    }
+
+    private func routeClipboardRequest(
+        _ request: VSClipboardRequest,
+        correlationID: UInt64,
+        codec: inout InternetProductProtocolCodec
+    ) throws {
+        guard isClipboardAvailable, let clipboardCore else {
+            throw InternetProductProtocolError.missingCapability(.clipboard)
+        }
+        guard request.changeID.count == ClipboardCore.changeIDByteCount else {
+            throw InternetProductProtocolError.invalidClipboard
+        }
+        guard let content = clipboardCore.makeContent(for: request.changeID) else { return }
+        let encoded = try codec.clipboardContent(content, correlationID: correlationID)
+        self.codec = codec
+        try sendControl(encoded)
+    }
+
+    private func routeClipboardContent(_ content: VSClipboardContent) throws {
+        guard isClipboardAvailable, let clipboardCore else {
+            throw InternetProductProtocolError.missingCapability(.clipboard)
+        }
+        do {
+            let result = try clipboardCore.handleContent(content)
+            if result.isDirect {
+                onClipboardDirectContentReceived?(result.validated)
+            } else {
+                onClipboardContentReceived?(result.validated)
+            }
+        } catch {
+            throw InternetProductProtocolError.invalidClipboard
+        }
+    }
+
+    private func applyRemoteManagedPolicy(_ status: VSManagedPolicyStatus) throws {
+        guard baseNegotiatedCapabilities.contains(.managedConfiguration) else {
+            throw InternetProductProtocolError.missingCapability(.managedConfiguration)
+        }
+        guard ManagedPolicy.validateRestrictionResults(status) else {
+            throw InternetProductProtocolError.invalidManagedPolicy
+        }
+        managedPolicyResolver.setRemote(ManagedPolicy(remoteStatus: status))
+        let effective = managedPolicyResolver.effectivePolicy
+        guard effective.allows(hostID: configuration?.hostDeviceID ?? "") else {
+            throw InternetProductProtocolError.invalidManagedPolicy
+        }
+        remoteManagedClipboardAllowed = effective.clipboardAllowed
+        negotiatedCapabilities = policyFilteredCapabilities(baseNegotiatedCapabilities, policy: effective)
+        if !remoteManagedClipboardAllowed {
+            clipboardCore?.reset()
+        }
+        onRemoteManagedPolicyChanged?(effective.protocolStatus)
+    }
+
     private func beginAdaptiveProfileRequest(
         _ profile: AdaptiveMediaProfile,
         generation: UInt64
@@ -1147,6 +1318,30 @@ final class InternetProductSession: EncodedFrameSink {
         committedVideoConfiguration = nil
         pendingRuntimeVideoConfiguration = nil
         deferredRotationDegrees = nil
+    }
+
+    private func resetProductNegotiationState(localPolicy: ManagedPolicy = .unmanaged) {
+        peerSupportsTouch = false
+        peerSupportsStylus = false
+        peerSupportsStylusExtended = false
+        peerSupportsController = false
+        peerSupportsClipboard = false
+        peerSupportsManagedConfiguration = false
+        remoteManagedClipboardAllowed = true
+        managedPolicyResolver = ManagedPolicyResolver(localPolicy: localPolicy)
+        clipboardCore?.reset()
+        clipboardCore = nil
+        negotiatedCapabilities = []
+        baseNegotiatedCapabilities = []
+    }
+
+    private func policyFilteredCapabilities(
+        _ capabilities: Set<VSCapability>,
+        policy: ManagedPolicy
+    ) -> Set<VSCapability> {
+        var filtered = capabilities
+        if !policy.clipboardAllowed { filtered.remove(.clipboard) }
+        return filtered
     }
 
     private func sendControl(_ payload: Data) throws {
@@ -1416,12 +1611,9 @@ final class InternetProductSession: EncodedFrameSink {
         transport = nil
         codec = nil
         activePath = nil
-        peerSupportsTouch = false
-        peerSupportsStylus = false
-        peerSupportsStylusExtended = false
-        peerSupportsController = false
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
+        resetProductNegotiationState()
         resetAdaptiveVideoState()
         configuration = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
@@ -1707,12 +1899,9 @@ final class InternetProductSession: EncodedFrameSink {
         transport = nil
         codec = nil
         activePath = nil
-        peerSupportsTouch = false
-        peerSupportsStylus = false
-        peerSupportsStylusExtended = false
-        peerSupportsController = false
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
+        resetProductNegotiationState()
         resetAdaptiveVideoState()
         // Close the retired transport before publishing the terminal state so
         // any observer waking on .failed already sees the transport closed,
@@ -1735,6 +1924,14 @@ final class InternetProductSession: EncodedFrameSink {
         if terminalProtocolFailureGeneration == nil,
            case .streaming = state { return true }
         return false
+    }
+
+    private var isClipboardAvailable: Bool {
+        isStreaming
+            && peerSupportsClipboard
+            && remoteManagedClipboardAllowed
+            && negotiatedCapabilities.contains(.clipboard)
+            && clipboardCore != nil
     }
 
     private var isRecoverableState: Bool {
@@ -1775,4 +1972,18 @@ final class InternetProductSession: EncodedFrameSink {
         return try queue.sync(execute: operation)
     }
 
+}
+
+// MARK: - ClipboardServer conformance
+
+extension InternetProductSession: ClipboardServer {
+    @discardableResult
+    func shareClipboardText(_ text: String) -> Bool {
+        shareClipboard(text: text)
+    }
+
+    @discardableResult
+    func sendClipboardRequest(_ request: VSClipboardRequest) -> Bool {
+        requestClipboardContent(changeID: request.changeID)
+    }
 }

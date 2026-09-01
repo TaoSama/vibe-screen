@@ -111,9 +111,14 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.audioDataChannel))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.bulkDataChannel))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.stylus))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.clipboard))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.managedConfiguration))
         XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.audio))
-        XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.clipboard))
         XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.fileTransfer))
+        XCTAssertEqual(
+            hostEnvelope.hostHello.resourceLimits.maximumClipboardBytes,
+            UInt64(ClipboardCore.localMaximumBytes)
+        )
         XCTAssertEqual(
             acceptedEnvelope.sessionAccepted.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes,
             UInt32(negotiatedMaximum)
@@ -135,6 +140,55 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertTrue(encoded.records.allSatisfy {
             $0.count + InternetMediaRecordContract.applicationAEADRecordOverheadBytes <= negotiatedMaximum
         })
+    }
+
+    func testClipboardAndManagedConfigurationNegotiateOnlyWhenPeerAdvertisesThem() throws {
+        var codec = try makeCodec(negotiate: false)
+        try codec.validate(clientHello(supportsClipboard: true, supportsManagedConfiguration: true))
+
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true
+        )).sessionAccepted
+
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.clipboard))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.managedConfiguration))
+        XCTAssertEqual(
+            accepted.negotiatedResourceLimits.maximumClipboardBytes,
+            UInt64(ClipboardCore.localMaximumBytes)
+        )
+        XCTAssertEqual(codec.negotiatedMaximumClipboardBytes, ClipboardCore.localMaximumBytes)
+    }
+
+    func testManagedPolicyDisablesClipboardAdvertisementAndNegotiation() throws {
+        var codec = try makeCodec(
+            negotiate: false,
+            managedPolicy: ManagedPolicy(
+                isManaged: true,
+                clipboardAllowed: false,
+                fileTransferAllowed: true,
+                audioAllowed: true,
+                wakeAllowed: true,
+                customGesturesAllowed: true,
+                hostActionsAllowed: true,
+                maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+                allowedHosts: []
+            )
+        )
+        try codec.validate(clientHello(supportsClipboard: true, supportsManagedConfiguration: true))
+
+        let host = try VSEnvelope(serializedBytes: codec.hostHello()).hostHello
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true
+        )).sessionAccepted
+
+        XCTAssertFalse(host.capabilities.contains(.clipboard))
+        XCTAssertTrue(host.capabilities.contains(.managedConfiguration))
+        XCTAssertEqual(host.resourceLimits.maximumClipboardBytes, 0)
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.clipboard))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 0)
+        XCTAssertEqual(codec.negotiatedMaximumClipboardBytes, 0)
     }
 
     func testDisabledInputIsNeitherAdvertisedNorNegotiated() throws {
@@ -687,7 +741,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         rotationDegrees: Int = 0,
         negotiate: Bool = true,
         inputEnabled: Bool = true,
-        controllerAvailable: Bool = false
+        controllerAvailable: Bool = false,
+        managedPolicy: ManagedPolicy = .unmanaged
     ) throws -> InternetProductProtocolCodec {
         var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
@@ -707,6 +762,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             ),
             inputEnabled: inputEnabled,
             controllerAvailable: controllerAvailable,
+            managedPolicy: managedPolicy,
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,
                 maximumBufferedControlBytes: 2 * 1_024 * 1_024,
@@ -722,19 +778,25 @@ final class InternetProductProtocolCodecTests: XCTestCase {
 
     private func clientHello(
         maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes,
-        supportsController: Bool = false
+        maximumClipboardBytes: UInt64 = UInt64(ClipboardCore.localMaximumBytes),
+        supportsController: Bool = false,
+        supportsClipboard: Bool = false,
+        supportsManagedConfiguration: Bool = false
     ) -> VSClientHello {
         var range = VSProtocolRange()
         range.minimum = 1
         range.maximum = 1
         var limits = VSResourceLimits()
         limits.maximumEncryptedMediaRecordBytes = UInt32(maximumEncryptedMediaRecordBytes)
+        limits.maximumClipboardBytes = maximumClipboardBytes
         var hello = VSClientHello()
         hello.supportedProtocols = range
         hello.deviceID = "device-1"
         hello.deviceName = "Android"
         hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
         if supportsController { hello.capabilities.append(.controller) }
+        if supportsClipboard { hello.capabilities.append(.clipboard) }
+        if supportsManagedConfiguration { hello.capabilities.append(.managedConfiguration) }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]

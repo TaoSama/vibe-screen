@@ -5,11 +5,15 @@ import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
+import dev.vibescreen.protocol.v1.ClipboardRequest
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
@@ -36,8 +40,9 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
-        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
@@ -46,10 +51,15 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
             hello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes,
+        )
+        assertEquals(
+            InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES,
+            hello.clientHello.resourceLimits.maximumClipboardBytes,
         )
         assertEquals(listOf(Codec.CODEC_H264, Codec.CODEC_HEVC), hello.clientHello.codecsList.sortedBy { it.number })
 
@@ -136,6 +146,56 @@ class ProtocolV1ProductCodecTest {
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES.toLong(),
             decodedAccepted.maximumEncryptedMediaRecordBytes,
         )
+    }
+
+    @Test
+    fun encodeDecodeClipboardAndManagedPolicyControls() {
+        val changeId = ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_CHANGE_ID_BYTES) { it.toByte() })
+        val contentBytes = "internet clipboard".toByteArray(Charsets.UTF_8)
+        val digest = ByteString.copyFrom(InternetClipboard.sha256(contentBytes))
+        val offer =
+            ClipboardOffer
+                .newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId("device-1")
+                .setMimeType(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN)
+                .setByteLength(contentBytes.size.toLong())
+                .setSha256(digest)
+                .build()
+        val request = ClipboardRequest.newBuilder().setChangeId(changeId).build()
+        val content =
+            ClipboardContent
+                .newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId("device-1")
+                .setMimeType(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN)
+                .setContent(ByteString.copyFrom(contentBytes))
+                .setSha256(digest)
+                .build()
+        val policy = InternetManagedPolicy.UNMANAGED.toStatus()
+
+        val decodedOffer = codec.decodeControl(
+            codec.encodeClipboardOffer(20, sessionId, 7, offer),
+        ).message as ProductControlMessage.ClipboardOffered
+        assertEquals(offer, decodedOffer.offer)
+
+        val decodedRequest = codec.decodeControl(
+            codec.encodeClipboardRequest(21, sessionId, 7, request),
+        ).message as ProductControlMessage.ClipboardRequested
+        assertEquals(request, decodedRequest.request)
+
+        val decodedContent = codec.decodeControl(
+            codec.encodeClipboardContent(22, 21, sessionId, 7, content),
+        )
+        assertEquals(21L, Envelope.parseFrom(
+            codec.encodeClipboardContent(22, 21, sessionId, 7, content),
+        ).correlationId)
+        assertEquals(content, (decodedContent.message as ProductControlMessage.ClipboardContentReceived).content)
+
+        val decodedPolicy = codec.decodeControl(
+            codec.encodeManagedPolicyStatus(23, sessionId, 7, policy),
+        ).message as ProductControlMessage.ManagedPolicyReceived
+        assertEquals(policy, decodedPolicy.status)
     }
 
     @Test

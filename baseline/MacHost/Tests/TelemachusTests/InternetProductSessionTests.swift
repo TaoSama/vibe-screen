@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import CoreMedia
 import CoreVideo
 import VibeScreenProtocol
@@ -203,6 +204,249 @@ final class InternetProductSessionTests: XCTestCase {
         harness.receiveAudio(Data([0xA1, 0xA2]))
         harness.receiveBulk(Data([0xB1, 0xB2, 0xB3]))
         wait(for: [audioReceived, bulkReceived], timeout: 1)
+    }
+
+    func testClipboardShareSendsOfferAndServesRequestedContent() throws {
+        let harness = try Harness()
+        try reachStreaming(
+            harness,
+            supportsClipboard: true,
+            supportsManagedConfiguration: true
+        )
+
+        XCTAssertTrue(harness.session.clipboardAvailable)
+        XCTAssertEqual(
+            harness.session.negotiatedMaximumClipboardBytes,
+            ClipboardCore.localMaximumBytes
+        )
+        XCTAssertTrue(harness.session.shareClipboard(text: "host clipboard"))
+        XCTAssertTrue(harness.waitForClipboardOffer())
+        let offerEnvelope = try XCTUnwrap(harness.sentClipboardOfferEnvelope())
+        let offer = offerEnvelope.clipboardOffer
+        XCTAssertEqual(offer.originDeviceID, "host-1")
+        XCTAssertEqual(offer.mimeType, ClipboardCore.supportedMIMEType)
+        XCTAssertEqual(offer.byteLength, UInt64(Data("host clipboard".utf8).count))
+        XCTAssertEqual(offer.sha256, Data(SHA256.hash(data: Data("host clipboard".utf8))))
+
+        harness.receiveControl(harness.clipboardRequest(
+            messageID: 3,
+            changeID: offer.changeID
+        ))
+
+        XCTAssertTrue(harness.waitForClipboardContent())
+        let contentEnvelope = try XCTUnwrap(harness.sentClipboardContentEnvelope())
+        let content = contentEnvelope.clipboardContent
+        XCTAssertEqual(contentEnvelope.correlationID, 3)
+        XCTAssertEqual(content.changeID, offer.changeID)
+        XCTAssertEqual(content.originDeviceID, "host-1")
+        XCTAssertEqual(content.mimeType, ClipboardCore.supportedMIMEType)
+        XCTAssertEqual(String(data: content.content, encoding: .utf8), "host clipboard")
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testClipboardContentUsesStandardInternetControlLimitForOneMiBText() throws {
+        let harness = try Harness(limits: .standard)
+        try reachStreaming(
+            harness,
+            supportsClipboard: true,
+            supportsManagedConfiguration: true
+        )
+        let text = String(repeating: "a", count: ClipboardCore.localMaximumBytes)
+
+        XCTAssertTrue(harness.session.shareClipboard(text: text))
+        XCTAssertTrue(harness.waitForClipboardOffer())
+        let offer = try XCTUnwrap(harness.sentClipboardOfferEnvelope()).clipboardOffer
+        harness.receiveControl(harness.clipboardRequest(
+            messageID: 3,
+            changeID: offer.changeID
+        ))
+
+        XCTAssertTrue(harness.waitForClipboardContent())
+        let content = try XCTUnwrap(harness.sentClipboardContentEnvelope())
+        XCTAssertEqual(content.clipboardContent.content.count, ClipboardCore.localMaximumBytes)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testClipboardLocalInvalidInputReturnsFalseWithoutClosingSession() throws {
+        let harness = try Harness()
+        try reachStreaming(harness, supportsClipboard: true)
+        let controlCount = harness.sentControlEnvelopes().count
+
+        XCTAssertFalse(harness.session.shareClipboard(text: ""))
+        XCTAssertFalse(harness.session.shareClipboard(
+            text: String(repeating: "a", count: ClipboardCore.localMaximumBytes + 1)
+        ))
+
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+        XCTAssertEqual(harness.sentControlEnvelopes().count, controlCount)
+    }
+
+    func testClipboardOfferRequestSolicitedAndDirectContentCallbacks() throws {
+        let harness = try Harness()
+        let offered = expectation(description: "clipboard offer received")
+        let solicited = expectation(description: "solicited clipboard content received")
+        let direct = expectation(description: "direct clipboard content received")
+        let offeredChangeID = Data(repeating: 0x21, count: ClipboardCore.changeIDByteCount)
+        let directChangeID = Data(repeating: 0x22, count: ClipboardCore.changeIDByteCount)
+
+        harness.session.onClipboardOfferReceived = { metadata in
+            XCTAssertEqual(metadata.changeID, offeredChangeID)
+            XCTAssertEqual(metadata.originDeviceID, "device-1")
+            XCTAssertEqual(metadata.mimeType, ClipboardCore.supportedMIMEType)
+            XCTAssertEqual(metadata.byteLength, UInt64(Data("peer clipboard".utf8).count))
+            XCTAssertEqual(metadata.sha256, Data(SHA256.hash(data: Data("peer clipboard".utf8))))
+            offered.fulfill()
+        }
+        harness.session.onClipboardContentReceived = { content in
+            XCTAssertEqual(content.changeID, offeredChangeID)
+            XCTAssertEqual(content.originDeviceID, "device-1")
+            XCTAssertEqual(content.text, "peer clipboard")
+            solicited.fulfill()
+        }
+        harness.session.onClipboardDirectContentReceived = { content in
+            XCTAssertEqual(content.changeID, directChangeID)
+            XCTAssertEqual(content.originDeviceID, "device-1")
+            XCTAssertEqual(content.text, "direct clipboard")
+            direct.fulfill()
+        }
+
+        try reachStreaming(harness, supportsClipboard: true)
+        harness.receiveControl(harness.clipboardOffer(
+            messageID: 3,
+            changeID: offeredChangeID,
+            text: "peer clipboard"
+        ))
+        wait(for: [offered], timeout: 1)
+
+        XCTAssertTrue(harness.session.requestClipboardContent(changeID: offeredChangeID))
+        XCTAssertTrue(harness.waitForClipboardRequest(changeID: offeredChangeID))
+        harness.receiveControl(harness.clipboardContent(
+            messageID: 4,
+            changeID: offeredChangeID,
+            text: "peer clipboard"
+        ))
+        wait(for: [solicited], timeout: 1)
+
+        harness.receiveControl(harness.clipboardContent(
+            messageID: 5,
+            changeID: directChangeID,
+            text: "direct clipboard"
+        ))
+        wait(for: [direct], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testClipboardExpiredRequestTurnsLateContentIntoDirectContent() throws {
+        let harness = try Harness()
+        let direct = expectation(description: "expired request content becomes direct")
+        let changeID = Data(repeating: 0x31, count: ClipboardCore.changeIDByteCount)
+        harness.session.onClipboardDirectContentReceived = { content in
+            XCTAssertEqual(content.changeID, changeID)
+            XCTAssertEqual(content.text, "late clipboard")
+            direct.fulfill()
+        }
+
+        try reachStreaming(harness, supportsClipboard: true)
+        harness.receiveControl(harness.clipboardOffer(
+            messageID: 3,
+            changeID: changeID,
+            text: "late clipboard"
+        ))
+        XCTAssertTrue(harness.session.requestClipboardContent(changeID: changeID))
+        XCTAssertTrue(harness.session.expireClipboardRequest(changeID: changeID))
+
+        harness.receiveControl(harness.clipboardContent(
+            messageID: 4,
+            changeID: changeID,
+            text: "late clipboard"
+        ))
+
+        wait(for: [direct], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testClipboardRejectsInvalidRemoteContentAndUnnegotiatedClipboard() throws {
+        let invalidDigest = try Harness()
+        try reachStreaming(invalidDigest, supportsClipboard: true)
+        invalidDigest.receiveControl(invalidDigest.clipboardContent(
+            messageID: 3,
+            changeID: Data(repeating: 0x41, count: ClipboardCore.changeIDByteCount),
+            text: "bad digest",
+            sha256: Data(repeating: 0, count: ClipboardCore.sha256ByteCount)
+        ))
+        XCTAssertTrue(invalidDigest.waitForFailure())
+        XCTAssertTrue(invalidDigest.engine.didClose)
+
+        let invalidUTF8 = try Harness()
+        try reachStreaming(invalidUTF8, supportsClipboard: true)
+        let bytes = Data([0xFF, 0xFE])
+        invalidUTF8.receiveControl(invalidUTF8.clipboardContent(
+            messageID: 3,
+            changeID: Data(repeating: 0x42, count: ClipboardCore.changeIDByteCount),
+            content: bytes,
+            sha256: Data(SHA256.hash(data: bytes))
+        ))
+        XCTAssertTrue(invalidUTF8.waitForFailure())
+        XCTAssertTrue(invalidUTF8.engine.didClose)
+
+        let unnegotiated = try Harness()
+        try reachStreaming(unnegotiated)
+        unnegotiated.receiveControl(unnegotiated.clipboardOffer(
+            messageID: 3,
+            changeID: Data(repeating: 0x43, count: ClipboardCore.changeIDByteCount),
+            text: "not negotiated"
+        ))
+        XCTAssertTrue(unnegotiated.waitForFailure())
+        XCTAssertTrue(unnegotiated.engine.didClose)
+    }
+
+    func testRemoteManagedPolicyDenyDisablesClipboardWithoutClosingStreamingSession() throws {
+        let harness = try Harness()
+        let changed = expectation(description: "remote managed policy changed")
+        harness.session.onRemoteManagedPolicyChanged = { status in
+            XCTAssertTrue(status.managed)
+            XCTAssertFalse(status.clipboardAllowed)
+            changed.fulfill()
+        }
+
+        try reachStreaming(
+            harness,
+            supportsClipboard: true,
+            supportsManagedConfiguration: true
+        )
+        XCTAssertTrue(harness.session.clipboardAvailable)
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 3,
+            clipboardAllowed: false
+        ))
+        wait(for: [changed], timeout: 1)
+
+        XCTAssertFalse(harness.session.clipboardAvailable)
+        XCTAssertFalse(harness.session.shareClipboard(text: "blocked"))
+        XCTAssertFalse(harness.session.requestClipboardContent(
+            changeID: Data(repeating: 0x51, count: ClipboardCore.changeIDByteCount)
+        ))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+
+        harness.receiveControl(harness.ping(messageID: 4, sequence: 99))
+        XCTAssertTrue(harness.waitForPong(sequence: 99))
+    }
+
+    func testManagedPolicyStatusWithoutNegotiatedCapabilityFailsClosed() throws {
+        let harness = try Harness()
+        try reachStreaming(harness)
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 3,
+            clipboardAllowed: false
+        ))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
     }
 
     func testAdvancedChannelRecordsFailClosedWhenPayloadExceedsProductAdmissionLimit() throws {
@@ -1504,10 +1748,18 @@ final class InternetProductSessionTests: XCTestCase {
         )
     }
 
-    private func reachStreaming(_ harness: Harness) throws {
+    private func reachStreaming(
+        _ harness: Harness,
+        supportsClipboard: Bool = false,
+        supportsManagedConfiguration: Bool = false
+    ) throws {
         try harness.session.start(configuration: harness.configuration)
         harness.engine.emitConnection(.connected(path: .direct))
-        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.clientHello(
+            messageID: 1,
+            supportsClipboard: supportsClipboard,
+            supportsManagedConfiguration: supportsManagedConfiguration
+        ))
         harness.receiveControl(harness.videoAccepted(
             messageID: 2,
             configEpoch: harness.configuration.video.configEpoch
@@ -2649,6 +2901,8 @@ private final class Harness {
         supportsStylus: Bool = false,
         supportsStylusExtended: Bool = false,
         supportsController: Bool = false,
+        supportsClipboard: Bool = false,
+        supportsManagedConfiguration: Bool = false,
         sessionEpoch: UInt64 = 1
     ) -> VSEnvelope {
         var range = VSProtocolRange()
@@ -2662,6 +2916,8 @@ private final class Harness {
         if supportsStylus { hello.capabilities.append(.stylus) }
         if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
         if supportsController { hello.capabilities.append(.controller) }
+        if supportsClipboard { hello.capabilities.append(.clipboard) }
+        if supportsManagedConfiguration { hello.capabilities.append(.managedConfiguration) }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]
@@ -2669,6 +2925,7 @@ private final class Harness {
         limits.maximumEncryptedMediaRecordBytes = UInt32(
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         )
+        limits.maximumClipboardBytes = UInt64(ClipboardCore.localMaximumBytes)
         hello.resourceLimits = limits
         var envelope = baseEnvelope(messageID: messageID, sessionEpoch: sessionEpoch)
         envelope.clientHello = hello
@@ -2781,6 +3038,95 @@ private final class Harness {
         return envelope
     }
 
+    func clipboardOffer(
+        messageID: UInt64,
+        changeID: Data,
+        text: String,
+        originDeviceID: String = "device-1",
+        mimeType: String = ClipboardCore.supportedMIMEType,
+        sha256: Data? = nil
+    ) -> VSEnvelope {
+        let content = Data(text.utf8)
+        var offer = VSClipboardOffer()
+        offer.changeID = changeID
+        offer.originDeviceID = originDeviceID
+        offer.mimeType = mimeType
+        offer.byteLength = UInt64(content.count)
+        offer.sha256 = sha256 ?? Data(SHA256.hash(data: content))
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.clipboardOffer = offer
+        return envelope
+    }
+
+    func clipboardRequest(messageID: UInt64, changeID: Data) -> VSEnvelope {
+        var request = VSClipboardRequest()
+        request.changeID = changeID
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.clipboardRequest = request
+        return envelope
+    }
+
+    func clipboardContent(
+        messageID: UInt64,
+        changeID: Data,
+        text: String,
+        originDeviceID: String = "device-1",
+        mimeType: String = ClipboardCore.supportedMIMEType,
+        sha256: Data? = nil
+    ) -> VSEnvelope {
+        clipboardContent(
+            messageID: messageID,
+            changeID: changeID,
+            content: Data(text.utf8),
+            originDeviceID: originDeviceID,
+            mimeType: mimeType,
+            sha256: sha256
+        )
+    }
+
+    func clipboardContent(
+        messageID: UInt64,
+        changeID: Data,
+        content: Data,
+        originDeviceID: String = "device-1",
+        mimeType: String = ClipboardCore.supportedMIMEType,
+        sha256: Data? = nil
+    ) -> VSEnvelope {
+        var clipboard = VSClipboardContent()
+        clipboard.changeID = changeID
+        clipboard.originDeviceID = originDeviceID
+        clipboard.mimeType = mimeType
+        clipboard.content = content
+        clipboard.sha256 = sha256 ?? Data(SHA256.hash(data: content))
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.clipboardContent = clipboard
+        return envelope
+    }
+
+    func managedPolicyStatus(
+        messageID: UInt64,
+        clipboardAllowed: Bool = true,
+        allowedHosts: [String] = ["host-1"],
+        deniedHosts: [String] = []
+    ) -> VSEnvelope {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: clipboardAllowed,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: Set(allowedHosts),
+            allowedHostsRestricted: true,
+            deniedHosts: Set(deniedHosts)
+        )
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.managedPolicyStatus = policy.protocolStatus
+        return envelope
+    }
+
     func disconnectNotice(
         messageID: UInt64,
         mayResume: Bool,
@@ -2798,6 +3144,44 @@ private final class Harness {
         waitUntil {
             self.selectedEngine(engineIndex).sentPlaintext
                 .filter { $0.channel == .control }.count >= count
+        }
+    }
+
+    func sentControlEnvelopes(engineIndex: Int = 0) -> [VSEnvelope] {
+        selectedEngine(engineIndex).sentPlaintext.compactMap { item in
+            guard item.channel == .control else { return nil }
+            return try? VSEnvelope(serializedBytes: item.payload)
+        }
+    }
+
+    func waitForClipboardOffer(engineIndex: Int = 0) -> Bool {
+        waitUntil { self.sentClipboardOfferEnvelope(engineIndex: engineIndex) != nil }
+    }
+
+    func sentClipboardOfferEnvelope(engineIndex: Int = 0) -> VSEnvelope? {
+        sentControlEnvelopes(engineIndex: engineIndex).first { envelope in
+            if case .clipboardOffer = envelope.payload { return true }
+            return false
+        }
+    }
+
+    func waitForClipboardRequest(changeID: Data, engineIndex: Int = 0) -> Bool {
+        waitUntil {
+            self.sentControlEnvelopes(engineIndex: engineIndex).contains { envelope in
+                guard case .clipboardRequest(let request) = envelope.payload else { return false }
+                return request.changeID == changeID
+            }
+        }
+    }
+
+    func waitForClipboardContent(engineIndex: Int = 0) -> Bool {
+        waitUntil { self.sentClipboardContentEnvelope(engineIndex: engineIndex) != nil }
+    }
+
+    func sentClipboardContentEnvelope(engineIndex: Int = 0) -> VSEnvelope? {
+        sentControlEnvelopes(engineIndex: engineIndex).first { envelope in
+            if case .clipboardContent = envelope.payload { return true }
+            return false
         }
     }
 

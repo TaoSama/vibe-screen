@@ -574,6 +574,24 @@ final class ClipboardUIControllerTests: XCTestCase {
         XCTAssertFalse(receive.isEnabled)
     }
 
+    func testSameBindingRefreshPreservesPendingTransferUntilDisabled() {
+        let pasteboard = PasteboardSpy()
+        let (controller, share, receive, _) = makeController(pasteboard: pasteboard)
+        let server = ServerSpy()
+        bind(controller, server: server, generation: 2, transport: .secureInternet)
+
+        controller.handleOffer(offerMetadata(), generation: 2)
+        XCTAssertTrue(receive.isEnabled)
+
+        bind(controller, server: server, generation: 2, transport: .secureInternet)
+        XCTAssertTrue(share.isEnabled)
+        XCTAssertTrue(receive.isEnabled)
+
+        bind(controller, server: server, generation: 2, transport: .secureInternet, available: false)
+        XCTAssertFalse(share.isEnabled)
+        XCTAssertFalse(receive.isEnabled)
+    }
+
     func testUnbindDisablesControlsAndClearsPending() {
         let pasteboard = PasteboardSpy()
         let (controller, share, receive, _) = makeController(pasteboard: pasteboard)

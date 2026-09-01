@@ -6,9 +6,13 @@ import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
+import dev.vibescreen.protocol.v1.ClipboardRequest
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
@@ -161,6 +165,7 @@ sealed class ProductControlMessage {
         val hostName: String,
         val capabilities: Set<Capability>,
         val maximumEncryptedMediaRecordBytes: Long,
+        val maximumClipboardBytes: Long,
     ) : ProductControlMessage()
 
     data class SessionAccepted(
@@ -169,6 +174,7 @@ sealed class ProductControlMessage {
         val capabilities: Set<Capability>,
         val heartbeatIntervalMillis: Long,
         val maximumEncryptedMediaRecordBytes: Long,
+        val maximumClipboardBytes: Long,
     ) : ProductControlMessage()
 
     data class SessionRejected(
@@ -198,6 +204,14 @@ sealed class ProductControlMessage {
     data class Revoked(val reasonCode: String) : ProductControlMessage()
 
     data class ProtocolFailure(val code: String, val message: String, val retryable: Boolean) : ProductControlMessage()
+
+    data class ClipboardOffered(val offer: ClipboardOffer) : ProductControlMessage()
+
+    data class ClipboardRequested(val request: ClipboardRequest) : ProductControlMessage()
+
+    data class ClipboardContentReceived(val content: ClipboardContent) : ProductControlMessage()
+
+    data class ManagedPolicyReceived(val status: ManagedPolicyStatus) : ProductControlMessage()
 
     data object Ignored : ProductControlMessage()
 }
@@ -254,6 +268,20 @@ internal interface ProtocolV1ProductCodec {
         rejectionReason: String,
     ): ByteArray
 
+    fun encodeClipboardOffer(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, offer: ClipboardOffer): ByteArray
+
+    fun encodeClipboardRequest(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, request: ClipboardRequest): ByteArray
+
+    fun encodeClipboardContent(
+        messageId: Long,
+        correlationId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        content: ClipboardContent,
+    ): ByteArray
+
+    fun encodeManagedPolicyStatus(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, status: ManagedPolicyStatus): ByteArray
+
     fun decodeControl(payload: ByteArray): DecodedProductControl
 
     fun decodeMediaFragment(payload: ByteArray): ProductMediaFragment
@@ -294,7 +322,8 @@ internal class ProtobufProtocolV1ProductCodec(
                         .newBuilder()
                         .setMaximumEncryptedMediaRecordBytes(
                             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
-                        ),
+                        )
+                        .setMaximumClipboardBytes(InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES),
                 )
                 .build()
         return envelope(messageId, sessionId, sessionEpoch).setClientHello(hello).build().toByteArray()
@@ -435,6 +464,40 @@ internal class ProtobufProtocolV1ProductCodec(
         return envelope(messageId, sessionId, sessionEpoch).setVideoConfigResult(result).build().toByteArray()
     }
 
+    override fun encodeClipboardOffer(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        offer: ClipboardOffer,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setClipboardOffer(offer).build().toByteArray()
+
+    override fun encodeClipboardRequest(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        request: ClipboardRequest,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setClipboardRequest(request).build().toByteArray()
+
+    override fun encodeClipboardContent(
+        messageId: Long,
+        correlationId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        content: ClipboardContent,
+    ): ByteArray =
+        envelope(messageId, sessionId, sessionEpoch)
+            .setCorrelationId(correlationId)
+            .setClipboardContent(content)
+            .build()
+            .toByteArray()
+
+    override fun encodeManagedPolicyStatus(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        status: ManagedPolicyStatus,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setManagedPolicyStatus(status).build().toByteArray()
+
     override fun decodeControl(payload: ByteArray): DecodedProductControl {
         require(payload.size in 1..MAX_CONTROL_BYTES) { "Control envelope size is invalid" }
         val envelope = parseEnvelope(payload)
@@ -449,6 +512,7 @@ internal class ProtobufProtocolV1ProductCodec(
                         value.hostName,
                         value.capabilitiesList.toSet(),
                         Integer.toUnsignedLong(value.resourceLimits.maximumEncryptedMediaRecordBytes),
+                        value.resourceLimits.maximumClipboardBytes,
                     )
                 }
                 Envelope.PayloadCase.SESSION_ACCEPTED -> {
@@ -459,6 +523,7 @@ internal class ProtobufProtocolV1ProductCodec(
                         value.negotiatedCapabilitiesList.toSet(),
                         value.heartbeatIntervalMs.toLong(),
                         Integer.toUnsignedLong(value.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes),
+                        value.negotiatedResourceLimits.maximumClipboardBytes,
                     )
                 }
                 Envelope.PayloadCase.SESSION_REJECTED -> {
@@ -481,6 +546,10 @@ internal class ProtobufProtocolV1ProductCodec(
                     val value = envelope.protocolError
                     ProductControlMessage.ProtocolFailure(value.code.name, value.message, value.retryable)
                 }
+                Envelope.PayloadCase.CLIPBOARD_OFFER -> ProductControlMessage.ClipboardOffered(envelope.clipboardOffer)
+                Envelope.PayloadCase.CLIPBOARD_REQUEST -> ProductControlMessage.ClipboardRequested(envelope.clipboardRequest)
+                Envelope.PayloadCase.CLIPBOARD_CONTENT -> ProductControlMessage.ClipboardContentReceived(envelope.clipboardContent)
+                Envelope.PayloadCase.MANAGED_POLICY_STATUS -> ProductControlMessage.ManagedPolicyReceived(envelope.managedPolicyStatus)
                 Envelope.PayloadCase.ERROR_REPORT -> {
                     val value = envelope.errorReport
                     ProductControlMessage.ProtocolFailure(value.code, value.message, value.retryable)
@@ -606,7 +675,9 @@ internal class ProtobufProtocolV1ProductCodec(
 
     companion object {
         const val PROTOCOL_VERSION = 1
-        private const val MAX_CONTROL_BYTES = 1_048_576
+        private const val CONTROL_ENVELOPE_OVERHEAD_BYTES = 64 * 1024
+        private val MAX_CONTROL_BYTES =
+            InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES.toInt() + CONTROL_ENVELOPE_OVERHEAD_BYTES
         private const val MAX_MEDIA_HEADER_BYTES = InternetMediaRecordContract.MAXIMUM_MEDIA_HEADER_BYTES
         private const val MAX_VARINT_BYTES = 5
         private const val MAX_REASON_BYTES = 256
@@ -621,12 +692,16 @@ internal class ProtobufProtocolV1ProductCodec(
                 Capability.CAPABILITY_REPLAY_PROTECTION,
                 Capability.CAPABILITY_AUDIO_DATA_CHANNEL,
                 Capability.CAPABILITY_BULK_DATA_CHANNEL,
+                Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
         val REQUIRED_CLIENT_CAPABILITIES =
             OFFERED_CLIENT_CAPABILITIES.filterNot {
                 it == Capability.CAPABILITY_TOUCH ||
                     it == Capability.CAPABILITY_STYLUS ||
-                    it == Capability.CAPABILITY_STYLUS_EXTENDED
+                    it == Capability.CAPABILITY_STYLUS_EXTENDED ||
+                    it == Capability.CAPABILITY_CLIPBOARD ||
+                    it == Capability.CAPABILITY_MANAGED_CONFIGURATION
             }
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */
