@@ -753,7 +753,7 @@ class FileTransferProductOwnerTest {
 
         override fun cancel(transferId: ByteString): Boolean {
             val removed = activeOffers.remove(transferId) != null
-            cancelledTransfers += transferId
+            if (removed) cancelledTransfers += transferId
             return removed
         }
 
