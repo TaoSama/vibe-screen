@@ -19,6 +19,10 @@ MAC_REAL_MEDIA_SELF_TEST = (
 )
 MAKEFILE = ROOT / "Makefile"
 ANDROID_MAIN_ACTIVITY = ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt"
+ANDROID_DECODER_PRESENTATION_OWNER = (
+    ROOT
+    / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt"
+)
 ANDROID_INTERNET_SESSION = (
     ROOT
     / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt"
@@ -161,6 +165,7 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
 
     def test_android_internet_media_reaches_the_production_decoder_callback(self) -> None:
         main_activity = source(ANDROID_MAIN_ACTIVITY)
+        decoder_presentation_owner = source(ANDROID_DECODER_PRESENTATION_OWNER)
         internet_session = source(ANDROID_INTERNET_SESSION)
 
         require_compact(
@@ -221,19 +226,30 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         require_compact(
             main_activity,
             """
+            decoderPresentationOwner.routeLocalFrame(
+                sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                configEpoch = configEpoch,
+                decode = { dec -> dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch) },
+                onDrop = ::handleDrop,
+            )
+            """,
+            label="MainActivity delegates local video frame admission to DecoderPresentationOwner",
+        )
+        require_compact(
+            decoder_presentation_owner,
+            """
             val usedDecoder =
-                videoDecoderUseGate.withCurrent { dec ->
+                decoderUseGate.withCurrent { decoder ->
                     when (
                         val decision =
                             rendererOwner.localFrameDecision(
-                                sessionCurrent = isCurrentSession(callbackClient, callbackGeneration),
+                                sessionCurrent = sessionCurrent,
                                 configEpoch = configEpoch,
                                 decoderAvailable = true,
                             )
                     ) {
-                        RendererFramePresentationDecision.Present ->
-                            dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
-                        is RendererFramePresentationDecision.Drop -> handleDrop(decision)
+                        RendererFramePresentationDecision.Present -> decode(decoder)
+                        is RendererFramePresentationDecision.Drop -> onDrop(decision)
                     }
                     true
                 } ?: false
@@ -244,36 +260,48 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
             main_activity,
             """
             override fun onVideoFrame(frame: ProductVideoFrame) {
-                val usedDecoder =
-                    videoDecoderUseGate.withCurrent { dec ->
-                        when (
-                            rendererOwner.internetFrameDecision(
-                                sessionCurrent = isCurrentInternetSession(),
-                                frameSessionEpoch = frame.sessionEpoch,
-                                activeSessionEpoch = internetSessionEpoch,
-                                decoderAvailable = true,
-                            )
-                        ) {
-                            RendererFramePresentationDecision.Present ->
-                                dec.decode(
-                                    frame.payload,
-                                    frame.payload.size,
-                                    System.nanoTime(),
-                                    frame.keyframe,
-                                    frame.sessionEpoch,
-                                )
-                            is RendererFramePresentationDecision.Drop -> Unit
-                        }
-                        true
-                    } ?: false
-                if (!usedDecoder) {
-                    rendererOwner.internetFrameDecision(
-                        sessionCurrent = isCurrentInternetSession(),
-                        frameSessionEpoch = frame.sessionEpoch,
-                        activeSessionEpoch = internetSessionEpoch,
-                        decoderAvailable = false,
+                decoderPresentationOwner.routeInternetFrame(
+                    sessionCurrent = isCurrentInternetSession(),
+                    frameSessionEpoch = frame.sessionEpoch,
+                    activeSessionEpoch = internetSessionEpoch,
+                ) { decoder ->
+                    decoder.decode(
+                        frame.payload,
+                        frame.payload.size,
+                        System.nanoTime(),
+                        frame.keyframe,
+                        frame.sessionEpoch,
                     )
                 }
+            }
+            """,
+            label="MainActivity delegates Internet video frame admission to DecoderPresentationOwner",
+        )
+        require_compact(
+            decoder_presentation_owner,
+            """
+            val usedDecoder =
+                decoderUseGate.withCurrent { decoder ->
+                    when (
+                        rendererOwner.internetFrameDecision(
+                            sessionCurrent = sessionCurrent,
+                            frameSessionEpoch = frameSessionEpoch,
+                            activeSessionEpoch = activeSessionEpoch,
+                            decoderAvailable = true,
+                        )
+                    ) {
+                        RendererFramePresentationDecision.Present -> decode(decoder)
+                        is RendererFramePresentationDecision.Drop -> Unit
+                    }
+                    true
+                } ?: false
+            if (!usedDecoder) {
+                rendererOwner.internetFrameDecision(
+                    sessionCurrent = sessionCurrent,
+                    frameSessionEpoch = frameSessionEpoch,
+                    activeSessionEpoch = activeSessionEpoch,
+                    decoderAvailable = false,
+                )
             }
             """,
             label="Android Internet video frames are renderer-admitted before production VideoDecoder",
