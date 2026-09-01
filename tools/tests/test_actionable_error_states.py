@@ -11,6 +11,8 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.actionable_error_states import (
     ActionableErrorStateError,
     KIND,
+    REQUIRED_ACTIONABLE_CONTRACT_CODES,
+    _markdown_anchor_base,
     parse_session_failure_kinds,
     evaluate,
     load_matrix,
@@ -95,9 +97,279 @@ class ActionableErrorStateGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "pass")
         self.assertFalse(report["can_close_readme_phase1_actionable_errors_gate"])
         self.assertEqual(report["missing_android_session_failure_kinds"], [])
+        self.assertEqual(report["missing_actionable_contract_codes"], [])
+        self.assertEqual(
+            set(report["covered_actionable_contract_codes"]),
+            set(REQUIRED_ACTIONABLE_CONTRACT_CODES),
+        )
         self.assertGreaterEqual(report["android_state_count"], 8)
         self.assertGreaterEqual(report["macos_host_state_count"], 8)
         self.assertEqual(report["matrix_kind"], KIND)
+
+    def test_real_matrix_required_contracts_are_stable_and_offline_only(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        contracts = {
+            state["contract"]["code"]: state
+            for state in states
+            if isinstance(state, dict) and isinstance(state.get("contract"), dict)
+        }
+
+        self.assertEqual(set(contracts), set(REQUIRED_ACTIONABLE_CONTRACT_CODES))
+        for code in REQUIRED_ACTIONABLE_CONTRACT_CODES:
+            state = contracts[code]
+            contract = state["contract"]
+            assert isinstance(contract, dict)
+            self.assertEqual(state["gate_status"], "covered-offline", code)
+            self.assertFalse(state["readme_gate_closure"], code)
+            self.assertGreater(len(state.get("offline_evidence", [])), 0, code)
+            for field in ("title", "body", "action"):
+                self.assertIsInstance(contract[field], str, code)
+                self.assertGreater(len(contract[field].strip()), 12, f"{code}.{field}")
+
+    def test_rejects_missing_required_actionable_contract(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        for state in states:
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state.pop("contract")
+                break
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            "required_actionable_contracts: missing usb_disconnected",
+            report["errors"],
+        )
+
+    def test_rejects_required_contract_with_open_gate_status(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "tcp_54321_unavailable":
+                state["gate_status"] = "open"
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn(
+            "tcp_54321_unavailable",
+            report["covered_actionable_contract_codes"],
+        )
+        self.assertIn(
+            f"states[{changed_index}].gate_status: required contract tcp_54321_unavailable must be covered-offline",
+            report["errors"],
+        )
+
+    def test_rejects_required_contract_code_with_surrounding_whitespace(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["contract"]["code"] = " usb_disconnected "
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn("required_actionable_contracts: missing usb_disconnected", report["errors"])
+        self.assertIn(
+            f"states[{changed_index}].contract.code: must not contain surrounding whitespace",
+            report["errors"],
+        )
+
+    def test_rejects_required_contract_copy_drift(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["contract"]["title"] = "USB route unavailable"
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn(
+            f"states[{changed_index}].contract.title: required contract usb_disconnected "
+            "must match the stable value",
+            report["errors"],
+        )
+
+    def test_rejects_duplicate_required_contract_without_counting_duplicate_coverage(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        original_index = None
+        duplicate_index = None
+        original_evidence = None
+        original_contract = None
+        original_state_id = None
+        for index, state in enumerate(states):
+            if not isinstance(state, dict):
+                continue
+            contract = state.get("contract")
+            if isinstance(contract, dict) and contract.get("code") == "usb_disconnected":
+                original_index = index
+                original_evidence = state["offline_evidence"]
+                original_contract = dict(contract)
+                original_state_id = state["id"]
+            elif original_index is not None and duplicate_index is None and contract is None:
+                duplicate_index = index
+        self.assertIsNotNone(original_index)
+        self.assertIsNotNone(duplicate_index)
+        assert original_index is not None
+        assert duplicate_index is not None
+        assert original_contract is not None
+        assert original_evidence is not None
+        assert original_state_id is not None
+
+        states[original_index]["offline_evidence"] = ["https://example.com/remote-only-evidence"]
+        states[duplicate_index]["contract"] = original_contract
+        states[duplicate_index]["offline_evidence"] = original_evidence
+        states[duplicate_index]["gate_status"] = "covered-offline"
+        states[duplicate_index]["readme_gate_closure"] = False
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn(
+            f"states[{duplicate_index}].contract.code: duplicate contract code usb_disconnected "
+            f"already used by {original_state_id}",
+            report["errors"],
+        )
+
+    def test_rejects_contract_that_is_not_an_object(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        states[0]["contract"] = "usb_disconnected"
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn("states[0].contract: must be an object when present", report["errors"])
+
+    def test_rejects_contract_missing_required_field(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["contract"].pop("title")
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn(
+            f"states[{changed_index}].contract.title: must be a non-empty string",
+            report["errors"],
+        )
+
+    def test_rejects_required_contract_without_local_offline_evidence(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["offline_evidence"] = ["https://example.com/remote-only-evidence"]
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn(
+            "states["
+            + str(changed_index)
+            + "].offline_evidence: required contract usb_disconnected must cite local offline evidence",
+            report["errors"],
+        )
+
+    def test_rejects_required_contract_directory_evidence(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["offline_evidence"] = ["tools"]
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn(
+            f"states[{changed_index}].offline_evidence: required contract usb_disconnected "
+            "must cite local offline evidence",
+            report["errors"],
+        )
+
+    def test_direct_evaluate_requires_repository_root_for_required_contract_evidence(self) -> None:
+        matrix = self.load_real_matrix()
+
+        report = evaluate(matrix)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertEqual(report["covered_actionable_contract_codes"], [])
+        for code in REQUIRED_ACTIONABLE_CONTRACT_CODES:
+            self.assertTrue(
+                any(
+                    error.endswith(
+                        f"required contract {code} must cite local offline evidence"
+                    )
+                    for error in report["errors"]
+                ),
+                code,
+            )
+
+    def test_rejects_unsupported_contract_code(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        states[0]["contract"] = {
+            "code": "future_unreviewed_contract",
+            "title": "Future unreviewed contract",
+            "body": "This contract should not silently expand the README-facing set.",
+            "action": "Add the contract to the required set before publishing it.",
+        }
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            "states[0].contract.code: unsupported contract code future_unreviewed_contract",
+            report["errors"],
+        )
 
     def test_real_gate_report_matches_published_schema(self) -> None:
         report = evaluate(
@@ -165,15 +437,52 @@ class ActionableErrorStateGateTests(unittest.TestCase):
         matrix = self.load_real_matrix()
         states = matrix["states"]
         assert isinstance(states, list)
-        states[0]["offline_evidence"] = ["docs/runbook/missing-actionable-error-section.md#anchor"]
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["offline_evidence"] = ["docs/runbook/missing-actionable-error-section.md#anchor"]
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
 
         report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
 
         self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
         self.assertIn(
-            "states[0].offline_evidence: missing repository path "
+            f"states[{changed_index}].offline_evidence: missing repository path "
             "docs/runbook/missing-actionable-error-section.md",
             report["errors"],
+        )
+
+    def test_rejects_missing_markdown_evidence_anchor(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "usb_disconnected":
+                state["offline_evidence"] = [
+                    "docs/runbook/android-client.md#missing-actionable-error-anchor"
+                ]
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn("usb_disconnected", report["covered_actionable_contract_codes"])
+        self.assertIn(
+            f"states[{changed_index}].offline_evidence: missing markdown anchor "
+            "docs/runbook/android-client.md#missing-actionable-error-anchor",
+            report["errors"],
+        )
+
+    def test_markdown_anchor_generation_preserves_underscores(self) -> None:
+        self.assertEqual(
+            _markdown_anchor_base("## readme_gate_closure"),
+            "readme_gate_closure",
         )
 
     def test_rejects_session_failure_enum_drift(self) -> None:

@@ -13,6 +13,10 @@ permission/runbook copy, troubleshooting notes, and feature-specific evidence.
 This folder owns the cross-surface matrix that ties each state to its failed
 layer, user-visible surface, recovery action, retry behavior, and current
 evidence boundary.
+The seven README-facing contract rows are the offline error-model source for
+their code/title/body/action semantics; Android connection UI wiring can consume
+that model after the active connection-UI work lands, without using this gate as
+device or permission recovery evidence.
 
 The source of truth is actionable-error-states.json. Keep it updated whenever
 Android SessionFailureKind cases, Host permission/startup/capture states, or
@@ -51,6 +55,10 @@ The gate validates all of the following:
 - at least eight Android and eight macOS Host states are owned;
 - every state has a failed layer, UI surface, user action, retry behavior,
   offline evidence, device evidence status, and gate status;
+- the seven README-facing contracts have stable code, title, body, and action
+  fields and are marked gate_status=covered-offline: Screen Recording denied,
+  Accessibility denied/limited, ADB reverse missing, USB disconnected, LAN route
+  unavailable, TCP 54321 unavailable, and stale epoch/session errors;
 - every Android SessionFailureKind currently declared in source is covered by
   at least one matrix row;
 - every local offline-evidence path referenced by the matrix exists in the

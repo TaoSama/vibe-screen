@@ -30,7 +30,11 @@ The gate consumes
 `docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json`,
 checks that open PRs #242, #243, and #272 were reviewed as adjacent work, and
 parses Android `SessionFailureKind` from source so new terminal failure kinds
-cannot be added without a documented recovery owner. The generated report is
+cannot be added without a documented recovery owner. It also pins the seven
+README-facing actionable-error contracts for Screen Recording denial,
+Accessibility denial, ADB reverse missing, USB disconnected, LAN route
+unavailable, TCP 54321 unavailable, and stale epoch/session errors to stable
+code/title/body/action entries marked covered-offline. The generated report is
 `.build/evidence/actionable-error-states-gate.json`, and it always records
 `can_close_readme_phase1_actionable_errors_gate=false` until retained device
 evidence covers every supported state.
