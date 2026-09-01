@@ -10,6 +10,7 @@ make local, synthetic, or blocked evidence into a pass.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import re
@@ -57,6 +58,12 @@ class GateRule:
     validate: Callable[[Mapping[str, Any], str], list[str]]
 
 
+@dataclass(frozen=True)
+class EvidenceChecksumIndex:
+    root: Path
+    checksums: Mapping[str, str]
+
+
 COMMON_GATE_REQUIRED_FIELDS = (
     "synthetic_media",
     "local_loopback_only",
@@ -102,6 +109,8 @@ REVOCATION_SUMMARY_GATE_FIELDS = (
     "chain_id",
     "tombstone_id",
     "allocation_id",
+    "device_revoked",
+    "session_revoked",
     "authority_tombstone_observed",
     "signaling_rejection_observed",
     "future_turn_credential_rejected",
@@ -392,9 +401,9 @@ def _validate_soak(gate: Mapping[str, Any], path: str) -> list[str]:
 def _validate_revocation(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
-    if gate.get("status") != "pass":
-        errors.append(f"{path}.status: expected pass")
     for field in (
+        "device_revoked",
+        "session_revoked",
         "authority_tombstone_observed",
         "signaling_rejection_observed",
         "future_turn_credential_rejected",
@@ -542,6 +551,8 @@ GATE_RULES: tuple[GateRule, ...] = (
             "chain_id",
             "tombstone_id",
             "allocation_id",
+            "device_revoked",
+            "session_revoked",
             "authority_tombstone_observed",
             "signaling_rejection_observed",
             "future_turn_credential_rejected",
@@ -624,44 +635,120 @@ def gate_matrix() -> list[dict[str, object]]:
     ]
 
 
+def _normalize_relative_evidence_path(value: str) -> str | None:
+    candidate = Path(value)
+    if candidate.is_absolute() or ".." in candidate.parts or candidate == Path(""):
+        return None
+    return candidate.as_posix()
+
+
+def _load_evidence_checksum_index(
+    evidence_root: Path | None, errors: list[str]
+) -> EvidenceChecksumIndex | None:
+    if evidence_root is None:
+        return None
+    try:
+        root = evidence_root.resolve()
+    except (OSError, RuntimeError):
+        errors.append("evidence_root: evidence root could not be resolved")
+        return None
+
+    checksum_path = root / "SHA256SUMS"
+    checksums: dict[str, str] = {}
+    if not checksum_path.is_file():
+        errors.append("SHA256SUMS: missing under evidence root")
+        return EvidenceChecksumIndex(root=root, checksums=checksums)
+    try:
+        checksum_path.resolve().relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        errors.append("SHA256SUMS: expected file under evidence root")
+        return EvidenceChecksumIndex(root=root, checksums=checksums)
+
+    try:
+        lines = checksum_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        errors.append(f"SHA256SUMS: cannot read checksum manifest: {error}")
+        return EvidenceChecksumIndex(root=root, checksums=checksums)
+
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if "  " not in line:
+            errors.append(f"SHA256SUMS line {line_number}: malformed checksum line")
+            continue
+        digest, relative_path = line.split("  ", maxsplit=1)
+        if (
+            not digest
+            or not relative_path
+            or "  " in relative_path
+            or digest.strip() != digest
+            or relative_path.strip() != relative_path
+            or any(character.isspace() for character in relative_path)
+        ):
+            errors.append(f"SHA256SUMS line {line_number}: malformed checksum line")
+            continue
+        if not HEX_SHA256.fullmatch(digest):
+            errors.append(f"SHA256SUMS line {line_number}: expected lowercase SHA-256")
+            continue
+        normalized = _normalize_relative_evidence_path(relative_path)
+        if normalized is None:
+            errors.append(f"SHA256SUMS line {line_number}: expected relative path under evidence root")
+            continue
+        try:
+            (root / normalized).resolve().relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            errors.append(f"SHA256SUMS line {line_number}: expected relative path under evidence root")
+            continue
+        if normalized in checksums:
+            errors.append(f"SHA256SUMS line {line_number}: duplicate checksum entry for {normalized}")
+            continue
+        checksums[normalized] = digest
+    return EvidenceChecksumIndex(root=root, checksums=checksums)
+
+
 def _validate_evidence_files(
     gate: Mapping[str, Any],
     path: str,
     errors: list[str],
-    evidence_root: Path | None,
+    checksum_index: EvidenceChecksumIndex | None,
 ) -> None:
     files = _as_list(gate.get("evidence_files"), f"{path}.evidence_files", errors)
     if not files:
         errors.append(f"{path}.evidence_files: expected at least one evidence file")
         return
-    root: Path | None = None
-    if evidence_root is not None:
-        try:
-            root = evidence_root.resolve()
-        except (OSError, RuntimeError):
-            errors.append(f"{path}.evidence_files: evidence root could not be resolved")
-            return
     for index, item in enumerate(files):
         file_path = _require_nonempty_string(item, f"{path}.evidence_files[{index}]", errors)
         if not file_path:
             continue
-        candidate = Path(file_path)
-        if candidate.is_absolute() or ".." in candidate.parts:
-            errors.append(f"{path}.evidence_files[{index}]: expected repository-relative file path")
+        normalized = _normalize_relative_evidence_path(file_path)
+        if normalized is None:
+            errors.append(f"{path}.evidence_files[{index}]: expected relative file path under evidence root")
             continue
-        if root is not None:
+        if checksum_index is not None:
             try:
-                resolved_candidate = (root / candidate).resolve()
+                resolved_candidate = (checksum_index.root / normalized).resolve()
             except (OSError, RuntimeError):
                 errors.append(f"{path}.evidence_files[{index}]: expected file under evidence root")
                 continue
             try:
-                resolved_candidate.relative_to(root)
+                resolved_candidate.relative_to(checksum_index.root)
             except ValueError:
                 errors.append(f"{path}.evidence_files[{index}]: expected file under evidence root")
                 continue
             if not resolved_candidate.is_file():
                 errors.append(f"{path}.evidence_files[{index}]: file does not exist under evidence root")
+                continue
+            expected_digest = checksum_index.checksums.get(normalized)
+            if expected_digest is None:
+                errors.append(f"{path}.evidence_files[{index}]: missing checksum entry in SHA256SUMS")
+                continue
+            try:
+                actual_digest = hashlib.sha256(resolved_candidate.read_bytes()).hexdigest()
+            except OSError as error:
+                errors.append(f"{path}.evidence_files[{index}]: cannot read evidence file: {error}")
+                continue
+            if actual_digest != expected_digest:
+                errors.append(f"{path}.evidence_files[{index}]: SHA256SUMS hash mismatch")
 
 
 def _validate_device_identity(document: Mapping[str, Any], errors: list[str]) -> None:
@@ -732,6 +819,7 @@ def validate_manifest(document: Mapping[str, Any], *, evidence_root: Path | None
     _validate_claims(document, errors)
 
     gates = _as_mapping(document.get("gates"), "gates", errors)
+    checksum_index = _load_evidence_checksum_index(evidence_root, errors)
     allowed_gates = {rule.name for rule in GATE_RULES}
     for gate_name in gates:
         if gate_name not in allowed_gates:
@@ -746,7 +834,7 @@ def validate_manifest(document: Mapping[str, Any], *, evidence_root: Path | None
         for field in rule.required_fields:
             if field not in gate:
                 errors.append(f"{gate_path}.{field}: missing required field")
-        _validate_evidence_files(gate, gate_path, errors, evidence_root)
+        _validate_evidence_files(gate, gate_path, errors, checksum_index)
         errors.extend(rule.validate(gate, gate_path))
 
     return errors

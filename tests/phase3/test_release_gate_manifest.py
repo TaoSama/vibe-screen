@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import tempfile
@@ -34,6 +35,25 @@ EXPECTED_GATE_NAMES = {
     "webrtc_datachannel_record_layer",
     "two_hour_mixed_route_soak",
 }
+
+
+def write_evidence_file(root: Path, relative_path: str, content: str = "{}\n") -> None:
+    path = root / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def write_sha256sums(root: Path, relative_paths: list[str]) -> None:
+    lines = []
+    for relative_path in relative_paths:
+        digest = hashlib.sha256((root / relative_path).read_bytes()).hexdigest()
+        lines.append(f"{digest}  {relative_path}\n")
+    (root / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
+
+
+def write_default_evidence_root(root: Path) -> None:
+    write_evidence_file(root, "logs/direct-session.jsonl")
+    write_sha256sums(root, ["logs/direct-session.jsonl"])
 
 
 def passing_manifest() -> dict[str, object]:
@@ -133,6 +153,8 @@ def passing_manifest() -> dict[str, object]:
                 "chain_id": "chain-1",
                 "tombstone_id": "tombstone-1",
                 "allocation_id": "allocation-1",
+                "device_revoked": True,
+                "session_revoked": True,
                 "authority_tombstone_observed": True,
                 "signaling_rejection_observed": True,
                 "future_turn_credential_rejected": True,
@@ -215,6 +237,8 @@ class ReleaseGateManifestTests(unittest.TestCase):
             "chain_id": "chain-1",
             "tombstone_id": "tombstone-1",
             "allocation_id": "allocation-1",
+            "device_revoked": True,
+            "session_revoked": True,
             "authority_tombstone_observed": True,
             "signaling_rejection_observed": True,
             "future_turn_credential_rejected": True,
@@ -242,13 +266,14 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertIn("aead", by_gate["webrtc_datachannel_record_layer"])
         self.assertIn("product_flows", by_gate["webrtc_datachannel_record_layer"])
         self.assertIn("stale_credential_reuse_rejected", by_gate["cross_service_revocation"])
+        self.assertIn("device_revoked", by_gate["cross_service_revocation"])
+        self.assertIn("session_revoked", by_gate["cross_service_revocation"])
         self.assertIn("revocation_chain_consistent", by_gate["cross_service_revocation"])
 
     def test_complete_manifest_passes_with_existing_evidence_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "logs").mkdir()
-            (root / "logs/direct-session.jsonl").write_text("{}\n", encoding="utf-8")
+            write_default_evidence_root(root)
 
             self.assertEqual(validate_manifest(passing_manifest(), evidence_root=root), [])
 
@@ -536,6 +561,8 @@ class ReleaseGateManifestTests(unittest.TestCase):
         manifest = passing_manifest()
         gate = manifest["gates"]["cross_service_revocation"]  # type: ignore[index]
         gate["evidence_kind"] = "offline_fixture"
+        gate["device_revoked"] = False
+        gate["session_revoked"] = False
         gate["stale_credential_reuse_rejected"] = False
         gate["post_revocation_packet_count_zero"] = False
         gate["revocation_chain_consistent"] = False
@@ -543,6 +570,14 @@ class ReleaseGateManifestTests(unittest.TestCase):
         errors = validate_manifest(manifest)
 
         self.assertIn("gates.cross_service_revocation.evidence_kind: expected live_production", errors)
+        self.assertIn(
+            "gates.cross_service_revocation.device_revoked: expected true",
+            errors,
+        )
+        self.assertIn(
+            "gates.cross_service_revocation.session_revoked: expected true",
+            errors,
+        )
         self.assertIn(
             "gates.cross_service_revocation.stale_credential_reuse_rejected: expected true",
             errors,
@@ -587,14 +622,16 @@ class ReleaseGateManifestTests(unittest.TestCase):
 
         self.assertIn("gates.cross_service_revocation.status: expected pass", errors)
 
-    def test_cross_service_revocation_validator_requires_pass_status(self) -> None:
+    def test_cross_service_revocation_validator_requires_device_and_session_revoked(self) -> None:
         gate = passing_manifest()["gates"]["cross_service_revocation"]  # type: ignore[index]
-        gate.update(revocation_summary_to_manifest_gate(self.revocation_summary("fail")))
+        gate["device_revoked"] = False
+        gate["session_revoked"] = False
         rule = next(rule for rule in GATE_RULES if rule.name == "cross_service_revocation")
 
         errors = rule.validate(gate, "gates.cross_service_revocation")
 
-        self.assertIn("gates.cross_service_revocation.status: expected pass", errors)
+        self.assertIn("gates.cross_service_revocation.device_revoked: expected true", errors)
+        self.assertIn("gates.cross_service_revocation.session_revoked: expected true", errors)
 
     def test_unknown_gate_fails_closed(self) -> None:
         manifest = passing_manifest()
@@ -689,6 +726,7 @@ class ReleaseGateManifestTests(unittest.TestCase):
     def test_evidence_files_must_be_relative_and_present_when_root_is_supplied(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            (root / "SHA256SUMS").write_text("", encoding="utf-8")
             manifest = passing_manifest()
             gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
             gate["evidence_files"] = ["../private.log", "missing.jsonl"]
@@ -696,13 +734,132 @@ class ReleaseGateManifestTests(unittest.TestCase):
             errors = validate_manifest(manifest, evidence_root=root)
 
         self.assertIn(
-            "gates.public_internet_direct_path.evidence_files[0]: expected repository-relative file path",
+            "gates.public_internet_direct_path.evidence_files[0]: expected relative file path under evidence root",
             errors,
         )
         self.assertIn(
             "gates.public_internet_direct_path.evidence_files[1]: file does not exist under evidence root",
             errors,
         )
+
+    def test_evidence_files_require_sha256sums_when_root_is_supplied(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_evidence_file(root, "logs/direct-session.jsonl")
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn("SHA256SUMS: missing under evidence root", errors)
+
+    def test_evidence_files_require_checksum_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_evidence_file(root, "logs/direct-session.jsonl")
+            (root / "SHA256SUMS").write_text("", encoding="utf-8")
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn(
+            "gates.public_internet_direct_path.evidence_files[0]: missing checksum entry in SHA256SUMS",
+            errors,
+        )
+
+    def test_evidence_files_reject_duplicate_checksum_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_evidence_file(root, "logs/direct-session.jsonl")
+            digest = hashlib.sha256((root / "logs/direct-session.jsonl").read_bytes()).hexdigest()
+            (root / "SHA256SUMS").write_text(
+                f"{digest}  logs/direct-session.jsonl\n{digest}  logs/direct-session.jsonl\n",
+                encoding="utf-8",
+            )
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn(
+            "SHA256SUMS line 2: duplicate checksum entry for logs/direct-session.jsonl",
+            errors,
+        )
+
+    def test_evidence_files_reject_malformed_checksum_lines_and_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_evidence_file(root, "logs/direct-session.jsonl")
+            (root / "SHA256SUMS").write_text(
+                "not-a-valid-line\n"
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  logs/direct-session.jsonl\n",
+                encoding="utf-8",
+            )
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn("SHA256SUMS line 1: malformed checksum line", errors)
+        self.assertIn("SHA256SUMS line 2: expected lowercase SHA-256", errors)
+
+    def test_evidence_files_reject_single_space_checksum_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_evidence_file(root, "logs/direct-session.jsonl")
+            digest = hashlib.sha256((root / "logs/direct-session.jsonl").read_bytes()).hexdigest()
+            (root / "SHA256SUMS").write_text(
+                f"{digest} logs/direct-session.jsonl\n",
+                encoding="utf-8",
+            )
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn("SHA256SUMS line 1: malformed checksum line", errors)
+
+    def test_evidence_files_reject_checksum_path_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "evidence"
+            root.mkdir()
+            write_evidence_file(root, "logs/direct-session.jsonl")
+            digest = hashlib.sha256((root / "logs/direct-session.jsonl").read_bytes()).hexdigest()
+            (root / "SHA256SUMS").write_text(
+                f"{digest}  ../outside.log\n{digest}  /tmp/outside.log\n",
+                encoding="utf-8",
+            )
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn("SHA256SUMS line 1: expected relative path under evidence root", errors)
+        self.assertIn("SHA256SUMS line 2: expected relative path under evidence root", errors)
+
+    def test_evidence_files_reject_hash_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_evidence_file(root, "logs/direct-session.jsonl")
+            (root / "SHA256SUMS").write_text(
+                f"{'0' * 64}  logs/direct-session.jsonl\n",
+                encoding="utf-8",
+            )
+
+            errors = validate_manifest(passing_manifest(), evidence_root=root)
+
+        self.assertIn(
+            "gates.public_internet_direct_path.evidence_files[0]: SHA256SUMS hash mismatch",
+            errors,
+        )
+
+    def test_current_revocation_evidence_fixture_files_match_sha256sums(self) -> None:
+        evidence_root = (
+            PHASE3_EVIDENCE_ROOT / "2026-08-25-revocation-propagation-current-base"
+        )
+        manifest = passing_manifest()
+        fixture_files = [
+            "README.md",
+            "commands.txt",
+            "privacy-scan.json",
+            "revocation-propagation-current-base-blocked.json",
+            "revocation-propagation-current-base-summary.json",
+        ]
+        for gate in manifest["gates"].values():  # type: ignore[union-attr]
+            gate["evidence_files"] = fixture_files
+
+        errors = validate_manifest(manifest, evidence_root=evidence_root)
+
+        self.assertEqual(errors, [])
 
     def test_evidence_files_must_not_escape_evidence_root_through_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -712,6 +869,10 @@ class ReleaseGateManifestTests(unittest.TestCase):
             outside.mkdir()
             (outside / "private.log").write_text("private evidence\n", encoding="utf-8")
             (root / "leaked.log").symlink_to(outside / "private.log")
+            (root / "SHA256SUMS").write_text(
+                f"{'0' * 64}  leaked.log\n",
+                encoding="utf-8",
+            )
 
             manifest = passing_manifest()
             gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
@@ -729,6 +890,10 @@ class ReleaseGateManifestTests(unittest.TestCase):
             root = Path(directory)
             (root / "loop-a.log").symlink_to("loop-b.log")
             (root / "loop-b.log").symlink_to("loop-a.log")
+            (root / "SHA256SUMS").write_text(
+                f"{'0' * 64}  loop-a.log\n",
+                encoding="utf-8",
+            )
 
             manifest = passing_manifest()
             gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
@@ -749,8 +914,7 @@ class ReleaseGateManifestTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "logs").mkdir()
-            (root / "logs/direct-session.jsonl").write_text("{}\n", encoding="utf-8")
+            write_default_evidence_root(root)
             manifest_path = root / "manifest.json"
             manifest_path.write_text(json.dumps(passing_manifest()), encoding="utf-8")
             stdout = io.StringIO()

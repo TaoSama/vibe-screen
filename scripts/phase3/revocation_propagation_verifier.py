@@ -503,8 +503,12 @@ def verify_report(report: dict[str, Any]) -> VerificationResult:
 
     _validate_source_evidence_boundary(source, missing, failures)
 
-    _required_bool(authority, "device_revoked", "authority device revoke", missing, failures)
-    _required_bool(authority, "session_revoked", "authority session revoke", missing, failures)
+    device_revoked = _required_bool(
+        authority, "device_revoked", "authority device revoke", missing, failures
+    )
+    session_revoked = _required_bool(
+        authority, "session_revoked", "authority session revoke", missing, failures
+    )
     tombstone_persisted = _required_bool(
         authority,
         "tombstone_persisted",
@@ -649,6 +653,8 @@ def verify_report(report: dict[str, Any]) -> VerificationResult:
         "chain_id": chain_id,
         "tombstone_id": tombstone_id,
         "allocation_id": allocation_id,
+        "device_revoked": device_revoked is True,
+        "session_revoked": session_revoked is True,
         "authority_tombstone_observed": tombstone_persisted is True
         and audit_event_observed is True,
         "signaling_rejection_observed": active_session_rejected is True

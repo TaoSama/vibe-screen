@@ -40,7 +40,7 @@
       "sha256": "80f16059ba81593c0c7dfdd996a09926a2cd6a4c976973becbf443f81ea91572"
     },
     {
-      "bytes": 2265,
+      "bytes": 2318,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -50,7 +50,7 @@
       ],
       "path": "revocation-propagation-current-base-summary.json",
       "result": "pass",
-      "sha256": "18728cfd8f0ad9cc283f30d73808950ad796133e63b249afd88769ebb076a0e8"
+      "sha256": "0ef1ae46a65221e7ec62eaef011eb91c1ae7f2c56e5dd69a069e51e441744ff0"
     }
   ],
   "categories": [

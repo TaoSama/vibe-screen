@@ -148,6 +148,28 @@ class RevocationPropagationVerifierTests(unittest.TestCase):
         self.assertEqual(result.missing, ())
         self.assertEqual(result.failures, ())
 
+    def test_summary_exposes_device_and_session_revocation(self) -> None:
+        summary = verify_report(self.complete_report()).as_dict()
+
+        self.assertIs(summary["device_revoked"], True)
+        self.assertIs(summary["session_revoked"], True)
+
+    def test_missing_device_or_session_revocation_is_not_claimed_in_summary(self) -> None:
+        report = self.complete_report()
+        report["authority_revocation"] = dict(
+            report["authority_revocation"],
+            device_revoked=False,
+        )
+        del report["authority_revocation"]["session_revoked"]
+
+        summary = verify_report(report).as_dict()
+
+        self.assertEqual(summary["status"], FAIL)
+        self.assertIs(summary["device_revoked"], False)
+        self.assertIs(summary["session_revoked"], False)
+        self.assertIn("authority device revoke", summary["failures"])
+        self.assertIn("authority session revoke", summary["missing"])
+
     def test_pass_summary_feeds_soak_revocation_check(self) -> None:
         summary = verify_report(self.complete_report()).as_dict()
         reasons: list[str] = []

@@ -55,6 +55,12 @@ as blocked readiness evidence. Reports must not contain TURN passwords, bearer
 tokens, private keys, or other raw secret material. A blocked summary is evidence
 of the remaining deployment gap, not a release pass.
 
+`release_gate_manifest.py --evidence-root <dir>` validates every referenced
+`evidence_files` entry against `<dir>/SHA256SUMS`. Each entry must stay relative
+to that evidence root, have exactly one lowercase SHA-256 line, and match the
+current file bytes. Missing manifests, duplicate entries, malformed hashes, path
+escapes, and hash mismatches fail closed.
+
 The `phase3-coturn-reconciliation-product-slice` target compiles and tests the
 local operator slice for the coturn exporter/reconciliation/disconnect boundary.
 It covers `coturn_allocation_exporter.py` adapting a reviewed structured

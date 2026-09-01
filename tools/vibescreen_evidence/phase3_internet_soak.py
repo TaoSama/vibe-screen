@@ -507,6 +507,8 @@ def _evaluate_revocation(report: dict[str, Any] | None, reasons: list[str]) -> d
     remote_turn = report.get("remote_turn_deployment") is True
     non_synthetic = report.get("synthetic_fixture") is False
     chain_consistent = report.get("revocation_chain_consistent") is True
+    device_revoked = report.get("device_revoked") is True
+    session_revoked = report.get("session_revoked") is True
     disconnect = report.get("active_allocation_disconnected") is True or _get(report, "coturn_allocation", "disconnect_observed") is True
     stale = report.get("stale_credential_reuse_rejected") is True or _get(report, "relay_credential", "stale_credential_reuse_rejected") is True
     packet_denial = report.get("post_revocation_traffic_denied") is True or _get(report, "data_plane", "post_revocation_traffic_denied") is True
@@ -519,6 +521,8 @@ def _evaluate_revocation(report: dict[str, Any] | None, reasons: list[str]) -> d
         and remote_turn
         and non_synthetic
         and chain_consistent
+        and device_revoked
+        and session_revoked
         and disconnect
         and stale
         and packet_denial
@@ -534,6 +538,8 @@ def _evaluate_revocation(report: dict[str, Any] | None, reasons: list[str]) -> d
         "remote_turn_deployment": remote_turn,
         "synthetic_fixture": report.get("synthetic_fixture"),
         "revocation_chain_consistent": chain_consistent,
+        "device_revoked": device_revoked,
+        "session_revoked": session_revoked,
         "active_allocation_disconnected": disconnect,
         "stale_credential_reuse_rejected": stale,
         "post_revocation_traffic_denied": packet_denial,
