@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     app:cardCornerRadius="28dp"
-    app:cardBackgroundColor="#E6000000"
+    app:cardBackgroundColor="@color/surface_raised"
     app:cardElevation="24dp">
 
     <ScrollView
@@ -31,7 +31,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/display_settings"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/on_surface"
             android:textSize="28sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -69,14 +69,14 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/show_stats"
-                            android:textColor="#FFFFFF"
+                            android:textColor="@color/on_surface"
                             android:textSize="17sp"
                             android:textStyle="bold" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/stats_description"
-                            android:textColor="#999999"
+                            android:textColor="@color/on_surface_muted"
                             android:textSize="13sp" />
                     </LinearLayout>
 
@@ -84,6 +84,7 @@
                         android:id="@+id/showStatsSwitch"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:minHeight="48dp"
                         android:checked="false"
                         android:contentDescription="@string/show_stats"
                         app:thumbTint="@color/switch_thumb_color"
@@ -141,7 +142,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/viewport"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="17sp"
                         android:textStyle="bold" />
 
@@ -151,7 +152,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:layout_marginBottom="12dp"
-                        android:textColor="#A8B0B6"
+                        android:textColor="@color/on_surface_muted"
                         android:textSize="13sp" />
 
                     <com.google.android.material.button.MaterialButtonToggleGroup
@@ -246,7 +247,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         android:text="@string/input_capability_touch_only"
-                        android:textColor="#FFCC80"
+                        android:textColor="@color/warning"
                         android:textSize="13sp" />
                 </LinearLayout>
             </LinearLayout>
@@ -589,7 +590,7 @@
                 android:layout_height="wrap_content"
                 android:labelFor="@id/opacitySlider"
                 android:text="@string/overlay_opacity"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/on_surface"
                 android:textSize="17sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="4dp" />
@@ -599,7 +600,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/opacity_default"
-                android:textColor="#4CAF50"
+                android:textColor="@color/accent"
                 android:textSize="15sp"
                 android:layout_marginBottom="12dp" />
 
@@ -611,9 +612,9 @@
                 android:valueTo="1.0"
                 android:value="0.8"
                 android:stepSize="0.05"
-                app:thumbColor="#FFFFFF"
-                app:trackColorActive="#4CAF50"
-                app:trackColorInactive="#33FFFFFF"
+                app:thumbColor="@color/on_surface"
+                app:trackColorActive="@color/accent"
+                app:trackColorInactive="@color/hairline"
                 app:trackHeight="4dp" />
                 </LinearLayout>
 
@@ -630,7 +631,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_button_position"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/on_surface"
                 android:textSize="17sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
@@ -656,11 +657,11 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_top_left"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginEnd="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -671,12 +672,12 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_top"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginStart="3dp"
                         android:layout_marginEnd="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -687,11 +688,11 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_top_right"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginStart="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
                 </LinearLayout>
 
@@ -710,11 +711,11 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_left"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginEnd="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
 
                     <!-- Empty center space -->
@@ -733,11 +734,11 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_right"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginStart="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
                 </LinearLayout>
 
@@ -755,11 +756,11 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_bottom_left"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginEnd="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -770,12 +771,12 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_bottom"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginStart="3dp"
                         android:layout_marginEnd="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -786,11 +787,11 @@
                         android:minHeight="48dp"
                         android:layout_weight="1"
                         android:text="@string/position_bottom_right"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/on_surface"
                         android:textSize="15sp"
                         android:layout_marginStart="3dp"
                         app:cornerRadius="10dp"
-                        app:strokeColor="#4CAF50"
+                        app:strokeColor="@color/accent"
                         app:strokeWidth="1dp" />
                 </LinearLayout>
 
@@ -820,13 +821,13 @@
                 android:ellipsize="none"
                 android:maxLines="2"
                 android:text="@string/reset_overlay"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/on_surface"
                 android:textSize="12sp"
                 android:layout_marginEnd="4dp"
                 app:cornerRadius="14dp"
-                app:strokeColor="#33FFFFFF"
+                app:strokeColor="@color/hairline"
                 app:strokeWidth="1dp"
-                app:backgroundTint="#1AFFFFFF" />
+                app:backgroundTint="@color/surface_wash" />
 
             <!-- Reset Settings Button Position -->
             <com.google.android.material.button.MaterialButton
@@ -839,13 +840,13 @@
                 android:ellipsize="none"
                 android:maxLines="2"
                 android:text="@string/reset_button"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/on_surface"
                 android:textSize="12sp"
                 android:layout_marginStart="4dp"
                 app:cornerRadius="14dp"
-                app:strokeColor="#33FFFFFF"
+                app:strokeColor="@color/hairline"
                 app:strokeWidth="1dp"
-                app:backgroundTint="#1AFFFFFF" />
+                app:backgroundTint="@color/surface_wash" />
         </LinearLayout>
 
         <!-- Disconnect Button -->
@@ -856,13 +857,13 @@
             android:layout_height="wrap_content"
             android:minHeight="48dp"
             android:text="@string/disconnect"
-            android:textColor="#F44336"
+            android:textColor="@color/danger_text"
             android:textSize="13sp"
             android:layout_marginTop="8dp"
             app:cornerRadius="14dp"
-            app:strokeColor="#F44336"
+            app:strokeColor="@color/danger_stroke"
             app:strokeWidth="1dp"
-            app:backgroundTint="#1AF44336" />
+            app:backgroundTint="@color/danger_wash" />
 
         <!-- Close Button -->
         <com.google.android.material.button.MaterialButton
@@ -875,7 +876,8 @@
             android:textStyle="bold"
             android:layout_marginTop="16dp"
             app:cornerRadius="16dp"
-            app:backgroundTint="#4CAF50" />
+            android:textColor="@color/on_accent_button"
+            app:backgroundTint="@color/accent_button" />
 
     </LinearLayout>
     </ScrollView>

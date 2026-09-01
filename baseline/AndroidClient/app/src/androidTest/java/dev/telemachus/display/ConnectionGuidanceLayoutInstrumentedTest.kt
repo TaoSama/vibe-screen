@@ -333,8 +333,35 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         fun assertTextRenderedWithoutEllipsis(text: TextView) {
             val textLayout = checkNotNull(text.layout)
             assertTrue(text.measuredWidth > 0 && text.measuredHeight > 0)
-            assertTrue((0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 })
-            assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
+            val viewName = text.resources.getResourceEntryName(text.id)
+            val ellipsizedLines =
+                (0 until textLayout.lineCount)
+                    .filter { line -> textLayout.getEllipsisCount(line) != 0 }
+            val lineDetails =
+                (0 until textLayout.lineCount).joinToString { line ->
+                    "line=" + line +
+                        ":start=" + textLayout.getLineStart(line) +
+                        ":end=" + textLayout.getLineEnd(line) +
+                        ":ellipsisStart=" + textLayout.getEllipsisStart(line) +
+                        ":ellipsisCount=" + textLayout.getEllipsisCount(line) +
+                        ":width=" + textLayout.getLineWidth(line)
+                }
+            assertTrue(
+                "$viewName ellipsized lines=$ellipsizedLines " +
+                    "width=" + text.measuredWidth +
+                    " height=" + text.measuredHeight +
+                    " paddingStart=" + text.compoundPaddingStart +
+                    " paddingEnd=" + text.compoundPaddingEnd +
+                    " textSize=" + text.textSize +
+                    " lineCount=" + textLayout.lineCount +
+                    " details=[$lineDetails] text='" + text.text + "'",
+                ellipsizedLines.isEmpty(),
+            )
+            assertEquals(
+                "$viewName did not render the full text '" + text.text + "'",
+                text.text.length,
+                textLayout.getLineEnd(textLayout.lineCount - 1),
+            )
         }
 
         fun assertFullyReachableByScroll(view: View) {

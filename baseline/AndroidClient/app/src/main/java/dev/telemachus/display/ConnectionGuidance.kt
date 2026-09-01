@@ -213,7 +213,7 @@ internal object ConnectionGuidanceFactory {
                     ConnectionMode.USB ->
                         adbRecovery(
                             context,
-                            text(R.string.connection_guidance_usb_timeout_prefix, context.requiredPort()),
+                            text(R.string.connection_guidance_usb_timeout_prefix),
                         )
                     ConnectionMode.WIRELESS ->
                         text(R.string.connection_guidance_lan_timeout_message, context.requiredPort())
@@ -260,11 +260,10 @@ internal object ConnectionGuidanceFactory {
         context: ConnectionGuidanceContext,
         prefix: ConnectionGuidanceText,
     ): ConnectionGuidanceText {
-        val port = context.requiredPort()
         return when (context.adbTransport) {
-            AdbTransportKind.USB -> text(R.string.connection_guidance_usb_recovery_usb, prefix, port)
-            AdbTransportKind.WIRELESS -> text(R.string.connection_guidance_usb_recovery_wireless_adb, prefix, port)
-            AdbTransportKind.UNAVAILABLE -> text(R.string.connection_guidance_usb_recovery_unavailable, prefix, port)
+            AdbTransportKind.USB -> text(R.string.connection_guidance_usb_recovery_usb, prefix)
+            AdbTransportKind.WIRELESS -> text(R.string.connection_guidance_usb_recovery_wireless_adb, prefix)
+            AdbTransportKind.UNAVAILABLE -> text(R.string.connection_guidance_usb_recovery_unavailable, prefix)
         }
     }
 

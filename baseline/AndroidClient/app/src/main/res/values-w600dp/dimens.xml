@@ -3,6 +3,7 @@
     <dimen name="settings_content_padding">32dp</dimen>
     <dimen name="settings_dialog_max_width">880dp</dimen>
     <dimen name="settings_column_gap">20dp</dimen>
+    <dimen name="connection_panel_horizontal_padding">40dp</dimen>
     <dimen name="control_bar_max_width">560dp</dimen>
     <dimen name="control_bar_content_padding">8dp</dimen>
     <dimen name="connection_status_min_width">120dp</dimen>

@@ -133,10 +133,11 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         views: Views,
     ) {
+        val horizontalPadding = resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding)
         views.content.setPaddingRelative(
-            views.content.paddingStart,
+            horizontalPadding,
             resources.getDimensionPixelSize(R.dimen.connection_panel_padding_top),
-            views.content.paddingEnd,
+            horizontalPadding,
             resources.getDimensionPixelSize(R.dimen.connection_panel_padding_bottom),
         )
 
@@ -162,6 +163,7 @@ internal object ConnectionPanelLayoutApplier {
         updateLayout(requiredView(views.actions, R.id.modeToggleGroup)) { params ->
             params.bottomMargin = resources.getDimensionPixelSize(R.dimen.connection_mode_margin_bottom)
         }
+        applyModeToggleTextLayout(views.actions)
         updateLayout(requiredView(views.actions, R.id.internetRouteLabel)) { params ->
             params.topMargin = resources.getDimensionPixelSize(R.dimen.connection_section_margin)
         }
@@ -170,6 +172,17 @@ internal object ConnectionPanelLayoutApplier {
         }
         updateLayout(requiredView(views.actions, R.id.internetConnectButton)) { params ->
             params.topMargin = resources.getDimensionPixelSize(R.dimen.connection_primary_action_margin_top)
+        }
+    }
+
+    private fun applyModeToggleTextLayout(actions: View) {
+        listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
+            val button = requiredView(actions, id) as TextView
+            button.setSingleLine(false)
+            button.setHorizontallyScrolling(false)
+            button.ellipsize = null
+            button.maxLines = 2
+            button.setPaddingRelative(button.paddingStart, button.paddingTop, button.paddingEnd, button.paddingBottom)
         }
     }
 

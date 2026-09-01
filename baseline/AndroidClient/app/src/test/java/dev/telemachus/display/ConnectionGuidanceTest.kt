@@ -32,7 +32,8 @@ class ConnectionGuidanceTest {
             assertEquals(ConnectionFailureKind.USB_ROUTE_UNAVAILABLE, guidance.kind)
             assertEquals(expectedRecoveryResource, guidance.message.resourceId)
             assertEquals(text(R.string.connection_guidance_usb_route_unavailable_prefix), guidance.message.args[0])
-            assertEquals(54321, guidance.message.args[1])
+            assertFalse(containsStringArg(guidance.message, "adb reverse"))
+            assertFalse(containsStringArg(guidance.message, "tcp:54321"))
         }
     }
 
@@ -260,7 +261,8 @@ class ConnectionGuidanceTest {
                 assertEquals("$transport ${failure.javaClass.simpleName}", expectedKind, guidance.kind)
                 assertEquals(expectedRecoveryResource, guidance.message.resourceId)
                 assertEquals(expectedPrefixResource, (guidance.message.args[0] as ConnectionGuidanceText).resourceId)
-                assertEquals(54321, guidance.message.args[1])
+                assertFalse(containsStringArg(guidance.message, "adb reverse"))
+                assertFalse(containsStringArg(guidance.message, "tcp:54321"))
             }
         }
     }

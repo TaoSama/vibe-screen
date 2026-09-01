@@ -300,8 +300,8 @@ class MainActivity : AppCompatActivity() {
                 },
             )
 
-        // Allow rotation based on device sensor when not connected
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        // Follow user-enabled orientations while disconnected.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
 
         // Enable edge-to-edge display (draw behind system bars and cutout)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -1967,10 +1967,9 @@ class MainActivity : AppCompatActivity() {
     private fun showDisconnectedStreamUi() {
         connectionStatusAnnouncements.reset()
         // configChanges covers orientation|screenSize|screenLayout, so
-        // releasing the forced streaming orientation back to the sensor does
-        // not recreate the Activity. This lets the disconnected connection
-        // panel follow the device's physical orientation.
-        resetOrientationToSensor()
+        // releasing the forced streaming orientation back to the user's
+        // enabled orientations does not recreate the Activity.
+        resetOrientationToUserPreference()
         enableFullscreenMode()
         // Keep the video viewport laid out so the SurfaceView holds a live
         // surface while waiting to connect. The opaque backdrop above it hides
@@ -3484,7 +3483,7 @@ class MainActivity : AppCompatActivity() {
                 if (selected) {
                     button.backgroundTintList =
                         android.content.res.ColorStateList
-                            .valueOf(0x334CAF50)
+                            .valueOf(ContextCompat.getColor(this, R.color.accent_wash))
                 } else {
                     button.backgroundTintList = null
                 }
@@ -6484,10 +6483,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Reset orientation to follow device sensor (when disconnected)
+     * Reset orientation to follow user-enabled device orientations when disconnected.
      */
-    private fun resetOrientationToSensor() {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+    private fun resetOrientationToUserPreference() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
     }
 
     @SuppressLint("SetTextI18n") // Developer-only rolling diagnostic output is not user-facing copy.

@@ -49,6 +49,7 @@
     <dimen name="connection_panel_column_gap">28dp</dimen>
     <dimen name="connection_panel_padding_top">32dp</dimen>
     <dimen name="connection_panel_padding_bottom">28dp</dimen>
+    <dimen name="connection_panel_horizontal_padding">24dp</dimen>
     <dimen name="connection_mode_margin_bottom">16dp</dimen>
     <dimen name="connection_section_margin">12dp</dimen>
     <dimen name="connection_icon_size">56dp</dimen>
