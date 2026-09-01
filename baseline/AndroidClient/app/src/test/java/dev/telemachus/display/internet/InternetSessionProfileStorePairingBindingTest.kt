@@ -141,6 +141,66 @@ class InternetSessionProfileStorePairingBindingTest {
     }
 
     @Test
+    fun `authenticated bulk callbacks drop stale session lease without importing or failing current ui`() {
+        val fixture = recordedFixture()
+        var active = false
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+                isActive = { active },
+            )
+        val delegate = RecordingInternetProductSessionCallbacks()
+        val callbacks = receiver.importingCallbacks(delegate)
+        val delivery =
+            AuthenticatedSessionLeaseDeliveryEnvelope.encode(
+                signedLeaseJson(fixture, sessionEpoch = 9).toByteArray(Charsets.UTF_8),
+            )
+
+        callbacks.onBulkRecord(delivery)
+
+        assertEquals(emptyList<List<Byte>>(), delegate.bulkRecords.map { it.toList() })
+        assertEquals(emptyList<Throwable>(), delegate.failures)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+
+        active = true
+        callbacks.onBulkRecord(delivery)
+
+        val lease = requireNotNull(fixture.store.loadLease(forceRelay = false))
+        assertEquals("session-9", lease.signalingSessionId)
+        assertEquals(9L, lease.authoritativeSessionEpoch)
+        lease.close()
+    }
+
+    @Test
+    fun `authenticated bulk callbacks drop stale malformed session lease without failing current ui`() {
+        val fixture = recordedFixture()
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+                isActive = { false },
+            )
+        val delegate = RecordingInternetProductSessionCallbacks()
+        val callbacks = receiver.importingCallbacks(delegate)
+        val malformed =
+            JsonObject().apply {
+                addProperty("version", 1)
+                addProperty("purpose", AuthenticatedSessionLeaseDeliveryEnvelope.PURPOSE)
+                addProperty("content_type", AuthenticatedSessionLeaseDeliveryEnvelope.CONTENT_TYPE)
+                addProperty("signed_lease", "not-canonical-base64")
+            }.toString().toByteArray(Charsets.UTF_8)
+
+        callbacks.onBulkRecord(malformed)
+
+        assertEquals(emptyList<List<Byte>>(), delegate.bulkRecords.map { it.toList() })
+        assertEquals(emptyList<Throwable>(), delegate.failures)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+    }
+
+    @Test
     fun `authenticated bulk signed lease receiver rejects malformed delivery envelope`() {
         val fixture = recordedFixture()
         val signedLease = signedLeaseJson(fixture, sessionEpoch = 7).toByteArray(Charsets.UTF_8)

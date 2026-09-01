@@ -10,6 +10,19 @@ MAC_LEASE_ISSUER = (
     ROOT
     / "baseline/MacHost/Sources/Phase3/ProductSession/InternetSessionLeaseIssuer.swift"
 )
+MAC_LEASE_DELIVERY = (
+    ROOT
+    / "baseline/MacHost/Sources/Phase3/ProductSession/InternetSessionLeaseDelivery.swift"
+)
+MAC_APP_DELEGATE = ROOT / "baseline/MacHost/Sources/AppDelegate.swift"
+ANDROID_MAIN_ACTIVITY = (
+    ROOT
+    / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt"
+)
+ANDROID_LEASE_RECEIVER = (
+    ROOT
+    / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/AuthenticatedSessionLeaseReceiver.kt"
+)
 ANDROID_PROFILE_STORE = (
     ROOT
     / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetSessionProfileStore.kt"
@@ -17,6 +30,7 @@ ANDROID_PROFILE_STORE = (
 AUTHORITY_SERVER = ROOT / "services/authority/internal/authority/server.go"
 AUTHORITY_STORE = ROOT / "services/authority/internal/authority/store.go"
 AUTHORITY_MIGRATION = ROOT / "services/authority/migrations/001_authority.sql"
+AUTHORITY_README = ROOT / "services/authority/README.md"
 SIGNALING_AUTHORITY_CLIENT = (
     ROOT / "services/signaling/internal/signaling/authority_client.go"
 )
@@ -167,6 +181,77 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertNotIn("token", table.lower())
         self.assertNotIn("lease", table.lower())
         self.assertNotIn("credential", table.lower())
+
+    def test_mac_authoritative_delivery_uses_local_lease_issuer_and_bulk_channel(self) -> None:
+        delivery = read(MAC_LEASE_DELIVERY)
+        app_delegate = read(MAC_APP_DELEGATE)
+
+        signature_start = delivery.index("func createAuthoritativeLeaseDelivery")
+        signature = delivery[
+            signature_start : delivery.index(") async throws", signature_start)
+        ]
+        provisioner = section_between(
+            delivery,
+            "func createAuthoritativeLeaseDelivery",
+            "\n\n    func makeCreateSessionRequest",
+        )
+        self.assertIn("InternetSessionLeaseDelivery.deliveryResult", provisioner)
+        self.assertIn("matching: request", provisioner)
+        self.assertNotIn("leaseHostKeyID", signature)
+        self.assertNotIn("signer:", signature)
+        self.assertNotIn("signedLeaseIssuer", delivery)
+        self.assertNotIn("func createSignedLeaseDelivery", delivery)
+        self.assertNotIn("static func signUnsignedLease", delivery)
+        self.assertNotIn("forUnsignedLease unsignedLease", delivery)
+
+        safe_delivery = bracket_block(delivery, "static func deliveryResult", "{", "}")
+        self.assertIn("issueSignedLease(decoded.unsignedAndroidLeaseData)", safe_delivery)
+        self.assertIn("deliveryPayload(forSignedLease: signedLease)", safe_delivery)
+        issuer = bracket_block(delivery, "private static func issueSignedLease", "{", "}")
+        self.assertIn("InternetSessionLeaseIssuer.issue(unsignedJSON: unsignedLease)", issuer)
+
+        send = bracket_block(delivery, "static func send", "{", "}")
+        self.assertIn("session.sendBulkRecord(result.payload, transferID: bulkTransferID)", send)
+
+        self.assertIn("pendingInternetSessionLeaseDelivery", app_delegate)
+        self.assertIn("queueInternetSessionLeaseDelivery", app_delegate)
+        self.assertIn("sendPendingInternetSessionLeaseDelivery", app_delegate)
+        self.assertIn("if case .streaming = state", app_delegate)
+        self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", app_delegate)
+        self.assertIn("serverLifecycle.ownsSession(sessionToken)", app_delegate)
+        self.assertIn("internetProductSession === session", app_delegate)
+
+    def test_android_product_session_imports_authenticated_session_lease_bulk(self) -> None:
+        receiver = read(ANDROID_LEASE_RECEIVER)
+        main_activity = read(ANDROID_MAIN_ACTIVITY)
+
+        constructor = section_between(
+            receiver,
+            "class AuthenticatedSessionLeaseReceiver(",
+            ") {",
+        )
+        self.assertIn("isActive: () -> Boolean = { true }", constructor)
+        self.assertIn('check(isActive()) { "Stale Internet session cannot import a lease" }', receiver)
+        self.assertIn("if (hasSessionLeasePurpose && !receiver.isActiveSession()) return", receiver)
+
+        connect = bracket_block(main_activity, "private fun connectInternet(", "{", "}")
+        self.assertIn("AuthenticatedSessionLeaseReceiver(", connect)
+        self.assertIn("internetProfileStore,", connect)
+        self.assertIn("internetStoredSessionFactory,", connect)
+        self.assertIn("internetRevocationCoordinator,", connect)
+        self.assertIn("isActive = ::isCurrentInternetSession", connect)
+        self.assertIn("val productCallbacks = authenticatedSessionLeaseReceiver.importingCallbacks(callbacks)", connect)
+        self.assertIn("codec,\n                    productCallbacks,", connect)
+
+    def test_authority_documents_endpoint_signing_key_boundary(self) -> None:
+        readme = read(AUTHORITY_README).lower()
+
+        self.assertIn("does not persist or prove", readme)
+        self.assertIn("signing public keys", readme)
+        self.assertIn("endpoint binding", readme)
+        self.assertIn("paired local keychain identity", readme)
+        self.assertIn("android-importable lease without the host private key", readme)
+        self.assertIn("must not fall\nback to local lease issuance", readme)
 
 
 if __name__ == "__main__":

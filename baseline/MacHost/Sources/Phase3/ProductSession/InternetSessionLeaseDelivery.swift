@@ -130,12 +130,10 @@ final class InternetSessionLeaseProvisioner {
         self.session = session
     }
 
-    func createSignedLeaseDelivery(
+    func createAuthoritativeLeaseDelivery(
         signalingBaseURL: URL,
         issuerToken: String,
-        request: InternetSignalingSessionProfileRequest,
-        leaseHostKeyID: String,
-        signer: @escaping (Data) throws -> Data
+        request: InternetSignalingSessionProfileRequest
     ) async throws -> InternetSessionLeaseDeliveryResult {
         let urlRequest = try makeCreateSessionRequest(
             signalingBaseURL: signalingBaseURL,
@@ -149,9 +147,7 @@ final class InternetSessionLeaseProvisioner {
         }
         return try InternetSessionLeaseDelivery.deliveryResult(
             fromSignalingSessionResponse: data,
-            matching: request,
-            leaseHostKeyID: leaseHostKeyID,
-            signer: signer
+            matching: request
         )
     }
 
@@ -231,27 +227,6 @@ enum InternetSessionLeaseDelivery {
         "host_signaling_token", "expires_at", "created", "unsigned_android_lease"
     ]
 
-    static func signUnsignedLease(
-        _ unsignedLease: Data,
-        leaseHostKeyID: String,
-        signer: (Data) throws -> Data
-    ) throws -> Data {
-        guard !leaseHostKeyID.isEmpty, leaseHostKeyID.utf8.count <= 256 else {
-            throw InternetSessionLeaseDeliveryError.invalidLeaseHostKeyID
-        }
-        let payload = try InternetSessionLeaseCodec.decodeUnsigned(unsignedLease)
-        let digest = InternetSessionLeaseCodec.digest(payload, leaseHostKeyID: leaseHostKeyID)
-        let signature = try signer(digest)
-        guard !signature.isEmpty, signature.count <= 80 else {
-            throw InternetSessionLeaseDeliveryError.invalidSignature
-        }
-        return try InternetSessionLeaseCodec.encodeSigned(
-            payload,
-            leaseHostKeyID: leaseHostKeyID,
-            signature: signature
-        )
-    }
-
     static func deliveryPayload(
         forSignedLease signedLease: Data
     ) throws -> Data {
@@ -274,18 +249,6 @@ enum InternetSessionLeaseDelivery {
             )
         }
         return data
-    }
-
-    static func deliveryPayload(
-        forUnsignedLease unsignedLease: Data,
-        leaseHostKeyID: String,
-        signer: (Data) throws -> Data
-    ) throws -> Data {
-        try deliveryPayload(forSignedLease: signUnsignedLease(
-            unsignedLease,
-            leaseHostKeyID: leaseHostKeyID,
-            signer: signer
-        ))
     }
 
     static func signedLease(fromDeliveryPayload payload: Data) throws -> Data {
@@ -336,24 +299,31 @@ enum InternetSessionLeaseDelivery {
 
     static func deliveryResult(
         fromSignalingSessionResponse response: Data,
-        matching request: InternetSignalingSessionProfileRequest,
-        leaseHostKeyID: String,
-        signer: (Data) throws -> Data
+        matching request: InternetSignalingSessionProfileRequest
     ) throws -> InternetSessionLeaseDeliveryResult {
         let decoded = try decodedSignalingSessionResponse(response)
         let lease = try InternetSessionLeaseCodec.decodeUnsigned(decoded.unsignedAndroidLeaseData)
         try validate(lease: lease, response: decoded, matches: request)
-        let payload = try deliveryPayload(
-            forUnsignedLease: decoded.unsignedAndroidLeaseData,
-            leaseHostKeyID: leaseHostKeyID,
-            signer: signer
-        )
+        let signedLease = try issueSignedLease(decoded.unsignedAndroidLeaseData)
+        let payload = try deliveryPayload(forSignedLease: signedLease)
         return InternetSessionLeaseDeliveryResult(
             sessionID: decoded.sessionID,
             hostSignalingToken: decoded.hostSignalingToken,
             expiresAt: decoded.expiresAt,
             payload: payload
         )
+    }
+
+    private static func issueSignedLease(_ unsignedLease: Data) throws -> Data {
+        try InternetSessionLeaseIssuer.issue(unsignedJSON: unsignedLease)
+    }
+
+    @discardableResult
+    static func send(
+        _ result: InternetSessionLeaseDeliveryResult,
+        on session: InternetProductSession
+    ) -> Bool {
+        session.sendBulkRecord(result.payload, transferID: bulkTransferID)
     }
 
     private static func decodedSignalingSessionResponse(

@@ -454,9 +454,11 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         let unsigned = try unsignedLease(epoch: 99)
 
         let delivery = try InternetSessionLeaseDelivery.deliveryPayload(
-            forUnsignedLease: unsigned,
-            leaseHostKeyID: hostKeyID,
-            signer: { digest in try Self.rawDigestSignature(privateKey: hostKey, digest: digest) }
+            forSignedLease: try signedLeaseFixture(
+                unsignedLease: unsigned,
+                leaseHostKeyID: hostKeyID,
+                hostKey: hostKey
+            )
         )
         XCTAssertEqual(
             InternetSessionLeaseDelivery.bulkTransferID,
@@ -507,17 +509,22 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             ]
         ], options: [.sortedKeys])
 
-        let result = try InternetSessionLeaseDelivery.deliveryResult(
-            fromSignalingSessionResponse: response,
-            matching: sessionProfileRequest(
-                hostIdentity: hostIdentity,
-                clientIdentity: deviceIdentity,
-                sessionEpoch: 100
-            ),
-            leaseHostKeyID: hostKeyID,
-            signer: { digest in try Self.rawDigestSignature(privateKey: hostKey, digest: digest) }
+        let request = sessionProfileRequest(
+            hostIdentity: hostIdentity,
+            clientIdentity: deviceIdentity,
+            sessionEpoch: 100
         )
-        let signed = try InternetSessionLeaseDelivery.signedLease(fromDeliveryPayload: result.payload)
+        let extracted = try InternetSessionLeaseDelivery.unsignedAndroidLease(
+            fromSignalingSessionResponse: response,
+            matching: request
+        )
+        let signed = try signedLeaseFixture(
+            unsignedLease: extracted,
+            leaseHostKeyID: hostKeyID,
+            hostKey: hostKey
+        )
+        let delivery = try InternetSessionLeaseDelivery.deliveryPayload(forSignedLease: signed)
+        XCTAssertEqual(try InternetSessionLeaseDelivery.signedLease(fromDeliveryPayload: delivery), signed)
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
         XCTAssertEqual((root["session_epoch"] as? NSNumber)?.uint64Value, 100)
         XCTAssertEqual(root["lease_host_key_id"] as? String, hostKeyID)
@@ -567,11 +574,9 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             deviceToken: String(repeating: "d", count: 32)
         )
 
-        XCTAssertThrowsError(try InternetSessionLeaseDelivery.deliveryResult(
+        XCTAssertThrowsError(try InternetSessionLeaseDelivery.unsignedAndroidLease(
             fromSignalingSessionResponse: response,
-            matching: request,
-            leaseHostKeyID: "host-key-id",
-            signer: { _ in Data(repeating: 1, count: 64) }
+            matching: request
         ))
     }
 
@@ -585,68 +590,42 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         XCTAssertThrowsError(try InternetSessionLeaseCodec.decodeUnsigned(Data(mutated.utf8)))
     }
 
-    func testSessionLeaseProvisionerPostsProfileAndReturnsSignedDelivery() async throws {
+    func testSessionLeaseProvisionerBuildsAuthoritativeCreateRequest() throws {
         let hostKey = P256.Signing.PrivateKey()
         let hostIdentity = testIdentity(deviceID: "lease-host", key: hostKey, keyEpoch: 1)
-        let hostKeyID = hostIdentity.keyID
         let clientDeviceID = deviceIdentity.deviceID
-        let unsigned = try unsignedLease(epoch: 101)
-        let unsignedObject = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: unsigned) as? [String: Any]
-        )
-        let response = try JSONSerialization.data(withJSONObject: [
-            "session_id": "session-authority-test",
-            "host_token": String(repeating: "h", count: 32),
-            "device_token": String(repeating: "t", count: 32),
-            "expires_at": "2100-01-01T00:00:00Z",
-            "session_profile": [
-                "account_id": "acct-1",
-                "pairing_id": "pairing-authority-test",
-                "signaling_session_id": "session-authority-test",
-                "host_signaling_token": String(repeating: "h", count: 32),
-                "expires_at": "2100-01-01T00:00:00Z",
-                "created": true,
-                "unsigned_android_lease": unsignedObject
-            ]
-        ], options: [.sortedKeys])
-        LeaseProvisionerURLProtocol.handler = { request in
-            XCTAssertEqual(request.url?.absoluteString, "https://signal.example.test/v1/sessions")
-            XCTAssertEqual(request.httpMethod, "POST")
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer issuer-token")
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
-            let body = try LeaseProvisionerURLProtocol.bodyData(from: request)
-            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-            XCTAssertEqual(root["request_id"] as? String, "req-101")
-            XCTAssertEqual(root["account_id"] as? String, "acct-1")
-            XCTAssertEqual(root["host_device_id"] as? String, "lease-host")
-            XCTAssertEqual(root["client_device_id"] as? String, clientDeviceID)
-            XCTAssertNotNil(root["session_profile"] as? [String: Any])
-            return (201, response)
-        }
-        defer { LeaseProvisionerURLProtocol.handler = nil }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LeaseProvisionerURLProtocol.self]
-        let provisioner = InternetSessionLeaseProvisioner(session: URLSession(configuration: configuration))
+        let provisioner = InternetSessionLeaseProvisioner()
 
-        let result = try await provisioner.createSignedLeaseDelivery(
+        let urlRequest = try provisioner.makeCreateSessionRequest(
             signalingBaseURL: URL(string: "https://signal.example.test")!,
             issuerToken: "issuer-token",
             request: sessionProfileRequest(
                 hostIdentity: hostIdentity,
                 clientIdentity: deviceIdentity,
                 sessionEpoch: 101
-            ),
-            leaseHostKeyID: hostKeyID,
-            signer: { digest in try Self.rawDigestSignature(privateKey: hostKey, digest: digest) }
+            )
         )
 
-        XCTAssertEqual(result.sessionID, "session-authority-test")
-        XCTAssertEqual(result.hostSignalingToken, String(repeating: "h", count: 32))
-        XCTAssertEqual(result.expiresAt, try XCTUnwrap(ISO8601DateFormatter().date(from: "2100-01-01T00:00:00Z")))
-        let signed = try InternetSessionLeaseDelivery.signedLease(fromDeliveryPayload: result.payload)
-        let signedRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
-        XCTAssertEqual((signedRoot["session_epoch"] as? NSNumber)?.uint64Value, 101)
-        XCTAssertEqual(signedRoot["lease_host_key_id"] as? String, hostKeyID)
+        XCTAssertEqual(urlRequest.url?.absoluteString, "https://signal.example.test/v1/sessions")
+        XCTAssertEqual(urlRequest.httpMethod, "POST")
+        XCTAssertEqual(urlRequest.value(forHTTPHeaderField: "Authorization"), "Bearer issuer-token")
+        XCTAssertEqual(urlRequest.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(urlRequest.httpBody)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(root["request_id"] as? String, "req-101")
+        XCTAssertEqual(root["account_id"] as? String, "acct-1")
+        XCTAssertEqual(root["host_device_id"] as? String, "lease-host")
+        XCTAssertEqual(root["client_device_id"] as? String, clientDeviceID)
+        XCTAssertEqual((root["session_epoch"] as? NSNumber)?.uint64Value, 101)
+        XCTAssertEqual((root["ttl_seconds"] as? NSNumber)?.int64Value, 60)
+        let sessionProfile = try XCTUnwrap(root["session_profile"] as? [String: Any])
+        XCTAssertEqual(sessionProfile["pairing_id"] as? String, "pairing-authority-test")
+        let profileHost = try XCTUnwrap(sessionProfile["host_identity"] as? [String: Any])
+        XCTAssertEqual(profileHost["device_id"] as? String, "lease-host")
+        XCTAssertEqual(profileHost["key_id"] as? String, hostIdentity.keyID)
+        let profileClient = try XCTUnwrap(sessionProfile["client_identity"] as? [String: Any])
+        XCTAssertEqual(profileClient["device_id"] as? String, clientDeviceID)
+        XCTAssertEqual(profileClient["key_id"] as? String, deviceIdentity.keyID)
     }
 
     func testSessionLeaseProvisionerRejectsUnsafeSignalingBaseURL() throws {
@@ -837,6 +816,27 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         return signature
     }
 
+    private func signedLeaseFixture(
+        unsignedLease: Data,
+        leaseHostKeyID: String,
+        hostKey: P256.Signing.PrivateKey
+    ) throws -> Data {
+        guard !leaseHostKeyID.isEmpty, leaseHostKeyID.utf8.count <= 256 else {
+            throw InternetSessionLeaseDeliveryError.invalidLeaseHostKeyID
+        }
+        let payload = try InternetSessionLeaseCodec.decodeUnsigned(unsignedLease)
+        let digest = InternetSessionLeaseCodec.digest(payload, leaseHostKeyID: leaseHostKeyID)
+        let signature = try Self.rawDigestSignature(privateKey: hostKey, digest: digest)
+        guard !signature.isEmpty, signature.count <= 80 else {
+            throw InternetSessionLeaseDeliveryError.invalidSignature
+        }
+        return try InternetSessionLeaseCodec.encodeSigned(
+            payload,
+            leaseHostKeyID: leaseHostKeyID,
+            signature: signature
+        )
+    }
+
     private func testIdentity(
         deviceID: String,
         key: P256.Signing.PrivateKey,
@@ -961,59 +961,4 @@ private final class LeaseMemorySecretStore: InternetPairingSecretStore {
         defer { lock.unlock() }
         values.removeValue(forKey: name)
     }
-}
-
-private final class LeaseProvisionerURLProtocol: URLProtocol {
-    static var handler: ((URLRequest) throws -> (status: Int, body: Data))?
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    static func bodyData(from request: URLRequest) throws -> Data {
-        if let body = request.httpBody { return body }
-        guard let stream = request.httpBodyStream else {
-            throw InternetSessionLeaseDeliveryError.invalidProvisioningRequest(
-                "test request body is missing"
-            )
-        }
-        stream.open()
-        defer { stream.close() }
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        while true {
-            let count = stream.read(&buffer, maxLength: buffer.count)
-            if count < 0 {
-                throw stream.streamError ?? InternetSessionLeaseDeliveryError.invalidProvisioningRequest(
-                    "test request body stream failed"
-                )
-            }
-            if count == 0 { break }
-            data.append(buffer, count: count)
-        }
-        return data
-    }
-
-    override func startLoading() {
-        guard let handler = Self.handler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
-            return
-        }
-        do {
-            let result = try handler(request)
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: result.status,
-                httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
-            )!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: result.body)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-
-    override func stopLoading() {}
 }

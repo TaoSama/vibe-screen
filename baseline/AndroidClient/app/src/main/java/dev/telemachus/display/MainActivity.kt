@@ -58,6 +58,7 @@ import dev.telemachus.display.protocol.MotionSnapshot
 import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.TouchSampleMapper
 import dev.telemachus.display.protocol.FileTransferPolicy
+import dev.telemachus.display.internet.AuthenticatedSessionLeaseReceiver
 import dev.telemachus.display.internet.AndroidNetworkMonitor
 import dev.telemachus.display.internet.InternetDecoderConfigurationResult
 import dev.telemachus.display.internet.InternetProductSession
@@ -5052,6 +5053,14 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        val authenticatedSessionLeaseReceiver =
+            AuthenticatedSessionLeaseReceiver(
+                internetProfileStore,
+                internetStoredSessionFactory,
+                internetRevocationCoordinator,
+                isActive = ::isCurrentInternetSession,
+            )
+        val productCallbacks = authenticatedSessionLeaseReceiver.importingCallbacks(callbacks)
         try {
             val created =
                 InternetProductSession.create(
@@ -5061,7 +5070,7 @@ class MainActivity : AppCompatActivity() {
                     monitor,
                     dev.telemachus.display.internet.MonotonicClock { android.os.SystemClock.elapsedRealtime() },
                     codec,
-                    callbacks,
+                    productCallbacks,
                     object : InternetProductRevocationStore {
                         override fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
                             internetProfileStore.persistPendingAuthenticatedRevocation(pairingIdentifier, reason)

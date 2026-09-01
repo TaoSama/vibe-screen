@@ -206,6 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
     private var internetProductSession: InternetProductSession?
     private var internetPairingCoordinator: InternetPairingCoordinator?
+    private var pendingInternetSessionLeaseDelivery: InternetSessionLeaseDeliveryResult?
     private let revokedInternetIdentityStore = RevokedInternetIdentityStore()
     var screenCapture: ScreenCapture?
     var virtualDisplayManager: VirtualDisplayManager?
@@ -2711,6 +2712,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 self.applyInternetSessionState(state)
+                if case .streaming = state {
+                    self.sendPendingInternetSessionLeaseDelivery(
+                        session: session,
+                        sessionToken: sessionToken
+                    )
+                }
             }
         }
         session.onError = { [weak self, weak session] error in
@@ -3327,6 +3334,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
+    private func queueInternetSessionLeaseDelivery(
+        _ result: InternetSessionLeaseDeliveryResult,
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) -> Bool {
+        guard serverLifecycle.ownsSession(sessionToken),
+              internetProductSession === session else { return false }
+        pendingInternetSessionLeaseDelivery = result
+        if case .streaming = session.snapshotState() {
+            sendPendingInternetSessionLeaseDelivery(
+                session: session,
+                sessionToken: sessionToken
+            )
+        }
+        return pendingInternetSessionLeaseDelivery == nil
+    }
+
+    @MainActor
+    @discardableResult
+    private func sendPendingInternetSessionLeaseDelivery(
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) -> Bool {
+        guard serverLifecycle.ownsSession(sessionToken),
+              internetProductSession === session,
+              let delivery = pendingInternetSessionLeaseDelivery else { return false }
+        guard InternetSessionLeaseDelivery.send(delivery, on: session) else { return false }
+        pendingInternetSessionLeaseDelivery = nil
+        return true
+    }
+
+    @MainActor
     private func ownsInternetAdaptiveOperation(
         session: InternetProductSession,
         sessionToken: UInt64,
@@ -3468,6 +3507,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let displayToDestroy = virtualDisplayManager
         screenCapture = nil
         streamingServer = nil
+        pendingInternetSessionLeaseDelivery = nil
         internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil

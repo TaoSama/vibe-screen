@@ -170,6 +170,17 @@ lease; the Mac host must verify local pairing bindings and sign it before
 Android imports it. Omitting `session_profile` preserves the legacy response
 shape.
 
+Authority validates the account, registered device IDs, identity field format,
+revocation state, TTL, and monotonic session epoch. It does not persist or prove
+ownership of the submitted signing public keys. Signing-key ownership is an
+endpoint binding: the Mac Host signs an Authority-issued unsigned Android lease
+only through its paired local Keychain identity, and Android imports only a
+signed lease that verifies against the paired Host public key and current local
+identity. If either endpoint binding is missing or mismatched, the product path
+fails closed. An admin, issuer, or signaling token by itself cannot create an
+Android-importable lease without the Host private key, and callers must not fall
+back to local lease issuance when Authority is unavailable.
+
 `POST /v1/signaling/sessions/{session_id}/authorize` (signaling token) validates
 a role token against the session. It returns `{"role":"host","expires_at":"..."}`
 or `{"role":"client","expires_at":"..."}`. A revoked session, revoked device,

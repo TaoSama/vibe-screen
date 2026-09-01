@@ -10,11 +10,16 @@ class AuthenticatedSessionLeaseReceiver(
     private val store: InternetSessionProfileStore,
     private val storedSessionFactory: AndroidStoredInternetSessionFactory,
     private val revocationCoordinator: InternetProductRevocationCoordinator,
+    private val isActive: () -> Boolean = { true },
 ) {
     fun importAuthenticatedBulkRecord(payload: ByteArray): StoredInternetSessionProfile {
+        check(isActive()) { "Stale Internet session cannot import a lease" }
         val signedLease = AuthenticatedSessionLeaseDeliveryEnvelope.decode(payload)
+        check(isActive()) { "Stale Internet session cannot import a lease" }
         return store.import(String(signedLease, StandardCharsets.UTF_8), storedSessionFactory, revocationCoordinator)
     }
+
+    fun isActiveSession(): Boolean = isActive()
 
     fun importingCallbacks(delegate: InternetProductSessionCallbacks): InternetProductSessionCallbacks =
         AuthenticatedSessionLeaseImportingCallbacks(this, delegate)
@@ -25,10 +30,13 @@ private class AuthenticatedSessionLeaseImportingCallbacks(
     private val delegate: InternetProductSessionCallbacks,
 ) : InternetProductSessionCallbacks by delegate {
     override fun onBulkRecord(payload: ByteArray) {
+        val hasSessionLeasePurpose = AuthenticatedSessionLeaseDeliveryEnvelope.hasSessionLeasePurpose(payload)
+        if (hasSessionLeasePurpose && !receiver.isActiveSession()) return
         try {
             receiver.importAuthenticatedBulkRecord(payload)
         } catch (failure: Exception) {
-            if (AuthenticatedSessionLeaseDeliveryEnvelope.hasSessionLeasePurpose(payload)) {
+            if (hasSessionLeasePurpose) {
+                if (!receiver.isActiveSession()) return
                 delegate.onFailure(failure)
             } else {
                 delegate.onBulkRecord(payload)
