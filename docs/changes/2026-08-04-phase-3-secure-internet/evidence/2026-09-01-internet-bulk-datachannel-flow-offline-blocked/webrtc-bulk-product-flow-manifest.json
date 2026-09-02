@@ -1,0 +1,106 @@
+{
+  "claims": {
+    "internet_webrtc_bulk_file_transfer_product_flow": false,
+    "phase3_public_internet_product_e2e": false
+  },
+  "core_gates": {
+    "bulk_backpressure_and_cleanup": {
+      "evidence": [],
+      "requirement": "bulk send/receive queues are bounded and cancel/disconnect cleanup is observed",
+      "status": "open"
+    },
+    "bulk_file_transfer_product_flow": {
+      "evidence": [],
+      "requirement": "approved bidirectional file transfer uses vibescreen.bulk.v1 with chunks, progress, completion, and SHA-256 verification",
+      "status": "open"
+    },
+    "public_relay_webrtc_route": {
+      "evidence": [],
+      "requirement": "real macOS and Android peers select a deployed public TURN relay WebRTC route",
+      "status": "open"
+    },
+    "secure_record_layer": {
+      "evidence": [],
+      "requirement": "bulk traffic uses the Phase 3 AES-256-GCM record layer with channel/session/key separation",
+      "status": "open"
+    },
+    "source_current_base": {
+      "evidence": [],
+      "requirement": "manifest source commit matches a clean current checkout",
+      "status": "open"
+    }
+  },
+  "created_at": "2026-09-01T13:47:30.688443Z",
+  "evidence_context": {
+    "deployed_remote_turn": false,
+    "identity_signed_host": false,
+    "no_plaintext_fallback": false,
+    "no_synthetic_peer": false,
+    "public_internet_path": false,
+    "real_android_device": false,
+    "real_capture_to_mediacodec": false,
+    "real_macos_host": false,
+    "screen_recording_granted": false,
+    "webrtc_transport": false
+  },
+  "kind": "phase3_webrtc_bulk_product_flow_manifest",
+  "limitations": [
+    "No public Internet WebRTC bulk file-transfer product-flow pass is claimed.",
+    "Relay deployment preflight hardening is not product E2E evidence.",
+    "relay.taoai.site production DNS, /readyz, disk, TURN/WebRTC, real media, handoff, revocation, latency, and soak evidence remain blocked unless a retained evidence package proves otherwise."
+  ],
+  "owner": {
+    "head_ref": "codex/phase3-public-internet-bulk-gate",
+    "pull_request": "pending",
+    "repository": "TaoSama/vibe-screen",
+    "role": "phase3_webrtc_bulk_product_flow_owner"
+  },
+  "release_prerequisites": {
+    "cross_service_revocation": {
+      "evidence": [],
+      "requirement": "Authority, signaling, TURN credential issuance, and active allocation all fail closed after revoke",
+      "status": "blocked"
+    },
+    "external_camera_latency": {
+      "evidence": [],
+      "requirement": "direct and relay Internet paths have external-camera glass-to-glass latency evidence",
+      "status": "blocked"
+    },
+    "network_handoff": {
+      "evidence": [],
+      "requirement": "public route handoff recovers with a fresh session and old-record rejection",
+      "status": "blocked"
+    },
+    "packet_capture_confidentiality": {
+      "evidence": [],
+      "requirement": "direct and relay packet captures show no plaintext content, credentials, or pairing secrets",
+      "status": "blocked"
+    },
+    "real_capture_to_mediacodec": {
+      "evidence": [],
+      "requirement": "real ScreenCaptureKit or CGDisplayStream frames reach Android MediaCodec",
+      "status": "blocked"
+    },
+    "relay_production_prerequisites": {
+      "evidence": [],
+      "requirement": "production relay DNS, /readyz, disk, TLS, quota, and secret-source checks pass",
+      "status": "blocked"
+    },
+    "two_hour_mixed_route_soak": {
+      "evidence": [],
+      "requirement": "two-hour mixed direct/relay/network-change soak has bounded queues, memory, nonce, latency, and media behavior",
+      "status": "blocked"
+    }
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "commit": "aed8c99ccb93ce35c65e5956c9de693eebf88dbd",
+    "tree_status": "clean"
+  },
+  "substitutions": {
+    "local_loopback_or_forced_local_coturn_used_as_public_internet": false,
+    "pr404_relay_owner_used_as_product_e2e": false,
+    "raw_bulk_hook_tests_used_as_product_flow": false,
+    "usb_lan_file_transfer_used_for_internet": false
+  }
+}

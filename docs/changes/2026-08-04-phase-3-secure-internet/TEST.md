@@ -810,6 +810,26 @@ sets only `can_close_public_internet_bulk_product_flow_gate=true`;
 `gate_can_close_phase3_release` remains false and the aggregate release gate must
 still pass separately.
 
+The 2026-09-01 implementation check on branch
+`codex/internet-bulk-datachannel-flow` wires the Android and macOS Internet
+product sessions to the file-transfer product owner and existing macOS
+file-transfer UI. The offline contract covers optional file-transfer and
+managed-configuration capability negotiation, negotiated file/chunk limits,
+explicit incoming approval, rejected-offer raw bulk fallback, approved incoming
+chunk routing through the advanced-channel gate, outgoing offer/accept/chunk/
+progress/complete handling, final SHA-256 validation, session-owner cleanup, and
+managed-policy deny-wins behavior. Verification in this worktree passed the
+focused Android JVM suite, `swift build`, Swift source parsing for the focused
+XCTest files, the bulk child-gate Python tests, the Internet release-gate Python
+tests, and schema tests. `swift test` remains blocked in this local Command Line
+Tools-only environment by missing XCTest, so the XCTest source is compile-parsed
+but not executed locally. The archived blocked baseline at
+[`evidence/2026-09-01-internet-bulk-datachannel-flow-offline-blocked/`](evidence/2026-09-01-internet-bulk-datachannel-flow-offline-blocked/README.md)
+records that no real macOS Host, Android device, public Internet path, deployed
+remote TURN route, real capture-to-MediaCodec continuity, packet capture,
+handoff, revocation, latency, or soak evidence was produced; the public Internet
+bulk product-flow gate remains blocked.
+
 If cellular control cannot be automated over remote ADB, document the manual
 device action and correlate it with monotonic host/client/relay events. Do not
 claim a network handoff based only on toggling UI.

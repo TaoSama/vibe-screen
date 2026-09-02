@@ -606,7 +606,10 @@ final class WebRTCInternetTransport {
     }
 
     @discardableResult
-    func sendBulkRecord(_ payload: Data) -> Result<Void, InternetTransportError> {
+    func sendBulkRecord(
+        _ payload: Data,
+        failOnBacklogExceeded: Bool = true
+    ) -> Result<Void, InternetTransportError> {
         guard !payload.isEmpty else {
             return .failure(.emptyPayload(channel: .bulk))
         }
@@ -674,7 +677,7 @@ final class WebRTCInternetTransport {
             }
 
             if let admissionError {
-                if case .bulkBacklogExceeded = admissionError {
+                if case .bulkBacklogExceeded = admissionError, failOnBacklogExceeded {
                     failureTransition = prepareFailureWithinSendGate(admissionError)
                 } else if case .sequenceExhausted = admissionError {
                     failureTransition = prepareFailureWithinSendGate(admissionError)

@@ -21,7 +21,7 @@ class AuthenticatedSessionLeaseReceiver(
 
     fun isActiveSession(): Boolean = isActive()
 
-    fun importingCallbacks(delegate: InternetProductSessionCallbacks): InternetProductSessionCallbacks =
+    internal fun importingCallbacks(delegate: InternetProductSessionCallbacks): InternetProductSessionCallbacks =
         AuthenticatedSessionLeaseImportingCallbacks(this, delegate)
 }
 

@@ -69,9 +69,15 @@ WebRTC/network/key-store implementations.
    send encrypted Protocol v1 traffic. Start media only after configuration is
    accepted and a keyframe is available.
 
-The audio and bulk channels are transport boundaries only in this slice. Audio
-capture/playback, clipboard synchronization, and file-transfer product flows
-remain out of scope for Phase 3.
+The audio channel remains a transport boundary only in this slice. The bulk
+channel now has offline macOS/Android product-session wiring for explicit
+file-transfer offer/accept, bounded Protocol v1 file chunks over
+vibescreen.bulk.v1, progress/cancel/complete control messages, SHA-256
+validation, and managed-policy/resource-limit gating. That is contract and
+local product-session readiness only: real macOS plus Android public-Internet
+WebRTC file-transfer E2E over a deployed TURN route remains a release gate.
+Audio capture/playback and Internet clipboard synchronization remain separate
+gates.
 
 ## Application E2EE
 
@@ -349,6 +355,17 @@ semantic change requires a new protocol package/version.
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
 | Internet soak gate | `tools/vibescreen_evidence/phase3_internet_soak.py`, `Makefile` targets `phase3-internet-soak-manifest` and `phase3-internet-soak-gate` | A fail-closed composition gate now pins the evidence shape for public TURN, real media continuity, network handoff, revocation propagation, and two-hour mixed-route soak. It is not a deployment runner and does not create single-source evidence by itself; missing reports are `blocked`, while plaintext fallback or raw secret-like fields fail the gate. The current 2026-08-26 record is blocked because the required public deployment and runtime reports are absent |
 | Android Internet evidence | [TEST.md](TEST.md), `scripts/phase3/android_current_base_interop_gate.py`, `evidence/android-product-interop.json`, `evidence/2026-08-05-nubia-p0110-internet/`, `evidence/2026-08-20-local-phase3-readiness/` | Prior record remains withdrawn. The reachable-source Android record is a historical 2026-08-05 result for commit `597518f948075e396352bc353afcec01a30303f3` only. The current-base replacement owner is the fail-closed Android interop gate: `product-interop` accepts only fresh current-source Nubia P0110 direct plus forced-local-coturn synthetic-media interop, while the default `real-capture` profile additionally requires ScreenCaptureKit/CGDisplayStream, VideoToolbox, Android MediaCodec first output, FPS/decode, and reconnect assertions. The 2026-08-20 local readiness record proves local checks and local synthetic direct/forced-coturn product E2E at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`, but it has no Android device/UI, no real screen capture, and no public Internet path. Current local evidence may prove real VideoToolbox HEVC payload delivery only to the synthetic peer; no current Android MediaCodec decode or device UI evidence is implied. None of these records can be extrapolated beyond its stated source and boundary |
+
+Current 2026-09-01 Internet bulk implementation note: the macOS and Android
+Internet product sessions are wired offline for file-transfer and
+managed-configuration negotiation, explicit incoming approval, outgoing offers,
+bulk DataChannel chunk transfer, progress/cancel/complete controls, final
+SHA-256 checks, and managed-policy deny-wins behavior. Focused Android JVM tests
+pass and the macOS main target builds in this worktree. Swift XCTest execution
+is still blocked on this host because only Command Line Tools are selected and
+XCTest is unavailable. The public Internet bulk child gate remains blocked until
+a retained real macOS Host plus real Android device run proves the same flow over
+a deployed public TURN WebRTC route.
 
 ### Open implementation findings
 

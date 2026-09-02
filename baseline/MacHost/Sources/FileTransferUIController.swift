@@ -11,23 +11,52 @@ protocol FileTransferServer: AnyObject {
 
 @MainActor
 protocol FileTransferAlertPresenter: AnyObject {
-    func presentIncomingFileApproval(fileName: String, byteLength: UInt64, mimeType: String) -> Bool
+    func presentIncomingFileApproval(
+        fileName: String,
+        byteLength: UInt64,
+        mimeType: String
+    ) -> ProtocolV1FileTransferApprovalResult
+    func cancelIncomingFileApproval()
     func presentInformation(title: String, message: String)
     func presentWarning(title: String, message: String)
 }
 
 @MainActor
 final class NSAlertFileTransferPresenter: FileTransferAlertPresenter {
+    private weak var currentIncomingAlert: NSAlert?
+
     nonisolated init() {}
 
-    func presentIncomingFileApproval(fileName: String, byteLength: UInt64, mimeType: String) -> Bool {
+    func presentIncomingFileApproval(
+        fileName: String,
+        byteLength: UInt64,
+        mimeType: String
+    ) -> ProtocolV1FileTransferApprovalResult {
         let alert = NSAlert()
+        currentIncomingAlert = alert
+        defer {
+            if currentIncomingAlert === alert { currentIncomingAlert = nil }
+        }
         alert.messageText = "Receive File from Android?"
         alert.informativeText = "\(fileName)\n\(Self.formattedByteCount(byteLength))\n\(mimeType)"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Receive")
         alert.addButton(withTitle: "Reject")
-        return alert.runModal() == .alertFirstButtonReturn
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return .accepted
+        case .abort:
+            return .cancelled
+        default:
+            return .userDenied
+        }
+    }
+
+    func cancelIncomingFileApproval() {
+        guard let alert = currentIncomingAlert else { return }
+        alert.window.orderOut(nil)
+        NSApp.abortModal()
+        currentIncomingAlert = nil
     }
 
     func presentInformation(title: String, message: String) {
@@ -56,7 +85,6 @@ final class NSAlertFileTransferPresenter: FileTransferAlertPresenter {
 final class FileTransferUIController: NSObject, NSMenuItemValidation {
     private let alertPresenter: FileTransferAlertPresenter
     private weak var server: FileTransferServer?
-    private var fileTransferAvailable = false
 
     let sendMenuItem: NSMenuItem
 
@@ -72,19 +100,17 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
         updateMenuState()
     }
 
-    func bind(server: FileTransferServer, fileTransferAvailable: Bool) {
+    func bind(server: FileTransferServer) {
         self.server = server
-        self.fileTransferAvailable = fileTransferAvailable
         updateMenuState()
     }
 
     func unbind() {
         server = nil
-        fileTransferAvailable = false
         updateMenuState()
     }
 
-    func approveIncomingFileOffer(_ offer: VSFileOffer) -> Bool {
+    func approveIncomingFileOffer(_ offer: VSFileOffer) -> ProtocolV1FileTransferApprovalResult {
         alertPresenter.presentIncomingFileApproval(
             fileName: offer.fileName,
             byteLength: offer.byteLength,
@@ -116,6 +142,28 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
                 }
             }
         }
+    }
+
+    func handleFileTransferResult(
+        direction: ProtocolV1FileTransferDirection,
+        accepted: Bool,
+        reason: String
+    ) {
+        guard !accepted else { return }
+        if direction == .incoming {
+            if reason == ProtocolV1FileTransferError.userDenied.reasonCode { return }
+            alertPresenter.cancelIncomingFileApproval()
+            if reason == "session_deactivated" {
+                return
+            }
+        }
+        let title = direction == .incoming
+            ? "Incoming File Transfer Failed"
+            : "File Transfer Failed"
+        alertPresenter.presentWarning(
+            title: title,
+            message: Self.fileTransferFailureMessage(reason: reason)
+        )
     }
 
     @objc private func sendFileToClient() {
@@ -168,12 +216,22 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
     }
 
     private func updateMenuState() {
-        sendMenuItem.isEnabled = server != nil && fileTransferAvailable
+        sendMenuItem.isEnabled = sendFileAvailable
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard menuItem === sendMenuItem else { return true }
-        return server != nil && fileTransferAvailable
+        let available = sendFileAvailable
+        sendMenuItem.isEnabled = available
+        return available
+    }
+
+    func refreshAvailability() {
+        updateMenuState()
+    }
+
+    private var sendFileAvailable: Bool {
+        server?.fileTransferAvailable == true
     }
 
     private static func mimeType(for fileURL: URL) -> String {
@@ -182,6 +240,31 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
             return mimeType
         }
         return "application/octet-stream"
+    }
+
+    private static func fileTransferFailureMessage(reason: String) -> String {
+        switch reason {
+        case ProtocolV1FileTransferError.userDenied.reasonCode:
+            return "The Android device rejected the file transfer."
+        case ProtocolV1FileTransferError.approvalCancelled.reasonCode:
+            return "The file transfer request was cancelled."
+        case ProtocolV1FileTransferError.bulkSendFailed.reasonCode:
+            return "The file transfer data channel could not send the next chunk."
+        case ProtocolV1FileTransferError.approvalTimedOut.reasonCode:
+            return "The file transfer request timed out before it was approved."
+        case ProtocolV1FileTransferError.transferTimedOut.reasonCode:
+            return "The file transfer timed out waiting for the device to respond."
+        case ProtocolV1FileTransferError.policyDenied.reasonCode:
+            return "File transfer is disabled by the current managed policy."
+        case ProtocolV1FileTransferError.concurrentLimitReached.reasonCode:
+            return "Another file transfer is already in progress."
+        case "session_deactivated":
+            return "The session ended before the file transfer completed."
+        default:
+            return reason.isEmpty
+                ? "The file transfer did not complete."
+                : "The file transfer did not complete. Reason: \(reason)"
+        }
     }
 
     nonisolated private static func availableDestination(in directory: URL, fileName: String) -> URL {

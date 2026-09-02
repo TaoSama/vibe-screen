@@ -347,6 +347,7 @@
     <string name="file_transfer_failed">File transfer failed</string>
     <string name="file_transfer_failed_policy_denied">File transfer is blocked by this session\u2019s policy.</string>
     <string name="file_transfer_failed_user_denied">File transfer was declined.</string>
+    <string name="file_transfer_failed_cancelled">File transfer request was cancelled.</string>
     <string name="file_transfer_failed_too_large">This file is too large for the current session.</string>
     <string name="file_transfer_failed_temporary_limit">File transfer is busy. Try again after the current transfer finishes.</string>
     <string name="file_transfer_failed_verification">File verification failed. Try sending it again.</string>

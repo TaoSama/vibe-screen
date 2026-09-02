@@ -91,6 +91,9 @@ internal class StreamProtocolSideEffectOwner(
     }
 
     @Synchronized
+    fun hasFileOffer(transferId: ByteString): Boolean = pendingFileOffers.containsKey(transferId)
+
+    @Synchronized
     fun clearFileOffers() {
         pendingFileOffers.clear()
     }

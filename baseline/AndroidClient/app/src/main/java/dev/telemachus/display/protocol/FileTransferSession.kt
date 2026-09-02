@@ -243,6 +243,9 @@ internal class IncomingFileTransferManager(
     @Synchronized
     fun activeTransferCount(): Int = transfers.size
 
+    @Synchronized
+    fun contains(transferId: ByteString): Boolean = transfers.containsKey(transferId)
+
     private fun cancelLocked(transferId: ByteString): Boolean {
         val state = transfers.remove(transferId) ?: return false
         try {

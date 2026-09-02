@@ -200,6 +200,9 @@ class StreamClient(
                     protocolSessionOwner.releaseFileOffer(transferId)
                 }
 
+                override fun hasFileOffer(transferId: ByteString): Boolean =
+                    protocolSessionOwner.hasFileOffer(transferId)
+
                 override fun clearFileOffers() {
                     protocolSessionOwner.clearFileOffers()
                 }
