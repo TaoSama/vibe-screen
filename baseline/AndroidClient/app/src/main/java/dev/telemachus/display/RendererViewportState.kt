@@ -36,6 +36,10 @@ internal class RendererViewportState(
     val currentLayout: ViewportPolicy.Layout?
         get() = latestLayout
 
+    fun scaleModeSnapshot(): VideoScaleMode = scaleMode()
+
+    fun renderRotationSnapshot(): ClientRotation = renderRotation()
+
     fun updateDisplaySize(
         width: Int,
         height: Int,

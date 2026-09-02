@@ -19,22 +19,27 @@ internal class DecoderUseGate<Decoder> {
             }
         }
 
-    fun clear(): Decoder? =
+    /** Runs [onCleared] while holding the gate after [current] has been cleared. */
+    fun clear(onCleared: (Decoder?) -> Unit = {}): Decoder? =
         synchronized(lock) {
             val decoder = current
             current = null
+            onCleared(decoder)
             decoder
         }
 
+    /** Runs [onSuccess] while holding the gate after [current] has been updated. */
     fun compareAndSet(
         expected: Decoder?,
         update: Decoder?,
+        onSuccess: () -> Unit = {},
     ): Boolean =
         synchronized(lock) {
             if (current !== expected) {
                 false
             } else {
                 current = update
+                onSuccess()
                 true
             }
         }
@@ -54,7 +59,13 @@ internal class DecoderUseGate<Decoder> {
                         true
                     }
                 }
-                current === update -> admit()
+                current === update -> {
+                    if (!admit()) {
+                        false
+                    } else {
+                        true
+                    }
+                }
                 else -> false
             }
         }

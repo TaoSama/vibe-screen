@@ -1,6 +1,8 @@
 package dev.telemachus.display
 
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -316,6 +318,270 @@ class DecoderPresentationOwnerTest {
     }
 
     @Test
+    fun `internet publish replaces previous internet decoder and reports previous state after commit`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val firstDecoder = Any()
+        val secondDecoder = Any()
+        val connectedStates = mutableListOf<Boolean>()
+        val released = mutableListOf<Any>()
+        var firstPreviousState: InternetDecoderPresentationState<Any, TestInternetVideoConfiguration>? = null
+        var secondPreviousState: InternetDecoderPresentationState<Any, TestInternetVideoConfiguration>? = null
+
+        assertTrue(
+            owner.publishInternetDecoder(
+                decoder = firstDecoder,
+                attempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 43),
+                configuration = TestInternetVideoConfiguration(configEpoch = 43, width = 1280, height = 720, rotation = 0),
+                displayWidth = 1280,
+                displayHeight = 720,
+                displayRotation = 0,
+                currentConnected = false,
+                applyConnected = connectedStates::add,
+                presentState = { firstPreviousState = it },
+                restoreState = { fail("successful publish must not roll back") },
+                afterCommit = { it.decoder?.let(released::add) },
+            ),
+        )
+
+        assertTrue(
+            owner.publishInternetDecoder(
+                decoder = secondDecoder,
+                attempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 44),
+                configuration = TestInternetVideoConfiguration(configEpoch = 44, width = 1920, height = 1080, rotation = 90),
+                displayWidth = 1920,
+                displayHeight = 1080,
+                displayRotation = 90,
+                currentConnected = true,
+                applyConnected = connectedStates::add,
+                presentState = { secondPreviousState = it },
+                restoreState = { fail("successful replacement must not roll back") },
+                afterCommit = { it.decoder?.let(released::add) },
+            ),
+        )
+
+        assertNull(firstPreviousState?.decoder)
+        assertSame(firstDecoder, secondPreviousState?.decoder)
+        assertEquals(43L, secondPreviousState?.configuration?.configEpoch)
+        assertEquals(listOf(firstDecoder), released)
+        assertSame(secondDecoder, owner.currentDecoder())
+        assertEquals(44L, owner.internetConfiguration()?.configEpoch)
+        assertEquals(1920, owner.displayWidth)
+        assertEquals(1080, owner.displayHeight)
+        assertEquals(90, owner.displayRotation)
+        assertEquals(
+            RendererDecoderPresentation(configEpoch = 44, renderTargetGeneration = renderTarget.generation),
+            rendererOwner.currentDecoderPresentation,
+        )
+        assertEquals(listOf(true, true), connectedStates)
+    }
+
+    @Test
+    fun `internet publish holds decoder gate until presentation commit finishes`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val decoder = Any()
+        val attempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 46)
+        val connectedStates = mutableListOf<Boolean>()
+        val presentEntered = CountDownLatch(1)
+        val allowPresent = CountDownLatch(1)
+        val detachStarted = CountDownLatch(1)
+        val publishResult = AtomicReference<Boolean?>()
+        val publishFailure = AtomicReference<Throwable?>()
+        val detachedDecoder = AtomicReference<Any?>()
+        var detachThread: Thread? = null
+        val expectedPresentation = RendererDecoderPresentation(configEpoch = 46, renderTargetGeneration = renderTarget.generation)
+        val publishThread =
+            Thread {
+                try {
+                    publishResult.set(
+                        owner.publishInternetDecoder(
+                            decoder = decoder,
+                            attempt = attempt,
+                            configuration = TestInternetVideoConfiguration(configEpoch = 46, width = 1920, height = 1080, rotation = 90),
+                            displayWidth = 1920,
+                            displayHeight = 1080,
+                            displayRotation = 90,
+                            currentConnected = false,
+                            applyConnected = connectedStates::add,
+                            presentState = {
+                                presentEntered.countDown()
+                                assertTrue(allowPresent.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+                            },
+                            restoreState = { fail("successful publish must not roll back") },
+                        ),
+                    )
+                } catch (failure: Throwable) {
+                    publishFailure.set(failure)
+                }
+            }
+
+        publishThread.start()
+        try {
+            assertTrue(presentEntered.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+
+            detachThread =
+                Thread {
+                    detachStarted.countDown()
+                    detachedDecoder.set(owner.detachCurrentDecoder())
+                }
+            detachThread.start()
+            assertTrue(detachStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            waitUntilBlockedByDecoderGate(
+                thread = detachThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing detach",
+            )
+
+            assertEquals(expectedPresentation, rendererOwner.currentDecoderPresentation)
+            assertEquals(46L, owner.internetConfiguration()?.configEpoch)
+            assertEquals(1920, owner.displayWidth)
+            assertEquals(1080, owner.displayHeight)
+            assertEquals(90, owner.displayRotation)
+            assertEquals(listOf(true), connectedStates)
+
+            allowPresent.countDown()
+            joinFinished(publishThread)
+            joinFinished(detachThread)
+
+            publishFailure.get()?.let { throw AssertionError("Internet publish failed", it) }
+            assertEquals(true, publishResult.get())
+            assertSame(decoder, detachedDecoder.get())
+            assertNull(owner.currentDecoder())
+            assertNull(rendererOwner.currentDecoderPresentation)
+        } finally {
+            allowPresent.countDown()
+            detachThread?.let(::joinFinished)
+            joinFinished(publishThread)
+        }
+    }
+
+    @Test
+    fun `stale internet publish after detach does not apply presentation side effects`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val staleDecoder = Any()
+        val staleAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 48)
+        val connectedStates = mutableListOf<Boolean>()
+        var presented = false
+
+        owner.detachCurrentDecoder()
+
+        assertFalse(
+            owner.publishInternetDecoder(
+                decoder = staleDecoder,
+                attempt = staleAttempt,
+                configuration = TestInternetVideoConfiguration(configEpoch = 48, width = 1280, height = 720, rotation = 180),
+                displayWidth = 1280,
+                displayHeight = 720,
+                displayRotation = 180,
+                currentConnected = false,
+                applyConnected = connectedStates::add,
+                presentState = { presented = true },
+                restoreState = { fail("rejected publish must not roll back") },
+            ),
+        )
+        assertNull(owner.currentDecoder())
+        assertNull(rendererOwner.currentDecoderPresentation)
+        assertNull(owner.internetConfiguration())
+        assertEquals(0, owner.displayWidth)
+        assertEquals(0, owner.displayHeight)
+        assertEquals(0, owner.displayRotation)
+        assertTrue(connectedStates.isEmpty())
+        assertFalse(presented)
+    }
+
+    @Test
+    fun `internet publish rejected by renderer returns false without side effects`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val decoder = Any()
+        val attempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 49)
+        val connectedStates = mutableListOf<Boolean>()
+        var presented = false
+        var restored = false
+
+        owner.invalidateRenderTarget(target)
+
+        assertFalse(
+            owner.publishInternetDecoder(
+                decoder = decoder,
+                attempt = attempt,
+                configuration = TestInternetVideoConfiguration(configEpoch = 49, width = 1024, height = 768, rotation = 270),
+                displayWidth = 1024,
+                displayHeight = 768,
+                displayRotation = 270,
+                currentConnected = false,
+                applyConnected = connectedStates::add,
+                presentState = { presented = true },
+                restoreState = { restored = true },
+            ),
+        )
+        assertNull(owner.currentDecoder())
+        assertNull(rendererOwner.currentDecoderPresentation)
+        assertNull(owner.internetConfiguration())
+        assertEquals(0, owner.displayWidth)
+        assertEquals(0, owner.displayHeight)
+        assertEquals(0, owner.displayRotation)
+        assertTrue(connectedStates.isEmpty())
+        assertFalse(presented)
+        assertFalse(restored)
+    }
+
+    @Test
+    fun `internet publish rejects connected local decoder state without side effects`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val previousDecoder = Any()
+        val previousAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 50)
+        val previousPresentation = RendererDecoderPresentation(configEpoch = 50, renderTargetGeneration = renderTarget.generation)
+        val connectedStates = mutableListOf<Boolean>()
+        var presented = false
+        var restored = false
+        var afterCommitted = false
+
+        assertTrue(owner.publishLocalDecoder(previousDecoder, previousAttempt))
+        rendererOwner.updateDisplayGeometry(RendererDisplayGeometry(width = 800, height = 600, rotation = 0))
+
+        assertFalse(
+            owner.publishInternetDecoder(
+                decoder = Any(),
+                attempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 51),
+                configuration = TestInternetVideoConfiguration(configEpoch = 51, width = 1280, height = 720, rotation = 90),
+                displayWidth = 1280,
+                displayHeight = 720,
+                displayRotation = 90,
+                currentConnected = true,
+                applyConnected = connectedStates::add,
+                presentState = { presented = true },
+                restoreState = { restored = true },
+                afterCommit = { afterCommitted = true },
+            ),
+        )
+
+        assertSame(previousDecoder, owner.currentDecoder())
+        assertEquals(previousPresentation, rendererOwner.currentDecoderPresentation)
+        assertNull(owner.internetConfiguration())
+        assertEquals(800, owner.displayWidth)
+        assertEquals(600, owner.displayHeight)
+        assertEquals(0, owner.displayRotation)
+        assertTrue(connectedStates.isEmpty())
+        assertFalse(presented)
+        assertFalse(restored)
+        assertFalse(afterCommitted)
+    }
+
+    @Test
     fun `release current decoder waits for in flight use and releases exactly once`() {
         val owner = owner()
         val target = Any()
@@ -327,6 +593,7 @@ class DecoderPresentationOwnerTest {
         val releaseStarted = java.util.concurrent.CountDownLatch(1)
         val unblockDecode = java.util.concurrent.CountDownLatch(1)
         val released = mutableListOf<Any>()
+        var releaseThread: Thread? = null
 
         assertTrue(owner.publishLocalDecoder(decoder, attempt))
         try {
@@ -337,30 +604,236 @@ class DecoderPresentationOwnerTest {
                         configEpoch = 54,
                         decode = {
                             entered.countDown()
-                            assertTrue(unblockDecode.await(1, java.util.concurrent.TimeUnit.SECONDS))
+                            assertTrue(unblockDecode.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
                         },
                         onDrop = { fail("current frame should not drop") },
                     )
                 }
-            assertTrue(entered.await(1, java.util.concurrent.TimeUnit.SECONDS))
-            val releaseThread =
+            assertTrue(entered.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            releaseThread =
                 Thread {
                     releaseStarted.countDown()
                     owner.releaseCurrentDecoder(released::add)
                 }
             releaseThread.start()
-            assertTrue(releaseStarted.await(1, java.util.concurrent.TimeUnit.SECONDS))
-            Thread.sleep(50)
+            assertTrue(releaseStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            waitUntilBlockedByDecoderGate(
+                thread = releaseThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing release",
+            )
             assertTrue(released.isEmpty())
             unblockDecode.countDown()
-            decodeFuture.get(1, java.util.concurrent.TimeUnit.SECONDS)
-            releaseThread.join(1_000)
+            decodeFuture.get(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+            joinFinished(releaseThread)
 
             owner.releaseCurrentDecoder(released::add)
             assertEquals(listOf(decoder), released)
         } finally {
             unblockDecode.countDown()
-            executor.shutdownNow()
+            try {
+                releaseThread?.let(::joinFinished)
+            } finally {
+                executor.shutdownNow()
+                assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            }
+        }
+    }
+
+    @Test
+    fun `detach keeps decoder and renderer presentation consistent against competing publish`() {
+        val rendererOwner = RendererOwner()
+        val target = Any()
+        val firstDecoder = Any()
+        val secondDecoder = Any()
+        val thirdDecoder = Any()
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val detachStarted = CountDownLatch(1)
+        val detachEnteredRendererCleanup = CountDownLatch(1)
+        val allowDetachRendererCleanup = CountDownLatch(1)
+        val publishStarted = CountDownLatch(1)
+        val detachedDecoder = AtomicReference<Any?>()
+        val publishResult = AtomicReference<Boolean?>()
+        val publishFailure = AtomicReference<Throwable?>()
+        var publishThread: Thread? = null
+        val hookedOwner =
+            owner(
+                rendererOwner = rendererOwner,
+                hooks =
+                    DecoderPresentationOwnerHooks(
+                        beforeRendererPresentationClearDuringDetach = {
+                            detachEnteredRendererCleanup.countDown()
+                            assertTrue(allowDetachRendererCleanup.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+                        },
+                    ),
+            )
+        val renderTarget = hookedOwner.publishRenderTarget(target)
+        val firstPresentation = RendererDecoderPresentation(configEpoch = 62, renderTargetGeneration = renderTarget.generation)
+        val firstAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 62)
+        val secondAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 63)
+
+        assertTrue(hookedOwner.publishLocalDecoder(firstDecoder, firstAttempt))
+        assertEquals(firstPresentation, rendererOwner.currentDecoderPresentation)
+        try {
+            val detachFuture =
+                executor.submit {
+                    detachStarted.countDown()
+                    detachedDecoder.set(hookedOwner.detachCurrentDecoder())
+                }
+            assertTrue(detachStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(detachEnteredRendererCleanup.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+
+            publishThread =
+                Thread {
+                    publishStarted.countDown()
+                    try {
+                        publishResult.set(
+                            hookedOwner.publishLocalDecoder(secondDecoder, secondAttempt),
+                        )
+                    } catch (failure: Throwable) {
+                        publishFailure.set(failure)
+                    }
+                }
+            publishThread.start()
+            assertTrue(publishStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            waitUntilBlockedByDecoderGate(
+                thread = publishThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing publish",
+            )
+
+            assertEquals(firstPresentation, rendererOwner.currentDecoderPresentation)
+
+            allowDetachRendererCleanup.countDown()
+            detachFuture.get(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+            joinFinished(publishThread)
+
+            publishFailure.get()?.let { throw AssertionError("Competing publish failed", it) }
+            assertSame(firstDecoder, detachedDecoder.get())
+            assertEquals(false, publishResult.get())
+            assertNull(hookedOwner.currentDecoder())
+            assertNull(rendererOwner.currentDecoderPresentation)
+
+            val freshGeneration = hookedOwner.beginDecoderConfigurationAttempt()
+            val freshAttempt =
+                attempt(
+                    surfaceToken = target,
+                    surfaceGeneration = renderTarget.generation,
+                    configurationGeneration = freshGeneration,
+                    configEpoch = 64,
+                )
+            assertTrue(hookedOwner.publishLocalDecoder(thirdDecoder, freshAttempt))
+            assertSame(thirdDecoder, hookedOwner.currentDecoder())
+            assertEquals(
+                RendererDecoderPresentation(configEpoch = 64, renderTargetGeneration = renderTarget.generation),
+                rendererOwner.currentDecoderPresentation,
+            )
+        } finally {
+            allowDetachRendererCleanup.countDown()
+            try {
+                publishThread?.let(::joinFinished)
+            } finally {
+                executor.shutdownNow()
+                assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            }
+        }
+    }
+
+    @Test
+    fun `quarantine detach keeps decoder and renderer presentation consistent against competing publish`() {
+        val rendererOwner = RendererOwner()
+        val target = Any()
+        val quarantinedDecoder = Any()
+        val replacementDecoder = Any()
+        val thirdDecoder = Any()
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val detachEnteredRendererCleanup = CountDownLatch(1)
+        val allowDetachRendererCleanup = CountDownLatch(1)
+        val publishStarted = CountDownLatch(1)
+        val quarantineResult = AtomicReference<Boolean?>()
+        val publishResult = AtomicReference<Boolean?>()
+        val publishFailure = AtomicReference<Throwable?>()
+        var publishThread: Thread? = null
+        val hookedOwner =
+            owner(
+                rendererOwner = rendererOwner,
+                hooks =
+                    DecoderPresentationOwnerHooks(
+                        beforeRendererPresentationClearDuringDetach = {
+                            detachEnteredRendererCleanup.countDown()
+                            assertTrue(allowDetachRendererCleanup.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+                        },
+                    ),
+            )
+        val renderTarget = hookedOwner.publishRenderTarget(target)
+        val quarantinedPresentation = RendererDecoderPresentation(configEpoch = 72, renderTargetGeneration = renderTarget.generation)
+        val quarantinedAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 72)
+        val replacementAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 73)
+
+        assertTrue(hookedOwner.publishLocalDecoder(quarantinedDecoder, quarantinedAttempt))
+        assertEquals(quarantinedPresentation, rendererOwner.currentDecoderPresentation)
+        try {
+            val quarantineFuture =
+                executor.submit {
+                    quarantineResult.set(
+                        hookedOwner.detachExpectedDecoderForQuarantine(quarantinedDecoder),
+                    )
+                }
+            assertTrue(detachEnteredRendererCleanup.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+
+            publishThread =
+                Thread {
+                    publishStarted.countDown()
+                    try {
+                        publishResult.set(
+                            hookedOwner.publishLocalDecoder(replacementDecoder, replacementAttempt),
+                        )
+                    } catch (failure: Throwable) {
+                        publishFailure.set(failure)
+                    }
+                }
+            publishThread.start()
+            assertTrue(publishStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            waitUntilBlockedByDecoderGate(
+                thread = publishThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing publish",
+            )
+
+            assertEquals(quarantinedPresentation, rendererOwner.currentDecoderPresentation)
+
+            allowDetachRendererCleanup.countDown()
+            quarantineFuture.get(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+            joinFinished(publishThread)
+
+            publishFailure.get()?.let { throw AssertionError("Competing publish failed", it) }
+            assertEquals(true, quarantineResult.get())
+            assertEquals(false, publishResult.get())
+            assertNull(hookedOwner.currentDecoder())
+            assertNull(rendererOwner.currentDecoderPresentation)
+
+            val freshGeneration = hookedOwner.beginDecoderConfigurationAttempt()
+            val freshAttempt =
+                attempt(
+                    surfaceToken = target,
+                    surfaceGeneration = renderTarget.generation,
+                    configurationGeneration = freshGeneration,
+                    configEpoch = 74,
+                )
+            assertTrue(hookedOwner.publishLocalDecoder(thirdDecoder, freshAttempt))
+            assertSame(thirdDecoder, hookedOwner.currentDecoder())
+            assertEquals(
+                RendererDecoderPresentation(configEpoch = 74, renderTargetGeneration = renderTarget.generation),
+                rendererOwner.currentDecoderPresentation,
+            )
+        } finally {
+            allowDetachRendererCleanup.countDown()
+            try {
+                publishThread?.let(::joinFinished)
+            } finally {
+                executor.shutdownNow()
+                assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+            }
         }
     }
 
@@ -374,6 +847,7 @@ class DecoderPresentationOwnerTest {
         val previousAttempt =
             attempt(surfaceToken = firstTarget, surfaceGeneration = firstSnapshot.generation, configEpoch = 3)
         val connectedStates = mutableListOf<Boolean>()
+        val released = mutableListOf<Any>()
 
         assertTrue(owner.publishLocalDecoder(previousDecoder, previousAttempt))
         rendererOwner.updateDisplayGeometry(RendererDisplayGeometry(width = 800, height = 600, rotation = 0))
@@ -393,6 +867,7 @@ class DecoderPresentationOwnerTest {
                 applyConnected = connectedStates::add,
                 presentState = { throw IllegalStateException("ui commit failed") },
                 restoreState = {},
+                afterCommit = { it.decoder?.let(released::add) },
             )
             fail("Expected presentation failure")
         } catch (failure: IllegalStateException) {
@@ -408,6 +883,117 @@ class DecoderPresentationOwnerTest {
         assertEquals(600, owner.displayHeight)
         assertEquals(0, owner.displayRotation)
         assertEquals(listOf(true, false), connectedStates)
+        assertTrue(released.isEmpty())
+    }
+
+    @Test
+    fun `internet rollback restores previous semantic state when renderer presentation cannot be reinstalled`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val previousDecoder = Any()
+        val previousAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 3)
+        val previousPresentation = RendererDecoderPresentation(configEpoch = 3, renderTargetGeneration = renderTarget.generation)
+        val connectedStates = mutableListOf<Boolean>()
+        val released = mutableListOf<Any>()
+        var restoredState: InternetDecoderPresentationState<Any, TestInternetVideoConfiguration>? = null
+
+        assertTrue(owner.publishLocalDecoder(previousDecoder, previousAttempt))
+        rendererOwner.updateDisplayGeometry(RendererDisplayGeometry(width = 800, height = 600, rotation = 0))
+
+        val nextDecoder = Any()
+        val nextAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 8)
+        try {
+            owner.publishInternetDecoder(
+                decoder = nextDecoder,
+                attempt = nextAttempt,
+                configuration = TestInternetVideoConfiguration(configEpoch = 8, width = 1280, height = 720, rotation = 90),
+                displayWidth = 1280,
+                displayHeight = 720,
+                displayRotation = 90,
+                currentConnected = false,
+                applyConnected = connectedStates::add,
+                presentState = {
+                    owner.invalidateRenderTarget(target)
+                    throw IllegalStateException("ui commit failed after target invalidation")
+                },
+                restoreState = { restoredState = it },
+                afterCommit = { it.decoder?.let(released::add) },
+            )
+            fail("Expected presentation failure")
+        } catch (failure: IllegalStateException) {
+            assertEquals("ui commit failed after target invalidation", failure.message)
+        }
+
+        assertSame(previousDecoder, owner.currentDecoder())
+        assertNull(rendererOwner.currentDecoderPresentation)
+        assertNull(owner.internetConfiguration())
+        assertEquals(800, owner.displayWidth)
+        assertEquals(600, owner.displayHeight)
+        assertEquals(0, owner.displayRotation)
+        assertEquals(listOf(true, false), connectedStates)
+        assertSame(previousDecoder, restoredState?.decoder)
+        assertNull(restoredState?.configuration)
+        assertEquals(previousPresentation, restoredState?.rendererPresentation)
+        assertFalse(released.contains(previousDecoder))
+    }
+
+    @Test
+    fun `internet install applyConnected failure rolls back decoder renderer geometry and connected state`() {
+        val rendererOwner = RendererOwner()
+        val owner = owner(rendererOwner)
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val previousDecoder = Any()
+        val previousAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 4)
+        val previousPresentation = RendererDecoderPresentation(configEpoch = 4, renderTargetGeneration = renderTarget.generation)
+        val connectedStates = mutableListOf<Boolean>()
+        var restoredState: InternetDecoderPresentationState<Any, TestInternetVideoConfiguration>? = null
+        var applyConnectedCalls = 0
+
+        assertTrue(owner.publishLocalDecoder(previousDecoder, previousAttempt))
+        rendererOwner.updateDisplayGeometry(RendererDisplayGeometry(width = 800, height = 600, rotation = 0))
+
+        val nextDecoder = Any()
+        val nextAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 9)
+        val applyFailure = IllegalStateException("connected state failed")
+        val thrown =
+            try {
+                owner.publishInternetDecoder(
+                    decoder = nextDecoder,
+                    attempt = nextAttempt,
+                    configuration = TestInternetVideoConfiguration(configEpoch = 9, width = 1280, height = 720, rotation = 180),
+                    displayWidth = 1280,
+                    displayHeight = 720,
+                    displayRotation = 180,
+                    currentConnected = false,
+                    applyConnected = { connected ->
+                        applyConnectedCalls += 1
+                        connectedStates.add(connected)
+                        if (applyConnectedCalls == 1) throw applyFailure
+                    },
+                    presentState = { fail("failed install must not present") },
+                    restoreState = { restoredState = it },
+                    afterCommit = { fail("failed install must not run afterCommit") },
+                )
+                fail("Expected connected-state failure")
+                null
+            } catch (failure: IllegalStateException) {
+                failure
+            }
+
+        assertSame(applyFailure, thrown)
+        assertSame(previousDecoder, owner.currentDecoder())
+        assertEquals(previousPresentation, rendererOwner.currentDecoderPresentation)
+        assertNull(owner.internetConfiguration())
+        assertEquals(800, owner.displayWidth)
+        assertEquals(600, owner.displayHeight)
+        assertEquals(0, owner.displayRotation)
+        assertEquals(listOf(true, false), connectedStates)
+        assertSame(previousDecoder, restoredState?.decoder)
+        assertNull(restoredState?.configuration)
+        assertEquals(previousPresentation, restoredState?.rendererPresentation)
     }
 
     @Test
@@ -422,17 +1008,21 @@ class DecoderPresentationOwnerTest {
         }
     }
 
-    private fun owner(rendererOwner: RendererOwner = RendererOwner()) =
+    private fun owner(
+        rendererOwner: RendererOwner = RendererOwner(),
+        hooks: DecoderPresentationOwnerHooks = DecoderPresentationOwnerHooks(),
+    ) =
         DecoderPresentationOwner<Any, TestInternetVideoConfiguration>(
             rendererOwner = rendererOwner,
             internetConfigurationEpoch = { it.configEpoch },
+            hooks = hooks,
         )
 
     private fun attempt(
         surfaceToken: Any = SURFACE_TOKEN,
         surfaceGeneration: Long = 11L,
         configurationToken: Any = CONFIGURATION_TOKEN,
-        configurationGeneration: Long = 13L,
+        configurationGeneration: Long = 0L,
         configEpoch: Long = 17L,
     ) = DecoderLifecycleAttempt(
         sessionToken = SESSION_TOKEN,
@@ -459,6 +1049,11 @@ class DecoderPresentationOwnerTest {
         error("$relativePath not found from " + System.getProperty("user.dir"))
     }
 
+    private fun joinFinished(thread: Thread) {
+        thread.join(java.util.concurrent.TimeUnit.SECONDS.toMillis(WAIT_TIMEOUT_SECONDS))
+        assertFalse(thread.isAlive)
+    }
+
     private data class TestInternetVideoConfiguration(
         val configEpoch: Long,
         val width: Int,
@@ -469,6 +1064,7 @@ class DecoderPresentationOwnerTest {
     private companion object {
         const val PRODUCTION_DECODER_PRESENTATION_OWNER =
             "app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt"
+        const val WAIT_TIMEOUT_SECONDS = 5L
         val SESSION_TOKEN = Any()
         val SURFACE_TOKEN = Any()
         val CONFIGURATION_TOKEN = Any()

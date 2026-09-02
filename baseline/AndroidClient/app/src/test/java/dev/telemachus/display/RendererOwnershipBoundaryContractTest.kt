@@ -16,7 +16,7 @@ class RendererOwnershipBoundaryContractTest {
 
     @Test
     fun `renderer owners stay independent from android ui protocol transport and decoder layers`() {
-        val owners = listOf(RENDERER_VIEWPORT_STATE, RENDERER_OWNER).joinToString("\n") { source(it) }
+        val owners = listOf(RENDERER_VIEWPORT_STATE, RENDERER_OWNER, DECODER_PRESENTATION_OWNER).joinToString("\n") { source(it) }
 
         FORBIDDEN_IMPORT_OR_TYPE_REFERENCES.forEach { reference ->
             assertFalse(
@@ -33,6 +33,8 @@ class RendererOwnershipBoundaryContractTest {
 
         assertTrue(activity.contains("RendererOwner("))
         assertTrue(activity.contains("rendererOwner.updateViewportParent"))
+        assertTrue(activity.contains("rendererOwner.mapTouchPoint"))
+        assertTrue(activity.contains("rendererOwner.rotationPolicy"))
         assertTrue(activity.contains("DecoderPresentationOwner<VideoDecoder, ProductVideoConfiguration>"))
         assertTrue(activity.contains("decoderPresentationOwner.routeLocalFrame"))
         assertTrue(activity.contains("decoderPresentationOwner.routeInternetFrame"))
@@ -42,8 +44,23 @@ class RendererOwnershipBoundaryContractTest {
         assertTrue(decoderPresentationOwner.contains("rendererOwner.internetFrameDecision"))
         assertTrue(decoderPresentationOwner.contains("rendererOwner.publishRenderTarget"))
         assertTrue(decoderPresentationOwner.contains("rendererOwner.invalidateRenderTarget"))
+        assertTrue(activity.contains("rendererOwner.renderTargetReadyAction"))
+        FORBIDDEN_MAIN_ACTIVITY_RENDERER_OWNER_CALLS.forEach { call ->
+            assertFalse(
+                "MainActivity must route `$call` through DecoderPresentationOwner",
+                activity.contains(call),
+            )
+        }
+        FORBIDDEN_MAIN_ACTIVITY_VIEWPORT_POLICY_CALLS.forEach { call ->
+            assertFalse(
+                "MainActivity must route viewport policy `$call` through RendererOwner",
+                activity.contains(call),
+            )
+        }
         assertFalse(activity.contains("private val rendererViewportState"))
         assertFalse(activity.contains("private val surfaceGeneration"))
+        assertFalse(activity.contains("private val videoDecoder"))
+        assertFalse(activity.contains("private var videoDecoder"))
         assertFalse(activity.contains("@Volatile private var activeDecoderConfigEpoch"))
         assertFalse(activity.contains("activeDecoderConfigEpoch = 0L"))
         assertFalse(activity.contains("surfaceGeneration.get()"))
@@ -87,6 +104,28 @@ class RendererOwnershipBoundaryContractTest {
                 "ProtocolV1Session",
                 "StreamProtocolSideEffectOwner",
                 "InternetProductSession",
+            )
+        val FORBIDDEN_MAIN_ACTIVITY_RENDERER_OWNER_CALLS =
+            listOf(
+                "rendererOwner.publishRenderTarget",
+                "rendererOwner.invalidateRenderTarget",
+                "rendererOwner.snapshotRenderTarget",
+                "rendererOwner.acceptsRenderTarget",
+                "rendererOwner.commitDecoderPresentation",
+                "rendererOwner.installDecoderPresentation",
+                "rendererOwner.clearDecoderPresentation",
+                "rendererOwner.updateDisplayGeometry",
+                "rendererOwner.clearDisplayGeometry",
+                "rendererOwner.localFrameDecision",
+                "rendererOwner.internetFrameDecision",
+            )
+        val FORBIDDEN_MAIN_ACTIVITY_VIEWPORT_POLICY_CALLS =
+            listOf(
+                "TouchMapper" + ".map",
+                "InternetTouchMapper" + ".map",
+                "ViewportPolicy" + ".effectiveRotation",
+                "ViewportPolicy" + ".screenOrientationFor",
+                "ViewportPolicy" + ".surfaceTransformRotation",
             )
     }
 }

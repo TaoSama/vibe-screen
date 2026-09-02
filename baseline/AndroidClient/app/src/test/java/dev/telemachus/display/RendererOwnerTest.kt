@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.content.pm.ActivityInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -27,6 +28,70 @@ class RendererOwnerTest {
                 surface = ViewportPolicy.Size(1_200, 600),
             ),
             layout,
+        )
+    }
+
+    @Test
+    fun `current layout exposes last renderer viewport calculation`() {
+        val owner = RendererOwner()
+        assertNull(owner.currentLayout)
+
+        owner.updateDisplayGeometry(RendererDisplayGeometry(width = 1_920, height = 1_080, rotation = 0))
+        val layout = owner.updateViewportParent(width = 1_280, height = 720)
+
+        assertEquals(layout, owner.currentLayout)
+    }
+
+    @Test
+    fun `touch mapping uses renderer display geometry and client rotation`() {
+        val owner =
+            RendererOwner(
+                scaleMode = { VideoScaleMode.FIT },
+                renderRotation = { ClientRotation.CLOCKWISE_90 },
+            )
+        owner.updateDisplayGeometry(RendererDisplayGeometry(width = 2_000, height = 1_000, rotation = 0))
+
+        assertEquals(
+            TouchMapper.map(
+                x = 600f,
+                y = 600f,
+                viewWidth = 1_200,
+                viewHeight = 1_200,
+                videoWidth = 2_000,
+                videoHeight = 1_000,
+                scaleMode = VideoScaleMode.FIT,
+                renderRotation = 90,
+            ),
+            owner.mapTouchPoint(x = 600f, y = 600f, viewWidth = 1_200, viewHeight = 1_200),
+        )
+    }
+
+    @Test
+    fun `touch mapping covers fill crop and client rotation for internet input`() {
+        val owner =
+            RendererOwner(
+                scaleMode = { VideoScaleMode.FILL },
+                renderRotation = { ClientRotation.CLOCKWISE_90 },
+            )
+        owner.updateDisplayGeometry(RendererDisplayGeometry(width = 2_000, height = 1_000, rotation = 0))
+
+        val point = owner.mapTouchPoint(x = 0f, y = 0f, viewWidth = 1_000, viewHeight = 1_000)
+
+        assertEquals(0.25f, point.x, 0.0001f)
+        assertEquals(1f, point.y, 0.0001f)
+    }
+
+    @Test
+    fun `rotation policy combines host and client rotation for android adapter`() {
+        val owner = RendererOwner(renderRotation = { ClientRotation.CLOCKWISE_90 })
+
+        assertEquals(
+            RendererRotationPolicy(
+                effectiveRotation = 270,
+                screenOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
+                surfaceRotation = 90,
+            ),
+            owner.rotationPolicy(hostRotation = 180),
         )
     }
 
@@ -59,6 +124,86 @@ class RendererOwnerTest {
 
         assertEquals(first, second)
         assertTrue(owner.acceptsRenderTarget(target, first.generation))
+    }
+
+    @Test
+    fun `render target ready action waits until a target exists and decoder is absent`() {
+        val owner = RendererOwner()
+
+        assertEquals(
+            RendererRenderTargetReadyAction.NONE,
+            owner.renderTargetReadyAction(readiness(localConfigurationAvailable = true)),
+        )
+
+        owner.publishRenderTarget(Any())
+
+        assertEquals(
+            RendererRenderTargetReadyAction.NONE,
+            owner.renderTargetReadyAction(
+                readiness(
+                    decoderConfigured = true,
+                    localConfigurationAvailable = true,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `local render target ready action prefers pending configuration retry before direct decoder configuration`() {
+        val owner = RendererOwner()
+        owner.publishRenderTarget(Any())
+
+        assertEquals(
+            RendererRenderTargetReadyAction.RETRY_PENDING_LOCAL_CONFIGURATION,
+            owner.renderTargetReadyAction(
+                readiness(
+                    localConfigurationPending = true,
+                    localConfigurationAvailable = true,
+                ),
+            ),
+        )
+        assertEquals(
+            RendererRenderTargetReadyAction.CONFIGURE_LOCAL_DECODER,
+            owner.renderTargetReadyAction(readiness(localConfigurationAvailable = true)),
+        )
+    }
+
+    @Test
+    fun `internet render target ready action requires display geometry for direct decoder configuration`() {
+        val owner = RendererOwner()
+        owner.publishRenderTarget(Any())
+
+        assertEquals(
+            RendererRenderTargetReadyAction.RETRY_PENDING_INTERNET_CONFIGURATION,
+            owner.renderTargetReadyAction(
+                readiness(
+                    flow = RendererRenderTargetFlow.INTERNET,
+                    internetConfigurationPending = true,
+                    internetConfigurationAvailable = true,
+                ),
+            ),
+        )
+        assertEquals(
+            RendererRenderTargetReadyAction.NONE,
+            owner.renderTargetReadyAction(
+                readiness(
+                    flow = RendererRenderTargetFlow.INTERNET,
+                    internetConfigurationAvailable = true,
+                ),
+            ),
+        )
+
+        owner.updateDisplayGeometry(RendererDisplayGeometry(width = 1280, height = 720, rotation = 0))
+
+        assertEquals(
+            RendererRenderTargetReadyAction.CONFIGURE_INTERNET_DECODER,
+            owner.renderTargetReadyAction(
+                readiness(
+                    flow = RendererRenderTargetFlow.INTERNET,
+                    internetConfigurationAvailable = true,
+                ),
+            ),
+        )
     }
 
     @Test
@@ -122,7 +267,10 @@ class RendererOwnerTest {
         assertEquals(second, afterStaleDestroy)
         assertFalse(owner.acceptsRenderTarget(firstTarget, first.generation))
         assertTrue(owner.acceptsRenderTarget(secondTarget, second.generation))
-        assertEquals(RendererDecoderPresentation(configEpoch = 5, renderTargetGeneration = second.generation), owner.currentDecoderPresentation)
+        assertEquals(
+            RendererDecoderPresentation(configEpoch = 5, renderTargetGeneration = second.generation),
+            owner.currentDecoderPresentation,
+        )
     }
 
     @Test
@@ -193,4 +341,20 @@ class RendererOwnerTest {
             ),
         )
     }
+
+    private fun readiness(
+        flow: RendererRenderTargetFlow = RendererRenderTargetFlow.LOCAL,
+        decoderConfigured: Boolean = false,
+        localConfigurationPending: Boolean = false,
+        localConfigurationAvailable: Boolean = false,
+        internetConfigurationPending: Boolean = false,
+        internetConfigurationAvailable: Boolean = false,
+    ) = RendererRenderTargetReadiness(
+        flow = flow,
+        decoderConfigured = decoderConfigured,
+        localConfigurationPending = localConfigurationPending,
+        localConfigurationAvailable = localConfigurationAvailable,
+        internetConfigurationPending = internetConfigurationPending,
+        internetConfigurationAvailable = internetConfigurationAvailable,
+    )
 }
