@@ -7,6 +7,13 @@ struct InternetSessionLeaseStartupPlan {
     let issuerToken: String
 }
 
+struct InternetSessionLeaseRefreshPlan {
+    let currentConfiguration: InternetProductSessionConfiguration
+    let request: InternetSignalingSessionProfileRequest
+    let signalingBaseURL: URL
+    let issuerToken: String
+}
+
 enum InternetSessionLeaseDeliveryLifecycleDisposition: Equatable {
     case queued
     case delivered
@@ -144,5 +151,40 @@ struct InternetSessionLeaseStartupPipeline<Session: AnyObject> {
         try await startCapture(session, configuration)
         didStart()
         return session
+    }
+
+    func refresh(
+        session: Session,
+        with plan: InternetSessionLeaseRefreshPlan,
+        provideFreshSession: (Session, InternetProductSessionConfiguration) throws -> Void
+    ) async throws {
+        let delivery = try await createDelivery(
+            plan.signalingBaseURL,
+            plan.issuerToken,
+            plan.request
+        )
+        try requireCurrentStart()
+        let configuration = try applyDelivery(
+            plan.currentConfiguration,
+            delivery,
+            plan.signalingBaseURL
+        )
+        resetDelivery()
+        let disposition = queueDelivery(delivery, session)
+        guard disposition.permitsStartup else {
+            resetDelivery()
+            if case .stale = disposition {
+                throw CancellationError()
+            }
+            throw InternetProductSessionError.securityFailure(
+                "The authoritative session lease could not be attached to the fresh Internet session."
+            )
+        }
+        do {
+            try provideFreshSession(session, configuration)
+        } catch {
+            resetDelivery()
+            throw error
+        }
     }
 }

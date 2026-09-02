@@ -679,8 +679,11 @@ release gates below are unchanged.
 The current worktree adds an admin/operator Authority session-profile issuance
 primitive for already registered devices, signaling adoption of those sessions
 after successful role authorization, and Mac signing of the exact
-Authority-supplied epoch. This is local control-plane evidence only; Mac/Android
-automatic profile invocation remains open.
+Authority-supplied epoch. On the macOS host, the local/offline Authority
+session-profile request and epoch allocation path is wired, and
+Authority-backed profile invocation and refresh are covered by local tests.
+This remains local control-plane evidence only: real Android UI profile import,
+first lease bootstrap, device handoff, and public-network E2E stay open.
 A 2026-08-20 local readiness record at commit `18a6ea70` covers the same
 release boundary: protocol checks, Phase 3 security/service/static tests, local
 Authority container gating, relay coturn data-plane scripts, and direct plus
@@ -868,11 +871,11 @@ The current-base public Internet WebRTC/TURN relay E2E owner record is
 it stays blocked until retained product E2E evidence proves a real public
 Internet WebRTC relay session with deployed remote TURN and
 ScreenCaptureKit-to-MediaCodec continuity.
-Mac/Android automatic invocation of Authority session-profile issuance, real QR
-scan request/acceptance, real encoded ScreenCaptureKit output through the
-device, automatic fresh-session
+Real Android UI profile import, first lease bootstrap, device handoff,
+public-network E2E, real QR scan request/acceptance, real encoded
+ScreenCaptureKit output reaching the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
-revocation propagation and soak remain release gates rather than shipped
+revocation propagation, and soak remain release gates rather than shipped
 features. Signaling now has a PostgreSQL-backed routing store with local
 cross-instance contract coverage. Signaling and relay stores now use shared
 PostgreSQL state for multi-instance correctness paths; signaling long-poll
