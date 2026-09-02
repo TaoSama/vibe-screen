@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence, TextIO
@@ -48,6 +49,18 @@ REQUIRED_HOST_PREFLIGHT_FIELDS = (
     "signing_tcc_match",
     "host_display_rotation_restoration_plan",
 )
+REQUIRED_EVIDENCE_SOURCE_FIELDS = (
+    "capture_type",
+    "device_runtime_class",
+    "synthetic_fixture",
+    "artifact_retention",
+)
+EXPECTED_EVIDENCE_SOURCE = {
+    "capture_type": "real-device-run",
+    "device_runtime_class": "physical_android_device",
+    "synthetic_fixture": False,
+    "artifact_retention": "per-display-kind-and-rotation",
+}
 REQUIRED_PROBES = (
     "visual_source_orientation",
     "input_mapping",
@@ -64,17 +77,49 @@ REQUIRED_ARTIFACTS = (
     "device_identity",
     "host_display_snapshot_before",
     "host_display_snapshot_rotated",
+    "host_display_snapshot_restored",
     "android_screenshot",
     "touch_matrix",
     "host_log",
     "android_logcat",
+    "restoration_plan",
+    "session_teardown_audit",
 )
 ROTATION_SPECIFIC_ARTIFACTS = (
     "host_display_snapshot_rotated",
+    "host_display_snapshot_restored",
     "android_screenshot",
     "touch_matrix",
+    "restoration_plan",
+    "session_teardown_audit",
 )
 ARTIFACT_BOUNDARY_ERROR = "must be a relative path inside the evidence directory"
+FIXTURE_PATH_SEGMENTS = frozenset(("fixture", "fixtures", "testdata", "test-fixtures"))
+TEXT_ARTIFACTS_WITH_MARKERS = (
+    "device_identity",
+    "host_display_snapshot_before",
+    "host_display_snapshot_rotated",
+    "host_display_snapshot_restored",
+    "touch_matrix",
+    "restoration_plan",
+    "session_teardown_audit",
+)
+ERROR_PX_EPSILON = 0.25
+SESSION_TEARDOWN_INDICATORS = (
+    "INVALID_STATE",
+    "INVALID_MEDIA_HEADER",
+    "session_teardown_detected=true",
+    "session_teardown=true",
+    "unexpected_disconnect=true",
+    "peer disconnected unexpectedly",
+)
+SESSION_TEARDOWN_PATTERNS = tuple(
+    re.compile(
+        rf"(?<![A-Za-z0-9_]){re.escape(indicator)}(?![A-Za-z0-9_])",
+        re.IGNORECASE,
+    )
+    for indicator in SESSION_TEARDOWN_INDICATORS
+)
 
 
 class HostDisplayRotationGateError(ValueError):
@@ -132,6 +177,14 @@ def _json_type_matches(value: Any, expected_type: str) -> bool:
     if expected_type == "boolean":
         return isinstance(value, bool)
     return True
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 def _describe_json_type(expected_type: str) -> str:
@@ -257,6 +310,19 @@ def _validate_device_identity(
             )
 
 
+def _validate_evidence_source(
+    run: dict[str, Any], run_index: int, errors: list[str]
+) -> None:
+    source = run.get("evidence_source")
+    if not isinstance(source, dict):
+        errors.append(f"runs[{run_index}].evidence_source: must be an object")
+        return
+    for field in REQUIRED_EVIDENCE_SOURCE_FIELDS:
+        if source.get(field) != EXPECTED_EVIDENCE_SOURCE[field]:
+            expected = json.dumps(EXPECTED_EVIDENCE_SOURCE[field], sort_keys=True)
+            errors.append(f"runs[{run_index}].evidence_source.{field}: must be {expected}")
+
+
 def _validate_host_preflight(
     run: dict[str, Any], run_index: int, errors: list[str]
 ) -> None:
@@ -295,6 +361,7 @@ def _validate_artifacts(run: dict[str, Any], run_index: int, errors: list[str]) 
             )
     before_snapshot = artifacts.get("host_display_snapshot_before")
     rotated_snapshot = artifacts.get("host_display_snapshot_rotated")
+    restored_snapshot = artifacts.get("host_display_snapshot_restored")
     if (
         _is_non_empty_string(before_snapshot)
         and _is_non_empty_string(rotated_snapshot)
@@ -303,6 +370,15 @@ def _validate_artifacts(run: dict[str, Any], run_index: int, errors: list[str]) 
         errors.append(
             f"runs[{run_index}].artifacts.host_display_snapshot_rotated: "
             "must differ from host_display_snapshot_before"
+        )
+    if (
+        _is_non_empty_string(rotated_snapshot)
+        and _is_non_empty_string(restored_snapshot)
+        and rotated_snapshot == restored_snapshot
+    ):
+        errors.append(
+            f"runs[{run_index}].artifacts.host_display_snapshot_restored: "
+            "must differ from host_display_snapshot_rotated"
         )
 
 
@@ -323,6 +399,12 @@ def _validate_artifact_files(
         if artifact_path.is_absolute() or ".." in artifact_path.parts:
             errors.append(
                 f"runs[{run_index}].artifacts.{name}: {ARTIFACT_BOUNDARY_ERROR}"
+            )
+            continue
+        lower_parts = {part.lower() for part in artifact_path.parts}
+        if lower_parts & FIXTURE_PATH_SEGMENTS:
+            errors.append(
+                f"runs[{run_index}].artifacts.{name}: must not reference fixture or testdata paths"
             )
             continue
         resolved = (resolved_evidence_dir / artifact_path).resolve()
@@ -358,12 +440,16 @@ def _validate_artifact_contents(
     if not isinstance(artifacts, dict):
         return
     resolved_evidence_dir = evidence_dir.resolve()
-    for name in ("host_log", "android_logcat", "touch_matrix"):
+    artifact_text: dict[str, str] = {}
+    for name in (*TEXT_ARTIFACTS_WITH_MARKERS, "host_log", "android_logcat"):
         value = artifacts.get(name)
         if not _is_non_empty_string(value):
             continue
         artifact_path = Path(value)
         if artifact_path.is_absolute() or ".." in artifact_path.parts:
+            continue
+        lower_parts = {part.lower() for part in artifact_path.parts}
+        if lower_parts & FIXTURE_PATH_SEGMENTS:
             continue
         path = (resolved_evidence_dir / artifact_path).resolve()
         try:
@@ -383,6 +469,146 @@ def _validate_artifact_contents(
             errors.append(
                 f"runs[{run_index}].artifacts.{name}: retained artifact is empty"
             )
+        artifact_text[name] = text
+
+    _validate_artifact_semantics(run, run_index, artifact_text, errors)
+
+
+def _artifact_text_has_marker(text: str, expected: str) -> bool:
+    pattern = re.compile(
+        rf"^\s*{re.escape(expected)}\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    return pattern.search(text) is not None
+
+
+def _require_artifact_marker(
+    artifact_text: dict[str, str],
+    artifact_name: str,
+    marker: str,
+    run_index: int,
+    errors: list[str],
+) -> None:
+    text = artifact_text.get(artifact_name)
+    if text is None or _artifact_text_has_marker(text, marker):
+        return
+    errors.append(
+        f"runs[{run_index}].artifacts.{artifact_name}: retained artifact must include marker {marker!r}"
+    )
+
+
+def _validate_artifact_semantics(
+    run: dict[str, Any],
+    run_index: int,
+    artifact_text: dict[str, str],
+    errors: list[str],
+) -> None:
+    display_kind = run.get("display_kind")
+    display_id = run.get("display_id")
+    host_rotation = run.get("host_rotation_degrees")
+    original_rotation = run.get("original_host_rotation_degrees")
+    device = run.get("device") if isinstance(run.get("device"), dict) else {}
+
+    if _is_non_empty_string(display_kind):
+        for name in (
+            "host_display_snapshot_before",
+            "host_display_snapshot_rotated",
+            "host_display_snapshot_restored",
+            "touch_matrix",
+            "host_log",
+            "android_logcat",
+            "restoration_plan",
+            "session_teardown_audit",
+        ):
+            _require_artifact_marker(
+                artifact_text, name, f"display_kind={display_kind}", run_index, errors
+            )
+    if _is_non_empty_string(display_id):
+        for name in (
+            "host_display_snapshot_before",
+            "host_display_snapshot_rotated",
+            "host_display_snapshot_restored",
+            "host_log",
+            "android_logcat",
+        ):
+            _require_artifact_marker(
+                artifact_text, name, f"display_id={display_id}", run_index, errors
+            )
+    if _is_valid_rotation(host_rotation):
+        for name in (
+            "host_display_snapshot_rotated",
+            "touch_matrix",
+            "host_log",
+            "android_logcat",
+            "restoration_plan",
+            "session_teardown_audit",
+        ):
+            _require_artifact_marker(
+                artifact_text,
+                name,
+                f"host_rotation_degrees={host_rotation}",
+                run_index,
+                errors,
+            )
+    if _is_valid_rotation(original_rotation):
+        for name in ("host_display_snapshot_before", "host_display_snapshot_restored", "restoration_plan"):
+            _require_artifact_marker(
+                artifact_text,
+                name,
+                f"original_host_rotation_degrees={original_rotation}",
+                run_index,
+                errors,
+            )
+
+    for field in REQUIRED_DEVICE_FIELDS:
+        value = device.get(field)
+        if field == "sdk":
+            if isinstance(value, int) and not isinstance(value, bool):
+                _require_artifact_marker(
+                    artifact_text, "device_identity", f"sdk={value}", run_index, errors
+                )
+        elif _is_non_empty_string(value):
+            _require_artifact_marker(
+                artifact_text, "device_identity", f"{field}={value}", run_index, errors
+            )
+
+    _require_artifact_marker(
+        artifact_text, "touch_matrix", "coordinate_space=host-logical-display", run_index, errors
+    )
+    _require_artifact_marker(
+        artifact_text, "touch_matrix", "all_points_within_tolerance=true", run_index, errors
+    )
+    for point_name in REQUIRED_INPUT_MAPPING_POINTS:
+        _require_artifact_marker(artifact_text, "touch_matrix", point_name, run_index, errors)
+
+    _require_artifact_marker(
+        artifact_text,
+        "restoration_plan",
+        "host_display_rotation_restoration_plan=true",
+        run_index,
+        errors,
+    )
+    _require_artifact_marker(
+        artifact_text,
+        "host_display_snapshot_restored",
+        "restored_original_host_rotation=true",
+        run_index,
+        errors,
+    )
+    _require_artifact_marker(
+        artifact_text, "session_teardown_audit", "no_session_teardown=true", run_index, errors
+    )
+
+    for artifact_name in ("host_log", "android_logcat"):
+        text = artifact_text.get(artifact_name)
+        if text is None:
+            continue
+        for indicator, pattern in zip(SESSION_TEARDOWN_INDICATORS, SESSION_TEARDOWN_PATTERNS):
+            if pattern.search(text):
+                errors.append(
+                    f"runs[{run_index}].artifacts.{artifact_name}: "
+                    f"contains session teardown indicator {indicator!r}"
+                )
 
 
 def _validate_distinct_display_evidence(
@@ -529,15 +755,30 @@ def _validate_inverse_touch_mapping(
                 )
             if (
                 has_valid_tolerance
-                and isinstance(error_px, (int, float))
-                and not isinstance(error_px, bool)
-                and math.isfinite(error_px)
+                and _is_finite_number(error_px)
                 and error_px > tolerance
             ):
                 errors.append(
                     f"runs[{run_index}].inverse_touch_mapping.points[{point_index}].error_px: "
                     "must be less than or equal to tolerance_px"
                 )
+            coordinate_values = (
+                point.get("expected_host_x"),
+                point.get("expected_host_y"),
+                point.get("observed_host_x"),
+                point.get("observed_host_y"),
+                error_px,
+            )
+            if all(_is_finite_number(value) for value in coordinate_values):
+                expected_error_px = math.hypot(
+                    point["observed_host_x"] - point["expected_host_x"],
+                    point["observed_host_y"] - point["expected_host_y"],
+                )
+                if abs(error_px - expected_error_px) > ERROR_PX_EPSILON:
+                    errors.append(
+                        f"runs[{run_index}].inverse_touch_mapping.points[{point_index}].error_px: "
+                        "must match the distance between expected and observed host coordinates"
+                    )
 
     for point_name in REQUIRED_INPUT_MAPPING_POINTS:
         if point_name not in seen_points:
@@ -605,6 +846,7 @@ def _validate_run(
         )
 
     _validate_device_identity(run, run_index, errors)
+    _validate_evidence_source(run, run_index, errors)
     _validate_host_preflight(run, run_index, errors)
     _validate_probes(run, run_index, errors)
     _validate_inverse_touch_mapping(run, run_index, errors)
@@ -631,6 +873,11 @@ def evaluate(
     if not isinstance(runs, list) or not runs:
         errors.append("runs: must be a non-empty array")
     else:
+        if evidence_dir is None:
+            errors.append(
+                "artifact_file_check: must be enabled with retained artifacts "
+                "for completed real-device evidence"
+            )
         for index, run in enumerate(runs):
             display_kind = _validate_run(run, index, errors, evidence_dir)
             if display_kind is not None:
@@ -672,6 +919,7 @@ def evaluate(
         "required_transports": sorted(VALID_TRANSPORTS),
         "required_device_fields": list(REQUIRED_DEVICE_FIELDS),
         "required_host_preflight_fields": list(REQUIRED_HOST_PREFLIGHT_FIELDS),
+        "required_evidence_source": dict(EXPECTED_EVIDENCE_SOURCE),
         "required_probes": list(REQUIRED_PROBES),
         "required_artifacts": list(REQUIRED_ARTIFACTS),
         "artifact_file_check": evidence_dir is not None,

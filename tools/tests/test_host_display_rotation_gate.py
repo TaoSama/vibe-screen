@@ -30,7 +30,35 @@ def complete_run(display_kind: str, rotation: int = 90) -> dict:
         "bottom_right",
         "center",
     ]
+    inverse_points = []
+    for index, name in enumerate(mapping_points, start=1):
+        expected_host_x = float(index * 10)
+        expected_host_y = float(index * 10)
+        observed_host_x = expected_host_x + 1
+        observed_host_y = expected_host_y + 1
+        inverse_points.append(
+            {
+                "name": name,
+                "android_x": float(index),
+                "android_y": float(index),
+                "expected_host_x": expected_host_x,
+                "expected_host_y": expected_host_y,
+                "observed_host_x": observed_host_x,
+                "observed_host_y": observed_host_y,
+                "error_px": math.hypot(
+                    observed_host_x - expected_host_x,
+                    observed_host_y - expected_host_y,
+                ),
+                "within_tolerance": True,
+            }
+        )
     return {
+        "evidence_source": {
+            "capture_type": "real-device-run",
+            "device_runtime_class": "physical_android_device",
+            "synthetic_fixture": False,
+            "artifact_retention": "per-display-kind-and-rotation",
+        },
         "display_kind": display_kind,
         "display_id": f"{display_kind}-display-1",
         "transport": "usb",
@@ -66,30 +94,20 @@ def complete_run(display_kind: str, rotation: int = 90) -> dict:
         "inverse_touch_mapping": {
             "coordinate_space": "host-logical-display",
             "tolerance_px": 8.0,
-            "points": [
-                {
-                    "name": name,
-                    "android_x": float(index),
-                    "android_y": float(index),
-                    "expected_host_x": float(index * 10),
-                    "expected_host_y": float(index * 10),
-                    "observed_host_x": float(index * 10 + 1),
-                    "observed_host_y": float(index * 10 + 1),
-                    "error_px": 1.5,
-                    "within_tolerance": True,
-                }
-                for index, name in enumerate(mapping_points, start=1)
-            ],
+            "points": inverse_points,
             "all_points_within_tolerance": True,
         },
         "artifacts": {
             "device_identity": f"{display_kind}-{rotation}-device-and-artifact-identity.txt",
             "host_display_snapshot_before": f"{display_kind}-{rotation}-host-display-before.txt",
             "host_display_snapshot_rotated": f"{display_kind}-{rotation}-host-display-rotated.txt",
+            "host_display_snapshot_restored": f"{display_kind}-{rotation}-host-display-restored.txt",
             "android_screenshot": f"{display_kind}-{rotation}-android-rotated-host-display.png",
             "touch_matrix": f"{display_kind}-{rotation}-touch-matrix.txt",
             "host_log": f"{display_kind}-{rotation}-host.log",
             "android_logcat": f"{display_kind}-{rotation}-logcat.txt",
+            "restoration_plan": f"{display_kind}-{rotation}-restoration-plan.txt",
+            "session_teardown_audit": f"{display_kind}-{rotation}-session-teardown-audit.txt",
         },
     }
 
@@ -104,6 +122,101 @@ def complete_document() -> dict:
             for rotation in (90, 180, 270)
         ],
     }
+
+
+def retained_artifact_payload(run: dict, artifact_name: str) -> str:
+    display_kind = run["display_kind"]
+    display_id = run["display_id"]
+    host_rotation = run["host_rotation_degrees"]
+    original_rotation = run["original_host_rotation_degrees"]
+    device = run["device"]
+    if artifact_name == "device_identity":
+        return "\n".join(
+            [
+                f"manufacturer={device['manufacturer']}",
+                f"model={device['model']}",
+                f"codename={device['codename']}",
+                f"android_release={device['android_release']}",
+                f"sdk={device['sdk']}",
+                f"adb_serial={device['adb_serial']}",
+            ]
+        )
+    if artifact_name == "host_display_snapshot_before":
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"display_id={display_id}",
+                f"original_host_rotation_degrees={original_rotation}",
+            ]
+        )
+    if artifact_name == "host_display_snapshot_rotated":
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"display_id={display_id}",
+                f"host_rotation_degrees={host_rotation}",
+            ]
+        )
+    if artifact_name == "host_display_snapshot_restored":
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"display_id={display_id}",
+                f"original_host_rotation_degrees={original_rotation}",
+                "restored_original_host_rotation=true",
+            ]
+        )
+    if artifact_name == "touch_matrix":
+        point_names = [
+            point["name"] for point in run["inverse_touch_mapping"]["points"]
+        ]
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"host_rotation_degrees={host_rotation}",
+                "coordinate_space=host-logical-display",
+                "all_points_within_tolerance=true",
+                *point_names,
+            ]
+        )
+    if artifact_name == "restoration_plan":
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"host_rotation_degrees={host_rotation}",
+                f"original_host_rotation_degrees={original_rotation}",
+                "host_display_rotation_restoration_plan=true",
+            ]
+        )
+    if artifact_name == "session_teardown_audit":
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"host_rotation_degrees={host_rotation}",
+                "no_session_teardown=true",
+            ]
+        )
+    if artifact_name in ("host_log", "android_logcat"):
+        return "\n".join(
+            [
+                f"display_kind={display_kind}",
+                f"display_id={display_id}",
+                f"host_rotation_degrees={host_rotation}",
+                "stream remained stable during rotation",
+            ]
+        )
+    return f"retained {artifact_name} for {display_kind} host_rotation_degrees={host_rotation}\n"
+
+
+def write_retained_artifacts(document: dict, evidence_dir: Path) -> None:
+    for run in document["runs"]:
+        for artifact_name, artifact in run["artifacts"].items():
+            path = evidence_dir / artifact
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                retained_artifact_payload(run, artifact_name) + "\n",
+                encoding="utf-8",
+            )
 
 
 class HostDisplayRotationGateTest(unittest.TestCase):
@@ -156,7 +269,12 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         self.assert_schema_node(value, schema, schema)
 
     def test_accepts_complete_physical_and_virtual_evidence(self) -> None:
-        result = evaluate(complete_document())
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+
+            result = evaluate(document, evidence_dir=evidence_dir)
 
         self.assertEqual(result["status"], "complete")
         self.assertEqual(result["covered_display_kinds"], ["physical", "virtual"])
@@ -166,11 +284,36 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         )
         self.assertEqual(result["errors"], [])
 
+    def test_complete_json_without_retained_artifacts_cannot_pass(self) -> None:
+        result = evaluate(complete_document())
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn(
+            "artifact_file_check: must be enabled with retained artifacts for completed real-device evidence",
+            result["errors"],
+        )
+
     def test_complete_evidence_matches_published_input_schema(self) -> None:
         self.assert_matches_schema(complete_document(), EVIDENCE_SCHEMA_PATH)
 
     def test_gate_result_matches_published_output_schema(self) -> None:
         self.assert_matches_schema(evaluate(complete_document()), GATE_SCHEMA_PATH)
+
+    def test_requires_real_device_evidence_source(self) -> None:
+        document = complete_document()
+        document["runs"][0]["evidence_source"]["synthetic_fixture"] = True
+        document["runs"][0]["evidence_source"]["capture_type"] = "fixture"
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].evidence_source.synthetic_fixture: must be false",
+            result["errors"],
+        )
+        self.assertIn(
+            'runs[0].evidence_source.capture_type: must be "real-device-run"',
+            result["errors"],
+        )
 
     def test_gate_result_schema_rejects_renamed_metadata_contract(self) -> None:
         result = evaluate(complete_document())
@@ -341,6 +484,20 @@ class HostDisplayRotationGateTest(unittest.TestCase):
             result["errors"],
         )
 
+    def test_requires_restored_snapshot_to_differ_from_rotated_snapshot(self) -> None:
+        document = complete_document()
+        document["runs"][0]["artifacts"]["host_display_snapshot_restored"] = document[
+            "runs"
+        ][0]["artifacts"]["host_display_snapshot_rotated"]
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].artifacts.host_display_snapshot_restored: "
+            "must differ from host_display_snapshot_rotated",
+            result["errors"],
+        )
+
     def test_requires_probe_and_artifact_records(self) -> None:
         document = complete_document()
         del document["runs"][1]["probes"]["input_mapping"]
@@ -401,6 +558,18 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         self.assertIn(
             "runs[0].inverse_touch_mapping.points[0].error_px: "
             "must be less than or equal to tolerance_px",
+            result["errors"],
+        )
+
+    def test_rejects_inverse_touch_mapping_error_that_does_not_match_coordinates(self) -> None:
+        document = complete_document()
+        document["runs"][0]["inverse_touch_mapping"]["points"][0]["error_px"] = 0.0
+
+        result = evaluate(document)
+
+        self.assertIn(
+            "runs[0].inverse_touch_mapping.points[0].error_px: "
+            "must match the distance between expected and observed host coordinates",
             result["errors"],
         )
 
@@ -467,11 +636,7 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             evidence_dir = Path(directory)
             document = complete_document()
-            for run in document["runs"]:
-                for artifact in run["artifacts"].values():
-                    path = evidence_dir / artifact
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("retained evidence\n", encoding="utf-8")
+            write_retained_artifacts(document, evidence_dir)
             missing = evidence_dir / document["runs"][1]["artifacts"]["host_log"]
             missing.unlink()
 
@@ -495,6 +660,142 @@ class HostDisplayRotationGateTest(unittest.TestCase):
                 result["errors"],
             )
 
+    def test_artifact_check_rejects_fixture_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            document["runs"][0]["artifacts"]["touch_matrix"] = (
+                "fixtures/physical-90-touch-matrix.txt"
+            )
+            write_retained_artifacts(document, evidence_dir)
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.touch_matrix: must not reference fixture or testdata paths",
+                result["errors"],
+            )
+
+    def test_artifact_check_rejects_placeholder_artifact_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+            touch_matrix = evidence_dir / document["runs"][0]["artifacts"]["touch_matrix"]
+            touch_matrix.write_text("retained evidence\n", encoding="utf-8")
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.touch_matrix: retained artifact must include marker 'display_kind=physical'",
+                result["errors"],
+            )
+            self.assertIn(
+                "runs[0].artifacts.touch_matrix: retained artifact must include marker 'host_rotation_degrees=90'",
+                result["errors"],
+            )
+            self.assertIn(
+                "runs[0].artifacts.touch_matrix: retained artifact must include marker 'coordinate_space=host-logical-display'",
+                result["errors"],
+            )
+
+    def test_artifact_markers_require_exact_token_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+            touch_matrix = evidence_dir / document["runs"][0]["artifacts"]["touch_matrix"]
+            touch_matrix.write_text(
+                "\n".join(
+                    [
+                        "display_kind=physical_extended",
+                        "host_rotation_degrees=900",
+                        "coordinate_space=host-logical-display",
+                        "all_points_within_tolerance=true",
+                        "top_left",
+                        "top_right",
+                        "bottom_left",
+                        "bottom_right",
+                        "center",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.touch_matrix: retained artifact must include marker 'display_kind=physical'",
+                result["errors"],
+            )
+            self.assertIn(
+                "runs[0].artifacts.touch_matrix: retained artifact must include marker 'host_rotation_degrees=90'",
+                result["errors"],
+            )
+
+    def test_artifact_check_requires_log_identity_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+            host_log = evidence_dir / document["runs"][0]["artifacts"]["host_log"]
+            host_log.write_text("stable stream from a different run\n", encoding="utf-8")
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.host_log: retained artifact must include marker 'display_kind=physical'",
+                result["errors"],
+            )
+            self.assertIn(
+                "runs[0].artifacts.host_log: retained artifact must include marker 'display_id=physical-display-1'",
+                result["errors"],
+            )
+            self.assertIn(
+                "runs[0].artifacts.host_log: retained artifact must include marker 'host_rotation_degrees=90'",
+                result["errors"],
+            )
+
+    def test_artifact_check_rejects_session_teardown_indicators(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+            host_log = evidence_dir / document["runs"][0]["artifacts"]["host_log"]
+            host_log.write_text(
+                "stream reached INVALID_STATE during host rotation\n",
+                encoding="utf-8",
+            )
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.host_log: contains session teardown indicator 'INVALID_STATE'",
+                result["errors"],
+            )
+
+    def test_artifact_check_allows_no_session_teardown_marker_in_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+            host_log = evidence_dir / document["runs"][0]["artifacts"]["host_log"]
+            host_log.write_text(
+                "\n".join(
+                    [
+                        "display_kind=physical",
+                        "display_id=physical-display-1",
+                        "host_rotation_degrees=90",
+                        "rotation audit completed no_session_teardown=true",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertEqual(result["errors"], [])
+
     def test_artifact_check_rejects_symlink_escape(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -503,11 +804,7 @@ class HostDisplayRotationGateTest(unittest.TestCase):
             outside = root / "outside.log"
             outside.write_text("outside evidence\n", encoding="utf-8")
             document = complete_document()
-            for run in document["runs"]:
-                for artifact in run["artifacts"].values():
-                    path = evidence_dir / artifact
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("retained evidence\n", encoding="utf-8")
+            write_retained_artifacts(document, evidence_dir)
             escaped_link = evidence_dir / document["runs"][0]["artifacts"]["host_log"]
             escaped_link.unlink()
             try:
@@ -527,11 +824,7 @@ class HostDisplayRotationGateTest(unittest.TestCase):
             evidence_dir = Path(directory)
             document = complete_document()
             document["runs"][0]["artifacts"]["host_log"] = "physical-host-log"
-            for run in document["runs"]:
-                for artifact in run["artifacts"].values():
-                    path = evidence_dir / artifact
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("retained evidence\n", encoding="utf-8")
+            write_retained_artifacts(document, evidence_dir)
             (evidence_dir / "physical-host-log").write_text("", encoding="utf-8")
 
             result = evaluate(document, evidence_dir=evidence_dir)
@@ -553,11 +846,7 @@ class HostDisplayRotationGateTest(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     evidence_dir = Path(directory)
                     document = complete_document()
-                    for run in document["runs"]:
-                        for artifact in run["artifacts"].values():
-                            path = evidence_dir / artifact
-                            path.parent.mkdir(parents=True, exist_ok=True)
-                            path.write_text("retained evidence\n", encoding="utf-8")
+                    write_retained_artifacts(document, evidence_dir)
                     empty_path = evidence_dir / document["runs"][0]["artifacts"][artifact_name]
                     empty_path.write_bytes(b"")
 
@@ -581,16 +870,35 @@ class HostDisplayRotationGateCliTest(unittest.TestCase):
 
     def test_cli_writes_complete_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            input_path = Path(directory) / "host-display-rotation.json"
-            output_path = Path(directory) / "gate-result.json"
-            input_path.write_text(json.dumps(complete_document()), encoding="utf-8")
+            evidence_dir = Path(directory)
+            input_path = evidence_dir / "host-display-rotation.json"
+            output_path = evidence_dir / "gate-result.json"
+            document = complete_document()
+            write_retained_artifacts(document, evidence_dir)
+            input_path.write_text(json.dumps(document), encoding="utf-8")
 
-            result = self.run_cli(str(input_path), "--output", str(output_path))
+            result = self.run_cli(
+                str(input_path), "--check-artifacts", "--output", str(output_path)
+            )
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout, "")
             persisted = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(persisted["status"], "complete")
+
+    def test_cli_without_artifact_check_cannot_pass_complete_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "host-display-rotation.json"
+            input_path.write_text(json.dumps(complete_document()), encoding="utf-8")
+
+            result = self.run_cli(str(input_path))
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "artifact_file_check: must be enabled with retained artifacts",
+                result.stderr,
+            )
+            self.assertEqual(json.loads(result.stdout)["status"], "failed")
 
     def test_cli_reports_missing_virtual_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

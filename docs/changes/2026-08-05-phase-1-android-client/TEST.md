@@ -237,8 +237,9 @@ that records both display kinds across all required host rotations:
 3. Keep client rotation as an explicit client-local setting, usually Follow Mac
    or 0 for the host-display run, and do not treat the existing client-local
    90/180/270 matrix as host-display rotation evidence.
-4. Record retained artifacts for device identity, before/rotated host display
-   snapshots, Android screenshot, touch matrix, Host log, and Android logcat.
+4. Record retained artifacts for device identity, before/rotated/restored host
+   display snapshots, Android screenshot, touch matrix, Host log, Android
+   logcat, a restoration plan, and a no-session-teardown audit.
 5. Record the Host signing/TCC preflight for the exact installed Host bundle.
    The gate depends on a stable non-ad-hoc signing identity, matching bundle
    identifier, Screen Recording grant, Accessibility grant, and a restoration
@@ -267,6 +268,12 @@ Minimum summary shape:
   "kind": "host_display_rotation_acceptance",
   "runs": [
     {
+      "evidence_source": {
+        "capture_type": "real-device-run",
+        "device_runtime_class": "physical_android_device",
+        "synthetic_fixture": false,
+        "artifact_retention": "per-display-kind-and-rotation"
+      },
       "display_kind": "physical",
       "display_id": "<macOS display id/name>",
       "transport": "usb",
@@ -325,13 +332,22 @@ Minimum summary shape:
         "device_identity": "device-and-artifact-identity.txt",
         "host_display_snapshot_before": "host-display-before.txt",
         "host_display_snapshot_rotated": "host-display-rotated.txt",
+        "host_display_snapshot_restored": "host-display-restored.txt",
         "android_screenshot": "android-rotated-host-display.png",
         "touch_matrix": "touch-matrix.txt",
         "host_log": "host.log",
-        "android_logcat": "logcat.txt"
+        "android_logcat": "logcat.txt",
+        "restoration_plan": "restoration-plan.txt",
+        "session_teardown_audit": "session-teardown-audit.txt"
       }
     },
     {
+      "evidence_source": {
+        "capture_type": "real-device-run",
+        "device_runtime_class": "physical_android_device",
+        "synthetic_fixture": false,
+        "artifact_retention": "per-display-kind-and-rotation"
+      },
       "display_kind": "virtual",
       "display_id": "<macOS virtual display id/name>",
       "transport": "usb",
@@ -368,15 +384,36 @@ Minimum summary shape:
         "device_identity": "device-and-artifact-identity.txt",
         "host_display_snapshot_before": "virtual-display-before.txt",
         "host_display_snapshot_rotated": "virtual-display-rotated.txt",
+        "host_display_snapshot_restored": "virtual-display-restored.txt",
         "android_screenshot": "android-virtual-rotated-host-display.png",
         "touch_matrix": "virtual-touch-matrix.txt",
         "host_log": "host.log",
-        "android_logcat": "logcat.txt"
+        "android_logcat": "logcat.txt",
+        "restoration_plan": "virtual-restoration-plan.txt",
+        "session_teardown_audit": "virtual-session-teardown-audit.txt"
       }
     }
   ]
 }
 ```
+
+The summary is intentionally insufficient without `--check-artifacts`: a JSON
+record alone must stay `status=failed`. Retained text artifacts must identify
+the matching display kind, display ID where relevant including Host and Android
+logs, host rotation, original rotation where relevant, touch matrix coordinate
+space and five probes, restoration proof, no-session-teardown proof, and device
+identity. Marker checks require independent `key=value` lines so prefix-only
+values such as `host_rotation_degrees=900` cannot satisfy
+`host_rotation_degrees=90`. Fixture,
+testdata, or placeholder artifact paths cannot close the real-device gate.
+The gate also recomputes each `error_px` from expected and observed Host
+coordinates and rejects retained Host or Android logs containing teardown
+indicators such as `INVALID_STATE` or `INVALID_MEDIA_HEADER`. The current-base
+aggregate consumes both retained `host-display-rotation.json` and
+`host-display-rotation-gate.json`, recomputes the evidence gate from the raw
+evidence with retained-artifact checks enabled, and requires the retained gate
+output to match. Manifest formal-gate rows alone cannot close host-display
+rotation.
 
 The final evidence file must contain six successful entries: physical
 90/180/270 and virtual 90/180/270. A shorter file remains a readiness or

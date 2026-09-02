@@ -83,25 +83,48 @@
         "device_identity",
         "host_display_snapshot_before",
         "host_display_snapshot_rotated",
+        "host_display_snapshot_restored",
         "android_screenshot",
         "touch_matrix",
         "host_log",
-        "android_logcat"
+        "android_logcat",
+        "restoration_plan",
+        "session_teardown_audit"
       ],
       "properties": {
         "device_identity": {"$ref": "#/$defs/nonEmptyString"},
         "host_display_snapshot_before": {"$ref": "#/$defs/nonEmptyString"},
         "host_display_snapshot_rotated": {"$ref": "#/$defs/nonEmptyString"},
+        "host_display_snapshot_restored": {"$ref": "#/$defs/nonEmptyString"},
         "android_screenshot": {"$ref": "#/$defs/nonEmptyString"},
         "touch_matrix": {"$ref": "#/$defs/nonEmptyString"},
         "host_log": {"$ref": "#/$defs/nonEmptyString"},
-        "android_logcat": {"$ref": "#/$defs/nonEmptyString"}
+        "android_logcat": {"$ref": "#/$defs/nonEmptyString"},
+        "restoration_plan": {"$ref": "#/$defs/nonEmptyString"},
+        "session_teardown_audit": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "evidenceSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capture_type",
+        "device_runtime_class",
+        "synthetic_fixture",
+        "artifact_retention"
+      ],
+      "properties": {
+        "capture_type": {"const": "real-device-run"},
+        "device_runtime_class": {"const": "physical_android_device"},
+        "synthetic_fixture": {"const": false},
+        "artifact_retention": {"const": "per-display-kind-and-rotation"}
       }
     },
     "run": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "evidence_source",
         "display_kind",
         "display_id",
         "transport",
@@ -118,6 +141,7 @@
         "artifacts"
       ],
       "properties": {
+        "evidence_source": {"$ref": "#/$defs/evidenceSource"},
         "display_kind": {"enum": ["physical", "virtual"]},
         "display_id": {"$ref": "#/$defs/nonEmptyString"},
         "transport": {"enum": ["usb", "lan"]},
