@@ -6,6 +6,17 @@ import XCTest
 private enum TestError: Error { case sendFailed }
 
 final class WebRTCInternetTransportTests: XCTestCase {
+    func testStandardControlLimitsAdmitMaximumClipboardEnvelopeBudget() throws {
+        let limits = InternetTransportLimits.standard
+        let maximumClipboardEnvelopeBytes = ClipboardCore.localMaximumBytes + 64 * 1_024
+
+        XCTAssertGreaterThanOrEqual(limits.maximumControlMessageBytes, maximumClipboardEnvelopeBytes)
+        XCTAssertGreaterThanOrEqual(
+            limits.maximumBufferedControlBytes,
+            limits.maximumControlMessageBytes * 4
+        )
+    }
+
     func testPeerDelegateGenerationAcceptsOnlyCurrentReplacementPeer() throws {
         var state = WebRTCPeerConnectionDelegateGenerationState()
         let initialGeneration = state.currentGeneration

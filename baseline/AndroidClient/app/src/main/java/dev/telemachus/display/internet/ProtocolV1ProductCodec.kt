@@ -52,7 +52,9 @@ internal object InternetMediaRecordContract {
 }
 
 internal object InternetControlRecordContract {
-    const val MAXIMUM_PLAINTEXT_RECORD_BYTES = 1_048_576
+    const val CONTROL_ENVELOPE_OVERHEAD_BYTES = 64 * 1024
+    const val MAXIMUM_PLAINTEXT_RECORD_BYTES =
+        InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES.toInt() + CONTROL_ENVELOPE_OVERHEAD_BYTES
     const val MAXIMUM_ENCRYPTED_RECORD_BYTES =
         MAXIMUM_PLAINTEXT_RECORD_BYTES + InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
 }
@@ -806,9 +808,7 @@ internal class ProtobufProtocolV1ProductCodec(
 
     companion object {
         const val PROTOCOL_VERSION = 1
-        private const val CONTROL_ENVELOPE_OVERHEAD_BYTES = 64 * 1024
-        private val MAX_CONTROL_BYTES =
-            InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES.toInt() + CONTROL_ENVELOPE_OVERHEAD_BYTES
+        private const val MAX_CONTROL_BYTES = InternetControlRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES
         private const val MAX_MEDIA_HEADER_BYTES = InternetMediaRecordContract.MAXIMUM_MEDIA_HEADER_BYTES
         private const val MAX_VARINT_BYTES = 5
         private const val MAX_REASON_BYTES = 256
