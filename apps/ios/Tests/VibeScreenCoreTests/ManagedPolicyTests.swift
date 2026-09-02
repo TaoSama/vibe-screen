@@ -30,6 +30,26 @@ final class ManagedPolicyTests: XCTestCase {
         XCTAssertTrue(policy.protocolStatus.hostActionsAllowed)
     }
 
+    func testManagedConfigurationSchemaRejectsMalformedMaximumFileBytes() {
+        XCTAssertThrowsError(try ManagedPolicy(managedConfiguration: [
+            "MaximumFileBytes": true
+        ])) { error in
+            XCTAssertEqual(error as? ManagedPolicyError, .invalidType("MaximumFileBytes"))
+        }
+
+        XCTAssertThrowsError(try ManagedPolicy(managedConfiguration: [
+            "MaximumFileBytes": NSNumber(value: 1.5)
+        ])) { error in
+            XCTAssertEqual(error as? ManagedPolicyError, .invalidType("MaximumFileBytes"))
+        }
+
+        XCTAssertThrowsError(try ManagedPolicy(managedConfiguration: [
+            "MaximumFileBytes": NSNumber(value: Double(UInt64.max))
+        ])) { error in
+            XCTAssertEqual(error as? ManagedPolicyError, .invalidType("MaximumFileBytes"))
+        }
+    }
+
     func testRemoteStatusAppliesIndependentDenyWins() {
         let hostActionsDenied = managedPolicy(hostActionsAllowed: false).protocolStatus
         let hostActionsPolicy = ManagedPolicy.unmanaged.applying(

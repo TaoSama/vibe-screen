@@ -1126,6 +1126,54 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun localManagedPolicyStatusDoesNotIncludeEffectiveRemoteState() {
+        val local =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 8_192,
+                allowedHosts = setOf("host", "other-host"),
+                allowedHostsRestricted = true,
+            )
+        val session = session(localManagedPolicy = local)
+        session.clientHello()
+        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION)
+        session.receive(hostHello(2, advertisedCapabilities = caps))
+
+        val actions = session.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+            .filterIsInstance<ProtocolV1Session.Action.Send>()
+
+        val localStatus = actions.single().envelope.managedPolicyStatus
+        assertEquals(local.toStatus(), localStatus)
+
+        val remote =
+            local.copy(
+                clipboardAllowed = false,
+                maximumFileBytes = 1_024,
+                allowedHosts = setOf("host"),
+                deniedHosts = setOf("other-host"),
+            ).toStatus()
+        val hostPolicyActions = session.receive(managedPolicyStatus(4, remote))
+        assertEquals(
+            remote,
+            (hostPolicyActions.single { it is ProtocolV1Session.Action.ManagedPolicyReceived }
+                as ProtocolV1Session.Action.ManagedPolicyReceived).status,
+        )
+        val replacementActions = session.receive(managedPolicyStatus(5, local.toStatus()))
+        assertEquals(
+            local.toStatus(),
+            (replacementActions.single { it is ProtocolV1Session.Action.ManagedPolicyReceived }
+                as ProtocolV1Session.Action.ManagedPolicyReceived).status,
+        )
+        assertTrue(replacementActions.none { it is ProtocolV1Session.Action.Send })
+    }
+
+    @Test
     fun managedPolicyGateRejectsOrdinaryMessagesBeforeRemotePolicyStatus() {
         val caps =
             listOf(

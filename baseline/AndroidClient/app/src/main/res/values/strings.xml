@@ -372,4 +372,15 @@
     <string name="file_transfer_failed_verification">File verification failed. Try sending it again.</string>
     <string name="file_transfer_failed_incomplete">The file transfer did not finish. Try again.</string>
     <string name="file_transfer_failed_host_closed">The Mac ended the session before the file transfer finished.</string>
+    <string name="managed_config_clipboard_allowed_title">Clipboard forwarding allowed</string>
+    <string name="managed_config_file_transfer_allowed_title">File transfer allowed</string>
+    <string name="managed_config_audio_allowed_title">Audio allowed</string>
+    <string name="managed_config_wake_allowed_title">Wake host allowed</string>
+    <string name="managed_config_custom_gestures_allowed_title">Custom gestures allowed</string>
+    <string name="managed_config_host_actions_allowed_title">Host actions allowed</string>
+    <string name="managed_config_maximum_file_bytes_title">Maximum file transfer bytes</string>
+    <string name="managed_config_allowed_hosts_title">Allowed host IDs</string>
+    <string name="managed_config_allowed_hosts_description">Comma-separated or newline-separated host IDs allowed for managed sessions.</string>
+    <string name="managed_config_denied_hosts_title">Denied host IDs</string>
+    <string name="managed_config_denied_hosts_description">Comma-separated or newline-separated host IDs denied for managed sessions. Denied hosts win over allowed hosts.</string>
 </resources>

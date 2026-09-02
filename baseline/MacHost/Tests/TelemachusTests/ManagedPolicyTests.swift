@@ -78,6 +78,26 @@ final class ManagedPolicyTests: XCTestCase {
         }
     }
 
+    func testManagedConfigurationSchemaRejectsMalformedNumericValues() {
+        XCTAssertThrowsError(try ManagedPolicy(managedConfiguration: [
+            "MaximumFileBytes": true
+        ])) { error in
+            XCTAssertEqual(error as? ManagedPolicyError, .invalidType("MaximumFileBytes"))
+        }
+
+        XCTAssertThrowsError(try ManagedPolicy(managedConfiguration: [
+            "MaximumFileBytes": NSNumber(value: 1.5)
+        ])) { error in
+            XCTAssertEqual(error as? ManagedPolicyError, .invalidType("MaximumFileBytes"))
+        }
+
+        XCTAssertThrowsError(try ManagedPolicy(managedConfiguration: [
+            "MaximumFileBytes": NSNumber(value: Double(UInt64.max))
+        ])) { error in
+            XCTAssertEqual(error as? ManagedPolicyError, .invalidType("MaximumFileBytes"))
+        }
+    }
+
     func testDenyHostsOverrideAllowHostsAcrossLocalAndRemotePolicies() {
         let local = managedPolicy(allowedHosts: ["host.local", "other.local"], deniedHosts: ["other.local"])
         let remote = managedPolicy(allowedHosts: ["host.local", "remote.local"], deniedHosts: ["host.local"]).protocolStatus

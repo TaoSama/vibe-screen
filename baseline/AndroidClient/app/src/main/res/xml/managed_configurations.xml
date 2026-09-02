@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction
+        android:key="ClipboardAllowed"
+        android:restrictionType="bool"
+        android:title="@string/managed_config_clipboard_allowed_title" />
+    <restriction
+        android:key="FileTransferAllowed"
+        android:restrictionType="bool"
+        android:title="@string/managed_config_file_transfer_allowed_title" />
+    <restriction
+        android:key="AudioAllowed"
+        android:restrictionType="bool"
+        android:title="@string/managed_config_audio_allowed_title" />
+    <restriction
+        android:key="WakeAllowed"
+        android:restrictionType="bool"
+        android:title="@string/managed_config_wake_allowed_title" />
+    <restriction
+        android:key="CustomGesturesAllowed"
+        android:restrictionType="bool"
+        android:title="@string/managed_config_custom_gestures_allowed_title" />
+    <restriction
+        android:key="HostActionsAllowed"
+        android:restrictionType="bool"
+        android:title="@string/managed_config_host_actions_allowed_title" />
+    <restriction
+        android:key="MaximumFileBytes"
+        android:restrictionType="integer"
+        android:title="@string/managed_config_maximum_file_bytes_title" />
+    <restriction
+        android:key="AllowedHosts"
+        android:description="@string/managed_config_allowed_hosts_description"
+        android:restrictionType="string"
+        android:title="@string/managed_config_allowed_hosts_title" />
+    <restriction
+        android:key="DeniedHosts"
+        android:description="@string/managed_config_denied_hosts_description"
+        android:restrictionType="string"
+        android:title="@string/managed_config_denied_hosts_title" />
+</restrictions>

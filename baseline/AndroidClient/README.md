@@ -146,6 +146,28 @@ mode on public, guest, or otherwise untrusted Wi-Fi.
   Keep-screen-on and retries pause in the background; screenshot protection
   remains until disconnect.
 
+## Managed configuration
+
+Android Enterprise app restrictions are declared in
+`app/src/main/res/xml/managed_configurations.xml` and exposed through the
+standard `android.content.APP_RESTRICTIONS` application metadata. The source
+provider reads `RestrictionsManager.applicationRestrictions` and parses the same
+deny-wins keys used by Protocol v1: `ClipboardAllowed`,
+`FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
+`CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`,
+`AllowedHosts`, and `DeniedHosts`. Missing boolean keys default closed, invalid
+types fail closed, host IDs are normalized, and `DeniedHosts` wins over
+`AllowedHosts`.
+
+At the Protocol v1 production boundary, `StreamClient` reads this provider once
+for each newly created session and passes that immutable local snapshot into
+`ProtocolV1Session`. The client reports that local snapshot in its
+`ManagedPolicyStatus`; remote Host policy is combined separately with deny-wins
+semantics and is cleared when the session ends. This remains source/JVM-unit
+evidence only: real Android Enterprise EMM delivery into
+`RestrictionsManager.applicationRestrictions` and USB/LAN device enforcement
+remain open gates.
+
 ## Phase 3 secure-session composition
 
 Production Internet code must create sessions through
