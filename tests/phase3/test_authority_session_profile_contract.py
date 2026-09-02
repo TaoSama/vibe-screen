@@ -93,6 +93,15 @@ def section_between(source: str, start_marker: str, end_marker: str) -> str:
     return source[start:end]
 
 
+def swift_case_block(switch_block: str, case_marker: str) -> str:
+    start = switch_block.index(case_marker)
+    rest_start = start + len(case_marker)
+    next_case = re.search(r"\n\s*case\s+\.", switch_block[rest_start:])
+    if next_case is None:
+        return switch_block[start:]
+    return switch_block[start : rest_start + next_case.start()]
+
+
 def assert_ordered(source: str, markers: list[str]) -> None:
     cursor = -1
     for marker in markers:
@@ -272,7 +281,6 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertNotIn("private func handleInternetSessionLeaseStateChange", app_delegate)
         self.assertNotIn("private func queueInternetSessionLeaseDelivery", app_delegate)
         self.assertNotIn("private func failClosedInternetSessionLeaseDelivery", app_delegate)
-        self.assertIn("if case .streaming = state", app_delegate)
         self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", app_delegate)
         self.assertIn("serverLifecycle.ownsSession(sessionToken)", app_delegate)
         self.assertIn("internetProductSession === session", app_delegate)
@@ -321,13 +329,20 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
             "session.onStateChanged =",
             "        session.onError =",
         )
+        state_switch = bracket_block(state_callback, "switch state", "{", "}")
+        streaming_state_case = swift_case_block(state_switch, "case .streaming:")
         self.assertIn(
             "await self.internetSessionLeaseDeliveryLifecycle.handleStateChange",
             state_callback,
         )
+        self.assertIn(
+            "await self.internetSessionLeaseDeliveryLifecycle.handleStateChange",
+            streaming_state_case,
+        )
         self.assertIn("self.serverLifecycle.ownsSession(sessionToken)", state_callback)
         self.assertIn("self.internetProductSession === session", state_callback)
         self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", state_callback)
+        self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", streaming_state_case)
         self.assertIn("settings.internetStatus = .failed", state_callback)
         self.assertIn("await self.stopServer(preserveRecoveryState: true)", state_callback)
         startup_builder = bracket_block(
@@ -372,6 +387,7 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("return .deliveryFailed", lifecycle)
         self.assertIn("pendingDelivery = nil", lifecycle)
         self.assertIn("deliverySent = true", lifecycle)
+        self.assertIn("guard case .streaming = state else { return }", lifecycle)
         self.assertIn("await failClosed(Self.deliveryFailureReason)", lifecycle)
         teardown = bracket_block(app_delegate, "private func teardownStreamingComponents", "{", "}")
         self.assertIn("internetSessionLeaseDeliveryLifecycle.reset()", teardown)
