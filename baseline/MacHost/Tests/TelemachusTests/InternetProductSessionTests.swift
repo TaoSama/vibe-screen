@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import CoreMedia
 import CoreVideo
 import CryptoKit
@@ -448,6 +447,8 @@ final class InternetProductSessionTests: XCTestCase {
 
         XCTAssertTrue(harness.waitForFailure())
         XCTAssertTrue(harness.engine.didClose)
+    }
+
     func testInternetIncomingFileOfferAcceptsBulkChunkAndCompletes() throws {
         let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
             maximumFileBytes: 1_024,
@@ -4292,5 +4293,4 @@ private final class ProductHarnessTransmissionEngine: WebRTCEnginePort {
         self.context = context
         callbacks?.transmissionContextChanged(context)
     }
-}
 }
