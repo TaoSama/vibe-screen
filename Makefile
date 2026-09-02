@@ -228,6 +228,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	phase3-internet-release-gate \
 	baseline-macos-build \
 	baseline-macos-permission-prompt-contract \
+	baseline-macos-host-cli-contract \
 	baseline-macos-xctest-preflight \
 	baseline-macos-test \
 	baseline-macos-self-test \
@@ -559,10 +560,13 @@ baseline-macos-build:
 baseline-macos-permission-prompt-contract:
 	swift scripts/verify_macos_permission_prompt_contract.swift
 
+baseline-macos-host-cli-contract:
+	swift scripts/verify_macos_host_cli_contract.swift
+
 baseline-macos-xctest-preflight:
 	python3 scripts/macos_dev_host.py xctest-preflight
 
-baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight
+baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-host-cli-contract baseline-macos-xctest-preflight
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build baseline-macos-permission-prompt-contract
