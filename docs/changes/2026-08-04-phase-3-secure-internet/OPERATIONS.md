@@ -488,10 +488,14 @@ shipped:
   signaling admission can be created.
 - Relay credential admission is wired to the authority; the structured exporter,
   bounded reconciliation loop, and local active-allocation disconnect executor are
-  locally tested as a current-base operator slice. A real coturn/provider exporter,
-  production scheduler, and concrete live allocation termination remain unproved.
-- Active PeerConnection and TURN allocations are not actively disconnected on
-  authority revocation; signaling invalidation only stops new rendezvous access.
+  locally tested as a current-base operator slice. The loop can invoke the
+  bundled local executor with `--disconnect-state` and `--disconnect-audit-log`
+  when Authority reports unauthorized, conflicting, or revoked source
+  allocations. A real coturn/provider exporter, production scheduler, and
+  concrete live allocation termination remain unproved.
+- Active PeerConnection and production TURN allocations are not yet proved to be
+  actively disconnected on authority revocation; signaling invalidation only
+  stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   durable high-water mark are both enforced, but product-side reconciliation and
   recovery for mismatched floors remain open.

@@ -66,9 +66,10 @@ local operator slice for the coturn exporter/reconciliation/disconnect boundary.
 It covers `coturn_allocation_exporter.py` adapting a reviewed structured
 collector JSON into the strict Authority snapshot,
 `coturn_reconciliation_loop.py` keeping durable consecutive missing-allocation
-state, and `coturn_disconnect_executor.py` consuming the exact
-`coturn_reconcile.py` disconnect environment to remove a local
-active-allocation entry and write a non-secret audit record. This target is
+state and wiring `--disconnect-state` plus `--disconnect-audit-log` to the
+bundled local executor, and `coturn_disconnect_executor.py` consuming the exact
+`coturn_reconcile.py` disconnect environment to remove a local active-allocation
+entry and write a non-secret audit record. This target is
 deliberately current-base/local: it does not start a public relay, does not
 prove a deployed exporter or scheduler, does not call a live coturn control
 socket or provider API, and cannot close the public Internet release gate.

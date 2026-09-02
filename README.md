@@ -838,10 +838,12 @@ source allocations. `scripts/phase3/coturn_allocation_exporter.py`,
 `scripts/phase3/coturn_disconnect_executor.py` provide the current-base local
 product slice for the exporter/reconciliation/executor boundary. The exporter
 adapts a reviewed structured collector snapshot into the strict Authority
-snapshot shape, the bounded loop persists consecutive missing-allocation state,
-and the executor consumes `coturn_reconcile.py`'s active-allocation disconnect
-environment to remove an allocation from a machine-readable local state file and
-write a non-secret audit record. `scripts/phase3/coturn_cli_control.py` can
+snapshot shape, the bounded loop persists consecutive missing-allocation state
+and can call the bundled local disconnect executor when `--disconnect-state` and
+`--disconnect-audit-log` are supplied, and the executor consumes
+`coturn_reconcile.py`'s active-allocation disconnect environment to remove an
+allocation from a machine-readable local state file and write a non-secret audit
+record. `scripts/phase3/coturn_cli_control.py` can
 export registry-matched coturn CLI sessions and issue loopback
 `cs <session-id>` disconnect commands when an operator supplies a precise
 registry and CLI connection. These are local contract and operator-slice
