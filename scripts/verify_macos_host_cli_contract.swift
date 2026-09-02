@@ -80,6 +80,13 @@ struct LaunchModeSwitchCase {
     let isDefault: Bool
 }
 
+enum LaunchModeSwitchLabelKind {
+    case command
+    case gui
+    case defaultEquivalent
+    case other
+}
+
 func isIdentifierCharacter(_ character: Character) -> Bool {
     character == "_" || character.isLetter || character.isNumber
 }
@@ -135,6 +142,84 @@ func maskedForSwiftTrivia(_ source: String) -> [Character] {
             blockCommentDepth = 1
             index += 2
             continue
+        }
+
+        if index + 2 < characters.count,
+           characters[index] == "\"", characters[index + 1] == "\"", characters[index + 2] == "\"" {
+            mask(index)
+            mask(index + 1)
+            mask(index + 2)
+            index += 3
+            while index < characters.count {
+                if index + 2 < characters.count,
+                   characters[index] == "\"", characters[index + 1] == "\"", characters[index + 2] == "\"" {
+                    mask(index)
+                    mask(index + 1)
+                    mask(index + 2)
+                    index += 3
+                    break
+                }
+                mask(index)
+                index += 1
+            }
+            continue
+        }
+
+        if characters[index] == "#" {
+            var delimiterCount = 0
+            var delimiterIndex = index
+            while delimiterIndex < characters.count, characters[delimiterIndex] == "#" {
+                delimiterCount += 1
+                delimiterIndex += 1
+            }
+            if delimiterIndex < characters.count, characters[delimiterIndex] == "\"" {
+                let isMultiline = delimiterIndex + 2 < characters.count &&
+                    characters[delimiterIndex + 1] == "\"" && characters[delimiterIndex + 2] == "\""
+                let openingQuoteCount = isMultiline ? 3 : 1
+                for position in index..<(delimiterIndex + openingQuoteCount) {
+                    mask(position)
+                }
+                index = delimiterIndex + openingQuoteCount
+                while index < characters.count {
+                    if isMultiline {
+                        if index + 2 + delimiterCount < characters.count,
+                           characters[index] == "\"", characters[index + 1] == "\"", characters[index + 2] == "\"" {
+                            var closes = true
+                            if delimiterCount > 0 {
+                                for offset in 0..<delimiterCount where characters[index + 3 + offset] != "#" {
+                                    closes = false
+                                    break
+                                }
+                            }
+                            if closes {
+                                for position in index...(index + 2 + delimiterCount) {
+                                    mask(position)
+                                }
+                                index += 3 + delimiterCount
+                                break
+                            }
+                        }
+                    } else if index + delimiterCount < characters.count, characters[index] == "\"" {
+                        var closes = true
+                        if delimiterCount > 0 {
+                            for offset in 0..<delimiterCount where characters[index + 1 + offset] != "#" {
+                                closes = false
+                                break
+                            }
+                        }
+                        if closes {
+                            for position in index...(index + delimiterCount) {
+                                mask(position)
+                            }
+                            index += 1 + delimiterCount
+                            break
+                        }
+                    }
+                    mask(index)
+                    index += 1
+                }
+                continue
+            }
         }
 
         if characters[index] == "\"" {
@@ -219,7 +304,15 @@ func launchModeSwitchLines(in source: String, context: String) throws -> [String
 
 func isCaseLabelStart(_ line: String) -> Bool {
     let trimmed = line.trimmingCharacters(in: .whitespaces)
-    if trimmed.hasPrefix("case ") { return true }
+    if trimmed.hasPrefix("case"),
+       trimmed.count > "case".count {
+        let afterCase = trimmed.index(trimmed.startIndex, offsetBy: "case".count)
+        if isWhitespace(trimmed[afterCase]) { return true }
+    }
+    if trimmed.hasPrefix("@unknown") {
+        let afterUnknown = trimmed.dropFirst("@unknown".count).trimmingCharacters(in: .whitespaces)
+        return afterUnknown.hasPrefix("default")
+    }
     guard trimmed.hasPrefix("default") else { return false }
     if trimmed.count == "default".count { return true }
     let afterDefault = trimmed.index(trimmed.startIndex, offsetBy: "default".count)
@@ -262,9 +355,92 @@ func switchLabel(in line: String, context: String) throws -> (label: String, tai
     }
     let label = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespaces)
     let tail = String(trimmed[trimmed.index(after: colonIndex)...])
-    let isDefault = label == "default"
-    if !isDefault, !label.hasPrefix("case ") { return nil }
+    let isDefault = isDefaultLabel(label)
+    if !isDefault, !isCaseLabelStart(label) { return nil }
     return (label: label, tail: tail, isDefault: isDefault)
+}
+
+func isDefaultLabel(_ label: String) -> Bool {
+    let compact = label.split(whereSeparator: isWhitespace).joined(separator: " ")
+    return compact == "default" || compact == "@unknown default"
+}
+
+func casePatternItems(from label: String) -> [String] {
+    var pattern = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    if pattern.hasPrefix("case") {
+        pattern = String(pattern.dropFirst("case".count))
+    }
+    var items: [String] = []
+    var current = ""
+    var depth = 0
+    for character in pattern {
+        switch character {
+        case "(", "[", "{":
+            depth += 1
+            current.append(character)
+        case ")", "]", "}":
+            depth -= 1
+            current.append(character)
+        case "," where depth == 0:
+            let item = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !item.isEmpty { items.append(item) }
+            current = ""
+        default:
+            current.append(character)
+        }
+    }
+    let item = current.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !item.isEmpty { items.append(item) }
+    return items
+}
+
+func basePattern(_ pattern: String) -> String {
+    if let whereRange = pattern.range(of: #"\s+where\s+"#, options: .regularExpression) {
+        return String(pattern[..<whereRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func withoutWhitespace(_ value: String) -> String {
+    String(value.filter { !isWhitespace($0) })
+}
+
+func commandAssociatedValue(in pattern: String) -> String? {
+    let compact = withoutWhitespace(basePattern(pattern))
+    let prefix = ".command("
+    guard compact.hasPrefix(prefix), compact.hasSuffix(")") else { return nil }
+    let valueStart = compact.index(compact.startIndex, offsetBy: prefix.count)
+    return String(compact[valueStart..<compact.index(before: compact.endIndex)])
+}
+
+func isWildcardPattern(_ pattern: String) -> Bool {
+    let base = withoutWhitespace(basePattern(pattern))
+    if base.hasPrefix(".command(") { return false }
+    return !base.hasPrefix(".")
+}
+
+func isCatchAllCommandPattern(_ pattern: String) -> Bool {
+    guard let associatedValue = commandAssociatedValue(in: pattern) else { return false }
+    return associatedValue == "_" || !associatedValue.hasPrefix(".")
+}
+
+func isExplicitCommandPattern(_ pattern: String) -> Bool {
+    guard let associatedValue = commandAssociatedValue(in: pattern) else { return false }
+    return associatedValue.hasPrefix(".")
+}
+
+func isGUIPattern(_ pattern: String) -> Bool {
+    withoutWhitespace(basePattern(pattern)) == ".gui"
+}
+
+func labelKind(_ label: String, isDefault: Bool) -> LaunchModeSwitchLabelKind {
+    if isDefault { return .defaultEquivalent }
+    let patterns = casePatternItems(from: label)
+    if patterns.contains(where: isWildcardPattern) { return .defaultEquivalent }
+    if patterns.contains(where: isCatchAllCommandPattern) { return .defaultEquivalent }
+    if patterns.contains(where: isExplicitCommandPattern) { return .command }
+    if patterns.contains(where: isGUIPattern) { return .gui }
+    return .other
 }
 
 func launchModeSwitchCases(in source: String, context: String) throws -> [LaunchModeSwitchCase] {
@@ -344,12 +520,12 @@ func verifyLaunchModeSwitchContract(source: String, context: String) throws {
     var foundCommandCase = false
     var foundGUICase = false
     for switchCase in cases {
-        if switchCase.isDefault {
+        switch labelKind(switchCase.label, isDefault: switchCase.isDefault) {
+        case .defaultEquivalent:
             throw ContractError.violation(
-                "\(context) commandLine.launchMode switch must not use default; new commands must be explicit"
+                "\(context) commandLine.launchMode switch must not use default-equivalent cases; new commands must be explicit"
             )
-        }
-        if switchCase.label.contains(".command") {
+        case .command:
             foundCommandCase = true
             try require(
                 bodyStartsWithExitCall(switchCase.bodyLines),
@@ -359,9 +535,12 @@ func verifyLaunchModeSwitchContract(source: String, context: String) throws {
                 !bodyContainsBreak(switchCase.bodyLines),
                 "\(context) \(switchCase.label.trimmingCharacters(in: .whitespacesAndNewlines)) must not use break"
             )
-        }
-        if switchCase.label.contains(".gui") {
+        case .gui:
             foundGUICase = true
+        case .other:
+            throw ContractError.violation(
+                "\(context) \(switchCase.label.trimmingCharacters(in: .whitespacesAndNewlines)) must be an explicit command or GUI case"
+            )
         }
     }
 
@@ -436,6 +615,104 @@ func verifyLaunchModeSwitchFixtures() throws {
     """#
     try requireStaticFixtureFails(defaultBreak, context: "default break fixture")
 
+    let wildcardCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case _:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(wildcardCase, context: "wildcard default-equivalent fixture")
+
+    let guiAndWildcardCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui, _:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(guiAndWildcardCase, context: "GUI plus wildcard default-equivalent fixture")
+
+    let wildcardWhereCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case _ where true:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(wildcardWhereCase, context: "wildcard where default-equivalent fixture")
+
+    let unknownDefaultCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    @unknown default:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(unknownDefaultCase, context: "unknown default fixture")
+
+    let unknownDefaultWhitespaceCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    @unknown   default:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(unknownDefaultWhitespaceCase, context: "unknown default whitespace fixture")
+
+    let unknownDefaultTabCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    @unknown	default:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(unknownDefaultTabCase, context: "unknown default tab fixture")
+
+    let catchAllCommandCase = #"""
+    switch commandLine.launchMode {
+    case .command(_):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(catchAllCommandCase, context: "catch-all command fixture")
+
+    let catchAllLetCase = #"""
+    switch commandLine.launchMode {
+    case let mode:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(catchAllLetCase, context: "catch-all let case fixture")
+
+    let guiAndLetCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui, let mode:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(guiAndLetCase, context: "GUI plus let catch-all fixture")
+
+    let commandAndLetCase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest), let mode:
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(commandAndLetCase, context: "command plus let catch-all fixture")
+
     let missingIOSLoopbackExit = #"""
     switch commandLine.launchMode {
     case .command(.iOSLoopback(let expectsInvalidTarget)):
@@ -489,6 +766,41 @@ func verifyLaunchModeSwitchFixtures() throws {
     }
     """#
     try requireStaticFixturePasses(multiLineCaseLabel, context: "multi-line case label fixture")
+
+    let tabbedCaseLabel = #"""
+    switch commandLine.launchMode {
+    case	.command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixturePasses(tabbedCaseLabel, context: "tabbed case label fixture")
+
+    let multiLineStringTrivia = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+        let message = """
+        default:
+        break
+        """
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixturePasses(multiLineStringTrivia, context: "multi-line string trivia fixture")
+
+    let rawStringTrivia = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+        let message = #"default: break"#
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixturePasses(rawStringTrivia, context: "raw string trivia fixture")
 
     let missingGUICase = #"""
     switch commandLine.launchMode {
