@@ -30,6 +30,12 @@ struct InternetSessionLeaseDeliveryResult: Equatable {
     let payload: Data
 }
 
+protocol InternetSessionLeaseSendable: AnyObject {
+    func sendBulkRecord(_ payload: Data, transferID: Data) -> Bool
+}
+
+extension InternetProductSession: InternetSessionLeaseSendable {}
+
 struct InternetSessionProfileIdentity: Encodable, Equatable {
     let deviceID: String
     let keyID: String
@@ -321,7 +327,7 @@ enum InternetSessionLeaseDelivery {
     @discardableResult
     static func send(
         _ result: InternetSessionLeaseDeliveryResult,
-        on session: InternetProductSession
+        on session: InternetSessionLeaseSendable
     ) -> Bool {
         session.sendBulkRecord(result.payload, transferID: bulkTransferID)
     }

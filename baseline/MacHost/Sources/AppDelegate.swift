@@ -208,8 +208,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
     private var internetProductSession: InternetProductSession?
     private var internetPairingCoordinator: InternetPairingCoordinator?
-    private var pendingInternetSessionLeaseDelivery: InternetSessionLeaseDeliveryResult?
-    private var internetSessionLeaseDeliverySent = false
+    private let internetSessionLeaseDeliveryLifecycle = InternetSessionLeaseDeliveryLifecycle()
     typealias InternetSessionLeaseDeliveryProvisioner = (
         URL,
         String,
@@ -2550,44 +2549,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let startup = try makeInternetProductSessionStartup(
             streamSize: streamSize
         )
-        let delivery = try await createInternetSessionLeaseDelivery(
-            startup.signalingBaseURL,
-            startup.issuerToken,
-            startup.request
+        let pipeline = InternetSessionLeaseStartupPipeline<InternetProductSession>(
+            makeSession: { InternetProductSession() },
+            createDelivery: createInternetSessionLeaseDelivery,
+            requireCurrentStart: { try self.requireCurrentStart(sessionToken) },
+            applyDelivery: { configuration, delivery, signalingBaseURL in
+                try self.internetProductSessionConfiguration(
+                    configuration,
+                    applying: delivery,
+                    signalingBaseURL: signalingBaseURL
+                )
+            },
+            prepareSession: { session, configuration in
+                self.internetProductSession = session
+                self.settings.internetAdaptiveMediaControl = .active(
+                    bitrateMbps: configuration.video.bitrateKbps / 1_000,
+                    framesPerSecond: configuration.video.framesPerSecond,
+                    quality: self.settings.effectiveQuality
+                )
+                self.installInternetSessionCallbacks(session, sessionToken: sessionToken)
+                self.screenCapture?.setCodec(.hevc)
+            },
+            startSession: { session, configuration in
+                try session.start(configuration: configuration)
+            },
+            queueDelivery: { delivery, session in
+                self.queueInternetSessionLeaseDelivery(
+                    delivery,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+            },
+            startCapture: { session, _ in
+                try await self.screenCapture?.startStreaming(
+                    to: session,
+                    bitrateMbps: self.settings.effectiveBitrate,
+                    quality: self.settings.effectiveQuality,
+                    gamingBoost: self.settings.gamingBoost,
+                    frameRate: self.settings.effectiveRefreshRate
+                )
+            },
+            didStart: {
+                debugLog("Secure Internet product session started")
+            }
         )
-        try requireCurrentStart(sessionToken)
-        let configuration = try internetProductSessionConfiguration(
-            startup.configuration,
-            applying: delivery,
-            signalingBaseURL: startup.signalingBaseURL
-        )
-        let session = InternetProductSession()
-        internetProductSession = session
-        settings.internetAdaptiveMediaControl = .active(
-            bitrateMbps: configuration.video.bitrateKbps / 1_000,
-            framesPerSecond: configuration.video.framesPerSecond,
-            quality: settings.effectiveQuality
-        )
-        installInternetSessionCallbacks(session, sessionToken: sessionToken)
-        screenCapture?.setCodec(.hevc)
-        try session.start(configuration: configuration)
-        guard queueInternetSessionLeaseDelivery(
-            delivery,
-            session: session,
-            sessionToken: sessionToken
-        ) else {
-            throw InternetProductSessionError.securityFailure(
-                "The authoritative session lease could not be attached to the active Internet session."
-            )
-        }
-        try await screenCapture?.startStreaming(
-            to: session,
-            bitrateMbps: settings.effectiveBitrate,
-            quality: settings.effectiveQuality,
-            gamingBoost: settings.gamingBoost,
-            frameRate: settings.effectiveRefreshRate
-        )
-        debugLog("Secure Internet product session started")
+        _ = try await pipeline.start(with: startup.leasePlan)
     }
 
     private struct InternetProductSessionStartup {
@@ -2595,6 +2601,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let request: InternetSignalingSessionProfileRequest
         let signalingBaseURL: URL
         let issuerToken: String
+
+        var leasePlan: InternetSessionLeaseStartupPlan {
+            InternetSessionLeaseStartupPlan(
+                configuration: configuration,
+                request: request,
+                signalingBaseURL: signalingBaseURL,
+                issuerToken: issuerToken
+            )
+        }
     }
 
     private func makeInternetProductSessionStartup(
@@ -2890,17 +2905,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.applyInternetSessionState(state)
                 if case .streaming = state {
-                    guard self.sendPendingInternetSessionLeaseDelivery(
+                    await self.handleInternetSessionLeaseStateChange(
+                        state,
                         session: session,
                         sessionToken: sessionToken
-                    ) else {
-                        await self.failClosedInternetSessionLeaseDelivery(
-                            reason: "The authoritative session lease could not be delivered to the peer.",
-                            session: session,
-                            sessionToken: sessionToken
-                        )
-                        return
-                    }
+                    )
                 }
             }
         }
@@ -3526,16 +3535,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         session: InternetProductSession,
         sessionToken: UInt64
     ) -> Bool {
-        guard serverLifecycle.ownsSession(sessionToken),
-              internetProductSession === session else { return false }
-        pendingInternetSessionLeaseDelivery = result
-        if case .streaming = session.snapshotState() {
-            return sendPendingInternetSessionLeaseDelivery(
-                session: session,
-                sessionToken: sessionToken
-            )
-        }
-        return true
+        internetSessionLeaseDeliveryLifecycle.queue(
+            result,
+            isCurrent: {
+                self.serverLifecycle.ownsSession(sessionToken)
+                    && self.internetProductSession === session
+            },
+            sessionState: { session.snapshotState() },
+            send: { delivery in
+                InternetSessionLeaseDelivery.send(delivery, on: session)
+            }
+        )
     }
 
     @MainActor
@@ -3544,15 +3554,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         session: InternetProductSession,
         sessionToken: UInt64
     ) -> Bool {
-        guard serverLifecycle.ownsSession(sessionToken),
-              internetProductSession === session,
-              let delivery = pendingInternetSessionLeaseDelivery else {
-            return internetSessionLeaseDeliverySent
+        internetSessionLeaseDeliveryLifecycle.sendPending(
+            isCurrent: {
+                self.serverLifecycle.ownsSession(sessionToken)
+                    && self.internetProductSession === session
+            },
+            send: { delivery in
+                InternetSessionLeaseDelivery.send(delivery, on: session)
+            }
+        )
+    }
+
+    @MainActor
+    private func handleInternetSessionLeaseStateChange(
+        _ state: InternetProductSessionState,
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) async {
+        guard case .streaming = state else { return }
+        guard sendPendingInternetSessionLeaseDelivery(
+            session: session,
+            sessionToken: sessionToken
+        ) else {
+            await failClosedInternetSessionLeaseDelivery(
+                reason: InternetSessionLeaseDeliveryLifecycle.deliveryFailureReason,
+                session: session,
+                sessionToken: sessionToken
+            )
+            return
         }
-        guard InternetSessionLeaseDelivery.send(delivery, on: session) else { return false }
-        pendingInternetSessionLeaseDelivery = nil
-        internetSessionLeaseDeliverySent = true
-        return true
     }
 
     @MainActor
@@ -3712,8 +3742,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let displayToDestroy = virtualDisplayManager
         screenCapture = nil
         streamingServer = nil
-        pendingInternetSessionLeaseDelivery = nil
-        internetSessionLeaseDeliverySent = false
+        internetSessionLeaseDeliveryLifecycle.reset()
         internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil
