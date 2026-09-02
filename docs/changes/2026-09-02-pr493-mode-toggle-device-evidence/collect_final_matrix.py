@@ -838,14 +838,21 @@ def write_summary(out_dir, serial, summary):
 
 
 def run_final_cleanup(serial, log_file, *, original_failure=None):
-    try:
-        restore_device(serial)
-        force_stop_apps(serial)
-        assert_packages_stopped(serial)
-    except BaseException as cleanup_failure:
-        log(log_file, f"cleanup failed: {cleanup_failure}")
-        if original_failure is None:
-            raise
+    cleanup_steps = (
+        ("restore_device", restore_device),
+        ("force_stop_apps", force_stop_apps),
+        ("assert_packages_stopped", assert_packages_stopped),
+    )
+    first_cleanup_failure = None
+    for step_name, cleanup_step in cleanup_steps:
+        try:
+            cleanup_step(serial)
+        except BaseException as cleanup_failure:
+            log(log_file, f"cleanup step {step_name} failed: {cleanup_failure}")
+            if first_cleanup_failure is None:
+                first_cleanup_failure = cleanup_failure
+    if original_failure is None and first_cleanup_failure is not None:
+        raise first_cleanup_failure
 
 
 def main():

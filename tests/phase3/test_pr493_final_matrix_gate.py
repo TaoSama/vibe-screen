@@ -320,19 +320,25 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
 
         def failing_restore(serial: str) -> None:
             calls.append(f"restore:{serial}")
-            raise RuntimeError("cleanup failed")
+            raise RuntimeError("restore failed")
+
+        def failing_assert_stopped(serial: str) -> None:
+            calls.append(f"pidof:{serial}")
+            raise RuntimeError("pidof failed")
 
         try:
             collector.restore_device = failing_restore
             collector.force_stop_apps = lambda serial: calls.append(f"force-stop:{serial}")
-            collector.assert_packages_stopped = lambda serial: calls.append(f"pidof:{serial}")
+            collector.assert_packages_stopped = failing_assert_stopped
             with tempfile.TemporaryDirectory() as tmp_dir:
                 log_file = Path(tmp_dir) / "run.log"
 
                 collector.run_final_cleanup("serial-1", log_file, original_failure=RuntimeError("primary failed"))
 
-                self.assertEqual(calls, ["restore:serial-1"])
-                self.assertIn("cleanup failed: cleanup failed", log_file.read_text(encoding="utf-8"))
+                self.assertEqual(calls, ["restore:serial-1", "force-stop:serial-1", "pidof:serial-1"])
+                log_text = log_file.read_text(encoding="utf-8")
+                self.assertIn("cleanup step restore_device failed: restore failed", log_text)
+                self.assertIn("cleanup step assert_packages_stopped failed: pidof failed", log_text)
         finally:
             collector.restore_device = original_restore
             collector.force_stop_apps = original_force_stop
@@ -342,22 +348,33 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         original_restore = collector.restore_device
         original_force_stop = collector.force_stop_apps
         original_assert_stopped = collector.assert_packages_stopped
+        calls: list[str] = []
 
         def failing_restore(serial: str) -> None:
-            del serial
-            raise RuntimeError("cleanup failed")
+            calls.append(f"restore:{serial}")
+            raise RuntimeError("restore failed")
+
+        def passing_force_stop(serial: str) -> None:
+            calls.append(f"force-stop:{serial}")
+
+        def failing_assert_stopped(serial: str) -> None:
+            calls.append(f"pidof:{serial}")
+            raise RuntimeError("pidof failed")
 
         try:
             collector.restore_device = failing_restore
-            collector.force_stop_apps = lambda serial: None
-            collector.assert_packages_stopped = lambda serial: None
+            collector.force_stop_apps = passing_force_stop
+            collector.assert_packages_stopped = failing_assert_stopped
             with tempfile.TemporaryDirectory() as tmp_dir:
                 log_file = Path(tmp_dir) / "run.log"
 
-                with self.assertRaisesRegex(RuntimeError, "cleanup failed"):
+                with self.assertRaisesRegex(RuntimeError, "restore failed"):
                     collector.run_final_cleanup("serial-1", log_file)
 
-                self.assertIn("cleanup failed: cleanup failed", log_file.read_text(encoding="utf-8"))
+                self.assertEqual(calls, ["restore:serial-1", "force-stop:serial-1", "pidof:serial-1"])
+                log_text = log_file.read_text(encoding="utf-8")
+                self.assertIn("cleanup step restore_device failed: restore failed", log_text)
+                self.assertIn("cleanup step assert_packages_stopped failed: pidof failed", log_text)
         finally:
             collector.restore_device = original_restore
             collector.force_stop_apps = original_force_stop
