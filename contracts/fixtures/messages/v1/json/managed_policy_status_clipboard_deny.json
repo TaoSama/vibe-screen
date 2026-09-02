@@ -1,0 +1,31 @@
+{
+  "protocolVersion": 1,
+  "messageId": "37",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000037",
+  "managedPolicyStatus": {
+    "managed": true,
+    "clipboardAllowed": false,
+    "fileTransferAllowed": true,
+    "audioAllowed": true,
+    "wakeAllowed": true,
+    "maximumFileBytes": "536870912",
+    "customGesturesAllowed": true,
+    "hostActionsAllowed": true,
+    "allowedHosts": ["mac-golden"],
+    "allowedHostsRestricted": true,
+    "restrictionResults": [
+      {"restriction": "clipboard", "allowed": false, "source": "managed_configuration", "reason": "Clipboard transfer denied by fixture policy."},
+      {"restriction": "file_transfer", "allowed": true, "source": "managed_configuration", "reason": "File transfer allowed by fixture policy."},
+      {"restriction": "audio", "allowed": true, "source": "managed_configuration", "reason": "Audio allowed by fixture policy."},
+      {"restriction": "wake", "allowed": true, "source": "managed_configuration", "reason": "Wake allowed by fixture policy."},
+      {"restriction": "custom_gestures", "allowed": true, "source": "managed_configuration", "reason": "Custom gestures allowed by fixture policy."},
+      {"restriction": "host_actions", "allowed": true, "source": "managed_configuration", "reason": "Host actions allowed by fixture policy."},
+      {"restriction": "maximum_file_bytes", "allowed": true, "source": "managed_configuration", "reason": "Maximum file size is positive."},
+      {"restriction": "allowed_hosts", "allowed": true, "source": "managed_configuration", "reason": "Allowed host list includes the golden Mac."},
+      {"restriction": "denied_hosts", "allowed": true, "source": "managed_configuration", "reason": "No denied hosts are configured."}
+    ],
+    "deniedHosts": []
+  }
+}

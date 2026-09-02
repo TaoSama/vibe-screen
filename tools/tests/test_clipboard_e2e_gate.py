@@ -66,17 +66,24 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "sha256": "a" * 64,
         "origin_device_id": "android-p0110-pacific",
         "byte_length": 28,
+        "mime_type": "text/plain",
         "session_epoch": 1,
         "source_system_clipboard": "android_clipboardmanager",
         "destination_system_clipboard": "macos_nspasteboard",
         "protocol_v1_session": True,
         "system_source_clipboard_read": True,
         "explicit_user_action": True,
+        "receiver_user_approval": True,
         "remote_system_clipboard_write": True,
         "final_marker_match": True,
+        "session_id_verified": True,
         "session_epoch_verified": True,
         "final_sha256_match": True,
         "origin_device_id_verified": True,
+        "send_failure_absent": True,
+        "write_failure_absent": True,
+        "cleanup_completed": True,
+        "utf8_valid": True,
     }
     macos_to_android = {
         "transport": "usb",
@@ -85,17 +92,24 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "sha256": "b" * 64,
         "origin_device_id": "macos-host-current-source",
         "byte_length": 28,
+        "mime_type": "text/plain",
         "session_epoch": 1,
         "source_system_clipboard": "macos_nspasteboard",
         "destination_system_clipboard": "android_clipboardmanager",
         "protocol_v1_session": True,
         "system_source_clipboard_read": True,
         "explicit_user_action": True,
+        "receiver_user_approval": True,
         "remote_system_clipboard_write": True,
         "final_marker_match": True,
+        "session_id_verified": True,
         "session_epoch_verified": True,
         "final_sha256_match": True,
         "origin_device_id_verified": True,
+        "send_failure_absent": True,
+        "write_failure_absent": True,
+        "cleanup_completed": True,
+        "utf8_valid": True,
     }
     document: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -254,6 +268,67 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn("bidirectional_product_e2e: synthetic or offline-only clipboard evidence cannot close this gate", result["blockers"])
 
+    def test_offline_only_product_evidence_cannot_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(paths["product"], product_e2e(offline_only=True))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("bidirectional_product_e2e: synthetic or offline-only clipboard evidence cannot close this gate", result["blockers"])
+
+    def test_wrong_product_evidence_kind_cannot_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(paths["product"], product_e2e(kind="android_clipboard_local_smoke"))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence kind must be android_macos_clipboard_product_e2e",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_both_directions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            directions.pop("macos_nspasteboard_to_android_clipboardmanager")
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: missing macos_nspasteboard_to_android_clipboardmanager direction evidence",
+            result["blockers"],
+        )
+
     def test_complete_bidirectional_product_e2e_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -315,6 +390,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
             android_to_macos["sha256"] = "not-a-sha"
             android_to_macos["byte_length"] = 1_048_577
             android_to_macos["session_epoch"] = 0
+            android_to_macos["session_id_verified"] = False
             android_to_macos["session_epoch_verified"] = False
             android_to_macos["final_sha256_match"] = False
             android_to_macos["origin_device_id_verified"] = False
@@ -346,6 +422,10 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
         self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.session_id_verified must be true",
+            result["blockers"],
+        )
+        self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.session_epoch_verified must be true",
             result["blockers"],
         )
@@ -355,6 +435,130 @@ class ClipboardE2EGateTests(unittest.TestCase):
         )
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.origin_device_id_verified must be true",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_receiver_approval_and_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["receiver_user_approval"] = False
+            android_to_macos["cleanup_completed"] = False
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.receiver_user_approval must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.cleanup_completed must be true",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_no_send_or_write_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["send_failure_absent"] = False
+            macos_to_android["write_failure_absent"] = False
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.send_failure_absent must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.write_failure_absent must be true",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_text_plain_and_valid_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["mime_type"] = "text/html"
+            android_to_macos["utf8_valid"] = False
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.mime_type must be text/plain",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.utf8_valid must be true",
+            result["blockers"],
+        )
+
+    def test_product_e2e_rejects_zero_byte_length_and_internet_transport(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["byte_length"] = 0
+            android_to_macos["transport"] = "internet"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.byte_length must be a positive integer",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.transport must be usb or trusted_lan",
             result["blockers"],
         )
 
@@ -506,6 +710,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
             paths = write_pass_inputs(root)
             paths["android_log"].write_text(
                 "Starting 3 tests on P0110 - 16\n\n"
+                "Tests run: 3,  Failures: 0,  Errors: 0\n"
                 "Finished 3 tests on P0110 - 16\n\n"
                 "BUILD SUCCESSFUL in 38s\n",
                 encoding="utf-8",
@@ -522,6 +727,30 @@ class ClipboardE2EGateTests(unittest.TestCase):
         android_gate = next(item for item in result["checks"] if item["name"] == "android_clipboardmanager_smoke")
         self.assertEqual(android_gate["status"], "pass")
         self.assertEqual(result["verdict"], "pass")
+
+    def test_android_clipboard_smoke_rejects_junit_failure_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "Starting 3 tests on P0110 - 16\n"
+                "Tests run: 3,  Failures: 1,  Errors: 0\n"
+                "Finished 3 tests on P0110 - 16\n"
+                "BUILD SUCCESSFUL in 38s\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        android_gate = next(item for item in result["checks"] if item["name"] == "android_clipboardmanager_smoke")
+        self.assertEqual(android_gate["status"], "blocked")
+        self.assertEqual(result["verdict"], "blocked")
 
     def test_missing_device_identity_evidence_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
