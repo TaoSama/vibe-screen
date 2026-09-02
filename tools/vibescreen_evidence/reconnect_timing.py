@@ -37,14 +37,27 @@ DEFAULT_THRESHOLD_MS = 3_000.0
 BLOCKED_EXIT = 3
 FAIL_EXIT = 2
 INSUFFICIENT_EXIT = 1
+REAL_DEVICE_EVIDENCE_FIELD = "real_device_evidence"
+SYNTHETIC_FIXTURE_FIELD = "synthetic_fixture"
 
 _DIAG_LINE = re.compile(r"^\[(?P<timestamp>\d+(?:\.\d+)?)\]\s+(?P<body>.*)$")
 _HOST_EPOCH = re.compile(r"Protocol v1 selected for connection epoch\s+(?P<epoch>\d+)")
-_ANDROID_SESSION_EPOCH_JSON = re.compile(r'"event"\s*:\s*"connection_opened".*?"session_epoch"\s*:\s*(?P<epoch>\d+)')
 _CONFIG_EPOCH = re.compile(r"\bepoch=(?P<epoch>\d+)\b")
 _SESSION_EPOCH_FIELD = re.compile(r"\bsession_epoch=(?P<epoch>\d+)\b")
 _CONFIG_EPOCH_FIELD = re.compile(r"\bconfig_epoch=(?P<epoch>\d+)\b")
 _JSON_OBJECT = re.compile(r"\{.*\}")
+_TRUSTED_LAN_ENCRYPTED_TRUE = re.compile(
+    r'"?trusted_lan_encrypted"?\s*(?:=|:|to)\s*true', re.IGNORECASE
+)
+_TRUSTED_LAN_ENCRYPTED_FALSE = re.compile(
+    r'"?trusted_lan_encrypted"?\s*(?:=|:|to)\s*false', re.IGNORECASE
+)
+_TRUSTED_LAN_LEGACY_TRUE = re.compile(
+    r'"?trusted_lan_legacy_plaintext"?\s*(?:=|:|to)\s*true', re.IGNORECASE
+)
+_TRUSTED_LAN_LEGACY_FALSE = re.compile(
+    r'"?trusted_lan_legacy_plaintext"?\s*(?:=|:|to)\s*false', re.IGNORECASE
+)
 
 
 def _positive_epoch_from_match(match: re.Match[str] | None) -> int | None:
@@ -64,6 +77,27 @@ def _positive_epoch_from_value(value: Any, field: str) -> int | None:
     except (TypeError, ValueError) as error:
         raise ReconnectTimingEvidenceError(f"{field} must be a positive integer") from error
     return epoch if epoch > 0 else None
+
+
+def _marker_epoch_matches_active_session(events: dict[str, Any], marker_epoch: int) -> bool:
+    active_epoch = events.get("protocol_v1_session_epoch") or events.get("android_session_epoch")
+    return active_epoch in (None, "") or active_epoch == marker_epoch
+
+
+def _connection_opened_epoch_from_diag_body(body: str) -> int | None:
+    json_match = _JSON_OBJECT.search(body)
+    if json_match:
+        try:
+            payload = json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict) and payload.get("event") == "connection_opened":
+            return _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
+    event_match = re.search(r'"event"\s*:\s*"connection_opened"', body)
+    epoch_match = re.search(r'"session_epoch"\s*:\s*(?P<epoch>\d+)', body)
+    if event_match is not None and epoch_match is not None:
+        return _positive_epoch_from_match(epoch_match)
+    return None
 
 
 class ReconnectTimingEvidenceError(ValueError):
@@ -132,6 +166,19 @@ def _read_optional_text(record: dict[str, Any], key: str, base_dir: Path | None)
         raise ReconnectTimingEvidenceError(f"cannot read {path}: {error}") from error
 
 
+def _optional_lan_security_text(attempt: dict[str, Any], base_dir: Path | None) -> str:
+    return _read_optional_text(attempt, "trusted_lan_security_log", base_dir)
+
+
+def _lan_security_markers(text: str) -> dict[str, bool]:
+    return {
+        "trusted_lan_encrypted_true": _TRUSTED_LAN_ENCRYPTED_TRUE.search(text) is not None,
+        "trusted_lan_encrypted_false": _TRUSTED_LAN_ENCRYPTED_FALSE.search(text) is not None,
+        "trusted_lan_legacy_plaintext_true": _TRUSTED_LAN_LEGACY_TRUE.search(text) is not None,
+        "trusted_lan_legacy_plaintext_false": _TRUSTED_LAN_LEGACY_FALSE.search(text) is not None,
+    }
+
+
 def parse_android_diag_events(text: str, *, after_ms: float | None = None) -> dict[str, Any]:
     """Extract recovery markers from Android private diag lines.
 
@@ -150,25 +197,34 @@ def parse_android_diag_events(text: str, *, after_ms: float | None = None) -> di
         body = match.group("body")
         if "Protocol v1 upgrade accepted" in body and "protocol_v1_accepted_ms" not in events:
             events["protocol_v1_accepted_ms"] = timestamp_ms
+            session_epoch = _positive_epoch_from_match(_SESSION_EPOCH_FIELD.search(body))
+            if session_epoch is not None:
+                events["protocol_v1_session_epoch"] = session_epoch
+                events["android_session_epoch"] = session_epoch
         if "First frame:" in body and "first_frame_ms" not in events:
             config_epoch = _positive_epoch_from_match(_CONFIG_EPOCH_FIELD.search(body))
             frame_epoch = _positive_epoch_from_match(_SESSION_EPOCH_FIELD.search(body))
-            if config_epoch is not None and frame_epoch is not None:
+            if (
+                config_epoch is not None
+                and frame_epoch is not None
+                and _marker_epoch_matches_active_session(events, frame_epoch)
+            ):
                 events["first_frame_ms"] = timestamp_ms
                 events["first_frame_session_epoch"] = frame_epoch
+                events["first_frame_config_epoch"] = config_epoch
                 events.setdefault("config_epoch", config_epoch)
         if "First output frame!" in body and "first_output_frame_ms" not in events:
             frame_epoch = _positive_epoch_from_match(_SESSION_EPOCH_FIELD.search(body))
-            if frame_epoch is not None:
+            if frame_epoch is not None and _marker_epoch_matches_active_session(events, frame_epoch):
                 events["first_output_frame_ms"] = timestamp_ms
                 events["first_output_frame_session_epoch"] = frame_epoch
         if "session ended" in body and "session_ended_ms" not in events:
             events["session_ended_ms"] = timestamp_ms
-        if "connection_opened" in body and "android_session_epoch" not in events:
-            epoch = _ANDROID_SESSION_EPOCH_JSON.search(body)
-            session_epoch = _positive_epoch_from_match(epoch)
+        if "connection_opened" in body:
+            session_epoch = _connection_opened_epoch_from_diag_body(body)
             if session_epoch is not None:
-                events["android_session_epoch"] = session_epoch
+                events.setdefault("connection_opened_session_epoch", session_epoch)
+                events.setdefault("android_session_epoch", session_epoch)
         if "onVideoConfiguration" in body and "config_epoch" not in events:
             epoch = _positive_epoch_from_match(_CONFIG_EPOCH.search(body))
             if epoch is not None:
@@ -207,21 +263,28 @@ def parse_android_logcat_events(text: str, *, after_ms: float | None = None) -> 
             epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
             if epoch is not None:
                 events["protocol_v1_accepted_ms"] = timestamp_ms
+                events["protocol_v1_session_epoch"] = epoch
                 events["android_session_epoch"] = epoch
-        elif event == "connection_opened" and "android_session_epoch" not in events:
+        elif event == "connection_opened":
             epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
             if epoch is not None:
-                events["android_session_epoch"] = epoch
+                events.setdefault("connection_opened_session_epoch", epoch)
+                events.setdefault("android_session_epoch", epoch)
         elif event == "first_frame_received" and "first_frame_ms" not in events:
             config_epoch = _positive_epoch_from_value(payload.get("config_epoch"), "config_epoch")
             epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
-            if config_epoch is not None and epoch is not None:
+            if (
+                config_epoch is not None
+                and epoch is not None
+                and _marker_epoch_matches_active_session(events, epoch)
+            ):
                 events["first_frame_ms"] = timestamp_ms
                 events["first_frame_session_epoch"] = epoch
+                events["first_frame_config_epoch"] = config_epoch
                 events.setdefault("config_epoch", config_epoch)
         elif event == "first_output_frame" and "first_output_frame_ms" not in events:
             epoch = _positive_epoch_from_value(payload.get("session_epoch"), "session_epoch")
-            if epoch is not None:
+            if epoch is not None and _marker_epoch_matches_active_session(events, epoch):
                 events["first_output_frame_ms"] = timestamp_ms
                 events["first_output_frame_session_epoch"] = epoch
     return events
@@ -230,6 +293,28 @@ def parse_android_logcat_events(text: str, *, after_ms: float | None = None) -> 
 def parse_host_epoch(text: str) -> int | None:
     epochs = [int(match.group("epoch")) for match in _HOST_EPOCH.finditer(text)]
     return epochs[-1] if epochs else None
+
+
+def _same_observed_value(left: Any, right: Any) -> bool:
+    if isinstance(left, bool) or isinstance(right, bool):
+        return left == right
+    try:
+        return _finite_number(left, "observed value") == _finite_number(right, "observed value")
+    except ReconnectTimingEvidenceError:
+        return left == right
+
+
+def _merge_parsed_events(events: dict[str, Any], parsed: dict[str, Any], source: str) -> None:
+    conflicts = events.get("_parsed_conflicts")
+    if not isinstance(conflicts, list):
+        conflicts = []
+        events["_parsed_conflicts"] = conflicts
+    for key, value in parsed.items():
+        existing = events.get(key)
+        if existing in (None, ""):
+            events[key] = value
+        elif not _same_observed_value(existing, value):
+            conflicts.append(f"{source} {key} does not match explicit events.{key}")
 
 
 def _merged_events(attempt: dict[str, Any], base_dir: Path | None) -> dict[str, Any]:
@@ -244,17 +329,16 @@ def _merged_events(attempt: dict[str, Any], base_dir: Path | None) -> dict[str, 
         )
     if android_diag:
         parsed = parse_android_diag_events(android_diag, after_ms=start_ms)
-        for key, value in parsed.items():
-            events.setdefault(key, value)
+        _merge_parsed_events(events, parsed, "android_diag")
     if android_logcat:
         parsed = parse_android_logcat_events(android_logcat, after_ms=start_ms)
-        for key, value in parsed.items():
-            events.setdefault(key, value)
+        _merge_parsed_events(events, parsed, "android_logcat")
     host_log = _read_optional_text(attempt, "host_log", base_dir)
-    if host_log and attempt.get("host_connection_epoch") in (None, ""):
+    if host_log:
         epoch = parse_host_epoch(host_log)
         if epoch is not None:
-            events.setdefault("host_connection_epoch", epoch)
+            events["parsed_host_connection_epoch"] = epoch
+            _merge_parsed_events(events, {"host_connection_epoch": epoch}, "host_log")
     if start_ms is not None:
         events["disruption_started_ms"] = start_ms
     return events
@@ -269,7 +353,7 @@ def _artifact_paths(record: dict[str, Any], attempt: dict[str, Any]) -> list[str
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             raise ReconnectTimingEvidenceError("artifact_paths must be a list of strings")
         paths.extend(value)
-    for key in ("android_diag_path", "android_logcat_path", "host_log_path"):
+    for key in ("android_diag_path", "android_logcat_path", "host_log_path", "trusted_lan_security_log_path"):
         value = attempt.get(key)
         if isinstance(value, str) and value:
             paths.append(value)
@@ -323,6 +407,20 @@ def _validate_attempt(
     reasons: list[str] = []
     failures: list[str] = []
     blocking_reasons: list[str] = []
+    parsed_conflicts = events.get("_parsed_conflicts")
+    if isinstance(parsed_conflicts, list):
+        reasons.extend(str(conflict) for conflict in parsed_conflicts)
+
+    real_device_evidence = _optional_bool(
+        attempt.get(REAL_DEVICE_EVIDENCE_FIELD), REAL_DEVICE_EVIDENCE_FIELD
+    )
+    synthetic_fixture = _optional_bool(
+        attempt.get(SYNTHETIC_FIXTURE_FIELD), SYNTHETIC_FIXTURE_FIELD
+    )
+    if real_device_evidence is not True:
+        blocking_reasons.append("real device reconnect timing evidence was not declared")
+    if synthetic_fixture is not False:
+        blocking_reasons.append("synthetic fixtures cannot close reconnect timing evidence")
 
     start_ms = events.get("disruption_started_ms")
     protocol_ms = events.get("protocol_v1_accepted_ms")
@@ -350,21 +448,60 @@ def _validate_attempt(
         _attempt_or_event(attempt, events, "host_connection_epoch"),
         "host_connection_epoch",
     )
+    parsed_host_epoch = _optional_positive_int(
+        events.get("parsed_host_connection_epoch"), "parsed host_connection_epoch"
+    )
     if host_epoch is None:
         reasons.append("missing Host Protocol v1 connection epoch")
+    elif parsed_host_epoch is not None and parsed_host_epoch != host_epoch:
+        reasons.append("host_connection_epoch does not match parsed Host connection epoch")
 
     android_epoch = _optional_positive_int(
         _attempt_or_event(attempt, events, "android_session_epoch"),
         "android_session_epoch",
     )
+    parsed_android_epoch = _optional_positive_int(
+        events.get("android_session_epoch"), "parsed android_session_epoch"
+    )
+    protocol_epoch = _optional_positive_int(
+        _attempt_or_event(attempt, events, "protocol_v1_session_epoch"),
+        "protocol_v1_session_epoch",
+    )
+    parsed_protocol_epoch = _optional_positive_int(
+        events.get("protocol_v1_session_epoch"), "parsed protocol_v1_session_epoch"
+    )
+    connection_opened_epoch = _optional_positive_int(
+        events.get("connection_opened_session_epoch"), "connection_opened_session_epoch"
+    )
     config_epoch = _optional_positive_int(
         _attempt_or_event(attempt, events, "config_epoch"),
         "config_epoch",
     )
+    parsed_config_epoch = _optional_positive_int(events.get("config_epoch"), "parsed config_epoch")
     if android_epoch is None:
         reasons.append("missing android_session_epoch")
+    elif parsed_android_epoch is not None and parsed_android_epoch != android_epoch:
+        reasons.append("android_session_epoch does not match parsed Android session epoch")
+    if protocol_epoch is not None and android_epoch is not None and protocol_epoch != android_epoch:
+        reasons.append("protocol_v1_session_epoch does not match android_session_epoch")
+    if protocol_epoch is not None and parsed_protocol_epoch is not None and parsed_protocol_epoch != protocol_epoch:
+        reasons.append("protocol_v1_session_epoch does not match parsed Protocol v1 session epoch")
+    if connection_opened_epoch is not None:
+        if android_epoch is not None and connection_opened_epoch != android_epoch:
+            reasons.append("connection_opened_session_epoch does not match android_session_epoch")
+        if protocol_epoch is not None and connection_opened_epoch != protocol_epoch:
+            reasons.append("connection_opened_session_epoch does not match protocol_v1_session_epoch")
     if config_epoch is None:
         reasons.append("missing config_epoch")
+    elif parsed_config_epoch is not None and parsed_config_epoch != config_epoch:
+        reasons.append("config_epoch does not match parsed config epoch")
+    first_frame_config_epoch = _optional_positive_int(
+        events.get("first_frame_config_epoch"), "first_frame_config_epoch"
+    )
+    if first_frame_config_epoch is None:
+        reasons.append("missing first_frame_config_epoch")
+    elif config_epoch is not None and first_frame_config_epoch != config_epoch:
+        reasons.append("first_frame_config_epoch does not match config_epoch")
     for field in ("first_frame_session_epoch", "first_output_frame_session_epoch"):
         marker_epoch = _optional_positive_int(events.get(field), field)
         if marker_epoch is None:
@@ -377,14 +514,26 @@ def _validate_attempt(
         if restored is not True:
             reasons.append("adb_reverse_restored must be true for adb-reverse-disconnect")
     if disruption == DISRUPTION_LAN_NETWORK:
-        encrypted = _optional_bool(attempt.get("trusted_lan_encrypted"), "trusted_lan_encrypted")
-        legacy_plaintext = _optional_bool(
+        declared_encrypted = _optional_bool(attempt.get("trusted_lan_encrypted"), "trusted_lan_encrypted")
+        declared_legacy_plaintext = _optional_bool(
             attempt.get("trusted_lan_legacy_plaintext"), "trusted_lan_legacy_plaintext"
         )
-        if encrypted is not True:
+        security_log = _optional_lan_security_text(attempt, base_dir)
+        security_markers = _lan_security_markers(security_log) if security_log else {}
+        if not security_log:
+            blocking_reasons.append("trusted LAN secure-record evidence log was not provided")
+        if declared_encrypted is False:
+            blocking_reasons.append("trusted_lan_encrypted was declared false")
+        if declared_legacy_plaintext is True:
+            blocking_reasons.append("trusted_lan_legacy_plaintext was declared true")
+        if security_log and security_markers.get("trusted_lan_encrypted_true") is not True:
             blocking_reasons.append("trusted LAN encrypted record negotiation was not observed")
-        if legacy_plaintext is not False:
+        if security_log and security_markers.get("trusted_lan_legacy_plaintext_false") is not True:
             blocking_reasons.append("trusted LAN legacy plaintext fallback was not ruled out")
+        if security_markers.get("trusted_lan_encrypted_false") is True:
+            blocking_reasons.append("trusted LAN evidence contains encrypted=false")
+        if security_markers.get("trusted_lan_legacy_plaintext_true") is True:
+            blocking_reasons.append("trusted LAN evidence contains legacy plaintext=true")
 
     metrics: dict[str, float] = {}
     if not reasons:
@@ -441,7 +590,12 @@ def _validate_attempt(
         "same_host_pid": host_pid_before is not None and host_pid_before == host_pid_after,
         "host_connection_epoch": host_epoch,
         "android_session_epoch": android_epoch,
+        "protocol_v1_session_epoch": protocol_epoch,
+        "connection_opened_session_epoch": connection_opened_epoch,
         "config_epoch": config_epoch,
+        "first_frame_config_epoch": first_frame_config_epoch,
+        REAL_DEVICE_EVIDENCE_FIELD: real_device_evidence is True,
+        SYNTHETIC_FIXTURE_FIELD: synthetic_fixture is True,
         "reasons": reasons + failures + blocking_reasons,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": _artifact_paths(record, attempt),
@@ -483,26 +637,31 @@ def summarize(
         raw_attempts = record.get("attempts")
         if not isinstance(raw_attempts, list):
             raise ReconnectTimingEvidenceError("record must contain an attempts array")
-        attempts = [
-            _validate_attempt(record, attempt, threshold_ms=threshold_ms, base_dir=base_dir)
-            for attempt in raw_attempts
-        ]
-        observed = {attempt["disruption"] for attempt in attempts}
-        missing = [disruption for disruption in required if disruption not in observed]
-        summary_reasons: list[str] = [f"missing required disruption: {item}" for item in missing]
-        if any(attempt["verdict"] == "fail" for attempt in attempts):
-            verdict = "fail"
-        elif any(attempt["verdict"] == "blocked" for attempt in attempts):
+        if not raw_attempts:
+            attempts = []
+            blocked_reasons = ["no real reconnect timing attempts were provided"]
             verdict = "blocked"
-        elif summary_reasons or any(attempt["verdict"] == "insufficient" for attempt in attempts):
-            verdict = "insufficient"
         else:
-            verdict = "pass"
-        blocked_reasons = [
-            reason
-            for attempt in attempts
-            for reason in attempt.get("blocking_reasons", [])
-        ]
+            attempts = [
+                _validate_attempt(record, attempt, threshold_ms=threshold_ms, base_dir=base_dir)
+                for attempt in raw_attempts
+            ]
+            observed = {attempt["disruption"] for attempt in attempts}
+            missing = [disruption for disruption in required if disruption not in observed]
+            summary_reasons: list[str] = [f"missing required disruption: {item}" for item in missing]
+            if any(attempt["verdict"] == "fail" for attempt in attempts):
+                verdict = "fail"
+            elif any(attempt["verdict"] == "blocked" for attempt in attempts):
+                verdict = "blocked"
+            elif summary_reasons or any(attempt["verdict"] == "insufficient" for attempt in attempts):
+                verdict = "insufficient"
+            else:
+                verdict = "pass"
+            blocked_reasons = [
+                reason
+                for attempt in attempts
+                for reason in attempt.get("blocking_reasons", [])
+            ]
 
     missing_required = [
         disruption for disruption in required if disruption not in {attempt["disruption"] for attempt in attempts}

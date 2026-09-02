@@ -1136,6 +1136,16 @@ timing evidence and cannot independently prove Protocol v1. Until the
 remain `insufficient` or use the private diag log instead. Run the evaluator on
 the observation JSON through the Makefile wrapper:
 
+Passing attempts must also declare `real_device_evidence=true` and
+`synthetic_fixture=false`. These flags are intentionally fail-closed: complete
+offline fixtures, copied sample logs, loopback records, or otherwise synthetic
+inputs are reported as `blocked` and cannot close the full gate. For
+`lan-network-interrupt`, retain `trusted_lan_security_log` or
+`trusted_lan_security_log_path` containing both
+`trusted_lan_encrypted=true` and `trusted_lan_legacy_plaintext=false`; any
+`trusted_lan_encrypted=false` or `trusted_lan_legacy_plaintext=true` marker
+blocks the attempt even when another line claims success.
+
 ```sh
 make evidence-reconnect-timing-gate \
   EVIDENCE_DIR=docs/changes/<change>/evidence/<run>

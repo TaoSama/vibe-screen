@@ -17,6 +17,8 @@ from vibescreen_evidence.reconnect_timing import (
 
 
 MODULE = "vibescreen_evidence.reconnect_timing"
+REPOSITORY_ROOT = Path(__file__).parents[2]
+FIXTURE_DIR = REPOSITORY_ROOT / "tools" / "fixtures" / "reconnect-timing"
 
 
 def complete_attempt(disruption: str = DISRUPTION_CLIENT_KILL, transport: str = "usb") -> dict:
@@ -29,11 +31,15 @@ def complete_attempt(disruption: str = DISRUPTION_CLIENT_KILL, transport: str = 
         "host_connection_epoch": 2,
         "android_session_epoch": 1,
         "config_epoch": 1,
+        "real_device_evidence": True,
+        "synthetic_fixture": False,
         "events": {
             "disruption_started_ms": 10_000,
             "protocol_v1_accepted_ms": 10_600,
+            "protocol_v1_session_epoch": 1,
             "first_frame_ms": 10_780,
             "first_frame_session_epoch": 1,
+            "first_frame_config_epoch": 1,
             "first_output_frame_ms": 10_830,
             "first_output_frame_session_epoch": 1,
         },
@@ -43,6 +49,9 @@ def complete_attempt(disruption: str = DISRUPTION_CLIENT_KILL, transport: str = 
     if disruption == DISRUPTION_LAN_NETWORK:
         attempt["trusted_lan_encrypted"] = True
         attempt["trusted_lan_legacy_plaintext"] = False
+        attempt["trusted_lan_security_log"] = (
+            "trusted_lan_encrypted=true trusted_lan_legacy_plaintext=false"
+        )
     return attempt
 
 
@@ -180,6 +189,106 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             summary["attempts"][0]["reasons"],
         )
 
+    def test_protocol_epoch_mismatch_is_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["protocol_v1_session_epoch"] = 2
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "protocol_v1_session_epoch does not match android_session_epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
+    def test_connection_opened_epoch_mismatch_is_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["connection_opened_session_epoch"] = 2
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "connection_opened_session_epoch does not match android_session_epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
+    def test_explicit_android_events_must_match_retained_diag_log(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["android_diag"] = "\n".join(
+            [
+                "[10600] SC: Protocol v1 upgrade accepted session_epoch=2",
+                '[10650] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":2}',
+                "[10700] MA: onVideoConfiguration: 2000x1200 @ 0 deg epoch=1",
+                "[10800] VD: First frame: size=1, keyframe=true, session_epoch=2, config_epoch=1",
+                "[10850] VD: First output frame! size=1, flags=1, session_epoch=2",
+            ]
+        )
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "android_diag protocol_v1_session_epoch does not match explicit events.protocol_v1_session_epoch",
+            summary["attempts"][0]["reasons"],
+        )
+        self.assertIn(
+            "android_session_epoch does not match parsed Android session epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
+    def test_explicit_host_epoch_must_match_retained_host_log(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["host_connection_epoch"] = 2
+        attempt["host_log"] = "Protocol v1 selected for connection epoch 3"
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "host_connection_epoch does not match parsed Host connection epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
+    def test_first_frame_config_epoch_mismatch_is_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["first_frame_config_epoch"] = 2
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "first_frame_config_epoch does not match config_epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
+    def test_protocol_recovery_before_disruption_is_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["protocol_v1_accepted_ms"] = 9_999
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn("Protocol v1 accepted before disruption start", summary["attempts"][0]["reasons"])
+
+    def test_first_frame_before_protocol_recovery_is_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["first_frame_ms"] = 10_599
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn("first frame preceded Protocol v1 recovery", summary["attempts"][0]["reasons"])
+
+    def test_first_output_before_first_frame_is_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["first_output_frame_ms"] = 10_779
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn("first output frame preceded first received frame", summary["attempts"][0]["reasons"])
+
     def test_slow_first_output_frame_fails(self) -> None:
         attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
         attempt["events"]["first_output_frame_ms"] = 13_100
@@ -217,12 +326,96 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
 
     def test_lan_attempt_blocks_without_secure_record_markers(self) -> None:
         attempt = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
+        attempt.pop("trusted_lan_security_log")
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_LAN_NETWORK])
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            "trusted LAN secure-record evidence log was not provided",
+            summary["attempts"][0]["blocking_reasons"],
+        )
+
+    def test_lan_attempt_blocks_on_contradictory_secure_record_log(self) -> None:
+        attempt = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
+        attempt["trusted_lan_security_log"] = (
+            "trusted_lan_encrypted=true trusted_lan_legacy_plaintext=false\n"
+            "later trusted_lan_encrypted=false trusted_lan_legacy_plaintext=true"
+        )
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_LAN_NETWORK])
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            "trusted LAN evidence contains encrypted=false",
+            summary["attempts"][0]["blocking_reasons"],
+        )
+        self.assertIn(
+            "trusted LAN evidence contains legacy plaintext=true",
+            summary["attempts"][0]["blocking_reasons"],
+        )
+
+    def test_lan_attempt_blocks_on_false_secure_record_declaration(self) -> None:
+        attempt = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
         attempt["trusted_lan_encrypted"] = False
 
         summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_LAN_NETWORK])
 
         self.assertEqual(summary["verdict"], "blocked")
-        self.assertIn("trusted LAN encrypted", summary["attempts"][0]["blocking_reasons"][0])
+        self.assertIn("trusted_lan_encrypted was declared false", summary["attempts"][0]["blocking_reasons"])
+
+    def test_lan_attempt_can_parse_secure_record_markers_from_log_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lan-security.log").write_text(
+                "trusted_lan_encrypted=true trusted_lan_legacy_plaintext=false\n",
+                encoding="utf-8",
+            )
+            attempt = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
+            attempt.pop("trusted_lan_encrypted")
+            attempt.pop("trusted_lan_legacy_plaintext")
+            attempt.pop("trusted_lan_security_log")
+            attempt["trusted_lan_security_log_path"] = "lan-security.log"
+
+            summary = summarize(
+                {"attempts": [attempt]},
+                required_disruptions=[DISRUPTION_LAN_NETWORK],
+                base_dir=root,
+            )
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertIn("lan-security.log", summary["attempts"][0]["artifact_paths"])
+
+    def test_attempt_without_real_device_evidence_is_blocked(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt.pop("real_device_evidence")
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            "real device reconnect timing evidence was not declared",
+            summary["attempts"][0]["blocking_reasons"],
+        )
+
+    def test_synthetic_attempt_is_blocked(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["synthetic_fixture"] = True
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            "synthetic fixtures cannot close reconnect timing evidence",
+            summary["attempts"][0]["blocking_reasons"],
+        )
+
+    def test_empty_attempts_are_blocked_without_real_evidence(self) -> None:
+        summary = summarize({"attempts": []})
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn("no real reconnect timing attempts were provided", summary["blocked_reasons"])
+        self.assertFalse(summary["can_close_timing_gate"])
 
     def test_blocked_record_never_closes_gate(self) -> None:
         summary = summarize({"blocked_reasons": ["Host 54321 listener unavailable"]})
@@ -261,9 +454,45 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
 
         self.assertEqual(events["protocol_v1_accepted_ms"], 10_600)
         self.assertEqual(events["android_session_epoch"], 4)
+        self.assertEqual(events["connection_opened_session_epoch"], 4)
         self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_config_epoch"], 9)
         self.assertEqual(events["first_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_ms"], 10_850)
+
+    def test_parses_android_diag_skips_frame_from_wrong_active_session(self) -> None:
+        events = parse_android_diag_events(
+            "\n".join(
+                [
+                    '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":4}',
+                    "[10700] VD: First frame: size=1, keyframe=true, session_epoch=3, config_epoch=9",
+                    "[10750] VD: First output frame! size=1, flags=1, session_epoch=3",
+                    "[10800] VD: First frame: size=1, keyframe=true, session_epoch=4, config_epoch=9",
+                    "[10850] VD: First output frame! size=1, flags=1, session_epoch=4",
+                ]
+            ),
+            after_ms=10_000,
+        )
+
+        self.assertEqual(events["first_frame_ms"], 10_800)
+        self.assertEqual(events["first_output_frame_ms"], 10_850)
+
+    def test_parses_android_diag_connection_opened_epoch_from_orderless_json(self) -> None:
+        events = parse_android_diag_events(
+            "\n".join(
+                [
+                    '[10600] VibeScreenTelemetry: {"session_epoch":4,"event":"connection_opened"}',
+                    "[10800] VD: First frame: size=1, keyframe=true, session_epoch=4, config_epoch=9",
+                    "[10850] VD: First output frame! size=1, flags=1, session_epoch=4",
+                ]
+            ),
+            after_ms=10_000,
+        )
+
+        self.assertEqual(events["android_session_epoch"], 4)
+        self.assertEqual(events["connection_opened_session_epoch"], 4)
+        self.assertEqual(events["first_frame_ms"], 10_800)
         self.assertEqual(events["first_output_frame_ms"], 10_850)
 
     def test_parses_android_diag_skips_legacy_first_frame_marker(self) -> None:
@@ -320,7 +549,10 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
 
         self.assertEqual(events["protocol_v1_accepted_ms"], 10_600)
         self.assertEqual(events["android_session_epoch"], 4)
+        self.assertEqual(events["protocol_v1_session_epoch"], 4)
+        self.assertEqual(events["connection_opened_session_epoch"], 4)
         self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_config_epoch"], 9)
         self.assertEqual(events["first_frame_ms"], 10_800)
         self.assertEqual(events["first_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_session_epoch"], 4)
@@ -389,6 +621,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             "host_pid_before": 1234,
             "host_pid_after": 1234,
             "host_connection_epoch": 2,
+            "real_device_evidence": True,
+            "synthetic_fixture": False,
             "disruption_started_at_ms": 10_000,
             "android_logcat": "\n".join(
                 [
@@ -404,6 +638,35 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertIn("missing protocol_v1_accepted_ms", summary["attempts"][0]["reasons"])
 
+    def test_logcat_connection_opened_conflict_with_protocol_epoch_is_insufficient(self) -> None:
+        attempt = {
+            "name": DISRUPTION_CLIENT_KILL,
+            "disruption": DISRUPTION_CLIENT_KILL,
+            "transport": "usb",
+            "host_pid_before": 1234,
+            "host_pid_after": 1234,
+            "host_connection_epoch": 2,
+            "real_device_evidence": True,
+            "synthetic_fixture": False,
+            "disruption_started_at_ms": 10_000,
+            "android_logcat": "\n".join(
+                [
+                    'I/VibeScreenTelemetry: {"event":"connection_opened","timestamp_ms":10550,"session_epoch":99}',
+                    'I/VibeScreenTelemetry: {"event":"protocol_v1_accepted","timestamp_ms":10600,"session_epoch":4}',
+                    'I/VibeScreenTelemetry: {"event":"first_frame_received","timestamp_ms":10800,"session_epoch":4,"config_epoch":9}',
+                    'I/VibeScreenTelemetry: {"event":"first_output_frame","timestamp_ms":10850,"session_epoch":4}',
+                ]
+            ),
+        }
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "connection_opened_session_epoch does not match protocol_v1_session_epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
     def test_logcat_only_attempt_passes_with_protocol_v1_acceptance_event(self) -> None:
         attempt = {
             "name": DISRUPTION_CLIENT_KILL,
@@ -412,6 +675,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
             "host_pid_before": 1234,
             "host_pid_after": 1234,
             "host_connection_epoch": 2,
+            "real_device_evidence": True,
+            "synthetic_fixture": False,
             "disruption_started_at_ms": 10_000,
             "android_logcat": "\n".join(
                 [
@@ -489,6 +754,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
                         "host_pid_before": 1234,
                         "host_pid_after": 1234,
                         "host_connection_epoch": 2,
+                        "real_device_evidence": True,
+                        "synthetic_fixture": False,
                         "disruption_started_at_ms": 10_000,
                         "android_diag_path": "diag.log",
                     }
@@ -559,6 +826,24 @@ class ReconnectTimingCliTest(unittest.TestCase):
         self.assertEqual(output["verdict"], "blocked")
         self.assertFalse(output["can_close_timing_gate"])
         self.assertEqual(output["device"]["target"], "Nubia P0110 / pacific / Android 16 / <redacted-adb-serial>")
+
+    def test_cli_blocks_synthetic_complete_fixture(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "synthetic-complete-observations.json"),
+            "--run-id",
+            "fixture-cli",
+        )
+
+        self.assertEqual(result.returncode, 3, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["run_id"], "fixture-cli")
+        self.assertEqual(output["verdict"], "blocked")
+        self.assertFalse(output["can_close_timing_gate"])
+        self.assertEqual(output["full_gate_missing_disruptions"], [])
+        self.assertIn(
+            "synthetic fixtures cannot close reconnect timing evidence",
+            output["attempts"][0]["blocking_reasons"],
+        )
 
     def test_cli_rejects_missing_input(self) -> None:
         result = self.run_cli()
