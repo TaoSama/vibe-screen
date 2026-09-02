@@ -199,22 +199,19 @@ class Phase0ModuleOwnershipTest(unittest.TestCase):
                     [evidence_path],
                 )
 
-    def test_current_manifest_records_open_work_and_stays_blocked(self) -> None:
+    def test_current_manifest_records_closed_required_boundaries(self) -> None:
         manifest = json.loads(CURRENT_MANIFEST.read_text(encoding="utf-8"))
 
         summary = evaluate_manifest(manifest, repo_root=REPO_ROOT)
 
-        self.assertEqual(summary["verdict"], "blocked")
-        self.assertFalse(summary["can_close_phase0_module_ownership_extraction"])
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertTrue(summary["can_close_phase0_module_ownership_extraction"])
         self.assertEqual(summary["required_boundary_count"], len(REQUIRED_BOUNDARY_IDS))
-        self.assertLess(
+        self.assertEqual(
             summary["closed_required_boundary_count"],
             summary["required_boundary_count"],
         )
-        self.assertIn(
-            "ui_product_session_boundaries",
-            {boundary["id"] for boundary in summary["open_required_boundaries"]},
-        )
+        self.assertEqual(summary["open_required_boundaries"], [])
 
     def test_summary_matches_schema_required_fields(self) -> None:
         summary = evaluate_manifest(
@@ -228,7 +225,7 @@ class Phase0ModuleOwnershipTest(unittest.TestCase):
         for field in schema["required"]:
             self.assertIn(field, summary)
 
-    def test_cli_writes_blocked_summary_and_require_pass_fails(self) -> None:
+    def test_cli_writes_pass_summary_and_require_pass_succeeds(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             output = Path(directory_name) / "summary.json"
 
@@ -250,11 +247,11 @@ class Phase0ModuleOwnershipTest(unittest.TestCase):
                 check=False,
             )
 
-            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(output.exists(), result.stderr)
             summary = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(summary["verdict"], "blocked")
-            self.assertFalse(summary["can_close_phase0_module_ownership_extraction"])
+            self.assertEqual(summary["verdict"], "pass")
+            self.assertTrue(summary["can_close_phase0_module_ownership_extraction"])
 
 
 if __name__ == "__main__":

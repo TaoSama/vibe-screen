@@ -146,13 +146,18 @@ class MainActivityControllerForwardingContractTest {
         val onStop = extractMethod(source, "override fun onStop")
         val onDestroy = extractMethod(source, "override fun onDestroy")
 
-        assertContains(streamPromptOffer, "isCurrentSession(client, generation) && client.canTransferFiles")
+        assertContains(streamPromptOffer, "isCurrentSession(client, generation) &&")
+        assertContains(streamPromptOffer, "client.canTransferFiles")
         assertContains(source, "respond = { accepted, _ -> client.respondToFileOffer(offer, accepted = accepted) }")
         assertContains(internetCallback, "session.canTransferFiles")
         assertContains(internetCallback, "respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) }")
         assertContains(promptOffer, "if (!isInForeground ||")
         assertContains(promptOffer, "isFinishing ||")
         assertContains(promptOffer, "isDestroyed ||")
+        assertContains(streamPromptOffer, "!productSessionCoordinator.beginIncomingFileOffer(client, generation, offer)")
+        assertContains(streamPromptOffer, "productSessionCoordinator.acceptsIncomingFileOffer(client, generation, offer)")
+        assertContains(streamPromptOffer, "finishDecision = { productSessionCoordinator.finishIncomingFileOffer(client, generation, offer) }")
+        assertContains(streamPromptOffer, "clearDecision = { productSessionCoordinator.clearIncomingFileOffer() }")
         assertContains(promptOffer, "!isCurrentAndAllowed()")
         assertBefore(promptOffer, "if (!isInForeground", "pendingIncomingFileDialog != null")
         assertBefore(promptOffer, "if (!isInForeground", "showImmersiveDialog(dialog)")
@@ -161,6 +166,42 @@ class MainActivityControllerForwardingContractTest {
         assertContains(onDestroy, "rejectPendingIncomingFileOffer()")
         assertContains(onDestroy, "fileTransferApprovalHandler.removeCallbacksAndMessages(null)")
         assertBefore(onDestroy, "rejectPendingIncomingFileOffer()", "fileTransferApprovalHandler.removeCallbacksAndMessages(null)")
+    }
+
+    @Test
+    fun outgoingFileTransferStagingFailureDeletesFileAndDoesNotOffer() {
+        val source = mainActivitySource()
+        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val streamSession = extractMethod(source, "private fun activeStreamFileTransferSession")
+        val internetSession = extractMethod(source, "private fun activeInternetFileTransferSession")
+        val discardPending = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
+
+        assertContains(handlePicker, "session.stageOutgoingFile(file)")
+        assertContains(handlePicker, "registered && session.offerFile(file, mimeType)")
+        assertContains(streamSession, "val staged = productSessionCoordinator.stageOutgoingFileTransfer(client, generation, file)")
+        assertContains(streamSession, "if (!staged) file.deleteRecursivelyBestEffort()")
+        assertContains(internetSession, "pendingInternetOutgoingFileTransfer = file")
+        assertContains(discardPending, "pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()")
+        assertContains(discardPending, "pendingInternetOutgoingFileTransfer = null")
+        assertBefore(streamSession, "val staged = productSessionCoordinator.stageOutgoingFileTransfer", "if (!staged) file.deleteRecursivelyBestEffort()")
+        assertBefore(handlePicker, "session.stageOutgoingFile(file)", "registered && session.offerFile")
+    }
+
+    @Test
+    fun pendingOutgoingFileIsDiscardedBeforeCoordinatorClearsFileTransferState() {
+        val source = mainActivitySource()
+
+        // New session activation reclaims any leftover outgoing file before clearing state.
+        assertBefore(source, "discardPendingOutgoingFileTransfer()", "productSessionCoordinator.activate(client)")
+        // Disconnect paths discard the pending file before the coordinator clears state.
+        assertContains(source, "if (!connected) discardPendingOutgoingFileTransfer()")
+        assertContains(source, "discardPendingOutgoingFileTransfer()\n        productSessionCoordinator.setTransportConnected(false)")
+        assertContains(source, "discardPendingOutgoingFileTransfer()\n        productSessionCoordinator.clearDisconnectedUiState()")
+
+        // Capability and runtime loss paths discard before clearing.
+        assertContains(source, "if (!binding.capabilities.fileTransfer) discardPendingOutgoingFileTransfer()")
+        assertContains(source, "if (!callbackClient.canTransferFiles) discardPendingOutgoingFileTransfer()")
+        assertContains(source, "if (!client.canTransferFiles) discardPendingOutgoingFileTransfer()")
     }
 
     @Test
@@ -223,7 +264,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(managedPolicyCallback, "clipboard = clipboard")
         assertContains(managedPolicyCallback, "if (!clipboard) {")
         assertContains(managedPolicyCallback, "cancelClipboardRequestTimeout()")
-        assertContains(managedPolicyCallback, "clipboardApprovalState.clear()")
+        assertContains(managedPolicyCallback, "productSessionCoordinator.clearClipboardWorkflow()")
         assertContains(managedPolicyCallback, "populateHostActions(availableHostActions)")
         assertContains(managedPolicyCallback, "refreshClipboardControl()")
         assertBefore(managedPolicyCallback, "clipboard = clipboard", "if (!clipboard) {")
