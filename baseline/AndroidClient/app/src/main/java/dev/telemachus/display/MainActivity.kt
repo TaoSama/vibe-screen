@@ -66,6 +66,7 @@ import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.InternetManagedPolicy
 import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
@@ -4744,6 +4745,9 @@ class MainActivity : AppCompatActivity() {
                     CodecCapabilities.advertisedStreamCodecs
                         .mapNotNullTo(linkedSetOf(), StreamCodec::toProductVideoCodecOrNull),
                 advertiseController = true,
+                localManagedPolicy = InternetManagedPolicy.fromProtocolPolicy(
+                    ManagedConfigurationProvider(applicationContext).loadPolicy(),
+                ),
             )
         val callbacks =
             object : InternetProductSessionCallbacks {

@@ -83,6 +83,7 @@ struct InternetProductSessionConfiguration {
     let video: InternetProductVideoConfiguration
     let inputEnabled: Bool
     let controllerAvailable: Bool
+    let managedPolicy: ManagedPolicy
     let fileTransferPolicy: ProtocolV1FileTransferPolicy
     let fileTransferApprovalTimeoutMilliseconds: UInt32
     let fileTransferProgressTimeoutMilliseconds: UInt32
@@ -105,6 +106,7 @@ struct InternetProductSessionConfiguration {
         video: InternetProductVideoConfiguration,
         inputEnabled: Bool = true,
         controllerAvailable: Bool = false,
+        managedPolicy: ManagedPolicy = .unmanaged,
         fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
         fileTransferApprovalTimeoutMilliseconds: UInt32 = 60_000,
         fileTransferProgressTimeoutMilliseconds: UInt32 = 30_000,
@@ -126,6 +128,7 @@ struct InternetProductSessionConfiguration {
         self.video = video
         self.inputEnabled = inputEnabled
         self.controllerAvailable = controllerAvailable
+        self.managedPolicy = managedPolicy
         self.fileTransferPolicy = fileTransferPolicy
         self.fileTransferApprovalTimeoutMilliseconds = fileTransferApprovalTimeoutMilliseconds
         self.fileTransferProgressTimeoutMilliseconds = fileTransferProgressTimeoutMilliseconds

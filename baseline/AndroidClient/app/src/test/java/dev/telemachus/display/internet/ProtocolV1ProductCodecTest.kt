@@ -5,6 +5,9 @@ import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
+import dev.vibescreen.protocol.v1.ClipboardRequest
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
@@ -43,8 +46,9 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
-        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
@@ -54,9 +58,15 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
             hello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes,
+        )
+        assertEquals(
+            InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES,
+            hello.clientHello.resourceLimits.maximumClipboardBytes,
         )
         assertEquals(512L * 1024L * 1024L, hello.clientHello.resourceLimits.maximumFileBytes)
         assertEquals(64 * 1024, hello.clientHello.resourceLimits.maximumFileChunkBytes)
@@ -95,6 +105,35 @@ class ProtocolV1ProductCodecTest {
         val pong = Envelope.parseFrom(codec.encodePong(5, 4, sessionId, 7, 9))
         assertEquals(4, pong.correlationId)
         assertEquals(9, pong.pong.sequence)
+    }
+
+    @Test
+    fun localManagedPolicyFiltersClientHelloCapabilitiesAndLimits() {
+        val policy =
+            InternetManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                clipboardAllowed = false,
+                fileTransferAllowed = false,
+                maximumFileBytes = 0L,
+                allowedHosts = setOf("host-1"),
+                allowedHostsRestricted = true,
+            )
+        val managedCodec =
+            ProtobufProtocolV1ProductCodec(
+                localDeviceId = "device-1",
+                deviceName = "Android",
+                supportedCodecs = setOf(ProductVideoCodec.H264),
+                localManagedPolicy = policy,
+            ) { 99 }
+
+        val hello = Envelope.parseFrom(managedCodec.encodeClientHello(1, sessionId, 7)).clientHello
+
+        assertTrue(hello.capabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
+        assertFalse(hello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertFalse(hello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
+        assertEquals(0L, hello.resourceLimits.maximumClipboardBytes)
+        assertEquals(0L, hello.resourceLimits.maximumFileBytes)
+        assertEquals(0, hello.resourceLimits.maximumFileChunkBytes)
     }
 
     @Test
@@ -149,6 +188,56 @@ class ProtocolV1ProductCodecTest {
         assertEquals(4096, decodedHost.maximumFileChunkBytes)
         assertEquals(1234L, decodedAccepted.maximumFileBytes)
         assertEquals(4096, decodedAccepted.maximumFileChunkBytes)
+    }
+
+    @Test
+    fun encodeDecodeClipboardAndManagedPolicyControls() {
+        val changeId = ByteString.copyFrom(ByteArray(InternetClipboard.CLIPBOARD_CHANGE_ID_BYTES) { it.toByte() })
+        val contentBytes = "internet clipboard".toByteArray(Charsets.UTF_8)
+        val digest = ByteString.copyFrom(InternetClipboard.sha256(contentBytes))
+        val offer =
+            ClipboardOffer
+                .newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId("device-1")
+                .setMimeType(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN)
+                .setByteLength(contentBytes.size.toLong())
+                .setSha256(digest)
+                .build()
+        val request = ClipboardRequest.newBuilder().setChangeId(changeId).build()
+        val content =
+            ClipboardContent
+                .newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId("device-1")
+                .setMimeType(InternetClipboard.CLIPBOARD_MIME_TEXT_PLAIN)
+                .setContent(ByteString.copyFrom(contentBytes))
+                .setSha256(digest)
+                .build()
+        val policy = InternetManagedPolicy.UNMANAGED.toStatus()
+
+        val decodedOffer = codec.decodeControl(
+            codec.encodeClipboardOffer(20, sessionId, 7, offer),
+        ).message as ProductControlMessage.ClipboardOffered
+        assertEquals(offer, decodedOffer.offer)
+
+        val decodedRequest = codec.decodeControl(
+            codec.encodeClipboardRequest(21, sessionId, 7, request),
+        ).message as ProductControlMessage.ClipboardRequested
+        assertEquals(request, decodedRequest.request)
+
+        val decodedContent = codec.decodeControl(
+            codec.encodeClipboardContent(22, 21, sessionId, 7, content),
+        )
+        assertEquals(21L, Envelope.parseFrom(
+            codec.encodeClipboardContent(22, 21, sessionId, 7, content),
+        ).correlationId)
+        assertEquals(content, (decodedContent.message as ProductControlMessage.ClipboardContentReceived).content)
+
+        val decodedPolicy = codec.decodeControl(
+            codec.encodeManagedPolicyStatus(23, sessionId, 7, policy),
+        ).message as ProductControlMessage.ManagedPolicyStatusReceived
+        assertEquals(policy, decodedPolicy.status)
     }
 
     @Test
@@ -453,10 +542,12 @@ class ProtocolV1ProductCodecTest {
 
     private fun mediaRecordLimits(
         maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+        maximumClipboardBytes: Long = 0L,
     ): ResourceLimits.Builder =
         ResourceLimits
             .newBuilder()
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+            .setMaximumClipboardBytes(maximumClipboardBytes)
             .setMaximumFileBytes(1234)
             .setMaximumFileChunkBytes(4096)
 

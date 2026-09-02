@@ -1137,9 +1137,9 @@ class AndroidWebRtcPeerEngine internal constructor(
         internal const val MEDIA_CHANNEL_LABEL = "vibescreen.media.v1"
         internal const val AUDIO_CHANNEL_LABEL = "vibescreen.audio.v1"
         internal const val BULK_CHANNEL_LABEL = "vibescreen.bulk.v1"
-        private const val MAX_CONTROL_BYTES = 1_048_576
+        private const val MAX_CONTROL_BYTES = InternetControlRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES
         private const val MIN_RECORD_BYTES = 16
-        private const val CONTROL_BUFFER_HIGH_WATER_BYTES = 1_048_576L
+        internal const val CONTROL_BUFFER_HIGH_WATER_BYTES = 4L * MAX_CONTROL_BYTES
         private const val BULK_BUFFER_HIGH_WATER_BYTES = 4L * 1024L * 1024L
         private const val MEDIA_BUFFER_LOW_WATER_BYTES = 131_072L
         private const val AUDIO_BUFFER_LOW_WATER_BYTES = 64_000L

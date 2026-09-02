@@ -3029,6 +3029,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ),
             inputEnabled: settings.touchEnabled,
             controllerAvailable: gameControllerRuntime.factory != nil,
+            managedPolicy: ManagedConfigurationProvider().loadPolicy(),
             fileTransferPolicy: .default
         )
     }
@@ -3079,12 +3080,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 )
                 if state == .closed {
+                    self.clipboardController?.unbind()
                     self.applyInternetSessionState(state)
                     await self.stopServer(preserveRecoveryState: true)
                     return
                 }
                 self.applyInternetSessionState(state)
-                if case .streaming = state {
+                switch state {
+                case .streaming:
+                    self.clipboardController?.bind(
+                        server: session,
+                        generation: session.currentSessionEpoch,
+                        transport: .secureInternet,
+                        clipboardAvailable: session.clipboardAvailable
+                    )
                     await self.internetSessionLeaseDeliveryLifecycle.handleStateChange(
                         state,
                         isCurrent: {
@@ -3103,6 +3112,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                                 "Reconnect with a fresh short-lived Internet session profile."
                             await self.stopServer(preserveRecoveryState: true)
                         }
+                    )
+                case .recovering, .failed, .revoked, .closed:
+                    self.clipboardController?.unbind()
+                case .idle, .connecting, .authenticating, .awaitingVideoConfiguration:
+                    self.clipboardController?.bind(
+                        server: session,
+                        generation: session.currentSessionEpoch,
+                        transport: .secureInternet,
+                        clipboardAvailable: false
                     )
                 }
             }
@@ -3261,9 +3279,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
+                self.clipboardController?.unbind()
                 self.settings.internetStatus = .revoked
                 self.settings.clientConnected = false
                 await self.stopServer(preserveRecoveryState: true)
+            }
+        }
+        session.onClipboardOfferReceived = { [weak self, weak session] offer in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.handleOffer(
+                    offer,
+                    generation: session.currentSessionEpoch
+                )
+            }
+        }
+        session.onClipboardContentReceived = { [weak self, weak session] content in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.handleContent(
+                    content,
+                    generation: session.currentSessionEpoch
+                )
+            }
+        }
+        session.onClipboardDirectContentReceived = { [weak self, weak session] content in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.handleDirectContent(
+                    content,
+                    generation: session.currentSessionEpoch
+                )
+            }
+        }
+        session.onRemoteManagedPolicyChanged = { [weak self, weak session] _ in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.clipboardController?.bind(
+                    server: session,
+                    generation: session.currentSessionEpoch,
+                    transport: .secureInternet,
+                    clipboardAvailable: session.clipboardAvailable
+                )
+                self.fileTransferController?.refreshAvailability()
             }
         }
         session.onFileTransferApprovalRequested = { [weak self, weak session] offer, completion in

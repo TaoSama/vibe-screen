@@ -5,6 +5,8 @@ import dev.telemachus.display.ControllerConnectionAckTracker
 import dev.telemachus.display.ControllerDispatchOrdering
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.ClipboardContentData
+import dev.telemachus.display.ClipboardOfferData
 import dev.telemachus.display.FileTransferProductOwner
 import dev.telemachus.display.PendingControllerInputDisposition
 import dev.telemachus.display.SessionInputIdSequence
@@ -22,6 +24,7 @@ import dev.telemachus.display.protocol.FileChunk
 import dev.telemachus.display.protocol.FileTransferException
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.ProtocolV1Framing
+import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
@@ -168,6 +171,12 @@ internal interface InternetProductSessionCallbacks {
     fun onAudioRecord(payload: ByteArray) = Unit
 
     fun onBulkRecord(payload: ByteArray) = Unit
+
+    fun onClipboardOffered(offer: ClipboardOfferData) = Unit
+
+    fun onClipboardContent(content: ClipboardContentData) = Unit
+
+    fun onManagedPolicyReceived(status: ManagedPolicyStatus) = Unit
 
     fun onFileOffer(offer: FileOffer) = Unit
 
@@ -323,11 +332,18 @@ class InternetProductSession internal constructor(
     private var acceptedHostHello = false
     private var acceptedSession = false
     private var expectedNegotiatedCapabilities = emptySet<Capability>()
+    private var baseNegotiatedCapabilities = emptySet<Capability>()
     private var hostMaximumEncryptedMediaRecordBytes = 0L
+    private var hostMaximumClipboardBytes = 0L
     private var hostMaximumFileBytes = 0L
     private var hostMaximumFileChunkBytes = 0
     private var negotiatedMaximumEncryptedMediaRecordBytes = 0
-    private var negotiatedFilePolicy = fileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+    private var negotiatedMaximumClipboardBytes = 0L
+    private var remoteManagedClipboardAllowed = true
+    private val managedPolicyResolver = InternetManagedPolicyResolver(codec.localManagedPolicy)
+    private val localFileTransferPolicy = fileTransferPolicy.applying(RemoteManagedPolicy(codec.localManagedPolicy.toStatus()))
+    private var clipboard: InternetClipboard? = null
+    private var negotiatedFilePolicy = localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
     private val outgoingFileTransferDeadlines = LinkedHashMap<ByteString, OutgoingFileTransferDeadline>()
     private var negotiationStarted = false
     private var freshSessionRequested = false
@@ -345,7 +361,7 @@ class InternetProductSession internal constructor(
     private val minimumNextControllerInputId = AtomicLong(1)
     private val fileTransferProductOwner =
         FileTransferProductOwner(
-            fileTransferPolicy = fileTransferPolicy,
+            fileTransferPolicy = localFileTransferPolicy,
             stagingDirectory = { fileTransferStagingDirectory },
             pendingOfferGate = InternetFileTransferPendingOfferGate(),
         ).apply {
@@ -563,6 +579,46 @@ class InternetProductSession internal constructor(
             transport.sendBulkRecord(payload)
         }
 
+    fun canSendClipboard(): Boolean = synchronized(lock) { canUseClipboardLocked() }
+
+    fun negotiatedMaxClipboardBytes(): Long = synchronized(lock) { negotiatedMaximumClipboardBytes }
+
+    fun offerClipboard(text: String): Boolean {
+        val offer = synchronized(lock) {
+            if (!canUseClipboardLocked()) return false
+            clipboard?.prepareOffer(text)
+        } ?: return false
+        return sendApplicationControl {
+            codec.encodeClipboardOffer(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                offer,
+            )
+        }
+    }
+
+    fun requestClipboard(changeId: ByteArray): Boolean {
+        val request = synchronized(lock) {
+            if (!canUseClipboardLocked()) return false
+            clipboard?.requestContent(changeId)
+        } ?: return false
+        return sendApplicationControl {
+            codec.encodeClipboardRequest(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                request,
+            )
+        }
+    }
+
+    fun expireClipboardRequest(changeId: ByteArray): Boolean =
+        synchronized(lock) {
+            if (!canUseClipboardLocked()) return false
+            clipboard?.expireRequest(changeId) == true
+        }
+
     val canTransferFiles: Boolean
         get() = synchronized(lock) { canTransferFilesLocked() }
 
@@ -664,6 +720,26 @@ class InternetProductSession internal constructor(
             state in CONTROLLER_STRUCTURAL_STATES &&
             currentVideoConfiguration != null &&
             Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+
+    private fun canUseClipboardLocked(owner: TransportOwner = transportOwner): Boolean =
+        acceptsTransportCallbackLocked(owner) &&
+            acceptedSession &&
+            state == InternetProductSessionState.ACTIVE &&
+            currentVideoConfiguration != null &&
+            remoteManagedClipboardAllowed &&
+            Capability.CAPABILITY_CLIPBOARD in expectedNegotiatedCapabilities &&
+            clipboard != null
+
+    private fun negotiatedClipboardLimit(hostAcceptedMaximum: Long): Long =
+        if (Capability.CAPABILITY_CLIPBOARD !in expectedNegotiatedCapabilities) {
+            0L
+        } else {
+            minOf(
+                InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES,
+                if (hostMaximumClipboardBytes > 0L) hostMaximumClipboardBytes else InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES,
+                if (hostAcceptedMaximum > 0L) hostAcceptedMaximum else InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES,
+            )
+        }
 
     private fun drainControllerQueue(): Boolean {
         while (true) {
@@ -957,6 +1033,9 @@ class InternetProductSession internal constructor(
             }
             is ProductControlMessage.Disconnect -> requestFreshSessionIfAllowed(owner, message.reasonCode, message.mayResume)
             is ProductControlMessage.Revoked -> error("Revocation must be reserved during control admission")
+            is ProductControlMessage.ClipboardOffered -> handleClipboardOffer(owner, message.offer)
+            is ProductControlMessage.ClipboardRequested -> handleClipboardRequest(owner, decoded.messageId, message.request)
+            is ProductControlMessage.ClipboardContentReceived -> handleClipboardContent(owner, message.content)
             is ProductControlMessage.ProtocolFailure -> {
                 failIfOwned(owner, IllegalStateException("Protocol failure (${message.code}); retryable=${message.retryable}"))
             }
@@ -1041,7 +1120,11 @@ class InternetProductSession internal constructor(
         message: ProductControlMessage.HostHello,
     ) {
         val required = ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.toSet()
-        val expectedCapabilities = message.capabilities.intersect(codec.offeredCapabilities)
+        val expectedCapabilities = message.capabilities.intersect(codec.offeredCapabilities).filteredBy(managedPolicyResolver.effectivePolicy)
+        if (!managedPolicyResolver.effectivePolicy.allowsHost(lease.pinnedHostId)) {
+            failIfOwned(owner, IllegalArgumentException("Managed policy does not allow this host"))
+            return
+        }
         if (
             message.hostId != lease.pinnedHostId ||
             message.selectedProtocol != ProtobufProtocolV1ProductCodec.PROTOCOL_VERSION ||
@@ -1060,7 +1143,9 @@ class InternetProductSession internal constructor(
             if (acceptsTransportCallbackLocked(owner)) {
                 acceptedHostHello = true
                 expectedNegotiatedCapabilities = expectedCapabilities
+                baseNegotiatedCapabilities = expectedCapabilities
                 hostMaximumEncryptedMediaRecordBytes = message.maximumEncryptedMediaRecordBytes
+                hostMaximumClipboardBytes = message.maximumClipboardBytes
                 hostMaximumFileBytes = message.maximumFileBytes
                 hostMaximumFileChunkBytes = message.maximumFileChunkBytes
             }
@@ -1084,6 +1169,7 @@ class InternetProductSession internal constructor(
                     hostMaximumEncryptedMediaRecordBytes,
                     InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES.toLong(),
                 ) ||
+                negotiatedClipboardLimit(message.maximumClipboardBytes) != message.maximumClipboardBytes ||
                 message.maximumFileBytes != negotiatedFilePolicyFromHostLocked().maximumFileBytes ||
                 message.maximumFileChunkBytes != negotiatedFilePolicyFromHostLocked().maximumChunkBytes ||
                 message.heartbeatIntervalMillis !in MIN_HEARTBEAT_INTERVAL_MS..MAX_HEARTBEAT_INTERVAL_MS
@@ -1092,11 +1178,21 @@ class InternetProductSession internal constructor(
             } else {
                 acceptedSession = true
                 negotiatedMaximumEncryptedMediaRecordBytes = Math.toIntExact(message.maximumEncryptedMediaRecordBytes)
+                negotiatedMaximumClipboardBytes = message.maximumClipboardBytes
+                clipboard = if (Capability.CAPABILITY_CLIPBOARD in expectedNegotiatedCapabilities) {
+                    InternetClipboard(
+                        localDeviceId = codec.localDeviceId,
+                        remoteDeviceId = lease.pinnedHostId,
+                        maximumBytes = negotiatedMaximumClipboardBytes,
+                    )
+                } else {
+                    null
+                }
                 negotiatedFilePolicy =
                     if (Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities) {
                         negotiatedFilePolicyFromHostLocked()
                     } else {
-                        fileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+                        localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
                     }
                 heartbeatIntervalMillis = message.heartbeatIntervalMillis
                 scheduleNextHeartbeatLocked()
@@ -1114,12 +1210,23 @@ class InternetProductSession internal constructor(
             } else {
                 fileTransferProductOwner.clear(reasonCode = "policy_denied")
             }
+            if (Capability.CAPABILITY_MANAGED_CONFIGURATION in expectedNegotiatedCapabilities) {
+                sendRequiredControlIfOwned(
+                    owner,
+                    codec.encodeManagedPolicyStatus(
+                        nextMessageId(),
+                        lease.protocolSessionId,
+                        lease.authoritativeSessionEpoch,
+                        managedPolicyResolver.effectivePolicy.toStatus(),
+                    ),
+                )
+            }
         }
         if (activated) notifyStateIfOwned(owner, InternetProductSessionState.ACTIVE)
     }
 
     private fun negotiatedFilePolicyFromHostLocked(): FileTransferPolicy =
-        fileTransferPolicy.negotiated(
+        localFileTransferPolicy.negotiated(
             ResourceLimits
                 .newBuilder()
                 .setMaximumFileBytes(hostMaximumFileBytes)
@@ -1501,6 +1608,98 @@ class InternetProductSession internal constructor(
         }
     }
 
+    private fun handleClipboardOffer(
+        owner: TransportOwner,
+        offer: dev.vibescreen.protocol.v1.ClipboardOffer,
+    ) {
+        var validationFailure: Throwable? = null
+        val result =
+            synchronized(lock) {
+                clipboardInboundFailureLocked(owner)?.let { failure ->
+                    validationFailure = failure
+                    return@synchronized null
+                }
+                try {
+                    clipboard?.handleOffer(offer) ?: error("Clipboard was not negotiated")
+                } catch (failure: Throwable) {
+                    validationFailure = failure
+                    null
+                }
+            } ?: run {
+                validationFailure?.let {
+                    failIfOwned(owner, IllegalArgumentException("Protocol v1 clipboard offer was rejected", it))
+                }
+                return
+            }
+        withLifecycleGate {
+            if (synchronized(lock) { canUseClipboardLocked(owner) }) callbacks.onClipboardOffered(result)
+        }
+    }
+
+    private fun handleClipboardRequest(
+        owner: TransportOwner,
+        correlationId: Long,
+        request: dev.vibescreen.protocol.v1.ClipboardRequest,
+    ) {
+        var validationFailure: Throwable? = null
+        val content =
+            synchronized(lock) {
+                clipboardInboundFailureLocked(owner)?.let { failure ->
+                    validationFailure = failure
+                    return@synchronized null
+                }
+                try {
+                    clipboard?.makeContent(request) ?: return
+                } catch (failure: Throwable) {
+                    validationFailure = failure
+                    null
+                }
+            } ?: run {
+                validationFailure?.let {
+                    failIfOwned(owner, IllegalArgumentException("Protocol v1 clipboard request was rejected", it))
+                }
+                return
+            }
+        sendRequiredControlIfOwned(
+            owner,
+            codec.encodeClipboardContent(
+                nextMessageId(),
+                correlationId,
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                content,
+            ),
+        )
+    }
+
+    private fun handleClipboardContent(
+        owner: TransportOwner,
+        content: dev.vibescreen.protocol.v1.ClipboardContent,
+    ) {
+        var validationFailure: Throwable? = null
+        val result =
+            synchronized(lock) {
+                clipboardInboundFailureLocked(owner)?.let { failure ->
+                    validationFailure = failure
+                    return@synchronized null
+                }
+                try {
+                    clipboard?.handleContent(content) ?: error("Clipboard was not negotiated")
+                } catch (failure: Throwable) {
+                    validationFailure = failure
+                    null
+                }
+            } ?: run {
+                validationFailure?.let {
+                    failIfOwned(owner, IllegalArgumentException("Protocol v1 clipboard content was rejected", it))
+                }
+                return
+            }
+        withLifecycleGate {
+            if (synchronized(lock) { canUseClipboardLocked(owner) }) callbacks.onClipboardContent(result)
+        }
+    }
+
     private fun peekFileChunkTransferId(payload: ByteArray): ByteString? {
         val header =
             try {
@@ -1570,22 +1769,63 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         status: ManagedPolicyStatus,
     ) {
-        if (synchronized(lock) { Capability.CAPABILITY_MANAGED_CONFIGURATION !in expectedNegotiatedCapabilities }) {
-            failIfOwned(owner, IllegalStateException("Managed policy status arrived without negotiated managed configuration"))
-            return
-        }
-        fileTransferProductOwner.applyManagedPolicy(status)
-        synchronized(lock) {
-            negotiatedFilePolicy =
-                if (Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities) {
-                    negotiatedFilePolicyFromHostLocked().applying(dev.telemachus.display.protocol.RemoteManagedPolicy(status))
-                } else {
-                    fileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+        var validationFailure: Throwable? = null
+        val notifyStatus =
+            synchronized(lock) {
+                if (!acceptsTransportCallbackLocked(owner) || !acceptedSession) return
+                if (Capability.CAPABILITY_MANAGED_CONFIGURATION !in baseNegotiatedCapabilities) {
+                    validationFailure = IllegalArgumentException("ManagedPolicyStatus arrived without negotiated managed configuration")
+                    return@synchronized null
                 }
-            if (!negotiatedFilePolicy.allowed || negotiatedFilePolicy.maximumFileBytes <= 0L) {
-                outgoingFileTransferDeadlines.clear()
+                if (!InternetManagedPolicy.hasCompleteRestrictionResults(status)) {
+                    validationFailure = IllegalArgumentException("ManagedPolicyStatus requires complete, consistent restriction_results")
+                    return@synchronized null
+                }
+                val remotePolicy = InternetManagedPolicy.fromStatus(status)
+                managedPolicyResolver.setRemote(remotePolicy)
+                val effective = managedPolicyResolver.effectivePolicy
+                if (!effective.allowsHost(lease.pinnedHostId)) {
+                    validationFailure = IllegalArgumentException("Managed policy does not allow this host")
+                    return@synchronized null
+                }
+                remoteManagedClipboardAllowed = effective.clipboardAllowed
+                expectedNegotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
+                if (!remoteManagedClipboardAllowed) clipboard?.reset()
+                // Apply managed policy to file transfer
+                fileTransferProductOwner.applyManagedPolicy(status)
+                negotiatedFilePolicy =
+                    if (Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities) {
+                        negotiatedFilePolicyFromHostLocked().applying(RemoteManagedPolicy(status))
+                    } else {
+                        localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+                    }
+                if (!negotiatedFilePolicy.allowed || negotiatedFilePolicy.maximumFileBytes <= 0L) {
+                    outgoingFileTransferDeadlines.clear()
+                }
+                effective.toStatus()
+            } ?: run {
+                validationFailure?.let { failIfOwned(owner, it) }
+                return
+            }
+        withLifecycleGate {
+            if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && acceptedSession }) {
+                callbacks.onManagedPolicyReceived(notifyStatus)
             }
         }
+    }
+
+    private fun clipboardInboundFailureLocked(owner: TransportOwner): Throwable? {
+        if (!acceptsTransportCallbackLocked(owner)) return null
+        if (!acceptedSession || state != InternetProductSessionState.ACTIVE || currentVideoConfiguration == null) {
+            return IllegalStateException("Clipboard message arrived before the Internet product session was active")
+        }
+        if (Capability.CAPABILITY_CLIPBOARD !in expectedNegotiatedCapabilities || clipboard == null) {
+            return IllegalStateException("Clipboard message arrived without negotiated clipboard capability")
+        }
+        if (!remoteManagedClipboardAllowed) {
+            return IllegalStateException("Clipboard message was denied by managed policy")
+        }
+        return null
     }
 
     private fun handleIncomingFileChunk(
@@ -2112,15 +2352,22 @@ class InternetProductSession internal constructor(
         acceptedHostHello = false
         acceptedSession = false
         expectedNegotiatedCapabilities = emptySet()
+        baseNegotiatedCapabilities = emptySet()
         hostMaximumFileBytes = 0L
         hostMaximumFileChunkBytes = 0
-        negotiatedFilePolicy = fileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+        negotiatedFilePolicy = localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
         outgoingFileTransferDeadlines.clear()
         fileTransferProductOwner.clear()
         controllerSendQueue.clear()
         controllerConnectionAcks.reset()
         currentVideoConfiguration = null
         pendingVideoConfiguration = null
+        hostMaximumClipboardBytes = 0L
+        negotiatedMaximumClipboardBytes = 0L
+        remoteManagedClipboardAllowed = true
+        managedPolicyResolver.clearRemote()
+        clipboard?.reset()
+        clipboard = null
         nextHeartbeatAtMillis = Long.MAX_VALUE
         frameAssembler.reset()
     }
@@ -2217,6 +2464,16 @@ class InternetProductSession internal constructor(
         internal const val FILE_TRANSFER_PROGRESS_TIMEOUT_MS = 30_000L
         private const val INTERNET_DISPLAY_ID = "internet-display"
         private val DEFAULT_BULK_TRANSFER_ID = "internet-bulk-v1".toByteArray(Charsets.UTF_8)
+
+        private fun Set<Capability>.filteredBy(policy: InternetManagedPolicy): Set<Capability> =
+            filterTo(mutableSetOf()) { capability ->
+                when (capability) {
+                    Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
+                    Capability.CAPABILITY_FILE_TRANSFER -> policy.effectiveFileTransferAllowed
+                    else -> true
+                }
+            }
+
         private fun defaultFileTransferStagingDirectory(): File =
             File(System.getProperty("java.io.tmpdir"), "vibescreen-internet-incoming-files")
 

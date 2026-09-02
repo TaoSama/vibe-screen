@@ -36,6 +36,18 @@ class WebRtcInternetTransportTest {
         assertEquals(DataChannelSemantics.RELIABLE_BULK, WebRtcDataChannelKind.BULK.semantics)
         assertEquals(SessionChannel.AUDIO, WebRtcDataChannelKind.fromLabel("vibescreen.audio.v1")?.sessionChannel)
         assertEquals(SessionChannel.BULK, WebRtcDataChannelKind.fromLabel("vibescreen.bulk.v1")?.sessionChannel)
+        assertEquals(
+            InternetControlRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+            WebRtcDataChannelKind.CONTROL.maximumEncryptedRecordBytes,
+        )
+        assertTrue(
+            InternetControlRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES >
+                InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES,
+        )
+        assertTrue(
+            AndroidWebRtcPeerEngine.CONTROL_BUFFER_HIGH_WATER_BYTES >=
+                4L * InternetControlRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES,
+        )
         assertEquals(256 * 1024, WebRtcDataChannelKind.AUDIO.maximumEncryptedRecordBytes)
         assertEquals(4 * 1024 * 1024, WebRtcDataChannelKind.BULK.maximumEncryptedRecordBytes)
     }

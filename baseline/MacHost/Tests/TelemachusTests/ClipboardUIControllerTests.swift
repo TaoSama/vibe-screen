@@ -235,6 +235,23 @@ final class ClipboardUIControllerTests: XCTestCase {
         XCTAssertFalse(receive.isEnabled)
     }
 
+    func testSecureInternetDirectContentWarnsBeforeOverwrite() {
+        let pasteboard = PasteboardSpy()
+        let alerts = AlertSpy()
+        alerts.confirmationResult = false
+        let (controller, _, receive, _) = makeController(pasteboard: pasteboard, alerts: alerts)
+        let server = ServerSpy()
+        bind(controller, server: server, transport: .secureInternet)
+        controller.handleDirectContent(validatedContent(text: "direct paste"), generation: 1)
+
+        perform(receive, on: controller)
+
+        XCTAssertEqual(pasteboard.writeCount, 0)
+        XCTAssertEqual(alerts.confirmations.last?.title, "Overwrite Mac Clipboard?")
+        XCTAssertTrue(alerts.confirmations.last?.message.contains("secure Internet session") == true)
+        XCTAssertTrue(alerts.confirmations.last?.message.contains("cannot be undone") == true)
+    }
+
     func testOfferClickSendsOneRequestAndWaitsForContent() {
         let pasteboard = PasteboardSpy()
         let (controller, _, receive, _) = makeController(pasteboard: pasteboard)
@@ -571,6 +588,24 @@ final class ClipboardUIControllerTests: XCTestCase {
         controller.handleDirectContent(validatedContent(), generation: 2)
         XCTAssertTrue(receive.isEnabled)
         bind(controller, server: server, generation: 3)
+        XCTAssertFalse(receive.isEnabled)
+    }
+
+    func testSameBindingRefreshPreservesPendingTransferUntilDisabled() {
+        let pasteboard = PasteboardSpy()
+        let (controller, share, receive, _) = makeController(pasteboard: pasteboard)
+        let server = ServerSpy()
+        bind(controller, server: server, generation: 2, transport: .secureInternet)
+
+        controller.handleOffer(offerMetadata(), generation: 2)
+        XCTAssertTrue(receive.isEnabled)
+
+        bind(controller, server: server, generation: 2, transport: .secureInternet)
+        XCTAssertTrue(share.isEnabled)
+        XCTAssertTrue(receive.isEnabled)
+
+        bind(controller, server: server, generation: 2, transport: .secureInternet, available: false)
+        XCTAssertFalse(share.isEnabled)
         XCTAssertFalse(receive.isEnabled)
     }
 

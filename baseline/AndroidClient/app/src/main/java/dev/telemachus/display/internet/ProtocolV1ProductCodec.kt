@@ -6,6 +6,9 @@ import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
+import dev.vibescreen.protocol.v1.ClipboardRequest
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileAccept
@@ -49,7 +52,9 @@ internal object InternetMediaRecordContract {
 }
 
 internal object InternetControlRecordContract {
-    const val MAXIMUM_PLAINTEXT_RECORD_BYTES = 1_048_576
+    const val CONTROL_ENVELOPE_OVERHEAD_BYTES = 64 * 1024
+    const val MAXIMUM_PLAINTEXT_RECORD_BYTES =
+        InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES.toInt() + CONTROL_ENVELOPE_OVERHEAD_BYTES
     const val MAXIMUM_ENCRYPTED_RECORD_BYTES =
         MAXIMUM_PLAINTEXT_RECORD_BYTES + InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
 }
@@ -167,6 +172,7 @@ sealed class ProductControlMessage {
         val hostName: String,
         val capabilities: Set<Capability>,
         val maximumEncryptedMediaRecordBytes: Long,
+        val maximumClipboardBytes: Long,
         val maximumFileBytes: Long,
         val maximumFileChunkBytes: Int,
     ) : ProductControlMessage()
@@ -177,6 +183,7 @@ sealed class ProductControlMessage {
         val capabilities: Set<Capability>,
         val heartbeatIntervalMillis: Long,
         val maximumEncryptedMediaRecordBytes: Long,
+        val maximumClipboardBytes: Long,
         val maximumFileBytes: Long,
         val maximumFileChunkBytes: Int,
     ) : ProductControlMessage()
@@ -209,6 +216,12 @@ sealed class ProductControlMessage {
 
     data class ProtocolFailure(val code: String, val message: String, val retryable: Boolean) : ProductControlMessage()
 
+    data class ClipboardOffered(val offer: ClipboardOffer) : ProductControlMessage()
+
+    data class ClipboardRequested(val request: ClipboardRequest) : ProductControlMessage()
+
+    data class ClipboardContentReceived(val content: ClipboardContent) : ProductControlMessage()
+
     data class FileOfferReceived(val offer: FileOffer) : ProductControlMessage()
 
     data class FileAcceptReceived(val response: FileAccept) : ProductControlMessage()
@@ -234,6 +247,7 @@ data class DecodedProductControl(
 internal interface ProtocolV1ProductCodec {
     val localDeviceId: String
     val offeredCapabilities: Set<Capability>
+    val localManagedPolicy: InternetManagedPolicy
 
     fun encodeClientHello(messageId: Long, sessionId: ByteArray, sessionEpoch: Long): ByteArray
 
@@ -276,6 +290,20 @@ internal interface ProtocolV1ProductCodec {
         rejectionReason: String,
     ): ByteArray
 
+    fun encodeClipboardOffer(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, offer: ClipboardOffer): ByteArray
+
+    fun encodeClipboardRequest(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, request: ClipboardRequest): ByteArray
+
+    fun encodeClipboardContent(
+        messageId: Long,
+        correlationId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        content: ClipboardContent,
+    ): ByteArray
+
+    fun encodeManagedPolicyStatus(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, status: ManagedPolicyStatus): ByteArray
+
     fun encodeFileOffer(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, offer: FileOffer): ByteArray
 
     fun encodeFileAccept(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, response: FileAccept): ByteArray
@@ -311,13 +339,14 @@ internal class ProtobufProtocolV1ProductCodec(
     private val deviceName: String,
     private val supportedCodecs: Set<ProductVideoCodec>,
     private val advertiseController: Boolean = false,
+    override val localManagedPolicy: InternetManagedPolicy = InternetManagedPolicy.UNMANAGED,
     private val monotonicNanos: () -> Long = System::nanoTime,
 ) : ProtocolV1ProductCodec {
     override val offeredCapabilities: Set<Capability> =
         buildSet {
             addAll(OFFERED_CLIENT_CAPABILITIES)
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
-        }
+        }.filteredBy(localManagedPolicy)
 
     init {
         require(localDeviceId.isNotBlank() && deviceName.isNotBlank()) { "Device identity is required" }
@@ -341,8 +370,28 @@ internal class ProtobufProtocolV1ProductCodec(
                         .setMaximumEncryptedMediaRecordBytes(
                             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
                         )
-                        .setMaximumFileBytes(dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES)
-                        .setMaximumFileChunkBytes(dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES),
+                        .setMaximumClipboardBytes(
+                            if (Capability.CAPABILITY_CLIPBOARD in offeredCapabilities) {
+                                InternetClipboard.LOCAL_MAX_CLIPBOARD_BYTES
+                            } else {
+                                0L
+                            },
+                        ).setMaximumFileBytes(
+                            if (Capability.CAPABILITY_FILE_TRANSFER in offeredCapabilities) {
+                                minOf(
+                                    dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
+                                    localManagedPolicy.maximumFileBytes,
+                                )
+                            } else {
+                                0L
+                            },
+                        ).setMaximumFileChunkBytes(
+                            if (Capability.CAPABILITY_FILE_TRANSFER in offeredCapabilities) {
+                                dev.telemachus.display.protocol.FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES
+                            } else {
+                                0
+                            },
+                        ),
                 )
                 .build()
         return envelope(messageId, sessionId, sessionEpoch).setClientHello(hello).build().toByteArray()
@@ -483,6 +532,40 @@ internal class ProtobufProtocolV1ProductCodec(
         return envelope(messageId, sessionId, sessionEpoch).setVideoConfigResult(result).build().toByteArray()
     }
 
+    override fun encodeClipboardOffer(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        offer: ClipboardOffer,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setClipboardOffer(offer).build().toByteArray()
+
+    override fun encodeClipboardRequest(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        request: ClipboardRequest,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setClipboardRequest(request).build().toByteArray()
+
+    override fun encodeClipboardContent(
+        messageId: Long,
+        correlationId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        content: ClipboardContent,
+    ): ByteArray =
+        envelope(messageId, sessionId, sessionEpoch)
+            .setCorrelationId(correlationId)
+            .setClipboardContent(content)
+            .build()
+            .toByteArray()
+
+    override fun encodeManagedPolicyStatus(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        status: ManagedPolicyStatus,
+    ): ByteArray = envelope(messageId, sessionId, sessionEpoch).setManagedPolicyStatus(status).build().toByteArray()
+
     override fun encodeFileOffer(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, offer: FileOffer): ByteArray =
         envelope(messageId, sessionId, sessionEpoch).setFileOffer(offer).build().toByteArray()
 
@@ -553,6 +636,7 @@ internal class ProtobufProtocolV1ProductCodec(
                         value.hostName,
                         value.capabilitiesList.toSet(),
                         Integer.toUnsignedLong(value.resourceLimits.maximumEncryptedMediaRecordBytes),
+                        value.resourceLimits.maximumClipboardBytes,
                         value.resourceLimits.maximumFileBytes,
                         value.resourceLimits.maximumFileChunkBytes,
                     )
@@ -565,6 +649,7 @@ internal class ProtobufProtocolV1ProductCodec(
                         value.negotiatedCapabilitiesList.toSet(),
                         value.heartbeatIntervalMs.toLong(),
                         Integer.toUnsignedLong(value.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes),
+                        value.negotiatedResourceLimits.maximumClipboardBytes,
                         value.negotiatedResourceLimits.maximumFileBytes,
                         value.negotiatedResourceLimits.maximumFileChunkBytes,
                     )
@@ -589,6 +674,9 @@ internal class ProtobufProtocolV1ProductCodec(
                     val value = envelope.protocolError
                     ProductControlMessage.ProtocolFailure(value.code.name, value.message, value.retryable)
                 }
+                Envelope.PayloadCase.CLIPBOARD_OFFER -> ProductControlMessage.ClipboardOffered(envelope.clipboardOffer)
+                Envelope.PayloadCase.CLIPBOARD_REQUEST -> ProductControlMessage.ClipboardRequested(envelope.clipboardRequest)
+                Envelope.PayloadCase.CLIPBOARD_CONTENT -> ProductControlMessage.ClipboardContentReceived(envelope.clipboardContent)
                 Envelope.PayloadCase.ERROR_REPORT -> {
                     val value = envelope.errorReport
                     ProductControlMessage.ProtocolFailure(value.code, value.message, value.retryable)
@@ -720,7 +808,7 @@ internal class ProtobufProtocolV1ProductCodec(
 
     companion object {
         const val PROTOCOL_VERSION = 1
-        private const val MAX_CONTROL_BYTES = 1_048_576
+        private const val MAX_CONTROL_BYTES = InternetControlRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES
         private const val MAX_MEDIA_HEADER_BYTES = InternetMediaRecordContract.MAXIMUM_MEDIA_HEADER_BYTES
         private const val MAX_VARINT_BYTES = 5
         private const val MAX_REASON_BYTES = 256
@@ -736,6 +824,7 @@ internal class ProtobufProtocolV1ProductCodec(
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
                 Capability.CAPABILITY_AUDIO_DATA_CHANNEL,
                 Capability.CAPABILITY_BULK_DATA_CHANNEL,
+                Capability.CAPABILITY_CLIPBOARD,
                 Capability.CAPABILITY_FILE_TRANSFER,
             )
         val REQUIRED_CLIENT_CAPABILITIES =
@@ -743,8 +832,18 @@ internal class ProtobufProtocolV1ProductCodec(
                     it == Capability.CAPABILITY_TOUCH ||
                     it == Capability.CAPABILITY_STYLUS ||
                     it == Capability.CAPABILITY_STYLUS_EXTENDED ||
+                    it == Capability.CAPABILITY_CLIPBOARD ||
                     it == Capability.CAPABILITY_MANAGED_CONFIGURATION ||
                     it == Capability.CAPABILITY_FILE_TRANSFER
+            }
+
+        private fun Set<Capability>.filteredBy(policy: InternetManagedPolicy): Set<Capability> =
+            filterTo(mutableSetOf()) { capability ->
+                when (capability) {
+                    Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
+                    Capability.CAPABILITY_FILE_TRANSFER -> policy.effectiveFileTransferAllowed
+                    else -> true
+                }
             }
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */
