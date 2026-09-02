@@ -1381,13 +1381,6 @@
                 android:text="@string/open_source_licenses"
                 android:textColor="@color/on_surface_muted" />
 
-            <!-- Hidden disconnect button reference (needed by code) -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/disconnectButton"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
-
             </LinearLayout>
             <!-- /connectionActions -->
 

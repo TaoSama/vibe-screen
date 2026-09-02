@@ -1,1 +1,0 @@
-/sdcard/vibe_pr493_23b8476_1788333480652_phone-landscape-day-font13.png: 1 file pulled, 0 skipped. 18.8 MB/s (239759 bytes in 0.012s)

@@ -217,6 +217,7 @@ class MainActivity : AppCompatActivity() {
         get() = productSessionCoordinator.renderState().connectionAttemptInProgress
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
+    private var suppressUsbModeAutomaticConnect = false
     private var connectionDetailsVisible = false
     private val connectionSubtitleDisclosure = ConnectionSubtitleDisclosureState()
     private val connectionStatusAnnouncements = ConnectionStatusAnnouncementCoordinator()
@@ -329,21 +330,13 @@ class MainActivity : AppCompatActivity() {
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
-        if (savedInstanceState?.getBoolean(STATE_AUTOMATIC_USB_CONNECT) == true) {
-            enableAutomaticUsbConnect()
-        } else if (!handleLaunchIntent(intent) && prefs.connectionMode == ConnectionMode.USB) {
-            // USB is the default mode and the host is reachable over adb-reverse
-            // loopback, so a plain launch (icon tap, or a relaunch that dropped the
-            // auto_connect extra) should still attach automatically, matching the
-            // behavior when the Mac host starts the client with the extra.
-            enableAutomaticUsbConnect()
-        }
+        applyLaunchIntentPolicy(savedInstanceState, allowImplicitUsbFallback = true)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleLaunchIntent(intent)
+        applyLaunchIntentPolicy(savedInstanceState = null, allowImplicitUsbFallback = false)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -532,13 +525,29 @@ class MainActivity : AppCompatActivity() {
             keyCode == KeyEvent.KEYCODE_VOLUME_MUTE ||
             keyCode == KeyEvent.KEYCODE_POWER
 
-    private fun handleLaunchIntent(intent: Intent?): Boolean {
-        if (intent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) != true) return false
+    private fun applyLaunchIntentPolicy(
+        savedInstanceState: Bundle?,
+        allowImplicitUsbFallback: Boolean,
+    ) {
+        val launchIntent = intent
+        val hasAutoConnectExtra = launchIntent?.hasExtra(EXTRA_AUTO_CONNECT) == true
+        val decision =
+            MainActivityLaunchIntentPolicy.resolve(
+                hasAutoConnectExtra = hasAutoConnectExtra,
+                autoConnectExtra = launchIntent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) == true,
+                hasSavedAutomaticUsbConnectState = savedInstanceState?.containsKey(STATE_AUTOMATIC_USB_CONNECT) == true,
+                savedAutomaticUsbConnect = savedInstanceState?.getBoolean(STATE_AUTOMATIC_USB_CONNECT) == true,
+                savedConnectionMode = prefs.connectionMode,
+                allowImplicitUsbFallback = allowImplicitUsbFallback,
+            )
         // Treat the launch extra as an event. Persisting it on the Activity's
         // Intent would make a deliberate Disconnect resume after recreation.
-        intent.removeExtra(EXTRA_AUTO_CONNECT)
-        enableAutomaticUsbConnect()
-        return true
+        if (hasAutoConnectExtra) launchIntent?.removeExtra(EXTRA_AUTO_CONNECT)
+        when (decision) {
+            AutomaticUsbLaunchDecision.ENABLE_AUTOMATIC_USB -> enableAutomaticUsbConnect()
+            AutomaticUsbLaunchDecision.SHOW_USB_WITHOUT_AUTOMATIC_CONNECT -> showUsbWithoutAutomaticConnect()
+            AutomaticUsbLaunchDecision.KEEP_SAVED_MODE -> Unit
+        }
     }
 
     private fun enableAutomaticUsbConnect() {
@@ -547,6 +556,20 @@ class MainActivity : AppCompatActivity() {
         binding.modeToggleGroup.check(R.id.modeUSB)
         applyModeVisibility(ConnectionMode.USB)
         scheduleAutomaticUsbConnect(150)
+    }
+
+    private fun showUsbWithoutAutomaticConnect() {
+        automaticUsbConnect = false
+        isReconnecting = false
+        autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        prefs.connectionMode = ConnectionMode.USB
+        suppressUsbModeAutomaticConnect = true
+        try {
+            binding.modeToggleGroup.check(R.id.modeUSB)
+        } finally {
+            suppressUsbModeAutomaticConnect = false
+        }
+        applyModeVisibility(ConnectionMode.USB)
     }
 
     private fun currentUsbPort(): Int =
@@ -601,8 +624,12 @@ class MainActivity : AppCompatActivity() {
                 refreshInternetProfileUi()
             } else if (!isConnected) {
                 cancelWirelessReconnect()
-                automaticUsbConnect = true
-                scheduleAutomaticUsbConnect(150)
+                automaticUsbConnect = !suppressUsbModeAutomaticConnect
+                if (automaticUsbConnect) {
+                    scheduleAutomaticUsbConnect(150)
+                } else {
+                    autoConnectHandler.removeCallbacks(autoConnectRunnable)
+                }
             }
         }
     }
@@ -1441,10 +1468,6 @@ class MainActivity : AppCompatActivity() {
             connect(host, port, automatic = false)
         }
 
-        binding.disconnectButton.setOnClickListener {
-            disconnect()
-        }
-
         binding.openSourceLicensesButton.setOnClickListener {
             showOpenSourceNotices()
         }
@@ -1606,7 +1629,8 @@ class MainActivity : AppCompatActivity() {
                     getString(if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac),
                 )
                 updateUsbTransportSubtitle()
-                binding.connectionProgress.visibility = View.VISIBLE
+                binding.connectionProgress.visibility =
+                    if (connectionAttemptInProgress) View.VISIBLE else View.GONE
                 val connectAction =
                     UsbConnectActionPolicy.resolve(
                         connectionAttemptInProgress = connectionAttemptInProgress,
@@ -4106,7 +4130,6 @@ class MainActivity : AppCompatActivity() {
                     binding.resolutionText.text =
                         getString(R.string.resolution_format, geometry.logicalWidth, geometry.logicalHeight)
                     binding.connectButton.isEnabled = false
-                    binding.disconnectButton.isEnabled = true
                     binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
                     showConnectedStreamUi()
                     applyRotation(geometry.rotation)
