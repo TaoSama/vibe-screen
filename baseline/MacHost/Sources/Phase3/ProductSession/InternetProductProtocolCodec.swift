@@ -364,17 +364,19 @@ struct InternetProductProtocolCodec {
         accepted.sessionID = sessionID
         accepted.sessionEpoch = sessionEpoch
         accepted.heartbeatIntervalMs = heartbeatIntervalMilliseconds
-        accepted.negotiatedCapabilities = (
-            Array(Self.requiredCapabilities)
-                + (inputEnabled && peerSupportsTouch ? [.touch] : [])
-                + (inputEnabled && peerSupportsStylus ? [.stylus] : [])
-                + (inputEnabled && peerSupportsStylus && peerSupportsStylusExtended
-                    ? [.stylusExtended]
-                    : [])
-                + (controllerAvailable && peerSupportsController ? [.controller] : [])
-                + (fileTransferPolicy.allowed && remoteManagedPolicy.fileTransferAllowed && peerSupportsFileTransfer ? [.fileTransfer] : [])
-                + (peerSupportsManagedConfiguration ? [.managedConfiguration] : [])
-        ).sorted { $0.rawValue < $1.rawValue }
+        let negotiatedFileTransferAllowed = fileTransferPolicy.allowed &&
+            remoteManagedPolicy.fileTransferAllowed &&
+            peerSupportsFileTransfer
+        var capabilities = Array(Self.requiredCapabilities)
+        if inputEnabled && peerSupportsTouch { capabilities.append(.touch) }
+        if inputEnabled && peerSupportsStylus { capabilities.append(.stylus) }
+        if inputEnabled && peerSupportsStylus && peerSupportsStylusExtended {
+            capabilities.append(.stylusExtended)
+        }
+        if controllerAvailable && peerSupportsController { capabilities.append(.controller) }
+        if negotiatedFileTransferAllowed { capabilities.append(.fileTransfer) }
+        if peerSupportsManagedConfiguration { capabilities.append(.managedConfiguration) }
+        accepted.negotiatedCapabilities = capabilities.sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
                 "media record limits were not negotiated before session acceptance"
@@ -384,7 +386,7 @@ struct InternetProductProtocolCodec {
         limits.maximumEncryptedMediaRecordBytes = UInt32(
             negotiatedMaximumEncryptedMediaRecordBytes
         )
-        if fileTransferPolicy.allowed && remoteManagedPolicy.fileTransferAllowed && peerSupportsFileTransfer {
+        if negotiatedFileTransferAllowed {
             limits.maximumFileBytes = negotiatedFileTransferPolicy.maximumFileBytes
             limits.maximumFileChunkBytes = UInt32(clamping: negotiatedFileTransferPolicy.maximumChunkBytes)
         }
