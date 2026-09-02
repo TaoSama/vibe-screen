@@ -173,6 +173,29 @@ final class ReliabilityCoreTests: XCTestCase {
         XCTAssertEqual(decoded.attributes["keyframe_required"], .boolean(true))
     }
 
+    func testJSONLTelemetryClosesOnDeinit() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        addTeardownBlock {
+            try FileManager.default.removeItem(at: directory)
+        }
+        let url = directory.appendingPathComponent("telemetry.jsonl")
+
+        do {
+            let sink = try JSONLTelemetrySink(url: url)
+            try sink.record(TelemetryEvent(event: "deinit_flush"))
+        }
+
+        let lines = try Data(contentsOf: url).split(separator: 0x0A)
+        XCTAssertEqual(lines.count, 1)
+        let decoded = try JSONDecoder().decode(TelemetryEvent.self, from: Data(lines[0]))
+        XCTAssertEqual(decoded.event, "deinit_flush")
+    }
+
     private func makeQueue(
         capacity: Int,
         requiresKeyframe: Bool = true

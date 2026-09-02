@@ -274,6 +274,39 @@ final class StreamingServerLifecycleTests: XCTestCase {
         XCTAssertTrue(afterDisconnect.requiresKeyframe)
     }
 
+    func testStopKeepsStatsCallbacksAndTelemetryReusable() {
+        let telemetry = RecordingTelemetryRecorder()
+        let server = StreamingServer(port: 0, telemetry: telemetry)
+        var statsCallCount = 0
+        server.onStats = { _, _, _ in statsCallCount += 1 }
+        var encoderStatsCallCount = 0
+        server.encoderStatsProvider = {
+            encoderStatsCallCount += 1
+            return (inFlight: 1, capacity: 2, frameRegistryCount: 1)
+        }
+        var frameLifecycleStatsCallCount = 0
+        server.frameLifecycleStatsProvider = {
+            frameLifecycleStatsCallCount += 1
+            return StreamFrameLifecycleStats(
+                latestPixelBufferRetained: 1,
+                latestPixelBufferCapacity: 1,
+                fallbackCaptureActive: false,
+                encoderPresent: true
+            )
+        }
+
+        server.stop()
+
+        server.onStats?(60, 10, 1)
+        _ = server.encoderStatsProvider?()
+        _ = server.frameLifecycleStatsProvider?()
+        XCTAssertEqual(statsCallCount, 1)
+        XCTAssertEqual(encoderStatsCallCount, 1)
+        XCTAssertEqual(frameLifecycleStatsCallCount, 1)
+        XCTAssertNoThrow(try telemetry.record(TelemetryEvent(event: "after_stop")))
+        XCTAssertEqual(telemetry.recordedEvents(), ["after_stop"])
+    }
+
     func testProtocolV1UpgradeInvalidatesPendingLegacyCodecCompletion() throws {
         let server = StreamingServer(port: 0)
         defer { server.stop() }
@@ -1327,5 +1360,18 @@ private final class StreamingServerLifecycleSocketState: @unchecked Sendable {
 
     func receivedBytes() -> Data {
         lock.withLock { storedReceivedBytes }
+    }
+}
+
+private final class RecordingTelemetryRecorder: TelemetryRecording {
+    private let lock = NSLock()
+    private var events: [String] = []
+
+    func record(_ event: TelemetryEvent) throws {
+        lock.withLock { events.append(event.event) }
+    }
+
+    func recordedEvents() -> [String] {
+        lock.withLock { events }
     }
 }
