@@ -82,7 +82,8 @@
     "night_no": true,
     "rotation_0": true,
     "accelerometer_rotation_0": true,
-    "no_override_size": true
+    "no_override_size": true,
+    "packages_stopped": false
   },
   "post_restore_processes": {
     "packages_stopped": "not_reverified",

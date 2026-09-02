@@ -13,6 +13,8 @@ Scenarios:
 - phone-landscape-day-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable
 - phone-landscape-night-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable
 XML status counts: {'present': 2, 'unavailable': 6}
-Restored: {'font_scale_1_0': True, 'night_no': True, 'rotation_0': True, 'accelerometer_rotation_0': True, 'no_override_size': True}
-Post-restore package stop: not_reverified in this offline rebuild; the original evidence did not persist pidof output. Current collector runs assert_packages_stopped after force-stop for future live captures.
+XML semantic coverage: PASS
+Restored: {'font_scale_1_0': True, 'night_no': True, 'rotation_0': True, 'accelerometer_rotation_0': True, 'no_override_size': True, 'packages_stopped': False}
+Restored gate: FAIL for offline rebuild; packages_stopped is not verified true.
+Post-restore package stop: false in this offline rebuild because the original evidence did not persist pidof output. Current collector runs assert_packages_stopped after force-stop for future live captures and records packages_stopped=true only when that runtime assertion succeeds.
 Metadata rebuilt offline from existing screenshots/state/XML/install logs, the recorded app APK SHA-256, and the locally computed androidTest APK SHA-256; no device recapture and no ADB command was run for this rebuild.

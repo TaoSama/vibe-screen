@@ -28,6 +28,21 @@ SCENARIOS = [
     ("phone-landscape-day-font13", 1, "1.3", "no", (2800, 1264)),
     ("phone-landscape-night-font13", 1, "1.3", "yes", (2800, 1264)),
 ]
+MIN_SEMANTIC_XML_PRESENT_COUNT = 2
+REQUIRED_SEMANTIC_XML_LABELS = (
+    "phone-portrait-day-font1",
+    "phone-portrait-night-font1",
+)
+EXPECTED_SCENARIO_LABELS = tuple(label for label, *_ in SCENARIOS)
+KNOWN_XML_STATUSES = {"present", "unavailable", "rejected"}
+REQUIRED_RESTORE_KEYS = (
+    "font_scale_1_0",
+    "night_no",
+    "rotation_0",
+    "accelerometer_rotation_0",
+    "no_override_size",
+    "packages_stopped",
+)
 
 
 def run(args, *, cwd=None):
@@ -287,6 +302,99 @@ def validate_scenario_xml(xml_path):
     return errors
 
 
+def xml_coverage_errors(results):
+    labels = [result.get("label", "<unknown>") for result in results]
+    present_labels = {
+        result.get("label")
+        for result in results
+        if result.get("xml_status") == "present"
+    }
+    rejected_labels = [
+        result.get("label", "<unknown>")
+        for result in results
+        if result.get("xml_status") == "rejected"
+    ]
+    errors = []
+    unknown_statuses = [
+        f"{label}={result.get('xml_status')!r}"
+        for label, result in zip(labels, results)
+        if result.get("xml_status") not in KNOWN_XML_STATUSES
+    ]
+    present_with_errors = [
+        label
+        for label, result in zip(labels, results)
+        if result.get("xml_status") == "present" and result.get("xml_errors")
+    ]
+    if unknown_statuses:
+        errors.append("unknown XML status: " + ", ".join(unknown_statuses))
+    if present_with_errors:
+        errors.append("present XML has validation errors: " + ", ".join(present_with_errors))
+    if rejected_labels:
+        errors.append("XML rejected for: " + ", ".join(rejected_labels))
+    if len(present_labels) < MIN_SEMANTIC_XML_PRESENT_COUNT:
+        errors.append(
+            "semantic XML coverage below minimum: "
+            f"{len(present_labels)}/{MIN_SEMANTIC_XML_PRESENT_COUNT} present"
+        )
+    missing_required = [
+        label for label in REQUIRED_SEMANTIC_XML_LABELS if label not in present_labels
+    ]
+    if missing_required:
+        errors.append("required semantic XML missing: " + ", ".join(missing_required))
+    return errors
+
+
+def scenario_label_errors(results):
+    labels = [result.get("label", "<unknown>") for result in results]
+    expected_labels = set(EXPECTED_SCENARIO_LABELS)
+    actual_labels = set(labels)
+    errors = []
+    duplicate_labels = sorted({label for label in labels if labels.count(label) > 1})
+    missing_labels = [label for label in EXPECTED_SCENARIO_LABELS if label not in actual_labels]
+    unknown_labels = sorted(actual_labels - expected_labels)
+    if duplicate_labels:
+        errors.append("duplicate scenario labels: " + ", ".join(duplicate_labels))
+    if missing_labels:
+        errors.append("missing scenario labels: " + ", ".join(missing_labels))
+    if unknown_labels:
+        errors.append("unknown scenario labels: " + ", ".join(unknown_labels))
+    return errors
+
+
+def restored_gate_errors(restored):
+    errors = []
+    actual_keys = set(restored)
+    expected_keys = set(REQUIRED_RESTORE_KEYS)
+    missing_keys = [key for key in REQUIRED_RESTORE_KEYS if key not in actual_keys]
+    unknown_keys = sorted(actual_keys - expected_keys)
+    if missing_keys:
+        errors.append("missing restored keys: " + ", ".join(missing_keys))
+    if unknown_keys:
+        errors.append("unknown restored keys: " + ", ".join(unknown_keys))
+    for key in REQUIRED_RESTORE_KEYS:
+        value = restored.get(key)
+        if value is not True:
+            errors.append(f"restored.{key} is not verified true: {value!r}")
+    return errors
+
+
+def summary_gate_errors(summary):
+    errors = []
+    if not summary.get("instrumentation_p0110_landscape_large_text"):
+        errors.append("instrumentation p0110 landscape large-text layout failed")
+    results = summary.get("scenarios", [])
+    errors.extend(scenario_label_errors(results))
+    for result in results:
+        label = result.get("label", "<unknown>")
+        if not result.get("png_ok"):
+            errors.append(f"{label} PNG size validation failed")
+        if not result.get("state_ok"):
+            errors.append(f"{label} state validation failed")
+    errors.extend(xml_coverage_errors(results))
+    errors.extend(restored_gate_errors(summary.get("restored", {})))
+    return errors
+
+
 def remote_file_mtime(serial, remote_path):
     proc = adb(serial, "shell", "stat", "-c", "%Y", remote_path)
     if proc.returncode != 0:
@@ -450,6 +558,10 @@ def write_summary(out_dir, serial, summary):
     xml_statuses = {result["xml_status"] for result in summary["scenarios"]}
     xml_counts = {status: sum(1 for result in summary["scenarios"] if result["xml_status"] == status) for status in xml_statuses}
     lines.append(f"XML status counts: {xml_counts}")
+    xml_errors = xml_coverage_errors(summary["scenarios"])
+    lines.append(f"XML semantic coverage: {'PASS' if not xml_errors else 'FAIL'}")
+    if xml_errors:
+        lines.extend(f"- {error}" for error in xml_errors)
     lines.append(f"Restored: {summary['restored']}")
     write_text(out_dir / "metadata" / "final-validation-summary.txt", "\n".join(lines) + "\n", serial)
 
@@ -536,12 +648,10 @@ def main():
         write_summary(out_dir, serial, summary)
         assert_no_serial_leak(out_dir, serial)
 
-        if (
-            not instrumentation_ok
-            or not all(result["png_ok"] and result["state_ok"] for result in results)
-            or any(result["xml_status"] == "rejected" for result in results)
-            or not all(summary["restored"].values())
-        ):
+        gate_errors = summary_gate_errors(summary)
+        if gate_errors:
+            for error in gate_errors:
+                log(log_file, f"validation gate failed: {error}")
             raise SystemExit(1)
     finally:
         restore_device(serial)
