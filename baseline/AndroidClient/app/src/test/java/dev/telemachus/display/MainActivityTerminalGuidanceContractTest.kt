@@ -308,42 +308,29 @@ class MainActivityTerminalGuidanceContractTest {
         val disconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
         val entryPolicy = extractMethod(source, "private fun applyDisconnectedSettingsEntryPolicy")
         val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
-        val floatingSettingsBranch = extractBlockAfterMarker(entryPolicy, "if (!useInlineSettingsButton)")
+        val compactEntryPolicy = entryPolicy.replace(Regex("\\s+"), "")
+        val removedInlineSettingsFlag = "connection_panel_inline_settings_" + "button"
+        val removedFloatingSettingsBinding = "binding." + "settings" + "Button"
 
         assertTrue(
-            "Disconnected state should use the resource policy for inline settings",
-            entryPolicy.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
+            "Disconnected state should always expose the inline connection settings button",
+            compactEntryPolicy.contains("binding.connectionSettingsButton.visibility=View.VISIBLE"),
         )
-        assertTrue(
-            "Narrow layouts should show the inline connection settings button",
-            entryPolicy.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
+        assertFalse(
+            "Disconnected settings entry policy should no longer branch through resource flags",
+            entryPolicy.contains(removedInlineSettingsFlag) ||
+                entryPolicy.contains("resources.getBoolean"),
         )
-        assertTrue(
-            "Narrow layouts should hide the floating settings button",
-            entryPolicy.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
-        )
-        assertTrue(
-            "Layouts that opt out of inline settings should keep the floating button above the connection panel",
-            entryPolicy.contains("if (!useInlineSettingsButton)"),
-        )
-        assertTrue(
-            "Wide disconnected settings button must sit above the connection panel",
-            floatingSettingsBranch.contains("settingsButton.bringToFront()"),
-        )
-        assertTrue(
-            "Wide disconnected settings button must have a higher z-order than the connection panel",
-            floatingSettingsBranch.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
-        )
-        assertTrue(
-            "Wide disconnected settings button must ignore overlay opacity and stay readable",
-            floatingSettingsBranch.contains("binding.settingsButton.alpha = 1f"),
+        assertFalse(
+            "Disconnected settings entry policy should not reference the removed floating settings affordance",
+            entryPolicy.contains(removedFloatingSettingsBinding),
         )
         assertTrue(
             "Disconnected entry policy must apply when the disconnected panel is first shown",
             disconnected.contains("applyDisconnectedSettingsEntryPolicy()"),
         )
         assertTrue(
-            "Configuration changes must re-evaluate inline versus floating settings entry while disconnected",
+            "Configuration changes must re-expose the inline settings entry while disconnected",
             configurationChanged.contains("if (!isConnected)") &&
                 configurationChanged.contains("applyDisconnectedSettingsEntryPolicy()"),
         )
@@ -361,9 +348,17 @@ class MainActivityTerminalGuidanceContractTest {
                 "$path should still opt into the wide two-column connection panel",
                 source.contains("""<bool name="connection_panel_two_column">true</bool>"""),
             )
-            assertTrue(
-                "$path should keep settings inside the disconnected panel instead of floating over retry actions",
-                source.contains("""<bool name="connection_panel_inline_settings_button">true</bool>"""),
+        }
+        listOf(
+            "app/src/main/res/values/bools.xml",
+            "app/src/main/res/values-land/bools.xml",
+            "app/src/main/res/values-w600dp/bools.xml",
+            "app/src/main/res/values-w600dp-land/bools.xml",
+        ).forEach { path ->
+            val removedInlineSettingsFlag = "connection_panel_inline_settings_" + "button"
+            assertFalse(
+                "$path should not keep the removed inline-settings feature flag",
+                resourceSource(path).contains(removedInlineSettingsFlag),
             )
         }
     }
@@ -392,20 +387,26 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
-    fun floatingDisconnectedSettingsButtonExposesAccessibleClickTarget() {
-        val settingsButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsButton\"")
+    fun inlineDisconnectedSettingsButtonExposesAccessibleClickTarget() {
+        val source = mainActivityLayoutSource()
+        val inlineSettingsButton = extractXmlElement(source, "android:id=\"@+id/connectionSettingsButton\"")
+        val removedFloatingSettingsId = "android:id=\"@+id/" + "settings" + "Button\""
 
-        assertTrue(
-            "The clickable floating settings container needs the accessible label",
-            settingsButton.contains("android:contentDescription=\"@string/display_settings\""),
+        assertFalse(
+            "Disconnected settings must not keep a duplicate floating entry",
+            source.contains(removedFloatingSettingsId),
         )
         assertTrue(
-            "The floating settings container should be keyboard focusable",
-            settingsButton.contains("android:focusable=\"true\""),
+            "The inline settings button needs the accessible label",
+            inlineSettingsButton.contains("android:contentDescription=\"@string/display_settings\""),
         )
         assertTrue(
-            "The inner icon should not duplicate the parent accessibility node",
-            settingsButton.contains("android:importantForAccessibility=\"no\""),
+            "The inline settings button should expose visible settings text",
+            inlineSettingsButton.contains("android:text=\"@string/display_settings\""),
+        )
+        assertTrue(
+            "The inline settings button should keep the expected settings icon",
+            inlineSettingsButton.contains("app:icon=\"@drawable/ic_settings\""),
         )
     }
 
@@ -654,17 +655,17 @@ class MainActivityTerminalGuidanceContractTest {
             updateOverlayOpacity.contains("binding.statusBar.alpha = opacity"),
         )
         assertFalse(
-            "Overlay opacity must not target the disconnected floating settings entry",
-            updateOverlayOpacity.contains("settingsButton"),
+            "Overlay opacity must not target the disconnected inline settings entry",
+            updateOverlayOpacity.contains("connectionSettingsButton"),
         )
         assertFalse(
-            "Restoring overlay state must not dim the disconnected floating settings entry",
-            restoreOverlayPosition.contains("settingsButton") ||
+            "Restoring overlay state must not dim the disconnected inline settings entry",
+            restoreOverlayPosition.contains("connectionSettingsButton") ||
                 restoreOverlayPosition.contains("updateSettingsButtonOpacity"),
         )
         assertFalse(
-            "Changing overlay opacity from Settings must not dim the disconnected floating settings entry",
-            opacitySliderListener.contains("settingsButton") ||
+            "Changing overlay opacity from Settings must not dim the disconnected inline settings entry",
+            opacitySliderListener.contains("connectionSettingsButton") ||
                 opacitySliderListener.contains("updateSettingsButtonOpacity"),
         )
         assertFalse(

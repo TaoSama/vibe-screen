@@ -381,30 +381,6 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Settings Button -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/settingsButton"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:layout_margin="24dp"
-        android:contentDescription="@string/display_settings"
-        android:elevation="8dp"
-        android:focusable="true"
-        android:visibility="gone"
-        app:cardCornerRadius="28dp"
-        app:cardBackgroundColor="@color/surface_scrim"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center"
-            android:importantForAccessibility="no"
-            android:src="@drawable/ic_settings"
-            app:tint="@color/on_surface" />
-    </androidx.cardview.widget.CardView>
-
     <!-- Modern Connection Panel -->
     <androidx.cardview.widget.CardView
         android:id="@+id/settingsPanel"

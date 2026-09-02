@@ -215,12 +215,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 subtitleExpanded = false,
             )
             layout.inlineSettingsButton.visibility = View.VISIBLE
-            layout.floatingSettingsButton.visibility = View.GONE
             layout.measureAndLayout()
 
-            assertTrue(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
             assertEquals(View.VISIBLE, layout.inlineSettingsButton.visibility)
-            assertEquals(View.GONE, layout.floatingSettingsButton.visibility)
             layout.assertFullyReachableByScroll(layout.connectButton)
             layout.assertFullyReachableByScroll(layout.inlineSettingsButton)
             layout.assertMinimumTouchTarget(layout.inlineSettingsButton)
@@ -232,16 +229,14 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
-    fun wideLandscapeKeepsFloatingSettingsButtonPolicy() {
+    fun wideLandscapeKeepsInlineSettingsButtonWithoutFloatingPolicy() {
         withLayout(widthDp = 873, heightDp = 393) { layout ->
-            assertFalse(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
-            layout.inlineSettingsButton.visibility = View.GONE
-            layout.floatingSettingsButton.visibility = View.VISIBLE
+            layout.inlineSettingsButton.visibility = View.VISIBLE
             layout.measureAndLayout()
 
-            assertEquals(View.VISIBLE, layout.floatingSettingsButton.visibility)
-            assertEquals(1f, layout.floatingSettingsButton.alpha, 0f)
-            layout.assertMinimumTouchTarget(layout.floatingSettingsButton)
+            assertEquals(View.VISIBLE, layout.inlineSettingsButton.visibility)
+            layout.assertFullyReachableByScroll(layout.inlineSettingsButton)
+            layout.assertMinimumTouchTarget(layout.inlineSettingsButton)
         }
     }
 
@@ -306,7 +301,6 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val checklistContainer = root.findViewById<View>(R.id.checklistContainer)
         val connectButton = root.findViewById<View>(R.id.connectButton)
         val inlineSettingsButton = root.findViewById<View>(R.id.connectionSettingsButton)
-        val floatingSettingsButton = root.findViewById<View>(R.id.settingsButton)
         val usbModeButton = root.findViewById<TextView>(R.id.modeUSB)
         val wirelessModeButton = root.findViewById<TextView>(R.id.modeWireless)
         val internetModeButton = root.findViewById<TextView>(R.id.modeInternet)

@@ -1,0 +1,8 @@
+Stopping: dev.telemachus.display
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+Status: ok
+LaunchState: COLD
+Activity: dev.telemachus.display/.MainActivity
+TotalTime: 425
+WaitTime: 428
+Complete

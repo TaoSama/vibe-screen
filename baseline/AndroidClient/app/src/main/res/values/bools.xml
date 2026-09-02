@@ -3,5 +3,4 @@
     <!-- Connection panel stays single-column in narrow windows. Width-qualified
          resources opt into the two-column split when there is room. -->
     <bool name="connection_panel_two_column">false</bool>
-    <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>

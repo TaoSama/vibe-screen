@@ -14,10 +14,12 @@ PACKAGE = "dev.telemachus.display"
 TEST_PACKAGE = "dev.telemachus.display.test"
 ACTIVITY = "dev.telemachus.display/.MainActivity"
 EXPECTED_DEVICE_MODEL = "P0110"
-EXPECTED_APK_SHA256 = "076333b301475dfe3d949eab3c80f626053f3b68e95e500c4a8911ad669d4a87"
-EXPECTED_ANDROID_TEST_APK_SHA256 = "0f2c36d433dc855f3b8b1407ba984887894f90025954963eded29d8aa66536b9"
-REMOTE_PREFIX = "/sdcard/vibe_pr493_076333b"
+EXPECTED_APK_SHA256 = "23b8476f055692537ec6d0cf3173120a0981e624507f82d77bcc5e866a389202"
+EXPECTED_ANDROID_TEST_APK_SHA256 = "0463395db35b9bc8783973378080a96736de249a0afadebf37e5dc12c2dfccd8"
+REMOTE_PREFIX = "/sdcard/vibe_pr493_23b8476"
 TEXT_SUFFIXES = {".json", ".log", ".md", ".txt", ".xml"}
+XML_DUMP_ATTEMPTS_PER_MODE = 2
+XML_DUMP_RETRY_DELAY_SECONDS = 1
 SCENARIOS = [
     ("phone-portrait-day-font1", 0, "1.0", "no", (1264, 2800)),
     ("phone-portrait-night-font1", 0, "1.0", "yes", (1264, 2800)),
@@ -458,6 +460,139 @@ def device_epoch_seconds(serial):
     return int(proc.stdout.strip())
 
 
+def append_process_evidence(lines, prefix, proc):
+    lines.append(f"{prefix}_returncode={proc.returncode}")
+    lines.append(f"{prefix}_stdout_begin")
+    lines.append(proc.stdout.rstrip("\n"))
+    lines.append(f"{prefix}_stdout_end")
+    lines.append(f"{prefix}_stderr_begin")
+    lines.append(proc.stderr.rstrip("\n"))
+    lines.append(f"{prefix}_stderr_end")
+
+
+def write_xml_attempt_evidence(metadata_dir, label, lines, serial):
+    write_text(metadata_dir / f"{label}.pull-xml.txt", "\n".join(lines).rstrip() + "\n", serial)
+
+
+def append_remote_stat_evidence(lines, prefix, remote_mtime, remote_stat_output):
+    lines.append(f"{prefix}_stat_begin")
+    lines.append(remote_stat_output.rstrip("\n"))
+    lines.append(f"{prefix}_stat_end")
+    lines.append(f"{prefix}_mtime={remote_mtime}")
+
+
+def uiautomator_dump_args(remote_xml, compressed):
+    if compressed:
+        return ("shell", "uiautomator", "dump", "--compressed", remote_xml)
+    return ("shell", "uiautomator", "dump", remote_xml)
+
+
+def capture_ui_xml(
+    serial,
+    metadata_dir,
+    label,
+    remote_xml,
+    local_xml,
+    *,
+    attempts_per_mode=XML_DUMP_ATTEMPTS_PER_MODE,
+    retry_delay_seconds=XML_DUMP_RETRY_DELAY_SECONDS,
+    adb_func=adb,
+    device_epoch_func=device_epoch_seconds,
+    remote_mtime_func=remote_file_mtime,
+    validate_func=validate_scenario_xml,
+    sleep_func=time.sleep,
+):
+    if attempts_per_mode < 1:
+        raise ValueError("attempts_per_mode must be positive")
+
+    local_xml.unlink(missing_ok=True)
+    attempt_lines = []
+    rejected_errors = []
+    attempt_number = 0
+    total_attempts = attempts_per_mode * 2
+
+    for compressed in (False, True):
+        mode = "compressed" if compressed else "normal"
+        for mode_attempt in range(1, attempts_per_mode + 1):
+            attempt_number += 1
+            attempt_lines.append(f"attempt={attempt_number}")
+            attempt_lines.append(f"mode={mode}")
+            attempt_lines.append(f"mode_attempt={mode_attempt}")
+            local_xml.unlink(missing_ok=True)
+
+            remove_remote = adb_func(serial, "shell", "rm", "-f", remote_xml)
+            append_process_evidence(attempt_lines, "remote_delete", remove_remote)
+            if remove_remote.returncode != 0:
+                attempt_lines.append("result=remote_delete_failed")
+                write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+                raise RuntimeError(f"remote XML delete failed before dump attempt: {label} {mode} #{mode_attempt}")
+
+            pre_dump_mtime, pre_dump_stat_output = remote_mtime_func(serial, remote_xml)
+            append_remote_stat_evidence(attempt_lines, "pre_dump_remote", pre_dump_mtime, pre_dump_stat_output)
+            if pre_dump_mtime is not None:
+                attempt_lines.append("result=remote_delete_left_file")
+                write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+                raise RuntimeError(f"remote XML remained after delete before dump attempt: {label} {mode} #{mode_attempt}")
+
+            dump_started_at = device_epoch_func(serial)
+            dump = adb_func(serial, *uiautomator_dump_args(remote_xml, compressed))
+            dump_output = command_output(dump)
+            remote_mtime, remote_stat_output = remote_mtime_func(serial, remote_xml)
+            remote_fresh = remote_mtime is not None and remote_mtime >= dump_started_at
+
+            attempt_lines.append(f"dump_started_at={dump_started_at}")
+            append_process_evidence(attempt_lines, "dump", dump)
+            append_remote_stat_evidence(attempt_lines, "post_dump_remote", remote_mtime, remote_stat_output)
+            attempt_lines.append(f"remote_fresh={str(remote_fresh).lower()}")
+
+            if dump.returncode == 0 and "ERROR" not in dump_output and remote_fresh:
+                pull_xml = adb_func(serial, "pull", remote_xml, str(local_xml))
+                append_process_evidence(attempt_lines, "pull", pull_xml)
+                if pull_xml.returncode != 0:
+                    local_xml.unlink(missing_ok=True)
+                    attempt_lines.append("result=pull_failed")
+                elif not local_xml.exists():
+                    attempt_lines.append("result=pull_missing_local")
+                    write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+                    raise SystemExit(f"XML pull reported success but local XML is missing: {label}")
+                else:
+                    try:
+                        xml_errors = validate_func(local_xml)
+                    except Exception as exc:
+                        xml_errors = [f"parse failed: {exc}"]
+                    if xml_errors:
+                        rejected_errors.extend(xml_errors)
+                        local_xml.unlink(missing_ok=True)
+                        attempt_lines.append("result=rejected")
+                        attempt_lines.append("xml_errors=" + "; ".join(xml_errors))
+                    else:
+                        attempt_lines.append("result=present")
+                        write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+                        return "present", []
+            else:
+                local_xml.unlink(missing_ok=True)
+                if dump.returncode == 0 and "ERROR" not in dump_output:
+                    attempt_lines.append("result=remote_xml_missing_or_stale")
+                else:
+                    attempt_lines.append("result=dump_invalid")
+
+            write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+            if attempt_number < total_attempts:
+                sleep_func(retry_delay_seconds)
+
+    local_xml.unlink(missing_ok=True)
+    if rejected_errors:
+        attempt_lines.append("final_status=rejected")
+        attempt_lines.append("fresh XML was captured but rejected; no later valid XML was accepted")
+        attempt_lines.append("final_xml_errors=" + "; ".join(rejected_errors))
+        write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+        return "rejected", rejected_errors
+    attempt_lines.append("final_status=unavailable")
+    attempt_lines.append("no fresh valid XML captured; not pulling stale XML")
+    write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+    return "unavailable", []
+
+
 def capture_scenario(serial, out_dir, log_file, label, rotation, font, night, expected_size):
     log(log_file, f"scenario {label} rotation={rotation} font={font} night={night}")
     screenshots = out_dir / "screenshots"
@@ -492,55 +627,7 @@ def capture_scenario(serial, out_dir, log_file, label, rotation, font, night, ex
     write_text(metadata / f"{label}.pull-png.txt", command_output(pull_png), serial)
     require_success(pull_png, f"pull screenshot {label}")
 
-    dump_started_at = device_epoch_seconds(serial)
-    dump = adb(serial, "shell", "uiautomator", "dump", remote_xml)
-    dump_output = command_output(dump)
-    write_text(metadata / f"{label}.uiautomator.stdout.txt", dump.stdout, serial)
-    write_text(metadata / f"{label}.uiautomator.stderr.txt", dump.stderr, serial)
-    remote_ls = adb(serial, "shell", "ls", "-l", remote_xml)
-    write_text(metadata / f"{label}.remote-xml-ls.txt", command_output(remote_ls), serial)
-
-    xml_status = "unavailable"
-    xml_errors = []
-    if dump.returncode == 0 and "ERROR" not in dump_output and remote_ls.returncode == 0:
-        remote_mtime, remote_stat_output = remote_file_mtime(serial, remote_xml)
-        write_text(metadata / f"{label}.remote-xml-stat.txt", remote_stat_output, serial)
-        if remote_mtime is None or remote_mtime < dump_started_at - 2:
-            local_xml.unlink(missing_ok=True)
-            write_text(
-                metadata / f"{label}.pull-xml.txt",
-                "remote XML missing or stale; not pulling XML\n"
-                + f"dump_started_at={dump_started_at} remote_mtime={remote_mtime}\n",
-                serial,
-            )
-        else:
-            pull_xml = adb(serial, "pull", remote_xml, str(local_xml))
-            write_text(metadata / f"{label}.pull-xml.txt", command_output(pull_xml), serial)
-            require_success(pull_xml, f"pull XML {label}")
-            if not local_xml.exists():
-                raise SystemExit(f"XML pull reported success but local XML is missing: {label}")
-            try:
-                xml_errors = validate_scenario_xml(local_xml)
-            except Exception as exc:
-                xml_errors = [f"parse failed: {exc}"]
-            if xml_errors:
-                local_xml.unlink(missing_ok=True)
-                write_text(
-                    metadata / f"{label}.pull-xml.txt",
-                    command_output(pull_xml) + "\nxml rejected: " + "; ".join(xml_errors) + "\n",
-                    serial,
-                )
-                xml_status = "rejected"
-            else:
-                xml_status = "present"
-    else:
-        local_xml.unlink(missing_ok=True)
-        write_text(
-            metadata / f"{label}.pull-xml.txt",
-            "dump invalid; not pulling XML\n"
-            + f"dump_returncode={dump.returncode} remote_ls_returncode={remote_ls.returncode}\n",
-            serial,
-        )
+    xml_status, xml_errors = capture_ui_xml(serial, metadata, label, remote_xml, local_xml)
 
     state_after = collect_state(serial)
     write_text(metadata / f"{label}.state-after.txt", state_after, serial)

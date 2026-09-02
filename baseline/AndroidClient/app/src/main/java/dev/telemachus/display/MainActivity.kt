@@ -41,7 +41,6 @@ import android.widget.PopupMenu
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
-import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -324,11 +323,9 @@ class MainActivity : AppCompatActivity() {
         setupSurface()
         setupUI()
         setupDraggableOverlay()
-        setupSettingsButton()
         setupControlBar()
         setupSafeAreaInsets()
         restoreOverlayPosition()
-        restoreSettingsButtonPosition()
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
@@ -799,7 +796,7 @@ class MainActivity : AppCompatActivity() {
      * display-cutout insets into the floating chrome. The root keeps zero
      * padding so the SurfaceView still fills the panel; instead the insets feed
      * [safeAreaInsets], which margins the control bar and settings panel and
-     * bounds the draggable overlay and settings button.
+     * bounds the draggable overlay.
      */
     private fun setupSafeAreaInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, windowInsets ->
@@ -822,7 +819,7 @@ class MainActivity : AppCompatActivity() {
                 applySafeAreaToChrome()
                 applyControlBarLayout()
                 applyStatusOverlayLayout()
-                reclampFloatingControls()
+                clampOverlayIntoSafeRect()
                 activeSettingsDialog?.let(::resizeSettingsDialog)
             }
             // Do not consume: descendants that also observe insets still see them.
@@ -855,9 +852,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Margin the control bar and connection panel by the safe insets so their
-     * tap targets never sit under a notch or gesture bar. The settings button
-     * uses [updateSettingsButtonPosition], which folds the same insets into its
-     * constraint margins.
+     * tap targets never sit under a notch or gesture bar.
      */
     private fun applySafeAreaToChrome() {
         setInsetMargins(binding.controlBar)
@@ -870,18 +865,6 @@ class MainActivity : AppCompatActivity() {
                 ChromeSafeAreaApplier.captureBaseMargins(view)
             }
         ChromeSafeAreaApplier.applyMargins(view, base, safeAreaInsets)
-    }
-
-    /**
-     * Re-bound the draggable status overlay and the settings button into the
-     * current safe rectangle. Called after insets change and after a rotation
-     * or size change so a control saved in one orientation cannot strand
-     * off-screen or under a cutout in another.
-     */
-    private fun reclampFloatingControls() {
-        clampOverlayIntoSafeRect()
-        // Re-anchor the settings button so its inset-aware margins are rebuilt.
-        restoreSettingsButtonPosition()
     }
 
     /** The safe rectangle within the root using the latest insets. */
@@ -922,7 +905,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         // configChanges keeps this activity alive across rotation/size changes,
-        // so re-apply immersive mode and re-clamp floating controls once the new
+        // so re-apply immersive mode and re-clamp floating chrome once the new
         // insets arrive rather than relying on a recreate.
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
@@ -936,7 +919,7 @@ class MainActivity : AppCompatActivity() {
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
-        reclampFloatingControls()
+        clampOverlayIntoSafeRect()
         activeSettingsDialog?.let { dialog ->
             dialog.window?.decorView?.post { resizeSettingsDialog(dialog) }
         }
@@ -1954,9 +1937,6 @@ class MainActivity : AppCompatActivity() {
         binding.settingsPanel.visibility = View.GONE
         binding.connectionSettingsButton.visibility = View.GONE
         LiveRegionTextApplier.apply(binding.statusText, connectedStatus)
-        // Route settings through the tap-to-reveal control bar instead of a
-        // persistent floating button that occludes the video.
-        binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
         revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
         connectionStatusAnnouncements.announceIfChanged(connectedStatus) { announcement ->
@@ -1990,16 +1970,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyDisconnectedSettingsEntryPolicy() {
-        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
-        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
-        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
-        if (!useInlineSettingsButton) {
-            // Stream overlay opacity can be very low; the disconnected settings
-            // entry remains a primary recovery affordance and must stay readable.
-            binding.settingsButton.alpha = 1f
-            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
-            binding.settingsButton.bringToFront()
-        }
+        binding.connectionSettingsButton.visibility = View.VISIBLE
     }
 
     /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */
@@ -3367,7 +3338,6 @@ class MainActivity : AppCompatActivity() {
         val opacitySlider = view.findViewById<Slider>(R.id.opacitySlider)
         val opacityValue = view.findViewById<TextView>(R.id.opacityValue)
         val resetButton = view.findViewById<View>(R.id.resetPositionButton)
-        val resetSettingsBtn = view.findViewById<View>(R.id.resetSettingsButton)
         val disconnectButton = view.findViewById<View>(R.id.disconnectSettingsButton)
         val closeButton = view.findViewById<View>(R.id.closeButton)
         val scaleFitButton = view.findViewById<MaterialButton>(R.id.scaleFitButton)
@@ -3417,31 +3387,6 @@ class MainActivity : AppCompatActivity() {
         // a no-op and confuses users into clicking it twice.
         disconnectButton.visibility = if (isConnected) View.VISIBLE else View.GONE
 
-        // Position buttons (8 directions)
-        val cornerTopLeft = view.findViewById<MaterialButton>(R.id.cornerTopLeft)
-        val cornerTopRight = view.findViewById<MaterialButton>(R.id.cornerTopRight)
-        val cornerBottomLeft = view.findViewById<MaterialButton>(R.id.cornerBottomLeft)
-        val cornerBottomRight = view.findViewById<MaterialButton>(R.id.cornerBottomRight)
-        val positionTopCenter = view.findViewById<MaterialButton>(R.id.positionTopCenter)
-        val positionBottomCenter = view.findViewById<MaterialButton>(R.id.positionBottomCenter)
-        val positionCenterLeft = view.findViewById<MaterialButton>(R.id.positionCenterLeft)
-        val positionCenterRight = view.findViewById<MaterialButton>(R.id.positionCenterRight)
-        val positionButtons =
-            listOf(
-                cornerBottomRight to R.string.settings_position_bottom_right,
-                cornerBottomLeft to R.string.settings_position_bottom_left,
-                cornerTopRight to R.string.settings_position_top_right,
-                cornerTopLeft to R.string.settings_position_top_left,
-                positionTopCenter to R.string.settings_position_top,
-                positionBottomCenter to R.string.settings_position_bottom,
-                positionCenterLeft to R.string.settings_position_left,
-                positionCenterRight to R.string.settings_position_right,
-            )
-        positionButtons.forEach { (button, description) ->
-            button.contentDescription = getString(description)
-            button.isCheckable = true
-        }
-
         // Load current settings
         showStatsSwitch.isChecked = prefs.showStatsOverlay
         opacitySlider.value = prefs.overlayOpacity
@@ -3467,29 +3412,6 @@ class MainActivity : AppCompatActivity() {
             swipeDownGroup = gestureSwipeDownGroup,
             swipeDownButtons = gestureSwipeDownButtons,
         )
-
-        // Highlight current position selection (8 positions)
-        // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
-        // 4=TopCenter, 5=BottomCenter, 6=CenterLeft, 7=CenterRight
-        fun updatePositionSelection(selectedPosition: Int) {
-            positionButtons.forEachIndexed { index, (button, _) ->
-                val selected = index == selectedPosition
-                button.isChecked = selected
-                button.isSelected = selected
-                ViewCompat.setStateDescription(
-                    button,
-                    getString(if (selected) R.string.selected else R.string.not_selected),
-                )
-                if (selected) {
-                    button.backgroundTintList =
-                        android.content.res.ColorStateList
-                            .valueOf(ContextCompat.getColor(this, R.color.accent_wash))
-                } else {
-                    button.backgroundTintList = null
-                }
-            }
-        }
-        updatePositionSelection(prefs.settingsButtonCorner)
 
         // Setup listeners
         showStatsSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -3573,61 +3495,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Position button listeners (8 directions)
-        cornerBottomRight.setOnClickListener {
-            prefs.settingsButtonCorner = 0
-            updatePositionSelection(0)
-            updateSettingsButtonPosition(0)
-        }
-
-        cornerBottomLeft.setOnClickListener {
-            prefs.settingsButtonCorner = 1
-            updatePositionSelection(1)
-            updateSettingsButtonPosition(1)
-        }
-
-        cornerTopRight.setOnClickListener {
-            prefs.settingsButtonCorner = 2
-            updatePositionSelection(2)
-            updateSettingsButtonPosition(2)
-        }
-
-        cornerTopLeft.setOnClickListener {
-            prefs.settingsButtonCorner = 3
-            updatePositionSelection(3)
-            updateSettingsButtonPosition(3)
-        }
-
-        positionTopCenter.setOnClickListener {
-            prefs.settingsButtonCorner = 4
-            updatePositionSelection(4)
-            updateSettingsButtonPosition(4)
-        }
-
-        positionBottomCenter.setOnClickListener {
-            prefs.settingsButtonCorner = 5
-            updatePositionSelection(5)
-            updateSettingsButtonPosition(5)
-        }
-
-        positionCenterLeft.setOnClickListener {
-            prefs.settingsButtonCorner = 6
-            updatePositionSelection(6)
-            updateSettingsButtonPosition(6)
-        }
-
-        positionCenterRight.setOnClickListener {
-            prefs.settingsButtonCorner = 7
-            updatePositionSelection(7)
-            updateSettingsButtonPosition(7)
-        }
-
-        resetSettingsBtn.setOnClickListener {
-            prefs.settingsButtonCorner = 0
-            updatePositionSelection(0)
-            updateSettingsButtonPosition(0)
-        }
-
         disconnectButton.setOnClickListener {
             dialog.dismiss()
             disconnect()
@@ -3666,144 +3533,6 @@ class MainActivity : AppCompatActivity() {
                 SettingsDialogLayoutApplier::applyAfterNextLayout,
             )
         }
-    }
-
-    private fun setupSettingsButton() {
-        // Simple click to show settings dialog
-        // Position can be changed via corner buttons in settings
-        binding.settingsButton.setOnClickListener {
-            showSettingsDialog()
-        }
-    }
-
-    private fun restoreSettingsButtonPosition() {
-        updateSettingsButtonPosition(prefs.settingsButtonCorner)
-    }
-
-    /**
-     * Use ConstraintSet to position settings button - most reliable method
-     * Works correctly with orientation changes
-     * Supports 8 positions: 4 corners + 4 edges
-     */
-    private fun updateSettingsButtonPosition(position: Int) {
-        val constraintLayout = binding.root
-        val constraintSet = ConstraintSet()
-        constraintSet.clone(constraintLayout)
-
-        val buttonId = binding.settingsButton.id
-        // Fold the safe-area insets into each edge margin so the floating
-        // settings button clears the notch/gesture bar on whichever edge it is
-        // anchored to, then re-clamp keeps it there across rotations.
-        val base = (SETTINGS_CHROME_MARGIN_DP * resources.displayMetrics.density).toInt()
-        val topM = base + safeAreaInsets.top
-        val bottomM = base + safeAreaInsets.bottom
-        val startM = base + safeAreaInsets.left
-        val endM = base + safeAreaInsets.right
-
-        // Clear all constraints first
-        constraintSet.clear(buttonId, ConstraintSet.TOP)
-        constraintSet.clear(buttonId, ConstraintSet.BOTTOM)
-        constraintSet.clear(buttonId, ConstraintSet.START)
-        constraintSet.clear(buttonId, ConstraintSet.END)
-
-        when (position) {
-            0 -> { // Bottom Right (default)
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-
-            1 -> { // Bottom Left
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    startM,
-                )
-            }
-
-            2 -> { // Top Right
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-
-            3 -> { // Top Left
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    startM,
-                )
-            }
-
-            4 -> { // Top Center
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-            }
-
-            5 -> { // Bottom Center
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-            }
-
-            6 -> { // Center Left
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    startM,
-                )
-            }
-
-            7 -> { // Center Right
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-
-            else -> { // Default to bottom right
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-        }
-
-        // Reset any absolute positioning that might have been set
-        binding.settingsButton.translationX = 0f
-        binding.settingsButton.translationY = 0f
-
-        constraintSet.applyTo(constraintLayout)
     }
 
     /**

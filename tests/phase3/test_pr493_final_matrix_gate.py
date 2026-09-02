@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -57,6 +59,98 @@ def valid_summary() -> dict[str, object]:
         ),
         "restored": valid_restored(),
     }
+
+
+class FakeXmlDumpSession:
+    def __init__(
+        self,
+        *,
+        dump_results: list[dict[str, object]],
+        stat_results: list[tuple[int | None, str]],
+        device_epochs: list[int],
+        validate_results: list[list[str]] | None = None,
+    ) -> None:
+        self.dump_results = dump_results
+        self.stat_results = stat_results
+        self.device_epochs = device_epochs
+        self.validate_results = validate_results or []
+        self.calls: list[tuple[str, ...]] = []
+        self.pull_calls: list[tuple[str, ...]] = []
+        self.sleep_delays: list[float] = []
+        self._active_dump: dict[str, object] | None = None
+
+    def adb(self, serial: str, *args: str) -> subprocess.CompletedProcess[str]:
+        del serial
+        self.calls.append(args)
+        if args[:3] == ("shell", "rm", "-f"):
+            return self._proc(args, 0, "", "")
+        if args[:3] == ("shell", "uiautomator", "dump"):
+            if not self.dump_results:
+                raise AssertionError("unexpected uiautomator dump call")
+            self._active_dump = self.dump_results.pop(0)
+            return self._proc(
+                args,
+                int(self._active_dump.get("returncode", 0)),
+                str(self._active_dump.get("stdout", "UI hierarchy dumped to remote.xml\n")),
+                str(self._active_dump.get("stderr", "")),
+            )
+        if args[:1] == ("pull",):
+            self.pull_calls.append(args)
+            active_dump = self._active_dump or {}
+            returncode = int(active_dump.get("pull_returncode", 0))
+            if returncode == 0 and bool(active_dump.get("write_xml", True)):
+                destination = Path(args[2])
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(str(active_dump.get("xml", "<hierarchy />\n")), encoding="utf-8")
+            return self._proc(args, returncode, str(active_dump.get("pull_stdout", "pulled\n")), "")
+        raise AssertionError(f"unexpected adb call: {args}")
+
+    def device_epoch(self, serial: str) -> int:
+        del serial
+        if not self.device_epochs:
+            raise AssertionError("unexpected device clock read")
+        return self.device_epochs.pop(0)
+
+    def remote_mtime(self, serial: str, remote_xml: str) -> tuple[int | None, str]:
+        del serial, remote_xml
+        if not self.stat_results:
+            raise AssertionError("unexpected remote mtime read")
+        return self.stat_results.pop(0)
+
+    def validate(self, local_xml: Path) -> list[str]:
+        if not local_xml.exists():
+            raise AssertionError("validator received a missing XML file")
+        if not self.validate_results:
+            return []
+        return self.validate_results.pop(0)
+
+    def sleep(self, delay: float) -> None:
+        self.sleep_delays.append(delay)
+
+    @staticmethod
+    def _proc(args: tuple[str, ...], returncode: int, stdout: str, stderr: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(args), returncode, stdout, stderr)
+
+
+def capture_xml_with_fake(fake: FakeXmlDumpSession, tmp_path: Path, *, attempts_per_mode: int = 2) -> tuple[str, list[str], Path, Path]:
+    metadata = tmp_path / "metadata"
+    metadata.mkdir(parents=True, exist_ok=True)
+    local_xml = metadata / "scenario.xml"
+    status, errors = collector.capture_ui_xml(
+        "serial-1",
+        metadata,
+        "scenario",
+        "/sdcard/scenario.xml",
+        local_xml,
+        attempts_per_mode=attempts_per_mode,
+        retry_delay_seconds=0.25,
+        adb_func=fake.adb,
+        device_epoch_func=fake.device_epoch,
+        remote_mtime_func=fake.remote_mtime,
+        validate_func=fake.validate,
+        sleep_func=fake.sleep,
+    )
+    return status, errors, local_xml, metadata / "scenario.pull-xml.txt"
 
 
 class PR493FinalMatrixGateTests(unittest.TestCase):
@@ -389,6 +483,211 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
             "restored.packages_stopped is not verified true: False",
             collector.summary_gate_errors(summary),
         )
+
+    def test_capture_ui_xml_retries_normal_and_accepts_same_second_fresh_xml(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "ERROR: could not get idle\n"},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+                (100, "100\n"),
+            ],
+            device_epochs=[100, 100],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir))
+            local_xml_exists = local_xml.exists()
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        dump_calls = [call for call in fake.calls if call[:3] == ("shell", "uiautomator", "dump")]
+        self.assertEqual(status, "present")
+        self.assertEqual(errors, [])
+        self.assertTrue(local_xml_exists)
+        self.assertEqual(dump_calls, [("shell", "uiautomator", "dump", "/sdcard/scenario.xml")] * 2)
+        self.assertIn("attempt=1", evidence)
+        self.assertIn("result=dump_invalid", evidence)
+        self.assertIn("attempt=2", evidence)
+        self.assertIn("post_dump_remote_mtime=100", evidence)
+        self.assertIn("remote_fresh=true", evidence)
+        self.assertIn("result=present", evidence)
+
+    def test_capture_ui_xml_tries_compressed_after_normal_attempts_fail(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "ERROR: first normal failure\n"},
+                {"returncode": 1, "stderr": "second normal failure\n"},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+                (201, "201\n"),
+            ],
+            device_epochs=[200, 200, 201],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, _, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir))
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        dump_calls = [call for call in fake.calls if call[:3] == ("shell", "uiautomator", "dump")]
+        self.assertEqual(status, "present")
+        self.assertEqual(errors, [])
+        self.assertEqual(dump_calls[2], ("shell", "uiautomator", "dump", "--compressed", "/sdcard/scenario.xml"))
+        self.assertIn("mode=compressed", evidence)
+        self.assertIn("result=present", evidence)
+
+    def test_capture_ui_xml_does_not_pull_stale_remote_xml(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (199, "199\n"),
+                (None, "stat: missing\n"),
+                (209, "209\n"),
+            ],
+            device_epochs=[200, 210],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir), attempts_per_mode=1)
+            local_xml_exists = local_xml.exists()
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, "unavailable")
+        self.assertEqual(errors, [])
+        self.assertEqual(fake.pull_calls, [])
+        self.assertFalse(local_xml_exists)
+        self.assertIn("remote_fresh=false", evidence)
+        self.assertIn("final_status=unavailable", evidence)
+
+    def test_capture_ui_xml_continues_after_rejected_xml_and_accepts_later_valid_xml(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (300, "300\n"),
+                (None, "stat: missing\n"),
+                (301, "301\n"),
+            ],
+            device_epochs=[300, 301],
+            validate_results=[["missing USB"], []],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir))
+            local_xml_exists = local_xml.exists()
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, "present")
+        self.assertEqual(errors, [])
+        self.assertTrue(local_xml_exists)
+        self.assertIn("result=rejected", evidence)
+        self.assertIn("xml_errors=missing USB", evidence)
+        self.assertIn("result=present", evidence)
+
+    def test_capture_ui_xml_returns_rejected_when_no_later_valid_xml_is_accepted(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+                {"stdout": "ERROR: compressed failed\n"},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (400, "400\n"),
+                (None, "stat: missing\n"),
+                (None, "stat: missing\n"),
+            ],
+            device_epochs=[400, 401],
+            validate_results=[["missing USB"]],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir), attempts_per_mode=1)
+            local_xml_exists = local_xml.exists()
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, "rejected")
+        self.assertEqual(errors, ["missing USB"])
+        self.assertFalse(local_xml_exists)
+        self.assertIn("final_status=rejected", evidence)
+        self.assertIn("fresh XML was captured but rejected; no later valid XML was accepted", evidence)
+
+    def test_capture_ui_xml_returns_all_rejected_errors_when_no_valid_xml_is_accepted(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n"},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (500, "500\n"),
+                (None, "stat: missing\n"),
+                (501, "501\n"),
+            ],
+            device_epochs=[500, 501],
+            validate_results=[["missing USB"], ["missing retry action"]],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir), attempts_per_mode=1)
+            local_xml_exists = local_xml.exists()
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, "rejected")
+        self.assertEqual(errors, ["missing USB", "missing retry action"])
+        self.assertFalse(local_xml_exists)
+        self.assertIn("xml_errors=missing USB", evidence)
+        self.assertIn("xml_errors=missing retry action", evidence)
+        self.assertIn("final_xml_errors=missing USB; missing retry action", evidence)
+
+    def test_capture_ui_xml_fails_when_remote_delete_leaves_file_behind(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[],
+            stat_results=[(499, "499\n")],
+            device_epochs=[],
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            metadata = Path(tmp_dir) / "metadata"
+            local_xml = metadata / "scenario.xml"
+            with self.assertRaisesRegex(RuntimeError, "remote XML remained after delete"):
+                collector.capture_ui_xml(
+                    "serial-1",
+                    metadata,
+                    "scenario",
+                    "/sdcard/scenario.xml",
+                    local_xml,
+                    attempts_per_mode=1,
+                    adb_func=fake.adb,
+                    device_epoch_func=fake.device_epoch,
+                    remote_mtime_func=fake.remote_mtime,
+                    validate_func=fake.validate,
+                    sleep_func=fake.sleep,
+                )
+
+            evidence = (metadata / "scenario.pull-xml.txt").read_text(encoding="utf-8")
+            self.assertIn("pre_dump_remote_mtime=499", evidence)
+            self.assertIn("result=remote_delete_left_file", evidence)
+
+    def test_capture_ui_xml_rejects_non_positive_attempt_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaisesRegex(ValueError, "attempts_per_mode must be positive"):
+                collector.capture_ui_xml(
+                    "serial-1",
+                    Path(tmp_dir) / "metadata",
+                    "scenario",
+                    "/sdcard/scenario.xml",
+                    Path(tmp_dir) / "metadata" / "scenario.xml",
+                    attempts_per_mode=0,
+                )
 
 
 if __name__ == "__main__":

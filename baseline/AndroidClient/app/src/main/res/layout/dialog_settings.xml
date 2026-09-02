@@ -616,188 +616,8 @@
                 app:trackColorActive="@color/accent"
                 app:trackColorInactive="@color/hairline"
                 app:trackHeight="4dp" />
-                </LinearLayout>
+        </LinearLayout>
 
-        <!-- Settings Button Position - 8 directions -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/settings_item_bg"
-            android:padding="@dimen/settings_section_padding"
-            android:layout_marginBottom="@dimen/settings_section_margin_bottom">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_button_position"
-                android:textColor="@color/on_surface"
-                android:textSize="17sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="12dp" />
-
-            <!-- 8 Position Grid (3x3 without center) -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <!-- Top Row: TopLeft, TopCenter, TopRight -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="6dp">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/cornerTopLeft"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_top_left"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginEnd="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/positionTopCenter"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_top"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginStart="3dp"
-                        android:layout_marginEnd="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/cornerTopRight"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_top_right"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginStart="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-                </LinearLayout>
-
-                <!-- Middle Row: Left, (empty center), Right -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="6dp">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/positionCenterLeft"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_left"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginEnd="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-
-                    <!-- Empty center space -->
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="48dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="3dp"
-                        android:layout_marginEnd="3dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/positionCenterRight"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_right"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginStart="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-                </LinearLayout>
-
-                <!-- Bottom Row: BottomLeft, BottomCenter, BottomRight -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/cornerBottomLeft"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_bottom_left"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginEnd="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/positionBottomCenter"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_bottom"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginStart="3dp"
-                        android:layout_marginEnd="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/cornerBottomRight"
-                        style="@style/SettingsPositionButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:minHeight="48dp"
-                        android:layout_weight="1"
-                        android:text="@string/position_bottom_right"
-                        android:textColor="@color/on_surface"
-                        android:textSize="15sp"
-                        android:layout_marginStart="3dp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/accent"
-                        app:strokeWidth="1dp" />
-                </LinearLayout>
-
-            </LinearLayout>
-
-                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
@@ -814,39 +634,19 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/resetPositionButton"
                 style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
-                android:layout_weight="1"
                 android:ellipsize="none"
                 android:maxLines="2"
                 android:text="@string/reset_overlay"
                 android:textColor="@color/on_surface"
                 android:textSize="12sp"
-                android:layout_marginEnd="4dp"
                 app:cornerRadius="14dp"
                 app:strokeColor="@color/hairline"
                 app:strokeWidth="1dp"
                 app:backgroundTint="@color/surface_wash" />
 
-            <!-- Reset Settings Button Position -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/resetSettingsButton"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:layout_weight="1"
-                android:ellipsize="none"
-                android:maxLines="2"
-                android:text="@string/reset_button"
-                android:textColor="@color/on_surface"
-                android:textSize="12sp"
-                android:layout_marginStart="4dp"
-                app:cornerRadius="14dp"
-                app:strokeColor="@color/hairline"
-                app:strokeWidth="1dp"
-                app:backgroundTint="@color/surface_wash" />
         </LinearLayout>
 
         <!-- Disconnect Button -->

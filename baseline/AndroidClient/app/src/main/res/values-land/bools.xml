@@ -4,7 +4,6 @@
          split-screen or narrow freeform window can be landscape yet too narrow
          to fit the header beside the actions without cramping. The two-column
          layout is therefore gated on available width in values-w600dp-land, and
-         narrow landscape falls back to this stacked single column. -->
+     narrow landscape falls back to this stacked single column. -->
     <bool name="connection_panel_two_column">false</bool>
-    <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>

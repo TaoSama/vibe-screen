@@ -1,0 +1,136 @@
+{
+  "apk_sha256": "23b8476f055692537ec6d0cf3173120a0981e624507f82d77bcc5e866a389202",
+  "android_test_apk_sha256": "0463395db35b9bc8783973378080a96736de249a0afadebf37e5dc12c2dfccd8",
+  "device_model": "P0110",
+  "instrumentation_p0110_landscape_large_text": true,
+  "scenarios": [
+    {
+      "label": "phone-portrait-day-font1",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-portrait-night-font1",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-portrait-day-font13",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-portrait-night-font13",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-day-font1",
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-night-font1",
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-day-font13",
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-night-font13",
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    }
+  ],
+  "restored": {
+    "font_scale_1_0": true,
+    "night_no": true,
+    "rotation_0": true,
+    "accelerometer_rotation_0": true,
+    "no_override_size": true,
+    "packages_stopped": true
+  }
+}

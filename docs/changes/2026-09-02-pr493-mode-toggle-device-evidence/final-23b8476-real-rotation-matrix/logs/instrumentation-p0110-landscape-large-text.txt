@@ -1,0 +1,23 @@
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest:
+INSTRUMENTATION_STATUS: test=p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 0.136
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1

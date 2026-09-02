@@ -1,0 +1,14 @@
+Physical size: 1264x2800
+Physical density: 560
+font_scale: 1.0
+Night mode: Night mode: no
+lock 0
+accelerometer_rotation: 0
+user_rotation: 0
+--- window summary ---
+  overrideConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.75480 fontWeightAdjustment=0}
+  mCurrentFocus=Window{fdba2fb u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{151666031 u0 dev.telemachus.display/.MainActivity t947}
+      overrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+  DisplayFrames w=1264 h=2800 r=0
+  mGlobalConfiguration={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.75480 fontWeightAdjustment=0}
