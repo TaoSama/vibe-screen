@@ -74,6 +74,20 @@ class WakeHostCurrentBaseTest(unittest.TestCase):
         self.assertEqual(summary["blocking_reasons"], [])
         self.assertFalse(summary["can_claim_sleeping_mac_wake"])
 
+    def test_insufficient_when_granular_offline_security_contract_is_missing(self) -> None:
+        record = self.complete_record()
+        record["key_rotation_offline_passed"] = False
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertEqual(summary["blocking_reasons"], [])
+        self.assertIn(
+            "key_rotation_offline_passed",
+            {item["field"] for item in summary["missing_requirements"]},
+        )
+        self.assertFalse(summary["can_close_wake_host_current_base_gate"])
+
     def test_failure_observation_overrides_complete_record(self) -> None:
         record = self.complete_record()
         record["wake_attempt_failed_observed"] = True

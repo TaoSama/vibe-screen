@@ -97,25 +97,60 @@ struct SharedSecretWakeHostAuthorizer: WakeHostAuthorizing {
     static let maximumAuthorizationLifetimeSeconds: UInt64 = 120
     static let allowedClockSkewSeconds: UInt64 = 30
 
-    private let secret: Data
+    private let secretsByKeyID: [String: Data]
     private let replayStore: any WakeHostReplayStoring
     private let now: @Sendable () -> UInt64
+    private let expectedHostID: String?
+    private let expectedDeviceID: String?
 
-    var wakeAllowed: Bool { !secret.isEmpty }
+    var wakeAllowed: Bool { !secretsByKeyID.isEmpty }
 
     init(
         secret: Data,
         replayStore: any WakeHostReplayStoring = InMemoryWakeHostReplayStore(),
-        now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }
+        now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) },
+        expectedHostID: String? = nil,
+        expectedDeviceID: String? = nil
     ) {
-        self.secret = secret
+        self.init(
+            activeSecret: secret,
+            acceptedPreviousSecrets: [],
+            replayStore: replayStore,
+            now: now,
+            expectedHostID: expectedHostID,
+            expectedDeviceID: expectedDeviceID
+        )
+    }
+
+    init(
+        activeSecret: Data,
+        acceptedPreviousSecrets: [Data] = [],
+        replayStore: any WakeHostReplayStoring = InMemoryWakeHostReplayStore(),
+        now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) },
+        expectedHostID: String? = nil,
+        expectedDeviceID: String? = nil
+    ) {
+        var secretsByKeyID: [String: Data] = [:]
+        if !activeSecret.isEmpty {
+            for secret in [activeSecret] + acceptedPreviousSecrets where !secret.isEmpty {
+                secretsByKeyID[WakeHostProof.keyID(secret: secret)] = secret
+            }
+        }
+        self.secretsByKeyID = secretsByKeyID
         self.replayStore = replayStore
         self.now = now
+        self.expectedHostID = expectedHostID
+        self.expectedDeviceID = expectedDeviceID
     }
 
     func authorizationFailure(for request: WakeHostRequestContext) -> WakeHostRequestError? {
         guard wakeAllowed else { return .policyDenied }
-        guard !request.keyID.isEmpty, request.keyID == WakeHostProof.keyID(secret: secret),
+        guard !request.hostID.isEmpty, !request.deviceID.isEmpty,
+              expectedHostID.map({ $0 == request.hostID }) ?? true,
+              expectedDeviceID.map({ $0 == request.deviceID }) ?? true else {
+            return .invalidAuthorization
+        }
+        guard !request.keyID.isEmpty, let secret = secretsByKeyID[request.keyID],
               request.nonce.count >= WakeHostProof.minimumNonceByteCount,
               request.signature.count == WakeHostProof.signatureByteCount else {
             return .invalidAuthorization
@@ -178,17 +213,25 @@ struct WakeHostBroadcastTarget: Equatable {
         guard octets.count == 4 else { throw WakeHostPacketSenderError.invalidBroadcastAddress }
         let values = try octets.map { part -> UInt8 in
             guard !part.isEmpty, part.allSatisfy({ $0 >= "0" && $0 <= "9" }),
+                  (part == "0" || !part.hasPrefix("0")),
                   let value = UInt8(part) else {
                 throw WakeHostPacketSenderError.invalidBroadcastAddress
             }
             return value
         }
-        guard values != [0, 0, 0, 0],
-              values == [255, 255, 255, 255] || values[3] == 255 else {
+        guard values == [255, 255, 255, 255] || Self.isPrivateDirectedBroadcast(values) else {
             throw WakeHostPacketSenderError.invalidBroadcastAddress
         }
         self.address = address
         self.port = port
+    }
+
+    private static func isPrivateDirectedBroadcast(_ octets: [UInt8]) -> Bool {
+        guard octets.count == 4, octets[3] == 255 else { return false }
+        if octets[0] == 10 { return true }
+        if octets[0] == 172, (16...31).contains(octets[1]) { return true }
+        if octets[0] == 192, octets[1] == 168 { return true }
+        return false
     }
 }
 

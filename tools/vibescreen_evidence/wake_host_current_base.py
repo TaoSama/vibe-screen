@@ -41,6 +41,30 @@ REQUIRED_FIELDS = (
         "run focused offline authorization/protocol tests for the current base",
     ),
     (
+        "clock_skew_boundary_offline_passed",
+        "retain offline coverage for accepted and rejected WakeHost authorization clock-skew boundaries",
+    ),
+    (
+        "key_rotation_offline_passed",
+        "retain offline coverage for active, previous, and unknown WakeHost authorization key IDs",
+    ),
+    (
+        "cross_device_identity_binding_offline_passed",
+        "retain offline coverage proving WakeHost authorization is bound to the expected host and device identity",
+    ),
+    (
+        "replay_store_eviction_offline_passed",
+        "retain offline coverage for WakeHost replay-store eviction and key-scoped nonce tracking",
+    ),
+    (
+        "secure_on_password_format_offline_passed",
+        "retain offline coverage proving SecureOn is either empty or exactly six raw bytes",
+    ),
+    (
+        "broadcast_target_allowlist_negative_offline_passed",
+        "retain offline coverage rejecting non-allowlisted WakeHost broadcast targets",
+    ),
+    (
         "device_identity_recorded",
         "record the actual paired client device identity without relabeling substitute hardware",
     ),
