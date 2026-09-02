@@ -140,10 +140,11 @@ class StreamClientOwnershipBoundaryContractTest {
             "WakeHost request lifecycle/callback delivery/packet-sender admission",
             "input envelope routing",
             "media-frame routing",
-            "renderer viewport/layout/render-target readiness/admission",
         ).forEach { phrase ->
             assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
         }
+        assertTrue(phaseZeroStatus.contains("`MainActivity` hands renderer viewport/layout/render-target readiness/admission"))
+        assertTrue(phaseZeroStatus.contains("`RendererOwner` and `RendererViewportState`"))
         assertTrue(readme.normalizedWhitespace().contains("remaining decoder platform-adapter/device-evidence slice"))
         assertTrue(readme.normalizedWhitespace().contains("WakeHost real sleeping-Mac"))
         assertTrue(audit.contains("#259"))

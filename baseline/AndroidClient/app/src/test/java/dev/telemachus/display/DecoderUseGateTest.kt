@@ -42,7 +42,11 @@ class DecoderUseGateTest {
                 }
 
             assertTrue(clearStarted.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
-            waitUntilBlocked(requireNotNull(clearThread))
+            waitUntilBlockedByDecoderGate(
+                thread = requireNotNull(clearThread),
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing clear",
+            )
             assertFalse(clearCompleted.get())
             releaseUse.countDown()
 
@@ -85,7 +89,11 @@ class DecoderUseGateTest {
                     gate.installIf(replacement) { true }
                 }
             assertTrue(installEntered.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
-            waitUntilBlocked(requireNotNull(installThread))
+            waitUntilBlockedByDecoderGate(
+                thread = requireNotNull(installThread),
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing install",
+            )
             assertFalse(installFuture.isDone)
 
             releaseCallback.countDown()
@@ -167,7 +175,11 @@ class DecoderUseGateTest {
                     gate.installIf(replacement) { true }
                 }
             assertTrue(installEntered.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
-            waitUntilBlocked(requireNotNull(installThread))
+            waitUntilBlockedByDecoderGate(
+                thread = requireNotNull(installThread),
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing install",
+            )
             assertFalse(installFuture.isDone)
 
             releaseCallback.countDown()
@@ -179,15 +191,6 @@ class DecoderUseGateTest {
             executor.shutdownNow()
             assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
         }
-    }
-
-    private fun waitUntilBlocked(thread: Thread) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_TIMEOUT_SECONDS)
-        while (System.nanoTime() < deadline) {
-            if (thread.state == Thread.State.BLOCKED) return
-            Thread.sleep(10)
-        }
-        throw AssertionError("Expected competing install to wait for the decoder gate")
     }
 
     private companion object {

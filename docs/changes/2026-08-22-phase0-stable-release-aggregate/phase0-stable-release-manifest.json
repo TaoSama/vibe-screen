@@ -3,9 +3,9 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "28b9d1a59ef026b45ada3cd7e665ef09ea9a7523",
+    "base_commit": "b81bd4ab93f3d2816c76d6395f061aa42b15d272",
     "base_ref": "origin/main",
-    "audit_date": "2026-08-31",
+    "audit_date": "2026-09-02",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
@@ -273,7 +273,7 @@
         372
       ],
       "blockers": [
-        "Android TCP transport ownership is enforced, and StreamClient now delegates local session, input, protocol-action, media-routing, protocol/session, file-transfer, WakeHost product ownership, and renderer ownership to focused owner slices, but the module ownership sub-gate still evaluates to blocked for Phase 0 closure.",
+        "Android TCP transport ownership is enforced, StreamClient now delegates local session, input, protocol-action, media-routing, protocol/session, file-transfer, and WakeHost product ownership to focused owner slices, and MainActivity hands renderer state/admission to RendererOwner/RendererViewportState, but the module ownership sub-gate still evaluates to blocked for Phase 0 closure.",
         "Decoder ownership beyond lifecycle admission and UI/product session boundaries remain partial with fail-closed checklists.",
         "WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence remain separate fail-closed runtime gates and are not closed by module ownership evidence."
       ]

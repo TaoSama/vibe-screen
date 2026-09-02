@@ -431,7 +431,11 @@ class DecoderPresentationOwnerTest {
                 }
             detachThread.start()
             assertTrue(detachStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
-            waitUntilBlocked(detachThread)
+            waitUntilBlockedByDecoderGate(
+                thread = detachThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing detach",
+            )
 
             assertEquals(expectedPresentation, rendererOwner.currentDecoderPresentation)
             assertEquals(46L, owner.internetConfiguration()?.configEpoch)
@@ -613,7 +617,11 @@ class DecoderPresentationOwnerTest {
                 }
             releaseThread.start()
             assertTrue(releaseStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
-            waitUntilBlocked(releaseThread)
+            waitUntilBlockedByDecoderGate(
+                thread = releaseThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing release",
+            )
             assertTrue(released.isEmpty())
             unblockDecode.countDown()
             decodeFuture.get(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
@@ -688,7 +696,11 @@ class DecoderPresentationOwnerTest {
                 }
             publishThread.start()
             assertTrue(publishStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
-            waitUntilBlocked(publishThread)
+            waitUntilBlockedByDecoderGate(
+                thread = publishThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing publish",
+            )
 
             assertEquals(firstPresentation, rendererOwner.currentDecoderPresentation)
 
@@ -782,7 +794,11 @@ class DecoderPresentationOwnerTest {
                 }
             publishThread.start()
             assertTrue(publishStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
-            waitUntilBlocked(publishThread)
+            waitUntilBlockedByDecoderGate(
+                thread = publishThread,
+                timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                operation = "competing publish",
+            )
 
             assertEquals(quarantinedPresentation, rendererOwner.currentDecoderPresentation)
 
@@ -1031,15 +1047,6 @@ class DecoderPresentationOwnerTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("$relativePath not found from " + System.getProperty("user.dir"))
-    }
-
-    private fun waitUntilBlocked(thread: Thread) {
-        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(WAIT_TIMEOUT_SECONDS)
-        while (System.nanoTime() < deadline) {
-            if (thread.state == Thread.State.BLOCKED) return
-            Thread.sleep(10)
-        }
-        fail("Expected competing publish to wait for the decoder gate")
     }
 
     private fun joinFinished(thread: Thread) {
