@@ -98,4 +98,27 @@ final class LatestRetainedSlotTests: XCTestCase {
         XCTAssertEqual(slot.retainedCount, 1)
         XCTAssertNotNil(slot.latest())
     }
+
+    func testScreenCaptureEncodedOutputMarkersStayBounded() async throws {
+        let capture = try await ScreenCapture()
+
+        for epoch in 1...100 {
+            XCTAssertTrue(capture.markEncodedOutputForSelfTest(sessionEpoch: UInt64(epoch)))
+        }
+
+        XCTAssertEqual(
+            capture.encodedOutputMarkerCountForSelfTest(),
+            BoundedSessionEpochLog.defaultCapacity
+        )
+    }
+
+    func testScreenCaptureStopClearsEncodedOutputMarkers() async throws {
+        let capture = try await ScreenCapture()
+        XCTAssertTrue(capture.markEncodedOutputForSelfTest(sessionEpoch: 1))
+        XCTAssertTrue(capture.markEncodedOutputForSelfTest(sessionEpoch: 2))
+
+        await capture.stopStreaming()
+
+        XCTAssertEqual(capture.encodedOutputMarkerCountForSelfTest(), 0)
+    }
 }

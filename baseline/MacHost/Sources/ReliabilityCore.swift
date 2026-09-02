@@ -402,4 +402,8 @@ final class JSONLTelemetrySink: TelemetryRecording {
             self.handle = nil
         }
     }
+
+    deinit {
+        try? close()
+    }
 }

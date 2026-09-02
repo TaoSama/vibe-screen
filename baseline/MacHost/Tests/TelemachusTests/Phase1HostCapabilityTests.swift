@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import XCTest
 @testable import Telemachus
 
@@ -564,6 +565,209 @@ final class Phase1HostCapabilityTests: XCTestCase {
             hasSurface: false
         ), .clearFrame)
         XCTAssertTrue(lifecycle.isActive)
+    }
+
+    func testCaptureAsyncWorkGateDropsStaleQueuedWork() {
+        let gate = CaptureAsyncWorkGate()
+        let first = gate.currentToken
+        var runs = 0
+
+        let currentResult: String? = gate.performIfCurrent(first) {
+            runs += 1
+            return "current"
+        }
+        XCTAssertEqual(currentResult, "current")
+
+        let second = gate.invalidate()
+
+        let staleResult: Void? = gate.performIfCurrent(first) {
+            runs += 1
+        }
+        XCTAssertNil(staleResult)
+        let secondResult: String? = gate.performIfCurrent(second) {
+            runs += 1
+            return "next"
+        }
+        XCTAssertEqual(secondResult, "next")
+        XCTAssertEqual(runs, 2)
+    }
+
+    func testCaptureAsyncWorkGateReturnsTokenAfterInvalidationTeardown() {
+        let gate = CaptureAsyncWorkGate()
+        let first = gate.currentToken
+        let second = gate.invalidate {
+            return "cleared"
+        }
+
+        XCTAssertEqual(second.value, "cleared")
+        XCTAssertNil(gate.performIfCurrent(first) {
+            XCTFail("stale work should not run")
+        })
+        let nextResult: String? = gate.performIfCurrent(second.token) {
+            return "current"
+        }
+        XCTAssertEqual(nextResult, "current")
+    }
+
+    func testCaptureAsyncWorkGateInvalidationWaitsForAdmittedWork() {
+        let gate = CaptureAsyncWorkGate()
+        let token = gate.currentToken
+        let workEntered = DispatchSemaphore(value: 0)
+        let releaseWork = DispatchSemaphore(value: 0)
+        let invalidationStarted = DispatchSemaphore(value: 0)
+        let teardownStarted = DispatchSemaphore(value: 0)
+        let invalidationReturned = DispatchSemaphore(value: 0)
+        let queue = DispatchQueue(label: "capture-async-work-gate-test", attributes: .concurrent)
+
+        queue.async {
+            gate.performIfCurrent(token) {
+                workEntered.signal()
+                _ = releaseWork.wait(timeout: .now() + 10)
+            }
+        }
+
+        XCTAssertEqual(workEntered.wait(timeout: .now() + 1), .success)
+        queue.async {
+            invalidationStarted.signal()
+            gate.invalidate {
+                teardownStarted.signal()
+            }
+            invalidationReturned.signal()
+        }
+
+        XCTAssertEqual(invalidationStarted.wait(timeout: .now() + 1), .success)
+        XCTAssertEqual(teardownStarted.wait(timeout: .now() + 0.05), .timedOut)
+        XCTAssertEqual(invalidationReturned.wait(timeout: .now() + 0.05), .timedOut)
+        releaseWork.signal()
+        XCTAssertEqual(teardownStarted.wait(timeout: .now() + 1), .success)
+        XCTAssertEqual(invalidationReturned.wait(timeout: .now() + 1), .success)
+    }
+
+    func testCaptureAsyncWorkGateCurrentTokenWaitsForInvalidationTeardown() {
+        let gate = CaptureAsyncWorkGate()
+        let invalidationStarted = DispatchSemaphore(value: 0)
+        let releaseInvalidation = DispatchSemaphore(value: 0)
+        let tokenRequestStarted = DispatchSemaphore(value: 0)
+        let tokenReturned = DispatchSemaphore(value: 0)
+        let queue = DispatchQueue(label: "capture-async-work-gate-invalidation-test", attributes: .concurrent)
+
+        queue.async {
+            gate.invalidate {
+                invalidationStarted.signal()
+                _ = releaseInvalidation.wait(timeout: .now() + 10)
+            }
+        }
+
+        XCTAssertEqual(invalidationStarted.wait(timeout: .now() + 1), .success)
+        queue.async {
+            tokenRequestStarted.signal()
+            _ = gate.currentToken
+            tokenReturned.signal()
+        }
+
+        XCTAssertEqual(tokenRequestStarted.wait(timeout: .now() + 1), .success)
+        XCTAssertEqual(tokenReturned.wait(timeout: .now() + 0.05), .timedOut)
+        releaseInvalidation.signal()
+        XCTAssertEqual(tokenReturned.wait(timeout: .now() + 1), .success)
+    }
+
+    func testCaptureAsyncWorkGateInvalidationWaitsAfterThrowingWork() {
+        enum GateTestError: Error {
+            case failed
+        }
+
+        let gate = CaptureAsyncWorkGate()
+        let token = gate.currentToken
+        XCTAssertThrowsError(try gate.performIfCurrent(token) { () throws -> Void in
+            throw GateTestError.failed
+        })
+
+        _ = gate.invalidate()
+    }
+
+    func testCaptureAsyncWorkGateAllowsOnlyOneCurrentHealthCheck() {
+        let gate = CaptureAsyncWorkGate()
+        guard let first = gate.beginHealthCheck() else {
+            return XCTFail("health check did not start")
+        }
+
+        XCTAssertNil(gate.beginHealthCheck())
+        XCTAssertTrue(gate.hasActiveHealthCheck)
+        let result: Void? = gate.performHealthCheckCompletion(first) {}
+        XCTAssertNotNil(result)
+        XCTAssertFalse(gate.hasActiveHealthCheck)
+    }
+
+    func testCaptureAsyncWorkGatePerformsCurrentHealthCheckCompletion() {
+        let gate = CaptureAsyncWorkGate()
+        guard let token = gate.beginHealthCheck() else {
+            return XCTFail("health check did not start")
+        }
+        var completions = 0
+
+        let result = gate.performHealthCheckCompletion(token) {
+            completions += 1
+            return "completed"
+        }
+
+        XCTAssertEqual(result, "completed")
+        XCTAssertEqual(completions, 1)
+        XCTAssertFalse(gate.hasActiveHealthCheck)
+    }
+
+    func testCaptureAsyncWorkGateRejectsHealthCheckAfterInvalidation() {
+        let gate = CaptureAsyncWorkGate()
+        guard let first = gate.beginHealthCheck() else {
+            return XCTFail("health check did not start")
+        }
+
+        gate.invalidate()
+
+        XCTAssertNil(gate.performHealthCheckCompletion(first) {
+            XCTFail("stale health check should not complete work")
+        })
+        XCTAssertFalse(gate.hasActiveHealthCheck)
+    }
+
+    func testCaptureAsyncWorkGateInvalidatesOnlyCurrentToken() {
+        let gate = CaptureAsyncWorkGate()
+        let first = gate.currentToken
+        let second = gate.invalidate()
+        var invalidated = false
+
+        XCTAssertNil(gate.invalidateIfCurrent(first) {
+            invalidated = true
+        })
+        XCTAssertFalse(invalidated)
+
+        let result = gate.invalidateIfCurrent(second) {
+            invalidated = true
+        }
+        XCTAssertNotNil(result)
+        XCTAssertTrue(invalidated)
+        XCTAssertNil(gate.performIfCurrent(second) {
+            XCTFail("invalidated token should not run work")
+        })
+        if let nextToken = result?.token {
+            let currentResult: String? = gate.performIfCurrent(nextToken) {
+                return "current"
+            }
+            XCTAssertEqual(currentResult, "current")
+        }
+    }
+
+    func testEncodedOutputEpochLogIsBoundedAndClearable() {
+        var log = BoundedSessionEpochLog(capacity: 3)
+
+        XCTAssertTrue(log.insertIfNew(1))
+        XCTAssertFalse(log.insertIfNew(1))
+        XCTAssertTrue(log.insertIfNew(2))
+        XCTAssertTrue(log.insertIfNew(3))
+        XCTAssertTrue(log.insertIfNew(4))
+
+        XCTAssertEqual(log.count, 3)
+        log.removeAll()
+        XCTAssertEqual(log.count, 0)
     }
 
     func testStoppedFallbackRebuildsReplacementBeforeMonitor() {

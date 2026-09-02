@@ -302,6 +302,11 @@ class ScreenCapture {
         let encoderPresent: Bool
     }
 
+    private enum CaptureHealthSnapshotAction {
+        case noOp
+        case rebuild
+    }
+
     private static let liveConfigurationUpdateTimeoutSeconds: TimeInterval = 3
     private var stream: SCStream?
     private var streamOutput: StreamOutput?
@@ -329,11 +334,12 @@ class ScreenCapture {
     }
 
     private struct EncodedOutputMarkerState {
-        var emittedSessionEpochs: Set<UInt64> = []
+        var emittedSessionEpochs = BoundedSessionEpochLog()
     }
 
     private let latestPixelBuffer = LatestRetainedSlot<CVPixelBuffer>()
     private let encodedOutputMarkerLock = OSAllocatedUnfairLock(initialState: EncodedOutputMarkerState())
+    private let asyncWorkGate = CaptureAsyncWorkGate()
 
     private struct KeyframeRequestState {
         var pendingEncoderCreationRequest = false
@@ -346,7 +352,6 @@ class ScreenCapture {
     private var frameMonitorTimer: DispatchSourceTimer?
     private var restartAttempted = false
     private var isRestarting = false
-    private var isHealthCheckRunning = false
     private var isStopping = false
     private var restartTask: Task<Void, Never>?
     private let streamStopBarrier = AsyncStopBarrier()
@@ -398,6 +403,16 @@ class ScreenCapture {
             fallbackCaptureActive: fallbackLifecycle.isActive,
             encoderPresent: currentEncoder() != nil
         )
+    }
+
+    func encodedOutputMarkerCountForSelfTest() -> Int {
+        encodedOutputMarkerLock.withLock { $0.emittedSessionEpochs.count }
+    }
+
+    func markEncodedOutputForSelfTest(sessionEpoch: UInt64) -> Bool {
+        encodedOutputMarkerLock.withLock { state in
+            state.emittedSessionEpochs.insertIfNew(sessionEpoch)
+        }
     }
 
     private func currentEncoder() -> VideoEncoder? {
@@ -452,21 +467,25 @@ class ScreenCapture {
 
         requestKeyframe()
 
-        guard let encoder = currentEncoder(),
-              let cachedBox = latestPixelBuffer.latest() else { return }
+        guard latestPixelBuffer.latest() != nil else { return }
 
         let pts = CMTime(
             value: CMTimeValue(DispatchTime.now().uptimeNanoseconds / 1000),
             timescale: 1_000_000
         )
-        let sessionEpoch = currentFrameSink?.currentSessionEpoch ?? 0
+        let lifecycleToken = asyncWorkGate.currentToken
 
-        currentEncodeQueue()?.async {
-            encoder.encode(
-                pixelBuffer: cachedBox.value,
-                presentationTimeStamp: pts,
-                sessionEpoch: sessionEpoch
-            )
+        currentEncodeQueue()?.async { [weak self] in
+            guard let self else { return }
+            self.asyncWorkGate.performIfCurrent(lifecycleToken) {
+                guard let encoder = self.currentEncoder(),
+                      let cachedBox = self.latestPixelBuffer.latest() else { return }
+                encoder.encode(
+                    pixelBuffer: cachedBox.value,
+                    presentationTimeStamp: pts,
+                    sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
+                )
+            }
         }
     }
 
@@ -1009,9 +1028,7 @@ class ScreenCapture {
     ) {
         guard sessionEpoch != 0 else { return }
         let shouldLog = encodedOutputMarkerLock.withLock { state -> Bool in
-            if state.emittedSessionEpochs.contains(sessionEpoch) { return false }
-            state.emittedSessionEpochs.insert(sessionEpoch)
-            return true
+            state.emittedSessionEpochs.insertIfNew(sessionEpoch)
         }
         guard shouldLog else { return }
 
@@ -1045,16 +1062,19 @@ class ScreenCapture {
     private func configureFrameHandler(label: String) {
         let queue = DispatchQueue(label: "encodeQueue.\(label)", qos: .userInteractive)
         configureFramePacer(on: queue)
+        let lifecycleToken = asyncWorkGate.currentToken
 
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
             guard let self = self else { return }
-            autoreleasepool {
-                let now = DispatchTime.now()
+            self.asyncWorkGate.performIfCurrent(lifecycleToken) {
+                autoreleasepool {
+                    let now = DispatchTime.now()
 
-                self.recordSourceFrame(at: now, label: "SCStream")
+                    self.recordSourceFrame(at: now, label: "SCStream")
 
-                if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                    self.latestPixelBuffer.store(imageBuffer)
+                    if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+                        self.latestPixelBuffer.store(imageBuffer)
+                    }
                 }
             }
         }
@@ -1267,10 +1287,10 @@ class ScreenCapture {
             }
 
             if elapsed > 5.0 {
-                if hasHadFrames, let lastBuffer = self.latestPixelBuffer.latest() {
+                if hasHadFrames, self.latestPixelBuffer.latest() != nil {
                     // Screen is idle — SCStream is healthy but not delivering frames (macOS optimization).
                     // Re-send the last captured frame as a keepalive so the tablet stays connected.
-                    self.sendCachedFrameKeepaliveIfNeeded(lastBuffer)
+                    self.sendCachedFrameKeepaliveIfNeeded()
                 } else {
                     debugLog("No frames received within 5s — recovering SCStream")
                     self.stopFrameMonitor()
@@ -1290,7 +1310,15 @@ class ScreenCapture {
         frameMonitorTimer = timer
     }
 
-    private func sendCachedFrameKeepaliveIfNeeded(_ pixelBuffer: LatestRetainedSlot<CVPixelBuffer>.Box) {
+    private func sendCachedFrameKeepaliveIfNeeded() {
+        let lifecycleToken = asyncWorkGate.currentToken
+        asyncWorkGate.performIfCurrent(lifecycleToken) {
+            scheduleCachedFrameKeepaliveIfNeeded(lifecycleToken: lifecycleToken)
+        }
+    }
+
+    private func scheduleCachedFrameKeepaliveIfNeeded(lifecycleToken: CaptureAsyncWorkGate.Token) {
+        guard latestPixelBuffer.latest() != nil else { return }
         let now = DispatchTime.now()
         let shouldSend = stateLock.withLock { state -> Bool in
             if let last = state.lastKeepaliveTime {
@@ -1308,12 +1336,16 @@ class ScreenCapture {
             timescale: 1_000_000
         )
         currentEncodeQueue()?.async { [weak self] in
-            guard let self, let encoder = self.currentEncoder() else { return }
-            encoder.encode(
-                pixelBuffer: pixelBuffer.value,
-                presentationTimeStamp: pts,
-                sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
-            )
+            guard let self else { return }
+            self.asyncWorkGate.performIfCurrent(lifecycleToken) {
+                guard let encoder = self.currentEncoder(),
+                      let currentBuffer = self.latestPixelBuffer.latest() else { return }
+                encoder.encode(
+                    pixelBuffer: currentBuffer.value,
+                    presentationTimeStamp: pts,
+                    sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
+                )
+            }
         }
     }
 
@@ -1322,14 +1354,15 @@ class ScreenCapture {
     /// lets us distinguish that failure from ScreenCaptureKit's normal
     /// "no frames for an unchanged desktop" optimization.
     private func checkCurrentDisplayCaptureHealth(against cachedBuffer: LatestRetainedSlot<CVPixelBuffer>.Box) {
-        guard !isHealthCheckRunning, !isRestarting, let display else { return }
+        guard !isRestarting, let display else { return }
+        let cachedBufferID = ObjectIdentifier(cachedBuffer)
 
         guard #available(macOS 14.0, *) else {
-            sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
+            sendCachedFrameKeepaliveIfNeeded()
             return
         }
 
-        isHealthCheckRunning = true
+        guard let healthCheckToken = asyncWorkGate.beginHealthCheck() else { return }
         let (width, height) = encodeSize(for: codec)
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
@@ -1346,36 +1379,53 @@ class ScreenCapture {
         ) { [weak self] sampleBuffer, error in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.isHealthCheckRunning = false
+                let action = self.asyncWorkGate.performHealthCheckCompletion(
+                    healthCheckToken
+                ) { () -> CaptureHealthSnapshotAction in
+                    guard !self.isStopping else { return .noOp }
 
-                if let error {
-                    debugLog("Current-display health snapshot failed: \(error.localizedDescription)")
-                    self.sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
-                    return
+                    if let error {
+                        debugLog("Current-display health snapshot failed: \(error.localizedDescription)")
+                        self.scheduleCachedFrameKeepaliveIfNeeded(lifecycleToken: healthCheckToken)
+                        return .noOp
+                    }
+
+                    guard let sampleBuffer,
+                          let freshBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                        debugLog("Current-display health snapshot returned no pixel buffer")
+                        self.scheduleCachedFrameKeepaliveIfNeeded(lifecycleToken: healthCheckToken)
+                        return .noOp
+                    }
+
+                    guard let currentBuffer = self.latestPixelBuffer.latest(),
+                          ObjectIdentifier(currentBuffer) == cachedBufferID else { return .noOp }
+
+                    let difference = Self.sampledLumaDifference(
+                        currentBuffer.value,
+                        freshBuffer
+                    )
+                    guard difference > 0.5 else {
+                        self.scheduleCachedFrameKeepaliveIfNeeded(lifecycleToken: healthCheckToken)
+                        return .noOp
+                    }
+
+                    debugLog(
+                        "Current-display capture is stale " +
+                        "(snapshot difference \(String(format: "%.2f", difference))) — rebuilding"
+                    )
+                    return .rebuild
                 }
 
-                guard let sampleBuffer,
-                      let freshBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                    debugLog("Current-display health snapshot returned no pixel buffer")
-                    self.sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
+                switch action {
+                case .some(.rebuild):
+                    guard self.asyncWorkGate.invalidateIfCurrent(healthCheckToken, {
+                        self.stopFrameMonitor()
+                        self.clearFramePacerState()
+                    }) != nil else { return }
+                    self.restartStream()
+                case .some(.noOp), nil:
                     return
                 }
-
-                let difference = Self.sampledLumaDifference(
-                    cachedBuffer.value,
-                    freshBuffer
-                )
-                guard difference > 0.5 else {
-                    self.sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
-                    return
-                }
-
-                debugLog(
-                    "Current-display capture is stale " +
-                    "(snapshot difference \(String(format: "%.2f", difference))) — rebuilding"
-                )
-                self.stopFrameMonitor()
-                self.restartStream()
             }
         }
     }
@@ -1460,10 +1510,12 @@ class ScreenCapture {
                 let previousStream = self.stream
                 let previousStreamWasStarted = self.isSCStreamStarted
                 self.isSCStreamStarted = false
+                self.streamOutput?.onFrameReceived = nil
                 self.stream = nil
                 self.streamOutput = nil
                 self.streamDelegate = nil
                 self.display = nil
+                self.clearFramePacer()
                 if previousStreamWasStarted {
                     try await previousStream?.stopCapture()
                 }
@@ -1591,6 +1643,7 @@ class ScreenCapture {
         )
         configureFramePacer(on: pacingQueue)
 
+        let lifecycleToken = asyncWorkGate.currentToken
         guard let displayStream = CGDisplayStream(
             dispatchQueueDisplay: displayID,
             outputWidth: width,
@@ -1600,69 +1653,74 @@ class ScreenCapture {
             queue: captureQueue,
             handler: { [weak self] status, _, frameSurface, _ in
                 guard let self else { return }
-                autoreleasepool {
-                    let disposition = self.fallbackLifecycle.disposition(
-                        status: status,
-                        generation: fallbackGeneration,
-                        hasSurface: frameSurface != nil
-                    )
-                    switch disposition {
-                    case .terminalFailure:
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self, !self.isStopping,
-                                  self.fallbackLifecycle.claimTerminal(
-                                    generation: fallbackGeneration
-                                  ) else { return }
-                            self.clearFramePacer()
-                            self.cgDisplayStream = nil
-                            self.stopFrameMonitor()
-                            switch FallbackStoppedPolicy.action(
-                                followsMainDisplay: self.followsMainDisplay,
-                                capturedDisplayID: self.virtualDisplayID,
-                                currentMainDisplayID: CGMainDisplayID()
-                            ) {
-                            case .rebuild(let replacementID):
-                                debugLog(
-                                    "Fallback display stopped; following replacement " +
-                                    "main display \(replacementID)"
-                                )
-                                self.virtualDisplayID = replacementID
-                                self.onDisplayIDChanged?(replacementID)
-                                if self.attemptFallbackCapture(stopSCStream: false) {
-                                    self.currentEncoder()?.requestKeyframe()
-                                    self.startFrameMonitor()
-                                } else {
-                                    self.restartStream()
+                self.asyncWorkGate.performIfCurrent(lifecycleToken) {
+                    autoreleasepool {
+                        let disposition = self.fallbackLifecycle.disposition(
+                            status: status,
+                            generation: fallbackGeneration,
+                            hasSurface: frameSurface != nil
+                        )
+                        switch disposition {
+                        case .terminalFailure:
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self, !self.isStopping else { return }
+                                guard self.asyncWorkGate.invalidateIfCurrent(lifecycleToken, {
+                                    guard self.fallbackLifecycle.claimTerminal(
+                                        generation: fallbackGeneration
+                                    ) else { return false }
+                                    self.clearFramePacerState()
+                                    self.cgDisplayStream = nil
+                                    self.stopFrameMonitor()
+                                    return true
+                                })?.value == true else { return }
+                                switch FallbackStoppedPolicy.action(
+                                    followsMainDisplay: self.followsMainDisplay,
+                                    capturedDisplayID: self.virtualDisplayID,
+                                    currentMainDisplayID: CGMainDisplayID()
+                                ) {
+                                case .rebuild(let replacementID):
+                                    debugLog(
+                                        "Fallback display stopped; following replacement " +
+                                        "main display \(replacementID)"
+                                    )
+                                    self.virtualDisplayID = replacementID
+                                    self.onDisplayIDChanged?(replacementID)
+                                    if self.attemptFallbackCapture(stopSCStream: false) {
+                                        self.currentEncoder()?.requestKeyframe()
+                                        self.startFrameMonitor()
+                                    } else {
+                                        self.restartStream()
+                                    }
+                                case .terminalFailure:
+                                    self.reportTerminalCaptureFailure()
                                 }
-                            case .terminalFailure:
-                                self.reportTerminalCaptureFailure()
                             }
+                            return
+                        case .clearFrame:
+                            self.latestPixelBuffer.clear()
+                            return
+                        case .ignore:
+                            return
+                        case .consume:
+                            break
                         }
-                        return
-                    case .clearFrame:
-                        self.latestPixelBuffer.clear()
-                        return
-                    case .ignore:
-                        return
-                    case .consume:
-                        break
+                        guard let surface = frameSurface else { return }
+                        self.recordSourceFrame(at: DispatchTime.now(), label: "CGDisplayStream")
+
+                        var unmanagedPB: Unmanaged<CVPixelBuffer>?
+                        let attrs: [String: Any] = [
+                            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]
+                        ]
+                        let cvReturn = CVPixelBufferCreateWithIOSurface(
+                            kCFAllocatorDefault,
+                            surface,
+                            attrs as CFDictionary,
+                            &unmanagedPB
+                        )
+
+                        guard cvReturn == kCVReturnSuccess, let pb = unmanagedPB?.takeRetainedValue() else { return }
+                        self.latestPixelBuffer.store(pb)
                     }
-                    guard let surface = frameSurface else { return }
-                    self.recordSourceFrame(at: DispatchTime.now(), label: "CGDisplayStream")
-
-                    var unmanagedPB: Unmanaged<CVPixelBuffer>?
-                    let attrs: [String: Any] = [
-                        kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]
-                    ]
-                    let cvReturn = CVPixelBufferCreateWithIOSurface(
-                        kCFAllocatorDefault,
-                        surface,
-                        attrs as CFDictionary,
-                        &unmanagedPB
-                    )
-
-                    guard cvReturn == kCVReturnSuccess, let pb = unmanagedPB?.takeRetainedValue() else { return }
-                    self.latestPixelBuffer.store(pb)
                 }
             }
         ) else {
@@ -1687,6 +1745,12 @@ class ScreenCapture {
     }
 
     private func clearFramePacer() {
+        asyncWorkGate.invalidate {
+            clearFramePacerState()
+        }
+    }
+
+    private func clearFramePacerState() {
         let timer = framePacerLock.withLock { state -> DispatchSourceTimer? in
             let timer = state.timer
             state.timer = nil
@@ -1699,16 +1763,19 @@ class ScreenCapture {
     }
 
     private func replaceFramePacerQueue(_ queue: DispatchQueue) -> UInt64 {
-        let result = framePacerLock.withLock { state -> (generation: UInt64, timer: DispatchSourceTimer?) in
-            let timer = state.timer
-            state.timer = nil
-            state.encodeQueue = queue
-            state.generation &+= 1
-            return (state.generation, timer)
+        let replacement = asyncWorkGate.invalidate {
+            let result = framePacerLock.withLock { state -> (generation: UInt64, timer: DispatchSourceTimer?) in
+                let timer = state.timer
+                state.timer = nil
+                state.encodeQueue = queue
+                state.generation &+= 1
+                return (state.generation, timer)
+            }
+            result.timer?.cancel()
+            latestPixelBuffer.clear()
+            return result.generation
         }
-        result.timer?.cancel()
-        latestPixelBuffer.clear()
-        return result.generation
+        return replacement.value
     }
 
     private func currentEncodeQueue() -> DispatchQueue? {
@@ -1912,19 +1979,22 @@ class ScreenCapture {
             repeating: .nanoseconds(frameIntervalNs),
             leeway: .microseconds(100)
         )
+        let lifecycleToken = asyncWorkGate.currentToken
         pacingTimer.setEventHandler { [weak self] in
             guard let self else { return }
-            autoreleasepool {
-                guard let pixelBuffer = self.latestPixelBuffer.latest()?.value else {
-                    return
+            self.asyncWorkGate.performIfCurrent(lifecycleToken) {
+                autoreleasepool {
+                    guard let pixelBuffer = self.latestPixelBuffer.latest()?.value else {
+                        return
+                    }
+                    let pts = CMClockGetTime(CMClockGetHostTimeClock())
+                    guard let encoder = self.currentEncoder() else { return }
+                    encoder.encode(
+                        pixelBuffer: pixelBuffer,
+                        presentationTimeStamp: pts,
+                        sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
+                    )
                 }
-                let pts = CMClockGetTime(CMClockGetHostTimeClock())
-                guard let encoder = self.currentEncoder() else { return }
-                encoder.encode(
-                    pixelBuffer: pixelBuffer,
-                    presentationTimeStamp: pts,
-                    sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
-                )
             }
         }
         let install = framePacerLock.withLock { state -> (installed: Bool, previous: DispatchSourceTimer?) in
@@ -2043,7 +2113,7 @@ class ScreenCapture {
         }
         restartAttempted = false
         isRestarting = false
-        isHealthCheckRunning = false
+        encodedOutputMarkerLock.withLock { $0.emittedSessionEpochs.removeAll() }
         clearFramePacer()
         currentFrameSink = nil
     }
