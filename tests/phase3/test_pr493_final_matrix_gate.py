@@ -304,6 +304,65 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         self.assertNotIn("serial-1", transcript)
         self.assertNotIn("ro.product.manufacturer=nubia", transcript)
 
+    def test_redact_normalizes_local_adb_binary_paths(self) -> None:
+        raw = "command=/Users/example/Library/Android/sdk/platform-tools/adb -s serial-1 reverse --list\n"
+
+        self.assertEqual(
+            collector.redact(raw, "serial-1"),
+            "command=adb -s <redacted-adb-serial> reverse --list\n",
+        )
+
+    def test_final_cleanup_preserves_original_failure(self) -> None:
+        original_restore = collector.restore_device
+        original_force_stop = collector.force_stop_apps
+        original_assert_stopped = collector.assert_packages_stopped
+        calls: list[str] = []
+
+        def failing_restore(serial: str) -> None:
+            calls.append(f"restore:{serial}")
+            raise RuntimeError("cleanup failed")
+
+        try:
+            collector.restore_device = failing_restore
+            collector.force_stop_apps = lambda serial: calls.append(f"force-stop:{serial}")
+            collector.assert_packages_stopped = lambda serial: calls.append(f"pidof:{serial}")
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                log_file = Path(tmp_dir) / "run.log"
+
+                collector.run_final_cleanup("serial-1", log_file, original_failure=RuntimeError("primary failed"))
+
+                self.assertEqual(calls, ["restore:serial-1"])
+                self.assertIn("cleanup failed: cleanup failed", log_file.read_text(encoding="utf-8"))
+        finally:
+            collector.restore_device = original_restore
+            collector.force_stop_apps = original_force_stop
+            collector.assert_packages_stopped = original_assert_stopped
+
+    def test_final_cleanup_raises_cleanup_failure_without_original_failure(self) -> None:
+        original_restore = collector.restore_device
+        original_force_stop = collector.force_stop_apps
+        original_assert_stopped = collector.assert_packages_stopped
+
+        def failing_restore(serial: str) -> None:
+            del serial
+            raise RuntimeError("cleanup failed")
+
+        try:
+            collector.restore_device = failing_restore
+            collector.force_stop_apps = lambda serial: None
+            collector.assert_packages_stopped = lambda serial: None
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                log_file = Path(tmp_dir) / "run.log"
+
+                with self.assertRaisesRegex(RuntimeError, "cleanup failed"):
+                    collector.run_final_cleanup("serial-1", log_file)
+
+                self.assertIn("cleanup failed: cleanup failed", log_file.read_text(encoding="utf-8"))
+        finally:
+            collector.restore_device = original_restore
+            collector.force_stop_apps = original_force_stop
+            collector.assert_packages_stopped = original_assert_stopped
+
     def test_strict_boolean_gates_reject_truthy_non_bool_values(self) -> None:
         summary = valid_summary()
         summary["instrumentation_p0110_landscape_large_text"] = 1

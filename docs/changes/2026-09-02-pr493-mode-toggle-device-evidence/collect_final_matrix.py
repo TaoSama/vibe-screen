@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -31,6 +32,7 @@ EXPECTED_APK_SHA256 = "076333b301475dfe3d949eab3c80f626053f3b68e95e500c4a8911ad6
 EXPECTED_ANDROID_TEST_APK_SHA256 = "0f2c36d433dc855f3b8b1407ba984887894f90025954963eded29d8aa66536b9"
 REMOTE_PREFIX = "/sdcard/vibe_pr493_076333b"
 TEXT_SUFFIXES = {".json", ".log", ".md", ".txt", ".xml"}
+LOCAL_ADB_BINARY_PATTERN = re.compile(r"(^|[=\s])/\S*/(?:Library/Android/sdk|Android/Sdk)/platform-tools/adb")
 XML_DUMP_ATTEMPTS_PER_MODE = 2
 XML_DUMP_RETRY_DELAY_SECONDS = 1
 EXPECTED_XML_SEMANTIC_EVIDENCE_SCOPE = "semantic_minimum_only_not_stable_state"
@@ -95,7 +97,8 @@ def adb_text(serial, *args, description=None):
 
 
 def redact(text, serial):
-    return text.replace(serial, "<redacted-adb-serial>")
+    redacted = text.replace(serial, "<redacted-adb-serial>")
+    return LOCAL_ADB_BINARY_PATTERN.sub(r"\1adb", redacted)
 
 
 def write_text(path, text, serial):
@@ -201,7 +204,7 @@ def state_matches(state, expected_rotation, expected_font, expected_night, *, re
         f"font_scale: {expected_font}" in state,
         f"Night mode: Night mode: {expected_night}" in state,
         f"user_rotation: {expected_rotation}" in state,
-        f"accelerometer_rotation: 0" in state,
+        "accelerometer_rotation: 0" in state,
         expected_display_rotation in state,
         expected_orientation in state,
         "Override size" not in state,
@@ -834,6 +837,17 @@ def write_summary(out_dir, serial, summary):
     write_text(out_dir / "metadata" / "final-validation-summary.txt", "\n".join(lines) + "\n", serial)
 
 
+def run_final_cleanup(serial, log_file, *, original_failure=None):
+    try:
+        restore_device(serial)
+        force_stop_apps(serial)
+        assert_packages_stopped(serial)
+    except BaseException as cleanup_failure:
+        log(log_file, f"cleanup failed: {cleanup_failure}")
+        if original_failure is None:
+            raise
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", required=True)
@@ -858,6 +872,7 @@ def main():
     metadata = out_dir / "metadata"
 
     serial = args.serial
+    original_failure = None
     try:
         log(log_file, "adb devices")
         write_text(metadata / "adb-devices.txt", adb_text(serial, "devices", description="adb devices"), serial)
@@ -922,10 +937,11 @@ def main():
             for error in gate_errors:
                 log(log_file, f"validation gate failed: {error}")
             raise SystemExit(1)
+    except BaseException as failure:
+        original_failure = failure
+        raise
     finally:
-        restore_device(serial)
-        force_stop_apps(serial)
-        assert_packages_stopped(serial)
+        run_final_cleanup(serial, log_file, original_failure=original_failure)
 
 
 if __name__ == "__main__":
