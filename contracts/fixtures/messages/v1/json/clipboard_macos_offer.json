@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "messageId": "34",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000034",
+  "clipboardOffer": {
+    "changeId": "EBESExQVFhcYGRobHB0eHw==",
+    "originDeviceId": "macos-golden",
+    "mimeType": "text/plain",
+    "byteLength": "29",
+    "sha256": "e66jh04wjdVg0sCFEciYCpnSUad9erxmos88+/O2T2A="
+  }
+}

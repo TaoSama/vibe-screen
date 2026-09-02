@@ -1,0 +1,11 @@
+{
+  "protocolVersion": 1,
+  "messageId": "35",
+  "correlationId": "34",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000035",
+  "clipboardRequest": {
+    "changeId": "EBESExQVFhcYGRobHB0eHw=="
+  }
+}
