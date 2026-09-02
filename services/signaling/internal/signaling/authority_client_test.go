@@ -551,7 +551,7 @@ func testUnsignedAndroidLease(t *testing.T, profile *SessionProfileRequest, admi
 		"device_identity_epoch":      profile.ClientIdentity.KeyEpoch,
 		"expires_at":                 uint64(admission.ExpiresAt.Unix()),
 		"transcript_context":         profile.TranscriptContext,
-		"protocol_session_id":        profile.ProtocolSessionID,
+		"protocol_session_id":        base64.StdEncoding.EncodeToString([]byte(admission.SessionID)),
 		"signaling_token":            admission.ClientToken,
 		"ice_servers":                []any{map[string]any{"urls": []string{"stun:stun.example.test"}, "username": nil, "credential": nil}},
 		"allow_insecure_for_testing": profile.AllowInsecureForTesting,

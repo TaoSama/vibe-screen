@@ -1598,7 +1598,11 @@ func TestSessionProfileIssuanceCreatesSignalingAndUnsignedLease(t *testing.T) {
 	if err := json.Unmarshal(response.UnsignedAndroidLease, &lease); err != nil {
 		t.Fatal(err)
 	}
-	if lease["session_epoch"] != float64(11) || lease["signaling_session_id"] != response.SignalingSessionID || lease["signaling_token"] == "" || lease["expires_at"] != float64(response.ExpiresAt.Unix()) {
+	if lease["session_epoch"] != float64(11) ||
+		lease["signaling_session_id"] != response.SignalingSessionID ||
+		lease["protocol_session_id"] != base64.StdEncoding.EncodeToString([]byte(response.SignalingSessionID)) ||
+		lease["signaling_token"] == "" ||
+		lease["expires_at"] != float64(response.ExpiresAt.Unix()) {
 		t.Fatalf("unsigned lease did not bind authority session: %#v", lease)
 	}
 	if _, ok := lease["lease_signature"]; ok {
@@ -1728,7 +1732,10 @@ func TestSignalingAdmissionCanIssueBoundSessionProfile(t *testing.T) {
 	if err := json.Unmarshal(admission.SessionProfile.UnsignedAndroidLease, &lease); err != nil {
 		t.Fatal(err)
 	}
-	if lease["signaling_session_id"] != admission.SessionID || lease["signaling_token"] != admission.ClientToken || lease["session_epoch"] != float64(signaling.SessionEpoch) {
+	if lease["signaling_session_id"] != admission.SessionID ||
+		lease["protocol_session_id"] != base64.StdEncoding.EncodeToString([]byte(admission.SessionID)) ||
+		lease["signaling_token"] != admission.ClientToken ||
+		lease["session_epoch"] != float64(signaling.SessionEpoch) {
 		t.Fatalf("unsigned lease did not bind the signaling admission: %#v", lease)
 	}
 	if _, ok := lease["lease_signature"]; ok {

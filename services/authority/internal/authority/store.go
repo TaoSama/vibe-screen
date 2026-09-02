@@ -1011,6 +1011,7 @@ func sessionProfileResponse(request SessionProfileRequest, admission SignalingAd
 }
 
 func unsignedAndroidLease(request SessionProfileRequest, admission SignalingAdmission) (json.RawMessage, error) {
+	protocolSessionID := base64.StdEncoding.EncodeToString([]byte(admission.SessionID))
 	root := map[string]any{
 		"version":                    1,
 		"pairing_id":                 request.PairingID,
@@ -1024,7 +1025,7 @@ func unsignedAndroidLease(request SessionProfileRequest, admission SignalingAdmi
 		"device_identity_epoch":      request.ClientIdentity.KeyEpoch,
 		"expires_at":                 uint64(admission.ExpiresAt.Unix()),
 		"transcript_context":         request.TranscriptContext,
-		"protocol_session_id":        request.ProtocolSessionID,
+		"protocol_session_id":        protocolSessionID,
 		"signaling_token":            admission.ClientToken,
 		"ice_servers":                request.ICEServers,
 		"allow_insecure_for_testing": request.AllowInsecureForTesting,

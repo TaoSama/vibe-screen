@@ -15,6 +15,13 @@ enum InternetSessionLeaseIssuerError: Error, LocalizedError {
     }
 }
 
+protocol InternetSessionLeaseSigningIdentity {
+    var publicIdentity: PlatformPublicIdentity { get }
+    func signTranscriptDigest(_ digest: Data) throws -> Data
+}
+
+extension KeychainDeviceIdentity: InternetSessionLeaseSigningIdentity {}
+
 struct InternetSessionLeaseICE: Equatable {
     let urls: [String]
     let username: String?
@@ -350,23 +357,25 @@ enum InternetSessionLeaseCodec {
 
 enum InternetSessionLeaseIssuer {
     typealias StateStoreFactory = (String) -> any SecurityStateStore
+    typealias SigningIdentityLoader = (PairedHostIdentityBinding) throws -> any InternetSessionLeaseSigningIdentity
+
+    static let maximumAuthorityExpiryWindow: TimeInterval = 900
 
     static func issue(
         unsignedJSON: Data,
         now: () -> Date = Date.init,
-        validFor lifetime: TimeInterval = 300,
         identityStore: KeychainDeviceIdentityStore = KeychainDeviceIdentityStore(),
         secretStore: any InternetPairingSecretStore = KeychainSecretStore(),
         stateStoreFactory: StateStoreFactory = {
             KeychainSecurityStateStore(peerID: "lease-authority.\($0)")
-        }
+        },
+        signingIdentityLoader: SigningIdentityLoader? = nil
     ) throws -> Data {
-        guard lifetime > 0, lifetime <= 600 else {
-            throw InternetSessionLeaseIssuerError.invalidInput(
-                "Internet lease lifetime must be between 1 and 600 seconds."
-            )
-        }
         let requested = try InternetSessionLeaseCodec.decodeUnsigned(unsignedJSON)
+        try validateAuthorityExpiry(
+            requested.expiresAtUnixSeconds,
+            now: now()
+        )
         let stateStore = stateStoreFactory(requested.pairingIdentifier)
         let lifecycle = SecurityLifecycle(store: stateStore)
         try lifecycle.requirePairingBinding(requested.pairingIdentifier)
@@ -403,20 +412,19 @@ enum InternetSessionLeaseIssuer {
                 "The session lease device identity epoch does not match the paired device. Pair again."
             )
         }
-        let identity = try identityStore.loadVerifiedExisting(binding: identityBinding)
+        let identity: any InternetSessionLeaseSigningIdentity
+        if let signingIdentityLoader {
+            identity = try signingIdentityLoader(identityBinding)
+        } else {
+            identity = try identityStore.loadVerifiedExisting(binding: identityBinding)
+        }
+        try identityBinding.verify(existing: identity.publicIdentity)
         let epoch = try lifecycle.reserveSessionEpoch(
             requested.authoritativeSessionEpoch
         )
-        let nowSeconds = now().timeIntervalSince1970
-        guard nowSeconds >= 0,
-              nowSeconds + lifetime < TimeInterval(UInt64(Int64.max)) else {
-            throw InternetSessionLeaseIssuerError.invalidInput(
-                "Internet lease expiry is outside the supported range."
-            )
-        }
         let payload = requested.authorizing(
             epoch: epoch,
-            expiresAtUnixSeconds: UInt64(nowSeconds + lifetime)
+            expiresAtUnixSeconds: requested.expiresAtUnixSeconds
         )
         let digest = InternetSessionLeaseCodec.digest(
             payload,
@@ -428,6 +436,26 @@ enum InternetSessionLeaseIssuer {
             leaseHostKeyID: identity.publicIdentity.keyID,
             signature: signature
         )
+    }
+
+    static func validateAuthorityExpiry(
+        _ expiresAtUnixSeconds: UInt64,
+        now: Date
+    ) throws {
+        let nowSeconds = now.timeIntervalSince1970
+        guard nowSeconds.isFinite, nowSeconds >= 0,
+              expiresAtUnixSeconds < UInt64(Int64.max) else {
+            throw InternetSessionLeaseIssuerError.invalidInput(
+                "Internet lease expiry is outside the supported range."
+            )
+        }
+        let expiresAt = TimeInterval(expiresAtUnixSeconds)
+        guard expiresAt > nowSeconds,
+              expiresAt <= nowSeconds + maximumAuthorityExpiryWindow else {
+            throw InternetSessionLeaseIssuerError.invalidInput(
+                "Internet lease expiry must be in the future and within 900 seconds."
+            )
+        }
     }
 }
 
@@ -454,6 +482,7 @@ enum InternetSessionLeaseSelfTest {
             let peerPublicKey = peerKey.publicKey.x963Representation
             let peerKeyID = Data(SHA256.hash(data: peerPublicKey)).hex
             let leaseJSON = fixtureJSON(peerKeyID: peerKeyID)
+            let selfTestNow = Date(timeIntervalSince1970: 4_102_443_900)
             let fixture = try InternetSessionLeaseCodec.decodeUnsigned(
                 Data(leaseJSON.utf8)
             )
@@ -512,6 +541,7 @@ enum InternetSessionLeaseSelfTest {
             }
             let signedJSON = try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: Data(leaseJSON.utf8),
+                now: { selfTestNow },
                 identityStore: keychainStore,
                 secretStore: bindingStore,
                 stateStoreFactory: leaseStateStoreFactory
@@ -547,6 +577,7 @@ enum InternetSessionLeaseSelfTest {
             )
             let restarted = try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: Data(highCallerJSON.utf8),
+                now: { selfTestNow },
                 identityStore: keychainStore,
                 secretStore: bindingStore,
                 stateStoreFactory: leaseStateStoreFactory
@@ -560,6 +591,7 @@ enum InternetSessionLeaseSelfTest {
                 )
                 let issued = try InternetSessionLeaseIssuer.issue(
                     unsignedJSON: Data(nextJSON.utf8),
+                    now: { selfTestNow },
                     identityStore: keychainStore,
                     secretStore: bindingStore,
                     stateStoreFactory: leaseStateStoreFactory
@@ -569,6 +601,7 @@ enum InternetSessionLeaseSelfTest {
             do {
                 _ = try InternetSessionLeaseIssuer.issue(
                     unsignedJSON: Data(leaseJSON.utf8),
+                    now: { selfTestNow },
                     identityStore: keychainStore,
                     secretStore: bindingStore,
                     stateStoreFactory: leaseStateStoreFactory
@@ -581,6 +614,7 @@ enum InternetSessionLeaseSelfTest {
             do {
                 _ = try InternetSessionLeaseIssuer.issue(
                     unsignedJSON: Data(leaseJSON.utf8),
+                    now: { selfTestNow },
                     identityStore: keychainStore,
                     secretStore: unreadCredentials,
                     stateStoreFactory: { _ in missingDurableState }
@@ -595,6 +629,7 @@ enum InternetSessionLeaseSelfTest {
             do {
                 _ = try InternetSessionLeaseIssuer.issue(
                     unsignedJSON: Data(leaseJSON.utf8),
+                    now: { selfTestNow },
                     identityStore: keychainStore,
                     secretStore: SelfTestLeaseSecretStore(),
                     stateStoreFactory: { _ in missingBindingState }
@@ -622,6 +657,7 @@ enum InternetSessionLeaseSelfTest {
             do {
                 _ = try InternetSessionLeaseIssuer.issue(
                     unsignedJSON: Data(leaseJSON.utf8),
+                    now: { selfTestNow },
                     identityStore: keychainStore,
                     secretStore: mismatchedBindingStore,
                     stateStoreFactory: { _ in mismatchState }
@@ -649,6 +685,7 @@ enum InternetSessionLeaseSelfTest {
             do {
                 _ = try InternetSessionLeaseIssuer.issue(
                     unsignedJSON: Data(leaseJSON.utf8),
+                    now: { selfTestNow },
                     identityStore: missingAliasStore,
                     secretStore: missingAliasBindingStore,
                     stateStoreFactory: { _ in missingAliasState }
@@ -663,6 +700,7 @@ enum InternetSessionLeaseSelfTest {
             )
             let otherPairingLease = try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: Data(otherPairingJSON.utf8),
+                now: { selfTestNow },
                 identityStore: keychainStore,
                 secretStore: bindingStore,
                 stateStoreFactory: leaseStateStoreFactory

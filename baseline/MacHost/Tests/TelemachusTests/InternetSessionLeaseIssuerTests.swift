@@ -213,20 +213,15 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         XCTAssertEqual(payload.leaseDeviceKeyID, keyID)
     }
 
-    func testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt() throws {
-        let service = "dev.vibescreen.lease-expiry-tests.\(UUID().uuidString)"
-        let identityStore = KeychainDeviceIdentityStore(service: service)
-        let identity = try identityStore.createIfMissing(deviceID: "lease-host")
+    func testUnsignedLeasePreservesAuthorityExpiryWithinWindow() throws {
+        let signingIdentity = LeaseTestSigningIdentity(deviceID: "lease-host")
         let secretStore = LeaseMemorySecretStore()
         let stateStore = LeaseMemoryStateStore()
         try persistBinding(
-            identity.publicIdentity,
+            signingIdentity.publicIdentity,
             pairingIdentifier: "pairing-authority-test",
             store: secretStore
         )
-        addTeardownBlock {
-            try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
-        }
 
         XCTAssertThrowsError(
             try InternetSessionLeaseCodec.decodeUnsigned(
@@ -240,16 +235,77 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         )
 
         let signed = try InternetSessionLeaseIssuer.issue(
-            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 4_102_444_800),
+            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 2_000_000_600),
             now: { Date(timeIntervalSince1970: 2_000_000_000) },
-            validFor: 120,
-            identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            signingIdentityLoader: { binding in
+                XCTAssertEqual(binding.deviceID, signingIdentity.publicIdentity.deviceID)
+                return signingIdentity
+            }
         )
-        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
-        XCTAssertEqual((root["session_epoch"] as? NSNumber)?.uint64Value, 99)
-        XCTAssertEqual((root["expires_at"] as? NSNumber)?.uint64Value, 2_000_000_120)
+        XCTAssertEqual(try issuedEpoch(signed), 99)
+        XCTAssertEqual(try issuedExpiry(signed), 2_000_000_600)
+    }
+
+    func testUnsignedLeaseAcceptsExactlyMaximumAuthorityExpiryWindow() throws {
+        let signingIdentity = LeaseTestSigningIdentity(deviceID: "lease-host")
+        let secretStore = LeaseMemorySecretStore()
+        let stateStore = LeaseMemoryStateStore()
+        try persistBinding(
+            signingIdentity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+
+        let signed = try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 2_000_000_900),
+            now: { Date(timeIntervalSince1970: 2_000_000_000) },
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore },
+            signingIdentityLoader: { _ in signingIdentity }
+        )
+        XCTAssertEqual(try issuedExpiry(signed), 2_000_000_900)
+    }
+
+    func testUnsignedLeaseRejectsExpiredAuthorityExpiry() throws {
+        let signingIdentity = LeaseTestSigningIdentity(deviceID: "lease-host")
+        let secretStore = LeaseMemorySecretStore()
+        let stateStore = LeaseMemoryStateStore()
+        try persistBinding(
+            signingIdentity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+
+        XCTAssertThrowsError(try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 2_000_000_000),
+            now: { Date(timeIntervalSince1970: 2_000_000_000) },
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore },
+            signingIdentityLoader: { _ in signingIdentity }
+        ))
+        XCTAssertEqual(stateStore.state.sessionEpoch, 0)
+    }
+
+    func testUnsignedLeaseRejectsAuthorityExpiryBeyondMaximumWindow() throws {
+        let signingIdentity = LeaseTestSigningIdentity(deviceID: "lease-host")
+        let secretStore = LeaseMemorySecretStore()
+        let stateStore = LeaseMemoryStateStore()
+        try persistBinding(
+            signingIdentity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+
+        XCTAssertThrowsError(try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 2_000_000_901),
+            now: { Date(timeIntervalSince1970: 2_000_000_000) },
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore },
+            signingIdentityLoader: { _ in signingIdentity }
+        ))
+        XCTAssertEqual(stateStore.state.sessionEpoch, 0)
     }
 
     func testAuthoritySignsCallerEpochAndRejectsStaleEpochAcrossRestart() throws {
@@ -489,23 +545,28 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             String(format: "%02x", $0)
         }.joined()
         let hostIdentity = testIdentity(deviceID: "lease-host", key: hostKey, keyEpoch: 1)
-        let unsigned = try unsignedLease(epoch: 100)
+        let expiresAt = UInt64(Date().timeIntervalSince1970) + 600
+        let unsigned = try unsignedLease(epoch: 100, expiresAt: expiresAt)
         let unsignedObject = try XCTUnwrap(
             JSONSerialization.jsonObject(with: unsigned) as? [String: Any]
         )
+        var leaseObject = unsignedObject
+        leaseObject["protocol_session_id"] = Data("session-authority-test".utf8)
+            .base64EncodedString()
+        let expiresAtText = try iso8601String(fromUnixSeconds: expiresAt)
         let response = try JSONSerialization.data(withJSONObject: [
             "session_id": "session-authority-test",
             "host_token": String(repeating: "h", count: 32),
             "device_token": String(repeating: "t", count: 32),
-            "expires_at": "2100-01-01T00:00:00Z",
+            "expires_at": expiresAtText,
             "session_profile": [
                 "account_id": "acct-1",
                 "pairing_id": "pairing-authority-test",
                 "signaling_session_id": "session-authority-test",
                 "host_signaling_token": String(repeating: "h", count: 32),
-                "expires_at": "2100-01-01T00:00:00Z",
+                "expires_at": expiresAtText,
                 "created": true,
-                "unsigned_android_lease": unsignedObject
+                "unsigned_android_lease": leaseObject
             ]
         ], options: [.sortedKeys])
 
@@ -528,6 +589,53 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
         XCTAssertEqual((root["session_epoch"] as? NSNumber)?.uint64Value, 100)
         XCTAssertEqual(root["lease_host_key_id"] as? String, hostKeyID)
+    }
+
+    func testSessionLeaseDeliveryAcceptsFractionalSecondSignalingExpiry() throws {
+        let hostIdentity = testIdentity(
+            deviceID: "lease-host",
+            key: P256.Signing.PrivateKey(),
+            keyEpoch: 1
+        )
+        let expiresAt = UInt64(Date().timeIntervalSince1970) + 600
+        let unsigned = try unsignedLease(epoch: 100, expiresAt: expiresAt)
+        let unsignedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: unsigned) as? [String: Any]
+        )
+        var leaseObject = unsignedObject
+        leaseObject["protocol_session_id"] = Data("session-authority-test".utf8)
+            .base64EncodedString()
+        let expiresAtText = try iso8601String(fromUnixSeconds: expiresAt)
+            .replacingOccurrences(of: "Z", with: ".123Z")
+        let response = try JSONSerialization.data(withJSONObject: [
+            "session_id": "session-authority-test",
+            "host_token": String(repeating: "h", count: 32),
+            "device_token": String(repeating: "t", count: 32),
+            "expires_at": expiresAtText,
+            "session_profile": [
+                "account_id": "acct-1",
+                "pairing_id": "pairing-authority-test",
+                "signaling_session_id": "session-authority-test",
+                "host_signaling_token": String(repeating: "h", count: 32),
+                "expires_at": expiresAtText,
+                "created": true,
+                "unsigned_android_lease": leaseObject
+            ]
+        ], options: [.sortedKeys])
+
+        let request = sessionProfileRequest(
+            hostIdentity: hostIdentity,
+            clientIdentity: deviceIdentity,
+            sessionEpoch: 100
+        )
+        let extracted = try InternetSessionLeaseDelivery.unsignedAndroidLease(
+            fromSignalingSessionResponse: response,
+            matching: request
+        )
+        XCTAssertEqual(extracted, try JSONSerialization.data(
+            withJSONObject: leaseObject,
+            options: [.sortedKeys]
+        ))
     }
 
     func testSessionLeaseDeliveryRejectsProfileResponseDriftBeforeSigning() throws {
@@ -700,7 +808,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         epoch: UInt64,
         pairingIdentifier: String = "pairing-authority-test",
         pinnedHostID: String = "lease-host",
-        expiresAt: UInt64? = 4_102_444_800
+        expiresAt: UInt64? = UInt64(Date().timeIntervalSince1970) + 600
     ) throws -> Data {
         var root: [String: Any] = [
             "version": 1,
@@ -760,24 +868,35 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         sessionEpoch _: UInt64,
         deviceToken: String = String(repeating: "t", count: 32)
     ) throws -> Data {
+        var leaseObject = unsignedLeaseObject
+        leaseObject["protocol_session_id"] = Data("session-authority-test".utf8)
+            .base64EncodedString()
+        let expiresAt = (unsignedLeaseObject["expires_at"] as? NSNumber)?.uint64Value
+            ?? UInt64(Date().timeIntervalSince1970) + 600
+        let expiresAtText = try iso8601String(fromUnixSeconds: expiresAt)
         try JSONSerialization.data(withJSONObject: [
             "session_id": "session-authority-test",
             "host_token": String(repeating: "h", count: 32),
             "device_token": deviceToken,
-            "expires_at": "2100-01-01T00:00:00Z",
+            "expires_at": expiresAtText,
             "session_profile": [
                 "account_id": "acct-1",
                 "pairing_id": "pairing-authority-test",
                 "signaling_session_id": "session-authority-test",
                 "host_signaling_token": String(repeating: "h", count: 32),
-                "expires_at": "2100-01-01T00:00:00Z",
+                "expires_at": expiresAtText,
                 "created": true,
-                "unsigned_android_lease": unsignedLeaseObject
+                "unsigned_android_lease": leaseObject
             ]
         ], options: [.sortedKeys])
     }
 
-    private static func rawDigestSignature(
+    private func iso8601String(fromUnixSeconds seconds: UInt64) throws -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(seconds))
+        return ISO8601DateFormatter().string(from: date)
+    }
+
+    fileprivate static func rawDigestSignature(
         privateKey: P256.Signing.PrivateKey,
         digest: Data
     ) throws -> Data {
@@ -894,6 +1013,11 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         return try XCTUnwrap((root["session_epoch"] as? NSNumber)?.uint64Value)
     }
 
+    private func issuedExpiry(_ signed: Data) throws -> UInt64 {
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
+        return try XCTUnwrap((root["expires_at"] as? NSNumber)?.uint64Value)
+    }
+
     private func persistBinding(
         _ identity: PlatformPublicIdentity,
         pairingIdentifier: String,
@@ -910,6 +1034,30 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                 pairingIdentifier: pairingIdentifier
             ),
             secret: PairedPeerIdentityBinding.encode(deviceIdentity)
+        )
+    }
+}
+
+private final class LeaseTestSigningIdentity: InternetSessionLeaseSigningIdentity {
+    private let signingKey = P256.Signing.PrivateKey()
+    let publicIdentity: PlatformPublicIdentity
+
+    init(deviceID: String) {
+        let publicKey = signingKey.publicKey.x963Representation
+        publicIdentity = PlatformPublicIdentity(
+            deviceID: deviceID,
+            keyID: Data(SHA256.hash(data: publicKey)).map {
+                String(format: "%02x", $0)
+            }.joined(),
+            keyEpoch: PlatformPublicIdentity.initialKeyEpoch,
+            signingPublicKey: publicKey
+        )
+    }
+
+    func signTranscriptDigest(_ digest: Data) throws -> Data {
+        try InternetSessionLeaseIssuerTests.rawDigestSignature(
+            privateKey: signingKey,
+            digest: digest
         )
     }
 }

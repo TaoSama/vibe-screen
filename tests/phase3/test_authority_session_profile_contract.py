@@ -172,6 +172,8 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn('sameICEKeys(root["ice_servers"])', signaling_client)
         self.assertIn("lease.SignalingToken == admission.ClientToken", signaling_client)
         self.assertIn("lease.LeaseDeviceKeyID == request.SessionProfile.ClientIdentity.KeyID", signaling_client)
+        self.assertIn('base64.StdEncoding.EncodeToString([]byte(admission.SessionID))', signaling_client)
+        self.assertIn('"protocol_session_id":        protocolSessionID', store)
 
     def test_profile_issuance_records_digest_not_bearer_tokens(self) -> None:
         migration = read(AUTHORITY_MIGRATION)
@@ -184,6 +186,7 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
 
     def test_mac_authoritative_delivery_uses_local_lease_issuer_and_bulk_channel(self) -> None:
         delivery = read(MAC_LEASE_DELIVERY)
+        issuer_source = read(MAC_LEASE_ISSUER)
         app_delegate = read(MAC_APP_DELEGATE)
 
         signature_start = delivery.index("func createAuthoritativeLeaseDelivery")
@@ -210,9 +213,31 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         issuer = bracket_block(delivery, "private static func issueSignedLease", "{", "}")
         self.assertIn("InternetSessionLeaseIssuer.issue(unsignedJSON: unsignedLease)", issuer)
 
+        issue = section_between(
+            issuer_source,
+            "static func issue(",
+            "    static func validateAuthorityExpiry",
+        )
+        self.assertIn("maximumAuthorityExpiryWindow: TimeInterval = 900", issuer_source)
+        self.assertIn("validateAuthorityExpiry", issue)
+        self.assertIn("expiresAtUnixSeconds: requested.expiresAtUnixSeconds", issue)
+        self.assertNotIn("validFor lifetime", issue)
+        self.assertNotIn("nowSeconds + lifetime", issue)
+
         send = bracket_block(delivery, "static func send", "{", "}")
         self.assertIn("session.sendBulkRecord(result.payload, transferID: bulkTransferID)", send)
 
+        self.assertIn("internetAccountID", app_delegate)
+        self.assertIn("internetSignalingIssuerTokenName", app_delegate)
+        self.assertIn("InternetSessionLeaseProvisioner().createAuthoritativeLeaseDelivery", app_delegate)
+        self.assertIn("createInternetSessionLeaseDelivery(", app_delegate)
+        self.assertIn("makeInternetSessionProfileRequest", app_delegate)
+        self.assertIn("PairedDeviceSecretNames.persistedPairing", app_delegate)
+        self.assertIn("identityBinding.requireTarget", app_delegate)
+        self.assertIn("loadVerifiedExisting(binding: identityBinding)", app_delegate)
+        self.assertIn("sessionIdentifier: delivery.sessionID", app_delegate)
+        self.assertIn("bearerToken: delivery.hostSignalingToken", app_delegate)
+        self.assertIn("queueInternetSessionLeaseDelivery(\n            delivery", app_delegate)
         self.assertIn("pendingInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("queueInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("sendPendingInternetSessionLeaseDelivery", app_delegate)
@@ -220,6 +245,9 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", app_delegate)
         self.assertIn("serverLifecycle.ownsSession(sessionToken)", app_delegate)
         self.assertIn("internetProductSession === session", app_delegate)
+        queue = bracket_block(app_delegate, "private func queueInternetSessionLeaseDelivery", "{", "}")
+        self.assertIn("return true", queue)
+        self.assertNotIn("return pendingInternetSessionLeaseDelivery == nil", queue)
 
     def test_android_product_session_imports_authenticated_session_lease_bulk(self) -> None:
         receiver = read(ANDROID_LEASE_RECEIVER)

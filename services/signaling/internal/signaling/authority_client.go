@@ -3,6 +3,7 @@ package signaling
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -198,7 +199,7 @@ func validAuthoritySessionProfile(request authoritySignalingRequest, admission a
 		lease.DeviceIdentityEpoch == request.SessionProfile.ClientIdentity.KeyEpoch &&
 		lease.ExpiresAt == uint64(admission.ExpiresAt.Unix()) &&
 		lease.TranscriptContext == request.SessionProfile.TranscriptContext &&
-		lease.ProtocolSessionID == request.SessionProfile.ProtocolSessionID &&
+		lease.ProtocolSessionID == base64.StdEncoding.EncodeToString([]byte(admission.SessionID)) &&
 		lease.SignalingToken == admission.ClientToken &&
 		sameAuthorityICE(lease.ICEServers, request.SessionProfile.ICEServers) &&
 		lease.AllowInsecureTesting == request.SessionProfile.AllowInsecureForTesting

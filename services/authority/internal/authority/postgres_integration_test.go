@@ -220,7 +220,9 @@ func TestPostgresSignalingAdmissionSessionProfileReplayIsDurableAndExact(t *test
 	if err := json.Unmarshal(created.SessionProfile.UnsignedAndroidLease, &lease); err != nil {
 		t.Fatal(err)
 	}
-	if lease["signaling_session_id"] != created.SessionID || lease["signaling_token"] != created.ClientToken {
+	if lease["signaling_session_id"] != created.SessionID ||
+		lease["protocol_session_id"] != base64.StdEncoding.EncodeToString([]byte(created.SessionID)) ||
+		lease["signaling_token"] != created.ClientToken {
 		t.Fatalf("unsigned lease did not bind signaling admission: %#v", lease)
 	}
 

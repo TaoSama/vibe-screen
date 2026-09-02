@@ -417,7 +417,7 @@ enum InternetSessionLeaseDelivery {
               lease.deviceIdentityEpoch == request.sessionProfile.clientIdentity.keyEpoch,
               lease.expiresAtUnixSeconds == UInt64(expiresAtSeconds),
               lease.transcriptContext.base64EncodedString() == request.sessionProfile.transcriptContext,
-              lease.protocolSessionID.base64EncodedString() == request.sessionProfile.protocolSessionID,
+              lease.protocolSessionID == Data(response.sessionID.utf8),
               lease.iceServers == expectedICE,
               lease.allowInsecureForTesting == request.sessionProfile.allowInsecureForTesting else {
             throw InternetSessionLeaseDeliveryError.invalidDeliveryPayload(
@@ -438,10 +438,15 @@ private struct DecodedSignalingSessionResponse {
 }
 
 private enum InternetSessionLeaseDeliveryISO8601 {
-    private static let formatter = ISO8601DateFormatter()
-
     static func date(from text: String) -> Date? {
-        formatter.date(from: text)
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: text) {
+            return date
+        }
+        let secondFormatter = ISO8601DateFormatter()
+        secondFormatter.formatOptions = [.withInternetDateTime]
+        return secondFormatter.date(from: text)
     }
 }
 
