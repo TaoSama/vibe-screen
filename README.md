@@ -31,7 +31,7 @@ platform scaffolding under active development.
 | macOS host + Android client | Builds and runs from source |
 | macOS Host compatibility | Compatibility matrix gate is open. Apple silicon has local exercise, historical device evidence, and published blocked `macos-hardware-compatibility-gate` summaries for Mac16,8 current-base readiness, with the latest current-base refresh under [2026-08-31-macos-host-compatibility-current-base-codex-task-blocked](docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md); no passing row exists because stable signing/TCC, source-bound Host provenance, full macOS checks, and runtime stream/input/reconnect evidence are missing. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence before support claims |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
-| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 only reserves CODEC_AV1, the current Host does not advertise AV1, Android does not offer AV1 in product sessions, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
+| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 reserves CODEC_AV1 and the macOS/Android/iOS runtime-admission foundation is in place, but the current Host does not advertise AV1, Android does not offer AV1 in product sessions, iOS does not advertise AV1 decode capability, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
 | Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture. The 2026-08-30 Nubia P0110/pacific current-base refresh remains blocked because the installed Host is not a current-source stable-signed Microphone/TCC-ready bundle, no Host listener was observed, and retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`, `AudioTrack` write, or playback-confirmation evidence |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
@@ -164,10 +164,12 @@ boundaries:
 - ScreenCaptureKit captures a selected display, with a compatibility fallback
   where required.
 - VideoToolbox provides hardware HEVC and H.264 encoding. AV1 remains planned:
-  Protocol v1 reserves CODEC_AV1 for a future AV1-capable Host, but today the
-  Host has no AV1 encoder/packaging path, never advertises AV1, and offline
-  admission tests only verify fail-closed fallback to H.264/HEVC. No AV1
-  real-stream device acceptance is recorded.
+  Protocol v1 reserves CODEC_AV1 for a future AV1-capable Host, and runtime
+  capability/admission adapters now require platform support plus concrete
+  encode/decode implementation gates before AV1 can be advertised. Today the
+  Host still has no AV1 encoder/packaging path, never advertises AV1, and
+  offline admission tests only verify fail-closed fallback to H.264/HEVC. No
+  AV1 real-stream device acceptance is recorded.
 - CGEvent and Accessibility provide the macOS keyboard, pointer, touch-derived
   gesture, and stylus input adapters. Protocol v1 wires keyboard, native
   pointer/scroll, pen and eraser pressure/tilt, barrel buttons, hover/proximity

@@ -665,18 +665,18 @@ extension StreamViewModel {
         return limits
     }
 
-    static let sdrDecodeCapabilities: [VSVideoDecodeCapability] = {
-        [VSCodec.h264, .hevc].map { codec in
-            var capability = VSVideoDecodeCapability()
-            capability.codec = codec
-            capability.maximumWidth = 3_840
-            capability.maximumHeight = 2_160
-            capability.maximumFramesPerSecond = 120
-            capability.bitDepths = [8]
-            capability.transferFunctions = [.bt709, .srgb]
-            return capability
-        }
-    }()
+    private static let videoDecodeCapabilitySnapshot = VideoDecodeCapabilityProbe.probe()
+
+    static let sdrDecodeCapabilities: [VSVideoDecodeCapability] =
+        sdrDecodeCapabilities(for: videoDecodeCapabilitySnapshot)
+
+    static let advertisedVideoCodecs: [VSCodec] = videoDecodeCapabilitySnapshot.protocolCodecs
+
+    static func sdrDecodeCapabilities(
+        for snapshot: VideoDecodeCapabilitySnapshot
+    ) -> [VSVideoDecodeCapability] {
+        VideoConfigValidator.sdrDecodeCapabilities(for: snapshot)
+    }
 }
 
 private enum ProtocolClientError: Error, LocalizedError {

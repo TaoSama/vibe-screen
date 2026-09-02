@@ -613,6 +613,16 @@ func testBackpressureAndCodecParsing() throws {
     } catch VideoDecoderError.unsupportedCodec(.av1) {
         // Expected.
     }
+    let av1HardwareAndImplementation = VideoDecodeCapabilitySnapshot(
+        h264HardwareDecoderAvailable: true,
+        hevcHardwareDecoderAvailable: true,
+        av1HardwareDecoderAvailable: true,
+        av1DecoderImplementationAvailable: VideoDecodeImplementationSupport.hasDecodeImplementation(for: .av1)
+    )
+    try require(
+        !av1HardwareAndImplementation.av1StreamAdmissionAvailable,
+        "AV1 decode admission must stay closed until VideoDecoder implements AV1"
+    )
     try require(AnnexB.lengthPrefixedSample(from: accessUnit) == Data([
         0, 0, 0, 2, 0x67, 1,
         0, 0, 0, 2, 0x68, 2,
