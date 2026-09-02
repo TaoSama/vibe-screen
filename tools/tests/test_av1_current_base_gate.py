@@ -123,10 +123,8 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("StreamCodec.AV1 -> false", reliability)
         self.assertIn("MediaFormat.MIMETYPE_VIDEO_AV1 -> StreamCodec.AV1", codec_capabilities)
         self.assertIn("StreamCodec.AV1 -> null", codec_capabilities)
-        self.assertIn(
-            'ProductVideoCodec.AV1 -> return ProductVideoDecision.reject("av1_decoder_unavailable")',
-            main_activity,
-        )
+        self.assertIn('ProductVideoCodec.AV1 -> "av1_decoder_unavailable"', main_activity)
+        self.assertIn("unsupportedCodecReason = unsupportedCodecReason", main_activity)
         self.assertRegex(reliability, r"hasUsableAv1Decoder:[^=]+=[^)]*false")
         self.assertNotRegex(reliability, r"listOf\([^)]*StreamCodec\.AV1")
 
