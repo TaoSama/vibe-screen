@@ -1,0 +1,16 @@
+timestamp=2026-09-02T13:49:59+0800
+command=adb -s <redacted-adb-serial> shell wm size; wm density; settings get system font_scale; cmd uimode night; cmd window user-rotation; settings get system accelerometer_rotation; settings get system user_rotation
+--- wm size ---
+Physical size: 1264x2800
+--- wm density ---
+Physical density: 560
+--- font_scale ---
+1.0
+--- night ---
+Night mode: no
+--- user-rotation ---
+lock 0
+--- accelerometer_rotation ---
+0
+--- user_rotation ---
+0

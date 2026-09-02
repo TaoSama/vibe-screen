@@ -31,7 +31,7 @@ The final matrix contains eight Android-only captures from the installed APK. Al
 | Landscape, night, font scale 1.3 | `final-076333b-real-rotation-matrix/screenshots/phone-landscape-night-font13.png` | `final-076333b-real-rotation-matrix/metadata/phone-landscape-night-font13.state-after.txt` | unavailable |
 
 `final-076333b-real-rotation-matrix/metadata/validation.json` and `final-076333b-real-rotation-matrix/metadata/final-validation-summary.txt` record the 8/8 `png_ok=true` and `state_ok=true` result. The semantic XML coverage gate requires at least two `present` XML captures and specifically requires the two default portrait scenarios, `phone-portrait-day-font1` and `phone-portrait-night-font1`; this retained evidence satisfies that gate.
-The validation metadata was rebuilt offline from the existing screenshots, state files, XML files, install logs, instrumentation log, the recorded app APK SHA-256, and the locally computed androidTest APK SHA-256 after the collector script was hardened. No device recapture or ADB command was run for that metadata rebuild. Because the rebuild did not rerun live cleanup or persist new `pidof` output, `restored.packages_stopped` is retained in the schema as `false` rather than omitted or marked true.
+The validation metadata was rebuilt offline from the existing screenshots, state files, XML files, install logs, instrumentation log, the recorded app APK SHA-256, and the locally computed androidTest APK SHA-256 after the collector script was hardened. No device recapture or ADB command was run for that metadata rebuild. A later Android-only cleanup recheck then reverified `restored.packages_stopped=true` without launching Host, GUI, product binaries, or mutating adb reverse state.
 
 ## Guardrails
 
@@ -40,7 +40,9 @@ The validation metadata was rebuilt offline from the existing screenshots, state
 - `final-076333b-real-rotation-matrix/metadata/apk-sha256.txt` and `androidTest-apk-sha256.txt` record the app and instrumentation APK provenance.
 - The scenario state files record physical dimensions only; the final matrix has no `Override size` entries.
 - The final restore state is recorded at `final-076333b-real-rotation-matrix/metadata/final-restored.state-after.txt` and confirms `font_scale: 1.0`, `Night mode: Night mode: no`, `cmd window user-rotation: lock 0`, `accelerometer_rotation: 0`, `user_rotation: 0`, and `mDisplayRotation=ROTATION_0`.
-- Post-restore package stop is `false` in the offline metadata rebuild because the original evidence did not persist `pidof` output. The current collector script runs `assert_packages_stopped` after `force-stop` for future live captures and records `restored.packages_stopped=true` only when that runtime assertion succeeds. This keeps generic `all(restored.values())` checks fail-closed for the offline rebuild.
+- Post-restore package stop was not reverified in the original offline metadata rebuild because that retained run did not persist `pidof` output. The Android-only cleanup recheck in `20260902-continued-cleanup.pidof-after-force-stop.txt` now records empty `pidof` output for `dev.telemachus.display` and `dev.telemachus.display.test` after force-stop, so `restored.packages_stopped=true` is backed by retained runtime evidence.
+- `20260902-continued-cleanup.adb-reverse-before.txt` and `20260902-continued-cleanup.adb-reverse-after.txt` show adb reverse state was read before and after the cleanup recheck and remained empty. No adb reverse entry was created or modified.
+- `20260902-continued-cleanup.device-state-before.txt` and `20260902-continued-cleanup.device-state-after.txt` record unchanged restored Android state: physical size `1264x2800`, physical density `560`, font scale `1.0`, night mode `no`, user rotation `lock 0`, `accelerometer_rotation=0`, and `user_rotation=0`.
 
 ## XML Boundary
 

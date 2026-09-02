@@ -303,6 +303,14 @@ def validate_scenario_xml(xml_path):
 
 
 def xml_coverage_errors(results):
+    if not isinstance(results, list):
+        return [f"scenarios must be a list: {type(results).__name__}"]
+    type_errors = []
+    for index, result in enumerate(results):
+        if not isinstance(result, dict):
+            type_errors.append(f"scenario[{index}] must be an object: {type(result).__name__}")
+    if type_errors:
+        return type_errors
     labels = [result.get("label", "<unknown>") for result in results]
     present_labels = {
         result.get("label")
@@ -320,13 +328,31 @@ def xml_coverage_errors(results):
         for label, result in zip(labels, results)
         if result.get("xml_status") not in KNOWN_XML_STATUSES
     ]
+    missing_xml_errors = [
+        label
+        for label, result in zip(labels, results)
+        if result.get("xml_status") == "present" and "xml_errors" not in result
+    ]
+    invalid_xml_errors = [
+        f"{label}={type(result.get('xml_errors')).__name__}"
+        for label, result in zip(labels, results)
+        if result.get("xml_status") == "present"
+        and "xml_errors" in result
+        and not isinstance(result.get("xml_errors"), list)
+    ]
     present_with_errors = [
         label
         for label, result in zip(labels, results)
-        if result.get("xml_status") == "present" and result.get("xml_errors")
+        if result.get("xml_status") == "present"
+        and isinstance(result.get("xml_errors"), list)
+        and result.get("xml_errors")
     ]
     if unknown_statuses:
         errors.append("unknown XML status: " + ", ".join(unknown_statuses))
+    if missing_xml_errors:
+        errors.append("present XML missing xml_errors: " + ", ".join(missing_xml_errors))
+    if invalid_xml_errors:
+        errors.append("present XML xml_errors must be a list: " + ", ".join(invalid_xml_errors))
     if present_with_errors:
         errors.append("present XML has validation errors: " + ", ".join(present_with_errors))
     if rejected_labels:
@@ -345,6 +371,14 @@ def xml_coverage_errors(results):
 
 
 def scenario_label_errors(results):
+    if not isinstance(results, list):
+        return [f"scenarios must be a list: {type(results).__name__}"]
+    type_errors = []
+    for index, result in enumerate(results):
+        if not isinstance(result, dict):
+            type_errors.append(f"scenario[{index}] must be an object: {type(result).__name__}")
+    if type_errors:
+        return type_errors
     labels = [result.get("label", "<unknown>") for result in results]
     expected_labels = set(EXPECTED_SCENARIO_LABELS)
     actual_labels = set(labels)
@@ -363,6 +397,8 @@ def scenario_label_errors(results):
 
 def restored_gate_errors(restored):
     errors = []
+    if not isinstance(restored, dict):
+        return [f"restored must be an object: {type(restored).__name__}"]
     actual_keys = set(restored)
     expected_keys = set(REQUIRED_RESTORE_KEYS)
     missing_keys = [key for key in REQUIRED_RESTORE_KEYS if key not in actual_keys]
@@ -380,17 +416,28 @@ def restored_gate_errors(restored):
 
 def summary_gate_errors(summary):
     errors = []
-    if not summary.get("instrumentation_p0110_landscape_large_text"):
+    if not isinstance(summary, dict):
+        return [f"summary must be an object: {type(summary).__name__}"]
+    if summary.get("apk_sha256") != EXPECTED_APK_SHA256:
+        errors.append(f"apk_sha256 mismatch: {summary.get('apk_sha256')!r}")
+    if summary.get("android_test_apk_sha256") != EXPECTED_ANDROID_TEST_APK_SHA256:
+        errors.append(f"android_test_apk_sha256 mismatch: {summary.get('android_test_apk_sha256')!r}")
+    if summary.get("device_model") != EXPECTED_DEVICE_MODEL:
+        errors.append(f"device_model mismatch: {summary.get('device_model')!r}")
+    if summary.get("instrumentation_p0110_landscape_large_text") is not True:
         errors.append("instrumentation p0110 landscape large-text layout failed")
     results = summary.get("scenarios", [])
-    errors.extend(scenario_label_errors(results))
-    for result in results:
-        label = result.get("label", "<unknown>")
-        if not result.get("png_ok"):
-            errors.append(f"{label} PNG size validation failed")
-        if not result.get("state_ok"):
-            errors.append(f"{label} state validation failed")
-    errors.extend(xml_coverage_errors(results))
+    scenario_errors = scenario_label_errors(results)
+    errors.extend(scenario_errors)
+    scenarios_are_well_formed = isinstance(results, list) and all(isinstance(result, dict) for result in results)
+    if scenarios_are_well_formed:
+        for result in results:
+            label = result.get("label", "<unknown>")
+            if result.get("png_ok") is not True:
+                errors.append(f"{label} PNG size validation failed")
+            if result.get("state_ok") is not True:
+                errors.append(f"{label} state validation failed")
+        errors.extend(xml_coverage_errors(results))
     errors.extend(restored_gate_errors(summary.get("restored", {})))
     return errors
 

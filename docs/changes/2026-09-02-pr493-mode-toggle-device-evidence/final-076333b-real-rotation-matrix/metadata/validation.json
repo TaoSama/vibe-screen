@@ -83,15 +83,38 @@
     "rotation_0": true,
     "accelerometer_rotation_0": true,
     "no_override_size": true,
-    "packages_stopped": false
+    "packages_stopped": true
   },
   "post_restore_processes": {
-    "packages_stopped": "not_reverified",
-    "basis": "The original evidence did not persist pidof output. Launcher focus is only indirect context, so the offline rebuild does not claim package-stop success. Current collector runs assert_packages_stopped after force-stop for future live captures."
+    "packages_stopped": true,
+    "basis": "Reverified by the Android-only 20260902-continued-cleanup check: adb reverse was read before and after without modification, both Android packages were force-stopped, pidof output for dev.telemachus.display and dev.telemachus.display.test was empty, and device size/density/font/night/rotation state stayed restored."
   },
   "offline_rebuild": {
     "rebuilt_at": "2026-09-02T12:45:04+08:00",
     "source": "Existing screenshots, state files, XML files, install logs, instrumentation log, recorded app APK SHA-256, and locally computed androidTest APK SHA-256; no device recapture and no ADB command was run for this rebuild.",
-    "packages_stopped": "not_reverified; original evidence has no persisted pidof output"
+    "packages_stopped": "not_reverified in the original offline rebuild; superseded by android_cleanup_reverification below"
+  },
+  "android_cleanup_reverification": {
+    "reverified_at": "2026-09-02T13:49:59+08:00",
+    "mode": "Android-only cleanup recheck; no Host, GUI, product binary, adb reverse creation, or adb reverse modification was used.",
+    "adb_reverse_before": "20260902-continued-cleanup.adb-reverse-before.txt",
+    "adb_reverse_after": "20260902-continued-cleanup.adb-reverse-after.txt",
+    "adb_reverse_unchanged": true,
+    "packages_stopped": true,
+    "font_scale_1_0": true,
+    "night_no": true,
+    "rotation_0": true,
+    "accelerometer_rotation_0": true,
+    "physical_size_1264x2800": true,
+    "physical_density_560": true,
+    "evidence": [
+      "20260902-continued-cleanup.adb-reverse-before.txt",
+      "20260902-continued-cleanup.device-state-before.txt",
+      "20260902-continued-cleanup.force-stop-app.txt",
+      "20260902-continued-cleanup.force-stop-android-test.txt",
+      "20260902-continued-cleanup.pidof-after-force-stop.txt",
+      "20260902-continued-cleanup.adb-reverse-after.txt",
+      "20260902-continued-cleanup.device-state-after.txt"
+    ]
   }
 }
