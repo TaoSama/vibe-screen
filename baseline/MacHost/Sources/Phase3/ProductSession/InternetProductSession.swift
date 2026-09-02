@@ -1081,6 +1081,7 @@ final class InternetProductSession: EncodedFrameSink {
                 }
                 let wasFileTransferAvailable = fileTransferAvailable(codec: codec)
                 try applyRemoteManagedPolicy(status)
+                guard generation == sessionGeneration else { return }
                 if var activeCodec = self.codec {
                     activeCodec.updateRemoteManagedPolicy(status)
                     if !activeCodec.remoteManagedPolicy.fileTransferAllowed {

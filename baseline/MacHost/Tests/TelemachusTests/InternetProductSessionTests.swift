@@ -888,6 +888,80 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(availability.snapshot(), [false, true])
     }
 
+    func testManagedPolicyReentrantReplacementDoesNotMutateReplacementSession() throws {
+        let harness = try Harness(
+            engineCount: 2,
+            replacementSessionEpoch: 2,
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 4
+            )
+        )
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let replacementStarted = expectation(description: "replacement session started")
+        var didStartReplacement = false
+        defer { harness.session.close() }
+        harness.session.onRemoteManagedPolicyChanged = { status in
+            XCTAssertFalse(status.fileTransferAllowed)
+            guard !didStartReplacement else { return }
+            didStartReplacement = true
+            harness.session.close()
+            do {
+                try harness.session.start(configuration: replacementConfiguration)
+                replacementStarted.fulfill()
+            } catch {
+                XCTFail("Replacing the Internet product session failed: \(error)")
+            }
+        }
+
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 3,
+            fileTransferAllowed: false
+        ))
+        wait(for: [replacementStarted], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+
+        replacement.emitConnection(.connected(path: .direct))
+        harness.receiveControl(
+            harness.clientHello(
+                messageID: 1,
+                supportsFileTransfer: true,
+                supportsManagedConfiguration: true,
+                sessionEpoch: 2
+            ),
+            engineIndex: 1
+        )
+        XCTAssertTrue(harness.waitForSentControlCount(3, engineIndex: 1))
+        harness.receiveControl(
+            harness.videoAccepted(messageID: 2, sessionEpoch: 2),
+            engineIndex: 1
+        )
+
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+        let fileURL = try makeTemporaryFile(
+            name: "replacement-session-file.bin",
+            contents: Data([0x41])
+        )
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let transferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.sentControlEnvelopes(engineIndex: 1).contains { envelope in
+            guard case .fileOffer(let offer) = envelope.payload else { return false }
+            return offer.transferID == transferID
+        })
+    }
+
     func testAdvancedChannelRecordsFailClosedWhenPayloadExceedsProductAdmissionLimit() throws {
         let harness = try Harness(limits: InternetTransportLimits(
             maximumControlMessageBytes: 256 * 1_024,
