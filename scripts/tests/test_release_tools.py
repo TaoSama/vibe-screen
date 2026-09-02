@@ -3044,7 +3044,7 @@ class PrepareReleaseTests(unittest.TestCase):
     ) -> None:
         self.assertEqual(
             SUPPORTED_COTURN_VERSIONS,
-            ("4.15.0", "4.16.0", "4.17.0"),
+            ("4.15.0", "4.16.0", "4.17.0", "4.17.2"),
         )
         workflow_coturn_versions = "|".join(SUPPORTED_COTURN_VERSIONS)
         makefile_coturn_versions = " ".join(SUPPORTED_COTURN_VERSIONS)
