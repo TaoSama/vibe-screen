@@ -97,6 +97,10 @@ final class InternetProductSession: EncodedFrameSink {
         let timer: DispatchSourceTimer
     }
 
+    private struct OutgoingFileTransferDeadline {
+        let timer: DispatchSourceTimer
+    }
+
     var onStateChanged: ((InternetProductSessionState) -> Void)?
     var onError: ((InternetProductSessionError) -> Void)?
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
@@ -178,6 +182,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var advancedChannelGateInitializationError: AdvancedChannelSecurityError?
     private var incomingFileTransferManager: ProtocolV1IncomingFileTransferManager?
     private var outgoingFileTransfers: [Data: ProtocolV1OutgoingFileTransfer] = [:]
+    private var outgoingFileTransferDeadlines: [Data: OutgoingFileTransferDeadline] = [:]
     private var pendingIncomingFileApprovals: [Data: PendingFileApproval] = [:]
     private var approvedIncomingFileOffers: Set<Data> = []
 
@@ -383,6 +388,7 @@ final class InternetProductSession: EncodedFrameSink {
                 try sendControl(codec.fileOffer(transfer.offer))
             } catch {
                 outgoingFileTransfers.removeValue(forKey: transfer.offer.transferID)?.cancel()
+                cancelOutgoingFileTransferDeadline(transferID: transfer.offer.transferID)
                 notifyOutgoingFileTransferResult(
                     transferID: transfer.offer.transferID,
                     accepted: false,
@@ -390,6 +396,10 @@ final class InternetProductSession: EncodedFrameSink {
                 )
                 throw error
             }
+            scheduleOutgoingFileTransferDeadline(
+                transferID: transfer.offer.transferID,
+                generation: sessionGeneration
+            )
             self.codec = codec
             return transfer.offer.transferID
         }
@@ -1334,7 +1344,7 @@ final class InternetProductSession: EncodedFrameSink {
     ) {
         guard generation == sessionGeneration, var codec else { return }
         guard peerSupportsFileTransfer, let incomingFiles = incomingFileTransferManager else {
-            let response = rejectedFileAccept(
+            let response = VSFileAccept.rejected(
                 transferID: offer.transferID,
                 reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode
             )
@@ -1497,7 +1507,7 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec
     ) {
         do {
-            try sendControl(codec.fileAccept(rejectedFileAccept(
+            try sendControl(codec.fileAccept(VSFileAccept.rejected(
                 transferID: transferID,
                 reasonCode: reasonCode
             )))
@@ -1514,6 +1524,7 @@ final class InternetProductSession: EncodedFrameSink {
     ) {
         guard response.accepted else {
             if let transfer = outgoingFileTransfers.removeValue(forKey: response.transferID) {
+                cancelOutgoingFileTransferDeadline(transferID: response.transferID)
                 transfer.cancel()
                 notifyOutgoingFileTransferResult(
                     transferID: response.transferID,
@@ -1524,6 +1535,7 @@ final class InternetProductSession: EncodedFrameSink {
             return
         }
         guard let transfer = outgoingFileTransfers[response.transferID] else { return }
+        cancelOutgoingFileTransferDeadline(transferID: response.transferID)
         transfer.applyAcceptedMaximumChunkBytes(Int(response.maximumChunkBytes))
         sendNextOutgoingFileChunk(transfer, codec: &codec, generation: generation)
     }
@@ -1559,6 +1571,7 @@ final class InternetProductSession: EncodedFrameSink {
         let wasPendingIncoming = cancelPendingFileApproval(transferID: cancellation.transferID)
         let wasApprovedIncoming = approvedIncomingFileOffers.remove(cancellation.transferID) != nil
         let outgoing = outgoingFileTransfers.removeValue(forKey: cancellation.transferID)
+        cancelOutgoingFileTransferDeadline(transferID: cancellation.transferID)
         outgoing?.cancel()
         if outgoing != nil {
             notifyOutgoingFileTransferResult(
@@ -1581,6 +1594,7 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec
     ) {
         guard let transfer = outgoingFileTransfers.removeValue(forKey: result.transferID) else { return }
+        cancelOutgoingFileTransferDeadline(transferID: result.transferID)
         defer { transfer.cancel() }
         guard result.accepted else {
             notifyOutgoingFileTransferResult(
@@ -1614,14 +1628,23 @@ final class InternetProductSession: EncodedFrameSink {
         generation: UInt64
     ) {
         guard sessionGeneration == generation,
-              outgoingFileTransfers[transfer.offer.transferID] != nil else { return }
+              outgoingFileTransfers[transfer.offer.transferID] != nil else {
+            cancelOutgoingFileTransferDeadline(transferID: transfer.offer.transferID)
+            return
+        }
         do {
             guard let chunk = try transfer.nextChunk(
                 maximumBytes: transfer.maximumChunkBytes(
                     default: codec.negotiatedFileTransferPolicy.maximumChunkBytes
                 ),
                 sessionEpoch: codec.sessionEpoch
-            ) else { return }
+            ) else {
+                scheduleOutgoingFileTransferDeadline(
+                    transferID: transfer.offer.transferID,
+                    generation: generation
+                )
+                return
+            }
             let frame = try chunk.serializedFrame()
             guard sendFileTransferBulkRecord(frame, transferID: chunk.header.transferID) else {
                 cancelOutgoingFileTransfer(
@@ -1631,6 +1654,10 @@ final class InternetProductSession: EncodedFrameSink {
                 )
                 return
             }
+            scheduleOutgoingFileTransferDeadline(
+                transferID: transfer.offer.transferID,
+                generation: generation
+            )
         } catch let error as ProtocolV1FileTransferError {
             cancelOutgoingFileTransfer(
                 transferID: transfer.offer.transferID,
@@ -1652,6 +1679,7 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec
     ) {
         outgoingFileTransfers.removeValue(forKey: transferID)?.cancel()
+        cancelOutgoingFileTransferDeadline(transferID: transferID)
         do {
             try sendControl(codec.fileTransferCancel(
                 transferID: transferID,
@@ -1666,6 +1694,42 @@ final class InternetProductSession: EncodedFrameSink {
             accepted: false,
             reason: reasonCode
         )
+    }
+
+    private func scheduleOutgoingFileTransferDeadline(
+        transferID: Data,
+        generation: UInt64
+    ) {
+        cancelOutgoingFileTransferDeadline(transferID: transferID)
+        guard sessionGeneration == generation,
+              outgoingFileTransfers[transferID] != nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let timeout = configuration?.fileTransferProgressTimeoutMilliseconds ?? 30_000
+        timer.schedule(deadline: .now() + .milliseconds(Int(timeout)))
+        timer.setEventHandler { [weak self] in
+            guard let self,
+                  self.sessionGeneration == generation,
+                  self.outgoingFileTransfers[transferID] != nil,
+                  var codec = self.codec else { return }
+            self.cancelOutgoingFileTransfer(
+                transferID: transferID,
+                reasonCode: ProtocolV1FileTransferError.transferTimedOut.reasonCode,
+                codec: &codec
+            )
+        }
+        outgoingFileTransferDeadlines[transferID] = OutgoingFileTransferDeadline(
+            timer: timer
+        )
+        timer.resume()
+    }
+
+    private func cancelOutgoingFileTransferDeadline(transferID: Data) {
+        outgoingFileTransferDeadlines.removeValue(forKey: transferID)?.timer.cancel()
+    }
+
+    private func cancelAllOutgoingFileTransferDeadlines() {
+        for deadline in outgoingFileTransferDeadlines.values { deadline.timer.cancel() }
+        outgoingFileTransferDeadlines.removeAll()
     }
 
     private func handleIncomingFileChunk(_ chunk: ProtocolV1FileChunk, generation: UInt64) {
@@ -1756,6 +1820,7 @@ final class InternetProductSession: EncodedFrameSink {
         cancelledOutgoingTransferIDs.formUnion(outgoingFileTransfers.keys)
         for transfer in outgoingFileTransfers.values { transfer.cancel() }
         outgoingFileTransfers.removeAll()
+        cancelAllOutgoingFileTransferDeadlines()
         for transferID in cancelledIncomingTransferIDs {
             notifyFileTransferResult(
                 transferID: transferID,
@@ -1826,14 +1891,6 @@ final class InternetProductSession: EncodedFrameSink {
         isStreaming
             && peerSupportsFileTransfer
             && codec?.remoteManagedPolicy.fileTransferAllowed == true
-    }
-
-    private func rejectedFileAccept(transferID: Data, reasonCode: String) -> VSFileAccept {
-        var response = VSFileAccept()
-        response.transferID = transferID
-        response.accepted = false
-        response.rejectionReason = reasonCode
-        return response
     }
 
     private func sendControl(_ payload: Data) throws {

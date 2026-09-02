@@ -474,6 +474,146 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(snapshot[0].3, ProtocolV1FileTransferError.bulkSendFailed.reasonCode)
     }
 
+    func testInternetOutgoingFileOfferTimeoutCancelsTransferAndFreesSlot() throws {
+        let harness = try Harness(
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 2
+            ),
+            fileTransferProgressTimeoutMilliseconds: 20
+        )
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+        }
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let firstURL = try makeTemporaryFile(name: "outgoing-offer-timeout.bin", contents: Data([0x41, 0x42]))
+        defer { try? FileManager.default.removeItem(at: firstURL.deletingLastPathComponent()) }
+        let firstTransferID = try harness.session.sendFile(fileURL: firstURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: firstTransferID))
+
+        XCTAssertTrue(harness.waitForFileCancel(transferID: firstTransferID))
+        XCTAssertEqual(
+            harness.sentFileTransferCancel(transferID: firstTransferID)?.reasonCode,
+            ProtocolV1FileTransferError.transferTimedOut.reasonCode
+        )
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        let timeoutResult = results.snapshot()
+        XCTAssertEqual(timeoutResult.count, 1)
+        XCTAssertEqual(timeoutResult[0].0, firstTransferID)
+        XCTAssertEqual(timeoutResult[0].1, .outgoing)
+        XCTAssertFalse(timeoutResult[0].2)
+        XCTAssertEqual(timeoutResult[0].3, ProtocolV1FileTransferError.transferTimedOut.reasonCode)
+
+        let secondURL = try makeTemporaryFile(name: "outgoing-after-timeout.bin", contents: Data([0x43]))
+        defer { try? FileManager.default.removeItem(at: secondURL.deletingLastPathComponent()) }
+        let secondTransferID = try harness.session.sendFile(fileURL: secondURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: secondTransferID))
+        XCTAssertNotEqual(firstTransferID, secondTransferID)
+    }
+
+    func testInternetOutgoingFileChunkProgressTimeoutCancelsTransferAndFreesSlot() throws {
+        let harness = try Harness(
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 2
+            ),
+            fileTransferProgressTimeoutMilliseconds: 20
+        )
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+        }
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let firstURL = try makeTemporaryFile(name: "outgoing-progress-timeout.bin", contents: Data([0x51, 0x52, 0x53]))
+        defer { try? FileManager.default.removeItem(at: firstURL.deletingLastPathComponent()) }
+        let firstTransferID = try harness.session.sendFile(fileURL: firstURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: firstTransferID))
+        harness.receiveControl(harness.fileAccept(
+            messageID: 3,
+            transferID: firstTransferID,
+            maximumChunkBytes: 2
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+
+        XCTAssertTrue(harness.waitForFileCancel(transferID: firstTransferID))
+        XCTAssertEqual(
+            harness.sentFileTransferCancel(transferID: firstTransferID)?.reasonCode,
+            ProtocolV1FileTransferError.transferTimedOut.reasonCode
+        )
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        let timeoutResult = results.snapshot()
+        XCTAssertEqual(timeoutResult.count, 1)
+        XCTAssertEqual(timeoutResult[0].0, firstTransferID)
+        XCTAssertEqual(timeoutResult[0].1, .outgoing)
+        XCTAssertFalse(timeoutResult[0].2)
+        XCTAssertEqual(timeoutResult[0].3, ProtocolV1FileTransferError.transferTimedOut.reasonCode)
+
+        let secondURL = try makeTemporaryFile(name: "outgoing-after-progress-timeout.bin", contents: Data([0x54]))
+        defer { try? FileManager.default.removeItem(at: secondURL.deletingLastPathComponent()) }
+        let secondTransferID = try harness.session.sendFile(fileURL: secondURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: secondTransferID))
+        XCTAssertNotEqual(firstTransferID, secondTransferID)
+    }
+
+    func testInternetOutgoingFileCompleteTimeoutCancelsTransferAndFreesSlot() throws {
+        let harness = try Harness(
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 2
+            ),
+            fileTransferProgressTimeoutMilliseconds: 20
+        )
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+        }
+        try reachStreaming(harness, supportsFileTransfer: true)
+
+        let fileURL = try makeTemporaryFile(name: "outgoing-complete-timeout.bin", contents: Data([0x61, 0x62, 0x63]))
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let transferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: transferID))
+        harness.receiveControl(harness.fileAccept(
+            messageID: 3,
+            transferID: transferID,
+            maximumChunkBytes: 2
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+        harness.receiveControl(harness.fileProgress(
+            messageID: 4,
+            transferID: transferID,
+            receivedBytes: 2
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(2))
+        harness.receiveControl(harness.fileProgress(
+            messageID: 5,
+            transferID: transferID,
+            receivedBytes: 3
+        ))
+
+        XCTAssertTrue(harness.waitForFileCancel(transferID: transferID))
+        XCTAssertEqual(
+            harness.sentFileTransferCancel(transferID: transferID)?.reasonCode,
+            ProtocolV1FileTransferError.transferTimedOut.reasonCode
+        )
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        let timeoutResult = results.snapshot()
+        XCTAssertEqual(timeoutResult.count, 1)
+        XCTAssertEqual(timeoutResult[0].0, transferID)
+        XCTAssertEqual(timeoutResult[0].1, .outgoing)
+        XCTAssertFalse(timeoutResult[0].2)
+        XCTAssertEqual(timeoutResult[0].3, ProtocolV1FileTransferError.transferTimedOut.reasonCode)
+
+        let secondURL = try makeTemporaryFile(name: "outgoing-after-complete-timeout.bin", contents: Data([0x64]))
+        defer { try? FileManager.default.removeItem(at: secondURL.deletingLastPathComponent()) }
+        let secondTransferID = try harness.session.sendFile(fileURL: secondURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: secondTransferID))
+        XCTAssertNotEqual(transferID, secondTransferID)
+    }
+
     func testManagedPolicyStatusUpdatesFileTransferAvailability() throws {
         let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
             maximumFileBytes: 1_024,
@@ -2838,7 +2978,8 @@ private final class Harness {
         replacementSessionEpoch: UInt64? = nil,
         controllerAvailable: Bool = false,
         fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
-        fileTransferApprovalTimeoutMilliseconds: UInt32 = 60_000
+        fileTransferApprovalTimeoutMilliseconds: UInt32 = 60_000,
+        fileTransferProgressTimeoutMilliseconds: UInt32 = 30_000
     ) throws {
         let configurationCount = max(1, engineCount)
         let configurations = (0..<configurationCount).map { index in
@@ -2849,7 +2990,8 @@ private final class Harness {
                 limits: limits,
                 controllerAvailable: controllerAvailable,
                 fileTransferPolicy: fileTransferPolicy,
-                fileTransferApprovalTimeoutMilliseconds: fileTransferApprovalTimeoutMilliseconds
+                fileTransferApprovalTimeoutMilliseconds: fileTransferApprovalTimeoutMilliseconds,
+                fileTransferProgressTimeoutMilliseconds: fileTransferProgressTimeoutMilliseconds
             )
         }
         let pairs = try configurations.map { configuration in
@@ -2904,7 +3046,8 @@ private final class Harness {
         limits: InternetTransportLimits,
         controllerAvailable: Bool,
         fileTransferPolicy: ProtocolV1FileTransferPolicy,
-        fileTransferApprovalTimeoutMilliseconds: UInt32
+        fileTransferApprovalTimeoutMilliseconds: UInt32,
+        fileTransferProgressTimeoutMilliseconds: UInt32
     ) -> InternetProductSessionConfiguration {
         InternetProductSessionConfiguration(
             transport: WebRTCTransportConfiguration(
@@ -2937,6 +3080,7 @@ private final class Harness {
             controllerAvailable: controllerAvailable,
             fileTransferPolicy: fileTransferPolicy,
             fileTransferApprovalTimeoutMilliseconds: fileTransferApprovalTimeoutMilliseconds,
+            fileTransferProgressTimeoutMilliseconds: fileTransferProgressTimeoutMilliseconds,
             heartbeatIntervalMilliseconds: 10_000,
             heartbeatTimeoutMilliseconds: 20_000,
             negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,

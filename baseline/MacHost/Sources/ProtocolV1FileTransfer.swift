@@ -191,6 +191,16 @@ struct ProtocolV1CompletedIncomingFile: Equatable {
     let sha256: Data
 }
 
+extension VSFileAccept {
+    static func rejected(transferID: Data, reasonCode: String) -> VSFileAccept {
+        var response = VSFileAccept()
+        response.transferID = transferID
+        response.accepted = false
+        response.rejectionReason = reasonCode
+        return response
+    }
+}
+
 enum ProtocolV1FileTransferError: Error, Equatable {
     case policyDenied
     case userDenied
@@ -214,6 +224,7 @@ enum ProtocolV1FileTransferError: Error, Equatable {
     case incompleteFile
     case digestMismatch
     case approvalTimedOut
+    case transferTimedOut
     case bulkSendFailed
     case ioFailure(String)
 
@@ -241,6 +252,7 @@ enum ProtocolV1FileTransferError: Error, Equatable {
         case .incompleteFile: return "incomplete_file"
         case .digestMismatch: return "digest_mismatch"
         case .approvalTimedOut: return "approval_timeout"
+        case .transferTimedOut: return "transfer_timeout"
         case .bulkSendFailed: return "bulk_send_failed"
         case .ioFailure: return "io_failure"
         }

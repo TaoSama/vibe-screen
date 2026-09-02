@@ -2122,7 +2122,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                           self.screenCapture === configuredCapture else { return }
                     let activeServer = configuredServer
                     let clipboardAvailable = activeServer.clipboardAvailable
-                    let fileTransferAvailable = activeServer.fileTransferAvailable
                     self.performSessionCallback(
                             token: startToken,
                             server: activeServer,
@@ -2138,10 +2137,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         } else {
                             self.clipboardController?.unbind()
                         }
-                        self.fileTransferController?.bind(
-                            server: activeServer,
-                            fileTransferAvailable: fileTransferAvailable
-                        )
+                        self.fileTransferController?.bind(server: activeServer)
                         configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
                         self.unattendedRecoveryAttempt = 0
                         // Clear before the new client's type-11 arrives so a
@@ -2753,6 +2749,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             controllerAvailable: configuration.controllerAvailable,
             fileTransferPolicy: configuration.fileTransferPolicy,
             fileTransferApprovalTimeoutMilliseconds: configuration.fileTransferApprovalTimeoutMilliseconds,
+            fileTransferProgressTimeoutMilliseconds: configuration.fileTransferProgressTimeoutMilliseconds,
             heartbeatIntervalMilliseconds: configuration.heartbeatIntervalMilliseconds,
             heartbeatTimeoutMilliseconds: configuration.heartbeatTimeoutMilliseconds,
             negotiationTimeoutMilliseconds: configuration.negotiationTimeoutMilliseconds,
@@ -3675,10 +3672,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             if let session = internetProductSession {
-                fileTransferController?.bind(
-                    server: session,
-                    fileTransferAvailable: session.fileTransferAvailable
-                )
+                fileTransferController?.bind(server: session)
             }
             settings.internetStatus = path == .relay ? .relay : .direct
             settings.clientConnected = true

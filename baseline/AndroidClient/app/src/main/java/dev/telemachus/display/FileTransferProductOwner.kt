@@ -305,13 +305,24 @@ internal class FileTransferProductOwner(
     }
 
     fun handleBulkSendFailed(transferId: ByteString): OutgoingUpdate {
+        return failOutgoingTransfer(transferId, "bulk_send_failed")
+    }
+
+    fun timeoutOutgoingTransfer(transferId: ByteString): OutgoingUpdate {
+        return failOutgoingTransfer(transferId, "transfer_timeout")
+    }
+
+    private fun failOutgoingTransfer(
+        transferId: ByteString,
+        reasonCode: String,
+    ): OutgoingUpdate {
         val transfer = synchronized(lock) { outgoingFileTransfers.remove(transferId) }
         transfer ?: return OutgoingUpdate()
         transfer.cancel()
         return OutgoingUpdate(
             cancelTransferId = transferId,
-            cancelReasonCode = "bulk_send_failed",
-            result = TransferResult(accepted = false, reason = "bulk_send_failed"),
+            cancelReasonCode = reasonCode,
+            result = TransferResult(accepted = false, reason = reasonCode),
         )
     }
 
@@ -442,7 +453,11 @@ internal class FileTransferProductOwner(
             synchronized(lock) {
                 if (outgoingFileTransfers[transferId] !== transfer) return OutgoingUpdate()
             }
-            OutgoingUpdate(chunk = chunk)
+            if (chunk == null) {
+                OutgoingUpdate(waitingForPeerTransferId = transferId)
+            } else {
+                OutgoingUpdate(chunk = chunk)
+            }
         } catch (failure: FileTransferException) {
             synchronized(lock) { outgoingFileTransfers.remove(transferId) }?.cancel()
             OutgoingUpdate(
@@ -670,6 +685,7 @@ internal class FileTransferProductOwner(
 
     data class OutgoingUpdate(
         val chunk: FileChunk? = null,
+        val waitingForPeerTransferId: ByteString? = null,
         val cancelTransferId: ByteString? = null,
         val cancelReasonCode: String? = null,
         val result: TransferResult? = null,

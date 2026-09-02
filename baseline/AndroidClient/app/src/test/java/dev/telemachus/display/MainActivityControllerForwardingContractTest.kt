@@ -135,15 +135,25 @@ class MainActivityControllerForwardingContractTest {
     @Test
     fun incomingFileOffersAreRejectedBeforeShowingApprovalWhenBackgrounded() {
         val source = mainActivitySource()
-        val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer")
+        val streamPromptOffer =
+            extractMethod(source, "private fun promptIncomingFileOffer(\n        client: StreamClient")
+        val internetCallback = extractCallback(source, "override fun onFileOffer(offer: dev.vibescreen.protocol.v1.FileOffer)")
+        val promptOffer =
+            extractMethod(
+                source,
+                "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer",
+            )
         val onStop = extractMethod(source, "override fun onStop")
         val onDestroy = extractMethod(source, "override fun onDestroy")
 
+        assertContains(streamPromptOffer, "isCurrentSession(client, generation) && client.canTransferFiles")
+        assertContains(source, "respond = { accepted, _ -> client.respondToFileOffer(offer, accepted = accepted) }")
+        assertContains(internetCallback, "session.canTransferFiles")
+        assertContains(internetCallback, "respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) }")
         assertContains(promptOffer, "if (!isInForeground ||")
         assertContains(promptOffer, "isFinishing ||")
         assertContains(promptOffer, "isDestroyed ||")
-        assertContains(promptOffer, "!isCurrentSession(client, generation) ||")
-        assertContains(promptOffer, "!client.canTransferFiles")
+        assertContains(promptOffer, "!isCurrentAndAllowed()")
         assertBefore(promptOffer, "if (!isInForeground", "pendingIncomingFileDialog != null")
         assertBefore(promptOffer, "if (!isInForeground", "showImmersiveDialog(dialog)")
         assertContains(onStop, "rejectPendingIncomingFileOffer()")

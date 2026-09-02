@@ -85,6 +85,7 @@ struct InternetProductSessionConfiguration {
     let controllerAvailable: Bool
     let fileTransferPolicy: ProtocolV1FileTransferPolicy
     let fileTransferApprovalTimeoutMilliseconds: UInt32
+    let fileTransferProgressTimeoutMilliseconds: UInt32
     let heartbeatIntervalMilliseconds: UInt32
     let heartbeatTimeoutMilliseconds: UInt32
     let negotiationTimeoutMilliseconds: UInt32
@@ -106,6 +107,7 @@ struct InternetProductSessionConfiguration {
         controllerAvailable: Bool = false,
         fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
         fileTransferApprovalTimeoutMilliseconds: UInt32 = 60_000,
+        fileTransferProgressTimeoutMilliseconds: UInt32 = 30_000,
         heartbeatIntervalMilliseconds: UInt32 = 1_000,
         heartbeatTimeoutMilliseconds: UInt32 = 5_000,
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
@@ -126,6 +128,7 @@ struct InternetProductSessionConfiguration {
         self.controllerAvailable = controllerAvailable
         self.fileTransferPolicy = fileTransferPolicy
         self.fileTransferApprovalTimeoutMilliseconds = fileTransferApprovalTimeoutMilliseconds
+        self.fileTransferProgressTimeoutMilliseconds = fileTransferProgressTimeoutMilliseconds
         self.heartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds
         self.heartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds
         self.negotiationTimeoutMilliseconds = negotiationTimeoutMilliseconds
@@ -148,6 +151,7 @@ struct InternetProductSessionConfiguration {
               !sharedSecretName.isEmpty, !bootstrapSecretName.isEmpty,
               transcriptContext.count == 32,
               fileTransferApprovalTimeoutMilliseconds > 0,
+              fileTransferProgressTimeoutMilliseconds > 0,
               heartbeatIntervalMilliseconds > 0,
               heartbeatTimeoutMilliseconds >= heartbeatIntervalMilliseconds,
               negotiationTimeoutMilliseconds > 0 else {

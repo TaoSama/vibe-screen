@@ -6,7 +6,11 @@ import dev.telemachus.display.CONTROLLER_CONNECTION_ACK_TIMEOUT_MS
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
+import dev.telemachus.display.protocol.CompletedIncomingFile
+import dev.telemachus.display.protocol.FileChunk
 import dev.telemachus.display.protocol.FileTransferPolicy
+import dev.telemachus.display.protocol.ProtocolV1Session
+import dev.telemachus.display.protocol.sha256
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.generateEphemeral
 import dev.telemachus.display.internet.security.pairingSha256
@@ -17,8 +21,14 @@ import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileChunkHeader
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.FileTransferProgress
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ResourceLimits
@@ -1468,6 +1478,322 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun negotiatedInternetFileTransferAcceptsBulkChunkAndCompletesStagedFile() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x21, 0x22, 0x23)
+        val transferId = transferId(0x10)
+        val offer = fileOffer(transferId, "incoming.bin", payload)
+
+        peer.receive(controlEnvelope(4).setFileOffer(offer).build())
+
+        assertEquals(offer, callbacks.fileOffers.single())
+        assertTrue(session.respondToFileOffer(offer, accepted = true))
+        val accepted = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_ACCEPT }.fileAccept
+        assertTrue(accepted.accepted)
+        assertEquals(transferId, accepted.transferId)
+        assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES, accepted.maximumChunkBytes)
+
+        peer.bulk(fileChunk(transferId, offset = 0, payload = payload, final = true).toFrame())
+
+        val progress = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_PROGRESS }.fileTransferProgress
+        assertEquals(transferId, progress.transferId)
+        assertEquals(payload.size.toLong(), progress.receivedBytes)
+        val complete = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_COMPLETE }.fileTransferComplete
+        assertTrue(complete.accepted)
+        assertEquals(transferId, complete.transferId)
+        assertEquals(sha256(payload), complete.sha256)
+        val completed = callbacks.incomingFiles.single()
+        assertEquals(transferId, completed.transferId)
+        assertEquals("incoming.bin", completed.fileName)
+        assertArrayEquals(payload, completed.stagingFile.readBytes())
+        assertTrue(completed.stagingFile.delete())
+        assertTrue(callbacks.bulk.isEmpty())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun activeFileTransferDemultiplexesFileChunksFromRawBulkRecords() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x41, 0x42)
+        val transferId = transferId(0x20)
+        val offer = fileOffer(transferId, "demux.bin", payload)
+
+        peer.receive(controlEnvelope(4).setFileOffer(offer).build())
+        assertTrue(session.respondToFileOffer(offer, accepted = true))
+        peer.bulk(fileChunk(transferId, offset = 0, payload = payload, final = true).toFrame())
+
+        assertTrue(peer.controlEnvelopes().any { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_COMPLETE })
+        assertTrue(callbacks.bulk.isEmpty())
+
+        val rawBulk = byteArrayOf(0x7F, 0x7E)
+        peer.bulk(rawBulk)
+
+        assertArrayEquals(rawBulk, callbacks.bulk.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun clientFileOfferStreamsChunksOverInternetBulkDataChannel() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x31, 0x32, 0x33, 0x34, 0x35)
+        val file = java.io.File.createTempFile("vibe-internet-outgoing", ".bin")
+        file.writeBytes(payload)
+
+        try {
+            assertTrue(session.offerFile(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+            assertEquals(file.name, offer.fileName)
+            assertEquals(payload.size.toLong(), offer.byteLength)
+            assertEquals(sha256(payload), offer.sha256)
+
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(2),
+                    ).build(),
+            )
+            assertFileChunk(peer.bulk.single(), offer.transferId, offset = 0, payload = payload.copyOfRange(0, 2), final = false)
+
+            peer.receive(controlEnvelope(5).setFileTransferProgress(fileProgress(offer.transferId, 2)).build())
+            assertEquals(2, peer.bulk.size)
+            assertFileChunk(peer.bulk[1], offer.transferId, offset = 2, payload = payload.copyOfRange(2, 4), final = false)
+
+            peer.receive(controlEnvelope(6).setFileTransferProgress(fileProgress(offer.transferId, 4)).build())
+            assertEquals(3, peer.bulk.size)
+            assertFileChunk(peer.bulk[2], offer.transferId, offset = 4, payload = payload.copyOfRange(4, 5), final = true)
+
+            peer.receive(controlEnvelope(7).setFileTransferProgress(fileProgress(offer.transferId, 5)).build())
+            peer.receive(controlEnvelope(8).setFileTransferComplete(fileComplete(offer.transferId, sha256(payload))).build())
+
+            assertEquals(true to "", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun outgoingInternetFileOfferTimeoutCancelsTransferAndFreesSlot() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val clock = ProductFakeClock(0)
+        val session = session(peer, monitor, callbacks, clock = clock)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val file = java.io.File.createTempFile("vibe-internet-offer-timeout", ".bin")
+        file.writeBytes(byteArrayOf(0x41, 0x42))
+
+        try {
+            assertTrue(session.offerFile(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+
+            clock.now = InternetProductSession.FILE_TRANSFER_PROGRESS_TIMEOUT_MS - 1
+            session.tick()
+            assertTrue(peer.controlEnvelopes().none { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL })
+
+            clock.now = InternetProductSession.FILE_TRANSFER_PROGRESS_TIMEOUT_MS
+            session.tick()
+
+            val cancel = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL }.fileTransferCancel
+            assertEquals(offer.transferId, cancel.transferId)
+            assertEquals("transfer_timeout", cancel.reasonCode)
+            assertEquals(false to "transfer_timeout", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+            assertEquals(0, peer.closeCalls)
+
+            val nextFile = java.io.File.createTempFile("vibe-internet-after-offer-timeout", ".bin")
+            nextFile.writeBytes(byteArrayOf(0x43))
+            try {
+                assertTrue(session.offerFile(nextFile, "application/octet-stream"))
+                assertEquals(2, peer.controlEnvelopes().count { it.payloadCase == Envelope.PayloadCase.FILE_OFFER })
+            } finally {
+                nextFile.delete()
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun outgoingInternetFileProgressTimeoutCancelsTransferAndFreesSlot() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val clock = ProductFakeClock(0)
+        val session = session(peer, monitor, callbacks, clock = clock)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x51, 0x52, 0x53)
+        val file = java.io.File.createTempFile("vibe-internet-progress-timeout", ".bin")
+        file.writeBytes(payload)
+
+        try {
+            assertTrue(session.offerFile(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(2),
+                    ).build(),
+            )
+            assertEquals(1, peer.bulk.size)
+            assertFileChunk(peer.bulk.single(), offer.transferId, offset = 0, payload = payload.copyOfRange(0, 2), final = false)
+
+            clock.now = InternetProductSession.FILE_TRANSFER_PROGRESS_TIMEOUT_MS
+            session.tick()
+
+            val cancel = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL }.fileTransferCancel
+            assertEquals(offer.transferId, cancel.transferId)
+            assertEquals("transfer_timeout", cancel.reasonCode)
+            assertEquals(false to "transfer_timeout", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+            assertEquals(0, peer.closeCalls)
+
+            val nextFile = java.io.File.createTempFile("vibe-internet-after-progress-timeout", ".bin")
+            nextFile.writeBytes(byteArrayOf(0x54))
+            try {
+                assertTrue(session.offerFile(nextFile, "application/octet-stream"))
+                assertEquals(2, peer.controlEnvelopes().count { it.payloadCase == Envelope.PayloadCase.FILE_OFFER })
+            } finally {
+                nextFile.delete()
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun outgoingInternetFileCompleteTimeoutCancelsTransferAndFreesSlot() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val clock = ProductFakeClock(0)
+        val session = session(peer, monitor, callbacks, clock = clock)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x71, 0x72, 0x73)
+        val file = java.io.File.createTempFile("vibe-internet-complete-timeout", ".bin")
+        file.writeBytes(payload)
+
+        try {
+            assertTrue(session.offerFile(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(2),
+                    ).build(),
+            )
+            assertEquals(1, peer.bulk.size)
+            peer.receive(controlEnvelope(5).setFileTransferProgress(fileProgress(offer.transferId, 2)).build())
+            assertEquals(2, peer.bulk.size)
+            assertFileChunk(peer.bulk[1], offer.transferId, offset = 2, payload = payload.copyOfRange(2, 3), final = true)
+            peer.receive(controlEnvelope(6).setFileTransferProgress(fileProgress(offer.transferId, 3)).build())
+
+            clock.now = InternetProductSession.FILE_TRANSFER_PROGRESS_TIMEOUT_MS
+            session.tick()
+
+            val cancel = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL }.fileTransferCancel
+            assertEquals(offer.transferId, cancel.transferId)
+            assertEquals("transfer_timeout", cancel.reasonCode)
+            assertEquals(false to "transfer_timeout", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+
+            val nextFile = java.io.File.createTempFile("vibe-internet-after-complete-timeout", ".bin")
+            nextFile.writeBytes(byteArrayOf(0x74))
+            try {
+                assertTrue(session.offerFile(nextFile, "application/octet-stream"))
+                assertEquals(2, peer.controlEnvelopes().count { it.payloadCase == Envelope.PayloadCase.FILE_OFFER })
+            } finally {
+                nextFile.delete()
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun outgoingInternetFileBulkBackpressureCancelsTransferWithoutFailingSession() {
+        val peer = ProductFakePeerEngine(acceptBulkRecords = false)
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x61, 0x62, 0x63)
+        val file = java.io.File.createTempFile("vibe-internet-backpressure", ".bin")
+        file.writeBytes(payload)
+
+        try {
+            assertTrue(session.offerFile(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(payload.size),
+                    ).build(),
+            )
+
+            val cancel = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL }.fileTransferCancel
+            assertEquals(offer.transferId, cancel.transferId)
+            assertEquals("bulk_send_failed", cancel.reasonCode)
+            assertEquals(false to "bulk_send_failed", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+            assertEquals(0, peer.closeCalls)
+            assertTrue(callbacks.failures.isEmpty())
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun managedPolicyDenyDisablesInternetFileTransferWithoutAffectingRawBulkCallback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true, managedConfiguration = true)
+        assertTrue(session.canTransferFiles)
+
+        peer.receive(
+            controlEnvelope(4)
+                .setManagedPolicyStatus(managedPolicyStatus(fileTransferAllowed = false, maximumFileBytes = 0))
+                .build(),
+        )
+        peer.bulk(byteArrayOf(0x7F))
+
+        assertFalse(session.canTransferFiles)
+        assertArrayEquals(byteArrayOf(0x7F), callbacks.bulk.single())
+        assertTrue(callbacks.failures.isEmpty())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
     fun audioRecordBeforeVideoConfigurationIsDroppedWithoutFailingSession() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
@@ -2740,6 +3066,8 @@ class InternetProductSessionTest {
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
         controller: Boolean = false,
+        fileTransfer: Boolean = false,
+        managedConfiguration: Boolean = false,
     ) {
         session.start()
         monitor.available("wifi")
@@ -2749,6 +3077,14 @@ class InternetProductSessionTest {
         if (controller) {
             hello.addCapabilities(Capability.CAPABILITY_CONTROLLER)
             accepted.addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER)
+        }
+        if (fileTransfer) {
+            hello.addCapabilities(Capability.CAPABILITY_FILE_TRANSFER)
+            accepted.addNegotiatedCapabilities(Capability.CAPABILITY_FILE_TRANSFER)
+        }
+        if (managedConfiguration) {
+            hello.addCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+            accepted.addNegotiatedCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
         }
         peer.receive(controlEnvelope(1).setHostHello(hello).build())
         peer.receive(controlEnvelope(2).setSessionAccepted(accepted).build())
@@ -2826,6 +3162,69 @@ class InternetProductSessionTest {
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
             .setMaximumFileBytes(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES)
             .setMaximumFileChunkBytes(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES)
+
+    private fun transferId(seed: Int): ByteString = ByteString.copyFrom(ByteArray(16) { (seed + it).toByte() })
+
+    private fun fileOffer(
+        transferId: ByteString,
+        fileName: String,
+        payload: ByteArray,
+        mimeType: String = "application/octet-stream",
+    ): FileOffer =
+        FileOffer
+            .newBuilder()
+            .setTransferId(transferId)
+            .setFileName(fileName)
+            .setMimeType(mimeType)
+            .setByteLength(payload.size.toLong())
+            .setSha256(sha256(payload))
+            .build()
+
+    private fun fileChunk(
+        transferId: ByteString,
+        offset: Long,
+        payload: ByteArray,
+        final: Boolean,
+    ): FileChunk =
+        FileChunk(
+            FileChunkHeader
+                .newBuilder()
+                .setTransferId(transferId)
+                .setOffset(offset)
+                .setPayloadLength(payload.size)
+                .setSessionEpoch(lease.authoritativeSessionEpoch)
+                .setChunkSha256(sha256(payload))
+                .setFinal(final)
+                .build(),
+            payload,
+        )
+
+    private fun fileProgress(transferId: ByteString, receivedBytes: Long): FileTransferProgress =
+        FileTransferProgress
+            .newBuilder()
+            .setTransferId(transferId)
+            .setReceivedBytes(receivedBytes)
+            .build()
+
+    private fun fileComplete(transferId: ByteString, digest: ByteString): FileTransferComplete =
+        FileTransferComplete
+            .newBuilder()
+            .setTransferId(transferId)
+            .setAccepted(true)
+            .setSha256(digest)
+            .build()
+
+    private fun managedPolicyStatus(
+        fileTransferAllowed: Boolean,
+        maximumFileBytes: Long = FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
+    ): ManagedPolicyStatus =
+        ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+            isManaged = true,
+            fileTransferAllowed = fileTransferAllowed,
+            maximumFileBytes = maximumFileBytes,
+            allowedHosts = setOf("host-1"),
+            allowedHostsRestricted = true,
+        ).toStatus()
 
     private fun media(
         frameId: Long,
@@ -2927,6 +3326,9 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     val frames = mutableListOf<ProductVideoFrame>()
     val audio = mutableListOf<ByteArray>()
     val bulk = mutableListOf<ByteArray>()
+    val fileOffers = java.util.concurrent.CopyOnWriteArrayList<FileOffer>()
+    val incomingFiles = java.util.concurrent.CopyOnWriteArrayList<CompletedIncomingFile>()
+    val fileResults = java.util.concurrent.CopyOnWriteArrayList<Pair<Boolean, String>>()
     val configurations = mutableListOf<ProductVideoConfiguration>()
     val appliedConfigurations = mutableListOf<ProductVideoConfiguration>()
     val inputAcks = java.util.concurrent.CopyOnWriteArrayList<ProductInputAckCallback>()
@@ -2962,6 +3364,9 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onAudioRecord(payload: ByteArray) { audio += payload }
     override fun onBulkRecord(payload: ByteArray) { bulk += payload }
+    override fun onFileOffer(offer: FileOffer) { fileOffers += offer }
+    override fun onIncomingFileCompleted(completed: CompletedIncomingFile) { incomingFiles += completed }
+    override fun onFileTransferResult(accepted: Boolean, reason: String) { fileResults += accepted to reason }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }
     override fun onRouteSelected(route: PeerRoute) { routes += route }
@@ -3041,4 +3446,21 @@ private class ProductFakePeerEngine(
         control
             .map(Envelope::parseFrom)
             .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
+}
+
+private fun ProductFakePeerEngine.controlEnvelopes(): List<Envelope> = control.map(Envelope::parseFrom)
+
+private fun assertFileChunk(
+    frame: ByteArray,
+    transferId: ByteString,
+    offset: Long,
+    payload: ByteArray,
+    final: Boolean,
+) {
+    val chunk = FileChunk.fromFrame(frame)
+    assertEquals(transferId, chunk.header.transferId)
+    assertEquals(offset, chunk.header.offset)
+    assertEquals(payload.size, chunk.header.payloadLength)
+    assertEquals(final, chunk.header.final)
+    assertArrayEquals(payload, chunk.payload)
 }

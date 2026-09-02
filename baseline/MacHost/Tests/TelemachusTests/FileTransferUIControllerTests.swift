@@ -116,7 +116,7 @@ final class FileTransferUIControllerTests: XCTestCase {
         let menuItem = NSMenuItem(title: "Send File", action: nil, keyEquivalent: "")
         let controller = FileTransferUIController(sendMenuItem: menuItem, alertPresenter: AlertSpy())
 
-        controller.bind(server: server, fileTransferAvailable: true)
+        controller.bind(server: server)
         XCTAssertTrue(menuItem.isEnabled)
         XCTAssertTrue(controller.validateMenuItem(menuItem))
 
@@ -132,7 +132,7 @@ final class FileTransferUIControllerTests: XCTestCase {
         let menuItem = NSMenuItem(title: "Send File", action: nil, keyEquivalent: "")
         let controller = FileTransferUIController(sendMenuItem: menuItem, alertPresenter: AlertSpy())
 
-        controller.bind(server: server, fileTransferAvailable: false)
+        controller.bind(server: server)
         XCTAssertFalse(controller.validateMenuItem(menuItem))
 
         server.fileTransferAvailable = true
@@ -146,7 +146,7 @@ final class FileTransferUIControllerTests: XCTestCase {
         let menuItem = NSMenuItem(title: "Send File", action: nil, keyEquivalent: "")
         let controller = FileTransferUIController(sendMenuItem: menuItem, alertPresenter: AlertSpy())
 
-        controller.bind(server: server, fileTransferAvailable: true)
+        controller.bind(server: server)
         XCTAssertTrue(menuItem.isEnabled)
 
         server.fileTransferAvailable = false

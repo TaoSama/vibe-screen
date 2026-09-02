@@ -85,7 +85,7 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
         updateMenuState()
     }
 
-    func bind(server: FileTransferServer, fileTransferAvailable: Bool) {
+    func bind(server: FileTransferServer) {
         self.server = server
         updateMenuState()
     }
@@ -233,6 +233,8 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
             return "The file transfer data channel could not send the next chunk."
         case ProtocolV1FileTransferError.approvalTimedOut.reasonCode:
             return "The file transfer request timed out before it was approved."
+        case ProtocolV1FileTransferError.transferTimedOut.reasonCode:
+            return "The file transfer timed out waiting for the device to respond."
         case ProtocolV1FileTransferError.policyDenied.reasonCode:
             return "File transfer is disabled by the current managed policy."
         case ProtocolV1FileTransferError.concurrentLimitReached.reasonCode:
