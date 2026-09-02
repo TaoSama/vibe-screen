@@ -234,6 +234,126 @@
       "readme_gate_closure": false
     },
     {
+      "id": "android-internet-webrtc-disconnected",
+      "platform": "android",
+      "system_state": "Internet mode loses its WebRTC peer connection, ICE candidate pair, data channel, or direct/relay route after a product session starts.",
+      "failed_layer": "Internet WebRTC transport",
+      "source_classifier": "InternetProductSession and WebRtcInternetTransport disconnect/recovery callbacks, including route loss, ICE failure, data-channel close, and active TURN allocation disconnects",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Internet connection recovery surface and route-status diagnostics",
+      "user_visible_copy": "Internet connection lost or reconnecting guidance with Direct/TURN route status and a fresh-session retry action",
+      "user_action": "Keep the Mac app online, verify the Internet profile is still valid, switch networks or allow the app through VPN/firewall restrictions, then retry with a fresh Direct or TURN route.",
+      "retry_behavior": "bounded_auto_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/WebRtcInternetTransportTest.kt",
+        "docs/changes/2026-08-04-phase-3-secure-internet/TEST.md#test-matrix"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-codec-negotiation-failed",
+      "platform": "android",
+      "system_state": "Host and Android client cannot agree on a common locally encodable and decodable video codec before streaming begins.",
+      "failed_layer": "Protocol v1 codec negotiation",
+      "source_classifier": "Protocol v1 Internet product codec rejects unsupported codec sets, including no-common-codec and unsupported AV1 admission paths",
+      "android_session_failure_kinds": ["INVALID_PEER_MESSAGE"],
+      "ui_surface": "Mode-specific terminal guidance surface",
+      "user_visible_copy": "connection_guidance_mac_incompatible_title or video decoder recovery copy with a codec-specific diagnostic reason",
+      "user_action": "Update Vibe Screen on both devices or select a supported H.264/HEVC path; do not keep retrying the same incompatible codec set.",
+      "retry_behavior": "terminal_no_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/ProtocolV1ProductCodecTest.kt",
+        "baseline/MacHost/Tests/TelemachusTests/InternetProductProtocolCodecTests.swift",
+        "docs/changes/2026-08-21-av1-codec-capability/TEST.md#offline-coverage"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-managed-policy-deny",
+      "platform": "android",
+      "system_state": "A managed configuration from either peer denies a negotiated feature or host route, so deny wins even when local UI controls are available.",
+      "failed_layer": "Protocol v1 managed policy",
+      "source_classifier": "ManagedPolicyStatus merge and restriction-result validation for clipboard, file transfer, audio, wake, host actions, allowed hosts, and denied hosts",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Feature-specific disabled or denied feedback plus Host/Android managed-policy diagnostics",
+      "user_visible_copy": "Managed policy disabled this action, with the denied restriction and source shown in diagnostics rather than raw protocol text",
+      "user_action": "Use an allowed host or action, or ask the device/workspace administrator to change the managed policy before retrying.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/MacHost/Tests/TelemachusTests/ManagedPolicyTests.swift",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt",
+        "contracts/tests/test_shared_protocol_model.py"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-unsupported-peripheral-kind",
+      "platform": "android",
+      "system_state": "A negotiated generic peripheral-input envelope names a concrete peripheral kind that the current Host does not implement.",
+      "failed_layer": "Protocol v1 peripheral input admission",
+      "source_classifier": "PeripheralEvent admission returns InputAck(accepted=false, rejection_reason=unsupported_peripheral_kind) and never reaches native injection",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Input feedback and protocol diagnostics for the active session",
+      "user_visible_copy": "Unsupported peripheral kind, keep the session active, and use a supported touch, keyboard, pointer, stylus, or controller path",
+      "user_action": "Switch to a supported input device or update both peers after a concrete peripheral kind is implemented and accepted.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "contracts/tests/test_security_contract.py",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
+        "docs/runbook/peripheral-input-framework.md#what-this-gate-covers"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-file-transfer-policy-deny",
+      "platform": "android",
+      "system_state": "File transfer is denied by managed policy, maximum-file policy, invalid file metadata, user denial, or a fail-closed transfer admission check.",
+      "failed_layer": "Protocol v1 file-transfer policy",
+      "source_classifier": "FileTransferSession, FileTransferProductOwner, FileAccept, FileTransferCancel, and FileTransferComplete policy_denied or bounded rejection reasons",
+      "android_session_failure_kinds": [],
+      "ui_surface": "File transfer sheet, transfer-result feedback, and protocol diagnostics",
+      "user_visible_copy": "File transfer denied by policy or file limits with the specific rejection reason surfaced through the file-transfer UI",
+      "user_action": "Choose a permitted file, reduce file size if the limit was exceeded, or ask the administrator to allow file transfer before retrying.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt",
+        "baseline/MacHost/Tests/TelemachusTests/ProtocolV1FileTransferTests.swift",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/FileTransferSessionTest.kt"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
+      "id": "android-clipboard-policy-deny",
+      "platform": "android",
+      "system_state": "Clipboard forwarding is denied because clipboard capability is not negotiated, managed policy disables clipboard, MIME or byte limits fail, or explicit approval is absent.",
+      "failed_layer": "Protocol v1 clipboard policy",
+      "source_classifier": "Clipboard offer/request/content admission, managed ClipboardAllowed status, maximumClipboardBytes, MIME, SHA-256, origin, and approval state checks",
+      "android_session_failure_kinds": [],
+      "ui_surface": "Clipboard action feedback and protocol diagnostics for explicit send/get/overwrite actions",
+      "user_visible_copy": "Clipboard sharing denied by policy, unsupported content, missing capability, or size limit with no silent pasteboard mutation",
+      "user_action": "Enable clipboard capability and managed policy, use text/plain within the negotiated byte limit, approve the explicit transfer, then retry.",
+      "retry_behavior": "manual_retry",
+      "offline_evidence": [
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1ClipboardTest.kt",
+        "baseline/MacHost/Tests/TelemachusTests/ProtocolV1SessionClipboardTests.swift",
+        "tools/tests/test_clipboard_e2e_gate.py"
+      ],
+      "device_evidence_status": "open",
+      "gate_status": "covered-offline",
+      "readme_gate_closure": false
+    },
+    {
       "id": "android-mac-ended-session",
       "platform": "android",
       "system_state": "Mac Host intentionally ends the current session.",

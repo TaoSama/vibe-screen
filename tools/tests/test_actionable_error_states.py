@@ -12,6 +12,7 @@ from vibescreen_evidence.actionable_error_states import (
     ActionableErrorStateError,
     KIND,
     REQUIRED_ACTIONABLE_CONTRACT_CODES,
+    REQUIRED_ACTIONABLE_STATE_IDS,
     _markdown_anchor_base,
     parse_session_failure_kinds,
     evaluate,
@@ -97,7 +98,13 @@ class ActionableErrorStateGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "pass")
         self.assertFalse(report["can_close_readme_phase1_actionable_errors_gate"])
         self.assertEqual(report["missing_android_session_failure_kinds"], [])
+        self.assertEqual(report["unknown_android_session_failure_kinds"], [])
+        self.assertEqual(report["missing_actionable_state_ids"], [])
         self.assertEqual(report["missing_actionable_contract_codes"], [])
+        self.assertEqual(
+            set(report["covered_actionable_state_ids"]),
+            set(REQUIRED_ACTIONABLE_STATE_IDS),
+        )
         self.assertEqual(
             set(report["covered_actionable_contract_codes"]),
             set(REQUIRED_ACTIONABLE_CONTRACT_CODES),
@@ -127,6 +134,87 @@ class ActionableErrorStateGateTests(unittest.TestCase):
             for field in ("title", "body", "action"):
                 self.assertIsInstance(contract[field], str, code)
                 self.assertGreater(len(contract[field].strip()), 12, f"{code}.{field}")
+
+    def test_real_matrix_required_actionable_states_cover_requested_rows(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        by_id = {state["id"]: state for state in states if isinstance(state, dict)}
+
+        self.assertEqual(set(REQUIRED_ACTIONABLE_STATE_IDS).difference(by_id), set())
+        expected_fragments = {
+            "android-internet-webrtc-disconnected": ("WebRTC", "Internet", "fresh"),
+            "android-codec-negotiation-failed": ("codec", "Mode-specific", "compatible"),
+            "android-managed-policy-deny": ("managed policy", "policy", "administrator"),
+            "android-unsupported-peripheral-kind": ("peripheral", "InputAck", "supported"),
+            "android-file-transfer-policy-deny": ("file-transfer", "file", "policy"),
+            "android-clipboard-policy-deny": ("clipboard", "clipboard", "policy"),
+        }
+        for state_id, fragments in expected_fragments.items():
+            state = by_id[state_id]
+            self.assertEqual(state["platform"], "android", state_id)
+            self.assertEqual(state["gate_status"], "covered-offline", state_id)
+            self.assertFalse(state["readme_gate_closure"], state_id)
+            combined = " ".join(
+                str(state[field])
+                for field in (
+                    "system_state",
+                    "failed_layer",
+                    "source_classifier",
+                    "ui_surface",
+                    "user_visible_copy",
+                    "user_action",
+                )
+            )
+            for fragment in fragments:
+                self.assertIn(fragment, combined, state_id)
+
+    def test_rejects_missing_required_actionable_state(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        matrix["states"] = [
+            state
+            for state in states
+            if state["id"] != "android-internet-webrtc-disconnected"
+        ]
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            "required_actionable_states: missing android-internet-webrtc-disconnected",
+            report["errors"],
+        )
+        self.assertIn(
+            "android-internet-webrtc-disconnected",
+            report["missing_actionable_state_ids"],
+        )
+
+    def test_rejects_required_actionable_state_with_open_gate_status(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("id") == "android-unsupported-peripheral-kind":
+                state["gate_status"] = "open"
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertNotIn(
+            "android-unsupported-peripheral-kind",
+            report["covered_actionable_state_ids"],
+        )
+        self.assertIn(
+            f"states[{changed_index}].gate_status: required actionable state "
+            "android-unsupported-peripheral-kind must be covered-offline",
+            report["errors"],
+        )
 
     def test_rejects_missing_required_actionable_contract(self) -> None:
         matrix = self.load_real_matrix()
@@ -492,6 +580,21 @@ class ActionableErrorStateGateTests(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "fail")
         self.assertIn("android_session_failure_kinds: missing NEW_KIND", report["errors"])
+
+    def test_rejects_matrix_session_failure_kind_not_declared_in_source(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        states[0]["android_session_failure_kinds"] = ["TRANSPORT_CLOSED", "REMOVED_KIND"]
+
+        report = evaluate(
+            matrix,
+            android_session_failure_kinds=parse_session_failure_kinds(SESSION_FAILURE_SOURCE),
+        )
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn("android_session_failure_kinds: unknown REMOVED_KIND", report["errors"])
+        self.assertEqual(report["unknown_android_session_failure_kinds"], ["REMOVED_KIND"])
 
     def test_session_failure_parser_ignores_nested_enum_body_braces(self) -> None:
         source = """
