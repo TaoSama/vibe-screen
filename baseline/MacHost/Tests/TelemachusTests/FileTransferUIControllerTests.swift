@@ -20,7 +20,7 @@ final class FileTransferUIControllerTests: XCTestCase {
             let message: String
         }
 
-        var approvalResult = false
+        var approvalResult = ProtocolV1FileTransferApprovalResult.userDenied
         var approvalRequests: [(String, UInt64, String)] = []
         var cancelApprovalCount = 0
         var information: [(String, String)] = []
@@ -28,7 +28,11 @@ final class FileTransferUIControllerTests: XCTestCase {
 
         nonisolated init() {}
 
-        func presentIncomingFileApproval(fileName: String, byteLength: UInt64, mimeType: String) -> Bool {
+        func presentIncomingFileApproval(
+            fileName: String,
+            byteLength: UInt64,
+            mimeType: String
+        ) -> ProtocolV1FileTransferApprovalResult {
             approvalRequests.append((fileName, byteLength, mimeType))
             return approvalResult
         }
@@ -109,6 +113,35 @@ final class FileTransferUIControllerTests: XCTestCase {
         XCTAssertEqual(alerts.warnings.count, 1)
         XCTAssertEqual(alerts.warnings[0].title, "File Transfer Failed")
         XCTAssertEqual(alerts.warnings[0].message, "File transfer is disabled by the current managed policy.")
+    }
+
+    func testApprovalResultPreservesCancelledOutcome() {
+        let alerts = AlertSpy()
+        alerts.approvalResult = .cancelled
+        let (controller, _) = makeController(alerts: alerts)
+        var offer = VSFileOffer()
+        offer.fileName = "report.txt"
+        offer.byteLength = 12
+        offer.mimeType = "text/plain"
+
+        let result = controller.approveIncomingFileOffer(offer)
+
+        XCTAssertEqual(result, .cancelled)
+        XCTAssertEqual(alerts.approvalRequests.count, 1)
+    }
+
+    func testOutgoingUserDeniedUsesDeviceRejectionMessage() {
+        let (controller, alerts) = makeController()
+
+        controller.handleFileTransferResult(
+            direction: .outgoing,
+            accepted: false,
+            reason: ProtocolV1FileTransferError.userDenied.reasonCode
+        )
+
+        XCTAssertEqual(alerts.warnings.count, 1)
+        XCTAssertEqual(alerts.warnings[0].title, "File Transfer Failed")
+        XCTAssertEqual(alerts.warnings[0].message, "The Android device rejected the file transfer.")
     }
 
     func testMenuValidationReadsLiveServerAvailability() {

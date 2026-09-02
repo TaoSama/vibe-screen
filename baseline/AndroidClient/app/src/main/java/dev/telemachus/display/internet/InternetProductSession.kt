@@ -11,6 +11,7 @@ import dev.telemachus.display.SessionInputIdSequence
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.AdvancedChannelAdmission
+import dev.telemachus.display.internet.security.AdvancedChannelBacklogRejectedException
 import dev.telemachus.display.internet.security.AdvancedChannelBinding
 import dev.telemachus.display.internet.security.AdvancedChannelOwner
 import dev.telemachus.display.internet.security.AdvancedChannelSecurityGate
@@ -1515,13 +1516,8 @@ class InternetProductSession internal constructor(
             FileChunkDecodeResult.Valid(FileChunk.fromFrame(payload))
         } catch (failure: FileTransferException) {
             FileChunkDecodeResult.Invalid(transferId, failure.reasonCode)
-        } catch (failure: IOException) {
-            val reason = if (failure.message?.contains("payload_length mismatch") == true) {
-                "chunk_length_mismatch"
-            } else {
-                "invalid_file_payload"
-            }
-            FileChunkDecodeResult.Invalid(transferId, reason)
+        } catch (_: IOException) {
+            FileChunkDecodeResult.Invalid(transferId, "invalid_file_payload")
         } catch (_: Throwable) {
             FileChunkDecodeResult.Invalid(transferId, "invalid_file_payload")
         }
@@ -1874,7 +1870,7 @@ class InternetProductSession internal constructor(
     }
 
     private fun isAdvancedChannelBacklogFailure(failure: Throwable?): Boolean =
-        failure is IllegalStateException && failure.message?.contains("Advanced channel backlog exceeds") == true
+        failure is AdvancedChannelBacklogRejectedException
 
     private fun finishAdvancedAdmission(admission: AdvancedChannelAdmission) {
         try {

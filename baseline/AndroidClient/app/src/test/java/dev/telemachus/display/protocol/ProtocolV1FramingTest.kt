@@ -135,6 +135,7 @@ class ProtocolV1FramingTest {
         val encoded = encodeVarint(header.toByteArray().size) + header.toByteArray() + byteArrayOf(1)
 
         assertThrows(IOException::class.java) { ProtocolV1Framing.decodeFileChunk(encoded) }
+        assertThrows(IOException::class.java) { ProtocolV1Framing.peekFileChunkHeader(encoded) }
     }
 
     private fun fixtures(): File {

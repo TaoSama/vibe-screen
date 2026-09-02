@@ -223,6 +223,7 @@ enum ProtocolV1FileTransferError: Error, Equatable {
     case invalidFinalFlag
     case incompleteFile
     case digestMismatch
+    case approvalCancelled
     case approvalTimedOut
     case transferTimedOut
     case bulkSendFailed
@@ -251,12 +252,28 @@ enum ProtocolV1FileTransferError: Error, Equatable {
         case .invalidFinalFlag: return "invalid_final_flag"
         case .incompleteFile: return "incomplete_file"
         case .digestMismatch: return "digest_mismatch"
+        case .approvalCancelled: return "approval_cancelled"
         case .approvalTimedOut: return "approval_timeout"
         case .transferTimedOut: return "transfer_timeout"
         case .bulkSendFailed: return "bulk_send_failed"
         case .ioFailure: return "io_failure"
         }
     }
+}
+
+struct ProtocolV1FileTransferApprovalResult: Equatable {
+    let isAccepted: Bool
+    let reasonCode: String
+
+    static let accepted = ProtocolV1FileTransferApprovalResult(isAccepted: true, reasonCode: "")
+    static let userDenied = ProtocolV1FileTransferApprovalResult(
+        isAccepted: false,
+        reasonCode: ProtocolV1FileTransferError.userDenied.reasonCode
+    )
+    static let cancelled = ProtocolV1FileTransferApprovalResult(
+        isAccepted: false,
+        reasonCode: ProtocolV1FileTransferError.approvalCancelled.reasonCode
+    )
 }
 
 final class ProtocolV1IncomingFileTransferManager {

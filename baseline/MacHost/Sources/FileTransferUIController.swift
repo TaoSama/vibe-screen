@@ -11,7 +11,11 @@ protocol FileTransferServer: AnyObject {
 
 @MainActor
 protocol FileTransferAlertPresenter: AnyObject {
-    func presentIncomingFileApproval(fileName: String, byteLength: UInt64, mimeType: String) -> Bool
+    func presentIncomingFileApproval(
+        fileName: String,
+        byteLength: UInt64,
+        mimeType: String
+    ) -> ProtocolV1FileTransferApprovalResult
     func cancelIncomingFileApproval()
     func presentInformation(title: String, message: String)
     func presentWarning(title: String, message: String)
@@ -23,7 +27,11 @@ final class NSAlertFileTransferPresenter: FileTransferAlertPresenter {
 
     nonisolated init() {}
 
-    func presentIncomingFileApproval(fileName: String, byteLength: UInt64, mimeType: String) -> Bool {
+    func presentIncomingFileApproval(
+        fileName: String,
+        byteLength: UInt64,
+        mimeType: String
+    ) -> ProtocolV1FileTransferApprovalResult {
         let alert = NSAlert()
         currentIncomingAlert = alert
         defer {
@@ -34,7 +42,14 @@ final class NSAlertFileTransferPresenter: FileTransferAlertPresenter {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Receive")
         alert.addButton(withTitle: "Reject")
-        return alert.runModal() == .alertFirstButtonReturn
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return .accepted
+        case .abort:
+            return .cancelled
+        default:
+            return .userDenied
+        }
     }
 
     func cancelIncomingFileApproval() {
@@ -95,7 +110,7 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
         updateMenuState()
     }
 
-    func approveIncomingFileOffer(_ offer: VSFileOffer) -> Bool {
+    func approveIncomingFileOffer(_ offer: VSFileOffer) -> ProtocolV1FileTransferApprovalResult {
         alertPresenter.presentIncomingFileApproval(
             fileName: offer.fileName,
             byteLength: offer.byteLength,
@@ -229,6 +244,10 @@ final class FileTransferUIController: NSObject, NSMenuItemValidation {
 
     private static func fileTransferFailureMessage(reason: String) -> String {
         switch reason {
+        case ProtocolV1FileTransferError.userDenied.reasonCode:
+            return "The Android device rejected the file transfer."
+        case ProtocolV1FileTransferError.approvalCancelled.reasonCode:
+            return "The file transfer request was cancelled."
         case ProtocolV1FileTransferError.bulkSendFailed.reasonCode:
             return "The file transfer data channel could not send the next chunk."
         case ProtocolV1FileTransferError.approvalTimedOut.reasonCode:

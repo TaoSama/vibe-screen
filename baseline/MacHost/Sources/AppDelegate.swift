@@ -2105,7 +2105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.onFileTransferApprovalRequested = { [weak self, weak configuredServer] offer in
                 guard let self, let configuredServer,
                       self.streamingServer === configuredServer else { return false }
-                return self.fileTransferController?.approveIncomingFileOffer(offer) ?? false
+                return self.fileTransferController?.approveIncomingFileOffer(offer).isAccepted ?? false
             }
             streamingServer?.onIncomingFileCompleted = { [weak self, weak configuredServer] completed in
                 DispatchQueue.main.async { [weak self, weak configuredServer] in
@@ -3097,10 +3097,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else {
-                    completion(false)
+                    completion(.cancelled)
                     return
                 }
-                completion(self.fileTransferController?.approveIncomingFileOffer(offer) ?? false)
+                completion(self.fileTransferController?.approveIncomingFileOffer(offer) ?? .cancelled)
             }
         }
         session.onFileTransferCompleted = { [weak self, weak session] completed in

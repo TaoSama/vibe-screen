@@ -133,7 +133,7 @@ final class InternetProductSession: EncodedFrameSink {
     ) -> Void)?
     var onAudioRecordReceived: ((Data) -> Void)?
     var onBulkRecordReceived: ((Data) -> Void)?
-    var onFileTransferApprovalRequested: ((VSFileOffer, @escaping (Bool) -> Void) -> Void)?
+    var onFileTransferApprovalRequested: ((VSFileOffer, @escaping (ProtocolV1FileTransferApprovalResult) -> Void) -> Void)?
     var onFileTransferCompleted: ((ProtocolV1CompletedIncomingFile) -> Void)?
     var onFileTransferResult: ((Data, ProtocolV1FileTransferDirection, Bool, String) -> Void)?
     var onFileTransferAvailabilityChanged: ((Bool) -> Void)?
@@ -937,14 +937,12 @@ final class InternetProductSession: EncodedFrameSink {
                     throw InternetProductProtocolError.missingCapability(.fileTransfer)
                 }
                 handleOutgoingFileAccept(response, codec: &codec, generation: generation)
-                self.codec = codec
 
             case .fileTransferProgress(let progress) where isStreaming:
                 guard peerSupportsFileTransfer else {
                     throw InternetProductProtocolError.missingCapability(.fileTransfer)
                 }
                 handleOutgoingFileProgress(progress, codec: &codec, generation: generation)
-                self.codec = codec
 
             case .fileTransferCancel(let cancellation) where isStreaming:
                 guard peerSupportsFileTransfer else {
@@ -958,7 +956,6 @@ final class InternetProductSession: EncodedFrameSink {
                     throw InternetProductProtocolError.missingCapability(.fileTransfer)
                 }
                 handleOutgoingFileComplete(result, codec: &codec)
-                self.codec = codec
 
             case .managedPolicyStatus(let status) where isStreaming || state == .awaitingVideoConfiguration:
                 guard peerSupportsManagedConfiguration else {
@@ -1398,12 +1395,12 @@ final class InternetProductSession: EncodedFrameSink {
             timer: timer
         )
         timer.resume()
-        approval(offer) { [weak self] accepted in
+        approval(offer) { [weak self] result in
             self?.queue.async {
                 self?.finishIncomingFileApproval(
                     transferID: offer.transferID,
-                    accepted: accepted,
-                    reasonCode: accepted ? "" : ProtocolV1FileTransferError.userDenied.reasonCode,
+                    accepted: result.isAccepted,
+                    reasonCode: result.reasonCode,
                     generation: generation
                 )
             }
@@ -1532,9 +1529,13 @@ final class InternetProductSession: EncodedFrameSink {
                     reason: response.rejectionReason
                 )
             }
+            self.codec = codec
             return
         }
-        guard let transfer = outgoingFileTransfers[response.transferID] else { return }
+        guard let transfer = outgoingFileTransfers[response.transferID] else {
+            self.codec = codec
+            return
+        }
         cancelOutgoingFileTransferDeadline(transferID: response.transferID)
         transfer.applyAcceptedMaximumChunkBytes(Int(response.maximumChunkBytes))
         sendNextOutgoingFileChunk(transfer, codec: &codec, generation: generation)
@@ -1545,7 +1546,10 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec,
         generation: UInt64
     ) {
-        guard let transfer = outgoingFileTransfers[progress.transferID] else { return }
+        guard let transfer = outgoingFileTransfers[progress.transferID] else {
+            self.codec = codec
+            return
+        }
         do {
             try transfer.validateAcknowledgedOffset(progress.receivedBytes)
         } catch let error as ProtocolV1FileTransferError {
@@ -1593,20 +1597,25 @@ final class InternetProductSession: EncodedFrameSink {
         _ result: VSFileTransferComplete,
         codec: inout InternetProductProtocolCodec
     ) {
-        guard let transfer = outgoingFileTransfers.removeValue(forKey: result.transferID) else { return }
+        guard let transfer = outgoingFileTransfers.removeValue(forKey: result.transferID) else {
+            self.codec = codec
+            return
+        }
         cancelOutgoingFileTransferDeadline(transferID: result.transferID)
         defer { transfer.cancel() }
         guard result.accepted else {
             notifyOutgoingFileTransferResult(
                 transferID: result.transferID,
                 accepted: false,
-                reason: result.rejectionReason
-            )
+                    reason: result.rejectionReason
+                )
+            self.codec = codec
             return
         }
         do {
             try transfer.validateCompletionDigest(result.sha256)
             notifyOutgoingFileTransferResult(transferID: result.transferID, accepted: true, reason: "")
+            self.codec = codec
         } catch let error as ProtocolV1FileTransferError {
             cancelOutgoingFileTransfer(
                 transferID: result.transferID,

@@ -120,7 +120,9 @@ internal object ProtocolV1Framing {
         }
         val header = FileChunkHeader.parseFrom(coded.readRawBytes(headerLength))
         val content = coded.readRawBytes(coded.bytesUntilLimit)
-        if (header.payloadLength != content.size) throw IOException("File payload_length mismatch")
+        if (header.payloadLength != content.size) {
+            throw fileTransferFailure("chunk_length_mismatch", "File payload_length mismatch")
+        }
         return FileChunkPayload(header, content)
     }
 

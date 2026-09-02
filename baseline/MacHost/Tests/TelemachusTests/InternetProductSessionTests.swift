@@ -218,7 +218,7 @@ final class InternetProductSessionTests: XCTestCase {
         var completedFile: ProtocolV1CompletedIncomingFile?
         harness.session.onFileTransferApprovalRequested = { offer, completion in
             XCTAssertEqual(offer.fileName, "incoming.txt")
-            completion(true)
+            completion(.accepted)
         }
         harness.session.onFileTransferCompleted = { file in
             completedFile = file
@@ -267,7 +267,7 @@ final class InternetProductSessionTests: XCTestCase {
             maximumFileBytes: 1_024,
             maximumChunkBytes: 4
         ))
-        let approvalCompletion = TestLockedValue<((Bool) -> Void)>()
+        let approvalCompletion = TestLockedValue<((ProtocolV1FileTransferApprovalResult) -> Void)>()
         harness.session.onFileTransferApprovalRequested = { offer, completion in
             XCTAssertEqual(offer.fileName, "pending.txt")
             approvalCompletion.store(completion)
@@ -289,7 +289,7 @@ final class InternetProductSessionTests: XCTestCase {
         harness.receiveControl(harness.ping(messageID: 4, sequence: 99))
         XCTAssertTrue(harness.waitForPong(sequence: 99))
 
-        approvalCompletion.load()?(true)
+        approvalCompletion.load()?(.accepted)
         XCTAssertTrue(harness.waitForFileAccept(transferID: transferID))
         XCTAssertEqual(harness.sentFileAccept(transferID: transferID)?.accepted, true)
     }
@@ -386,7 +386,7 @@ final class InternetProductSessionTests: XCTestCase {
         ))
         let rawBulk = TestLockedValue<Data>()
         let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
-        harness.session.onFileTransferApprovalRequested = { _, completion in completion(true) }
+        harness.session.onFileTransferApprovalRequested = { _, completion in completion(.accepted) }
         harness.session.onBulkRecordReceived = { payload in rawBulk.store(payload) }
         harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
             results.append((transferID, direction, accepted, reason))
@@ -3223,23 +3223,6 @@ private final class Harness {
         return envelope
     }
 
-    func fileComplete(
-        messageID: UInt64,
-        transferID: Data,
-        accepted: Bool,
-        sha256: Data,
-        rejectionReason: String = ""
-    ) -> VSEnvelope {
-        var complete = VSFileTransferComplete()
-        complete.transferID = transferID
-        complete.accepted = accepted
-        complete.sha256 = sha256
-        complete.rejectionReason = rejectionReason
-        var envelope = baseEnvelope(messageID: messageID)
-        envelope.fileTransferComplete = complete
-        return envelope
-    }
-
     func managedPolicyStatus(
         messageID: UInt64,
         fileTransferAllowed: Bool,
@@ -3630,16 +3613,6 @@ private func malformedFileChunkFrame(
     result.append(headerBytes)
     result.append(payload)
     return result
-}
-
-private extension ProtocolV1FileChunk {
-    func serializedFramePreservingHeaderDigest() throws -> Data {
-        let headerBytes = try header.serializedData()
-        var result = encodeTestVarint(headerBytes.count)
-        result.append(headerBytes)
-        result.append(payload)
-        return result
-    }
 }
 
 private func encodeTestVarint(_ value: Int) -> Data {

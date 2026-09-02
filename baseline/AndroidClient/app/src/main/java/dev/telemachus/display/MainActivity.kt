@@ -2873,6 +2873,8 @@ class MainActivity : AppCompatActivity() {
         when (reason) {
             "policy_denied" -> R.string.file_transfer_failed_policy_denied
             "user_denied" -> R.string.file_transfer_failed_user_denied
+            "approval_timeout" -> R.string.file_transfer_offer_expired
+            "approval_cancelled" -> R.string.file_transfer_failed_cancelled
             "file_too_large" -> R.string.file_transfer_failed_too_large
             "concurrent_limit",
             "temporary_space_limit",

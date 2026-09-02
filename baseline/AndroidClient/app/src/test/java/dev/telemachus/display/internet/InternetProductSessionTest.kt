@@ -1,6 +1,7 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import com.google.protobuf.CodedOutputStream
 import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.CONTROLLER_CONNECTION_ACK_TIMEOUT_MS
 import dev.telemachus.display.ControllerEventKind
@@ -1537,6 +1538,30 @@ class InternetProductSessionTest {
         peer.bulk(rawBulk)
 
         assertArrayEquals(rawBulk, callbacks.bulk.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun activeFileTransferRejectsChunkLengthMismatchWithTypedReason() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val transferId = transferId(0x24)
+        val payload = byteArrayOf(0x51, 0x52)
+        val offer = fileOffer(transferId, "mismatch.bin", payload)
+
+        peer.receive(controlEnvelope(4).setFileOffer(offer).build())
+        assertTrue(session.respondToFileOffer(offer, accepted = true))
+
+        peer.bulk(fileChunkFrameWithDeclaredLength(transferId, payload, declaredPayloadLength = payload.size + 1))
+
+        val cancel = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL }.fileTransferCancel
+        assertEquals(transferId, cancel.transferId)
+        assertEquals("chunk_length_mismatch", cancel.reasonCode)
+        assertEquals(false to "chunk_length_mismatch", callbacks.fileResults.single())
+        assertTrue(callbacks.bulk.isEmpty())
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
     }
 
@@ -3198,6 +3223,32 @@ class InternetProductSessionTest {
                 .build(),
             payload,
         )
+
+    private fun fileChunkFrameWithDeclaredLength(
+        transferId: ByteString,
+        payload: ByteArray,
+        declaredPayloadLength: Int,
+    ): ByteArray {
+        val header =
+            FileChunkHeader
+                .newBuilder()
+                .setTransferId(transferId)
+                .setOffset(0)
+                .setPayloadLength(declaredPayloadLength)
+                .setSessionEpoch(lease.authoritativeSessionEpoch)
+                .setChunkSha256(sha256(payload))
+                .setFinal(true)
+                .build()
+        val headerBytes = header.toByteArray()
+        val prefixBytes = CodedOutputStream.computeUInt32SizeNoTag(headerBytes.size)
+        return ByteArray(prefixBytes + headerBytes.size + payload.size).also { output ->
+            val coded = CodedOutputStream.newInstance(output)
+            coded.writeUInt32NoTag(headerBytes.size)
+            coded.writeRawBytes(headerBytes)
+            coded.writeRawBytes(payload)
+            coded.flush()
+        }
+    }
 
     private fun fileProgress(transferId: ByteString, receivedBytes: Long): FileTransferProgress =
         FileTransferProgress
