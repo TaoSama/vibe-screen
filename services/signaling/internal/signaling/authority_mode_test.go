@@ -172,6 +172,51 @@ func TestAuthorityModeCreateSessionForwardsSessionProfile(t *testing.T) {
 	}
 }
 
+func TestValidateSessionProfileRejectsICEURLsWithoutEndpoint(t *testing.T) {
+	for _, raw := range []string{"stun:", "stuns:", "turn:", "turns:"} {
+		t.Run(raw, func(t *testing.T) {
+			profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+			profileRequest.ICEServers = []LeaseICEServer{{URLs: []string{raw}}}
+
+			err := validateSessionProfileRequest(profileRequest, "host-1", "client-1")
+			if err == nil || !strings.Contains(err.Error(), "ICE URL is invalid") {
+				t.Fatalf("validateSessionProfileRequest(%q) error = %v, want ICE URL is invalid", raw, err)
+			}
+		})
+	}
+}
+
+func TestValidateSessionProfileAcceptsICEURLsWithEndpoint(t *testing.T) {
+	username := "turn-user"
+	credential := "turn-credential"
+	testCases := []struct {
+		name   string
+		server LeaseICEServer
+	}{
+		{name: "stun opaque host", server: LeaseICEServer{URLs: []string{"stun:stun.example.test"}}},
+		{name: "stun authority host", server: LeaseICEServer{URLs: []string{"stun://stun.example.test"}}},
+		{
+			name: "turn opaque host",
+			server: LeaseICEServer{
+				URLs:       []string{"turn:turn.example.test?transport=udp"},
+				Username:   &username,
+				Credential: &credential,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+			profileRequest.ICEServers = []LeaseICEServer{tc.server}
+
+			if err := validateSessionProfileRequest(profileRequest, "host-1", "client-1"); err != nil {
+				t.Fatalf("validateSessionProfileRequest() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
 func TestLocalModeRejectsSessionProfile(t *testing.T) {
 	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
 	cfg := testConfig()

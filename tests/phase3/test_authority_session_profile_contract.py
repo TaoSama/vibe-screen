@@ -267,10 +267,7 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("loadVerifiedExisting(binding: identityBinding)", app_delegate)
         self.assertIn("sessionIdentifier: delivery.sessionID", app_delegate)
         self.assertIn("bearerToken: delivery.hostSignalingToken", app_delegate)
-        self.assertIn("self.queueInternetSessionLeaseDelivery(", app_delegate)
-        self.assertIn("delivery,", app_delegate)
         self.assertIn("internetSessionLeaseDeliveryLifecycle", app_delegate)
-        self.assertIn("queueInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("sendPendingInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("handleInternetSessionLeaseStateChange", app_delegate)
         self.assertIn("if case .streaming = state", app_delegate)
@@ -284,6 +281,15 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("try self.internetProductSessionConfiguration(", startup)
         self.assertIn("try session.start(configuration: configuration)", startup)
         self.assertIn("self.queueInternetSessionLeaseDelivery(", startup)
+        queue_call = bracket_block(
+            startup,
+            "self.queueInternetSessionLeaseDelivery",
+            "(",
+            ")",
+        )
+        self.assertIn("delivery,", queue_call)
+        self.assertIn("session: session", queue_call)
+        self.assertIn("sessionToken: sessionToken", queue_call)
         self.assertIn("screenCapture?.startStreaming", startup)
         self.assertIn("pipeline.start(with: startup.leasePlan)", startup)
         pipeline_start = bracket_block(startup_pipeline, "func start(with plan:", "{", "}")

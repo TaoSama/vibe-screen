@@ -874,7 +874,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         let expiresAt = (unsignedLeaseObject["expires_at"] as? NSNumber)?.uint64Value
             ?? UInt64(Date().timeIntervalSince1970) + 600
         let expiresAtText = try iso8601String(fromUnixSeconds: expiresAt)
-        try JSONSerialization.data(withJSONObject: [
+        return try JSONSerialization.data(withJSONObject: [
             "session_id": "session-authority-test",
             "host_token": String(repeating: "h", count: 32),
             "device_token": deviceToken,

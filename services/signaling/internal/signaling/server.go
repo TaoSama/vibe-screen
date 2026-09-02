@@ -589,7 +589,7 @@ func validateProfileICE(server LeaseICEServer) error {
 			return errors.New("ICE URL is invalid")
 		}
 		parsed, err := url.Parse(raw)
-		if err != nil {
+		if err != nil || (parsed.Hostname() == "" && parsed.Opaque == "") {
 			return errors.New("ICE URL is invalid")
 		}
 		switch strings.ToLower(parsed.Scheme) {
