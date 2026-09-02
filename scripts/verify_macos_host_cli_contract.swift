@@ -217,19 +217,42 @@ func launchModeSwitchLines(in source: String, context: String) throws -> [String
     throw ContractError.violation("\(context) must switch on commandLine.launchMode")
 }
 
+func isCaseLabelStart(_ line: String) -> Bool {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    if trimmed.hasPrefix("case ") { return true }
+    guard trimmed.hasPrefix("default") else { return false }
+    if trimmed.count == "default".count { return true }
+    let afterDefault = trimmed.index(trimmed.startIndex, offsetBy: "default".count)
+    return !isIdentifierCharacter(trimmed[afterDefault])
+}
+
+func hasDepthZeroColon(_ line: String) -> Bool {
+    var depth = 0
+    for character in line {
+        switch character {
+        case "(", "[", "{": depth += 1
+        case ")", "]", "}": depth -= 1
+        case ":":
+            if depth == 0 { return true }
+        default: break
+        }
+    }
+    return false
+}
+
 func switchLabel(in line: String, context: String) throws -> (label: String, tail: String, isDefault: Bool)? {
     let trimmed = line.trimmingCharacters(in: .whitespaces)
-    guard trimmed.hasPrefix("case ") || trimmed.hasPrefix("default") else { return nil }
+    guard isCaseLabelStart(trimmed) else { return nil }
     var depth = 0
     var colonIndex: String.Index?
-    for index in trimmed.indices {
+    scan: for index in trimmed.indices {
         switch trimmed[index] {
         case "(", "[", "{": depth += 1
         case ")", "]", "}": depth -= 1
         case ":":
             if depth == 0 {
                 colonIndex = index
-                break
+                break scan
             }
         default: break
         }
@@ -256,15 +279,33 @@ func launchModeSwitchCases(in source: String, context: String) throws -> [Launch
         cases.append(LaunchModeSwitchCase(label: currentLabel, bodyLines: currentBody, isDefault: currentIsDefault))
     }
 
-    for line in lines {
-        if let label = try switchLabel(in: line, context: context) {
-            appendCurrentCase()
-            currentLabel = label.label
-            currentIsDefault = label.isDefault
-            currentBody = label.tail.isEmpty ? [] : [label.tail]
+    var index = 0
+    while index < lines.count {
+        let line = lines[index]
+        if isCaseLabelStart(line) {
+            var labelLines = [line]
+            if !hasDepthZeroColon(line) {
+                index += 1
+                while index < lines.count {
+                    let continuation = lines[index]
+                    labelLines.append(continuation)
+                    if hasDepthZeroColon(continuation) {
+                        break
+                    }
+                    index += 1
+                }
+            }
+            let combined = labelLines.joined(separator: " ")
+            if let label = try switchLabel(in: combined, context: context) {
+                appendCurrentCase()
+                currentLabel = label.label
+                currentIsDefault = label.isDefault
+                currentBody = label.tail.isEmpty ? [] : [label.tail]
+            }
         } else {
             currentBody.append(line)
         }
+        index += 1
     }
     appendCurrentCase()
     return cases
@@ -404,6 +445,66 @@ func verifyLaunchModeSwitchFixtures() throws {
     }
     """#
     try requireStaticFixtureFails(missingIOSLoopbackExit, context: "iOS loopback missing exit fixture")
+
+    let triviaMasked = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        // default: this comment must not be treated as a case label
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+        let s = "break inside string"
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixturePasses(triviaMasked, context: "trivia masking fixture")
+
+    let defaultsSetInBody = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+        defaults.set(true, forKey: "flag")
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixturePasses(defaultsSetInBody, context: "defaults.set word boundary fixture")
+
+    let colonInCaseTail = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui: let mode = true ? 1 : 2
+        break
+    }
+    """#
+    try requireStaticFixturePasses(colonInCaseTail, context: "depth-0 colon scan fixture")
+
+    let multiLineCaseLabel = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest),
+         .command(.transportSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixturePasses(multiLineCaseLabel, context: "multi-line case label fixture")
+
+    let missingGUICase = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    }
+    """#
+    try requireStaticFixtureFails(missingGUICase, context: "missing GUI case fixture")
+
+    let missingSwitch = #"""
+    let commandLine = HostCommandLine.parse(arguments: CommandLine.arguments)
+    if case .gui = commandLine.launchMode {
+        break
+    }
+    """#
+    try requireStaticFixtureFails(missingSwitch, context: "missing switch fixture")
 }
 
 @discardableResult
