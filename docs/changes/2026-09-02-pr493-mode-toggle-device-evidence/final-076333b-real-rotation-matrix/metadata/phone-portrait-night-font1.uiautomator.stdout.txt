@@ -1,1 +1,0 @@
-UI hierchary dumped to: /sdcard/vibe_pr493_076333b_1788321121101_phone-portrait-night-font1.xml

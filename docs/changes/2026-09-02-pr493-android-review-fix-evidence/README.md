@@ -53,10 +53,16 @@ not physical tablet hardware or a physical rotation proof.
 Primary artifacts:
 
 - Screenshots: `screenshots/*.png` (16 files)
-- Per-scenario metadata and successful UI dumps: `metadata/*.txt` and `metadata/*.xml`
+- Retained per-scenario state metadata: `metadata/<scenario>.txt` (16 files)
+- Retained UI dump: `metadata/tablet-portrait-day-font1.xml`
 - Install log: `logs/install-debug-apk.txt`
 - App-only log summary: `logs/logcat-summary.txt`
 - Final live device restoration check: `metadata/final-restored-live.txt`
+
+Auxiliary launch, screenshot pull, UI pull, and uiautomator stdout/stderr logs
+were pruned from this retained evidence bundle because the screenshots,
+per-scenario state metadata, install log, app-only log summary, and final
+restoration check preserve the reviewed behavior and device boundary.
 
 Final restoration state recorded:
 

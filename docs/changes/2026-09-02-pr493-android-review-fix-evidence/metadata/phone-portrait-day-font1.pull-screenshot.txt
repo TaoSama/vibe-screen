@@ -1,1 +1,0 @@
-/sdcard/phone-portrait-day-font1.png: 1 file pulled, 0 skipped. 24.9 MB/s (249631 bytes in 0.010s)

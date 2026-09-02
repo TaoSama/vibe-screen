@@ -1,1 +1,0 @@
-/sdcard/tablet-landscape-day-font1.png: 1 file pulled, 0 skipped. 22.1 MB/s (217424 bytes in 0.009s)

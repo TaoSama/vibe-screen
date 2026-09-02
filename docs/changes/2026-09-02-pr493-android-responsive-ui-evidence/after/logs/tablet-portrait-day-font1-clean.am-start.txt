@@ -1,3 +1,0 @@
-Starting: Intent { cmp=dev.telemachus.display/.MainActivity }
-Starting: Intent { cmp=dev.telemachus.display/.MainActivity }
-Warning: Activity not started, intent has been delivered to currently running top-most instance.

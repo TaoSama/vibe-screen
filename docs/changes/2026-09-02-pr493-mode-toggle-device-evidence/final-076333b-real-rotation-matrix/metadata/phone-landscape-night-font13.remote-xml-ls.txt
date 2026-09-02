@@ -1,1 +1,0 @@
-ls: /sdcard/vibe_pr493_076333b_1788321251323_phone-landscape-night-font13.xml: No such file or directory

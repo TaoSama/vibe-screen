@@ -50,4 +50,4 @@ The two available XML files are the minimum semantic XML coverage for this retai
 
 The other six hierarchy captures are intentionally unavailable because `uiautomator` returned `ERROR: could not get idle state.` Their `*.pull-xml.txt` files record `dump invalid; not pulling XML`, and no stale XML file was reused.
 
-Screenshots plus state metadata remain the primary evidence for all eight scenarios.
+Screenshots plus state-after metadata remain the primary evidence for all eight scenarios. Auxiliary state-before, PNG pull, screencap, uiautomator stdout/stderr, remote XML listing, launch, and collector run logs were pruned from the retained bundle; the `*.pull-xml.txt` files are kept because they document the XML-unavailable boundary without retaining stale XML.

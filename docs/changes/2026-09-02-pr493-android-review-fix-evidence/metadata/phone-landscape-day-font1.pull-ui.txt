@@ -1,1 +1,0 @@
-adb: error: failed to stat remote object '/sdcard/phone-landscape-day-font1.xml': No such file or directory

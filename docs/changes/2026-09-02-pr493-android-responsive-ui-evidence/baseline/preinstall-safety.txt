@@ -1,3 +1,0 @@
---- host process check
---- adb reverse
-(empty)

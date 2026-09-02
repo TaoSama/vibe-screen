@@ -1,1 +1,0 @@
-/sdcard/phone-landscape-day-font1.png: 1 file pulled, 0 skipped. 24.5 MB/s (233499 bytes in 0.009s)

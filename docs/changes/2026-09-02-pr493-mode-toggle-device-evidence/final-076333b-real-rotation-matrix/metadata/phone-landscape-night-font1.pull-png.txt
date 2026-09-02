@@ -1,1 +1,0 @@
-/sdcard/vibe_pr493_076333b_1788321209010_phone-landscape-night-font1.png: 1 file pulled, 0 skipped. 24.0 MB/s (200815 bytes in 0.008s)

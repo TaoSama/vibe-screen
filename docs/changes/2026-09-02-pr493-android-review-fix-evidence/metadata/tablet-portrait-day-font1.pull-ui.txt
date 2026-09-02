@@ -1,1 +1,0 @@
-/sdcard/tablet-portrait-day-font1.xml: 1 file pulled, 0 skipped. 0.2 MB/s (1210 bytes in 0.005s)

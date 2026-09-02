@@ -1,1 +1,0 @@
-/sdcard/tablet-portrait-night-font1.png: 1 file pulled, 0 skipped. 25.9 MB/s (193584 bytes in 0.007s)
