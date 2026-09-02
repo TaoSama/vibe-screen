@@ -1079,8 +1079,8 @@ final class InternetProductSession: EncodedFrameSink {
                         "ManagedPolicyStatus requires complete, consistent restriction_results."
                     )
                 }
-                try applyRemoteManagedPolicy(status)
                 let wasFileTransferAvailable = fileTransferAvailable(codec: codec)
+                try applyRemoteManagedPolicy(status)
                 if var activeCodec = self.codec {
                     activeCodec.updateRemoteManagedPolicy(status)
                     if !activeCodec.remoteManagedPolicy.fileTransferAllowed {
