@@ -186,6 +186,56 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun threeChannelPcmConfigurationCreatesOutputWithExpectedPacketSize() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory)
+
+        assertEquals(
+            ProtocolAudioConfigureResult.Accepted(7, 3),
+            player.configure(audioConfig(channelCount = 3, framesPerPacket = 4), sessionEpoch = 5),
+        )
+
+        assertEquals(1, factory.created.size)
+        assertEquals(3, factory.created.single().format.channelCount)
+        assertEquals(24, factory.created.single().format.bytesPerPacket)
+    }
+
+    @Test
+    fun backpressureDropResultsStayAcceptedAndPlaybackContinues() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory, maximumBufferedPackets = 2)
+        assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+        val format = checkNotNull(player.activeFormat())
+
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 0),
+            player.submit(audioPacket(sequence = 1, payload = pcmPayload(format, seed = 20))),
+        )
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 0),
+            player.submit(audioPacket(sequence = 2, payload = pcmPayload(format, seed = 30))),
+        )
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.QueueFullDropped(2), writtenPackets = 2),
+            player.submit(audioPacket(sequence = 0, payload = pcmPayload(format, seed = 10))),
+        )
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 1),
+            player.submit(audioPacket(sequence = 2, payload = pcmPayload(format, seed = 30))),
+        )
+
+        assertEquals(3, factory.created.single().writes.size)
+        assertEquals(
+            listOf(
+                pcmPayload(format, seed = 10).toList(),
+                pcmPayload(format, seed = 20).toList(),
+                pcmPayload(format, seed = 30).toList(),
+            ),
+            factory.created.single().writes.map { it.toList() },
+        )
+    }
+
+    @Test
     fun writeFailureStopsActiveOutputAndRejectsFurtherPacketsUntilReconfigured() {
         val factory = FakePcmAudioOutputFactory(writeFailures = mutableListOf(AudioOutputFailureReason.WRITE_DEAD_OBJECT))
         val player = ProtocolPcmAudioPlayer(factory)
@@ -265,13 +315,14 @@ private class FakePcmAudioOutputFactory(
 
     override fun create(format: PcmAudioStreamFormat): PcmAudioOutput {
         createFailure?.let { throw AudioOutputException(it) }
-        return FakePcmAudioOutput(startFailure, writeFailures).also { created += it }
+        return FakePcmAudioOutput(startFailure, writeFailures, format).also { created += it }
     }
 }
 
 private class FakePcmAudioOutput(
     private val startFailure: AudioOutputFailureReason?,
     private val writeFailures: MutableList<AudioOutputFailureReason>,
+    val format: PcmAudioStreamFormat,
 ) : PcmAudioOutput {
     val events = mutableListOf<String>()
     val writes = mutableListOf<ByteArray>()
