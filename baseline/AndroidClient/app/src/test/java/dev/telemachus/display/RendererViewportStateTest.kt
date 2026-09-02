@@ -162,6 +162,26 @@ class RendererViewportStateTest {
     }
 
     @Test
+    fun `scale and rotation snapshots come from renderer viewport inputs`() {
+        var mode = VideoScaleMode.FIT
+        var rotation = ClientRotation.FOLLOW_HOST
+        val state =
+            RendererViewportState(
+                scaleMode = { mode },
+                renderRotation = { rotation },
+            )
+
+        assertEquals(VideoScaleMode.FIT, state.scaleModeSnapshot())
+        assertEquals(ClientRotation.FOLLOW_HOST, state.renderRotationSnapshot())
+
+        mode = VideoScaleMode.FILL
+        rotation = ClientRotation.COUNTER_CLOCKWISE_90
+
+        assertEquals(VideoScaleMode.FILL, state.scaleModeSnapshot())
+        assertEquals(ClientRotation.COUNTER_CLOCKWISE_90, state.renderRotationSnapshot())
+    }
+
+    @Test
     fun `stale display geometry is blank and cannot produce layout`() {
         val state = RendererViewportState()
         assertFalse(state.isReady)

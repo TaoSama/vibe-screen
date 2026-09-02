@@ -1,6 +1,58 @@
 import Foundation
 import VibeScreenProtocol
 
+public enum VideoDecodeImplementationSupport {
+    public static func hasDecodeImplementation(for codec: VSCodec) -> Bool {
+        switch codec {
+        case .h264, .hevc: return true
+        case .av1, .unspecified, .UNRECOGNIZED: return false
+        }
+    }
+}
+
+public struct VideoDecodeCapabilitySnapshot: Equatable, Sendable {
+    public let h264HardwareDecoderAvailable: Bool
+    public let hevcHardwareDecoderAvailable: Bool
+    public let av1HardwareDecoderAvailable: Bool
+    /// Caller-supplied runtime signal. Final admission still also requires
+    /// VideoDecodeImplementationSupport so manual snapshots cannot bypass a
+    /// missing decoder implementation.
+    public let av1DecoderImplementationAvailable: Bool
+
+    public init(
+        h264HardwareDecoderAvailable: Bool,
+        hevcHardwareDecoderAvailable: Bool,
+        av1HardwareDecoderAvailable: Bool,
+        av1DecoderImplementationAvailable: Bool
+    ) {
+        self.h264HardwareDecoderAvailable = h264HardwareDecoderAvailable
+        self.hevcHardwareDecoderAvailable = hevcHardwareDecoderAvailable
+        self.av1HardwareDecoderAvailable = av1HardwareDecoderAvailable
+        self.av1DecoderImplementationAvailable = av1DecoderImplementationAvailable
+    }
+
+    public static let stableDefault = VideoDecodeCapabilitySnapshot(
+        h264HardwareDecoderAvailable: true,
+        hevcHardwareDecoderAvailable: true,
+        av1HardwareDecoderAvailable: false,
+        av1DecoderImplementationAvailable: false
+    )
+
+    public var av1StreamAdmissionAvailable: Bool {
+        av1HardwareDecoderAvailable
+            && av1DecoderImplementationAvailable
+            && VideoDecodeImplementationSupport.hasDecodeImplementation(for: .av1)
+    }
+
+    public var protocolCodecs: [VSCodec] {
+        var codecs: [VSCodec] = []
+        if hevcHardwareDecoderAvailable { codecs.append(.hevc) }
+        if h264HardwareDecoderAvailable { codecs.append(.h264) }
+        if av1StreamAdmissionAvailable { codecs.append(.av1) }
+        return codecs
+    }
+}
+
 public enum VideoConfigValidationError: Error, Equatable, LocalizedError, Sendable {
     case invalidStreamID
     case invalidConfigEpoch
@@ -44,6 +96,21 @@ public struct VideoConfigValidator: Sendable {
 
     public init(decodeCapabilities: [VSVideoDecodeCapability]) {
         self.decodeCapabilities = decodeCapabilities
+    }
+
+    public static func sdrDecodeCapabilities(
+        for snapshot: VideoDecodeCapabilitySnapshot
+    ) -> [VSVideoDecodeCapability] {
+        snapshot.protocolCodecs.map { codec in
+            var capability = VSVideoDecodeCapability()
+            capability.codec = codec
+            capability.maximumWidth = 3_840
+            capability.maximumHeight = 2_160
+            capability.maximumFramesPerSecond = 120
+            capability.bitDepths = [8]
+            capability.transferFunctions = [.bt709, .srgb]
+            return capability
+        }
     }
 
     /// Validates transport-independent Protocol v1 invariants. Unknown protobuf

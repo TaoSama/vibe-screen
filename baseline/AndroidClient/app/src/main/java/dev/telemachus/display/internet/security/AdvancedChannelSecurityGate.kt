@@ -46,6 +46,8 @@ data class AdvancedChannelAdmission(
     val plaintextBytes: Int,
 )
 
+class AdvancedChannelBacklogRejectedException(message: String) : IllegalStateException(message)
+
 class AdvancedChannelSecurityGate(
     initialOwner: AdvancedChannelOwner,
     private val limits: Limits = Limits.STANDARD,
@@ -98,7 +100,9 @@ class AdvancedChannelSecurityGate(
             if (binding.channel == SecurityChannel.AUDIO) limits.maximumAudioBacklogBytes else limits.maximumBulkBacklogBytes
         require(payloadBytes <= maximumRecord) { "Advanced channel payload exceeds $maximumRecord bytes" }
         val buffered = bufferedBytes[binding.channel] ?: 0
-        check(buffered <= maximumBacklog - payloadBytes) { "Advanced channel backlog exceeds $maximumBacklog bytes" }
+        if (buffered > maximumBacklog - payloadBytes) {
+            throw AdvancedChannelBacklogRejectedException("Advanced channel backlog exceeds $maximumBacklog bytes")
+        }
         check(nextId < Long.MAX_VALUE) { "Advanced channel admission sequence is exhausted" }
         val admission = AdvancedChannelAdmission(nextId++, candidateOwner, binding, payloadBytes)
         admissions[admission.id] = admission

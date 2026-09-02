@@ -552,12 +552,12 @@ internal class ProtocolV1Session(
     }
 
     private class ManagedPolicyResolver(
-        private val localPolicy: ManagedPolicy,
+        val localPolicySnapshot: ManagedPolicy,
     ) {
         private var remotePolicy: ManagedPolicy? = null
 
         val effectivePolicy: ManagedPolicy
-            get() = remotePolicy?.let { localPolicy.applying(it) } ?: localPolicy
+            get() = remotePolicy?.let { localPolicySnapshot.applying(it) } ?: localPolicySnapshot
 
         fun setRemote(policy: ManagedPolicy?) {
             remotePolicy = policy
@@ -628,7 +628,8 @@ internal class ProtocolV1Session(
     // forge an unsolicited success/failure that the UI would surface.
     private val pendingHostActionInvocations = ArrayDeque<ByteString>()
     private val pendingWakeHostRequests = ArrayDeque<ByteString>()
-    private val managedPolicyResolver = ManagedPolicyResolver(localManagedPolicy)
+    internal val localManagedPolicySnapshot: ManagedPolicy = localManagedPolicy
+    private val managedPolicyResolver = ManagedPolicyResolver(localManagedPolicySnapshot)
 
     // Host-advertised clipboard byte limit from HostHello.resource_limits.
     private var hostMaxClipboardBytes = 0L
@@ -647,9 +648,8 @@ internal class ProtocolV1Session(
     private val clipboardSeenChangeIds = ArrayDeque<ByteString>()
     // Bounded history of completed clipboard transfers for diagnostics.
     private val clipboardFeedbackHistory = ArrayDeque<ClipboardFeedback>()
-    // Local Android managed-configuration integration is outside this slice,
-    // so local policy is permissive. A remote managed status with
-    // clipboard_allowed=false denies clipboard for the active session.
+    // Remote policy is cleared with the session; the local policy is the
+    // immutable per-session snapshot captured by the Android product owner.
     private var remoteManagedClipboardAllowed = true
     private val secureRandom = SecureRandom()
 
@@ -662,7 +662,7 @@ internal class ProtocolV1Session(
             if (advertiseWakeHost) {
                 add(Capability.CAPABILITY_WAKE_HOST)
             }
-        }.filteredBy(localManagedPolicy)
+        }.filteredBy(localManagedPolicySnapshot)
     private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
@@ -1536,7 +1536,7 @@ internal class ProtocolV1Session(
             }
         val actions = mutableListOf<Action>()
         if (Capability.CAPABILITY_MANAGED_CONFIGURATION in baseNegotiatedCapabilities) {
-            actions += Action.Send(envelope().setManagedPolicyStatus(managedPolicyResolver.effectivePolicy.toStatus()).build())
+            actions += Action.Send(envelope().setManagedPolicyStatus(managedPolicyResolver.localPolicySnapshot.toStatus()).build())
         } else {
             actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
         }

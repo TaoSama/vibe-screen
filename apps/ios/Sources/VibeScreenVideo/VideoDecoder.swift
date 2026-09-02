@@ -1,6 +1,7 @@
 import CoreMedia
 import Foundation
 import VideoToolbox
+import VibeScreenCore
 import VibeScreenProtocol
 
 public enum VideoDecoderError: Error, Equatable {
@@ -33,6 +34,10 @@ public final class VideoDecoder: @unchecked Sendable {
     public func configure(codec: VSCodec, parameterSets: [Data]) throws {
         lock.lock()
         defer { lock.unlock() }
+
+        guard VideoDecodeImplementationSupport.hasDecodeImplementation(for: codec) else {
+            throw VideoDecoderError.unsupportedCodec(codec)
+        }
 
         let description: CMVideoFormatDescription
         switch codec {

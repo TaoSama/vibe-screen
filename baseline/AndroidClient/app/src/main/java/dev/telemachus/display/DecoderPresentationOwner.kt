@@ -38,6 +38,10 @@ internal data class InternetDecoderPresentationState<Decoder, Configuration>(
     val connected: Boolean,
 )
 
+internal class DecoderPresentationOwnerHooks(
+    val beforeRendererPresentationClearDuringDetach: () -> Unit = {},
+)
+
 internal fun <State> commitInternetDecoderPresentation(
     nextState: State,
     captureState: () -> State,
@@ -46,7 +50,16 @@ internal fun <State> commitInternetDecoderPresentation(
     presentState: (previous: State) -> Unit,
 ): State? {
     val previousState = captureState()
-    if (!installState(nextState)) return null
+    try {
+        if (!installState(nextState)) return null
+    } catch (failure: Throwable) {
+        try {
+            restoreState(nextState, previousState)
+        } catch (rollbackFailure: Throwable) {
+            failure.addSuppressed(rollbackFailure)
+        }
+        throw failure
+    }
     try {
         presentState(previousState)
     } catch (failure: Throwable) {
@@ -69,6 +82,7 @@ internal fun <State> commitInternetDecoderPresentation(
 internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : Any>(
     private val rendererOwner: RendererOwner,
     private val internetConfigurationEpoch: (InternetConfiguration) -> Long,
+    private val hooks: DecoderPresentationOwnerHooks = DecoderPresentationOwnerHooks(),
 ) {
     private val decoderUseGate = DecoderUseGate<Decoder>()
     private val configurationGeneration = AtomicLong()
@@ -174,6 +188,7 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
         attempt: DecoderLifecycleAttempt,
     ): Boolean =
         decoderUseGate.installIf(decoder) {
+            if (configurationGeneration.get() != attempt.configurationGeneration) return@installIf false
             rendererOwner.commitDecoderPresentation(
                 RendererDecoderPresentation(
                     configEpoch = attempt.configEpoch,
@@ -229,6 +244,7 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
         applyConnected: (Boolean) -> Unit,
         presentState: (InternetDecoderPresentationState<Decoder, InternetConfiguration>) -> Unit,
         restoreState: (InternetDecoderPresentationState<Decoder, InternetConfiguration>) -> Unit,
+        afterCommit: (InternetDecoderPresentationState<Decoder, InternetConfiguration>) -> Unit = {},
     ): Boolean {
         val nextState =
             InternetDecoderPresentationState(
@@ -244,13 +260,17 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
                 displayRotation = displayRotation,
                 connected = true,
             )
-        return commitInternetDecoderPresentation(
-            nextState = nextState,
-            currentConnected = currentConnected,
-            applyConnected = applyConnected,
-            presentState = presentState,
-            restoreState = restoreState,
-        )
+        val previousState =
+            commitInternetDecoderPresentation(
+                nextState = nextState,
+                currentConnected = currentConnected,
+                applyConnected = applyConnected,
+                expectedConfigurationGeneration = attempt.configurationGeneration,
+                presentState = presentState,
+                restoreState = restoreState,
+            ) ?: return false
+        afterCommit(previousState)
+        return true
     }
 
     fun updateCurrentDecoderScaleMode(updateScaleMode: (Decoder) -> Unit) {
@@ -258,9 +278,11 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
     }
 
     fun detachCurrentDecoder(): Decoder? {
-        configurationGeneration.incrementAndGet()
-        rendererOwner.clearDecoderPresentation()
-        return decoderUseGate.clear()
+        return decoderUseGate.clear {
+            configurationGeneration.incrementAndGet()
+            hooks.beforeRendererPresentationClearDuringDetach()
+            rendererOwner.clearDecoderPresentation()
+        }
     }
 
     fun releaseCurrentDecoder(releaseDecoder: (Decoder) -> Unit) {
@@ -268,11 +290,12 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
     }
 
     fun detachExpectedDecoderForQuarantine(expected: Decoder?): Boolean {
-        val cleared = decoderUseGate.compareAndSet(expected, null)
-        if (cleared) {
-            rendererOwner.clearDecoderPresentation()
-            configurationGeneration.incrementAndGet()
-        }
+        val cleared =
+            decoderUseGate.compareAndSet(expected, null) {
+                configurationGeneration.incrementAndGet()
+                hooks.beforeRendererPresentationClearDuringDetach()
+                rendererOwner.clearDecoderPresentation()
+            }
         return cleared
     }
 
@@ -353,19 +376,36 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
         nextState: InternetDecoderPresentationState<Decoder, InternetConfiguration>,
         currentConnected: Boolean,
         applyConnected: (Boolean) -> Unit,
+        expectedConfigurationGeneration: Long,
         presentState: (InternetDecoderPresentationState<Decoder, InternetConfiguration>) -> Unit,
         restoreState: (InternetDecoderPresentationState<Decoder, InternetConfiguration>) -> Unit,
-    ): Boolean {
-        return commitInternetDecoderPresentation(
-            nextState = nextState,
-            captureState = { captureInternetDecoderPresentation(currentConnected) },
-            installState = { installInternetDecoderPresentation(it, applyConnected) },
-            restoreState = { attempted, previous ->
-                restoreInternetDecoderPresentation(attempted, previous, applyConnected)
-                restoreState(previous)
-            },
-            presentState = presentState,
-        ) != null
+    ): InternetDecoderPresentationState<Decoder, InternetConfiguration>? {
+        // This transaction runs under the decoder gate and may enter renderer
+        // state, so callbacks supplied here must not synchronously call back
+        // into this owner or acquire locks in the opposite order.
+        var previousState: InternetDecoderPresentationState<Decoder, InternetConfiguration>? = null
+        val committed =
+            decoderUseGate.installIf(nextState.decoder) {
+                if (configurationGeneration.get() != expectedConfigurationGeneration) {
+                    false
+                } else {
+                    val capturedState = captureInternetDecoderPresentation(currentConnected)
+                    if (capturedState.hasConnectedNonInternetDecoder()) return@installIf false
+                    previousState =
+                        commitInternetDecoderPresentation(
+                            nextState = nextState,
+                            captureState = { capturedState },
+                            installState = { installInternetDecoderPresentationState(it, applyConnected) },
+                            restoreState = { attempted, previous ->
+                                restoreInternetDecoderPresentation(attempted, previous, applyConnected)
+                                restoreState(previous)
+                            },
+                            presentState = presentState,
+                        )
+                    previousState != null
+                }
+            }
+        return if (committed) previousState else null
     }
 
     private fun captureInternetDecoderPresentation(
@@ -381,16 +421,11 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
             connected = connected,
         )
 
-    private fun installInternetDecoderPresentation(
+    private fun installInternetDecoderPresentationState(
         state: InternetDecoderPresentationState<Decoder, InternetConfiguration>,
         applyConnected: (Boolean) -> Unit,
     ): Boolean {
-        if (!decoderUseGate.installIf(state.decoder) {
-                rendererOwner.installDecoderPresentation(state.rendererPresentation)
-            }
-        ) {
-            return false
-        }
+        if (!rendererOwner.installDecoderPresentation(state.rendererPresentation)) return false
         installConfigurationAndGeometry(state, applyConnected)
         return true
     }
@@ -403,10 +438,14 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
         check(
             decoderUseGate.replaceIfCurrent(attempted.decoder, previous.decoder) {
                 rendererOwner.installDecoderPresentation(previous.rendererPresentation)
+                installConfigurationAndGeometry(previous, applyConnected)
+                true
             },
         ) { "Internet decoder changed while presentation rollback was in progress" }
-        installConfigurationAndGeometry(previous, applyConnected)
     }
+
+    private fun InternetDecoderPresentationState<Decoder, InternetConfiguration>.hasConnectedNonInternetDecoder(): Boolean =
+        decoder != null && connected && configuration == null
 
     private fun installConfigurationAndGeometry(
         state: InternetDecoderPresentationState<Decoder, InternetConfiguration>,

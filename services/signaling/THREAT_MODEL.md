@@ -43,8 +43,10 @@ mandatory even when signaling authentication succeeds.
   their next request, but an active PeerConnection or TURN allocation is not
   actively disconnected.
 - `memory` mode is single-instance and process-local. PostgreSQL durable routing
-  is implemented for `production_authority`, but horizontal multi-replica
-  operation, global create-rate enforcement, and throughput remain unproved.
+  is implemented for `production_authority`, and session creation is rate-limited
+  with shared per-device/action PostgreSQL rows for instances using the same
+  database. Horizontal multi-replica throughput, load-balancer behavior, and
+  multi-region consistency remain unproved.
 - The global issuer token authenticates only the trusted backend, not a human or
   endpoint. It must never ship in host/mobile clients. The signaling-to-authority
   token is independent and must also never ship to clients.
@@ -65,11 +67,13 @@ mandatory even when signaling authentication succeeds.
   unique keys; a future protocol version should add duplicate-key rejection
   before accepting untrusted public issuance.
 - Process memory and crash dumps can contain live SDP, ICE candidates,
-  request/session identifiers, and local-mode role tokens until TTL cleanup.
-  PostgreSQL active rows are removed by TTL cleanup, but WAL, snapshots, and
-  backups may retain those values until their separate encrypted retention and
-  purge controls run. Disable core dumps, restrict process/database debugging,
-  encrypt backups, and keep retention short.
+  request/session identifiers, and local-mode role tokens until session TTL
+  cleanup. PostgreSQL routing rows are removed by TTL cleanup, while
+  session-create token bucket rows are removed after two minutes of idle time
+  based on `refilled_at`. WAL, snapshots, and backups may retain those values
+  until their separate encrypted retention and purge controls run. Disable core
+  dumps, restrict process/database debugging, encrypt backups, and keep
+  retention short.
 
 ## Security test gates
 

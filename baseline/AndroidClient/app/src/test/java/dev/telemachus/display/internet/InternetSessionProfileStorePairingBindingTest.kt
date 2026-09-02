@@ -56,6 +56,183 @@ class InternetSessionProfileStorePairingBindingTest {
     }
 
     @Test
+    fun `authenticated bulk signed lease receiver imports and loads product lease`() {
+        val fixture = recordedFixture()
+        val delivery = AuthenticatedSessionLeaseDeliveryEnvelope.encode(
+            signedLeaseJson(fixture, sessionEpoch = 7).toByteArray(Charsets.UTF_8),
+        )
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+            )
+
+        val imported = receiver.importAuthenticatedBulkRecord(delivery)
+        val lease = requireNotNull(fixture.store.loadLease(forceRelay = false))
+
+        assertEquals(7L, imported.authoritativeSessionEpoch)
+        assertEquals("session-7", lease.signalingSessionId)
+        assertEquals(7L, lease.authoritativeSessionEpoch)
+        assertEquals(fixture.hostIdentity.deviceId, lease.pinnedHostId)
+        assertEquals(fixture.localIdentity, lease.localIdentity)
+        assertEquals("https://signal.example.test", lease.signaling.baseUrl)
+        assertEquals(PeerRole.DEVICE, lease.signaling.role)
+        assertTrue(
+            AuthenticatedSessionLeaseDeliveryEnvelope.BULK_TRANSFER_ID.contentEquals(
+                "internet-bulk-v1".toByteArray(Charsets.UTF_8),
+            ),
+        )
+        lease.close()
+    }
+
+    @Test
+    fun `authenticated bulk callbacks auto import session lease and pass through ordinary bulk`() {
+        val fixture = recordedFixture()
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+            )
+        val delegate = RecordingInternetProductSessionCallbacks()
+        val callbacks = receiver.importingCallbacks(delegate)
+        val ordinaryBulk = byteArrayOf(1, 2, 3)
+
+        callbacks.onBulkRecord(ordinaryBulk)
+        callbacks.onBulkRecord(
+            AuthenticatedSessionLeaseDeliveryEnvelope.encode(
+                signedLeaseJson(fixture, sessionEpoch = 8).toByteArray(Charsets.UTF_8),
+            ),
+        )
+
+        assertEquals(listOf(ordinaryBulk.toList()), delegate.bulkRecords.map { it.toList() })
+        assertEquals(emptyList<Throwable>(), delegate.failures)
+        val lease = requireNotNull(fixture.store.loadLease(forceRelay = false))
+        assertEquals("session-8", lease.signalingSessionId)
+        assertEquals(8L, lease.authoritativeSessionEpoch)
+        lease.close()
+    }
+
+    @Test
+    fun `authenticated bulk callbacks fail closed for malformed session lease purpose`() {
+        val fixture = recordedFixture()
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+            )
+        val delegate = RecordingInternetProductSessionCallbacks()
+        val callbacks = receiver.importingCallbacks(delegate)
+        val malformed =
+            JsonObject().apply {
+                addProperty("version", 1)
+                addProperty("purpose", AuthenticatedSessionLeaseDeliveryEnvelope.PURPOSE)
+                addProperty("content_type", AuthenticatedSessionLeaseDeliveryEnvelope.CONTENT_TYPE)
+                addProperty("signed_lease", "not-canonical-base64")
+            }.toString().toByteArray(Charsets.UTF_8)
+
+        callbacks.onBulkRecord(malformed)
+
+        assertEquals(emptyList<List<Byte>>(), delegate.bulkRecords.map { it.toList() })
+        assertEquals(1, delegate.failures.size)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+    }
+
+    @Test
+    fun `authenticated bulk callbacks drop stale session lease without importing or failing current ui`() {
+        val fixture = recordedFixture()
+        var active = false
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+                isActive = { active },
+            )
+        val delegate = RecordingInternetProductSessionCallbacks()
+        val callbacks = receiver.importingCallbacks(delegate)
+        val delivery =
+            AuthenticatedSessionLeaseDeliveryEnvelope.encode(
+                signedLeaseJson(fixture, sessionEpoch = 9).toByteArray(Charsets.UTF_8),
+            )
+
+        callbacks.onBulkRecord(delivery)
+
+        assertEquals(emptyList<List<Byte>>(), delegate.bulkRecords.map { it.toList() })
+        assertEquals(emptyList<Throwable>(), delegate.failures)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+
+        active = true
+        callbacks.onBulkRecord(delivery)
+
+        val lease = requireNotNull(fixture.store.loadLease(forceRelay = false))
+        assertEquals("session-9", lease.signalingSessionId)
+        assertEquals(9L, lease.authoritativeSessionEpoch)
+        lease.close()
+    }
+
+    @Test
+    fun `authenticated bulk callbacks drop stale malformed session lease without failing current ui`() {
+        val fixture = recordedFixture()
+        val receiver =
+            AuthenticatedSessionLeaseReceiver(
+                fixture.store,
+                fixture.factory,
+                fixture.coordinator,
+                isActive = { false },
+            )
+        val delegate = RecordingInternetProductSessionCallbacks()
+        val callbacks = receiver.importingCallbacks(delegate)
+        val malformed =
+            JsonObject().apply {
+                addProperty("version", 1)
+                addProperty("purpose", AuthenticatedSessionLeaseDeliveryEnvelope.PURPOSE)
+                addProperty("content_type", AuthenticatedSessionLeaseDeliveryEnvelope.CONTENT_TYPE)
+                addProperty("signed_lease", "not-canonical-base64")
+            }.toString().toByteArray(Charsets.UTF_8)
+
+        callbacks.onBulkRecord(malformed)
+
+        assertEquals(emptyList<List<Byte>>(), delegate.bulkRecords.map { it.toList() })
+        assertEquals(emptyList<Throwable>(), delegate.failures)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+    }
+
+    @Test
+    fun `authenticated bulk signed lease receiver rejects malformed delivery envelope`() {
+        val fixture = recordedFixture()
+        val signedLease = signedLeaseJson(fixture, sessionEpoch = 7).toByteArray(Charsets.UTF_8)
+        val valid = AuthenticatedSessionLeaseDeliveryEnvelope.encode(signedLease)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            AuthenticatedSessionLeaseDeliveryEnvelope.decode(signedLease)
+        }
+
+        val wrongPurpose = JsonParser.parseString(String(valid, Charsets.UTF_8)).asJsonObject.apply {
+            addProperty("purpose", "other")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuthenticatedSessionLeaseDeliveryEnvelope.decode(wrongPurpose.toString().toByteArray(Charsets.UTF_8))
+        }
+
+        val unknownField = JsonParser.parseString(String(valid, Charsets.UTF_8)).asJsonObject.apply {
+            addProperty("unexpected", true)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuthenticatedSessionLeaseDeliveryEnvelope.decode(unknownField.toString().toByteArray(Charsets.UTF_8))
+        }
+
+        val nonCanonicalBase64 = JsonParser.parseString(String(valid, Charsets.UTF_8)).asJsonObject.apply {
+            addProperty("signed_lease", Base64.getMimeEncoder().encodeToString(signedLease))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuthenticatedSessionLeaseDeliveryEnvelope.decode(nonCanonicalBase64.toString().toByteArray(Charsets.UTF_8))
+        }
+    }
+
+    @Test
     fun `tampered local key id public key and algorithm are rejected`() {
         val fixture = recordedFixture()
         val raw = requireNotNull(fixture.preferences.getString(InternetSessionProfileStore.PAIRING_KEY, null))
@@ -182,6 +359,71 @@ class InternetSessionProfileStorePairingBindingTest {
 
         assertTrue(failure.message.orEmpty().contains("expired"))
         assertEquals(0, fixture.secrets.persistCount)
+        assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+    }
+
+    @Test
+    fun `production import rejects equal and stale replacement epochs against the stored profile`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        val storedProfile =
+            requireNotNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+        val storedSecretCount = fixture.secrets.entryCount
+
+        listOf(7L, 6L).forEach { candidate ->
+            fixture.secrets.resetPersistCount()
+
+            val failure =
+                assertThrows(IllegalArgumentException::class.java) {
+                    fixture.store.import(
+                        signedLeaseJson(fixture, candidate),
+                        fixture.factory,
+                        fixture.coordinator,
+                    )
+                }
+
+            assertTrue(failure.message.orEmpty().contains("strictly newer session epoch"))
+            assertEquals(0, fixture.secrets.persistCount)
+            assertEquals(storedSecretCount, fixture.secrets.entryCount)
+            assertEquals(
+                storedProfile,
+                fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null),
+            )
+        }
+    }
+
+    @Test
+    fun `invalid lease signature is rejected before credential persistence`() {
+        val fixture = recordedFixture()
+        fixture.secrets.resetPersistCount()
+        val secretCountBefore = fixture.secrets.entryCount
+
+        val tamperedLease =
+            signedLeaseJson(fixture, 7).let { json ->
+                val obj = JsonParser.parseString(json).asJsonObject
+                obj.addProperty(
+                    "lease_signature",
+                    Base64.getEncoder().encodeToString(ByteArray(64) { 1 }),
+                )
+                obj.toString()
+            }
+
+        val failure =
+            assertThrows(IllegalArgumentException::class.java) {
+                fixture.store.import(
+                    tamperedLease,
+                    fixture.factory,
+                    fixture.coordinator,
+                )
+            }
+
+        assertTrue(failure.message.orEmpty().contains("signature"))
+        assertEquals(0, fixture.secrets.persistCount)
+        assertEquals(secretCountBefore, fixture.secrets.entryCount)
         assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
     }
 
@@ -370,6 +612,19 @@ private data class PairingStoreFixture(
     val store: InternetSessionProfileStore,
     val coordinator: InternetProductRevocationCoordinator,
 )
+
+private class RecordingInternetProductSessionCallbacks : InternetProductSessionCallbacks {
+    val bulkRecords = mutableListOf<ByteArray>()
+    val failures = mutableListOf<Throwable>()
+
+    override fun onBulkRecord(payload: ByteArray) {
+        bulkRecords += payload
+    }
+
+    override fun onFailure(error: Throwable) {
+        failures += error
+    }
+}
 
 private data class ProfileTestIdentity(
     val pairingIdentity: InternetPairingIdentity,

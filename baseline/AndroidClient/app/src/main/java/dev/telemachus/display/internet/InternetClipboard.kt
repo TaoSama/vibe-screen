@@ -3,6 +3,7 @@ package dev.telemachus.display.internet
 import com.google.protobuf.ByteString
 import dev.telemachus.display.ClipboardContentData
 import dev.telemachus.display.ClipboardOfferData
+import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
 import dev.vibescreen.protocol.v1.ClipboardRequest
@@ -373,6 +374,29 @@ internal data class InternetManagedPolicy(
                 restrictionResults = results.ifEmpty { null },
             )
         }
+
+        fun fromProtocolPolicy(policy: ProtocolV1Session.ManagedPolicy): InternetManagedPolicy =
+            InternetManagedPolicy(
+                isManaged = policy.isManaged,
+                clipboardAllowed = policy.clipboardAllowed,
+                fileTransferAllowed = policy.fileTransferAllowed,
+                audioAllowed = policy.audioAllowed,
+                wakeAllowed = policy.wakeAllowed,
+                customGesturesAllowed = policy.customGesturesAllowed,
+                hostActionsAllowed = policy.hostActionsAllowed,
+                maximumFileBytes = policy.maximumFileBytes,
+                allowedHosts = policy.allowedHosts,
+                allowedHostsRestricted = policy.allowedHostsRestricted,
+                deniedHosts = policy.deniedHosts,
+                restrictionResults = policy.restrictionResults.map { result ->
+                    InternetManagedRestrictionResult(
+                        restriction = result.restriction,
+                        allowed = result.allowed,
+                        source = result.source,
+                        reason = result.reason,
+                    )
+                },
+            )
 
         fun hasCompleteRestrictionResults(status: ManagedPolicyStatus): Boolean {
             if (!status.managed) return true

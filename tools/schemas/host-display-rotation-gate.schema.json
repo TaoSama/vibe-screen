@@ -16,6 +16,7 @@
     "required_transports",
     "required_device_fields",
     "required_host_preflight_fields",
+    "required_evidence_source",
     "required_probes",
     "required_artifacts",
     "artifact_file_check",
@@ -94,6 +95,22 @@
         "host_display_rotation_restoration_plan"
       ]
     },
+    "required_evidence_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capture_type",
+        "device_runtime_class",
+        "synthetic_fixture",
+        "artifact_retention"
+      ],
+      "properties": {
+        "capture_type": {"const": "real-device-run"},
+        "device_runtime_class": {"const": "physical_android_device"},
+        "synthetic_fixture": {"const": false},
+        "artifact_retention": {"const": "per-display-kind-and-rotation"}
+      }
+    },
     "required_probes": {
       "type": "array",
       "items": {"type": "string", "minLength": 1},
@@ -112,10 +129,13 @@
         "device_identity",
         "host_display_snapshot_before",
         "host_display_snapshot_rotated",
+        "host_display_snapshot_restored",
         "android_screenshot",
         "touch_matrix",
         "host_log",
-        "android_logcat"
+        "android_logcat",
+        "restoration_plan",
+        "session_teardown_audit"
       ]
     },
     "artifact_file_check": {"type": "boolean"},

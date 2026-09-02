@@ -31,7 +31,7 @@ platform scaffolding under active development.
 | macOS host + Android client | Builds and runs from source |
 | macOS Host compatibility | Compatibility matrix gate is open. Apple silicon has local exercise, historical device evidence, and published blocked `macos-hardware-compatibility-gate` summaries for Mac16,8 current-base readiness, with the latest current-base refresh under [2026-08-31-macos-host-compatibility-current-base-codex-task-blocked](docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md); no passing row exists because stable signing/TCC, source-bound Host provenance, full macOS checks, and runtime stream/input/reconnect evidence are missing. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence before support claims |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
-| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 only reserves CODEC_AV1, the current Host does not advertise AV1, Android does not offer AV1 in product sessions, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
+| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 reserves CODEC_AV1 and the macOS/Android/iOS runtime-admission foundation is in place, but the current Host does not advertise AV1, Android does not offer AV1 in product sessions, iOS does not advertise AV1 decode capability, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
 | Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture. The 2026-08-30 Nubia P0110/pacific current-base refresh remains blocked because the installed Host is not a current-source stable-signed Microphone/TCC-ready bundle, no Host listener was observed, and retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`, `AudioTrack` write, or playback-confirmation evidence |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
@@ -164,10 +164,12 @@ boundaries:
 - ScreenCaptureKit captures a selected display, with a compatibility fallback
   where required.
 - VideoToolbox provides hardware HEVC and H.264 encoding. AV1 remains planned:
-  Protocol v1 reserves CODEC_AV1 for a future AV1-capable Host, but today the
-  Host has no AV1 encoder/packaging path, never advertises AV1, and offline
-  admission tests only verify fail-closed fallback to H.264/HEVC. No AV1
-  real-stream device acceptance is recorded.
+  Protocol v1 reserves CODEC_AV1 for a future AV1-capable Host, and runtime
+  capability/admission adapters now require platform support plus concrete
+  encode/decode implementation gates before AV1 can be advertised. Today the
+  Host still has no AV1 encoder/packaging path, never advertises AV1, and
+  offline admission tests only verify fail-closed fallback to H.264/HEVC. No
+  AV1 real-stream device acceptance is recorded.
 - CGEvent and Accessibility provide the macOS keyboard, pointer, touch-derived
   gesture, and stylus input adapters. Protocol v1 wires keyboard, native
   pointer/scroll, pen and eraser pressure/tilt, barrel buttons, hover/proximity
@@ -324,17 +326,18 @@ module with dependency-direction and resource-lifecycle contract tests.
 `StreamClient` now delegates local product-session lifecycle state, Protocol v1
 action dispatch, side-effect owner checks for file-transfer and wake-host flows,
 file-transfer product state, WakeHost request lifecycle/callback
-delivery/packet-sender admission, input envelope routing, media-frame routing,
-and renderer viewport/layout/admission to focused boundary owners with offline
-contract coverage. Android decoder admission, lifecycle callbacks, active
-decoder gating, renderer presentation, local/Internet frame routing, and
-Internet decoder-presentation rollback now have focused owner coverage, while
-`MainActivity` remains the Android platform adapter that creates `VideoDecoder`
-with the active `Surface` and applies UI side effects. This is still not
-completion of Phase 0 module ownership: broader protocol/session ownership,
-the remaining decoder platform-adapter/device-evidence slice, full renderer
-ownership beyond the current boundary, and UI/product session boundaries are
-still being extracted. WakeHost real
+delivery/packet-sender admission, input envelope routing, and media-frame
+routing to focused boundary owners with offline contract coverage. `MainActivity`
+hands renderer viewport/layout/render-target readiness/admission to
+`RendererOwner` and `RendererViewportState`; Android decoder admission,
+lifecycle callbacks, active decoder gating, renderer presentation,
+local/Internet frame routing, and Internet decoder-presentation rollback now
+have focused owner coverage. `MainActivity` remains the Android platform adapter
+that creates `VideoDecoder` with the active `Surface` and applies UI side
+effects. This is still not completion of Phase 0 module ownership: the remaining
+decoder platform-adapter/device-evidence slice and UI/product session boundaries
+are still being extracted.
+WakeHost real
 sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence
 remain separate fail-closed gates.
 The current-base owner state is tracked by
@@ -676,8 +679,11 @@ release gates below are unchanged.
 The current worktree adds an admin/operator Authority session-profile issuance
 primitive for already registered devices, signaling adoption of those sessions
 after successful role authorization, and Mac signing of the exact
-Authority-supplied epoch. This is local control-plane evidence only; Mac/Android
-automatic profile invocation remains open.
+Authority-supplied epoch. On the macOS host, the local/offline Authority
+session-profile request and epoch allocation path is wired, and
+Authority-backed profile invocation and refresh are covered by local tests.
+This remains local control-plane evidence only: real Android UI profile import,
+first lease bootstrap, device handoff, and public-network E2E stay open.
 A 2026-08-20 local readiness record at commit `18a6ea70` covers the same
 release boundary: protocol checks, Phase 3 security/service/static tests, local
 Authority container gating, relay coturn data-plane scripts, and direct plus
@@ -865,11 +871,11 @@ The current-base public Internet WebRTC/TURN relay E2E owner record is
 it stays blocked until retained product E2E evidence proves a real public
 Internet WebRTC relay session with deployed remote TURN and
 ScreenCaptureKit-to-MediaCodec continuity.
-Mac/Android automatic invocation of Authority session-profile issuance, real QR
-scan request/acceptance, real encoded ScreenCaptureKit output through the
-device, automatic fresh-session
+Real Android UI profile import, first lease bootstrap, device handoff,
+public-network E2E, real QR scan request/acceptance, real encoded
+ScreenCaptureKit output reaching the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
-revocation propagation and soak remain release gates rather than shipped
+revocation propagation, and soak remain release gates rather than shipped
 features. Signaling now has a PostgreSQL-backed routing store with local
 cross-instance contract coverage. Signaling and relay stores now use shared
 PostgreSQL state for multi-instance correctness paths; signaling long-poll
@@ -1051,9 +1057,12 @@ increase it.
 - Managed configuration now has an offline-verified deny-wins product-policy
   model across macOS Host, Android, and iOS: Protocol v1 carries complete
   restriction results, local parse errors fail closed, allowlists intersect,
-  and `DeniedHosts` wins over `AllowedHosts`. This is source/unit/self-test
-  evidence only; real Apple MDM profile delivery and managed App Configuration
-  injection remain open gates.
+  and `DeniedHosts` wins over `AllowedHosts`. macOS and iOS read typed managed
+  configuration at their platform defaults, and Android declares, parses, and
+  snapshots Android Enterprise app restrictions into each production
+  `StreamClient` Protocol v1 session. This is source/unit/self-test evidence
+  only; real Apple MDM profile delivery, iOS managed App Configuration
+  injection, and Android Enterprise app-restrictions delivery remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
@@ -1061,9 +1070,11 @@ increase it.
 - The host-side advanced adapter readiness owner is now the
   `phase5-host-advanced-adapters-gate`. It records the minimum iOS/MacHost
   adapter matrix for multi-client/display allocation, audio, clipboard, file
-  transfer, HDR/color, host actions, wake, and managed policy, and verifies
-  that unsupported Host adapters stay unadvertised or explicitly policy-gated.
-  This is a source/readiness gate only, not iOS device or advanced product-flow
+  transfer, HDR/color, host actions, wake, and managed policy, verifies that the
+  MacHost source has an in-source `MultiClientDisplayAllocator` boundary,
+  and checks that unsupported Host adapters stay unadvertised or explicitly
+  policy-gated. This is a source/readiness gate only, not iOS device,
+  multi-client concurrency, parallel capture, or advanced product-flow
   acceptance.
 - The iOS HDR output / EDR rendering gate now has a dedicated fail-closed
   current-base owner, `ios-hdr-edr-gate`, for retained iPhone/iPad HDR evidence.

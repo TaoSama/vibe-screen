@@ -286,6 +286,227 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun audioPacketOnChannelThreeWithoutNegotiatedCapabilityFailsClosed() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH),
+                        )
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            fixture.packets.first().serializedFrameBytes,
+                        )
+                    }
+                }
+            var failure: SessionFailure? = null
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = {
+                failure = it
+                sessionEnded.countDown()
+            }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.INVALID_MEDIA_PAYLOAD, checkNotNull(failure).kind)
+            assertTrue(checkNotNull(failure).detail.contains("Audio packet received before AudioConfig acceptance"))
+            assertEquals(0, audioOutputFactory.created.size)
+        }
+    }
+
+    @Test
+    fun staleAudioEpochOnProductChannelFailsSessionAndReleasesOutput() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                        )
+                        write(peer, base(6).setAudioConfig(fixture.audioConfig()).build())
+                        val configResult = readEnvelope(peer)
+                        assertEquals(
+                            configResult.protocolError.message,
+                            Envelope.PayloadCase.AUDIO_CONFIG_RESULT,
+                            configResult.payloadCase,
+                        )
+                        assertTrue(configResult.audioConfigResult.rejectionReason, configResult.audioConfigResult.accepted)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            encodePacket(
+                                AudioPacketHeader.newBuilder()
+                                    .setStreamId(fixture.config.streamId)
+                                    .setSessionEpoch(fixture.sessionEpoch - 1)
+                                    .setConfigEpoch(fixture.config.configEpoch)
+                                    .setSequence(0)
+                                    .setFrameCount(fixture.config.framesPerPacket)
+                                    .setPayloadLength(fixture.packets.first().payloadBytes.size)
+                                    .build(),
+                                fixture.packets.first().payloadBytes,
+                            ),
+                        )
+                    }
+                }
+            var failure: SessionFailure? = null
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = {
+                failure = it
+                sessionEnded.countDown()
+            }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.INVALID_MEDIA_PAYLOAD, checkNotNull(failure).kind)
+            assertTrue(checkNotNull(failure).detail.contains("stale_session_epoch"))
+            assertEquals(1, audioOutputFactory.created.size)
+            assertEquals(fixture.cleanupExpectations.outputEventsAfterPacketError, audioOutputFactory.created.single().events)
+        }
+    }
+
+    @Test
+    fun audioTrackWriteFailureOnProductChannelFailsSessionAndCleansUp() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
+            val audioOutputFactory = TestPcmAudioOutputFactory().apply {
+                writeFailures += AudioOutputFailureReason.WRITE_DEAD_OBJECT
+            }
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_AUDIO),
+                        )
+                        write(peer, base(6).setAudioConfig(fixture.audioConfig()).build())
+                        val configResult = readEnvelope(peer)
+                        assertEquals(
+                            configResult.protocolError.message,
+                            Envelope.PayloadCase.AUDIO_CONFIG_RESULT,
+                            configResult.payloadCase,
+                        )
+                        assertTrue(configResult.audioConfigResult.rejectionReason, configResult.audioConfigResult.accepted)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            fixture.packets.first().serializedFrameBytes,
+                        )
+                    }
+                }
+            var failure: SessionFailure? = null
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = {
+                failure = it
+                sessionEnded.countDown()
+            }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.CODEC_CONFIGURATION, checkNotNull(failure).kind)
+            assertTrue(checkNotNull(failure).detail.contains("audio_playback_failed: audio_track_write_dead_object"))
+            assertEquals(1, audioOutputFactory.created.size)
+            assertEquals(listOf("start", "stop", "close"), audioOutputFactory.created.single().events)
+            assertTrue(audioOutputFactory.created.single().writes.isEmpty())
+        }
+    }
+
+    @Test
+    fun managedPolicyAudioDenyStopsPlaybackAndRejectsFurtherAudioPackets() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fixture = loadUsbLanPcmAudioFixture()
+            val audioOutputFactory = TestPcmAudioOutputFactory()
+            val firstWrite = CountDownLatch(1)
+            audioOutputFactory.onWrite = { firstWrite.countDown() }
+            val sessionEnded = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        val caps = listOf(
+                            Capability.CAPABILITY_TOUCH,
+                            Capability.CAPABILITY_AUDIO,
+                            Capability.CAPABILITY_MANAGED_CONFIGURATION,
+                        )
+                        completeManagedPolicyHandshake(
+                            peer = peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            hostManagedStatus = ProtocolV1Session.ManagedPolicy.UNMANAGED.toStatus(),
+                            expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES,
+                        )
+                        write(peer, base(7).setAudioConfig(fixture.audioConfig()).build())
+                        val configResult = readEnvelope(peer)
+                        assertEquals(
+                            configResult.protocolError.message,
+                            Envelope.PayloadCase.AUDIO_CONFIG_RESULT,
+                            configResult.payloadCase,
+                        )
+                        assertTrue(configResult.audioConfigResult.rejectionReason, configResult.audioConfigResult.accepted)
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            fixture.packets.first().serializedFrameBytes,
+                        )
+                        assertTrue(firstWrite.await(8, TimeUnit.SECONDS))
+                        write(peer, managedPolicyStatus(8, managedPolicy(audioAllowed = false).toStatus()))
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            fixture.packets.last().serializedFrameBytes,
+                        )
+                    }
+                }
+            var failure: SessionFailure? = null
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.audioPlayer = ProtocolPcmAudioPlayer(audioOutputFactory)
+            client.onSessionEnded = {
+                failure = it
+                sessionEnded.countDown()
+            }
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertEquals(SessionFailureKind.INVALID_MEDIA_PAYLOAD, checkNotNull(failure).kind)
+            assertTrue(checkNotNull(failure).detail.contains("Audio packet received before AudioConfig acceptance"))
+            assertEquals(1, audioOutputFactory.created.size)
+            assertEquals(listOf("start", "write", "stop", "close"), audioOutputFactory.created.single().events)
+            assertEquals(listOf(fixture.packets.first().payloadBytes.toList()), audioOutputFactory.created.single().writes.map { it.toList() })
+        }
+    }
+
+    @Test
     fun decoderCommitWithholdsAckDropsPrematureMediaThenRequestsKeyframeAndDeliversNewEpoch() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)
@@ -2413,6 +2634,163 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun localManagedConfigurationParseErrorIsInjectedIntoProtocolHandshake() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+            val providerCalls = AtomicInteger()
+            val malformedRestrictions = mapOf(ManagedConfigurationKeys.MAXIMUM_FILE_BYTES to -1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
+                        peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
+                        peer.getOutputStream().flush()
+                        val clientHello = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
+                        assertEquals(
+                            clientCapabilitiesWithout(
+                                setOf(
+                                    Capability.CAPABILITY_HOST_ACTIONS,
+                                    Capability.CAPABILITY_CLIPBOARD,
+                                    Capability.CAPABILITY_AUDIO,
+                                    Capability.CAPABILITY_FILE_TRANSFER,
+                                ),
+                            ).toSet(),
+                            clientHello.clientHello.capabilitiesList.toSet(),
+                        )
+                        assertEquals(0L, clientHello.clientHello.resourceLimits.maximumFileBytes)
+
+                        write(peer, hostHello(1, caps))
+                        write(peer, sessionAccepted(2, caps))
+                        val clientPolicy = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, clientPolicy.payloadCase)
+                        assertTrue(clientPolicy.managedPolicyStatus.managed)
+                        assertFalse(clientPolicy.managedPolicyStatus.fileTransferAllowed)
+                        assertEquals(0L, clientPolicy.managedPolicyStatus.maximumFileBytes)
+                        assertTrue(clientPolicy.managedPolicyStatus.allowedHostsRestricted)
+                        assertTrue(clientPolicy.managedPolicyStatus.restrictionResultsList.all { it.source == "local_parse_error" })
+                        assertEquals(1, providerCalls.get())
+                        write(peer, disconnect(3))
+                    }
+                }
+            val client =
+                StreamClient("127.0.0.1", server.localPort, managedPolicyProvider = {
+                    providerCalls.incrementAndGet()
+                    ManagedConfigurationProvider { malformedRestrictions }.loadPolicy()
+                })
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(1, providerCalls.get())
+            Unit
+        }
+    }
+
+    @Test
+    fun localManagedPolicyProviderIsCapturedOnceForProtocolSession() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+            val providerCalls = AtomicInteger()
+            val localPolicy = managedPolicy(fileTransferAllowed = false, maximumFileBytes = 0)
+            val laterPolicy = managedPolicy(fileTransferAllowed = true, maximumFileBytes = 8_192)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
+                        peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
+                        peer.getOutputStream().flush()
+                        val clientHello = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
+                        assertEquals(
+                            clientCapabilitiesWithout(setOf(Capability.CAPABILITY_FILE_TRANSFER)).toSet(),
+                            clientHello.clientHello.capabilitiesList.toSet(),
+                        )
+                        assertEquals(0L, clientHello.clientHello.resourceLimits.maximumFileBytes)
+
+                        write(peer, hostHello(1, caps, maxFileBytes = 8_192, maxFileChunkBytes = 1_024))
+                        write(peer, sessionAccepted(2, listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION)))
+                        val clientPolicy = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, clientPolicy.payloadCase)
+                        assertEquals(localPolicy.toStatus(), clientPolicy.managedPolicyStatus)
+                        assertEquals(1, providerCalls.get())
+
+                        write(peer, managedPolicyStatus(3, laterPolicy.toStatus()))
+                        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
+                        assertEquals(1, providerCalls.get())
+                        write(peer, disconnect(4))
+                    }
+                }
+            val client =
+                StreamClient("127.0.0.1", server.localPort, managedPolicyProvider = {
+                    providerCalls.incrementAndGet()
+                    if (providerCalls.get() == 1) localPolicy else laterPolicy
+                })
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(1, providerCalls.get())
+            assertFalse(client.canTransferFiles)
+            Unit
+        }
+    }
+
+    @Test
+    fun localManagedPolicyProviderIsReadForEachNewProtocolSession() = runBlocking {
+        val policies = listOf(
+            managedPolicy(fileTransferAllowed = false, maximumFileBytes = 0),
+            managedPolicy(fileTransferAllowed = true, maximumFileBytes = 8_192),
+        )
+        val observedClientPolicies = Collections.synchronizedList(mutableListOf<ManagedPolicyStatus>())
+        val providerCalls = AtomicInteger()
+
+        repeat(2) { index ->
+            ServerSocket(0).use { server ->
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { peer ->
+                            completeManagedPolicyHandshake(
+                                peer = peer,
+                                initialRotation = 0,
+                                hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION),
+                                negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION),
+                                hostManagedStatus = managedPolicy(fileTransferAllowed = true, maximumFileBytes = 8_192).toStatus(),
+                                expectedClientCapabilities =
+                                    if (index == 0) {
+                                        clientCapabilitiesWithout(setOf(Capability.CAPABILITY_FILE_TRANSFER))
+                                    } else {
+                                        DEFAULT_CLIENT_CAPABILITIES
+                                    },
+                                onClientPolicy = { observedClientPolicies += it },
+                            )
+                            write(peer, disconnect(7))
+                        }
+                }
+                val client =
+                    StreamClient("127.0.0.1", server.localPort, managedPolicyProvider = {
+                        policies[providerCalls.getAndIncrement()]
+                    })
+                client.acceptVideoConfigurations()
+                val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+                withTimeout(8_000) { serverJob.await() }
+                withTimeout(8_000) { clientJob.await() }
+            }
+        }
+
+        assertEquals(2, providerCalls.get())
+        assertEquals(policies.map { it.toStatus() }, observedClientPolicies.toList())
+    }
+
+    @Test
     fun hostFileOfferRejectsStaleSessionEpochChunkAndCleansTransfer() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
@@ -3357,6 +3735,7 @@ class StreamClientProtocolV1IntegrationTest {
         maxFileChunkBytes: Int = 0,
         displays: List<DisplayDescriptor> = listOf(display()),
         videoConfigEpoch: Long = 3,
+        onClientPolicy: (ManagedPolicyStatus) -> Unit = {},
     ) {
         assertTrue(Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities)
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
@@ -3389,6 +3768,7 @@ class StreamClientProtocolV1IntegrationTest {
         assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
         val clientPolicy = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, clientPolicy.payloadCase)
+        onClientPolicy(clientPolicy.managedPolicyStatus)
         write(peer, managedPolicyStatus(3, hostManagedStatus))
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, displayList(4, displays))
@@ -3591,14 +3971,16 @@ class StreamClientProtocolV1IntegrationTest {
 
     private class TestPcmAudioOutputFactory : PcmAudioOutputFactory {
         val created = Collections.synchronizedList(mutableListOf<TestPcmAudioOutput>())
+        val writeFailures = Collections.synchronizedList(mutableListOf<AudioOutputFailureReason>())
         var onWrite: () -> Unit = {}
 
         override fun create(format: PcmAudioStreamFormat): PcmAudioOutput =
-            TestPcmAudioOutput(onWrite).also { created += it }
+            TestPcmAudioOutput(onWrite, writeFailures).also { created += it }
     }
 
     private class TestPcmAudioOutput(
         private val onWrite: () -> Unit,
+        private val writeFailures: MutableList<AudioOutputFailureReason>,
     ) : PcmAudioOutput {
         val events = Collections.synchronizedList(mutableListOf<String>())
         val writes = Collections.synchronizedList(mutableListOf<ByteArray>())
@@ -3608,6 +3990,11 @@ class StreamClientProtocolV1IntegrationTest {
         }
 
         override fun writePcm(payload: ByteArray): PcmAudioWriteResult {
+            synchronized(writeFailures) {
+                if (writeFailures.isNotEmpty()) {
+                    return PcmAudioWriteResult.Failed(writeFailures.removeAt(0))
+                }
+            }
             events += "write"
             writes += payload.copyOf()
             onWrite()
@@ -4003,17 +4390,28 @@ class StreamClientProtocolV1IntegrationTest {
         status: ManagedPolicyStatus,
     ): Envelope = base(id).setManagedPolicyStatus(status).build()
 
+    private fun managedPolicy(
+        fileTransferAllowed: Boolean = true,
+        audioAllowed: Boolean = true,
+        maximumFileBytes: Long = ProtocolV1Session.ManagedPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
+    ): ProtocolV1Session.ManagedPolicy =
+        ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+            isManaged = true,
+            fileTransferAllowed = fileTransferAllowed,
+            audioAllowed = audioAllowed,
+            maximumFileBytes = maximumFileBytes,
+            allowedHosts = setOf(TEST_HOST_ID),
+            allowedHostsRestricted = true,
+        )
+
     private fun managedPolicyStatus(
         fileTransferAllowed: Boolean = true,
         maximumFileBytes: Long = ProtocolV1Session.ManagedPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
     ): ManagedPolicyStatus =
-        ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
-            isManaged = true,
-            fileTransferAllowed = fileTransferAllowed,
-            maximumFileBytes = maximumFileBytes,
-            allowedHosts = setOf(TEST_HOST_ID),
-            allowedHostsRestricted = true,
-        ).toStatus()
+        managedPolicy(fileTransferAllowed = fileTransferAllowed, maximumFileBytes = maximumFileBytes).toStatus()
+
+    private fun clientCapabilitiesWithout(capabilities: Set<Capability>): List<Capability> =
+        DEFAULT_CLIENT_CAPABILITIES.filterNot { it in capabilities }
 
     private fun fileChunk(
         transferId: ByteString,

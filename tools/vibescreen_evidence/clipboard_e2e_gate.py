@@ -220,11 +220,13 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android ClipboardManager instrumentation log is missing"],
         )
     text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
+    junit_summary = re.search(r"Tests run:\s*\d+,\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)", text)
+    has_junit_failures = bool(junit_summary and (int(junit_summary.group(1)) > 0 or int(junit_summary.group(2)) > 0))
     passed = (
         ("OK (" in text or ("Finished " in text and " tests on " in text and "BUILD SUCCESSFUL" in text))
         and "FAILURES!!!" not in text
         and "BUILD FAILED" not in text
-        and "Tests run:" not in text
+        and not has_junit_failures
     )
     reasons = [] if passed else ["Android ClipboardManager instrumentation log does not show an OK result"]
     return _gate("android_clipboardmanager_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
@@ -247,11 +249,17 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
         "protocol_v1_session",
         "system_source_clipboard_read",
         "explicit_user_action",
+        "receiver_user_approval",
         "remote_system_clipboard_write",
         "final_marker_match",
+        "session_id_verified",
         "session_epoch_verified",
         "final_sha256_match",
         "origin_device_id_verified",
+        "send_failure_absent",
+        "write_failure_absent",
+        "cleanup_completed",
+        "utf8_valid",
     )
     reasons = [
         f"{label}.{field} must be true"
@@ -275,6 +283,9 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
         reasons.append(f"{label}.byte_length must be a positive integer")
     elif byte_length > LOCAL_MAXIMUM_CLIPBOARD_BYTES:
         reasons.append(f"{label}.byte_length must not exceed 1048576 bytes")
+    mime_type = direction.get("mime_type")
+    if mime_type != "text/plain":
+        reasons.append(f"{label}.mime_type must be text/plain")
     session_epoch = direction.get("session_epoch")
     if not isinstance(session_epoch, int) or isinstance(session_epoch, bool) or session_epoch <= 0:
         reasons.append(f"{label}.session_epoch must be a positive integer")
@@ -470,8 +481,9 @@ def derive_gate(
             "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, "
             "a current Android system ClipboardManager smoke, and retained bidirectional product E2E evidence "
             "showing explicit user action, source system clipboard read, remote system clipboard write, "
-            "Protocol v1 session ownership, verified session epoch, verified origin device ID, change ID, "
-            "SHA-256 digest, bounded byte length, exact source/destination system clipboard endpoints, "
+            "Protocol v1 session ownership, verified session ID and session epoch, verified origin device ID, change ID, "
+            "SHA-256 digest, text/plain MIME, strict UTF-8 validation, bounded byte length, receiver approval, "
+            "absence of send/write failures, cleanup completion, exact source/destination system clipboard endpoints, "
             "distinct final marker matches, distinct change IDs, and distinct SHA-256 digests. Offline or "
             "synthetic coverage alone remains readiness evidence."
         ),

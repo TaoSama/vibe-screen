@@ -149,6 +149,40 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable() {
+        withLayout(widthDp = 800, heightDp = 361, fontScale = 1.3f) { layout ->
+            layout.showModeContent(R.id.usbModeContent)
+            layout.usbErrorContainer.visibility = View.VISIBLE
+            layout.checklistContainer.visibility = View.VISIBLE
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    java.net.ConnectException("ECONNREFUSED"),
+                    ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                )
+            layout.usbErrorMessage.text = ConnectionGuidanceTextFormatter.format(layout.context.resources, guidance.message)
+
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertRetryActionVisibleOnFirstScreen()
+            layout.assertTextRenderedWithoutEllipsis(layout.usbErrorMessage)
+            layout.assertFullyReachableByScroll(layout.usbErrorMessage)
+            layout.assertFullyReachableByScroll(layout.checklistContainer)
+            layout.assertHeaderAndActionsSeparated()
+            assertFalse(layout.usbErrorMessage.text.toString().contains("adb reverse", ignoreCase = true))
+            assertTrue(
+                "Retry action must stay before long USB diagnostic details",
+                layout.boundsInContent(layout.connectButton).bottom <=
+                    layout.boundsInContent(layout.usbErrorContainer).top,
+            )
+        }
+    }
+
+    @Test
     fun narrowPortraitKeepsModeLabelsReadableAtLargeFontScale() {
         withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
             layout.measureAndLayout()
@@ -181,12 +215,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 subtitleExpanded = false,
             )
             layout.inlineSettingsButton.visibility = View.VISIBLE
-            layout.floatingSettingsButton.visibility = View.GONE
             layout.measureAndLayout()
 
-            assertTrue(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
             assertEquals(View.VISIBLE, layout.inlineSettingsButton.visibility)
-            assertEquals(View.GONE, layout.floatingSettingsButton.visibility)
             layout.assertFullyReachableByScroll(layout.connectButton)
             layout.assertFullyReachableByScroll(layout.inlineSettingsButton)
             layout.assertMinimumTouchTarget(layout.inlineSettingsButton)
@@ -198,16 +229,14 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
-    fun wideLandscapeKeepsFloatingSettingsButtonPolicy() {
+    fun wideLandscapeKeepsInlineSettingsButtonWithoutFloatingPolicy() {
         withLayout(widthDp = 873, heightDp = 393) { layout ->
-            assertFalse(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
-            layout.inlineSettingsButton.visibility = View.GONE
-            layout.floatingSettingsButton.visibility = View.VISIBLE
+            layout.inlineSettingsButton.visibility = View.VISIBLE
             layout.measureAndLayout()
 
-            assertEquals(View.VISIBLE, layout.floatingSettingsButton.visibility)
-            assertEquals(1f, layout.floatingSettingsButton.alpha, 0f)
-            layout.assertMinimumTouchTarget(layout.floatingSettingsButton)
+            assertEquals(View.VISIBLE, layout.inlineSettingsButton.visibility)
+            layout.assertFullyReachableByScroll(layout.inlineSettingsButton)
+            layout.assertMinimumTouchTarget(layout.inlineSettingsButton)
         }
     }
 
@@ -267,9 +296,11 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val content = root.findViewById<LinearLayout>(R.id.connectionContent)
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
+        val usbErrorContainer = root.findViewById<View>(R.id.connectionErrorContainer)
+        val usbErrorMessage = root.findViewById<TextView>(R.id.connectionErrorMessage)
+        val checklistContainer = root.findViewById<View>(R.id.checklistContainer)
         val connectButton = root.findViewById<View>(R.id.connectButton)
         val inlineSettingsButton = root.findViewById<View>(R.id.connectionSettingsButton)
-        val floatingSettingsButton = root.findViewById<View>(R.id.settingsButton)
         val usbModeButton = root.findViewById<TextView>(R.id.modeUSB)
         val wirelessModeButton = root.findViewById<TextView>(R.id.modeWireless)
         val internetModeButton = root.findViewById<TextView>(R.id.modeInternet)
@@ -333,8 +364,35 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         fun assertTextRenderedWithoutEllipsis(text: TextView) {
             val textLayout = checkNotNull(text.layout)
             assertTrue(text.measuredWidth > 0 && text.measuredHeight > 0)
-            assertTrue((0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 })
-            assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
+            val viewName = text.resources.getResourceEntryName(text.id)
+            val ellipsizedLines =
+                (0 until textLayout.lineCount)
+                    .filter { line -> textLayout.getEllipsisCount(line) != 0 }
+            val lineDetails =
+                (0 until textLayout.lineCount).joinToString { line ->
+                    "line=" + line +
+                        ":start=" + textLayout.getLineStart(line) +
+                        ":end=" + textLayout.getLineEnd(line) +
+                        ":ellipsisStart=" + textLayout.getEllipsisStart(line) +
+                        ":ellipsisCount=" + textLayout.getEllipsisCount(line) +
+                        ":width=" + textLayout.getLineWidth(line)
+                }
+            assertTrue(
+                "$viewName ellipsized lines=$ellipsizedLines " +
+                    "width=" + text.measuredWidth +
+                    " height=" + text.measuredHeight +
+                    " paddingStart=" + text.compoundPaddingStart +
+                    " paddingEnd=" + text.compoundPaddingEnd +
+                    " textSize=" + text.textSize +
+                    " lineCount=" + textLayout.lineCount +
+                    " details=[$lineDetails] text='" + text.text + "'",
+                ellipsizedLines.isEmpty(),
+            )
+            assertEquals(
+                "$viewName did not render the full text '" + text.text + "'",
+                text.text.length,
+                textLayout.getLineEnd(textLayout.lineCount - 1),
+            )
         }
 
         fun assertFullyReachableByScroll(view: View) {
@@ -436,6 +494,20 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             )
             assertTrue(
                 "Internet action " + actionBounds + " starts below the " +
+                    scrollView.height + "px first-screen viewport",
+                actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
+            )
+        }
+
+        fun assertRetryActionVisibleOnFirstScreen() {
+            scrollView.scrollTo(0, 0)
+            val actionBounds = boundsInContent(connectButton)
+            assertTrue(
+                "Retry action height was " + connectButton.height + "px",
+                connectButton.height >= dp(48),
+            )
+            assertTrue(
+                "Retry action " + actionBounds + " is outside the " +
                     scrollView.height + "px first-screen viewport",
                 actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
             )

@@ -20,19 +20,98 @@ x-vibe-service: &vibe-service
       max-file: "3"
 
 services:
+  phase3-secrets-init:
+    image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        umask 077
+        copy_secret() {
+          source_name=$$1
+          target_dir=$$2
+          target_name=$$3
+          owner=$$4
+          mode=$$5
+          mkdir -p "$$target_dir"
+          chmod 0755 "$$target_dir"
+          temporary="$$target_dir/.$$target_name.tmp"
+          cp "/run/secrets/$$source_name" "$$temporary"
+          chmod "$$mode" "$$temporary"
+          chown "$$owner" "$$temporary"
+          mv "$$temporary" "$$target_dir/$$target_name"
+        }
+        copy_secret signaling_migration_database_url /out/signaling-migrate signaling_migration_database_url 65532:65532 0400
+        copy_secret signaling_database_url /out/signaling signaling_database_url 65532:65532 0400
+        copy_secret signaling_issuer_token /out/signaling signaling_issuer_token 65532:65532 0400
+        copy_secret signaling_metrics_token /out/signaling signaling_metrics_token 65532:65532 0400
+        copy_secret signaling_authority_token /out/signaling signaling_authority_token 65532:65532 0400
+        copy_secret relay_migration_database_url /out/relay-migrate relay_migration_database_url 65532:65532 0400
+        copy_secret relay_database_url /out/relay relay_database_url 65532:65532 0400
+        copy_secret turn_secret /out/relay turn_secret 65532:65532 0400
+        copy_secret client_token /out/relay client_token 65532:65532 0400
+        copy_secret usage_token /out/relay usage_token 65532:65532 0400
+        copy_secret metrics_token /out/relay metrics_token 65532:65532 0400
+        copy_secret admin_token /out/relay admin_token 65532:65532 0400
+        copy_secret authority_token /out/relay authority_token 65532:65532 0400
+        copy_secret turn_secret /out/coturn turn_secret 65532:65532 0400
+        copy_secret tls_certificate /out/coturn tls_certificate 65532:65532 0444
+        copy_secret tls_private_key /out/coturn tls_private_key 65532:65532 0400
+    network_mode: none
+    secrets:
+      - signaling_migration_database_url
+      - signaling_database_url
+      - signaling_issuer_token
+      - signaling_metrics_token
+      - signaling_authority_token
+      - relay_migration_database_url
+      - relay_database_url
+      - turn_secret
+      - client_token
+      - usage_token
+      - metrics_token
+      - admin_token
+      - authority_token
+      - tls_certificate
+      - tls_private_key
+    volumes:
+      - signaling-migrate-runtime-secrets:/out/signaling-migrate
+      - signaling-runtime-secrets:/out/signaling
+      - relay-migrate-runtime-secrets:/out/relay-migrate
+      - relay-runtime-secrets:/out/relay
+      - coturn-runtime-secrets:/out/coturn
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=0700
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.5
+    restart: "no"
+
   signaling-migrate:
     <<: *vibe-service
     image: ${VIBE_SIGNALING_IMAGE_REPOSITORY:?set the vibe-signaling image repository}@sha256:${VIBE_SIGNALING_IMAGE_SHA256:?set the 64-character vibe-signaling image digest}
     restart: "no"
     network_mode: host
+    depends_on:
+      phase3-secrets-init:
+        condition: service_completed_successfully
     command:
       - --migrate
       - /usr/share/vibe-screen/migrations/001_signaling.sql
     environment:
       VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_migration_database_url
       VIBE_SIGNALING_DATABASE_TLS_MODE: verify-full
-    secrets:
-      - signaling_migration_database_url
+    volumes:
+      - signaling-migrate-runtime-secrets:/run/secrets:ro
 
   signaling:
     <<: *vibe-service
@@ -51,13 +130,9 @@ services:
       VIBE_SIGNALING_ISSUER_TOKEN_FILE: /run/secrets/signaling_issuer_token
       VIBE_SIGNALING_METRICS_TOKEN_FILE: /run/secrets/signaling_metrics_token
       VIBE_SIGNALING_AUTHORITY_TOKEN_FILE: /run/secrets/signaling_authority_token
-    secrets:
-      - signaling_database_url
-      - signaling_issuer_token
-      - signaling_metrics_token
-      - signaling_authority_token
     volumes:
       - ${VIBE_SIGNALING_CONFIG_FILE:-./config/signaling.production.json}:/etc/vibe-screen/signaling.json:ro
+      - signaling-runtime-secrets:/run/secrets:ro
     healthcheck:
       test: ["CMD", "/vibe-signaling", "--healthcheck", "http://127.0.0.1:8088/readyz"]
       interval: 10s
@@ -70,14 +145,17 @@ services:
     image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: "no"
     network_mode: host
+    depends_on:
+      phase3-secrets-init:
+        condition: service_completed_successfully
     command:
       - --migrate
       - /usr/share/vibe-screen/migrations/001_relay.sql
     environment:
       VIBE_RELAY_DATABASE_URL_FILE: /run/secrets/relay_migration_database_url
       VIBE_RELAY_DATABASE_TLS_MODE: verify-full
-    secrets:
-      - relay_migration_database_url
+    volumes:
+      - relay-migrate-runtime-secrets:/run/secrets:ro
 
   relay:
     <<: *vibe-service
@@ -85,6 +163,8 @@ services:
     restart: unless-stopped
     network_mode: host
     depends_on:
+      phase3-secrets-init:
+        condition: service_completed_successfully
       relay-migrate:
         condition: service_completed_successfully
     environment:
@@ -96,16 +176,9 @@ services:
       VIBE_RELAY_METRICS_TOKEN_FILE: /run/secrets/metrics_token
       VIBE_RELAY_ADMIN_TOKEN_FILE: /run/secrets/admin_token
       VIBE_RELAY_AUTHORITY_TOKEN_FILE: /run/secrets/authority_token
-    secrets:
-      - turn_secret
-      - client_token
-      - usage_token
-      - metrics_token
-      - admin_token
-      - authority_token
-      - relay_database_url
     volumes:
       - ${VIBE_RELAY_CONFIG_FILE:-./config/relay.production.json}:/etc/vibe-relay/config.json:ro
+      - relay-runtime-secrets:/run/secrets:ro
       - type: bind
         source: ${VIBE_COTURN_ALLOCATION_REGISTRY_DIR:-./coturn-state}
         target: /var/lib/vibe-coturn
@@ -124,17 +197,17 @@ services:
     network_mode: host
     user: "65532:65532"
     entrypoint: ["/bin/sh", "/opt/vibe/start-coturn.sh"]
+    depends_on:
+      phase3-secrets-init:
+        condition: service_completed_successfully
     environment:
       COTURN_CONFIG_FILE: /etc/vibe-coturn/production.conf
       COTURN_EXTERNAL_IP: ${COTURN_EXTERNAL_IP:?set public/private IP mapping}
       COTURN_REALM: ${COTURN_REALM:?set the public relay hostname}
-    secrets:
-      - turn_secret
-      - tls_certificate
-      - tls_private_key
     volumes:
       - ./coturn:/etc/vibe-coturn:ro
       - ./scripts/start-coturn.sh:/opt/vibe/start-coturn.sh:ro
+      - coturn-runtime-secrets:/run/secrets:ro
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=0700,uid=65532,gid=65532
@@ -142,6 +215,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 2.0
     healthcheck:
       test: ["CMD", "turnutils_stunclient", "-p", "3478", "127.0.0.1"]
       interval: 10s
@@ -179,3 +255,10 @@ secrets:
     file: ./tls/fullchain.pem
   tls_private_key:
     file: ./tls/privkey.pem
+
+volumes:
+  signaling-migrate-runtime-secrets:
+  signaling-runtime-secrets:
+  relay-migrate-runtime-secrets:
+  relay-runtime-secrets:
+  coturn-runtime-secrets:

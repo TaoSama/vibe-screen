@@ -49,8 +49,10 @@ docker compose -f docker-compose.authority.yml down
 
 Use `down --volumes` only when deliberately discarding the local admission,
 revocation, and session-epoch ledger. The local secret generator refuses to
-overwrite files, protects their parent directory with mode `0700`, and makes the
-files read-only so Compose can mount them for the fixed container UID 65532.
+overwrite files, protects their parent directory with mode `0700`, and leaves
+source files at mode `0600` for the operator account. Compose mounts each secret
+into non-root containers with an explicit UID/GID 65532 and read-only target
+mode instead of making host copies world-readable.
 
 ## Authority production-shaped profile
 
@@ -67,10 +69,13 @@ Copy `config/authority.production.example.json` to the ignored
 
 Set `VIBE_AUTHORITY_CONFIG_FILE` only when the reviewed configuration lives at a
 different host path; the default is the ignored production file above.
-File-backed Compose secrets must be readable by UID 65532 inside the container.
-Materialize them as UID/GID 65532 with restrictive mode, or place read-only files
-under an operator-only parent directory; never solve a permission failure by
-running Authority as root.
+File-backed Compose secret source files should remain operator-only, normally
+mode `0600`, on the host. A one-shot, network-disabled init container reads the
+file-backed source secrets and writes UID/GID `65532` runtime copies into named
+volumes with mode `0400`; it keeps only `CHOWN` plus `DAC_READ_SEARCH` so
+operator-only source files remain readable on Linux hosts without running
+Authority as root. Never solve a permission failure by making host secret files
+world-readable.
 
 The migration URL should use a short-lived DDL role. The runtime URL should use a
 least-privilege DML role. Both must use certificate and hostname verification,
@@ -215,9 +220,11 @@ docker compose down
 Delete the named `relay-data` volume only when deliberately discarding local
 quota/revocation state. Secret files under `secrets/` and TLS files under
 `tls/` are ignored by Git; `generate-secrets.sh` refuses to overwrite them and
-sets local generated files read-only so the non-root containers can read Compose
-secrets. Production operators should still provision secrets through the
-deployment secret manager with the ownership/mode required by the target host.
+sets local generated files to mode `0600` for the operator account. The Compose
+secret mount declares UID/GID 65532 and read-only target mode so non-root
+containers can read `/run/secrets/*` without broadening host file permissions.
+Production operators should still provision secrets through the deployment
+secret manager with the ownership/mode required by the target host.
 
 ## Relay production configuration
 
@@ -248,15 +255,18 @@ Linux host:
    Use a short-lived DDL role for migration and a least-privilege runtime role
    for relay. Both URLs must include `sslmode=verify-full` because the profile
    sets `VIBE_RELAY_DATABASE_TLS_MODE=verify-full`.
-4. Provision independent secret files with mode `0600`: `turn_secret.txt`,
+4. Provision independent secret source files with mode `0600`: `turn_secret.txt`,
    `client_token.txt`, `usage_token.txt`, `metrics_token.txt`,
    `admin_token.txt`, and `authority_token.txt`. Distribute the same
    `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
    with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
-   Because the coturn container runs as UID/GID `65532`, make
-   `turn_secret.txt` owned by `65532:65532` or otherwise readable by that
-   account while retaining `0600` permissions. Store/rotate all secrets through
-   the deployment secret manager, not source control.
+   Keep host-side files operator-only; the production Compose profile uses a
+   one-shot, network-disabled init container to copy source secrets into named
+   runtime volumes readable by UID/GID `65532` with mode `0400`, and mounts the
+   public certificate as `0444`. The init container keeps only `CHOWN` plus
+   `DAC_READ_SEARCH` for Linux hosts where file-backed source secrets are not
+   owned by container root. Store/rotate all secrets through the deployment
+   secret manager, not source control.
 5. Create the ignored `coturn-state` directory, or set
    `VIBE_COTURN_ALLOCATION_REGISTRY_DIR` to another pre-created host path, and
    make it writable by relay UID/GID `65532`. The Compose bind mount sets
@@ -350,12 +360,15 @@ or the local Compose profile into public Internet evidence by itself.
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
 allocation cap, and a bounded relay range. Its CREATE_PERMISSION policy denies
-unspecified, RFC1918, CGNAT, loopback, IPv4/IPv6 link-local, ULA, deprecated
-IPv6 site-local, documentation/test networks, IPv4 reserved/broadcast space,
-protocol-assignment, and benchmark/internal ranges; multicast peers are also
-denied. Add every provider VPC, metadata, container, Pod, Service, and overlay
-range visible in the host routing table, with a host egress firewall as a second
-layer. Never add a broad `allowed-peer-ip`, which takes precedence over denies.
+unspecified and loopback IPv6 through an explicit range rather than the
+ambiguous single-address `denied-peer-ip=::`, plus RFC1918, CGNAT, loopback,
+IPv4/IPv6 link-local, ULA, deprecated IPv6 site-local, documentation/test
+networks, IPv4 reserved/broadcast space, protocol-assignment, benchmark/internal
+ranges, multicast ranges, NAT64 discovery ranges, discard-only, Teredo, and
+6to4; multicast peers are also denied. Add every provider VPC, metadata,
+container, Pod, Service, and overlay range visible in the host routing table,
+with a host egress firewall as a second layer. Never add a broad
+`allowed-peer-ip`, which takes precedence over denies.
 
 ## Upgrade, rollback, and rotation
 

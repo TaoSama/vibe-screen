@@ -35,7 +35,7 @@ extension StreamViewModel {
         guard let payload = envelope.payload else { return }
         switch payload {
         case .hostHello(let hello):
-            guard managedConfiguration.policy.allows(host: hello.hostID) else {
+            guard currentManagedPolicy.allows(host: hello.hostID) else {
                 terminateSession(
                     message: "此主机不在组织允许列表中",
                     failure: .permanent
@@ -87,9 +87,10 @@ extension StreamViewModel {
             if negotiatedCapabilities.contains(.clipboard) { clipboard.stage(content) }
         case .fileOffer(let offer):
             guard negotiatedCapabilities.contains(.fileTransfer) else { return }
+            let policy = currentManagedPolicy
             let maximum = negotiatedLimits.maximumFileBytes == 0 ?
-                managedConfiguration.policy.maximumFileBytes :
-                min(negotiatedLimits.maximumFileBytes, managedConfiguration.policy.maximumFileBytes)
+                policy.maximumFileBytes :
+                min(negotiatedLimits.maximumFileBytes, policy.maximumFileBytes)
             if offer.byteLength <= maximum {
                 pendingFileOffers[offer.transferID] = offer
                 pendingFileName = offer.fileName
@@ -114,7 +115,7 @@ extension StreamViewModel {
             outgoingFiles.removeValue(forKey: completion.transferID)?.cancel()
         case .hostActionCatalog(let catalog):
             if negotiatedCapabilities.contains(.hostActions),
-               managedConfiguration.policy.hostActionsAllowed {
+               currentManagedPolicy.hostActionsAllowed {
                 availableHostActions = catalog.actions.map(\.actionID)
             }
         case .managedPolicyStatus(let status):
@@ -126,8 +127,16 @@ extension StreamViewModel {
                     )
                     return
                 }
-                managedConfiguration.applyRemote(status)
-                if let hostID = pendingHostHello?.hostID, !managedConfiguration.policy.allows(host: hostID) {
+                guard let localSnapshot = sessionLocalManagedPolicy else {
+                    terminateSession(
+                        message: "Managed policy session snapshot is unavailable.",
+                        failure: .permanent
+                    )
+                    return
+                }
+                let effectivePolicy = managedConfiguration.applyRemote(status, localSnapshot: localSnapshot)
+                sessionManagedPolicy = effectivePolicy
+                if let hostID = pendingHostHello?.hostID, !effectivePolicy.allows(host: hostID) {
                     terminateSession(
                         message: "Managed policy does not allow this host.",
                         failure: .permanent
@@ -135,8 +144,8 @@ extension StreamViewModel {
                     return
                 }
                 let completedInitialPolicyHandshake = try controlValidator.completeManagedPolicyStatus()
-                let policyCapabilities = Set(advertisedCapabilities(policy: managedConfiguration.policy))
-                negotiatedCapabilities = negotiatedCapabilities.intersection(policyCapabilities)
+                let policyCapabilities = Set(advertisedCapabilities(policy: effectivePolicy))
+                negotiatedCapabilities = state.negotiatedCapabilities.intersection(policyCapabilities)
                 enforceCurrentPolicy()
                 if completedInitialPolicyHandshake {
                     requestDisplayList()
@@ -163,7 +172,8 @@ extension StreamViewModel {
         guard let host = pendingHostHello else {
             throw SessionStateError.invalidTransition(from: state.phase, event: "sessionAcceptedBeforeHostHello")
         }
-        let local = Set(advertisedCapabilities(policy: managedConfiguration.policy))
+        let policy = currentManagedPolicy
+        let local = Set(advertisedCapabilities(policy: policy))
         let negotiated = accepted.negotiatedCapabilities.isEmpty ?
             local.intersection(Set(host.capabilities)) : Set(accepted.negotiatedCapabilities)
         try state.accept(
@@ -402,7 +412,7 @@ extension StreamViewModel {
         result.streamID = config.streamID
         result.configEpoch = config.configEpoch
         do {
-            guard negotiatedCapabilities.contains(.audio), managedConfiguration.policy.audioAllowed else {
+            guard negotiatedCapabilities.contains(.audio), currentManagedPolicy.audioAllowed else {
                 throw ClipboardTransferError.policyDenied
             }
             let format = try PCMStreamFormat(config: config)
@@ -552,7 +562,7 @@ extension StreamViewModel {
 
     func invokeHostAction(_ identifier: String) {
         guard negotiatedCapabilities.contains(.hostActions),
-              managedConfiguration.policy.hostActionsAllowed,
+              currentManagedPolicy.hostActionsAllowed,
               availableHostActions.contains(identifier) else { return }
         var invocation = VSHostActionInvoke()
         invocation.actionID = identifier
@@ -579,7 +589,7 @@ extension StreamViewModel {
 
     func sendManagedPolicyStatus() {
         guard negotiatedCapabilities.contains(.managedConfiguration) else { return }
-        let policy = managedConfiguration.policy
+        let policy = sessionLocalManagedPolicy ?? currentManagedPolicy
         sendInBackground { factory in
             factory.managedPolicyStatus(
                 policy.protocolStatus,
@@ -590,7 +600,7 @@ extension StreamViewModel {
     }
 
     func enforceCurrentPolicy() {
-        let policy = managedConfiguration.policy
+        let policy = currentManagedPolicy
         if !policy.audioAllowed {
             audioPlayback.stop()
             audioSession.failClosed()
@@ -601,6 +611,11 @@ extension StreamViewModel {
             for identifier in identifiers { cancelLocalFileTransfer(transferID: identifier) }
         }
         if !policy.hostActionsAllowed { availableHostActions = [] }
+    }
+
+    var currentManagedPolicy: ManagedPolicy {
+        if sessionOwner != nil { return sessionManagedPolicy ?? .failClosed }
+        return sessionManagedPolicy ?? managedConfiguration.policy
     }
 
     func sendInBackground(
@@ -650,18 +665,18 @@ extension StreamViewModel {
         return limits
     }
 
-    static let sdrDecodeCapabilities: [VSVideoDecodeCapability] = {
-        [VSCodec.h264, .hevc].map { codec in
-            var capability = VSVideoDecodeCapability()
-            capability.codec = codec
-            capability.maximumWidth = 3_840
-            capability.maximumHeight = 2_160
-            capability.maximumFramesPerSecond = 120
-            capability.bitDepths = [8]
-            capability.transferFunctions = [.bt709, .srgb]
-            return capability
-        }
-    }()
+    private static let videoDecodeCapabilitySnapshot = VideoDecodeCapabilityProbe.probe()
+
+    static let sdrDecodeCapabilities: [VSVideoDecodeCapability] =
+        sdrDecodeCapabilities(for: videoDecodeCapabilitySnapshot)
+
+    static let advertisedVideoCodecs: [VSCodec] = videoDecodeCapabilitySnapshot.protocolCodecs
+
+    static func sdrDecodeCapabilities(
+        for snapshot: VideoDecodeCapabilitySnapshot
+    ) -> [VSVideoDecodeCapability] {
+        VideoConfigValidator.sdrDecodeCapabilities(for: snapshot)
+    }
 }
 
 private enum ProtocolClientError: Error, LocalizedError {

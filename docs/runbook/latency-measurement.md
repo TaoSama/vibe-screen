@@ -30,10 +30,11 @@ first calibration clip. Record `adb -s <redacted-adb-serial> shell getprop` or t
 equivalent device-info helper output next to the run, and keep the device label
 as Nubia P0110/pacific/Android 16 when that serial is used.
 
-For USB glass-to-glass, start the macOS host and Android client over ADB reverse,
-then record at least five visible Mac stimulus transitions and their matching
-Android render results in one raw camera file. For LAN glass-to-glass, remove
-the ADB reverse dependency, confirm the LAN session is active, and repeat the
+For USB glass-to-glass, start the macOS host with `make baseline-macos-launch`
+and connect the Android client over ADB reverse, then record at least five
+visible Mac stimulus transitions and their matching Android render results in
+one raw camera file. For LAN glass-to-glass, remove the ADB reverse dependency,
+confirm the LAN session is active, and repeat the
 same visible transition sampling with the LAN gate profile. For input latency,
 record real physical touch, stylus, keyboard, or mouse actuation and the first
 visible Mac-side result; do not use ADB-generated input as the start event.

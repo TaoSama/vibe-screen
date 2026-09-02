@@ -119,8 +119,42 @@ class StreamClient(
     private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
     private val wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
 ) {
+    internal constructor(
+        host: String,
+        port: Int,
+        context: Context? = null,
+        socketFactory: () -> Socket = ::Socket,
+        videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
+        videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
+        terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
+        wakeHostExecutor: Executor = WAKE_HOST_EXECUTOR,
+        advertiseController: Boolean = false,
+        advertisePeripheralInputFramework: Boolean = false,
+        wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
+        wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
+        managedPolicyProvider: () -> ProtocolV1Session.ManagedPolicy,
+    ) : this(
+        host = host,
+        port = port,
+        context = context,
+        socketFactory = socketFactory,
+        videoConfigurationCommitTimeoutMs = videoConfigurationCommitTimeoutMs,
+        videoConfigurationTimeoutExecutor = videoConfigurationTimeoutExecutor,
+        terminationExecutor = terminationExecutor,
+        wakeHostExecutor = wakeHostExecutor,
+        advertiseController = advertiseController,
+        advertisePeripheralInputFramework = advertisePeripheralInputFramework,
+        wakeHostPolicy = wakeHostPolicy,
+        wakeHostPacketSender = wakeHostPacketSender,
+    ) {
+        this.managedPolicyProvider = managedPolicyProvider
+    }
+
     internal val actualPort: Int = port
     internal var audioPlayer: ProtocolPcmAudioPlayer = ProtocolPcmAudioPlayer(AndroidAudioTrackOutputFactory())
+    private var managedPolicyProvider: () -> ProtocolV1Session.ManagedPolicy = {
+        context?.let { ManagedConfigurationProvider(it).loadPolicy() } ?: ProtocolV1Session.ManagedPolicy.UNMANAGED
+    }
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
 
     /** Owns Protocol v1 session lifecycle, epochs, side-effect admission, and retry-transition state. */
@@ -165,6 +199,9 @@ class StreamClient(
                 override fun releaseFileOffer(transferId: ByteString) {
                     protocolSessionOwner.releaseFileOffer(transferId)
                 }
+
+                override fun hasFileOffer(transferId: ByteString): Boolean =
+                    protocolSessionOwner.hasFileOffer(transferId)
 
                 override fun clearFileOffers() {
                     protocolSessionOwner.clearFileOffers()
@@ -300,6 +337,8 @@ class StreamClient(
             nextInputId = nextInputId,
             submitOutbound = ::submitOutbound,
             controllerConnectionAcks = controllerConnectionAcks,
+            onControllerDeferredOverflow = ::failControllerDeferredOverflow,
+            onControllerAckTimeout = ::failControllerAckTimeout,
         )
     private val terminationDispatcher =
         OnceAsyncDispatcher(
@@ -699,6 +738,7 @@ class StreamClient(
                 protocolSessionOwner.activate(session)
                 nextInputId.set(1L)
                 controllerConnectionAcks.reset()
+                inputDispatcher.resetControllerState()
                 writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
                 emitTelemetry(
@@ -727,6 +767,7 @@ class StreamClient(
                 CodecCapabilities.advertisedStreamCodecs.mapNotNull(StreamCodec::toProtocolCodecOrNull),
             advertiseController = advertiseController,
             advertisePeripheralInputFramework = advertisePeripheralInputFramework,
+            localManagedPolicy = managedPolicyProvider(),
             fileTransferPolicy = fileTransferProductOwner.fileTransferPolicy,
             advertiseWakeHost = wakeHostProductOwner.canAdvertiseWakeHost(),
         ).also {
@@ -751,6 +792,7 @@ class StreamClient(
             recordProtocolAudioStopped("legacy_fallback")
         }
         controllerConnectionAcks.reset()
+        inputDispatcher.resetControllerState()
         pendingLegacyFirstByte = firstByte
         advertiseAvcOnlyIfNeeded()
         advertiseFrameMetadataSupport()
@@ -999,6 +1041,7 @@ class StreamClient(
             try {
                 while (protocolSessionOwner.isConnected) {
                     if (wireMode == WireMode.V1) {
+                        inputDispatcher.expireControllerAckTimeouts()
                         receiveV1Frame(input)
                         continue
                     }
@@ -1672,6 +1715,25 @@ class StreamClient(
         submission != OutboundCommandScheduler.Submission.TIMED_OUT &&
             submission != OutboundCommandScheduler.Submission.CLOSED
 
+    private fun failControllerDeferredOverflow() {
+        requestConnectionEnd(
+            SessionFailure.protocol(
+                SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                "Controller deferred dispatch queue reached capacity",
+            ),
+        )
+    }
+
+    private fun failControllerAckTimeout(expired: List<ControllerConnection>) {
+        val expiredConnections = expired.joinToString(",") { "${it.controllerId}:${it.controllerEpoch}" }
+        requestConnectionEnd(
+            SessionFailure.protocol(
+                SessionFailureKind.INVALID_PEER_MESSAGE,
+                "Controller input acknowledgement timed out: $expiredConnections",
+            ),
+        )
+    }
+
 
     private fun writeOutboundCommand(command: StreamOutboundCommand) {
         val out = transportOwner.activeConnection()?.output ?: throw IOException("session output is closed")
@@ -2045,9 +2107,14 @@ class StreamClient(
             accepted: Boolean,
             rejectionReason: String,
         ) {
-            controllerConnectionAcks.acknowledge(inputId)?.let { connection ->
+            val acknowledgement = controllerConnectionAcks.acknowledge(inputId)
+            if (accepted && acknowledgement?.hasDeferredDisconnect == true) {
+                controllerConnectionAcks.markDisconnectReady(acknowledgement.connection)
+            }
+            acknowledgement?.connection?.let { connection ->
                 onControllerInputAck?.invoke(connection, accepted, rejectionReason)
             }
+            if (acknowledgement != null) inputDispatcher.flushControllerDisconnectCleanup()
         }
 
         override fun onHostActionsAvailable(actions: List<ProtocolV1Session.HostAction>) {
@@ -2632,6 +2699,7 @@ class StreamClient(
         fileTransferProductOwner.clear()
         protocolSessionOwner.clear()
         controllerConnectionAcks.reset()
+        inputDispatcher.resetControllerState()
         pendingLegacyFirstByte = null
         lanSecureRecordSession?.close()
         lanSecureRecordSession = null

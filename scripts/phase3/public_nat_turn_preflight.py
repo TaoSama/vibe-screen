@@ -63,13 +63,20 @@ REQUIRED_COTURN_DENIES = {
     "denied-peer-ip=198.18.0.0-198.19.255.255",
     "denied-peer-ip=198.51.100.0-198.51.100.255",
     "denied-peer-ip=203.0.113.0-203.0.113.255",
+    "denied-peer-ip=224.0.0.0-239.255.255.255",
     "denied-peer-ip=240.0.0.0-255.255.255.255",
-    "denied-peer-ip=::",
-    "denied-peer-ip=::1",
+    "denied-peer-ip=0:0:0:0:0:0:0:0-ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
+    "denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff",
+    "denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=100::-100::ffff:ffff:ffff:ffff",
+    "denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=2001:db8::-2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
     "denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
 }
 REQUIRED_RUNTIME_INPUTS = (
     "turn_secret_file",
@@ -397,6 +404,8 @@ def validate_coturn_config(path: Path) -> dict[str, Any]:
         raise PreflightError("coturn production config is missing private peer denies")
     if any(line.startswith("allowed-peer-ip=") for line in lines):
         raise PreflightError("coturn production config must not include allowed-peer-ip overrides")
+    if "denied-peer-ip=::" in lines:
+        raise PreflightError("coturn production config must not use ambiguous single-address IPv6 unspecified deny")
     if "no-auth" in lines:
         raise PreflightError("coturn production config must not disable authentication")
     quota = _line_int(lines, "user-quota")

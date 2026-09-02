@@ -3,13 +3,13 @@ package dev.telemachus.display
 import android.content.res.Resources
 import android.content.res.Configuration
 import android.text.TextUtils
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.google.android.material.button.MaterialButtonToggleGroup
 
 internal object ConnectionPanelLayoutApplier {
     data class Views(
@@ -36,23 +36,25 @@ internal object ConnectionPanelLayoutApplier {
                 ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
                 ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
             }
-        // Stacked portrait keeps the original vertical centering inside the
-        // scroll viewport; the two-column landscape split must top-align the
-        // header and actions so their internal content starts at the same edge.
-        views.content.gravity =
-            when (layout.contentOrientation) {
-                ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> Gravity.TOP
-                ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> Gravity.CENTER_VERTICAL
-            }
+        views.content.gravity = layout.contentGravity
+        val stackedPortrait =
+            layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL &&
+                resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        applyModeToggleLayout(
+            views = views,
+            layout =
+                ConnectionModeToggleLayoutPolicy.resolve(
+                    stackedPortrait = stackedPortrait,
+                    fontScale = resources.configuration.fontScale,
+                ),
+        )
         applySubtitleDisclosure(
             resources = resources,
             subtitle = views.subtitle,
             presentation =
                 ConnectionSubtitleDisclosurePolicy.resolve(
                     connectionMode = connectionMode,
-                    stackedPortrait =
-                        layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL &&
-                            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT,
+                    stackedPortrait = stackedPortrait,
                     requestedExpanded = subtitleExpanded,
                 ),
         )
@@ -133,10 +135,11 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         views: Views,
     ) {
+        val horizontalPadding = resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding)
         views.content.setPaddingRelative(
-            views.content.paddingStart,
+            horizontalPadding,
             resources.getDimensionPixelSize(R.dimen.connection_panel_padding_top),
-            views.content.paddingEnd,
+            horizontalPadding,
             resources.getDimensionPixelSize(R.dimen.connection_panel_padding_bottom),
         )
 
@@ -171,6 +174,36 @@ internal object ConnectionPanelLayoutApplier {
         updateLayout(requiredView(views.actions, R.id.internetConnectButton)) { params ->
             params.topMargin = resources.getDimensionPixelSize(R.dimen.connection_primary_action_margin_top)
         }
+    }
+
+    private fun applyModeToggleLayout(
+        views: Views,
+        layout: ConnectionModeToggleLayoutPolicy.Layout,
+    ) {
+        val group = requiredView(views.actions, R.id.modeToggleGroup) as? MaterialButtonToggleGroup ?: return
+        group.orientation =
+            when (layout.orientation) {
+                ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
+                ConnectionModeToggleLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
+            }
+        listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
+            updateModeButtonLayout(requiredView(group, id), layout)
+        }
+    }
+
+    private fun updateModeButtonLayout(
+        view: View,
+        layout: ConnectionModeToggleLayoutPolicy.Layout,
+    ) {
+        val params = view.layoutParams as? LinearLayout.LayoutParams ?: return
+        params.width =
+            if (layout.buttonWidthMatchParent) {
+                ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                0
+            }
+        params.weight = layout.buttonWeight
+        view.layoutParams = params
     }
 
     private fun requiredView(

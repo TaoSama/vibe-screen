@@ -79,6 +79,7 @@ IOS_APP_SIGNING_READINESS_JSON ?= $(EVIDENCE_DIR)/ios-app-signing-readiness.json
 IOS_APP_SIGNING_READINESS_GATE_JSON ?= $(dir $(IOS_APP_SIGNING_READINESS_JSON))ios-app-signing-readiness-gate.json
 IOS_NATIVE_INPUT_OBSERVATIONS_JSON ?= $(EVIDENCE_DIR)/ios-native-input-observations.json
 IOS_NATIVE_INPUT_GATE_JSON ?= $(dir $(IOS_NATIVE_INPUT_OBSERVATIONS_JSON))ios-native-input-gate.json
+PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON ?= $(EVIDENCE_DIR)/phase5-host-advanced-adapters-readiness.json
 PHASE5_MULTI_CLIENT_GATE_JSON ?= $(EVIDENCE_DIR)/phase5-multi-client-current-base-gate.json
 CLIPBOARD_E2E_GATE_JSON ?= $(EVIDENCE_DIR)/clipboard-e2e-gate.json
 CLIPBOARD_E2E_HOST_READINESS_JSON ?= $(EVIDENCE_DIR)/host-readiness.json
@@ -159,7 +160,7 @@ PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-rep
 PHASE3_INTERNET_BLOCKED_REASON ?=
 PHASE3_INTERNET_ALLOW_BLOCKED ?=
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
-PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
+PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0 4.17.2
 HARMONY_HDC_TARGET ?=
 HARMONY_HAP ?=
 HARMONY_SHA256SUMS ?=
@@ -227,12 +228,14 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	phase3-internet-release-gate \
 	baseline-macos-build \
 	baseline-macos-permission-prompt-contract \
+	baseline-macos-host-cli-contract \
 	baseline-macos-xctest-preflight \
 	baseline-macos-test \
 	baseline-macos-self-test \
 	baseline-macos-app \
 	baseline-macos-dev-install \
 	baseline-macos-host-preflight \
+	baseline-macos-launch \
 	baseline-macos-host-readiness \
 	baseline-macos-touch-preflight \
 	baseline-android-test \
@@ -305,6 +308,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	ios-native-input-gate \
 	ios-current-base-manifest \
 	ios-current-base-gate \
+	phase5-host-advanced-adapters-gate \
 	phase5-multi-client-current-base-gate \
 	macos-hardware-compatibility-gate \
 	phase2-tablet-soak-preflight \
@@ -556,10 +560,13 @@ baseline-macos-build:
 baseline-macos-permission-prompt-contract:
 	swift scripts/verify_macos_permission_prompt_contract.swift
 
+baseline-macos-host-cli-contract:
+	swift scripts/verify_macos_host_cli_contract.swift
+
 baseline-macos-xctest-preflight:
 	python3 scripts/macos_dev_host.py xctest-preflight
 
-baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight
+baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-host-cli-contract baseline-macos-xctest-preflight
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build baseline-macos-permission-prompt-contract
@@ -580,6 +587,9 @@ baseline-macos-dev-install:
 
 baseline-macos-host-preflight:
 	python3 scripts/macos_dev_host.py preflight
+
+baseline-macos-launch:
+	python3 scripts/macos_dev_host.py launch
 
 baseline-macos-host-readiness:
 	mkdir -p $(EVIDENCE_DIR)
@@ -1106,6 +1116,11 @@ ios-current-base-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_current_base_gate \
 		--manifest $(EVIDENCE_DIR)/ios-current-base-manifest.json \
 		--output $(EVIDENCE_DIR)/ios-current-base-gate.json
+
+phase5-host-advanced-adapters-gate:
+	@mkdir -p "$(dir $(PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON))"
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase5_host_advanced_adapters.py \
+		--output "$(PHASE5_HOST_ADVANCED_ADAPTERS_READINESS_JSON)"
 
 phase5-multi-client-current-base-gate:
 	@mkdir -p "$(dir $(PHASE5_MULTI_CLIENT_GATE_JSON))"

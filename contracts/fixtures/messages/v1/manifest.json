@@ -30,7 +30,8 @@
         "payloadCase": "clientHello",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000001",
-        "sessionEpoch": "0"
+        "sessionEpoch": "0",
+        "sessionId": ""
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "client_hello",
@@ -47,7 +48,8 @@
         "payloadCase": "hostHello",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000002",
-        "sessionEpoch": "0"
+        "sessionEpoch": "0",
+        "sessionId": ""
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "host_hello",
@@ -64,7 +66,8 @@
         "payloadCase": "sessionAccepted",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000003",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "session_accepted",
@@ -81,7 +84,8 @@
         "payloadCase": "listDisplaysRequest",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000004",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "list_displays_request",
@@ -98,7 +102,8 @@
         "payloadCase": "listDisplaysResponse",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000005",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "list_displays_response",
@@ -115,7 +120,8 @@
         "payloadCase": "startDisplayRequest",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000006",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "start_display_request",
@@ -132,7 +138,8 @@
         "payloadCase": "startDisplayResponse",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000007",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "start_display_response",
@@ -149,7 +156,8 @@
         "payloadCase": "videoConfig",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000008",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "video_config",
@@ -166,7 +174,8 @@
         "payloadCase": "displayChanged",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000014",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "display_changed",
@@ -183,7 +192,8 @@
         "payloadCase": "videoConfigResult",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000009",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "video_config_result",
@@ -200,7 +210,8 @@
         "payloadCase": "touchEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000010",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "touch",
@@ -217,7 +228,8 @@
         "payloadCase": "stylusEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000015",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "stylus",
@@ -234,7 +246,8 @@
         "payloadCase": "stylusEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000016",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "stylus_extended",
@@ -251,7 +264,8 @@
         "payloadCase": "keyEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000017",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "key_usb_hid_control",
@@ -268,7 +282,8 @@
         "payloadCase": "keyEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000018",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "key_usb_hid_shift",
@@ -285,7 +300,8 @@
         "payloadCase": "keyEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000019",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "key_legacy_control",
@@ -302,7 +318,8 @@
         "payloadCase": "keyEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000020",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "key_legacy_shift",
@@ -319,7 +336,8 @@
         "payloadCase": "controllerEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000021",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "controller_connected",
@@ -336,7 +354,8 @@
         "payloadCase": "controllerEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000022",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "controller_state",
@@ -353,7 +372,8 @@
         "payloadCase": "controllerEvent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000023",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "controller_disconnected",
@@ -370,7 +390,8 @@
         "payloadCase": "clipboardOffer",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000024",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "clipboard_offer",
@@ -387,7 +408,8 @@
         "payloadCase": "clipboardRequest",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000025",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "clipboard_request",
@@ -404,12 +426,85 @@
         "payloadCase": "clipboardContent",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000026",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "clipboard_content",
       "sha256": "d5d36df09345985bfea8862f39fbe7c46da2202bd8701965e5bb1de855942dd6",
       "source": "json/clipboard_content.json"
+    },
+    {
+      "binary": "bin/clipboard_macos_offer.binpb",
+      "byteLength": 105,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "34",
+        "payloadCase": "clipboardOffer",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000034",
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "clipboard_macos_offer",
+      "sha256": "79e9d2d01e84a64eab95a5ec59c0052e73dd8603f827d3338a26eb5bd31c762e",
+      "source": "json/clipboard_macos_offer.json"
+    },
+    {
+      "binary": "bin/clipboard_macos_request.binpb",
+      "byteLength": 45,
+      "channel": 1,
+      "expected": {
+        "correlationId": "34",
+        "messageId": "35",
+        "payloadCase": "clipboardRequest",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000035",
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "clipboard_macos_request",
+      "sha256": "f6d5e516ffe23fd57fb7627d1d74cc53704f33a374c8ffe208c80c601393c48a",
+      "source": "json/clipboard_macos_request.json"
+    },
+    {
+      "binary": "bin/clipboard_macos_content.binpb",
+      "byteLength": 136,
+      "channel": 1,
+      "expected": {
+        "correlationId": "35",
+        "messageId": "36",
+        "payloadCase": "clipboardContent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000036",
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "clipboard_macos_content",
+      "sha256": "c5cb34510c50303960c2441cfff938b07ad8294bc3a6a2478d669a94297df1cf",
+      "source": "json/clipboard_macos_content.json"
+    },
+    {
+      "binary": "bin/managed_policy_status_clipboard_deny.binpb",
+      "byteLength": 767,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "37",
+        "payloadCase": "managedPolicyStatus",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000037",
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "managed_policy_status_clipboard_deny",
+      "sha256": "2ef0ac9c62d254494a22dfaef8ace13b6f0e67a8c97d824272a59280762545a1",
+      "source": "json/managed_policy_status_clipboard_deny.json"
     },
     {
       "binary": "bin/ping.binpb",
@@ -421,7 +516,8 @@
         "payloadCase": "ping",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000011",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "ping",
@@ -438,7 +534,8 @@
         "payloadCase": "pong",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000012",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "pong",
@@ -455,7 +552,8 @@
         "payloadCase": "protocolError",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000013",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "protocol_error",
@@ -472,7 +570,8 @@
         "payloadCase": "fileOffer",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000030",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "file_offer",
@@ -489,7 +588,8 @@
         "payloadCase": "fileAccept",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000031",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "file_accept",
@@ -506,7 +606,8 @@
         "payloadCase": "fileTransferProgress",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000032",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "file_transfer_progress",
@@ -523,7 +624,8 @@
         "payloadCase": "fileTransferCancel",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000033",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "file_transfer_cancel",
@@ -540,7 +642,8 @@
         "payloadCase": "fileTransferComplete",
         "protocolVersion": 1,
         "sentAtMonotonicNs": "1000000034",
-        "sessionEpoch": "7"
+        "sessionEpoch": "7",
+        "sessionId": "AQIDBAUGBwg="
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "file_transfer_complete",

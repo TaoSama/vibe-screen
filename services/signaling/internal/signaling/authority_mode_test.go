@@ -104,6 +104,145 @@ func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
 	}
 }
 
+func TestAuthorityModeCreateSessionForwardsSessionProfile(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Second)
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	unsignedLease := testUnsignedAndroidLease(t, profileRequest, authoritySignalingAdmission{
+		SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1", ExpiresAt: expiresAt, Created: true,
+	})
+	var received atomic.Bool
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/signaling/sessions" || r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode authority request: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if request.SessionProfile == nil {
+			t.Error("authority request omitted session_profile")
+			http.Error(w, "missing session_profile", http.StatusBadRequest)
+			return
+		}
+		if request.SessionProfile.PairingID != profileRequest.PairingID ||
+			request.SessionProfile.HostIdentity.DeviceID != "host-1" ||
+			request.SessionProfile.ClientIdentity.DeviceID != "client-1" {
+			t.Errorf("unexpected forwarded session_profile: %#v", request.SessionProfile)
+			http.Error(w, "unexpected session_profile", http.StatusBadRequest)
+			return
+		}
+		received.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1",
+			ExpiresAt: expiresAt, Created: true,
+			SessionProfile: &SessionProfileResponse{
+				AccountID: "acct-1", PairingID: profileRequest.PairingID,
+				SignalingSessionID: "sess-1", HostSignalingToken: "host-token-1",
+				ExpiresAt: expiresAt, Created: true, UnsignedAndroidLease: unsignedLease,
+			},
+		})
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+	body, err := json.Marshal(createSessionRequest{
+		RequestID: "req-1", AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1",
+		SessionEpoch: 7, TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	if !received.Load() {
+		t.Fatal("authority did not receive session_profile")
+	}
+	var created SessionResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.SessionProfile == nil ||
+		created.SessionProfile.SignalingSessionID != "sess-1" ||
+		string(created.SessionProfile.UnsignedAndroidLease) != string(unsignedLease) {
+		t.Fatalf("session_profile was not returned to caller: %#v", created.SessionProfile)
+	}
+}
+
+func TestValidateSessionProfileRejectsICEURLsWithoutEndpoint(t *testing.T) {
+	for _, raw := range []string{"stun:", "stuns:", "turn:", "turns:"} {
+		t.Run(raw, func(t *testing.T) {
+			profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+			profileRequest.ICEServers = []LeaseICEServer{{URLs: []string{raw}}}
+
+			err := validateSessionProfileRequest(profileRequest, "host-1", "client-1")
+			if err == nil || !strings.Contains(err.Error(), "ICE URL is invalid") {
+				t.Fatalf("validateSessionProfileRequest(%q) error = %v, want ICE URL is invalid", raw, err)
+			}
+		})
+	}
+}
+
+func TestValidateSessionProfileAcceptsICEURLsWithEndpoint(t *testing.T) {
+	username := "turn-user"
+	credential := "turn-credential"
+	testCases := []struct {
+		name   string
+		server LeaseICEServer
+	}{
+		{name: "stun opaque host", server: LeaseICEServer{URLs: []string{"stun:stun.example.test"}}},
+		{name: "stun authority host", server: LeaseICEServer{URLs: []string{"stun://stun.example.test"}}},
+		{
+			name: "turn opaque host",
+			server: LeaseICEServer{
+				URLs:       []string{"turn:turn.example.test?transport=udp"},
+				Username:   &username,
+				Credential: &credential,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+			profileRequest.ICEServers = []LeaseICEServer{tc.server}
+
+			if err := validateSessionProfileRequest(profileRequest, "host-1", "client-1"); err != nil {
+				t.Fatalf("validateSessionProfileRequest() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestLocalModeRejectsSessionProfile(t *testing.T) {
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	cfg := testConfig()
+	service := testServerWithStore(t, cfg, NewMemoryStore(cfg, nil))
+	body, err := json.Marshal(createSessionRequest{
+		RequestID: "req-1", TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := performRequest(t, service.Handler(), http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "session_profile requires production authority mode") {
+		t.Fatalf("unexpected rejection body: %s", response.Body.String())
+	}
+}
+
 func TestAuthorityModeCreateSessionReplay(t *testing.T) {
 	var calls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -389,6 +528,55 @@ func TestAuthorityModeSessionIDCollisionFailsClosedWithoutOverwrite(t *testing.T
 	}
 }
 
+func TestAuthorityModeSessionIDCollisionInvalidatesAuthorityAdmission(t *testing.T) {
+	var call atomic.Int32
+	var invalidated atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			currentCall := call.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID:   "colliding-session",
+				HostToken:   fmt.Sprintf("host-token-%d", currentCall),
+				ClientToken: fmt.Sprintf("client-token-%d", currentCall),
+				ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+				Created:     true,
+			})
+		case r.URL.Path == "/v1/signaling/sessions/colliding-session" && r.Method == http.MethodDelete:
+			invalidated.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	ctx := context.Background()
+	store := memoryStoreForTest(t, service)
+
+	_, created, err := store.Create(ctx, CreateSessionRequest{
+		RequestID: "req-1", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1", SessionEpoch: 1,
+	})
+	if err != nil || !created {
+		t.Fatalf("first create created=%t err=%v", created, err)
+	}
+	_, _, err = store.Create(ctx, CreateSessionRequest{
+		RequestID: "req-2", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1", SessionEpoch: 2,
+	})
+	if !errors.Is(err, ErrAuthorityUnavailable) {
+		t.Fatalf("colliding create error=%v, want ErrAuthorityUnavailable", err)
+	}
+	if invalidated.Load() != 1 {
+		t.Fatalf("authority invalidations=%d, want 1", invalidated.Load())
+	}
+}
+
 func TestAuthorityModeInconsistentSameRequestDoesNotResetSession(t *testing.T) {
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -491,6 +679,118 @@ func TestAuthorityModeCapacityRejectsBeforeAuthorityAdmission(t *testing.T) {
 	}
 	if createCalls.Load() != 1 {
 		t.Fatalf("authority received %d creates at local capacity", createCalls.Load())
+	}
+}
+
+func TestAuthorityModeCreateFailureDoesNotConsumeLocalCreateRate(t *testing.T) {
+	var createCalls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		call := createCalls.Add(1)
+		if call <= 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID: "session-after-failures", HostToken: "host-token-1", ClientToken: "client-token-1",
+			ExpiresAt: time.Now().Add(time.Hour).UTC(), Created: true,
+		})
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	cfg.SessionCreatesPerMinute = 1
+	cfg.StoreBackend = StoreBackendMemory
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore(cfg, authority)
+	service := testServerWithStore(t, cfg, store)
+	service.authority = authority
+	service.SetReady(true)
+	ctx := context.Background()
+	request := CreateSessionRequest{
+		RequestID: "rate-after-authority-failure", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1", SessionEpoch: 1,
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, _, err := store.Create(ctx, request); !errors.Is(err, ErrAuthorityUnavailable) {
+			t.Fatalf("authority failure %d error=%v, want ErrAuthorityUnavailable", i+1, err)
+		}
+	}
+	if len(store.createRates) != 0 {
+		t.Fatalf("authority failures consumed create-rate buckets: %#v", store.createRates)
+	}
+	_, created, err := store.Create(ctx, request)
+	if err != nil || !created {
+		t.Fatalf("create after authority failures created=%t err=%v", created, err)
+	}
+}
+
+func TestAuthorityModeRateLimitAfterAdmissionInvalidatesAuthoritySession(t *testing.T) {
+	var createCalls atomic.Int32
+	var invalidated atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/signaling/sessions" && r.Method == http.MethodPost:
+			call := createCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+				SessionID: fmt.Sprintf("session-%d", call), HostToken: fmt.Sprintf("host-token-%d", call), ClientToken: fmt.Sprintf("client-token-%d", call),
+				ExpiresAt: time.Now().Add(time.Hour).UTC(), Created: true,
+			})
+		case strings.HasPrefix(r.URL.Path, "/v1/signaling/sessions/session-2") && r.Method == http.MethodDelete:
+			invalidated.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	cfg.SessionCreatesPerMinute = 1
+	cfg.StoreBackend = StoreBackendMemory
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore(cfg, authority)
+	service := testServerWithStore(t, cfg, store)
+	service.authority = authority
+	service.SetReady(true)
+	ctx := context.Background()
+
+	_, created, err := store.Create(ctx, CreateSessionRequest{
+		RequestID: "rate-limited-1", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1", SessionEpoch: 1,
+	})
+	if err != nil || !created {
+		t.Fatalf("initial create created=%t err=%v", created, err)
+	}
+	_, _, err = store.Create(ctx, CreateSessionRequest{
+		RequestID: "rate-limited-2", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-2", SessionEpoch: 2,
+	})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("second create error=%v, want ErrRateLimited", err)
+	}
+	if createCalls.Load() != 2 {
+		t.Fatalf("authority create calls=%d, want 2", createCalls.Load())
+	}
+	if invalidated.Load() != 1 {
+		t.Fatalf("authority invalidations=%d, want 1", invalidated.Load())
+	}
+	store.mu.Lock()
+	_, secondLocalSessionExists := store.sessions["session-2"]
+	_, secondRequestExists := store.requestSessions["rate-limited-2"]
+	store.mu.Unlock()
+	if secondLocalSessionExists || secondRequestExists {
+		t.Fatalf("rate-limited create recorded local state: session_exists=%t request_exists=%t", secondLocalSessionExists, secondRequestExists)
 	}
 }
 

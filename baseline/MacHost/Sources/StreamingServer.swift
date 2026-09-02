@@ -341,14 +341,6 @@ class StreamingServer: EncodedFrameSink {
             .appendingPathComponent(digest, isDirectory: true)
     }
 
-    private static func rejectedFileAccept(transferID: Data, reasonCode: String) -> VSFileAccept {
-        var response = VSFileAccept()
-        response.transferID = transferID
-        response.accepted = false
-        response.rejectionReason = reasonCode
-        return response
-    }
-
     static func requestFileTransferApproval(
         offer: VSFileOffer,
         approval: ((VSFileOffer) -> Bool)?,
@@ -539,7 +531,7 @@ class StreamingServer: EncodedFrameSink {
     private static let protocolV1MaximumClients = 1
     private static let protocolV1MaximumVirtualDisplays = 1
     private static let protocolV1MaximumVideoStreamsPerClient = 1
-    private let protocolV1DisplayRouter = HostMultiClientDisplayRouter(
+    private let protocolV1DisplayAllocator = MultiClientDisplayAllocator(
         maximumClients: StreamingServer.protocolV1MaximumClients,
         maximumStreamsPerClient: StreamingServer.protocolV1MaximumVideoStreamsPerClient
     )
@@ -2213,7 +2205,7 @@ class StreamingServer: EncodedFrameSink {
             displays: protocolV1Displays,
             maximumClients: Self.protocolV1MaximumClients,
             maximumVideoStreamsPerClient: Self.protocolV1MaximumVideoStreamsPerClient,
-            displayRouter: protocolV1DisplayRouter,
+            displayAllocator: protocolV1DisplayAllocator,
             managedPolicy: managedPolicy,
             fileTransferPolicy: filePolicy
         ))
@@ -2715,7 +2707,7 @@ class StreamingServer: EncodedFrameSink {
             )
         } catch let error as ProtocolV1FileTransferError {
             applyProtocolV1Actions(
-                session.makeFileAccept(Self.rejectedFileAccept(
+                session.makeFileAccept(VSFileAccept.rejected(
                     transferID: offer.transferID,
                     reasonCode: error.reasonCode
                 )),
@@ -2725,7 +2717,7 @@ class StreamingServer: EncodedFrameSink {
             return
         } catch {
             applyProtocolV1Actions(
-                session.makeFileAccept(Self.rejectedFileAccept(
+                session.makeFileAccept(VSFileAccept.rejected(
                     transferID: offer.transferID,
                     reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
                 )),
@@ -2762,15 +2754,15 @@ class StreamingServer: EncodedFrameSink {
                             sessionEpoch: self.sessionEpochGate.current
                         )
                     } catch let error as ProtocolV1FileTransferError {
-                        response = Self.rejectedFileAccept(transferID: offer.transferID, reasonCode: error.reasonCode)
+                        response = VSFileAccept.rejected(transferID: offer.transferID, reasonCode: error.reasonCode)
                     } catch {
-                        response = Self.rejectedFileAccept(
+                        response = VSFileAccept.rejected(
                             transferID: offer.transferID,
                             reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
                         )
                     }
                 } else {
-                    response = Self.rejectedFileAccept(
+                    response = VSFileAccept.rejected(
                         transferID: offer.transferID,
                         reasonCode: ProtocolV1FileTransferError.userDenied.reasonCode
                     )

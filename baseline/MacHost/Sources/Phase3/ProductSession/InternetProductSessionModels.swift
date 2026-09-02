@@ -12,6 +12,11 @@ enum InternetProductSessionState: Equatable {
     case closed
 }
 
+enum ProtocolV1FileTransferDirection: Equatable {
+    case incoming
+    case outgoing
+}
+
 enum InternetSessionInputCleanupScope: Equatable {
     case preserve
     case transientOnly
@@ -79,6 +84,9 @@ struct InternetProductSessionConfiguration {
     let inputEnabled: Bool
     let controllerAvailable: Bool
     let managedPolicy: ManagedPolicy
+    let fileTransferPolicy: ProtocolV1FileTransferPolicy
+    let fileTransferApprovalTimeoutMilliseconds: UInt32
+    let fileTransferProgressTimeoutMilliseconds: UInt32
     let heartbeatIntervalMilliseconds: UInt32
     let heartbeatTimeoutMilliseconds: UInt32
     let negotiationTimeoutMilliseconds: UInt32
@@ -99,6 +107,9 @@ struct InternetProductSessionConfiguration {
         inputEnabled: Bool = true,
         controllerAvailable: Bool = false,
         managedPolicy: ManagedPolicy = .unmanaged,
+        fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
+        fileTransferApprovalTimeoutMilliseconds: UInt32 = 60_000,
+        fileTransferProgressTimeoutMilliseconds: UInt32 = 30_000,
         heartbeatIntervalMilliseconds: UInt32 = 1_000,
         heartbeatTimeoutMilliseconds: UInt32 = 5_000,
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
@@ -118,6 +129,9 @@ struct InternetProductSessionConfiguration {
         self.inputEnabled = inputEnabled
         self.controllerAvailable = controllerAvailable
         self.managedPolicy = managedPolicy
+        self.fileTransferPolicy = fileTransferPolicy
+        self.fileTransferApprovalTimeoutMilliseconds = fileTransferApprovalTimeoutMilliseconds
+        self.fileTransferProgressTimeoutMilliseconds = fileTransferProgressTimeoutMilliseconds
         self.heartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds
         self.heartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds
         self.negotiationTimeoutMilliseconds = negotiationTimeoutMilliseconds
@@ -139,6 +153,8 @@ struct InternetProductSessionConfiguration {
               identityEpoch > 0,
               !sharedSecretName.isEmpty, !bootstrapSecretName.isEmpty,
               transcriptContext.count == 32,
+              fileTransferApprovalTimeoutMilliseconds > 0,
+              fileTransferProgressTimeoutMilliseconds > 0,
               heartbeatIntervalMilliseconds > 0,
               heartbeatTimeoutMilliseconds >= heartbeatIntervalMilliseconds,
               negotiationTimeoutMilliseconds > 0 else {

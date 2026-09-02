@@ -1,0 +1,25 @@
+## codex/android-controller-forwarding
+ M README.md
+ M baseline/AndroidClient/README.md
+M  baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientExperience.kt
+AM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt
+MM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+MM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt
+MM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt
+AM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetControllerSendQueue.kt
+MM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt
+MM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/ProtocolV1ProductCodec.kt
+MM baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt
+ M baseline/AndroidClient/app/src/main/res/values/strings.xml
+AM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerInputMapperTest.kt
+MM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt
+M  baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolFailureTest.kt
+MM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt
+AM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetControllerSendQueueTest.kt
+MM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt
+MM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/ProtocolV1ProductCodecTest.kt
+MM baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt
+?? baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerSessionFeedback.kt
+?? baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionInputIdSequence.kt
+?? baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerSessionFeedbackTest.kt
+?? baseline/AndroidClient/app/src/test/java/dev/telemachus/display/SessionInputIdSequenceTest.kt

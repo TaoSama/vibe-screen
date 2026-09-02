@@ -188,7 +188,9 @@ private struct HostRuntimeConfiguration: Equatable {
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let internetSignalingTokenName = "internet.local.signaling.host-token.v1"
+    private static let internetSignalingIssuerTokenName = "internet.local.signaling.issuer-token.v1"
     private static let internetTURNCredentialName = "internet.local.turn.credential.v1"
+    private static let internetSessionProfileTTLSeconds: Int64 = 300
 
     /// Stable synthetic identity for the optional virtual extended display that
     /// is advertised (but not yet captured) so a single-physical-display Mac can
@@ -206,6 +208,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
     private var internetProductSession: InternetProductSession?
     private var internetPairingCoordinator: InternetPairingCoordinator?
+    private let internetSessionLeaseDeliveryLifecycle = InternetSessionLeaseDeliveryLifecycle()
+    private let internetSessionProfileAutomation = InternetSessionProfileAutomation()
+    typealias InternetSessionLeaseDeliveryProvisioner = (
+        URL,
+        String,
+        InternetSignalingSessionProfileRequest
+    ) async throws -> InternetSessionLeaseDeliveryResult
+    var createInternetSessionLeaseDelivery: InternetSessionLeaseDeliveryProvisioner = {
+        signalingBaseURL,
+        issuerToken,
+        request in
+        try await InternetSessionLeaseProvisioner().createAuthoritativeLeaseDelivery(
+            signalingBaseURL: signalingBaseURL,
+            issuerToken: issuerToken,
+            request: request
+        )
+    }
     private let revokedInternetIdentityStore = RevokedInternetIdentityStore()
     var screenCapture: ScreenCapture?
     var virtualDisplayManager: VirtualDisplayManager?
@@ -790,9 +809,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        settings.onSaveInternetCredentials = { [weak self] signalingToken, turnCredential in
+        settings.onSaveInternetCredentials = { [weak self] issuerToken, turnCredential in
             self?.saveInternetCredentials(
-                signalingToken: signalingToken,
+                issuerToken: issuerToken,
                 turnCredential: turnCredential
             ) ?? false
         }
@@ -956,6 +975,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 try secrets.delete(name: bootstrapSecretName)
             }
             try secrets.delete(name: Self.internetSignalingTokenName)
+            try secrets.delete(name: Self.internetSignalingIssuerTokenName)
             try secrets.delete(name: Self.internetTURNCredentialName)
 
             settings.internetPeerDeviceID = ""
@@ -1014,18 +1034,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func saveInternetCredentials(
-        signalingToken: String,
+        issuerToken: String,
         turnCredential: String
     ) -> Bool {
-        guard !signalingToken.isEmpty else {
-            settings.internetErrorMessage = "A short-lived host role token is required."
+        guard !issuerToken.isEmpty else {
+            settings.internetErrorMessage = "A short-lived issuer token is required."
             return false
         }
         do {
             let store = KeychainSecretStore()
             try store.persist(
-                name: Self.internetSignalingTokenName,
-                secret: Data(signalingToken.utf8)
+                name: Self.internetSignalingIssuerTokenName,
+                secret: Data(issuerToken.utf8)
             )
             if turnCredential.isEmpty {
                 try store.delete(name: Self.internetTURNCredentialName)
@@ -1053,10 +1073,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshInternetCredentialState() {
         do {
-            let token = try KeychainSecretStore().load(
-                name: Self.internetSignalingTokenName
+            let store = KeychainSecretStore()
+            let issuerToken = try store.load(
+                name: Self.internetSignalingIssuerTokenName
             )
-            settings.internetCredentialsAvailable = token?.isEmpty == false
+            settings.internetCredentialsAvailable = issuerToken?.isEmpty == false
         } catch {
             settings.internetCredentialsAvailable = false
             debugLog("Internet credential Keychain read failed")
@@ -1180,6 +1201,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ).finalizePairingBinding(
                     pairingIdentifier: acceptance.pairingIdentifier
                 )
+                try KeychainSecurityStateStore(
+                    peerID: "lease-authority.\(acceptance.pairingIdentifier)"
+                ).finalizePairingBinding(
+                    pairingIdentifier: acceptance.pairingIdentifier
+                )
             } catch {
                 debugLog("Committed pairing retained its rollback checkpoint")
             }
@@ -1187,7 +1213,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetPairingCode = nil
             settings.internetStatus = .paired
             settings.internetErrorMessage = nil
-            settings.internetRecoverySuggestion = "Return the acceptance to Android, then issue a fresh short-lived session profile."
+            settings.internetRecoverySuggestion = "Return the acceptance to Android, save a short-lived issuer token, then connect."
             internetPairingCoordinator = nil
         } catch {
             // Every malformed response consumes the one-time offer by design.
@@ -1298,6 +1324,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try rememberRevokedInternetIdentity(peerIdentity)
             let store = KeychainSecretStore()
             try store.delete(name: Self.internetSignalingTokenName)
+            try store.delete(name: Self.internetSignalingIssuerTokenName)
             try store.delete(name: Self.internetTURNCredentialName)
             settings.clientConnected = false
             settings.internetCredentialsAvailable = false
@@ -2084,7 +2111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.onFileTransferApprovalRequested = { [weak self, weak configuredServer] offer in
                 guard let self, let configuredServer,
                       self.streamingServer === configuredServer else { return false }
-                return self.fileTransferController?.approveIncomingFileOffer(offer) ?? false
+                return self.fileTransferController?.approveIncomingFileOffer(offer).isAccepted ?? false
             }
             streamingServer?.onIncomingFileCompleted = { [weak self, weak configuredServer] completed in
                 DispatchQueue.main.async { [weak self, weak configuredServer] in
@@ -2101,7 +2128,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                           self.screenCapture === configuredCapture else { return }
                     let activeServer = configuredServer
                     let clipboardAvailable = activeServer.clipboardAvailable
-                    let fileTransferAvailable = activeServer.fileTransferAvailable
                     self.performSessionCallback(
                             token: startToken,
                             server: activeServer,
@@ -2117,10 +2143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         } else {
                             self.clipboardController?.unbind()
                         }
-                        self.fileTransferController?.bind(
-                            server: activeServer,
-                            fileTransferAvailable: fileTransferAvailable
-                        )
+                        self.fileTransferController?.bind(server: activeServer)
                         configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
                         self.unattendedRecoveryAttempt = 0
                         // Clear before the new client's type-11 arrives so a
@@ -2525,40 +2548,402 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         streamSize: (width: Int, height: Int),
         sessionToken: UInt64
     ) async throws {
-        let configuration = try makeInternetProductSessionConfiguration(
+        let startup = try makeInternetProductSessionStartup(
             streamSize: streamSize
         )
-        let session = InternetProductSession()
-        internetProductSession = session
-        settings.internetAdaptiveMediaControl = .active(
-            bitrateMbps: configuration.video.bitrateKbps / 1_000,
-            framesPerSecond: configuration.video.framesPerSecond,
-            quality: settings.effectiveQuality
+        let pipeline = InternetSessionLeaseStartupPipeline<InternetProductSession>(
+            makeSession: { InternetProductSession() },
+            createDelivery: createInternetSessionLeaseDelivery,
+            requireCurrentStart: { try self.requireCurrentStart(sessionToken) },
+            applyDelivery: { configuration, delivery, signalingBaseURL in
+                try self.internetProductSessionConfiguration(
+                    configuration,
+                    applying: delivery,
+                    signalingBaseURL: signalingBaseURL
+                )
+            },
+            prepareSession: { session, configuration in
+                self.internetProductSession = session
+                self.settings.internetAdaptiveMediaControl = .active(
+                    bitrateMbps: configuration.video.bitrateKbps / 1_000,
+                    framesPerSecond: configuration.video.framesPerSecond,
+                    quality: self.settings.effectiveQuality
+                )
+                self.installInternetSessionCallbacks(session, sessionToken: sessionToken)
+                self.screenCapture?.setCodec(.hevc)
+            },
+            queueDelivery: { delivery, session in
+                self.internetSessionLeaseDeliveryLifecycle.queue(
+                    delivery,
+                    isCurrent: {
+                        self.serverLifecycle.ownsSession(sessionToken)
+                            && self.internetProductSession === session
+                    },
+                    sessionState: { session.snapshotState() },
+                    send: { delivery in
+                        InternetSessionLeaseDelivery.send(delivery, on: session)
+                    }
+                )
+            },
+            resetDelivery: {
+                self.internetSessionLeaseDeliveryLifecycle.reset()
+            },
+            startSession: { session, configuration in
+                try session.start(configuration: configuration)
+            },
+            startCapture: { session, _ in
+                try await self.screenCapture?.startStreaming(
+                    to: session,
+                    bitrateMbps: self.settings.effectiveBitrate,
+                    quality: self.settings.effectiveQuality,
+                    gamingBoost: self.settings.gamingBoost,
+                    frameRate: self.settings.effectiveRefreshRate
+                )
+            },
+            didStart: {
+                debugLog("Secure Internet product session started")
+            }
         )
-        installInternetSessionCallbacks(session, sessionToken: sessionToken)
-        screenCapture?.setCodec(.hevc)
-        try session.start(configuration: configuration)
-        try await screenCapture?.startStreaming(
-            to: session,
-            bitrateMbps: settings.effectiveBitrate,
-            quality: settings.effectiveQuality,
-            gamingBoost: settings.gamingBoost,
-            frameRate: settings.effectiveRefreshRate
+        _ = try await pipeline.start(with: startup.leasePlan)
+    }
+
+    private struct InternetProductSessionStartup {
+        let configuration: InternetProductSessionConfiguration
+        let request: InternetSignalingSessionProfileRequest
+        let signalingBaseURL: URL
+        let issuerToken: String
+
+        var leasePlan: InternetSessionLeaseStartupPlan {
+            InternetSessionLeaseStartupPlan(
+                configuration: configuration,
+                request: request,
+                signalingBaseURL: signalingBaseURL,
+                issuerToken: issuerToken
+            )
+        }
+    }
+
+    private func makeInternetProductSessionStartup(
+        streamSize: (width: Int, height: Int)
+    ) throws -> InternetProductSessionStartup {
+        let allocation = try allocateInternetSessionProfileRequest()
+        let configuration = try makeInternetProductSessionConfiguration(
+            streamSize: streamSize,
+            requestID: allocation.requestID,
+            authoritativeSessionEpoch: allocation.authoritativeSessionEpoch
         )
-        debugLog("Secure Internet product session started")
+        guard let signalingBaseURL = configuration.transport.signaling?.endpoint else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Internet signaling configuration is unavailable."
+            )
+        }
+        let request = try makeInternetSessionProfileRequest(
+            configuration: configuration,
+            signalingURL: signalingBaseURL
+        )
+        let issuerToken = try internetIssuerToken()
+        return InternetProductSessionStartup(
+            configuration: configuration,
+            request: request,
+            signalingBaseURL: signalingBaseURL,
+            issuerToken: issuerToken
+        )
+    }
+
+    private func makeInternetSessionProfileRequest(
+        configuration: InternetProductSessionConfiguration,
+        signalingURL: URL
+    ) throws -> InternetSignalingSessionProfileRequest {
+        guard !settings.internetAccountID.isEmpty else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Enter the authority account ID before connecting."
+            )
+        }
+        let secretNames = try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: configuration.sharedSecretName,
+            bootstrapSecret: configuration.bootstrapSecretName
+        )
+        guard let pairingIdentifier = secretNames.pairingIdentifier else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device durable security owner is unknown. Pair again."
+            )
+        }
+        guard let identityBindingName = secretNames.identityBinding,
+              let encodedIdentityBinding = try KeychainSecretStore().load(
+                name: identityBindingName
+              ) else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding is missing. Pair again."
+            )
+        }
+        let identityBinding = try PairedHostIdentityBinding.decode(
+            encodedIdentityBinding
+        )
+        try identityBinding.requireTarget(
+            deviceID: settings.internetHostDeviceID,
+            keyEpoch: configuration.identityEpoch
+        )
+        let hostIdentity = try KeychainDeviceIdentityStore()
+            .loadVerifiedExisting(binding: identityBinding)
+            .publicIdentity
+
+        let iceServers = configuration.transport.iceServers.map { server in
+            InternetSessionProfileICEServerRequest(
+                urls: server.urls.map(\.absoluteString),
+                username: server.username,
+                credential: server.credential
+            )
+        }
+        return InternetSignalingSessionProfileRequest(
+            requestID: configuration.transport.sessionIdentifier,
+            accountID: settings.internetAccountID,
+            hostDeviceID: configuration.hostDeviceID,
+            clientDeviceID: configuration.peerDeviceID,
+            sessionEpoch: configuration.authoritativeSessionEpoch,
+            ttlSeconds: Self.internetSessionProfileTTLSeconds,
+            sessionProfile: InternetSessionProfileLeaseRequest(
+                pairingID: pairingIdentifier,
+                hostIdentity: hostIdentity,
+                clientIdentity: configuration.peerIdentity,
+                signalingURL: signalingURL.absoluteString,
+                transcriptContext: configuration.transcriptContext,
+                protocolSessionID: Data(configuration.transport.sessionIdentifier.utf8),
+                iceServers: iceServers,
+                allowInsecureForTesting: signalingURL.scheme?.lowercased() == "http"
+            )
+        )
+    }
+
+    private func allocateInternetSessionProfileRequest() throws -> InternetSessionProfileAutomationPlan {
+        let durableEpoch = try currentInternetLeaseAuthorityEpoch()
+        let allocation = try internetSessionProfileAutomation.initialRequest(
+            persistedRequestID: settings.internetSessionIdentifier,
+            persistedEpoch: settings.internetAuthoritativeSessionEpoch,
+            durableEpoch: durableEpoch
+        )
+        persistInternetSessionProfileAllocation(allocation)
+        return allocation
+    }
+
+    private func allocateFreshInternetSessionProfileRequest(
+        after configuration: InternetProductSessionConfiguration
+    ) throws -> InternetSessionProfileAutomationPlan {
+        let durableEpoch = try currentInternetLeaseAuthorityEpoch()
+        let allocation = try internetSessionProfileAutomation.refreshRequest(
+            currentEpoch: configuration.authoritativeSessionEpoch,
+            persistedEpoch: settings.internetAuthoritativeSessionEpoch,
+            durableEpoch: durableEpoch
+        )
+        persistInternetSessionProfileAllocation(allocation)
+        return allocation
+    }
+
+    private func persistInternetSessionProfileAllocation(
+        _ allocation: InternetSessionProfileAutomationPlan
+    ) {
+        settings.internetSessionIdentifier = allocation.requestID
+        settings.internetAuthoritativeSessionEpoch = allocation.authoritativeSessionEpoch
+    }
+
+    private func currentInternetLeaseAuthorityEpoch() throws -> UInt64 {
+        let secretNames = try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: settings.internetSharedSecretName,
+            bootstrapSecret: settings.internetBootstrapSecretName
+        )
+        guard let pairingIdentifier = secretNames.pairingIdentifier else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device durable security owner is unknown. Pair again."
+            )
+        }
+        return try KeychainSecurityStateStore(
+            peerID: "lease-authority.\(pairingIdentifier)"
+        ).validatePairingBinding(pairingIdentifier: pairingIdentifier).sessionEpoch
+    }
+
+    private func internetProductSessionConfiguration(
+        _ configuration: InternetProductSessionConfiguration,
+        replacingSession request: InternetSessionProfileAutomationPlan
+    ) -> InternetProductSessionConfiguration {
+        let transport = WebRTCTransportConfiguration(
+            iceServers: configuration.transport.iceServers,
+            peerIdentity: configuration.transport.peerIdentity,
+            sessionIdentifier: request.requestID,
+            forceRelay: configuration.transport.forceRelay,
+            signaling: configuration.transport.signaling.map { signaling in
+                WebRTCSignalingConfiguration(
+                    endpoint: signaling.endpoint,
+                    bearerToken: "pending-authority-host-token",
+                    role: signaling.role
+                )
+            }
+        )
+        return InternetProductSessionConfiguration(
+            transport: transport,
+            hostDeviceID: configuration.hostDeviceID,
+            hostName: configuration.hostName,
+            peerDeviceID: configuration.peerDeviceID,
+            peerIdentity: configuration.peerIdentity,
+            authoritativeSessionEpoch: request.authoritativeSessionEpoch,
+            identityEpoch: configuration.identityEpoch,
+            sharedSecretName: configuration.sharedSecretName,
+            bootstrapSecretName: configuration.bootstrapSecretName,
+            transcriptContext: configuration.transcriptContext,
+            video: configuration.video,
+            inputEnabled: configuration.inputEnabled,
+            controllerAvailable: configuration.controllerAvailable,
+            heartbeatIntervalMilliseconds: configuration.heartbeatIntervalMilliseconds,
+            heartbeatTimeoutMilliseconds: configuration.heartbeatTimeoutMilliseconds,
+            negotiationTimeoutMilliseconds: configuration.negotiationTimeoutMilliseconds,
+            limits: configuration.limits
+        )
+    }
+
+    private func internetIssuerToken() throws -> String {
+        guard let tokenData = try KeychainSecretStore().load(
+            name: Self.internetSignalingIssuerTokenName
+        ), let token = String(data: tokenData, encoding: .utf8),
+              !token.isEmpty else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Save a fresh short-lived issuer token in Keychain."
+            )
+        }
+        return token
+    }
+
+    private func refreshInternetProductSession(
+        _ session: InternetProductSession,
+        attempt: Int,
+        sessionToken: UInt64
+    ) async throws {
+        guard serverLifecycle.ownsSession(sessionToken),
+              internetProductSession === session else { throw CancellationError() }
+        guard let baseConfiguration = session.currentRecoveryConfiguration else {
+            throw InternetProductSessionError.securityFailure(
+                "Internet fresh-session recovery started without a recoverable configuration."
+            )
+        }
+        let allocation = try allocateFreshInternetSessionProfileRequest(
+            after: baseConfiguration
+        )
+        let requestedConfiguration = internetProductSessionConfiguration(
+            baseConfiguration,
+            replacingSession: allocation
+        )
+        guard let signalingBaseURL = requestedConfiguration.transport.signaling?.endpoint else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Internet signaling configuration is unavailable."
+            )
+        }
+        let request = try makeInternetSessionProfileRequest(
+            configuration: requestedConfiguration,
+            signalingURL: signalingBaseURL
+        )
+        let issuerToken = try internetIssuerToken()
+        let pipeline = InternetSessionLeaseStartupPipeline<InternetProductSession>(
+            makeSession: { session },
+            createDelivery: createInternetSessionLeaseDelivery,
+            requireCurrentStart: {
+                guard self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else {
+                    throw CancellationError()
+                }
+            },
+            applyDelivery: { configuration, delivery, signalingBaseURL in
+                try self.internetProductSessionConfiguration(
+                    configuration,
+                    applying: delivery,
+                    signalingBaseURL: signalingBaseURL
+                )
+            },
+            prepareSession: { _, _ in },
+            queueDelivery: { delivery, observedSession in
+                self.internetSessionLeaseDeliveryLifecycle.queue(
+                    delivery,
+                    isCurrent: {
+                        self.serverLifecycle.ownsSession(sessionToken)
+                            && self.internetProductSession === observedSession
+                    },
+                    sessionState: { observedSession.snapshotState() },
+                    send: { delivery in
+                        InternetSessionLeaseDelivery.send(delivery, on: observedSession)
+                    }
+                )
+            },
+            resetDelivery: {
+                self.internetSessionLeaseDeliveryLifecycle.reset()
+            },
+            startSession: { _, _ in },
+            startCapture: { _, _ in },
+            didStart: {}
+        )
+        let refreshPlan = InternetSessionLeaseRefreshPlan(
+            currentConfiguration: requestedConfiguration,
+            request: request,
+            signalingBaseURL: signalingBaseURL,
+            issuerToken: issuerToken
+        )
+        debugLog("Requesting fresh Authority Internet session profile (attempt \(attempt))")
+        try await pipeline.refresh(
+            session: session,
+            with: refreshPlan,
+            provideFreshSession: { session, configuration in
+                try session.provideFreshSession(configuration: configuration)
+            }
+        )
+        guard serverLifecycle.ownsSession(sessionToken),
+              internetProductSession === session else { throw CancellationError() }
+        settings.internetErrorMessage = nil
+        settings.internetRecoverySuggestion = nil
+    }
+
+    private func internetProductSessionConfiguration(
+        _ configuration: InternetProductSessionConfiguration,
+        applying delivery: InternetSessionLeaseDeliveryResult,
+        signalingBaseURL: URL
+    ) throws -> InternetProductSessionConfiguration {
+        let transport = WebRTCTransportConfiguration(
+            iceServers: configuration.transport.iceServers,
+            peerIdentity: configuration.transport.peerIdentity,
+            sessionIdentifier: delivery.sessionID,
+            forceRelay: configuration.transport.forceRelay,
+            signaling: WebRTCSignalingConfiguration(
+                endpoint: signalingBaseURL,
+                bearerToken: delivery.hostSignalingToken,
+                role: .offerer
+            )
+        )
+        return InternetProductSessionConfiguration(
+            transport: transport,
+            hostDeviceID: configuration.hostDeviceID,
+            hostName: configuration.hostName,
+            peerDeviceID: configuration.peerDeviceID,
+            peerIdentity: configuration.peerIdentity,
+            authoritativeSessionEpoch: configuration.authoritativeSessionEpoch,
+            identityEpoch: configuration.identityEpoch,
+            sharedSecretName: configuration.sharedSecretName,
+            bootstrapSecretName: configuration.bootstrapSecretName,
+            transcriptContext: configuration.transcriptContext,
+            video: configuration.video,
+            inputEnabled: configuration.inputEnabled,
+            controllerAvailable: configuration.controllerAvailable,
+            fileTransferPolicy: configuration.fileTransferPolicy,
+            fileTransferApprovalTimeoutMilliseconds: configuration.fileTransferApprovalTimeoutMilliseconds,
+            fileTransferProgressTimeoutMilliseconds: configuration.fileTransferProgressTimeoutMilliseconds,
+            heartbeatIntervalMilliseconds: configuration.heartbeatIntervalMilliseconds,
+            heartbeatTimeoutMilliseconds: configuration.heartbeatTimeoutMilliseconds,
+            negotiationTimeoutMilliseconds: configuration.negotiationTimeoutMilliseconds,
+            limits: configuration.limits
+        )
     }
 
     private func makeInternetProductSessionConfiguration(
-        streamSize: (width: Int, height: Int)
+        streamSize: (width: Int, height: Int),
+        requestID: String,
+        authoritativeSessionEpoch: UInt64
     ) throws -> InternetProductSessionConfiguration {
         guard internetPairingMetadataIsComplete else {
             throw InternetProductSessionError.invalidConfiguration(
                 "Pair and confirm an Android device before connecting."
-            )
-        }
-        guard !settings.internetSessionIdentifier.isEmpty else {
-            throw InternetProductSessionError.invalidConfiguration(
-                "Enter a fresh short-lived signaling session ID."
             )
         }
         guard DisplaySettings.isSafeInternetSignalingEndpoint(
@@ -2584,14 +2969,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let secretStore = KeychainSecretStore()
-        guard let tokenData = try secretStore.load(
-            name: Self.internetSignalingTokenName
-        ), let signalingToken = String(data: tokenData, encoding: .utf8),
-              !signalingToken.isEmpty else {
-            throw InternetProductSessionError.invalidConfiguration(
-                "Save a fresh short-lived host role token in Keychain."
-            )
-        }
         let hasTURN = iceURLs.contains {
             ["turn", "turns"].contains($0.scheme?.lowercased() ?? "")
         }
@@ -2616,11 +2993,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         let peerIdentity = try pinnedInternetPeerIdentity()
-        guard settings.internetAuthoritativeSessionEpoch > 0 else {
-            throw InternetProductSessionError.invalidConfiguration(
-                "The authoritative session epoch is unavailable. Issue a fresh session."
-            )
-        }
         let iceServer = WebRTCICEServer(
             urls: iceURLs,
             username: hasTURN ? settings.internetTURNUsername : nil,
@@ -2629,11 +3001,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let transport = WebRTCTransportConfiguration(
             iceServers: [iceServer],
             peerIdentity: peerIdentity.keyID,
-            sessionIdentifier: settings.internetSessionIdentifier,
+            sessionIdentifier: requestID,
             forceRelay: settings.internetRoutePreference == .forceTURN,
             signaling: WebRTCSignalingConfiguration(
                 endpoint: signalingEndpoint,
-                bearerToken: signalingToken,
+                bearerToken: "pending-authority-host-token",
                 role: .offerer
             )
         )
@@ -2643,7 +3015,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             hostName: Host.current().localizedName ?? "Mac",
             peerDeviceID: settings.internetPeerDeviceID,
             peerIdentity: peerIdentity,
-            authoritativeSessionEpoch: settings.internetAuthoritativeSessionEpoch,
+            authoritativeSessionEpoch: authoritativeSessionEpoch,
             sharedSecretName: settings.internetSharedSecretName,
             bootstrapSecretName: settings.internetBootstrapSecretName,
             transcriptContext: transcriptContext,
@@ -2657,7 +3029,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ),
             inputEnabled: settings.touchEnabled,
             controllerAvailable: gameControllerRuntime.factory != nil,
-            managedPolicy: ManagedConfigurationProvider().loadPolicy()
+            managedPolicy: ManagedConfigurationProvider().loadPolicy(),
+            fileTransferPolicy: .default
         )
     }
 
@@ -2721,10 +3094,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         transport: .secureInternet,
                         clipboardAvailable: session.clipboardAvailable
                     )
+                    await self.internetSessionLeaseDeliveryLifecycle.handleStateChange(
+                        state,
+                        isCurrent: {
+                            self.serverLifecycle.ownsSession(sessionToken)
+                                && self.internetProductSession === session
+                        },
+                        send: { delivery in
+                            InternetSessionLeaseDelivery.send(delivery, on: session)
+                        },
+                        failClosed: { reason in
+                            guard self.serverLifecycle.ownsSession(sessionToken),
+                                  self.internetProductSession === session else { return }
+                            self.settings.internetStatus = .failed
+                            self.settings.internetErrorMessage = reason
+                            self.settings.internetRecoverySuggestion =
+                                "Reconnect with a fresh short-lived Internet session profile."
+                            await self.stopServer(preserveRecoveryState: true)
+                        }
+                    )
                 case .recovering, .failed, .revoked, .closed:
                     self.clipboardController?.unbind()
                 case .idle, .connecting, .authenticating, .awaitingVideoConfiguration:
-                    break
+                    self.clipboardController?.bind(
+                        server: session,
+                        generation: session.currentSessionEpoch,
+                        transport: .secureInternet,
+                        clipboardAvailable: false
+                    )
                 }
             }
         }
@@ -2842,24 +3239,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
-                // The previous signaling token, record keys and PeerConnection
-                // are never reused across a handoff. Stop the full product
-                // session until authority supplies a fresh short-lived profile.
                 do {
-                    try KeychainSecretStore().delete(
-                        name: Self.internetSignalingTokenName
+                    try await self.refreshInternetProductSession(
+                        session,
+                        attempt: attempt,
+                        sessionToken: sessionToken
                     )
-                    try KeychainSecretStore().delete(
-                        name: Self.internetTURNCredentialName
-                    )
+                } catch is CancellationError {
+                    return
+                } catch let error as InternetProductSessionError {
+                    guard self.serverLifecycle.ownsSession(sessionToken),
+                          self.internetProductSession === session else { return }
+                    self.settings.internetStatus = .failed
+                    self.settings.internetErrorMessage = error.localizedDescription
+                    self.settings.internetRecoverySuggestion = self.internetRecoverySuggestion(for: error)
+                    await self.stopServer(preserveRecoveryState: true)
                 } catch {
-                    debugLog("Fresh-session credential cleanup failed: \(error.localizedDescription)")
+                    guard self.serverLifecycle.ownsSession(sessionToken),
+                          self.internetProductSession === session else { return }
+                    self.settings.internetStatus = .failed
+                    self.settings.internetErrorMessage = error.localizedDescription
+                    self.settings.internetRecoverySuggestion =
+                        "Reconnect after Authority can issue a fresh short-lived Internet session profile."
+                    await self.stopServer(preserveRecoveryState: true)
                 }
-                self.settings.internetCredentialsAvailable = false
-                self.settings.internetStatus = .recovering
-                self.settings.internetErrorMessage = "Network recovery requires a fresh secure session."
-                self.settings.internetRecoverySuggestion = "Issue a new short-lived session ID, host role token and TURN credential, then connect again (attempt \(attempt))."
-                await self.stopServer(preserveRecoveryState: true)
             }
         }
         session.onRevocationPropagationRequired = {
@@ -2926,6 +3329,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     transport: .secureInternet,
                     clipboardAvailable: session.clipboardAvailable
                 )
+                self.fileTransferController?.refreshAvailability()
+            }
+        }
+        session.onFileTransferApprovalRequested = { [weak self, weak session] offer, completion in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else {
+                    completion(.cancelled)
+                    return
+                }
+                completion(self.fileTransferController?.approveIncomingFileOffer(offer) ?? .cancelled)
+            }
+        }
+        session.onFileTransferCompleted = { [weak self, weak session] completed in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.handleIncomingFileCompleted(completed)
+            }
+        }
+        session.onFileTransferResult = { [weak self, weak session] _, direction, accepted, reason in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.handleFileTransferResult(
+                    direction: direction,
+                    accepted: accepted,
+                    reason: reason
+                )
+            }
+        }
+        session.onFileTransferAvailabilityChanged = { [weak self, weak session] _ in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.refreshAvailability()
             }
         }
 
@@ -3453,17 +3896,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyInternetSessionState(_ state: InternetProductSessionState) {
         switch state {
         case .idle:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = internetPairingMetadataIsComplete ? .paired : .idle
         case .connecting, .authenticating, .awaitingVideoConfiguration:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .connecting
             settings.clientConnected = false
         case .streaming(let path):
             guard path != .unknown else {
+                if internetProductSession != nil { fileTransferController?.unbind() }
                 settings.internetStatus = .failed
                 settings.internetErrorMessage =
                     "The selected ICE candidate path is unknown; no route was published."
                 settings.clientConnected = false
                 return
+            }
+            if let session = internetProductSession {
+                fileTransferController?.bind(server: session)
             }
             settings.internetStatus = path == .relay ? .relay : .direct
             settings.clientConnected = true
@@ -3471,16 +3920,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetRecoverySuggestion = nil
             screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
         case .recovering:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .recovering
             settings.clientConnected = false
         case .failed(let reason):
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .failed
             settings.internetErrorMessage = reason
             settings.clientConnected = false
         case .revoked:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .revoked
             settings.clientConnected = false
         case .closed:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.clientConnected = false
             if settings.internetStatus != .recovering,
                settings.internetStatus != .revoked,
@@ -3530,6 +3983,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let displayToDestroy = virtualDisplayManager
         screenCapture = nil
         streamingServer = nil
+        internetSessionLeaseDeliveryLifecycle.reset()
         internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil

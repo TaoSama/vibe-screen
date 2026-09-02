@@ -1,0 +1,13 @@
+source=<SOURCE_WORKTREE>/controller-contract-salvage
+snapshot_dir=.
+head=2d39bf7f78eda88aa8813bb18c0068ccb8e6574d
+branch=codex/controller-contract-salvage
+status_file=status.short.txt
+diff_file=diff.patch
+diff_file_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+cached_diff_file=cached.diff.patch
+cached_diff_file_sha256=f1fe9f71b5338916d348aecc9b41edffc280ee17561f0025f62355a6f91e43e9
+untracked_list=untracked-files.txt
+untracked_tar=untracked-files.tar
+untracked_sha256=untracked-files.sha256
+recovered_untracked_sha256=recovered-untracked-files.sha256

@@ -2,6 +2,10 @@ package signaling
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,8 +40,6 @@ type Server struct {
 	authority                 *AuthorityClient
 	metrics                   Metrics
 	ready                     atomic.Bool
-	createMu                  sync.Mutex
-	createRate                rateWindow
 	authorityReadinessMu      sync.Mutex
 	authorityReadinessAt      time.Time
 	authorityReadinessErr     error
@@ -236,21 +238,18 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type createSessionRequest struct {
-	RequestID      string `json:"request_id"`
-	TTLSeconds     int64  `json:"ttl_seconds,omitempty"`
-	AccountID      string `json:"account_id,omitempty"`
-	HostDeviceID   string `json:"host_device_id,omitempty"`
-	ClientDeviceID string `json:"client_device_id,omitempty"`
-	SessionEpoch   uint64 `json:"session_epoch,omitempty"`
+	RequestID      string                 `json:"request_id"`
+	TTLSeconds     int64                  `json:"ttl_seconds,omitempty"`
+	AccountID      string                 `json:"account_id,omitempty"`
+	HostDeviceID   string                 `json:"host_device_id,omitempty"`
+	ClientDeviceID string                 `json:"client_device_id,omitempty"`
+	SessionEpoch   uint64                 `json:"session_epoch,omitempty"`
+	SessionProfile *SessionProfileRequest `json:"session_profile,omitempty"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if !authorized(r, s.cfg.IssuerToken) {
 		s.reject(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	if !s.allowCreate() {
-		s.reject(w, http.StatusTooManyRequests, "session creation rate limit exceeded")
 		return
 	}
 	var request createSessionRequest
@@ -274,6 +273,10 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		RequestID: request.RequestID,
 		TTL:       ttl,
 	}
+	if s.authority == nil && request.SessionProfile != nil {
+		s.reject(w, http.StatusBadRequest, "session_profile requires production authority mode")
+		return
+	}
 	if s.authority != nil {
 		if !validIdentifier(request.AccountID) || !validIdentifier(request.HostDeviceID) ||
 			!validIdentifier(request.ClientDeviceID) || request.HostDeviceID == request.ClientDeviceID ||
@@ -285,6 +288,13 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		createReq.HostDeviceID = request.HostDeviceID
 		createReq.ClientDeviceID = request.ClientDeviceID
 		createReq.SessionEpoch = request.SessionEpoch
+		if request.SessionProfile != nil {
+			if err := validateSessionProfileRequest(request.SessionProfile, request.HostDeviceID, request.ClientDeviceID); err != nil {
+				s.reject(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		createReq.SessionProfile = request.SessionProfile
 	}
 	response, created, err := s.store.Create(r.Context(), createReq)
 	if err != nil {
@@ -488,6 +498,148 @@ func validAttributeToken(value string, maximum int) bool {
 	return true
 }
 
+func validateSessionProfileRequest(request *SessionProfileRequest, hostDeviceID, clientDeviceID string) error {
+	if request == nil {
+		return errors.New("session_profile is required")
+	}
+	if !validIdentifier(request.PairingID) || request.HostIdentity.DeviceID != hostDeviceID ||
+		request.ClientIdentity.DeviceID != clientDeviceID || hostDeviceID == clientDeviceID {
+		return errors.New("invalid session_profile identity binding")
+	}
+	if err := validateProfileIdentity(request.HostIdentity); err != nil {
+		return fmt.Errorf("invalid session_profile host identity: %w", err)
+	}
+	if err := validateProfileIdentity(request.ClientIdentity); err != nil {
+		return fmt.Errorf("invalid session_profile client identity: %w", err)
+	}
+	if err := validateProfileSignalingURL(request.SignalingURL, request.AllowInsecureForTesting); err != nil {
+		return err
+	}
+	if _, err := decodeStandardBase64(request.TranscriptContext, 32, 32); err != nil {
+		return fmt.Errorf("invalid session_profile transcript_context: %w", err)
+	}
+	if _, err := decodeStandardBase64(request.ProtocolSessionID, 1, 256); err != nil {
+		return fmt.Errorf("invalid session_profile protocol_session_id: %w", err)
+	}
+	if len(request.ICEServers) < 1 || len(request.ICEServers) > 16 {
+		return errors.New("invalid session_profile ICE server count")
+	}
+	for _, server := range request.ICEServers {
+		if err := validateProfileICE(server); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateProfileIdentity(identity PublicDeviceIdentity) error {
+	if !validIdentifier(identity.DeviceID) || identity.KeyEpoch == 0 ||
+		identity.KeyEpoch > math.MaxInt64 || identity.SignatureAlgorithm != "ECDSA_P256_SHA256" {
+		return errors.New("identity metadata is invalid")
+	}
+	if len(identity.KeyID) != sha256.Size*2 || strings.ToLower(identity.KeyID) != identity.KeyID {
+		return errors.New("key_id must be lowercase SHA-256 hex")
+	}
+	publicKey, err := decodeRawURLBase64(identity.SigningPublicKey)
+	if err != nil {
+		return err
+	}
+	if len(publicKey) != 65 || publicKey[0] != 0x04 {
+		return errors.New("signing_public_key must be an uncompressed P-256 public key")
+	}
+	if _, err := ecdh.P256().NewPublicKey(publicKey); err != nil {
+		return errors.New("signing_public_key is not on P-256")
+	}
+	digest := sha256.Sum256(publicKey)
+	if hex.EncodeToString(digest[:]) != identity.KeyID {
+		return errors.New("key_id does not match signing_public_key")
+	}
+	return nil
+}
+
+func validateProfileSignalingURL(value string, allowInsecure bool) error {
+	if strings.TrimSpace(value) == "" || len(value) > 2048 {
+		return errors.New("signaling_url is invalid")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("signaling_url is invalid")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if allowInsecure {
+		if scheme != "http" || !isLoopbackHost(parsed.Hostname()) {
+			return errors.New("insecure signaling is limited to explicit loopback testing")
+		}
+		return nil
+	}
+	if scheme != "https" {
+		return errors.New("production signaling requires HTTPS")
+	}
+	return nil
+}
+
+func validateProfileICE(server LeaseICEServer) error {
+	if len(server.URLs) < 1 || len(server.URLs) > 8 {
+		return errors.New("ICE URL count is invalid")
+	}
+	containsTURN := false
+	for _, raw := range server.URLs {
+		if strings.TrimSpace(raw) == "" || len(raw) > 2048 {
+			return errors.New("ICE URL is invalid")
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || (parsed.Hostname() == "" && parsed.Opaque == "") {
+			return errors.New("ICE URL is invalid")
+		}
+		switch strings.ToLower(parsed.Scheme) {
+		case "stun", "stuns":
+		case "turn", "turns":
+			containsTURN = true
+		default:
+			return errors.New("ICE URL scheme is invalid")
+		}
+	}
+	if containsTURN && (server.Username == nil || *server.Username == "" ||
+		server.Credential == nil || *server.Credential == "") {
+		return errors.New("TURN servers require username and credential")
+	}
+	for _, value := range []*string{server.Username, server.Credential} {
+		if value != nil && len(*value) > 4096 {
+			return errors.New("ICE credential is too large")
+		}
+	}
+	return nil
+}
+
+func decodeRawURLBase64(value string) ([]byte, error) {
+	if value == "" || strings.Contains(value, "=") {
+		return nil, errors.New("value must be unpadded base64url")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("value must be unpadded base64url")
+	}
+	if base64.RawURLEncoding.EncodeToString(decoded) != value {
+		return nil, errors.New("value must be canonical base64url")
+	}
+	return decoded, nil
+}
+
+func decodeStandardBase64(value string, minimumBytes, maximumBytes int) ([]byte, error) {
+	if value == "" || len(value) > 8192 {
+		return nil, errors.New("value is empty or too large")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, errors.New("value is not valid base64")
+	}
+	if len(decoded) < minimumBytes || len(decoded) > maximumBytes {
+		return nil, errors.New("decoded length is invalid")
+	}
+	return decoded, nil
+}
+
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 	contentType := strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0])
 	if contentType != "application/json" {
@@ -503,20 +655,6 @@ func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, destination 
 		return errors.New("request body must contain one JSON object")
 	}
 	return nil
-}
-
-func (s *Server) allowCreate() bool {
-	now := s.now()
-	s.createMu.Lock()
-	defer s.createMu.Unlock()
-	if s.createRate.started.IsZero() || now.Sub(s.createRate.started) >= time.Minute {
-		s.createRate = rateWindow{started: now}
-	}
-	if s.createRate.count >= s.cfg.SessionCreatesPerMinute {
-		return false
-	}
-	s.createRate.count++
-	return true
 }
 
 func (s *Server) writeStoreError(w http.ResponseWriter, err error) {

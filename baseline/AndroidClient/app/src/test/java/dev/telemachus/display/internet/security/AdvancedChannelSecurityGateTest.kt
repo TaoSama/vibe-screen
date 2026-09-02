@@ -18,7 +18,7 @@ class AdvancedChannelSecurityGateTest {
 
         assertEquals(8, gate.bufferedBytes(SecurityChannel.AUDIO))
         assertEquals(16, gate.bufferedBytes(SecurityChannel.BULK))
-        assertThrows(IllegalStateException::class.java) {
+        assertThrows(AdvancedChannelBacklogRejectedException::class.java) {
             gate.reserve(1, AdvancedChannelBinding.Audio("display-a", 11), owner)
         }
         assertThrows(IllegalStateException::class.java) {

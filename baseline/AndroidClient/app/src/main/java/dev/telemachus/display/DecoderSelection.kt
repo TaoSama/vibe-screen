@@ -38,6 +38,7 @@ internal object DecoderNameRules {
         name: String,
         mime: String,
     ): Boolean {
+        if (mime == MediaFormat.MIMETYPE_VIDEO_AV1) return !isSoftware(name)
         if (mime != MediaFormat.MIMETYPE_VIDEO_HEVC) return true
         val normalized = name.lowercase(Locale.ROOT)
         return !isSoftware(normalized) &&

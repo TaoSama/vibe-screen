@@ -1,20 +1,36 @@
 package dev.telemachus.display.internet
 
+import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerConnectionAckTracker
+import dev.telemachus.display.ControllerDispatchOrdering
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.ClipboardContentData
 import dev.telemachus.display.ClipboardOfferData
+import dev.telemachus.display.FileTransferProductOwner
+import dev.telemachus.display.PendingControllerInputDisposition
+import dev.telemachus.display.SessionInputIdSequence
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.AdvancedChannelAdmission
+import dev.telemachus.display.internet.security.AdvancedChannelBacklogRejectedException
 import dev.telemachus.display.internet.security.AdvancedChannelBinding
 import dev.telemachus.display.internet.security.AdvancedChannelOwner
 import dev.telemachus.display.internet.security.AdvancedChannelSecurityGate
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.SecurityTranscript
+import dev.telemachus.display.protocol.CompletedIncomingFile
+import dev.telemachus.display.protocol.FileChunk
+import dev.telemachus.display.protocol.FileTransferException
+import dev.telemachus.display.protocol.FileTransferPolicy
+import dev.telemachus.display.protocol.ProtocolV1Framing
+import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
+import dev.vibescreen.protocol.v1.ResourceLimits
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -127,11 +143,13 @@ data class ProductVideoFrame(
 )
 
 internal data class ProductControllerEvent(
-    val inputId: Long,
+    val inputId: Long?,
     val sample: ControllerStateSample,
 ) {
+    constructor(sample: ControllerStateSample) : this(null, sample)
+
     init {
-        require(inputId > 0) { "Controller input identifier must be positive" }
+        require(inputId == null || inputId > 0) { "Controller input identifier must be positive" }
     }
 }
 
@@ -159,6 +177,12 @@ internal interface InternetProductSessionCallbacks {
     fun onClipboardContent(content: ClipboardContentData) = Unit
 
     fun onManagedPolicyReceived(status: ManagedPolicyStatus) = Unit
+
+    fun onFileOffer(offer: FileOffer) = Unit
+
+    fun onIncomingFileCompleted(completed: CompletedIncomingFile) = Unit
+
+    fun onFileTransferResult(accepted: Boolean, reason: String) = Unit
 
     fun onPong(sequence: Long) = Unit
 
@@ -293,6 +317,9 @@ class InternetProductSession internal constructor(
     private val callbacks: InternetProductSessionCallbacks,
     private val revocationStore: InternetProductRevocationStore,
     private val revocationCoordinator: InternetProductRevocationCoordinator,
+    private val nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
+    fileTransferStagingDirectory: File = defaultFileTransferStagingDirectory(),
+    private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
     private val testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
 ) : AutoCloseable {
     private val lock = Any()
@@ -308,11 +335,16 @@ class InternetProductSession internal constructor(
     private var baseNegotiatedCapabilities = emptySet<Capability>()
     private var hostMaximumEncryptedMediaRecordBytes = 0L
     private var hostMaximumClipboardBytes = 0L
+    private var hostMaximumFileBytes = 0L
+    private var hostMaximumFileChunkBytes = 0
     private var negotiatedMaximumEncryptedMediaRecordBytes = 0
     private var negotiatedMaximumClipboardBytes = 0L
     private var remoteManagedClipboardAllowed = true
-    private val managedPolicyResolver = InternetManagedPolicyResolver()
+    private val managedPolicyResolver = InternetManagedPolicyResolver(codec.localManagedPolicy)
+    private val localFileTransferPolicy = fileTransferPolicy.applying(RemoteManagedPolicy(codec.localManagedPolicy.toStatus()))
     private var clipboard: InternetClipboard? = null
+    private var negotiatedFilePolicy = localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+    private val outgoingFileTransferDeadlines = LinkedHashMap<ByteString, OutgoingFileTransferDeadline>()
     private var negotiationStarted = false
     private var freshSessionRequested = false
     private var heartbeatIntervalMillis = 0L
@@ -326,6 +358,17 @@ class InternetProductSession internal constructor(
     private val controllerSendGate = ReentrantLock(true)
     private val controllerSendQueue = InternetControllerSendQueue<ProductControllerEvent>()
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
+    private val minimumNextControllerInputId = AtomicLong(1)
+    private val fileTransferProductOwner =
+        FileTransferProductOwner(
+            fileTransferPolicy = localFileTransferPolicy,
+            stagingDirectory = { fileTransferStagingDirectory },
+            pendingOfferGate = InternetFileTransferPendingOfferGate(),
+        ).apply {
+            onFileOffer = callbacks::onFileOffer
+            onIncomingFileCompleted = callbacks::onIncomingFileCompleted
+            onFileTransferResult = callbacks::onFileTransferResult
+        }
     private val advancedChannelGate =
         AdvancedChannelSecurityGate(
             initialOwner = advancedChannelOwner(transportOwner),
@@ -394,6 +437,8 @@ class InternetProductSession internal constructor(
         transport.tick()
         expirePendingVideoConfiguration()
         expirePendingMediaFrame()
+        expirePendingControllerConnections()
+        expireOutgoingFileTransfers()
         heartbeatTick()
     }
 
@@ -472,12 +517,13 @@ class InternetProductSession internal constructor(
     ): Boolean =
         controllerSendGate.withLock {
             if (events.isEmpty()) return@withLock false
+            val orderedEvents = orderControllerEventsBeforeQueueing(events)
             val sendImmediately = synchronized(lock) { canSendControllerLocked() }
             val queueStructuralForRecovery =
                 delivery == InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL &&
                     synchronized(lock) { canQueueControllerStructuralForRecoveryLocked() }
             if (!sendImmediately && !queueStructuralForRecovery) return@withLock false
-            val enqueueResult = controllerSendQueue.enqueue(events, delivery)
+            val enqueueResult = controllerSendQueue.enqueue(orderedEvents, delivery)
             if (enqueueResult == InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW) {
                 fail(IllegalStateException("Controller structural send queue overflowed"))
                 return@withLock false
@@ -485,6 +531,25 @@ class InternetProductSession internal constructor(
             if (!sendImmediately) return@withLock true
             drainControllerQueue() || synchronized(lock) { state in CONTROLLER_STRUCTURAL_STATES }
         }
+
+    private fun orderControllerEventsBeforeQueueing(events: List<ProductControllerEvent>): List<ProductControllerEvent> {
+        if (events.size < 2) return events
+        val remaining = events.toMutableList()
+        val ordered = ArrayList<ProductControllerEvent>(events.size)
+        var changed = false
+        while (remaining.isNotEmpty()) {
+            val samples = remaining.map { it.sample }
+            val nextIndex =
+                remaining.indices.firstOrNull { index ->
+                    val sample = samples[index]
+                    !ControllerDispatchOrdering.hasLaterLowerEpochDisconnect(samples, index, sample) &&
+                        !ControllerDispatchOrdering.hasLaterSameConnectionConnected(samples, index, sample)
+                } ?: 0
+            if (nextIndex != 0) changed = true
+            ordered += remaining.removeAt(nextIndex)
+        }
+        return if (changed) ordered else events
+    }
 
     fun requestKeyframe(reason: String): Boolean {
         val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
@@ -554,6 +619,89 @@ class InternetProductSession internal constructor(
             clipboard?.expireRequest(changeId) == true
         }
 
+    val canTransferFiles: Boolean
+        get() = synchronized(lock) { canTransferFilesLocked() }
+
+    val negotiatedMaxFileBytes: Long
+        get() = synchronized(lock) { negotiatedFilePolicy.maximumFileBytes }
+
+    fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean {
+        val prepared =
+            when (
+                val result = fileTransferProductOwner.prepareOutgoingFile(
+                    file = file,
+                    mimeType = mimeType,
+                    negotiatedPolicy = synchronized(lock) { negotiatedFilePolicy },
+                )
+            ) {
+                is FileTransferProductOwner.PrepareOutgoingResult.Prepared -> result.transfer
+                is FileTransferProductOwner.PrepareOutgoingResult.Rejected -> {
+                    fileTransferProductOwner.notifyFileTransferResult(
+                        FileTransferProductOwner.TransferResult(accepted = false, reason = result.reasonCode),
+                    )
+                    return false
+                }
+            }
+        val offer =
+            when (val start = fileTransferProductOwner.startPreparedOutgoing(prepared, canTransferFiles)) {
+                is FileTransferProductOwner.StartOutgoingResult.Started -> start.offer
+                is FileTransferProductOwner.StartOutgoingResult.Rejected -> {
+                    fileTransferProductOwner.notifyFileTransferResult(
+                        FileTransferProductOwner.TransferResult(accepted = false, reason = start.reasonCode),
+                    )
+                    return false
+                }
+                is FileTransferProductOwner.StartOutgoingResult.Stale -> {
+                    start.reasonCode?.let { reason ->
+                        fileTransferProductOwner.notifyFileTransferResult(
+                            FileTransferProductOwner.TransferResult(accepted = false, reason = reason),
+                        )
+                    }
+                    return false
+                }
+            }
+        val sent =
+            sendApplicationControl {
+                codec.encodeFileOffer(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, offer)
+            }
+        if (sent) {
+            scheduleOutgoingFileTransferDeadline(offer.transferId)
+        } else {
+            clearOutgoingFileTransferDeadline(offer.transferId)
+            fileTransferProductOwner.rejectOutgoingTransfer(offer.transferId, prepared, "outbound_backpressure")
+                ?.let(fileTransferProductOwner::notifyFileTransferResult)
+        }
+        return sent
+    }
+
+    fun respondToFileOffer(
+        offer: FileOffer,
+        accepted: Boolean,
+        rejectionReason: String = "user_denied",
+    ): Boolean {
+        val owner = fileTransferProductOwner.claimFileOfferDecision(offer) ?: return false
+        if (owner.ownerToken !== transportOwner || owner.connectionGeneration != transportOwner.generation) {
+            fileTransferProductOwner.releaseFileOfferDecision(offer)
+            return false
+        }
+        val response =
+            fileTransferProductOwner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = accepted,
+                negotiatedPolicy = synchronized(lock) { negotiatedFilePolicy },
+                sessionEpoch = lease.authoritativeSessionEpoch,
+            ).let { decision ->
+                if (accepted || decision.accepted || rejectionReason == "user_denied") {
+                    decision
+                } else {
+                    decision.toBuilder().setRejectionReason(rejectionReason).build()
+                }
+            }
+        return sendApplicationControl {
+            codec.encodeFileAccept(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, response)
+        }
+    }
+
     fun sendPing(sequence: Long): Boolean =
         sendApplicationControl {
             codec.encodePing(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, sequence)
@@ -594,38 +742,131 @@ class InternetProductSession internal constructor(
         }
 
     private fun drainControllerQueue(): Boolean {
-        val result =
-            controllerSendQueue.drain { event ->
-                val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return@drain false
-                val encoded =
-                    codec.encodeController(
-                        nextMessageId(),
-                        lease.protocolSessionId,
-                        lease.authoritativeSessionEpoch,
-                        streamId,
-                        event.inputId,
-                        event.sample,
-                    )
-                val sent = sendOptionalApplicationControl(encoded)
-                if (sent) {
-                    when (event.sample.kind) {
-                        ControllerEventKind.CONNECTED -> check(
-                            controllerConnectionAcks.recordConnected(
-                                event.inputId,
-                                event.sample.controllerId,
-                                event.sample.controllerEpoch,
+        while (true) {
+            val pendingDisconnect = controllerConnectionAcks.nextReadyDisconnect() ?: break
+            val sent =
+                try {
+                    sendControllerEvent(
+                        ProductControllerEvent(
+                            ControllerStateSample(
+                                controllerId = pendingDisconnect.connection.controllerId,
+                                controllerEpoch = pendingDisconnect.connection.controllerEpoch,
+                                kind = ControllerEventKind.DISCONNECTED,
                             ),
-                        ) { "duplicate controller CONNECTED input id" }
-                        ControllerEventKind.DISCONNECTED -> {
-                            controllerConnectionAcks.recordDisconnected(event.sample.controllerId, event.sample.controllerEpoch)
-                        }
-                        ControllerEventKind.STATE -> Unit
-                    }
+                        ),
+                    )
+                } catch (failure: Throwable) {
+                    fail(failure)
+                    return false
                 }
-                sent
-            }
+            if (!sent) return false
+        }
+        val result =
+            controllerSendQueue.drainSelectable(
+                canSend = ::canSendControllerEvent,
+                sharesOrderingKey = ::sharesControllerOrderingKey,
+                send = ::sendAdmittedControllerEvent,
+            )
         result.failure?.let { fail(it) }
         return !result.blocked && result.failure == null
+    }
+
+    private fun canSendControllerEvent(event: ProductControllerEvent): Boolean =
+        !controllerConnectionAcks.hasDeferredDisconnectBefore(event.sample.controllerId, event.sample.controllerEpoch)
+
+    private fun sharesControllerOrderingKey(
+        first: ProductControllerEvent,
+        second: ProductControllerEvent,
+    ): Boolean = first.sample.controllerId == second.sample.controllerId
+
+    private fun sendAdmittedControllerEvent(event: ProductControllerEvent): Boolean {
+        if (controllerConnectionAcks.hasDeferredDisconnectFor(event.sample.controllerId, event.sample.controllerEpoch)) {
+            return true
+        }
+        if (
+            event.sample.kind == ControllerEventKind.CONNECTED &&
+            controllerConnectionAcks.isPending(event.sample.controllerId, event.sample.controllerEpoch)
+        ) {
+            return true
+        }
+        if (event.sample.kind != ControllerEventKind.CONNECTED) {
+            when (
+                controllerConnectionAcks.consumePendingNonConnected(
+                    event.sample.controllerId,
+                    event.sample.controllerEpoch,
+                    event.sample.kind,
+                )
+            ) {
+                PendingControllerInputDisposition.NOT_PENDING -> Unit
+                PendingControllerInputDisposition.CONSUMED_PENDING_STATE,
+                PendingControllerInputDisposition.DEFERRED_PENDING_DISCONNECT,
+                PendingControllerInputDisposition.DUPLICATE_PENDING_DISCONNECT,
+                -> return true
+            }
+        }
+        return sendControllerEvent(event)
+    }
+
+    private fun sendControllerEvent(event: ProductControllerEvent): Boolean {
+        val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
+        val inputId = event.inputId ?: allocateControllerInputId()
+        event.inputId?.let(::reserveControllerInputId)
+        val encoded =
+            codec.encodeController(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                streamId,
+                inputId,
+                event.sample,
+            )
+        val sent = sendOptionalApplicationControl(encoded)
+        if (sent) {
+            when (event.sample.kind) {
+                ControllerEventKind.CONNECTED -> check(
+                    controllerConnectionAcks.recordConnected(
+                        inputId,
+                        event.sample.controllerId,
+                        event.sample.controllerEpoch,
+                        clock.nowMillis(),
+                    ),
+                ) { "duplicate controller CONNECTED input id" }
+                ControllerEventKind.DISCONNECTED -> {
+                    controllerConnectionAcks.recordDisconnected(event.sample.controllerId, event.sample.controllerEpoch)
+                }
+                ControllerEventKind.STATE -> Unit
+            }
+        }
+        return sent
+    }
+
+    private fun allocateControllerInputId(): Long {
+        while (true) {
+            val candidate = nextControllerInputId()
+            val floor = minimumNextControllerInputId.get()
+            val inputId = maxOf(candidate, floor)
+            check(inputId > 0 && inputId < Long.MAX_VALUE) { "Controller input identifier exhausted" }
+            if (minimumNextControllerInputId.compareAndSet(floor, inputId + 1)) return inputId
+        }
+    }
+
+    private fun reserveControllerInputId(inputId: Long) {
+        check(inputId < Long.MAX_VALUE) { "Controller input identifier exhausted" }
+        while (true) {
+            val floor = minimumNextControllerInputId.get()
+            if (floor > inputId) return
+            if (minimumNextControllerInputId.compareAndSet(floor, inputId + 1)) return
+        }
+    }
+
+    private fun expirePendingControllerConnections() {
+        controllerSendGate.withLock {
+            val expired = controllerConnectionAcks.expirePendingConnections(clock.nowMillis())
+            if (expired.isEmpty()) return
+            controllerSendQueue.clear()
+            controllerConnectionAcks.reset()
+            fail(IllegalStateException("Controller input acknowledgement timed out"))
+        }
     }
 
     private fun sendOptionalApplicationControl(payload: ByteArray): Boolean =
@@ -795,10 +1036,28 @@ class InternetProductSession internal constructor(
             is ProductControlMessage.ClipboardOffered -> handleClipboardOffer(owner, message.offer)
             is ProductControlMessage.ClipboardRequested -> handleClipboardRequest(owner, decoded.messageId, message.request)
             is ProductControlMessage.ClipboardContentReceived -> handleClipboardContent(owner, message.content)
-            is ProductControlMessage.ManagedPolicyReceived -> handleManagedPolicyStatus(owner, message.status)
             is ProductControlMessage.ProtocolFailure -> {
                 failIfOwned(owner, IllegalStateException("Protocol failure (${message.code}); retryable=${message.retryable}"))
             }
+            is ProductControlMessage.FileOfferReceived -> handleFileOffer(owner, message.offer)
+            is ProductControlMessage.FileAcceptReceived -> {
+                clearOutgoingFileTransferDeadline(message.response.transferId)
+                writeFileTransferUpdate(owner, fileTransferProductOwner.handleFileAccept(message.response, lease.authoritativeSessionEpoch))
+            }
+            is ProductControlMessage.FileProgressReceived -> {
+                clearOutgoingFileTransferDeadline(message.progress.transferId)
+                writeFileTransferUpdate(owner, fileTransferProductOwner.handleFileProgress(message.progress, lease.authoritativeSessionEpoch))
+            }
+            is ProductControlMessage.FileCancelReceived -> {
+                clearOutgoingFileTransferDeadline(message.cancellation.transferId)
+                fileTransferProductOwner.handleFileCancel(message.cancellation)
+                    ?.let(fileTransferProductOwner::notifyFileTransferResult)
+            }
+            is ProductControlMessage.FileCompleteReceived -> {
+                clearOutgoingFileTransferDeadline(message.result.transferId)
+                writeFileTransferUpdate(owner, fileTransferProductOwner.handleFileComplete(message.result))
+            }
+            is ProductControlMessage.ManagedPolicyStatusReceived -> handleManagedPolicyStatus(owner, message.status)
             ProductControlMessage.Ignored -> Unit
         }
     }
@@ -862,6 +1121,10 @@ class InternetProductSession internal constructor(
     ) {
         val required = ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.toSet()
         val expectedCapabilities = message.capabilities.intersect(codec.offeredCapabilities).filteredBy(managedPolicyResolver.effectivePolicy)
+        if (!managedPolicyResolver.effectivePolicy.allowsHost(lease.pinnedHostId)) {
+            failIfOwned(owner, IllegalArgumentException("Managed policy does not allow this host"))
+            return
+        }
         if (
             message.hostId != lease.pinnedHostId ||
             message.selectedProtocol != ProtobufProtocolV1ProductCodec.PROTOCOL_VERSION ||
@@ -883,6 +1146,8 @@ class InternetProductSession internal constructor(
                 baseNegotiatedCapabilities = expectedCapabilities
                 hostMaximumEncryptedMediaRecordBytes = message.maximumEncryptedMediaRecordBytes
                 hostMaximumClipboardBytes = message.maximumClipboardBytes
+                hostMaximumFileBytes = message.maximumFileBytes
+                hostMaximumFileChunkBytes = message.maximumFileChunkBytes
             }
         }
     }
@@ -905,6 +1170,8 @@ class InternetProductSession internal constructor(
                     InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES.toLong(),
                 ) ||
                 negotiatedClipboardLimit(message.maximumClipboardBytes) != message.maximumClipboardBytes ||
+                message.maximumFileBytes != negotiatedFilePolicyFromHostLocked().maximumFileBytes ||
+                message.maximumFileChunkBytes != negotiatedFilePolicyFromHostLocked().maximumChunkBytes ||
                 message.heartbeatIntervalMillis !in MIN_HEARTBEAT_INTERVAL_MS..MAX_HEARTBEAT_INTERVAL_MS
             ) {
                 invalidAcceptance = true
@@ -921,6 +1188,12 @@ class InternetProductSession internal constructor(
                 } else {
                     null
                 }
+                negotiatedFilePolicy =
+                    if (Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities) {
+                        negotiatedFilePolicyFromHostLocked()
+                    } else {
+                        localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+                    }
                 heartbeatIntervalMillis = message.heartbeatIntervalMillis
                 scheduleNextHeartbeatLocked()
                 if (state != InternetProductSessionState.ACTIVE) {
@@ -930,18 +1203,100 @@ class InternetProductSession internal constructor(
             }
         }
         if (invalidAcceptance) failIfOwned(owner, IllegalArgumentException("Session acceptance does not match the authenticated lease"))
-        if (!invalidAcceptance && Capability.CAPABILITY_MANAGED_CONFIGURATION in expectedNegotiatedCapabilities) {
-            sendRequiredControlIfOwned(
-                owner,
-                codec.encodeManagedPolicyStatus(
-                    nextMessageId(),
-                    lease.protocolSessionId,
-                    lease.authoritativeSessionEpoch,
-                    managedPolicyResolver.effectivePolicy.toStatus(),
-                ),
-            )
+        if (!invalidAcceptance) {
+            clearAllOutgoingFileTransferDeadlines()
+            if (synchronized(lock) { Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities }) {
+                fileTransferProductOwner.activateSession()
+            } else {
+                fileTransferProductOwner.clear(reasonCode = "policy_denied")
+            }
+            if (Capability.CAPABILITY_MANAGED_CONFIGURATION in expectedNegotiatedCapabilities) {
+                sendRequiredControlIfOwned(
+                    owner,
+                    codec.encodeManagedPolicyStatus(
+                        nextMessageId(),
+                        lease.protocolSessionId,
+                        lease.authoritativeSessionEpoch,
+                        managedPolicyResolver.effectivePolicy.toStatus(),
+                    ),
+                )
+            }
         }
         if (activated) notifyStateIfOwned(owner, InternetProductSessionState.ACTIVE)
+    }
+
+    private fun negotiatedFilePolicyFromHostLocked(): FileTransferPolicy =
+        localFileTransferPolicy.negotiated(
+            ResourceLimits
+                .newBuilder()
+                .setMaximumFileBytes(hostMaximumFileBytes)
+                .setMaximumFileChunkBytes(hostMaximumFileChunkBytes)
+                .build(),
+        )
+
+    private fun canTransferFilesLocked(): Boolean =
+        acceptsTransportCallbackLocked() &&
+            acceptedSession &&
+            state == InternetProductSessionState.ACTIVE &&
+            Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities &&
+            negotiatedFilePolicy.allowed &&
+            negotiatedFilePolicy.maximumFileBytes > 0L
+
+    private fun scheduleOutgoingFileTransferDeadline(transferId: ByteString) {
+        synchronized(lock) {
+            if (!canTransferFilesLocked()) return
+            outgoingFileTransferDeadlines[transferId] =
+                OutgoingFileTransferDeadline(
+                    owner = transportOwner,
+                    deadlineMillis = clock.nowMillis() + FILE_TRANSFER_PROGRESS_TIMEOUT_MS,
+                )
+        }
+    }
+
+    private fun clearOutgoingFileTransferDeadline(transferId: ByteString) {
+        synchronized(lock) { outgoingFileTransferDeadlines.remove(transferId) }
+    }
+
+    private fun clearAllOutgoingFileTransferDeadlines() {
+        synchronized(lock) { outgoingFileTransferDeadlines.clear() }
+    }
+
+    private fun expireOutgoingFileTransfers() {
+        val expired =
+            synchronized(lock) {
+                if (!acceptsTransportCallbackLocked() || !acceptedSession || state != InternetProductSessionState.ACTIVE) {
+                    emptyList()
+                } else {
+                    val now = clock.nowMillis()
+                    outgoingFileTransferDeadlines
+                        .filter { (_, deadline) ->
+                            deadline.owner === transportOwner &&
+                                deadline.deadlineMillis <= now
+                        }.map { it.key }
+                }
+            }
+        expired.forEach { transferId ->
+            val shouldTimeout =
+                synchronized(lock) {
+                    val deadline = outgoingFileTransferDeadlines[transferId] ?: return@forEach
+                    if (
+                        deadline.owner !== transportOwner ||
+                        deadline.deadlineMillis > clock.nowMillis() ||
+                        !acceptsTransportCallbackLocked() ||
+                        !acceptedSession ||
+                        state != InternetProductSessionState.ACTIVE
+                    ) {
+                        false
+                    } else {
+                        outgoingFileTransferDeadlines.remove(transferId)
+                        true
+                    }
+                }
+            if (!shouldTimeout) return@forEach
+            val update =
+                fileTransferProductOwner.timeoutOutgoingTransfer(transferId)
+            writeFileTransferUpdate(transportOwner, update)
+        }
     }
 
     private fun resumeAuthenticatedSessionAfterTransportRecovery(owner: TransportOwner) {
@@ -1224,8 +1579,32 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         payload: ByteArray,
     ) {
-        handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Bulk(DEFAULT_BULK_TRANSFER_ID)) { record ->
-            callbacks.onBulkRecord(record.copyOf())
+        val transferId = peekFileChunkTransferId(payload)
+        if (transferId == null) {
+            handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Bulk(DEFAULT_BULK_TRANSFER_ID)) { record ->
+                callbacks.onBulkRecord(record.copyOf())
+            }
+            return
+        }
+        handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Bulk(transferId.toByteArray())) { record ->
+            when (val decoded = decodeFileChunk(record, transferId)) {
+                is FileChunkDecodeResult.Valid -> {
+                    val negotiated = synchronized(lock) { canTransferFilesLocked() }
+                    when {
+                        !negotiated -> rejectInvalidFileChunk(owner, decoded.chunk.header.transferId, "policy_denied")
+                        !fileTransferProductOwner.isActiveIncomingTransfer(decoded.chunk.header.transferId) ->
+                            rejectInvalidFileChunk(owner, decoded.chunk.header.transferId, "unknown_transfer", notifyResult = false)
+                        else -> handleIncomingFileChunk(owner, decoded.chunk)
+                    }
+                }
+                is FileChunkDecodeResult.Invalid -> {
+                    if (fileTransferProductOwner.isPendingOrActiveIncomingTransfer(decoded.transferId)) {
+                        rejectInvalidFileChunk(owner, decoded.transferId, decoded.reasonCode)
+                    } else {
+                        callbacks.onBulkRecord(record.copyOf())
+                    }
+                }
+            }
         }
     }
 
@@ -1321,6 +1700,71 @@ class InternetProductSession internal constructor(
         }
     }
 
+    private fun peekFileChunkTransferId(payload: ByteArray): ByteString? {
+        val header =
+            try {
+                ProtocolV1Framing.peekFileChunkHeader(payload)
+            } catch (_: Throwable) {
+                return null
+            }
+        return header.transferId.takeUnless { it.isEmpty }
+    }
+
+    private fun decodeFileChunk(payload: ByteArray, transferId: ByteString): FileChunkDecodeResult =
+        try {
+            FileChunkDecodeResult.Valid(FileChunk.fromFrame(payload))
+        } catch (failure: FileTransferException) {
+            FileChunkDecodeResult.Invalid(transferId, failure.reasonCode)
+        } catch (_: IOException) {
+            FileChunkDecodeResult.Invalid(transferId, "invalid_file_payload")
+        } catch (_: Throwable) {
+            FileChunkDecodeResult.Invalid(transferId, "invalid_file_payload")
+        }
+
+    private fun rejectInvalidFileChunk(
+        owner: TransportOwner,
+        transferId: ByteString,
+        reasonCode: String,
+        notifyResult: Boolean = true,
+    ) {
+        fileTransferProductOwner.releaseFileOfferDecision(transferId)
+        fileTransferProductOwner.cancelIncomingTransfer(transferId)
+        sendRequiredControlIfOwned(
+            owner,
+            codec.encodeFileCancel(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, transferId, reasonCode),
+        )
+        if (notifyResult) {
+            fileTransferProductOwner.notifyFileTransferResult(
+                FileTransferProductOwner.TransferResult(accepted = false, reason = reasonCode),
+            )
+        }
+    }
+
+    private fun handleFileOffer(
+        owner: TransportOwner,
+        offer: FileOffer,
+    ) {
+        if (synchronized(lock) { !canTransferFilesLocked() }) {
+            sendFileAccept(
+                fileTransferProductOwner.decideFileOffer(
+                    offer = offer,
+                    acceptedByUser = false,
+                    negotiatedPolicy = synchronized(lock) { negotiatedFilePolicy },
+                    sessionEpoch = lease.authoritativeSessionEpoch,
+                ),
+            )
+            return
+        }
+        val response =
+            fileTransferProductOwner.receiveFileOffer(
+                ownerToken = owner,
+                connectionGeneration = owner.generation,
+                offer = offer,
+                negotiatedPolicy = synchronized(lock) { negotiatedFilePolicy },
+            )
+        response?.let(::sendFileAccept)
+    }
+
     private fun handleManagedPolicyStatus(
         owner: TransportOwner,
         status: ManagedPolicyStatus,
@@ -1347,6 +1791,17 @@ class InternetProductSession internal constructor(
                 remoteManagedClipboardAllowed = effective.clipboardAllowed
                 expectedNegotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
                 if (!remoteManagedClipboardAllowed) clipboard?.reset()
+                // Apply managed policy to file transfer
+                fileTransferProductOwner.applyManagedPolicy(status)
+                negotiatedFilePolicy =
+                    if (Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities) {
+                        negotiatedFilePolicyFromHostLocked().applying(RemoteManagedPolicy(status))
+                    } else {
+                        localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+                    }
+                if (!negotiatedFilePolicy.allowed || negotiatedFilePolicy.maximumFileBytes <= 0L) {
+                    outgoingFileTransferDeadlines.clear()
+                }
                 effective.toStatus()
             } ?: run {
                 validationFailure?.let { failIfOwned(owner, it) }
@@ -1372,6 +1827,116 @@ class InternetProductSession internal constructor(
         }
         return null
     }
+
+    private fun handleIncomingFileChunk(
+        owner: TransportOwner,
+        chunk: FileChunk,
+    ) {
+        val result =
+            fileTransferProductOwner.receiveIncomingChunk(
+                chunk = chunk,
+                canTransferFiles = synchronized(lock) { canTransferFilesLocked() },
+                sessionEpoch = lease.authoritativeSessionEpoch,
+            )
+        when (result) {
+            is FileTransferProductOwner.IncomingChunkResult.Accepted -> {
+                sendFileProgress(result.transferId, result.receivedBytes)
+                result.completed?.let { completed ->
+                    sendFileComplete(completed.transferId, accepted = true, sha256 = completed.sha256, rejectionReason = "")
+                    fileTransferProductOwner.notifyIncomingFileCompleted(completed)
+                }
+            }
+            is FileTransferProductOwner.IncomingChunkResult.Rejected -> {
+                result.receivedBytes?.let { received -> sendFileProgress(result.transferId, received) }
+                sendFileCancel(result.transferId, result.reasonCode)
+                if (result.failure != null && result.reasonCode == "io_failure") {
+                    failIfOwned(owner, result.failure)
+                }
+            }
+        }
+    }
+
+    private fun writeFileTransferUpdate(
+        owner: TransportOwner,
+        update: FileTransferProductOwner.OutgoingUpdate,
+    ) {
+        update.chunk?.let { chunk ->
+            val sent = sendFileTransferBulkRecord(chunk.toFrame(), chunk.header.transferId)
+            if (!sent) {
+                notifyOutgoingBulkSendFailure(owner, chunk.header.transferId, fileTransferProductOwner.handleBulkSendFailed(chunk.header.transferId))
+                return
+            }
+            scheduleOutgoingFileTransferDeadline(chunk.header.transferId)
+        }
+        update.waitingForPeerTransferId?.let(::scheduleOutgoingFileTransferDeadline)
+        if (update.cancelTransferId != null && update.cancelReasonCode != null) {
+            clearOutgoingFileTransferDeadline(update.cancelTransferId)
+            sendFileCancel(update.cancelTransferId, update.cancelReasonCode)
+        }
+        update.result?.let(fileTransferProductOwner::notifyFileTransferResult)
+    }
+
+    private fun sendFileTransferBulkRecord(payload: ByteArray, transferId: ByteString): Boolean =
+        sendAdvancedRecord(
+            payload = payload,
+            binding = AdvancedChannelBinding.Bulk(transferId.toByteArray()),
+            failOnBacklogRejection = false,
+        ) {
+            transport.sendBulkRecord(payload)
+        }
+
+    private fun notifyOutgoingBulkSendFailure(
+        owner: TransportOwner,
+        transferId: ByteString,
+        update: FileTransferProductOwner.OutgoingUpdate,
+    ) {
+        val result = update.result ?: return
+        clearOutgoingFileTransferDeadline(update.cancelTransferId ?: transferId)
+        sendRequiredControlIfOwned(
+            owner,
+            codec.encodeFileCancel(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                update.cancelTransferId ?: transferId,
+                update.cancelReasonCode ?: "bulk_send_failed",
+            ),
+        )
+        fileTransferProductOwner.notifyFileTransferResult(result)
+    }
+
+    private fun sendFileAccept(response: dev.vibescreen.protocol.v1.FileAccept): Boolean =
+        sendApplicationControl {
+            codec.encodeFileAccept(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, response)
+        }
+
+    private fun sendFileProgress(transferId: ByteString, receivedBytes: Long): Boolean =
+        sendApplicationControl {
+            codec.encodeFileProgress(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, transferId, receivedBytes)
+        }
+
+    private fun sendFileCancel(transferId: ByteString, reasonCode: String): Boolean =
+        sendApplicationControl {
+            codec.encodeFileCancel(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, transferId, reasonCode)
+        }
+
+    private fun sendFileComplete(
+        transferId: ByteString,
+        accepted: Boolean,
+        sha256: ByteString,
+        rejectionReason: String,
+    ): Boolean =
+        sendApplicationControl {
+            codec.encodeFileComplete(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                transferId,
+                accepted,
+                sha256,
+                rejectionReason,
+            )
+        }
 
     private fun handleAdvancedRecord(
         owner: TransportOwner,
@@ -1512,6 +2077,7 @@ class InternetProductSession internal constructor(
     private fun sendAdvancedRecord(
         payload: ByteArray,
         binding: AdvancedChannelBinding,
+        failOnBacklogRejection: Boolean = true,
         send: () -> Boolean,
     ): Boolean {
         var admissionFailure: Throwable? = null
@@ -1527,6 +2093,7 @@ class InternetProductSession internal constructor(
                     null
                 }
             } ?: run {
+                if (!failOnBacklogRejection && isAdvancedChannelBacklogFailure(admissionFailure)) return false
                 fail(IllegalArgumentException("Protocol v1 advanced channel record was rejected", admissionFailure))
                 return false
             }
@@ -1536,11 +2103,14 @@ class InternetProductSession internal constructor(
             } finally {
                 finishAdvancedAdmission(admission)
             }
-        if (!sent && synchronized(lock) { acceptsTransportCallbackLocked() }) {
+        if (!sent && failOnBacklogRejection && synchronized(lock) { acceptsTransportCallbackLocked() }) {
             fail(IllegalStateException("Protocol v1 advanced channel backlog rejected a product-session record"))
         }
         return sent
     }
+
+    private fun isAdvancedChannelBacklogFailure(failure: Throwable?): Boolean =
+        failure is AdvancedChannelBacklogRejectedException
 
     private fun finishAdvancedAdmission(admission: AdvancedChannelAdmission) {
         try {
@@ -1676,29 +2246,51 @@ class InternetProductSession internal constructor(
         accepted: Boolean,
         rejectionReason: String,
     ) {
-        withLifecycleGate {
-            if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
-                val controllerWasNegotiated =
-                    synchronized(lock) {
-                        acceptedSession && Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+        var shouldDrainControllerQueue = false
+        var shouldNotify = false
+        var controllerId: String? = null
+        var controllerEpoch: Long? = null
+        controllerSendGate.withLock {
+            withLifecycleGate {
+                if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
+                    val controllerWasNegotiated =
+                        synchronized(lock) {
+                            acceptedSession && Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+                        }
+                    if (!controllerWasNegotiated) {
+                        failIfOwned(
+                            owner,
+                            IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
+                        )
+                        return@withLifecycleGate
                     }
-                if (!controllerWasNegotiated) {
-                    failIfOwned(
-                        owner,
-                        IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
-                    )
-                    return@withLifecycleGate
+                    val acknowledgement =
+                        controllerConnectionAcks.acknowledge(inputId).also { acknowledged ->
+                            if (acknowledged != null) shouldDrainControllerQueue = true
+                            if (accepted && acknowledged?.hasDeferredDisconnect == true) {
+                                controllerConnectionAcks.markDisconnectReady(acknowledged.connection)
+                                shouldDrainControllerQueue = true
+                            }
+                        }
+                    controllerId = acknowledgement?.connection?.controllerId
+                    controllerEpoch = acknowledgement?.connection?.controllerEpoch
+                    shouldNotify = true
                 }
-                val connection = controllerConnectionAcks.acknowledge(inputId)
+            }
+        }
+        if (shouldNotify) {
+            withLifecycleGate {
+                if (!synchronized(lock) { acceptsTransportCallbackLocked(owner) }) return@withLifecycleGate
                 callbacks.onInputAck(
                     inputId,
-                    connection?.controllerId,
-                    connection?.controllerEpoch,
+                    controllerId,
+                    controllerEpoch,
                     accepted,
                     rejectionReason,
                 )
             }
         }
+        if (shouldDrainControllerQueue) controllerSendGate.withLock { drainControllerQueue() }
     }
 
     private fun notifyFailureIfOwned(
@@ -1761,6 +2353,11 @@ class InternetProductSession internal constructor(
         acceptedSession = false
         expectedNegotiatedCapabilities = emptySet()
         baseNegotiatedCapabilities = emptySet()
+        hostMaximumFileBytes = 0L
+        hostMaximumFileChunkBytes = 0
+        negotiatedFilePolicy = localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
+        outgoingFileTransferDeadlines.clear()
+        fileTransferProductOwner.clear()
         controllerSendQueue.clear()
         controllerConnectionAcks.reset()
         currentVideoConfiguration = null
@@ -1785,6 +2382,55 @@ class InternetProductSession internal constructor(
     private fun currentStreamId(): Long = synchronized(lock) { currentVideoConfiguration?.streamId ?: 0 }
 
     private data class TransportOwner(val generation: Long)
+
+    private data class OutgoingFileTransferDeadline(
+        val owner: TransportOwner,
+        val deadlineMillis: Long,
+    )
+
+    private sealed interface FileChunkDecodeResult {
+        data class Valid(val chunk: FileChunk) : FileChunkDecodeResult
+        data class Invalid(val transferId: ByteString, val reasonCode: String) : FileChunkDecodeResult
+    }
+
+    private class InternetFileTransferPendingOfferGate(
+        private val maximumPendingFileOffers: Int = DEFAULT_MAXIMUM_PENDING_FILE_OFFERS,
+    ) : FileTransferProductOwner.PendingOfferGate {
+        private val pendingFileOffers = LinkedHashMap<ByteString, FileTransferProductOwner.PendingOfferOwner>()
+
+        init {
+            require(maximumPendingFileOffers > 0) { "maximumPendingFileOffers must be positive" }
+        }
+
+        @Synchronized
+        override fun trackFileOffer(
+            transferId: ByteString,
+            ownerToken: Any,
+            connectionGeneration: Long,
+        ): Boolean {
+            if (pendingFileOffers.containsKey(transferId)) return false
+            if (pendingFileOffers.size >= maximumPendingFileOffers) return false
+            pendingFileOffers[transferId] = FileTransferProductOwner.PendingOfferOwner(ownerToken, connectionGeneration)
+            return true
+        }
+
+        @Synchronized
+        override fun claimFileOffer(transferId: ByteString): FileTransferProductOwner.PendingOfferOwner? =
+            pendingFileOffers.remove(transferId)
+
+        @Synchronized
+        override fun releaseFileOffer(transferId: ByteString) {
+            pendingFileOffers.remove(transferId)
+        }
+
+        @Synchronized
+        override fun hasFileOffer(transferId: ByteString): Boolean = pendingFileOffers.containsKey(transferId)
+
+        @Synchronized
+        override fun clearFileOffers() {
+            pendingFileOffers.clear()
+        }
+    }
 
     private class PendingVideoConfiguration(
         val configEpoch: Long,
@@ -1814,6 +2460,8 @@ class InternetProductSession internal constructor(
                 InternetProductSessionState.SUSPENDED,
             )
         private const val AUDIO_BACKLOG_RECORD_CAPACITY = 2
+        private const val DEFAULT_MAXIMUM_PENDING_FILE_OFFERS = 16
+        internal const val FILE_TRANSFER_PROGRESS_TIMEOUT_MS = 30_000L
         private const val INTERNET_DISPLAY_ID = "internet-display"
         private val DEFAULT_BULK_TRANSFER_ID = "internet-bulk-v1".toByteArray(Charsets.UTF_8)
 
@@ -1821,9 +2469,13 @@ class InternetProductSession internal constructor(
             filterTo(mutableSetOf()) { capability ->
                 when (capability) {
                     Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
+                    Capability.CAPABILITY_FILE_TRANSFER -> policy.effectiveFileTransferAllowed
                     else -> true
                 }
             }
+
+        private fun defaultFileTransferStagingDirectory(): File =
+            File(System.getProperty("java.io.tmpdir"), "vibescreen-internet-incoming-files")
 
         internal fun create(
             storedSessionFactory: AndroidStoredInternetSessionFactory,
@@ -1835,6 +2487,8 @@ class InternetProductSession internal constructor(
             callbacks: InternetProductSessionCallbacks,
             revocationStore: InternetProductRevocationStore,
             revocationCoordinator: InternetProductRevocationCoordinator,
+            nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
+            fileTransferStagingDirectory: File = defaultFileTransferStagingDirectory(),
         ): InternetProductSession {
             require(localDeviceId == storedSessionFactory.localDeviceId) {
                 "Stored security identity does not match the product session identity"
@@ -1877,6 +2531,8 @@ class InternetProductSession internal constructor(
                     callbacks,
                     revocationStore,
                     revocationCoordinator,
+                    nextControllerInputId,
+                    fileTransferStagingDirectory,
                 )
             } catch (failure: Throwable) {
                 stored.close()

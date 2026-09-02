@@ -418,6 +418,41 @@ final class AudioCaptureTests: XCTestCase {
         stream.stop()
     }
 
+    func testStreamDropsOldestPendingCapturesUnderBackpressure() throws {
+        let source = FakeAudioCaptureSource()
+        let processingQueue = DispatchQueue(label: "dev.vibescreen.audio.capture.test.backpressure")
+        processingQueue.suspend()
+        defer { processingQueue.resume() }
+        let stream = MacHostAudioStream(
+            captureSource: source,
+            maximumQueuedPackets: 2,
+            processingQueue: processingQueue
+        )
+        let packetsDelivered = expectation(description: "latest pending captures delivered")
+        packetsDelivered.expectedFulfillmentCount = 2
+        let lock = NSLock()
+        var payloads: [Data] = []
+
+        try stream.start(config: makeConfig(framesPerPacket: 1), sessionEpoch: 5) { packet in
+            lock.withAudioTestLock { payloads.append(packet.payload) }
+            packetsDelivered.fulfill()
+        }
+
+        source.emit(frameCount: 1, pcmS16LE: Data([1, 0, 2, 0]), timestamp: 10)
+        source.emit(frameCount: 1, pcmS16LE: Data([3, 0, 4, 0]), timestamp: 20)
+        source.emit(frameCount: 1, pcmS16LE: Data([5, 0, 6, 0]), timestamp: 30)
+
+        processingQueue.resume()
+        wait(for: [packetsDelivered], timeout: 1)
+        processingQueue.suspend()
+
+        XCTAssertEqual(
+            lock.withAudioTestLock { payloads },
+            [Data([3, 0, 4, 0]), Data([5, 0, 6, 0])]
+        )
+        stream.stop()
+    }
+
     func testStaleCaptureErrorDoesNotStopActiveGeneration() throws {
         let source = FakeAudioCaptureSource()
         let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)

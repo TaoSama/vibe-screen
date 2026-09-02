@@ -147,6 +147,42 @@ class MainActivityStatePrimitivesTest {
     }
 
     @Test
+    fun installFailureRestoresCompletePreviousSemanticState() {
+        val previous = presentationState("old-decoder", "old-config", 1280, 720, 0, connected = false)
+        val attempted = presentationState("new-decoder", "new-config", 1920, 1080, 90, connected = true)
+        var current = previous
+        var presenterCalled = false
+        val installFailure = IllegalStateException("install failed")
+
+        val thrown =
+            try {
+                commitInternetDecoderPresentation(
+                    nextState = attempted,
+                    captureState = { current },
+                    installState = {
+                        current = it
+                        throw installFailure
+                    },
+                    restoreState = { attemptedState, previousState ->
+                        assertEquals(attempted, attemptedState)
+                        assertEquals(previous, previousState)
+                        current = previousState
+                    },
+                ) {
+                    presenterCalled = true
+                }
+                fail("Expected install failure")
+                null
+            } catch (failure: IllegalStateException) {
+                failure
+            }
+
+        assertSame(installFailure, thrown)
+        assertEquals(previous, current)
+        assertFalse(presenterCalled)
+    }
+
+    @Test
     fun rollbackFailureIsSuppressedWithoutMaskingPresentationFailure() {
         val previous = presentationState("old-decoder", "old-config", 1280, 720, 0, connected = true)
         val attempted = presentationState("new-decoder", "new-config", 1920, 1080, 90, connected = true)

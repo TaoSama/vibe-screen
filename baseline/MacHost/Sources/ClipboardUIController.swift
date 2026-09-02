@@ -400,7 +400,10 @@ final class ClipboardUIController: NSObject {
                 The content was delivered over trusted LAN encrypted application records, which are intended only for a trusted private network.
                 """
             case .secureInternet:
-                message = "The device sent clipboard content directly over the secure Internet session. Overwrite the Mac clipboard?"
+                message = """
+                The device sent clipboard content directly over the secure Internet session. \
+                Overwriting the Mac clipboard cannot be undone.
+                """
             case .usb:
                 message = "The device sent clipboard content directly. Overwrite the Mac clipboard?"
             }

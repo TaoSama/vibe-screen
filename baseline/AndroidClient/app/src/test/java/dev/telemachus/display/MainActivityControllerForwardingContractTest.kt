@@ -135,15 +135,25 @@ class MainActivityControllerForwardingContractTest {
     @Test
     fun incomingFileOffersAreRejectedBeforeShowingApprovalWhenBackgrounded() {
         val source = mainActivitySource()
-        val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer")
+        val streamPromptOffer =
+            extractMethod(source, "private fun promptIncomingFileOffer(\n        client: StreamClient")
+        val internetCallback = extractCallback(source, "override fun onFileOffer(offer: dev.vibescreen.protocol.v1.FileOffer)")
+        val promptOffer =
+            extractMethod(
+                source,
+                "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer",
+            )
         val onStop = extractMethod(source, "override fun onStop")
         val onDestroy = extractMethod(source, "override fun onDestroy")
 
+        assertContains(streamPromptOffer, "isCurrentSession(client, generation) && client.canTransferFiles")
+        assertContains(source, "respond = { accepted, _ -> client.respondToFileOffer(offer, accepted = accepted) }")
+        assertContains(internetCallback, "session.canTransferFiles")
+        assertContains(internetCallback, "respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) }")
         assertContains(promptOffer, "if (!isInForeground ||")
         assertContains(promptOffer, "isFinishing ||")
         assertContains(promptOffer, "isDestroyed ||")
-        assertContains(promptOffer, "!isCurrentSession(client, generation) ||")
-        assertContains(promptOffer, "!client.canTransferFiles")
+        assertContains(promptOffer, "!isCurrentAndAllowed()")
         assertBefore(promptOffer, "if (!isInForeground", "pendingIncomingFileDialog != null")
         assertBefore(promptOffer, "if (!isInForeground", "showImmersiveDialog(dialog)")
         assertContains(onStop, "rejectPendingIncomingFileOffer()")
@@ -233,9 +243,12 @@ class MainActivityControllerForwardingContractTest {
         assertContains(dispatch, "ClientInputDispatchResult.SENT -> true")
         assertContains(dispatch, "ClientInputDispatchResult.REJECTED ->")
         assertContains(dispatch, "ClientInputDispatchResult.UNSUPPORTED ->")
-        assertContains(internetDispatch, "ProductControllerEvent(internetInputIds.next(), sample)")
+        assertContains(internetDispatch, "val orderedDispatch = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)")
+        assertContains(internetDispatch, "orderedDispatch.samples.map { sample -> ProductControllerEvent(sample) }")
         assertContains(internetDispatch, "targetSession: InternetProductSession? = internetSession")
         assertContains(internetDispatch, "session.sendController(events, delivery)")
+        assertContains(source, "nextControllerInputId = internetInputIds::next")
+        assertBefore(internetDispatch, "ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)", "ProductControllerEvent(sample)")
         assertContains(sink, "override fun sendController(input: ClientControllerInput): Boolean")
         assertContains(sink, "if (!isCurrentSession(client, generation)) return false")
         assertContains(sink, "return client.sendController(input.dispatch)")
@@ -257,6 +270,9 @@ class MainActivityControllerForwardingContractTest {
         assertContains(internetConnect, "override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration)")
         assertContains(internetConnect, "internetControllerSessionState.resynchronize()")
         assertContains(internetConnect, "override fun onInputAck(")
+        assertContains(internetConnect, "if (accepted && controllerId != null && controllerEpoch != null) {")
+        assertContains(internetConnect, "sendInternetControllerDispatch(dispatch, \"internet controller ack resync\")")
+        assertBefore(internetConnect, "if (accepted && controllerId != null && controllerEpoch != null) {", "ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted)")
         assertContains(internetConnect, "ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted)")
         assertContains(internetConnect, "internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)")
         assertContains(source, "sendInternetControllerDispatch(dispatch, \"internet controller video configuration\")")

@@ -4,8 +4,6 @@ import VibeScreenProtocol
 
 @MainActor
 final class ManagedConfigurationProvider: ObservableObject {
-    static let managedConfigurationKey = "com.apple.configuration.managed"
-
     @Published private(set) var policy: ManagedPolicy = .unmanaged
     @Published private(set) var errorMessage: String?
     private var resolver = ManagedPolicyResolver()
@@ -25,7 +23,7 @@ final class ManagedConfigurationProvider: ObservableObject {
         do {
             let local = try ManagedPolicy(
                 managedConfiguration: UserDefaults.standard.dictionary(
-                    forKey: Self.managedConfigurationKey
+                    forKey: ManagedPolicy.ManagedConfigurationSchema.managedConfigurationKey
                 )
             )
             resolver.setLocal(local)
@@ -38,9 +36,10 @@ final class ManagedConfigurationProvider: ObservableObject {
         }
     }
 
-    func applyRemote(_ status: VSManagedPolicyStatus) {
-        resolver.setRemote(ManagedPolicy(remoteStatus: status))
-        policy = resolver.effectivePolicy
+    func applyRemote(_ status: VSManagedPolicyStatus, localSnapshot: ManagedPolicy) -> ManagedPolicy {
+        var snapshotResolver = ManagedPolicyResolver(localPolicy: localSnapshot)
+        snapshotResolver.setRemote(ManagedPolicy(remoteStatus: status))
+        return snapshotResolver.effectivePolicy
     }
 
     /// Drops the remote policy so the effective policy reverts to the local

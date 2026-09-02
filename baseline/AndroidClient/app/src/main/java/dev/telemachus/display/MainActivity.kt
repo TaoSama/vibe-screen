@@ -41,7 +41,6 @@ import android.widget.PopupMenu
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
-import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -58,6 +57,7 @@ import dev.telemachus.display.protocol.MotionSnapshot
 import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.TouchSampleMapper
 import dev.telemachus.display.protocol.FileTransferPolicy
+import dev.telemachus.display.internet.AuthenticatedSessionLeaseReceiver
 import dev.telemachus.display.internet.AndroidNetworkMonitor
 import dev.telemachus.display.internet.InternetDecoderConfigurationResult
 import dev.telemachus.display.internet.InternetProductSession
@@ -66,6 +66,7 @@ import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.InternetManagedPolicy
 import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
@@ -217,6 +218,7 @@ class MainActivity : AppCompatActivity() {
         get() = productSessionCoordinator.renderState().connectionAttemptInProgress
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
+    private var suppressUsbModeAutomaticConnect = false
     private var connectionDetailsVisible = false
     private val connectionSubtitleDisclosure = ConnectionSubtitleDisclosureState()
     private val connectionStatusAnnouncements = ConnectionStatusAnnouncementCoordinator()
@@ -299,8 +301,8 @@ class MainActivity : AppCompatActivity() {
                 },
             )
 
-        // Allow rotation based on device sensor when not connected
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        // Follow user-enabled orientations while disconnected.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
 
         // Enable edge-to-edge display (draw behind system bars and cutout)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -323,29 +325,19 @@ class MainActivity : AppCompatActivity() {
         setupSurface()
         setupUI()
         setupDraggableOverlay()
-        setupSettingsButton()
         setupControlBar()
         setupSafeAreaInsets()
         restoreOverlayPosition()
-        restoreSettingsButtonPosition()
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
-        if (savedInstanceState?.getBoolean(STATE_AUTOMATIC_USB_CONNECT) == true) {
-            enableAutomaticUsbConnect()
-        } else if (!handleLaunchIntent(intent) && prefs.connectionMode == ConnectionMode.USB) {
-            // USB is the default mode and the host is reachable over adb-reverse
-            // loopback, so a plain launch (icon tap, or a relaunch that dropped the
-            // auto_connect extra) should still attach automatically, matching the
-            // behavior when the Mac host starts the client with the extra.
-            enableAutomaticUsbConnect()
-        }
+        applyLaunchIntentPolicy(savedInstanceState, allowImplicitUsbFallback = true)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleLaunchIntent(intent)
+        applyLaunchIntentPolicy(savedInstanceState = null, allowImplicitUsbFallback = false)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -534,21 +526,59 @@ class MainActivity : AppCompatActivity() {
             keyCode == KeyEvent.KEYCODE_VOLUME_MUTE ||
             keyCode == KeyEvent.KEYCODE_POWER
 
-    private fun handleLaunchIntent(intent: Intent?): Boolean {
-        if (intent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) != true) return false
+    private fun applyLaunchIntentPolicy(
+        savedInstanceState: Bundle?,
+        allowImplicitUsbFallback: Boolean,
+    ) {
+        val launchIntent = intent
+        val hasAutoConnectExtra = launchIntent?.hasExtra(EXTRA_AUTO_CONNECT) == true
+        val decision =
+            MainActivityLaunchIntentPolicy.resolve(
+                hasAutoConnectExtra = hasAutoConnectExtra,
+                autoConnectExtra = launchIntent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) == true,
+                hasSavedAutomaticUsbConnectState = savedInstanceState?.containsKey(STATE_AUTOMATIC_USB_CONNECT) == true,
+                savedAutomaticUsbConnect = savedInstanceState?.getBoolean(STATE_AUTOMATIC_USB_CONNECT) == true,
+                savedConnectionMode = prefs.connectionMode,
+                allowImplicitUsbFallback = allowImplicitUsbFallback,
+            )
         // Treat the launch extra as an event. Persisting it on the Activity's
         // Intent would make a deliberate Disconnect resume after recreation.
-        intent.removeExtra(EXTRA_AUTO_CONNECT)
-        enableAutomaticUsbConnect()
-        return true
+        if (hasAutoConnectExtra) launchIntent?.removeExtra(EXTRA_AUTO_CONNECT)
+        when (decision) {
+            AutomaticUsbLaunchDecision.ENABLE_AUTOMATIC_USB -> enableAutomaticUsbConnect()
+            AutomaticUsbLaunchDecision.SHOW_USB_WITHOUT_AUTOMATIC_CONNECT -> showUsbWithoutAutomaticConnect()
+            AutomaticUsbLaunchDecision.KEEP_SAVED_MODE -> Unit
+        }
     }
 
     private fun enableAutomaticUsbConnect() {
+        cleanupCurrentSessionBeforeUsbLaunch()
         automaticUsbConnect = true
         prefs.connectionMode = ConnectionMode.USB
         binding.modeToggleGroup.check(R.id.modeUSB)
         applyModeVisibility(ConnectionMode.USB)
         scheduleAutomaticUsbConnect(150)
+    }
+
+    private fun showUsbWithoutAutomaticConnect() {
+        cleanupCurrentSessionBeforeUsbLaunch()
+        automaticUsbConnect = false
+        isReconnecting = false
+        autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        prefs.connectionMode = ConnectionMode.USB
+        suppressUsbModeAutomaticConnect = true
+        try {
+            binding.modeToggleGroup.check(R.id.modeUSB)
+        } finally {
+            suppressUsbModeAutomaticConnect = false
+        }
+        applyModeVisibility(ConnectionMode.USB)
+    }
+
+    private fun cleanupCurrentSessionBeforeUsbLaunch() {
+        if (prefs.connectionMode != ConnectionMode.USB) {
+            cancelConnectionForModeSwitch()
+        }
     }
 
     private fun currentUsbPort(): Int =
@@ -603,8 +633,12 @@ class MainActivity : AppCompatActivity() {
                 refreshInternetProfileUi()
             } else if (!isConnected) {
                 cancelWirelessReconnect()
-                automaticUsbConnect = true
-                scheduleAutomaticUsbConnect(150)
+                automaticUsbConnect = !suppressUsbModeAutomaticConnect
+                if (automaticUsbConnect) {
+                    scheduleAutomaticUsbConnect(150)
+                } else {
+                    autoConnectHandler.removeCallbacks(autoConnectRunnable)
+                }
             }
         }
     }
@@ -798,7 +832,7 @@ class MainActivity : AppCompatActivity() {
      * display-cutout insets into the floating chrome. The root keeps zero
      * padding so the SurfaceView still fills the panel; instead the insets feed
      * [safeAreaInsets], which margins the control bar and settings panel and
-     * bounds the draggable overlay and settings button.
+     * bounds the draggable overlay.
      */
     private fun setupSafeAreaInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, windowInsets ->
@@ -821,7 +855,7 @@ class MainActivity : AppCompatActivity() {
                 applySafeAreaToChrome()
                 applyControlBarLayout()
                 applyStatusOverlayLayout()
-                reclampFloatingControls()
+                clampOverlayIntoSafeRect()
                 activeSettingsDialog?.let(::resizeSettingsDialog)
             }
             // Do not consume: descendants that also observe insets still see them.
@@ -854,9 +888,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Margin the control bar and connection panel by the safe insets so their
-     * tap targets never sit under a notch or gesture bar. The settings button
-     * uses [updateSettingsButtonPosition], which folds the same insets into its
-     * constraint margins.
+     * tap targets never sit under a notch or gesture bar.
      */
     private fun applySafeAreaToChrome() {
         setInsetMargins(binding.controlBar)
@@ -869,18 +901,6 @@ class MainActivity : AppCompatActivity() {
                 ChromeSafeAreaApplier.captureBaseMargins(view)
             }
         ChromeSafeAreaApplier.applyMargins(view, base, safeAreaInsets)
-    }
-
-    /**
-     * Re-bound the draggable status overlay and the settings button into the
-     * current safe rectangle. Called after insets change and after a rotation
-     * or size change so a control saved in one orientation cannot strand
-     * off-screen or under a cutout in another.
-     */
-    private fun reclampFloatingControls() {
-        clampOverlayIntoSafeRect()
-        // Re-anchor the settings button so its inset-aware margins are rebuilt.
-        restoreSettingsButtonPosition()
     }
 
     /** The safe rectangle within the root using the latest insets. */
@@ -921,7 +941,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         // configChanges keeps this activity alive across rotation/size changes,
-        // so re-apply immersive mode and re-clamp floating controls once the new
+        // so re-apply immersive mode and re-clamp floating chrome once the new
         // insets arrive rather than relying on a recreate.
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
@@ -935,7 +955,7 @@ class MainActivity : AppCompatActivity() {
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
-        reclampFloatingControls()
+        clampOverlayIntoSafeRect()
         activeSettingsDialog?.let { dialog ->
             dialog.window?.decorView?.post { resizeSettingsDialog(dialog) }
         }
@@ -1022,32 +1042,7 @@ class MainActivity : AppCompatActivity() {
                     // from the server so we use the correct resolution.
                     // Store the holder so we can initialize later.
                     decoderPresentationOwner.publishRenderTarget(holder)
-                    // If we already have a video configuration (reconnect case), init now.
-                    if (decoderPresentationOwner.currentDecoder() == null) {
-                        val internetConfiguration = decoderPresentationOwner.internetConfiguration()
-                        if (prefs.connectionMode == ConnectionMode.INTERNET) {
-                            val internetLifecycle = internetVideoDecoderLifecycle
-                            if (internetLifecycle?.hasPendingConfiguration == true) {
-                                internetLifecycle.onSurfaceReady()
-                            } else if (internetConfiguration != null && displayWidth > 0 && displayHeight > 0) {
-                                val currentInternetSession = internetSession
-                                val currentInternetGeneration = internetGeneration
-                                configureInternetDecoder(
-                                    internetConfiguration,
-                                    currentInternetGeneration,
-                                    AtomicReference(currentInternetSession),
-                                )
-                            }
-                        } else if (prefs.connectionMode != ConnectionMode.INTERNET &&
-                            mainSessionDisplayLifecycle?.hasPendingVideoConfiguration == true
-                        ) {
-                            mainSessionDisplayLifecycle?.onSurfaceReady()
-                        } else if (prefs.connectionMode != ConnectionMode.INTERNET &&
-                            decoderPresentationOwner.localVideoConfigurationSnapshot() != null
-                        ) {
-                            initializeDecoder(holder)
-                        }
-                    }
+                    handleRenderTargetReady(holder)
                 }
 
                 override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -1076,6 +1071,42 @@ class MainActivity : AppCompatActivity() {
                 applyStatusOverlayLayout()
             }
             updateSurfaceViewportLayout()
+        }
+    }
+
+    private fun handleRenderTargetReady(holder: SurfaceHolder) {
+        val internetConfiguration = decoderPresentationOwner.internetConfiguration()
+        when (
+            rendererOwner.renderTargetReadyAction(
+                RendererRenderTargetReadiness(
+                    flow =
+                        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+                            RendererRenderTargetFlow.INTERNET
+                        } else {
+                            RendererRenderTargetFlow.LOCAL
+                        },
+                    decoderConfigured = decoderPresentationOwner.currentDecoder() != null,
+                    localConfigurationPending = mainSessionDisplayLifecycle?.hasPendingVideoConfiguration == true,
+                    localConfigurationAvailable = decoderPresentationOwner.localVideoConfigurationSnapshot() != null,
+                    internetConfigurationPending = internetVideoDecoderLifecycle?.hasPendingConfiguration == true,
+                    internetConfigurationAvailable = internetConfiguration != null,
+                ),
+            )
+        ) {
+            RendererRenderTargetReadyAction.NONE -> Unit
+            RendererRenderTargetReadyAction.RETRY_PENDING_LOCAL_CONFIGURATION -> mainSessionDisplayLifecycle?.onSurfaceReady()
+            RendererRenderTargetReadyAction.CONFIGURE_LOCAL_DECODER -> initializeDecoder(holder)
+            RendererRenderTargetReadyAction.RETRY_PENDING_INTERNET_CONFIGURATION -> internetVideoDecoderLifecycle?.onSurfaceReady()
+            RendererRenderTargetReadyAction.CONFIGURE_INTERNET_DECODER -> {
+                val configuration = internetConfiguration ?: return
+                val currentInternetSession = internetSession
+                val currentInternetGeneration = internetGeneration
+                configureInternetDecoder(
+                    configuration,
+                    currentInternetGeneration,
+                    AtomicReference(currentInternetSession),
+                )
+            }
         }
     }
 
@@ -1331,9 +1362,10 @@ class MainActivity : AppCompatActivity() {
         targetSession: InternetProductSession? = internetSession,
     ): Boolean {
         val session = targetSession ?: return false
-        val events = dispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
+        val orderedDispatch = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)
+        val events = orderedDispatch.samples.map { sample -> ProductControllerEvent(sample) }
         val delivery =
-            when (dispatch.delivery) {
+            when (orderedDispatch.delivery) {
                 ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
                 ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
             }
@@ -1443,10 +1475,6 @@ class MainActivity : AppCompatActivity() {
             updateStatus("Checking for your Mac…")
             automaticUsbConnect = false
             connect(host, port, automatic = false)
-        }
-
-        binding.disconnectButton.setOnClickListener {
-            disconnect()
         }
 
         binding.openSourceLicensesButton.setOnClickListener {
@@ -1610,7 +1638,8 @@ class MainActivity : AppCompatActivity() {
                     getString(if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac),
                 )
                 updateUsbTransportSubtitle()
-                binding.connectionProgress.visibility = View.VISIBLE
+                binding.connectionProgress.visibility =
+                    if (connectionAttemptInProgress || isReconnecting) View.VISIBLE else View.GONE
                 val connectAction =
                     UsbConnectActionPolicy.resolve(
                         connectionAttemptInProgress = connectionAttemptInProgress,
@@ -1941,9 +1970,6 @@ class MainActivity : AppCompatActivity() {
         binding.settingsPanel.visibility = View.GONE
         binding.connectionSettingsButton.visibility = View.GONE
         LiveRegionTextApplier.apply(binding.statusText, connectedStatus)
-        // Route settings through the tap-to-reveal control bar instead of a
-        // persistent floating button that occludes the video.
-        binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
         revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
         connectionStatusAnnouncements.announceIfChanged(connectedStatus) { announcement ->
@@ -1954,10 +1980,9 @@ class MainActivity : AppCompatActivity() {
     private fun showDisconnectedStreamUi() {
         connectionStatusAnnouncements.reset()
         // configChanges covers orientation|screenSize|screenLayout, so
-        // releasing the forced streaming orientation back to the sensor does
-        // not recreate the Activity. This lets the disconnected connection
-        // panel follow the device's physical orientation.
-        resetOrientationToSensor()
+        // releasing the forced streaming orientation back to the user's
+        // enabled orientations does not recreate the Activity.
+        resetOrientationToUserPreference()
         enableFullscreenMode()
         // Keep the video viewport laid out so the SurfaceView holds a live
         // surface while waiting to connect. The opaque backdrop above it hides
@@ -1978,16 +2003,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyDisconnectedSettingsEntryPolicy() {
-        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
-        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
-        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
-        if (!useInlineSettingsButton) {
-            // Stream overlay opacity can be very low; the disconnected settings
-            // entry remains a primary recovery affordance and must stay readable.
-            binding.settingsButton.alpha = 1f
-            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
-            binding.settingsButton.bringToFront()
-        }
+        binding.connectionSettingsButton.visibility = View.VISIBLE
     }
 
     /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */
@@ -2291,18 +2307,15 @@ class MainActivity : AppCompatActivity() {
                 fileTransfer = client.canTransferFiles,
             )
         }
+        val internetFileTransfer = prefs.connectionMode == ConnectionMode.INTERNET && internetSession?.canTransferFiles == true
         val state = productSessionCoordinator.renderState()
-        binding.controlFileTransferButton.visibility = if (state.fileTransferVisible) View.VISIBLE else View.GONE
-        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled
+        binding.controlFileTransferButton.visibility = if (state.fileTransferVisible || internetFileTransfer) View.VISIBLE else View.GONE
+        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled || internetFileTransfer
         applyControlBarLayout()
     }
 
     private fun beginChooseFileForTransfer() {
-        val client = streamClient ?: return
-        if (!isCurrentSession(client, activeSessionGeneration) ||
-            !currentSessionBinding().capabilities.fileTransfer ||
-            !client.canTransferFiles
-        ) {
+        if (activeFileTransferSession() == null) {
             showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
@@ -2323,24 +2336,19 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
-        val client = streamClient
-        val generation = activeSessionGeneration
-        if (client == null ||
-            !isCurrentSession(client, generation) ||
-            !currentSessionBinding().capabilities.fileTransfer ||
-            !client.canTransferFiles
-        ) {
+        val session = activeFileTransferSession()
+        if (session == null) {
             showDedupedToast(R.string.file_transfer_unavailable)
             return
         }
-        val maximumFileBytes = client.negotiatedMaxFileBytes
+        val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
             val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
             val sent =
                 runCatching {
                     val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
                     val registered = withContext(Dispatchers.Main) {
-                        if (isCurrentSession(client, generation) && client.canTransferFiles) {
+                        if (session.isCurrentAndAllowed()) {
                             discardPendingOutgoingFileTransfer()
                             pendingOutgoingFileTransfer = file
                             true
@@ -2349,10 +2357,10 @@ class MainActivity : AppCompatActivity() {
                             false
                         }
                     }
-                    registered && client.offerFile(file, mimeType)
+                    registered && session.offerFile(file, mimeType)
             }
             withContext(Dispatchers.Main) {
-                if (!isCurrentSession(client, generation)) return@withContext
+                if (!session.isCurrent()) return@withContext
                 val sentValue =
                     sent.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
@@ -2415,23 +2423,39 @@ class MainActivity : AppCompatActivity() {
     private fun safeOutgoingFileName(displayName: String?): String =
         AppSpecificDownloadsSaver.safeDisplayName(displayName, MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
 
+    private data class ActiveFileTransferSession(
+        val isCurrent: () -> Boolean,
+        val isCurrentAndAllowed: () -> Boolean,
+        val negotiatedMaxFileBytes: Long,
+        val offerFile: (File, String) -> Boolean,
+    )
+
     private fun promptIncomingFileOffer(
         client: StreamClient,
         generation: Long,
         offer: dev.vibescreen.protocol.v1.FileOffer,
+    ) = promptIncomingFileOffer(
+        offer = offer,
+        isCurrentAndAllowed = { isCurrentSession(client, generation) && client.canTransferFiles },
+        respond = { accepted, _ -> client.respondToFileOffer(offer, accepted = accepted) },
+    )
+
+    private fun promptIncomingFileOffer(
+        offer: dev.vibescreen.protocol.v1.FileOffer,
+        isCurrentAndAllowed: () -> Boolean,
+        respond: (accepted: Boolean, reason: String) -> Boolean,
     ) {
         runOnUiThread {
             if (!isInForeground ||
                 isFinishing ||
                 isDestroyed ||
-                !isCurrentSession(client, generation) ||
-                !client.canTransferFiles
+                !isCurrentAndAllowed()
             ) {
-                client.respondToFileOffer(offer, accepted = false)
+                respond(false, "user_denied")
                 return@runOnUiThread
             }
             if (pendingIncomingFileDialog != null) {
-                client.respondToFileOffer(offer, accepted = false)
+                respond(false, "user_denied")
                 return@runOnUiThread
             }
 
@@ -2444,11 +2468,17 @@ class MainActivity : AppCompatActivity() {
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
                     pendingIncomingFileDecision = null
-                    client.respondToFileOffer(offer, accepted = false)
+                    respond(false, "user_denied")
                 }
             }
             timeout = Runnable {
-                rejectDecision()
+                if (pendingIncomingFileDialog != null && !decided) {
+                    decided = true
+                    pendingIncomingFileDialog?.dismiss()
+                    pendingIncomingFileDialog = null
+                    pendingIncomingFileDecision = null
+                    respond(false, "approval_timeout")
+                }
                 showDedupedToast(R.string.file_transfer_offer_expired)
             }
             val dialog =
@@ -2468,7 +2498,7 @@ class MainActivity : AppCompatActivity() {
                         pendingIncomingFileDialog = null
                         pendingIncomingFileDecision = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
-                        client.respondToFileOffer(offer, accepted = true)
+                        respond(true, "")
                     }
                     .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
                     .setOnCancelListener { rejectDecision() }
@@ -2476,6 +2506,39 @@ class MainActivity : AppCompatActivity() {
             pendingIncomingFileDecision = rejectDecision
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
+    }
+
+    private fun activeFileTransferSession(): ActiveFileTransferSession? =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            activeInternetFileTransferSession()
+        } else {
+            activeStreamFileTransferSession()
+        }
+
+    private fun activeStreamFileTransferSession(): ActiveFileTransferSession? {
+        val client = streamClient ?: return null
+        val generation = activeSessionGeneration
+        if (!isCurrentSession(client, generation) || !currentSessionBinding().capabilities.fileTransfer || !client.canTransferFiles) {
+            return null
+        }
+        return ActiveFileTransferSession(
+            isCurrent = { isCurrentSession(client, generation) },
+            isCurrentAndAllowed = { isCurrentSession(client, generation) && client.canTransferFiles },
+            negotiatedMaxFileBytes = client.negotiatedMaxFileBytes,
+            offerFile = client::offerFile,
+        )
+    }
+
+    private fun activeInternetFileTransferSession(): ActiveFileTransferSession? {
+        val session = internetSession ?: return null
+        val generation = internetGeneration
+        if (generation <= 0L || session.state != InternetProductSessionState.ACTIVE || !session.canTransferFiles) return null
+        return ActiveFileTransferSession(
+            isCurrent = { generation == internetGeneration && internetSession === session },
+            isCurrentAndAllowed = { generation == internetGeneration && internetSession === session && session.canTransferFiles },
+            negotiatedMaxFileBytes = session.negotiatedMaxFileBytes,
+            offerFile = session::offerFile,
+        )
     }
 
     private fun safeIncomingDisplayName(fileName: String): String =
@@ -2811,6 +2874,8 @@ class MainActivity : AppCompatActivity() {
         when (reason) {
             "policy_denied" -> R.string.file_transfer_failed_policy_denied
             "user_denied" -> R.string.file_transfer_failed_user_denied
+            "approval_timeout" -> R.string.file_transfer_offer_expired
+            "approval_cancelled" -> R.string.file_transfer_failed_cancelled
             "file_too_large" -> R.string.file_transfer_failed_too_large
             "concurrent_limit",
             "temporary_space_limit",
@@ -3355,7 +3420,6 @@ class MainActivity : AppCompatActivity() {
         val opacitySlider = view.findViewById<Slider>(R.id.opacitySlider)
         val opacityValue = view.findViewById<TextView>(R.id.opacityValue)
         val resetButton = view.findViewById<View>(R.id.resetPositionButton)
-        val resetSettingsBtn = view.findViewById<View>(R.id.resetSettingsButton)
         val disconnectButton = view.findViewById<View>(R.id.disconnectSettingsButton)
         val closeButton = view.findViewById<View>(R.id.closeButton)
         val scaleFitButton = view.findViewById<MaterialButton>(R.id.scaleFitButton)
@@ -3405,31 +3469,6 @@ class MainActivity : AppCompatActivity() {
         // a no-op and confuses users into clicking it twice.
         disconnectButton.visibility = if (isConnected) View.VISIBLE else View.GONE
 
-        // Position buttons (8 directions)
-        val cornerTopLeft = view.findViewById<MaterialButton>(R.id.cornerTopLeft)
-        val cornerTopRight = view.findViewById<MaterialButton>(R.id.cornerTopRight)
-        val cornerBottomLeft = view.findViewById<MaterialButton>(R.id.cornerBottomLeft)
-        val cornerBottomRight = view.findViewById<MaterialButton>(R.id.cornerBottomRight)
-        val positionTopCenter = view.findViewById<MaterialButton>(R.id.positionTopCenter)
-        val positionBottomCenter = view.findViewById<MaterialButton>(R.id.positionBottomCenter)
-        val positionCenterLeft = view.findViewById<MaterialButton>(R.id.positionCenterLeft)
-        val positionCenterRight = view.findViewById<MaterialButton>(R.id.positionCenterRight)
-        val positionButtons =
-            listOf(
-                cornerBottomRight to R.string.settings_position_bottom_right,
-                cornerBottomLeft to R.string.settings_position_bottom_left,
-                cornerTopRight to R.string.settings_position_top_right,
-                cornerTopLeft to R.string.settings_position_top_left,
-                positionTopCenter to R.string.settings_position_top,
-                positionBottomCenter to R.string.settings_position_bottom,
-                positionCenterLeft to R.string.settings_position_left,
-                positionCenterRight to R.string.settings_position_right,
-            )
-        positionButtons.forEach { (button, description) ->
-            button.contentDescription = getString(description)
-            button.isCheckable = true
-        }
-
         // Load current settings
         showStatsSwitch.isChecked = prefs.showStatsOverlay
         opacitySlider.value = prefs.overlayOpacity
@@ -3455,29 +3494,6 @@ class MainActivity : AppCompatActivity() {
             swipeDownGroup = gestureSwipeDownGroup,
             swipeDownButtons = gestureSwipeDownButtons,
         )
-
-        // Highlight current position selection (8 positions)
-        // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
-        // 4=TopCenter, 5=BottomCenter, 6=CenterLeft, 7=CenterRight
-        fun updatePositionSelection(selectedPosition: Int) {
-            positionButtons.forEachIndexed { index, (button, _) ->
-                val selected = index == selectedPosition
-                button.isChecked = selected
-                button.isSelected = selected
-                ViewCompat.setStateDescription(
-                    button,
-                    getString(if (selected) R.string.selected else R.string.not_selected),
-                )
-                if (selected) {
-                    button.backgroundTintList =
-                        android.content.res.ColorStateList
-                            .valueOf(0x334CAF50)
-                } else {
-                    button.backgroundTintList = null
-                }
-            }
-        }
-        updatePositionSelection(prefs.settingsButtonCorner)
 
         // Setup listeners
         showStatsSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -3561,61 +3577,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Position button listeners (8 directions)
-        cornerBottomRight.setOnClickListener {
-            prefs.settingsButtonCorner = 0
-            updatePositionSelection(0)
-            updateSettingsButtonPosition(0)
-        }
-
-        cornerBottomLeft.setOnClickListener {
-            prefs.settingsButtonCorner = 1
-            updatePositionSelection(1)
-            updateSettingsButtonPosition(1)
-        }
-
-        cornerTopRight.setOnClickListener {
-            prefs.settingsButtonCorner = 2
-            updatePositionSelection(2)
-            updateSettingsButtonPosition(2)
-        }
-
-        cornerTopLeft.setOnClickListener {
-            prefs.settingsButtonCorner = 3
-            updatePositionSelection(3)
-            updateSettingsButtonPosition(3)
-        }
-
-        positionTopCenter.setOnClickListener {
-            prefs.settingsButtonCorner = 4
-            updatePositionSelection(4)
-            updateSettingsButtonPosition(4)
-        }
-
-        positionBottomCenter.setOnClickListener {
-            prefs.settingsButtonCorner = 5
-            updatePositionSelection(5)
-            updateSettingsButtonPosition(5)
-        }
-
-        positionCenterLeft.setOnClickListener {
-            prefs.settingsButtonCorner = 6
-            updatePositionSelection(6)
-            updateSettingsButtonPosition(6)
-        }
-
-        positionCenterRight.setOnClickListener {
-            prefs.settingsButtonCorner = 7
-            updatePositionSelection(7)
-            updateSettingsButtonPosition(7)
-        }
-
-        resetSettingsBtn.setOnClickListener {
-            prefs.settingsButtonCorner = 0
-            updatePositionSelection(0)
-            updateSettingsButtonPosition(0)
-        }
-
         disconnectButton.setOnClickListener {
             dialog.dismiss()
             disconnect()
@@ -3654,144 +3615,6 @@ class MainActivity : AppCompatActivity() {
                 SettingsDialogLayoutApplier::applyAfterNextLayout,
             )
         }
-    }
-
-    private fun setupSettingsButton() {
-        // Simple click to show settings dialog
-        // Position can be changed via corner buttons in settings
-        binding.settingsButton.setOnClickListener {
-            showSettingsDialog()
-        }
-    }
-
-    private fun restoreSettingsButtonPosition() {
-        updateSettingsButtonPosition(prefs.settingsButtonCorner)
-    }
-
-    /**
-     * Use ConstraintSet to position settings button - most reliable method
-     * Works correctly with orientation changes
-     * Supports 8 positions: 4 corners + 4 edges
-     */
-    private fun updateSettingsButtonPosition(position: Int) {
-        val constraintLayout = binding.root
-        val constraintSet = ConstraintSet()
-        constraintSet.clone(constraintLayout)
-
-        val buttonId = binding.settingsButton.id
-        // Fold the safe-area insets into each edge margin so the floating
-        // settings button clears the notch/gesture bar on whichever edge it is
-        // anchored to, then re-clamp keeps it there across rotations.
-        val base = (SETTINGS_CHROME_MARGIN_DP * resources.displayMetrics.density).toInt()
-        val topM = base + safeAreaInsets.top
-        val bottomM = base + safeAreaInsets.bottom
-        val startM = base + safeAreaInsets.left
-        val endM = base + safeAreaInsets.right
-
-        // Clear all constraints first
-        constraintSet.clear(buttonId, ConstraintSet.TOP)
-        constraintSet.clear(buttonId, ConstraintSet.BOTTOM)
-        constraintSet.clear(buttonId, ConstraintSet.START)
-        constraintSet.clear(buttonId, ConstraintSet.END)
-
-        when (position) {
-            0 -> { // Bottom Right (default)
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-
-            1 -> { // Bottom Left
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    startM,
-                )
-            }
-
-            2 -> { // Top Right
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-
-            3 -> { // Top Left
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    startM,
-                )
-            }
-
-            4 -> { // Top Center
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-            }
-
-            5 -> { // Bottom Center
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
-            }
-
-            6 -> { // Center Left
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    startM,
-                )
-            }
-
-            7 -> { // Center Right
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-
-            else -> { // Default to bottom right
-                constraintSet.connect(
-                    buttonId,
-                    ConstraintSet.BOTTOM,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.BOTTOM,
-                    bottomM,
-                )
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
-            }
-        }
-
-        // Reset any absolute positioning that might have been set
-        binding.settingsButton.translationX = 0f
-        binding.settingsButton.translationY = 0f
-
-        constraintSet.applyTo(constraintLayout)
     }
 
     /**
@@ -4181,8 +4004,9 @@ class MainActivity : AppCompatActivity() {
                         },
                         restoreState = { previousPresentation ->
                             requestedOrientation = previousRequestedOrientation
+                            val rotationPolicy = rendererOwner.rotationPolicy()
                             binding.surfaceView.apply {
-                                rotation = prefs.clientRotation.degrees.toFloat()
+                                rotation = rotationPolicy.surfaceRotation.toFloat()
                                 scaleX = 1f
                                 scaleY = 1f
                             }
@@ -4202,7 +4026,7 @@ class MainActivity : AppCompatActivity() {
                                 showDisconnectedStreamUi()
                             }
                         },
-                        presentState = { previousPresentation ->
+                        presentState = { _ ->
                             applyRotation(configuration.rotationDegrees)
                             binding.surfaceView.post {
                                 if (isPublishedInternetDecoderCurrent(decoder, attempt)) {
@@ -4214,6 +4038,8 @@ class MainActivity : AppCompatActivity() {
                                 getString(R.string.resolution_format, configuration.width, configuration.height)
                             binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
                             showConnectedStreamUi()
+                        },
+                        afterCommit = { previousPresentation ->
                             previousPresentation.decoder?.let(::releaseDecoderAsync)
                         },
                     )
@@ -4362,7 +4188,6 @@ class MainActivity : AppCompatActivity() {
                     binding.resolutionText.text =
                         getString(R.string.resolution_format, geometry.logicalWidth, geometry.logicalHeight)
                     binding.connectButton.isEnabled = false
-                    binding.disconnectButton.isEnabled = true
                     binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
                     showConnectedStreamUi()
                     applyRotation(geometry.rotation)
@@ -4920,6 +4745,9 @@ class MainActivity : AppCompatActivity() {
                     CodecCapabilities.advertisedStreamCodecs
                         .mapNotNullTo(linkedSetOf(), StreamCodec::toProductVideoCodecOrNull),
                 advertiseController = true,
+                localManagedPolicy = InternetManagedPolicy.fromProtocolPolicy(
+                    ManagedConfigurationProvider(applicationContext).loadPolicy(),
+                ),
             )
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -4976,6 +4804,48 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                override fun onFileOffer(offer: dev.vibescreen.protocol.v1.FileOffer) {
+                    if (!isCurrentInternetSession()) return
+                    val session = sessionReference.get() ?: return
+                    val callbackGeneration = generation
+                    promptIncomingFileOffer(
+                        offer = offer,
+                        isCurrentAndAllowed = {
+                            callbackGeneration == internetGeneration &&
+                                internetSession === session &&
+                                session.canTransferFiles
+                        },
+                        respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) },
+                    )
+                }
+
+                override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        onIncomingFileCompleted(completed)
+                    }
+                }
+
+                override fun onFileTransferResult(
+                    accepted: Boolean,
+                    reason: String,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        discardPendingOutgoingFileTransfer()
+                        mainDiag("internet onFileTransferResult: accepted=$accepted reason=$reason")
+                        showDedupedToast(
+                            if (accepted) {
+                                R.string.file_transfer_completed
+                            } else {
+                                fileTransferFailureMessageId(reason)
+                            },
+                        )
+                    }
+                }
+
                 override fun onInputAck(
                     inputId: Long,
                     controllerId: String?,
@@ -4984,6 +4854,15 @@ class MainActivity : AppCompatActivity() {
                     rejectionReason: String,
                 ) {
                     if (!isCurrentInternetSession()) return
+                    if (accepted && controllerId != null && controllerEpoch != null) {
+                        runOnUiThread {
+                            if (!isCurrentInternetSession()) return@runOnUiThread
+                            internetControllerSessionState.resynchronize()?.let { dispatch ->
+                                sendInternetControllerDispatch(dispatch, "internet controller ack resync")
+                            }
+                        }
+                        return
+                    }
                     val rejectedConnection =
                         ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted) ?: return
                     if (internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)) {
@@ -5028,6 +4907,14 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        val authenticatedSessionLeaseReceiver =
+            AuthenticatedSessionLeaseReceiver(
+                internetProfileStore,
+                internetStoredSessionFactory,
+                internetRevocationCoordinator,
+                isActive = ::isCurrentInternetSession,
+            )
+        val productCallbacks = authenticatedSessionLeaseReceiver.importingCallbacks(callbacks)
         try {
             val created =
                 InternetProductSession.create(
@@ -5037,7 +4924,7 @@ class MainActivity : AppCompatActivity() {
                     monitor,
                     dev.telemachus.display.internet.MonotonicClock { android.os.SystemClock.elapsedRealtime() },
                     codec,
-                    callbacks,
+                    productCallbacks,
                     object : InternetProductRevocationStore {
                         override fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
                             internetProfileStore.persistPendingAuthenticatedRevocation(pairingIdentifier, reason)
@@ -5051,6 +4938,8 @@ class MainActivity : AppCompatActivity() {
                             internetProfileStore.isRevoked(pairingIdentifier)
                     },
                     internetRevocationCoordinator,
+                    nextControllerInputId = internetInputIds::next,
+                    fileTransferStagingDirectory = File(cacheDir, "vibescreen-internet-incoming-files"),
                 )
             sessionReference.set(created)
             internetNetworkMonitor = monitor
@@ -6182,15 +6071,11 @@ class MainActivity : AppCompatActivity() {
         x: Float,
         y: Float,
     ): TouchMapper.Point =
-        TouchMapper.map(
+        rendererOwner.mapTouchPoint(
             x = x,
             y = y,
             viewWidth = view.width,
             viewHeight = view.height,
-            videoWidth = displayWidth,
-            videoHeight = displayHeight,
-            scaleMode = prefs.videoScaleMode,
-            renderRotation = ViewportPolicy.surfaceTransformRotation(prefs.clientRotation),
         )
 
     private fun updateSurfaceViewportLayout() {
@@ -6236,15 +6121,11 @@ class MainActivity : AppCompatActivity() {
                     else -> activeInternetInputIds[pointerId] ?: return
                 }
             val point =
-                InternetTouchMapper.map(
+                rendererOwner.mapTouchPoint(
                     x = event.getX(index),
                     y = event.getY(index),
                     viewWidth = view.width,
                     viewHeight = view.height,
-                    videoWidth = displayWidth,
-                    videoHeight = displayHeight,
-                    scaleMode = prefs.videoScaleMode,
-                    clientRotation = prefs.clientRotation,
                 )
             session.sendTouch(
                 ProductTouchEvent(
@@ -6277,15 +6158,11 @@ class MainActivity : AppCompatActivity() {
     ): Boolean {
         val snapshot =
             StylusInputMapper.snapshot(event) { x, y ->
-                InternetTouchMapper.map(
+                rendererOwner.mapTouchPoint(
                     x = x,
                     y = y,
                     viewWidth = view.width,
                     viewHeight = view.height,
-                    videoWidth = displayWidth,
-                    videoHeight = displayHeight,
-                    scaleMode = prefs.videoScaleMode,
-                    clientRotation = prefs.clientRotation,
                 )
             }
         val extended = session.canSendExtendedStylus()
@@ -6439,20 +6316,20 @@ class MainActivity : AppCompatActivity() {
      * This provides proper fullscreen portrait/landscape support
      */
     private fun applyRotation(rotation: Int) {
-        val effectiveRotation = ViewportPolicy.effectiveRotation(rotation, prefs.clientRotation)
-        requestedOrientation = ViewportPolicy.screenOrientationFor(effectiveRotation)
+        val policy = rendererOwner.rotationPolicy(rotation)
+        requestedOrientation = policy.screenOrientation
 
         // Host rotation chooses the device orientation. The encoded frame keeps
         // its source orientation, so only the client-local offset transforms it.
         binding.surfaceView.apply {
-            this.rotation = ViewportPolicy.surfaceTransformRotation(prefs.clientRotation).toFloat()
+            this.rotation = policy.surfaceRotation.toFloat()
             scaleX = 1f
             scaleY = 1f
         }
         updateSurfaceViewportLayout()
 
         log(
-            "🔄 Orientation: ${when (effectiveRotation) {
+            "🔄 Orientation: ${when (policy.effectiveRotation) {
                 90 -> "Portrait"
                 180 -> "Landscape (flipped)"
                 270 -> "Portrait (flipped)"
@@ -6462,10 +6339,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Reset orientation to follow device sensor (when disconnected)
+     * Reset orientation to follow user-enabled device orientations when disconnected.
      */
-    private fun resetOrientationToSensor() {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+    private fun resetOrientationToUserPreference() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
     }
 
     @SuppressLint("SetTextI18n") // Developer-only rolling diagnostic output is not user-facing copy.

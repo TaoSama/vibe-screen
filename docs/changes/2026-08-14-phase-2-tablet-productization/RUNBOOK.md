@@ -294,7 +294,7 @@ PHASE2_HOST_TELEMETRY_JSONL="$RUN_DIR/soak-8h/host-telemetry.jsonl"
 mkdir -p "$(dirname "$PHASE2_HOST_TELEMETRY_JSONL")"
 osascript -e 'quit app "Vibe Screen"' || true
 launchctl setenv VIBE_SCREEN_TELEMETRY_PATH "$PHASE2_HOST_TELEMETRY_JSONL"
-open -n -a "Vibe Screen"
+make baseline-macos-launch
 
 make phase2-tablet-soak-run \
   EVIDENCE_SERIAL="$ADB_SERIAL" \

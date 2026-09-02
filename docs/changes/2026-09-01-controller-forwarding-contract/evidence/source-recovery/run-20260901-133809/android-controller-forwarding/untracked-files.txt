@@ -1,0 +1,4 @@
+baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerSessionFeedback.kt
+baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionInputIdSequence.kt
+baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ControllerSessionFeedbackTest.kt
+baseline/AndroidClient/app/src/test/java/dev/telemachus/display/SessionInputIdSequenceTest.kt

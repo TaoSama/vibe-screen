@@ -22,10 +22,23 @@ from .host_display_rotation_current_base_manifest import (
     SOURCE_DOCS,
     SUPPORTING_GATES,
 )
+from .host_display_rotation_gate import (
+    EXPECTED_EVIDENCE_SOURCE,
+    KIND as EVIDENCE_GATE_KIND,
+    REQUIRED_ARTIFACTS,
+    REQUIRED_DEVICE_FIELDS,
+    REQUIRED_HOST_PREFLIGHT_FIELDS,
+    REQUIRED_INPUT_MAPPING_POINTS,
+    REQUIRED_PROBES,
+    VALID_TRANSPORTS,
+    evaluate as evaluate_evidence_gate,
+)
 
 GATE_KIND = "host_display_rotation_current_base_gate"
 PASS_STATUSES = {"pass", "passed", "complete"}
 REQUIRED_RECORD_FIELDS = {"status", "category", "requirement", "blocking", "evidence", "notes"}
+EVIDENCE_FILENAME = "host-display-rotation.json"
+EVIDENCE_GATE_FILENAME = "host-display-rotation-gate.json"
 
 INTERPRETATION = (
     "A pass means the current base has retained real-device evidence for both "
@@ -39,16 +52,16 @@ class HostDisplayRotationCurrentBaseGateError(ValueError):
     """Raised when a current-base manifest cannot be evaluated."""
 
 
-def _load_json(path: Path) -> dict[str, Any]:
+def _load_json(path: Path, label: str = "host display rotation current-base manifest") -> dict[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise HostDisplayRotationCurrentBaseGateError(
-            f"cannot read host display rotation current-base manifest: {error}"
+            f"cannot read {label}: {error}"
         ) from error
     if not isinstance(document, dict):
         raise HostDisplayRotationCurrentBaseGateError(
-            "host display rotation current-base manifest must be a JSON object"
+            f"{label} must be a JSON object"
         )
     return document
 
@@ -65,6 +78,12 @@ def _string_list(value: Any) -> list[str]:
 
 def _status_pass(value: Any) -> bool:
     return isinstance(value, str) and value in PASS_STATUSES
+
+
+def _coverage_set(value: Any) -> set[int]:
+    if not isinstance(value, list):
+        return set()
+    return {rotation for rotation in value if isinstance(rotation, int) and not isinstance(rotation, bool)}
 
 
 def _evidence_present(record: dict[str, Any]) -> bool:
@@ -287,7 +306,85 @@ def _host_preflight_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]
     return checks
 
 
-def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+def _evidence_gate_check(manifest_path: Path) -> dict[str, Any]:
+    evidence_path = manifest_path.parent / EVIDENCE_FILENAME
+    evidence_gate_path = manifest_path.parent / EVIDENCE_GATE_FILENAME
+    try:
+        evidence_document = _load_json(evidence_path, "host display rotation evidence")
+        expected_document = evaluate_evidence_gate(
+            evidence_document, evidence_dir=manifest_path.parent
+        )
+        document = _load_json(evidence_gate_path, "host display rotation evidence gate output")
+    except HostDisplayRotationCurrentBaseGateError as error:
+        return _check(
+            False,
+            "formal host-display rotation evidence gate output is retained, reproducible, and complete",
+            evidence=[str(evidence_path), str(evidence_gate_path)],
+            blocking=True,
+        ) | {"detail": str(error)}
+
+    covered_by_kind = document.get("covered_host_rotations_by_display_kind")
+    if isinstance(covered_by_kind, dict):
+        physical = _coverage_set(covered_by_kind.get("physical"))
+        virtual = _coverage_set(covered_by_kind.get("virtual"))
+    else:
+        physical = set()
+        virtual = set()
+    required = set(REQUIRED_HOST_ROTATIONS)
+    expected_required_artifacts = list(REQUIRED_ARTIFACTS)
+    expected_required_device_fields = list(REQUIRED_DEVICE_FIELDS)
+    expected_required_host_preflight_fields = list(REQUIRED_HOST_PREFLIGHT_FIELDS)
+    expected_required_input_mapping_points = list(REQUIRED_INPUT_MAPPING_POINTS)
+    expected_required_probes = list(REQUIRED_PROBES)
+    expected_required_transports = sorted(VALID_TRANSPORTS)
+    errors = document.get("errors")
+    recomputed_errors = expected_document.get("errors")
+    retained_matches_recomputed = document == expected_document
+    passed = (
+        retained_matches_recomputed
+        and expected_document.get("schema_version") == SCHEMA_VERSION
+        and expected_document.get("kind") == EVIDENCE_GATE_KIND
+        and expected_document.get("status") == "complete"
+        and isinstance(recomputed_errors, list)
+        and len(recomputed_errors) == 0
+        and document.get("schema_version") == SCHEMA_VERSION
+        and document.get("kind") == EVIDENCE_GATE_KIND
+        and document.get("status") == "complete"
+        and required.issubset(physical)
+        and required.issubset(virtual)
+        and document.get("required_display_kinds") == ["physical", "virtual"]
+        and document.get("required_host_rotations") == REQUIRED_HOST_ROTATIONS
+        and document.get("required_input_mapping_points")
+        == expected_required_input_mapping_points
+        and document.get("required_transports") == expected_required_transports
+        and document.get("required_device_fields") == expected_required_device_fields
+        and document.get("required_host_preflight_fields")
+        == expected_required_host_preflight_fields
+        and document.get("required_evidence_source") == EXPECTED_EVIDENCE_SOURCE
+        and document.get("required_probes") == expected_required_probes
+        and document.get("required_artifacts") == expected_required_artifacts
+        and document.get("artifact_file_check") is True
+        and isinstance(errors, list)
+        and len(errors) == 0
+    )
+    return _check(
+        passed,
+        "formal host-display rotation evidence gate output is retained, reproducible, and complete",
+        evidence=[str(evidence_path), str(evidence_gate_path)],
+        blocking=True,
+    ) | {
+        "status": document.get("status"),
+        "recomputed_status": expected_document.get("status"),
+        "retained_matches_recomputed": retained_matches_recomputed,
+        "covered_host_rotations_by_display_kind": document.get(
+            "covered_host_rotations_by_display_kind"
+        ),
+    }
+
+
+def _gate_checks(
+    manifest: dict[str, Any], evidence_gate: dict[str, Any]
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     gates = manifest.get("gates") if isinstance(manifest.get("gates"), dict) else {}
     supporting: dict[str, dict[str, Any]] = {}
     formal: dict[str, dict[str, Any]] = {}
@@ -303,17 +400,21 @@ def _gate_checks(manifest: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], d
         record = gates.get(name) if isinstance(gates.get(name), dict) else {}
         covered = record.get("covered_host_rotations", [])
         required = record.get("required_host_rotations", REQUIRED_HOST_ROTATIONS)
-        if isinstance(covered, list):
-            covered_set = {rotation for rotation in covered if isinstance(rotation, int) and not isinstance(rotation, bool)}
-        else:
-            covered_set = set()
-        if isinstance(required, list):
-            required_set = {rotation for rotation in required if isinstance(rotation, int) and not isinstance(rotation, bool)}
-        else:
-            required_set = set(REQUIRED_HOST_ROTATIONS)
-        rotations_passed = set(REQUIRED_HOST_ROTATIONS).issubset(covered_set) and required_set == set(REQUIRED_HOST_ROTATIONS)
+        covered_set = _coverage_set(covered)
+        required_set = (
+            _coverage_set(required)
+            if isinstance(required, list)
+            else set(REQUIRED_HOST_ROTATIONS)
+        )
+        rotations_passed = (
+            set(REQUIRED_HOST_ROTATIONS).issubset(covered_set)
+            and required_set == set(REQUIRED_HOST_ROTATIONS)
+        )
         formal[name] = _check(
-            _status_pass(record.get("status")) and rotations_passed and _evidence_present(record),
+            _status_pass(record.get("status"))
+            and rotations_passed
+            and _evidence_present(record)
+            and evidence_gate.get("passed") is True,
             requirement,
             evidence=_string_list(record.get("evidence")),
             blocking=True,
@@ -364,11 +465,17 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
     metadata = _metadata_checks(manifest, manifest_path)
     device = _device_checks(manifest)
     host_preflight = _host_preflight_checks(manifest)
-    supporting, formal = _gate_checks(manifest)
+    evidence_gate = _evidence_gate_check(manifest_path)
+    supporting, formal = _gate_checks(manifest, evidence_gate)
     substitutions = _substitution_checks(manifest)
 
     invalid_substitution = any(not item["passed"] for item in substitutions.values())
-    blocking_groups = {**device, **host_preflight, **formal}
+    blocking_groups = {
+        **device,
+        **host_preflight,
+        "host_display_rotation_evidence_gate": evidence_gate,
+        **formal,
+    }
     metadata_missing = [name for name, item in metadata.items() if not item["passed"]]
     blocking_missing = [name for name, item in blocking_groups.items() if not item["passed"]]
     supporting_missing = [name for name, item in supporting.items() if not item["passed"]]
@@ -407,6 +514,7 @@ def derive_gate(manifest_path: Path) -> dict[str, Any]:
             "device": device,
             "host_preflight": host_preflight,
             "supporting_client_local_gate": supporting,
+            "host_display_rotation_evidence_gate": evidence_gate,
             "formal_host_display_rotation_gates": formal,
             "evidence_substitution": substitutions,
         },

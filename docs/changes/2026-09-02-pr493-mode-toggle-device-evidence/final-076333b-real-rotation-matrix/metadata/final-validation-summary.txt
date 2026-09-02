@@ -1,0 +1,23 @@
+Final PR493 device matrix validation
+APK SHA-256: 076333b301475dfe3d949eab3c80f626053f3b68e95e500c4a8911ad669d4a87
+AndroidTest APK SHA-256: 0f2c36d433dc855f3b8b1407ba984887894f90025954963eded29d8aa66536b9
+Device: {'manufacturer': 'nubia', 'model': 'P0110', 'codename': 'pacific', 'android_release': '16', 'sdk': '36', 'adb_serial': '<redacted-adb-serial>'}
+Device identity evidence: metadata/device-identity.txt
+Instrumentation p0110 landscape large-text layout: PASS
+Scenarios:
+- phone-portrait-day-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=False
+- phone-portrait-night-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=False
+- phone-portrait-day-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-portrait-night-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-day-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-night-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-day-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-night-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+XML status counts: {'present': 2, 'unavailable': 6}
+XML evidence scope: semantic_minimum_only_not_stable_state
+XML semantic coverage: PASS
+Restored: {'font_scale_1_0': True, 'night_no': True, 'rotation_0': True, 'accelerometer_rotation_0': True, 'no_override_size': True, 'packages_stopped': True}
+Restored gate: PASS after Android-only cleanup reverification.
+Post-restore package stop: reverified in `20260902-continued-cleanup.pidof-after-force-stop.txt`; pidof output for dev.telemachus.display and dev.telemachus.display.test is empty after force-stop. `20260902-continued-cleanup.adb-reverse-before.txt` and `20260902-continued-cleanup.adb-reverse-after.txt` show adb reverse state was read and remained empty; no reverse entry was created or modified.
+Metadata rebuilt offline from existing screenshots/state/XML/install logs, the recorded app APK SHA-256, and the locally computed androidTest APK SHA-256; no device recapture and no ADB command was run for this rebuild.
+Cleanup recheck used Android-only adb state queries and force-stop, with no Host, GUI, product binary, swift run, Host self-test, loopback, E2E, TCC/Keychain/System Settings change, install, replacement, signing, or adb reverse mutation.

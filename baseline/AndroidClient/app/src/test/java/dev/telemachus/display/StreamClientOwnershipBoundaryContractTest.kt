@@ -129,6 +129,7 @@ class StreamClientOwnershipBoundaryContractTest {
         val phaseZeroTech = repositorySource(PHASE_ZERO_TECH)
 
         val phaseZeroStatus = readme.normalizedWhitespace()
+        val phaseZeroTechStatus = phaseZeroTech.normalizedWhitespace()
         listOf(
             "standalone JVM transport",
             "local product-session lifecycle state",
@@ -142,18 +143,22 @@ class StreamClientOwnershipBoundaryContractTest {
         ).forEach { phrase ->
             assertTrue("README Phase 0 status missing current-base ownership phrase `$phrase`", phaseZeroStatus.contains(phrase))
         }
-        assertTrue(readme.normalizedWhitespace().contains("broader protocol/session ownership"))
+        assertTrue(phaseZeroStatus.contains("`MainActivity` hands renderer viewport/layout/render-target readiness/admission"))
+        assertTrue(phaseZeroStatus.contains("`RendererOwner` and `RendererViewportState`"))
+        assertTrue(readme.normalizedWhitespace().contains("remaining decoder platform-adapter/device-evidence slice"))
         assertTrue(readme.normalizedWhitespace().contains("WakeHost real sleeping-Mac"))
         assertTrue(audit.contains("#259"))
         assertTrue(audit.contains("current-base owner gate"))
         assertTrue(audit.contains("Module extraction draft PRs [#211]"))
         assertTrue(audit.contains("superseded by [#259]"))
-        assertTrue(audit.contains("Remaining module gaps include broader protocol/session"))
-        assertTrue(phaseZeroTech.contains("The WakeHost product"))
-        assertTrue(phaseZeroTech.contains("owner now owns request lifecycle"))
-        assertTrue(phaseZeroTech.contains("sleeping-Mac wake, router/NIC WOL behavior"))
-        assertTrue(phaseZeroTech.contains("`FileTransferProductOwner` owns the Android file-transfer product"))
-        assertTrue(phaseZeroTech.contains("`RendererOwner` gates viewport/layout/render target/frame"))
+        assertTrue(audit.contains("Remaining module gaps are the decoder platform-adapter/device-evidence"))
+        assertTrue(phaseZeroTechStatus.contains("The WakeHost product"))
+        assertTrue(phaseZeroTechStatus.contains("owner now owns request lifecycle"))
+        assertTrue(phaseZeroTechStatus.contains("sleeping-Mac wake, router/NIC WOL behavior"))
+        assertTrue(phaseZeroTechStatus.contains("`FileTransferProductOwner` owns the Android file-transfer product"))
+        assertTrue(phaseZeroTechStatus.contains("`RendererOwner` gates viewport/layout, render-target"))
+        assertTrue(phaseZeroTechStatus.contains("render-target readiness actions, and local/Internet frame admission"))
+        assertTrue(phaseZeroTechStatus.contains("must flow through `DecoderPresentationOwner`/`RendererOwner`"))
     }
 
     private fun source(relativePath: String): String {

@@ -42,6 +42,9 @@ internal class RendererOwner(
     val currentDecoderPresentation: RendererDecoderPresentation?
         get() = synchronized(lock) { decoderPresentation }
 
+    val currentLayout: ViewportPolicy.Layout?
+        get() = synchronized(lock) { viewportState.currentLayout }
+
     fun updateDisplayGeometry(geometry: RendererDisplayGeometry) {
         synchronized(lock) {
             displayGeometry = geometry
@@ -66,6 +69,53 @@ internal class RendererOwner(
             viewportState.updateRenderRotation()
             viewportState.currentLayout
         }
+
+    fun mapTouchPoint(
+        x: Float,
+        y: Float,
+        viewWidth: Int,
+        viewHeight: Int,
+    ): TouchMapper.Point {
+        val geometry = synchronized(lock) { displayGeometry }
+        return TouchMapper.map(
+            x = x,
+            y = y,
+            viewWidth = viewWidth,
+            viewHeight = viewHeight,
+            videoWidth = geometry?.width ?: 0,
+            videoHeight = geometry?.height ?: 0,
+            scaleMode = viewportState.scaleModeSnapshot(),
+            renderRotation =
+                ViewportPolicy.surfaceTransformRotation(
+                    viewportState.renderRotationSnapshot(),
+                ),
+        )
+    }
+
+    fun rotationPolicy(): RendererRotationPolicy {
+        val hostRotation = synchronized(lock) { displayGeometry?.rotation ?: 0 }
+        return rotationPolicy(
+            hostRotation = hostRotation,
+            clientRotation = viewportState.renderRotationSnapshot(),
+        )
+    }
+
+    fun rotationPolicy(hostRotation: Int): RendererRotationPolicy {
+        val clientRotation = synchronized(lock) { viewportState.renderRotationSnapshot() }
+        return rotationPolicy(hostRotation, clientRotation)
+    }
+
+    private fun rotationPolicy(
+        hostRotation: Int,
+        clientRotation: ClientRotation,
+    ): RendererRotationPolicy {
+        val effectiveRotation = ViewportPolicy.effectiveRotation(hostRotation, clientRotation)
+        return RendererRotationPolicy(
+            effectiveRotation = effectiveRotation,
+            screenOrientation = ViewportPolicy.screenOrientationFor(effectiveRotation),
+            surfaceRotation = ViewportPolicy.surfaceTransformRotation(clientRotation),
+        )
+    }
 
     fun publishRenderTarget(target: Any): RendererRenderTargetSnapshot =
         synchronized(lock) {
@@ -97,6 +147,33 @@ internal class RendererOwner(
         target: Any,
         generation: Long,
     ): Boolean = synchronized(lock) { renderTarget === target && renderTargetGeneration == generation }
+
+    fun renderTargetReadyAction(readiness: RendererRenderTargetReadiness): RendererRenderTargetReadyAction =
+        synchronized(lock) {
+            if (renderTarget == null || readiness.decoderConfigured) {
+                return@synchronized RendererRenderTargetReadyAction.NONE
+            }
+            when (readiness.flow) {
+                RendererRenderTargetFlow.INTERNET ->
+                    when {
+                        readiness.internetConfigurationPending -> {
+                            RendererRenderTargetReadyAction.RETRY_PENDING_INTERNET_CONFIGURATION
+                        }
+                        readiness.internetConfigurationAvailable && displayGeometry.isUsableForDecoderConfiguration -> {
+                            RendererRenderTargetReadyAction.CONFIGURE_INTERNET_DECODER
+                        }
+                        else -> RendererRenderTargetReadyAction.NONE
+                    }
+                RendererRenderTargetFlow.LOCAL ->
+                    when {
+                        readiness.localConfigurationPending -> {
+                            RendererRenderTargetReadyAction.RETRY_PENDING_LOCAL_CONFIGURATION
+                        }
+                        readiness.localConfigurationAvailable -> RendererRenderTargetReadyAction.CONFIGURE_LOCAL_DECODER
+                        else -> RendererRenderTargetReadyAction.NONE
+                    }
+            }
+        }
 
     fun commitDecoderPresentation(presentation: RendererDecoderPresentation): Boolean =
         synchronized(lock) {
@@ -170,6 +247,34 @@ internal enum class RendererFrameDropReason {
     DECODER_UNAVAILABLE,
 }
 
+internal enum class RendererRenderTargetFlow {
+    LOCAL,
+    INTERNET,
+}
+
+internal data class RendererRenderTargetReadiness(
+    val flow: RendererRenderTargetFlow,
+    val decoderConfigured: Boolean,
+    val localConfigurationPending: Boolean,
+    val localConfigurationAvailable: Boolean,
+    val internetConfigurationPending: Boolean,
+    val internetConfigurationAvailable: Boolean,
+)
+
+internal data class RendererRotationPolicy(
+    val effectiveRotation: Int,
+    val screenOrientation: Int,
+    val surfaceRotation: Int,
+)
+
+internal enum class RendererRenderTargetReadyAction {
+    NONE,
+    RETRY_PENDING_LOCAL_CONFIGURATION,
+    CONFIGURE_LOCAL_DECODER,
+    RETRY_PENDING_INTERNET_CONFIGURATION,
+    CONFIGURE_INTERNET_DECODER,
+}
+
 internal val RendererFrameDropReason.logToken: String
     get() =
         when (this) {
@@ -185,6 +290,9 @@ internal data class RendererDisplayGeometry(
     val height: Int,
     val rotation: Int,
 )
+
+private val RendererDisplayGeometry?.isUsableForDecoderConfiguration: Boolean
+    get() = this != null && width > 0 && height > 0
 
 internal data class RendererRenderTargetSnapshot(
     val generation: Long,

@@ -56,6 +56,50 @@ class MacOSDevHostMetadataTests(unittest.TestCase):
         self.assertIn("command unavailable", output)
         self.assertIn("vibe-screen-tool", output)
 
+    def test_current_source_contract_errors_require_permission_fix_and_static_prompt_contract(self) -> None:
+        source_root = Path("repo")
+        calls: list[tuple[tuple[str, ...], Path | None]] = []
+
+        def fake_run(
+            *command: str,
+            timeout_seconds: int | None = None,
+            cwd: Path | None = None,
+        ) -> tuple[int, str]:
+            del timeout_seconds
+            calls.append((command, cwd))
+            if command == (
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                macos_dev_host.REQUIRED_PERMISSION_CONTRACT_COMMIT,
+                "HEAD",
+            ):
+                return 1, "not ancestor"
+            if command == macos_dev_host.PERMISSION_PROMPT_CONTRACT_COMMAND:
+                return 1, "forbidden prompt API"
+            raise AssertionError(command)
+
+        with mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run):
+            errors = macos_dev_host.current_source_contract_errors(source_root)
+
+        joined = "\n".join(errors)
+        self.assertIn("required macOS permission prompt contract commit", joined)
+        self.assertIn("permission prompt contract failed", joined)
+        self.assertEqual(calls[0][1], source_root)
+        self.assertEqual(calls[1][1], source_root)
+
+    def test_current_source_identity_fails_closed_when_static_contract_fails(self) -> None:
+        with (
+            mock.patch.object(macos_dev_host.package_macos, "collect_source_identity", return_value=source_identity()),
+            mock.patch.object(
+                macos_dev_host,
+                "current_source_contract_errors",
+                return_value=["macOS permission prompt contract failed before Host use"],
+            ),
+        ):
+            with self.assertRaisesRegex(SystemExit, "permission prompt contract failed"):
+                macos_dev_host.current_source_identity(Path("repo"))
+
     def test_codesign_detail_parser_records_stable_identity_fields(self) -> None:
         fields = macos_dev_host.parse_codesign_details(
             """
@@ -88,15 +132,12 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             "9AAE572BF6D764E3436A6109197D345B5A87998C",
         )
 
-    def test_designated_requirement_parser_accepts_root_certificate_hash(self) -> None:
+    def test_designated_requirement_parser_rejects_root_certificate_hash_as_leaf(self) -> None:
         requirement = macos_dev_host.parse_designated_requirement(
             'designated => identifier "dev.telemachus.display" and certificate root = H"9aae572bf6d764e3436a6109197d345b5a87998c"\n'
         )
 
-        self.assertEqual(
-            macos_dev_host.parse_leaf_certificate_hash(requirement),
-            "9AAE572BF6D764E3436A6109197D345B5A87998C",
-        )
+        self.assertIsNone(macos_dev_host.parse_leaf_certificate_hash(requirement))
 
     def test_validate_preflight_rejects_wrong_root_certificate_hash(self) -> None:
         metadata = self.metadata()
@@ -148,10 +189,10 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
         )
 
-        self.assertIn(
-            "Host signing leaf SHA-1 is 'B55280E7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'",
-            "\n".join(errors),
-        )
+        joined = "\n".join(errors)
+        self.assertIn("Host designated requirement is not canonical", joined)
+        self.assertIn("unsupported clause", joined)
+        self.assertIn("Host signing leaf SHA-1 is 'missing'", joined)
 
     def test_validate_preflight_rejects_malformed_certificate_requirement(self) -> None:
         metadata = self.metadata()
@@ -453,6 +494,78 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Host signing leaf SHA-1", "\n".join(errors))
         self.assertIn(macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1, "\n".join(errors))
 
+    def test_validate_preflight_rejects_non_canonical_designated_requirement_contract(self) -> None:
+        expected = macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1
+        scenarios = (
+            (
+                "root-only",
+                f'identifier "dev.telemachus.display" and certificate root = H"{expected}"',
+                None,
+                "unsupported clause",
+            ),
+            (
+                "intermediate-only",
+                f'identifier "dev.telemachus.display" and certificate 1 = H"{expected}"',
+                None,
+                "unsupported clause",
+            ),
+            (
+                "missing identifier",
+                f'certificate leaf = H"{expected}"',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "wrong identifier",
+                f'identifier "com.example.OtherHost" and certificate leaf = H"{expected}"',
+                expected,
+                "expected 'dev.telemachus.display'",
+            ),
+            (
+                "extra-or",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" or anchor trusted',
+                expected,
+                "must not contain OR",
+            ),
+            (
+                "extra-clause",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and anchor trusted',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "leaf-plus-root",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and certificate root = H"{expected}"',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+            (
+                "custom-requirement",
+                f'identifier "dev.telemachus.display" and certificate leaf = H"{expected}" and cdhash H"14d6c458c817f38dfdf7cc1d31bfdcb1e8e11fa7"',
+                expected,
+                "exactly identifier and certificate leaf",
+            ),
+        )
+        for label, requirement, leaf_hash, expected_error in scenarios:
+            with self.subTest(label=label):
+                errors = macos_dev_host.validate_preflight(
+                    self.metadata(
+                        designated_requirement=requirement,
+                        leaf_certificate_hash=leaf_hash,
+                    ),
+                    macos_dev_host.PermissionStatus(
+                        database_path=Path(PRIVACY_DB_FILENAME),
+                        readable=True,
+                        rows=allowed_tcc_rows(),
+                    ),
+                    install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                    expected_sign_identity="Vibe Screen Dev",
+                )
+
+                joined = "\n".join(errors)
+                self.assertIn("Host designated requirement is not canonical", joined)
+                self.assertRegex(joined, expected_error)
+
     def test_validate_preflight_accepts_pinned_sha1_config_without_name_match(self) -> None:
         errors = macos_dev_host.validate_preflight(
             self.metadata(authorities=("Vibe Screen Dev Renamed",)),
@@ -503,7 +616,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertIn("source repository is dirty", "\n".join(errors))
 
-    def test_validate_preflight_allows_historical_source_mismatch_escape_hatch(self) -> None:
+    def test_validate_preflight_rejects_historical_source_mismatch_escape_hatch(self) -> None:
         errors = macos_dev_host.validate_preflight(
             self.metadata(source_commit="c" * 40, source_dirty=True),
             macos_dev_host.PermissionStatus(
@@ -520,7 +633,10 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             allow_source_mismatch=True,
         )
 
-        self.assertEqual(errors, [])
+        joined = "\n".join(errors)
+        self.assertIn("source repository is dirty", joined)
+        self.assertIn("packaged from a dirty source tree", joined)
+        self.assertIn("source provenance does not match", joined)
 
     def test_installable_host_bundle_accepts_current_clean_pinned_leaf_bundle(self) -> None:
         errors = macos_dev_host.validate_installable_host_bundle(
@@ -595,6 +711,16 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                 "missing designated requirement",
                 self.metadata(designated_requirement="", leaf_certificate_hash=None),
                 "codesign designated requirement is missing",
+            ),
+            (
+                "root-only canonical bypass attempt",
+                self.metadata(
+                    designated_requirement=(
+                        f'identifier "dev.telemachus.display" and certificate root = H"{macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1}"'
+                    ),
+                    leaf_certificate_hash=None,
+                ),
+                "Host designated requirement is not canonical",
             ),
         )
         for label, metadata, expected in scenarios:
@@ -683,6 +809,40 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             self.assertEqual(result, 2)
             self.assertIn("Accessibility is not authorized", report.read_text(encoding="utf-8"))
             self.assertIn("macOS Host preflight failed", stderr.getvalue())
+
+    def test_preflight_command_refuses_source_mismatch_flag_before_inspection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path(PRIVACY_DB_FILENAME),
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=True,
+            )
+            with (
+                mock.patch.object(macos_dev_host.package_macos, "resolve_sign_identity") as resolve_mock,
+                mock.patch.object(macos_dev_host, "collect_signing_metadata") as metadata_mock,
+                mock.patch.object(macos_dev_host, "current_source_identity") as source_mock,
+                mock.patch.object(
+                    macos_dev_host,
+                    "query_tcc_rows",
+                    side_effect=AssertionError("preflight must not inspect TCC after forbidden source mismatch flag"),
+                ),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.preflight_command(args)
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertEqual(result, 2)
+            self.assertIn("Legacy source mismatch flag requested: True", report_text)
+            self.assertIn("Source mismatch bypass active: False", report_text)
+            self.assertIn("preflight refuses --allow-source-mismatch", report_text)
+        resolve_mock.assert_not_called()
+        metadata_mock.assert_not_called()
+        source_mock.assert_not_called()
 
     def test_preflight_command_records_missing_configured_identity_in_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -802,6 +962,60 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_called_once_with(macos_dev_host.DEFAULT_INSTALL_PATH)
         tcc_mock.assert_not_called()
 
+    def test_launch_command_fails_closed_without_opening_when_preflight_fails(self) -> None:
+        args = mock.Mock(install_path=macos_dev_host.DEFAULT_INSTALL_PATH)
+        with (
+            mock.patch.object(macos_dev_host, "preflight_command", return_value=2) as preflight_mock,
+            mock.patch.object(macos_dev_host, "run") as run_mock,
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
+        ):
+            result = macos_dev_host.launch_command(args)
+
+        self.assertEqual(result, 2)
+        preflight_mock.assert_called_once_with(args)
+        run_mock.assert_not_called()
+
+    def test_launch_command_opens_installed_app_after_preflight_passes(self) -> None:
+        args = mock.Mock(install_path=macos_dev_host.DEFAULT_INSTALL_PATH)
+        with (
+            mock.patch.object(macos_dev_host, "preflight_command", return_value=0),
+            mock.patch.object(macos_dev_host, "run", return_value="") as run_mock,
+            redirect_stdout(StringIO()) as stdout,
+        ):
+            result = macos_dev_host.launch_command(args)
+
+        self.assertEqual(result, 0)
+        run_mock.assert_called_once_with("/usr/bin/open", str(macos_dev_host.DEFAULT_INSTALL_PATH))
+        self.assertIn("Launched", stdout.getvalue())
+
+    def test_launch_command_refuses_nonstandard_path(self) -> None:
+        args = mock.Mock(install_path=Path("/tmp/Vibe Screen.app"))
+
+        with self.assertRaisesRegex(SystemExit, "refusing nonstandard launch path"):
+            macos_dev_host.launch_command(args)
+
+    def test_launch_command_refuses_source_mismatch_flag_without_preflight_or_open(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                report=report,
+                allow_source_mismatch=True,
+            )
+            with (
+                mock.patch.object(macos_dev_host, "preflight_command") as preflight_mock,
+                mock.patch.object(macos_dev_host, "run") as run_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.launch_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("launch refuses --allow-source-mismatch", report.read_text(encoding="utf-8"))
+        preflight_mock.assert_not_called()
+        run_mock.assert_not_called()
+
     def test_xctest_preflight_passes_with_full_xcode_tools(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = Path(temporary_directory) / "xctest-toolchain.txt"
@@ -872,6 +1086,13 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertEqual(args.command, "xctest-preflight")
         self.assertEqual(args.report, macos_dev_host.DEFAULT_XCTEST_PREFLIGHT_REPORT)
+
+    def test_parse_args_accepts_launch_command(self) -> None:
+        with mock.patch.object(sys, "argv", ["macos_dev_host.py", "launch"]):
+            args = macos_dev_host.parse_args()
+
+        self.assertEqual(args.command, "launch")
+        self.assertEqual(args.install_path, macos_dev_host.DEFAULT_INSTALL_PATH)
 
     def test_parse_args_defaults_readiness_to_skip_login_item_probe(self) -> None:
         with mock.patch.object(sys, "argv", ["macos_dev_host.py", "readiness"]):
@@ -1137,6 +1358,38 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
             self.assertEqual(result, 2)
             self.assertIn("source repository is dirty", report.read_text(encoding="utf-8"))
+            self.assertIn("failed before replacing", stderr.getvalue())
+        package_mock.assert_not_called()
+        replace_mock.assert_not_called()
+
+    def test_install_command_blocks_permission_contract_failure_before_packaging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = Path(temporary_directory) / "report.txt"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                output_dir=Path("out"),
+                sign_identity="Vibe Screen Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
+                report=report,
+                source_root=Path("."),
+                allow_source_mismatch=False,
+            )
+            with (
+                mock.patch.object(
+                    macos_dev_host,
+                    "current_source_identity",
+                    side_effect=SystemExit("macOS permission prompt contract failed before Host use"),
+                ),
+                mock.patch.object(macos_dev_host, "package_dev_app") as package_mock,
+                mock.patch.object(macos_dev_host, "safe_replace_app") as replace_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()) as stderr,
+            ):
+                result = macos_dev_host.install_command(args)
+
+            self.assertEqual(result, 2)
+            report_text = report.read_text(encoding="utf-8")
+            self.assertIn("permission prompt contract failed", report_text)
             self.assertIn("failed before replacing", stderr.getvalue())
         package_mock.assert_not_called()
         replace_mock.assert_not_called()
@@ -2159,6 +2412,54 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             login_probe.assert_not_called()
             run_best_effort_mock.assert_not_called()
 
+    def test_readiness_command_refuses_source_mismatch_flag_without_host_or_system_probes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            report = root / "host-signing-and-permissions.txt"
+            json_output = root / "host-readiness.json"
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=TEST_PRIVACY_DATABASE,
+                report=report,
+                json_output=json_output,
+                source_root=Path("."),
+                allow_source_mismatch=True,
+                port=54321,
+                probe_login_item=False,
+            )
+
+            with (
+                mock.patch.object(macos_dev_host, "inspect_host_without_throwing") as inspection_mock,
+                mock.patch.object(macos_dev_host, "inspect_listener") as listener_mock,
+                mock.patch.object(macos_dev_host, "inspect_entitlements") as entitlements_mock,
+                mock.patch.object(macos_dev_host, "read_startup_settings") as settings_mock,
+                mock.patch.object(macos_dev_host, "read_display_readiness") as display_mock,
+                mock.patch.object(macos_dev_host, "summarize_host_log") as log_mock,
+                mock.patch.object(macos_dev_host, "read_login_item_readiness") as login_mock,
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            self.assertEqual(result, 2)
+            report_text = report.read_text(encoding="utf-8")
+            document = json.loads(json_output.read_text(encoding="utf-8"))
+            self.assertIn("readiness refuses --allow-source-mismatch", report_text)
+            self.assertIn("readiness refuses --allow-source-mismatch", "\n".join(document["blockers"]))
+            self.assertFalse(document["can_close_runtime_gates"])
+            self.assertEqual(document["login_headless"]["status"], "blocked")
+            self.assertEqual(document["login_headless"]["login_item"]["state"], "unverified")
+            self.assertFalse(document["login_headless"]["login_item"]["sfltool_dumpbtm_was_run"])
+            self.assertIn("not inspected", document["login_headless"]["startup_settings"]["error"])
+        inspection_mock.assert_not_called()
+        listener_mock.assert_not_called()
+        entitlements_mock.assert_not_called()
+        settings_mock.assert_not_called()
+        display_mock.assert_not_called()
+        log_mock.assert_not_called()
+        login_mock.assert_not_called()
+
     def test_readiness_command_login_item_diagnostic_is_explicit_opt_in_with_ready_host(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -2473,6 +2774,34 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertEqual(inspection.permissions.error, "Host bundle signing was not inspected")
         self.assertIn("missing identity", "\n".join(inspection.errors))
         self.assertIn("Host bundle not found", "\n".join(inspection.errors))
+
+    def test_inspect_host_without_throwing_records_source_contract_failure(self) -> None:
+        with (
+            mock.patch.object(macos_dev_host.package_macos, "resolve_sign_identity", return_value=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1),
+            mock.patch.object(
+                macos_dev_host,
+                "current_source_identity",
+                side_effect=SystemExit("current source HEAD does not contain required macOS permission prompt contract commit"),
+            ),
+            mock.patch.object(macos_dev_host, "collect_signing_metadata", return_value=self.metadata()),
+            mock.patch.object(
+                macos_dev_host,
+                "query_tcc_rows",
+                return_value=macos_dev_host.PermissionStatus(
+                    database_path=Path(PRIVACY_DB_FILENAME),
+                    readable=True,
+                    rows=allowed_tcc_rows(),
+                ),
+            ),
+        ):
+            inspection = macos_dev_host.inspect_host_without_throwing(
+                macos_dev_host.DEFAULT_INSTALL_PATH,
+                Path(PRIVACY_DB_FILENAME),
+                expected_sign_identity="Vibe Screen Dev",
+                source_root=Path("."),
+            )
+
+        self.assertIn("required macOS permission prompt contract commit", "\n".join(inspection.errors))
 
     def test_inspect_host_without_throwing_accepts_name_resolving_to_pinned_sha1(self) -> None:
         source_identity = macos_dev_host.package_macos.SourceIdentity(

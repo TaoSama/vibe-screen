@@ -46,6 +46,7 @@ type CreateSessionRequest struct {
 	HostDeviceID   string
 	ClientDeviceID string
 	SessionEpoch   uint64
+	SessionProfile *SessionProfileRequest
 }
 
 type StoreStats struct {

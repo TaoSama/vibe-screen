@@ -11,9 +11,10 @@ WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
 multi-instance operation is not proved, no authoritative production usage
-exporter or live active-allocation disconnect executor is deployed, Mac/Android
-automatic invocation of Authority profile issuance is not wired, the bundled coturn
-deployment does not run a production-scheduled usage exporter/reconciliation
+exporter or live active-allocation disconnect executor is deployed, macOS
+Authority-backed session-profile request and refresh are wired only as a local
+control-plane path, Android UI import/bootstrap/handoff remain unproved, the
+bundled coturn deployment does not run a production-scheduled usage exporter/reconciliation
 worker or concrete data-plane disconnect executor, and no integrated
 implementation has run on a public host in this environment. The repository now
 contains a current-base local operator slice for those boundaries, but it
@@ -103,7 +104,7 @@ the recovery point and ledger invariants are verified.
 
 The supplied production profile runs one Authority process. It does not prove
 multi-process Authority operation, public ingress, NTP monitoring, database
-backup automation, Mac/Android automatic profile issuance, production coturn
+backup automation, Android UI profile import/bootstrap/handoff, production coturn
 exporter/disconnect wiring, or
 active disconnection after revocation.
 
@@ -239,9 +240,10 @@ admission-boundary compatibility input: it must be present and bounded, but the
 issuer rewrites it to the local bounded TTL before signing, so input JSON cannot
 choose the accepted expiry.
 
-This manual issuer is an operator bridge for unsigned Authority leases. It does
-not close the Mac/Android automatic profile issuance gate or prove Android UI,
-public Internet, or real media transport.
+This manual issuer is an operator bridge for unsigned Authority leases. The
+macOS host now also has a local Authority-backed request and refresh path, but
+neither path closes Android UI import/bootstrap/handoff, public Internet, or
+real media transport gates.
 
 Both input and output contain the signaling token and possibly TURN credentials.
 Keep them in an owner-only temporary directory, never pass them as command-line
@@ -477,9 +479,10 @@ session creation, offer/poll exchange, device revocation rejecting both role
 tokens, and log redaction). The following remain open and must not be treated as
 shipped:
 
-- Mac and Android automatic invocation of Authority session-profile issuance is
-  not wired; local flows still require an operator to request the profile, pass
-  the unsigned lease through the Mac signer, and import the signed lease.
+- macOS Authority-backed session-profile request allocation, invocation, and
+  fresh-session refresh are wired for local/offline control-plane use. Android
+  UI profile import, first lease bootstrap, device handoff, and public-network
+  E2E remain open.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a profile or
   signaling admission can be created.
@@ -493,13 +496,19 @@ shipped:
   durable high-water mark are both enforced, but product-side reconciliation and
   recovery for mismatched floors remain open.
 - PostgreSQL durable signaling routing is implemented, including cross-instance
-  message delivery and connection-scoped long-poll waiter leases that can be
-  reclaimed after a failed instance loses its database backend. Global
-  create-rate enforcement, throughput under multiple replicas, production
-  load-balancer behavior, and multi-region consistency remain unproved.
+  message delivery, connection-scoped long-poll waiter leases that can be
+  reclaimed after a failed instance loses its database backend, shared
+  per-device/action session-create rate rows for production-authority creates
+  after Authority admission, and one shared `local_development` bucket for local
+  creates. Create-rate rows are removed after two minutes of idle time based on
+  `refilled_at`. Throughput under multiple replicas, production load-balancer
+  behavior, and multi-region consistency remain unproved.
 - Per-message remote authority authorization and the global PostgreSQL advisory-lock
   create serialization are fail-closed correctness choices, not a
-  high-throughput design.
+  high-throughput design. Create transactions take that lock before opening a
+  serializable transaction, and cleanup paths that delete session or create-rate
+  rows use the same lock to avoid repeated serialization failures under
+  concurrent creates.
 - Signaling and authority require NTP clock synchronization. Authority startup
   and `/readyz` compare PostgreSQL `clock_timestamp()` with the application
   clock and fail closed when the configured conservative skew bound cannot be

@@ -1,0 +1,17 @@
+## codex/controller-contract-salvage...origin/main [ahead 247, behind 66]
+M  contracts/README.md
+M  contracts/fixtures/messages/v1/README.md
+A  contracts/fixtures/messages/v1/bin/controller_connected.binpb
+A  contracts/fixtures/messages/v1/bin/controller_disconnected.binpb
+A  contracts/fixtures/messages/v1/bin/controller_state.binpb
+A  contracts/fixtures/messages/v1/controller_validation.json
+M  contracts/fixtures/messages/v1/generate.py
+A  contracts/fixtures/messages/v1/json/controller_connected.json
+A  contracts/fixtures/messages/v1/json/controller_disconnected.json
+A  contracts/fixtures/messages/v1/json/controller_state.json
+M  contracts/fixtures/messages/v1/manifest.json
+M  contracts/proto/vibescreen/protocol/v1/envelope.proto
+M  contracts/proto/vibescreen/protocol/v1/input.proto
+M  contracts/proto/vibescreen/protocol/v1/session.proto
+M  contracts/tests/test_protocol_fixtures.py
+M  contracts/tests/test_security_contract.py

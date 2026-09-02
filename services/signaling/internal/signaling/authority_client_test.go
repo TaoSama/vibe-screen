@@ -1,7 +1,13 @@
 package signaling
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -99,6 +105,105 @@ func TestAuthorityClientCreateSessionReplay(t *testing.T) {
 	}
 }
 
+func TestAuthorityClientCreateSessionWithSessionProfile(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Second)
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	unsignedLease := testUnsignedAndroidLease(t, profileRequest, authoritySignalingAdmission{
+		SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1", ExpiresAt: expiresAt, Created: true,
+	})
+	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode authority request: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if request.SessionProfile == nil {
+			t.Error("authority request omitted session_profile")
+			http.Error(w, "missing session_profile", http.StatusBadRequest)
+			return
+		}
+		if request.SessionProfile.PairingID != profileRequest.PairingID ||
+			request.SessionProfile.ClientIdentity.KeyID != profileRequest.ClientIdentity.KeyID {
+			t.Errorf("unexpected authority profile request: %#v", request.SessionProfile)
+			http.Error(w, "unexpected session_profile", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1",
+			ExpiresAt: expiresAt, Created: true,
+			SessionProfile: &SessionProfileResponse{
+				AccountID: "acct-1", PairingID: profileRequest.PairingID,
+				SignalingSessionID: "sess-1", HostSignalingToken: "host-token-1",
+				ExpiresAt: expiresAt, Created: true, UnsignedAndroidLease: unsignedLease,
+			},
+		})
+	})
+
+	admission, err := client.CreateSession(context.Background(), authoritySignalingRequest{
+		RequestID: "req-1", AccountID: "acct-1", HostDeviceID: "host-1",
+		ClientDeviceID: "client-1", SessionEpoch: 7, TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admission.SessionProfile == nil || string(admission.SessionProfile.UnsignedAndroidLease) != string(unsignedLease) {
+		t.Fatalf("session profile was not returned exactly: %#v", admission.SessionProfile)
+	}
+}
+
+func TestAuthorityClientRejectsMalformedSessionProfileAdmission(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Second)
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	baseAdmission := authoritySignalingAdmission{
+		SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1", ExpiresAt: expiresAt, Created: true,
+	}
+	validLease := testUnsignedAndroidLease(t, profileRequest, baseAdmission)
+	mutatedLease := func(mutate func(map[string]any)) json.RawMessage {
+		var root map[string]any
+		if err := json.Unmarshal(validLease, &root); err != nil {
+			t.Fatal(err)
+		}
+		mutate(root)
+		encoded, err := json.Marshal(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+	for name, lease := range map[string]json.RawMessage{
+		"signed-only field":  mutatedLease(func(root map[string]any) { root["lease_signature"] = "sig" }),
+		"unknown root field": mutatedLease(func(root map[string]any) { root["unexpected"] = true }),
+		"client token drift": mutatedLease(func(root map[string]any) { root["signaling_token"] = "other-client-token" }),
+		"ICE drift": mutatedLease(func(root map[string]any) {
+			root["ice_servers"] = []any{map[string]any{"urls": []any{"stun:other.example.test"}, "username": nil, "credential": nil}}
+		}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				admission := baseAdmission
+				admission.SessionProfile = &SessionProfileResponse{
+					AccountID: "acct-1", PairingID: profileRequest.PairingID,
+					SignalingSessionID: baseAdmission.SessionID, HostSignalingToken: baseAdmission.HostToken,
+					ExpiresAt: expiresAt, Created: true, UnsignedAndroidLease: lease,
+				}
+				_ = json.NewEncoder(w).Encode(admission)
+			})
+			_, err := client.CreateSession(context.Background(), authoritySignalingRequest{
+				RequestID: "req-1", AccountID: "acct-1", HostDeviceID: "host-1",
+				ClientDeviceID: "client-1", SessionEpoch: 7, TTLSeconds: 60, SessionProfile: profileRequest,
+			})
+			if !errors.Is(err, ErrAuthorityUnavailable) {
+				t.Fatalf("malformed profile admission did not fail closed: %v", err)
+			}
+		})
+	}
+}
+
 func TestAuthorityClientAuthorizeRole(t *testing.T) {
 	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/authorize") {
@@ -182,6 +287,30 @@ func TestAuthorityClientInvalidateMissingSessionIsIdempotent(t *testing.T) {
 
 	if err := client.InvalidateSession(context.Background(), "sess-1"); err != nil {
 		t.Fatalf("missing authority admission was not treated as invalidated: %v", err)
+	}
+}
+
+func TestInvalidateAuthorityAdmissionIgnoresCallerCancellation(t *testing.T) {
+	var called atomic.Int32
+	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		called.Add(1)
+		if r.Method != http.MethodDelete {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := client.InvalidateSession(canceled, "sess-1"); !errors.Is(err, ErrAuthorityUnavailable) {
+		t.Fatalf("direct invalidation with canceled context error=%v, want ErrAuthorityUnavailable", err)
+	}
+	called.Store(0)
+	if err := invalidateAuthorityAdmission(client, "sess-1"); err != nil {
+		t.Fatalf("compensating invalidation failed: %v", err)
+	}
+	if called.Load() != 1 {
+		t.Fatalf("compensating invalidation calls=%d, want 1", called.Load())
 	}
 }
 
@@ -379,4 +508,63 @@ func TestRoleFromAuthority(t *testing.T) {
 	if _, err := roleFromAuthority("peer"); !errors.Is(err, ErrAuthorityUnavailable) {
 		t.Errorf("unknown role did not fail closed: %v", err)
 	}
+}
+
+func testSessionProfileRequest(t *testing.T, hostDeviceID, clientDeviceID string) *SessionProfileRequest {
+	t.Helper()
+	hostIdentity := testPublicDeviceIdentity(t, hostDeviceID, 3)
+	clientIdentity := testPublicDeviceIdentity(t, clientDeviceID, 5)
+	return &SessionProfileRequest{
+		PairingID:         "pair-1",
+		HostIdentity:      hostIdentity,
+		ClientIdentity:    clientIdentity,
+		SignalingURL:      "https://signal.example.test",
+		TranscriptContext: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, sha256.Size)),
+		ProtocolSessionID: base64.StdEncoding.EncodeToString([]byte("protocol-session-1")),
+		ICEServers:        []LeaseICEServer{{URLs: []string{"stun:stun.example.test"}}},
+	}
+}
+
+func testPublicDeviceIdentity(t *testing.T, deviceID string, epoch uint64) PublicDeviceIdentity {
+	t.Helper()
+	privateKey, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := privateKey.PublicKey().Bytes()
+	digest := sha256.Sum256(publicKey)
+	return PublicDeviceIdentity{
+		DeviceID:           deviceID,
+		KeyID:              hex.EncodeToString(digest[:]),
+		KeyEpoch:           epoch,
+		SignatureAlgorithm: "ECDSA_P256_SHA256",
+		SigningPublicKey:   base64.RawURLEncoding.EncodeToString(publicKey),
+	}
+}
+
+func testUnsignedAndroidLease(t *testing.T, profile *SessionProfileRequest, admission authoritySignalingAdmission) json.RawMessage {
+	t.Helper()
+	root := map[string]any{
+		"version":                    1,
+		"pairing_id":                 profile.PairingID,
+		"pinned_host_id":             profile.HostIdentity.DeviceID,
+		"pinned_device_id":           profile.ClientIdentity.DeviceID,
+		"lease_device_key_id":        profile.ClientIdentity.KeyID,
+		"signaling_url":              profile.SignalingURL,
+		"signaling_session_id":       admission.SessionID,
+		"session_epoch":              uint64(7),
+		"host_identity_epoch":        profile.HostIdentity.KeyEpoch,
+		"device_identity_epoch":      profile.ClientIdentity.KeyEpoch,
+		"expires_at":                 uint64(admission.ExpiresAt.Unix()),
+		"transcript_context":         profile.TranscriptContext,
+		"protocol_session_id":        base64.StdEncoding.EncodeToString([]byte(admission.SessionID)),
+		"signaling_token":            admission.ClientToken,
+		"ice_servers":                []any{map[string]any{"urls": []string{"stun:stun.example.test"}, "username": nil, "credential": nil}},
+		"allow_insecure_for_testing": profile.AllowInsecureForTesting,
+	}
+	encoded, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }

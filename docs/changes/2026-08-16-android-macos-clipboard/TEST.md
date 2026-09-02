@@ -207,9 +207,10 @@ before it can close the gate:
   `NSPasteboard` and macOS `NSPasteboard` -> Android `ClipboardManager` with
   explicit user action, source system clipboard read, remote system clipboard
   write, Protocol v1 session ownership, exact source/destination system
-  clipboard endpoints, verified session epoch, verified origin device ID,
-  16-byte change ID, SHA-256 digest, bounded byte length, final digest match,
-  and distinct final marker matches.
+  clipboard endpoints, verified session ID and session epoch, verified origin device ID,
+  16-byte change ID, SHA-256 digest, exact `text/plain` MIME, strict UTF-8,
+  bounded byte length, receiver approval, no send/write failure, cleanup
+  completion, final digest match, and distinct final marker matches.
 
 The 2026-08-27 run confirmed the device identity as nubia P0110 / pacific /
 Android 16 / SDK 36 and reran the local Android ClipboardManager smoke on

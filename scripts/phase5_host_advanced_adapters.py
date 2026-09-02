@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 KIND = "phase5_host_advanced_adapters_readiness"
 SCHEMA = "dev.vibescreen.phase5-host-advanced-adapters-readiness/v1"
 PROTOCOL_SESSION = Path("baseline/MacHost/Sources/ProtocolV1Session.swift")
+MULTI_CLIENT_ALLOCATOR = Path("baseline/MacHost/Sources/MultiClientDisplayAllocator.swift")
 PHASE5_TECH = Path("docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md")
 PHASE5_TEST = Path("docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md")
 README = Path("README.md")
@@ -49,7 +50,7 @@ class CheckResult:
 ADAPTER_MATRIX: list[AdapterContract] = [
     AdapterContract(
         adapter_id="multi-client-display",
-        owner="MacHost ProtocolV1Session advanced resource adapter",
+        owner="MacHost MultiClientDisplayAllocator and ProtocolV1Session resource adapter",
         capabilities=["CAPABILITY_MULTI_DISPLAY", "CAPABILITY_MULTI_CLIENT"],
         minimum_interface=[
             "per-client session_id plus session_epoch ownership",
@@ -58,11 +59,11 @@ ADAPTER_MATRIX: list[AdapterContract] = [
             "bounded maximum_clients, maximum_displays, and maximum_video_streams",
         ],
         shipped_surface=(
-            "single-client multi-display Protocol v1 host path is offline/self-test covered; "
-            "multi-client host allocation is not shipped"
+            "MultiClientDisplayAllocator source and offline contracts are covered; production "
+            "MacHost remains single-client/single-stream and multi-client concurrency is not accepted"
         ),
         fail_closed_contract=[
-            "do not advertise CAPABILITY_MULTI_CLIENT until allocation is implemented",
+            "do not advertise CAPABILITY_MULTI_CLIENT from default production Host capabilities",
             "reject duplicate or over-limit display/stream bindings before capture allocation",
             "reject stale session_epoch targets without mutating the active stream",
         ],
@@ -302,8 +303,30 @@ def check_default_advanced_capabilities(capability_body: str) -> CheckResult:
     )
 
 
+def check_allocator_contract(source: str) -> CheckResult:
+    return check_required_text(
+        "multi-client-display-allocator-source-contract",
+        source,
+        [
+            "struct MultiClientSessionKey",
+            "struct MultiClientDisplayStreamBinding",
+            "enum MultiClientDisplayAllocatorError",
+            "final class MultiClientDisplayAllocator",
+            "let maximumClients: Int",
+            "let maximumStreamsPerClient: Int",
+            "func register(_ key: MultiClientSessionKey",
+            "func allocateStream(for displayID: String, in key: MultiClientSessionKey)",
+            "func bind(_ binding: MultiClientDisplayStreamBinding, to key: MultiClientSessionKey)",
+            "func rebind(streamID:",
+            "func disconnect(_ key: MultiClientSessionKey)",
+            "typealias HostMultiClientDisplayRouter = MultiClientDisplayAllocator",
+        ],
+    )
+
+
 def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[str]]:
     protocol_session = read_text(repo, PROTOCOL_SESSION)
+    allocator_source = read_text(repo, MULTI_CLIENT_ALLOCATOR)
     phase5_tech = read_text(repo, PHASE5_TECH)
     phase5_test = read_text(repo, PHASE5_TEST)
     readme = read_text(repo, README)
@@ -331,6 +354,20 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
             ["touchEnabled", ".colorManagement", ".multiDisplay", ".clientVideoControl"],
         ),
         check_default_advanced_capabilities(capability_body),
+        check_allocator_contract(allocator_source),
+        check_required_text(
+            "protocol-session-requires-shared-allocator-for-multiclient",
+            protocol_session,
+            [
+                "maximumClients > 1 && normalizedConfiguration.displayAllocator == nil",
+                "hostCapabilities.remove(.multiClient)",
+                "displayAllocator.register(sessionKey",
+                "displayAllocator.allocateStream(for:",
+                "displayAllocator.rebind(streamID:",
+                "displayAllocator.binding(streamID:",
+                "displayAllocator.disconnect(sessionKey)",
+            ],
+        ),
         check_required_text(
             "hdr-and-audio-are-explicitly-availability-gated",
             capability_body,
@@ -354,7 +391,7 @@ def validate_contracts(repo: Path = REPO_ROOT) -> tuple[list[CheckResult], list[
         check_required_text(
             "test-doc-keeps-device-gates-open",
             phase5_test,
-            ["does not advertise", ".multiClient", "does not close", "multi-client/display routing boundary"],
+            ["does not advertise", ".multiClient", "does not close", "multi-client/display allocator boundary"],
         ),
         check_required_text(
             "readme-points-to-readiness-owner",

@@ -14,6 +14,8 @@ extension StreamViewModel {
         let owner = SessionOwner(connectionOwner: connectionOwner)
         deliveryGate.reset(to: connectionOwner)
         sessionOwner = owner
+        sessionLocalManagedPolicy = policy
+        sessionManagedPolicy = policy
         connectionGeneration = generation
         controlOutbox.activate(owner: owner)
         setConnecting(true)
@@ -36,7 +38,7 @@ extension StreamViewModel {
                     deviceID: self.deviceID,
                     deviceName: UIDevice.current.name,
                     capabilities: self.advertisedCapabilities(policy: policy),
-                    codecs: [.hevc, .h264],
+                    codecs: Self.advertisedVideoCodecs,
                     resourceLimits: self.clientResourceLimits(policy: policy),
                     videoDecodeCapabilities: Self.sdrDecodeCapabilities
                 )

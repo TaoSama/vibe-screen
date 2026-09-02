@@ -44,12 +44,14 @@ protocol fixture proof. Each transfer direction in `product-e2e.json` must prove
   endpoints for that direction: `android_clipboardmanager` ->
   `macos_nspasteboard`, or `macos_nspasteboard` -> `android_clipboardmanager`.
 - `protocol_v1_session`, `system_source_clipboard_read`, `explicit_user_action`,
-  `remote_system_clipboard_write`, `session_epoch_verified`,
-  `origin_device_id_verified`, `final_sha256_match`, and `final_marker_match` are
-  all true.
+  `receiver_user_approval`, `remote_system_clipboard_write`,
+  `session_id_verified`, `session_epoch_verified`, `origin_device_id_verified`,
+  `final_sha256_match`, `final_marker_match`, `send_failure_absent`,
+  `write_failure_absent`, `cleanup_completed`, and `utf8_valid` are all true.
 - `session_epoch` is a positive integer, `change_id_hex` is the 16-byte Protocol
   v1 change ID encoded as 32 hex characters, `sha256` is a 64-character hex
-  digest, and `byte_length` is positive and no larger than 1 MiB.
+  digest, `mime_type` is exactly `text/plain`, and `byte_length` is positive and
+  no larger than 1 MiB.
 - The Android -> macOS and macOS -> Android markers are distinct, so one
   transfer, one local ClipboardManager smoke, or one synthetic protocol replay
   cannot satisfy both directions.

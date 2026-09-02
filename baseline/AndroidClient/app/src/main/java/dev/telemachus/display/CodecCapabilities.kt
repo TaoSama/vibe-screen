@@ -47,16 +47,20 @@ object CodecCapabilities {
         hasUsableDecoder(MediaFormat.MIMETYPE_VIDEO_AV1)
     }
 
+    val runtimeAdmissionSnapshot: CodecRuntimeAdmissionSnapshot
+        get() = CodecRuntimeAdmissionSnapshot(
+            hasUsableHevcDecoder = hasHevcDecoder,
+            hasUsableAv1Decoder = hasAv1Decoder,
+            av1FrameAdmissionEnabled = false,
+        )
+
     /** True when the next connection must explicitly negotiate H.264. */
     val shouldAdvertiseAvcOnly: Boolean
         get() = CodecFallbackPolicy.shouldUseH264(hasHevcDecoder)
 
     /** Snapshot used when constructing a new connection's wire offer. */
     val advertisedStreamCodecs: List<StreamCodec>
-        get() = CodecFallbackPolicy.candidates(
-            hasUsableHevcDecoder = hasHevcDecoder,
-            hasUsableAv1Decoder = hasAv1Decoder,
-        )
+        get() = CodecFallbackPolicy.candidates(runtimeAdmissionSnapshot)
 }
 
 internal fun StreamCodec.toProtocolCodecOrNull(): dev.vibescreen.protocol.v1.Codec? =

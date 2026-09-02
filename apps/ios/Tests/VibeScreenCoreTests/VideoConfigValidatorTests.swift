@@ -124,6 +124,78 @@ final class VideoConfigValidatorTests: XCTestCase {
         XCTAssertThrowsError(try validator.validate(unsupportedTransfer))
     }
 
+    func testAV1ProtocolKnownButRequiresRuntimeDecodeAdmission() throws {
+        var av1 = validVideoConfig()
+        av1.codec = .av1
+        XCTAssertNoThrow(try VideoConfigValidator.validateProtocol(av1))
+        XCTAssertThrowsError(try VideoConfigValidator(decodeCapabilities: [decodeCapability()]).validate(av1)) {
+            XCTAssertEqual($0 as? VideoConfigValidationError, .unsupportedDecodeProfile)
+        }
+
+        let hardwareOnly = VideoDecodeCapabilitySnapshot(
+            h264HardwareDecoderAvailable: true,
+            hevcHardwareDecoderAvailable: true,
+            av1HardwareDecoderAvailable: true,
+            av1DecoderImplementationAvailable: false
+        )
+        let callerRequestedAdmission = VideoDecodeCapabilitySnapshot(
+            h264HardwareDecoderAvailable: true,
+            hevcHardwareDecoderAvailable: true,
+            av1HardwareDecoderAvailable: true,
+            av1DecoderImplementationAvailable: true
+        )
+
+        XCTAssertFalse(hardwareOnly.av1StreamAdmissionAvailable)
+        XCTAssertEqual(hardwareOnly.protocolCodecs, [.hevc, .h264])
+        XCTAssertFalse(callerRequestedAdmission.av1StreamAdmissionAvailable)
+        XCTAssertEqual(
+            callerRequestedAdmission.protocolCodecs,
+            [.hevc, .h264],
+            "AV1 must stay closed while the shared decode implementation gate is false"
+        )
+        XCTAssertEqual(
+            VideoConfigValidator.sdrDecodeCapabilities(for: hardwareOnly).map(\.codec),
+            [.hevc, .h264]
+        )
+        XCTAssertEqual(
+            VideoConfigValidator.sdrDecodeCapabilities(for: callerRequestedAdmission).map(\.codec),
+            [.hevc, .h264]
+        )
+    }
+
+    func testDecodeImplementationSupportKeepsCurrentProtocolCodecsAtHevcAndH264() {
+        XCTAssertTrue(VideoDecodeImplementationSupport.hasDecodeImplementation(for: .hevc))
+        XCTAssertTrue(VideoDecodeImplementationSupport.hasDecodeImplementation(for: .h264))
+        XCTAssertFalse(VideoDecodeImplementationSupport.hasDecodeImplementation(for: .av1))
+
+        let allHardwareAndCallerFlags = VideoDecodeCapabilitySnapshot(
+            h264HardwareDecoderAvailable: true,
+            hevcHardwareDecoderAvailable: true,
+            av1HardwareDecoderAvailable: true,
+            av1DecoderImplementationAvailable: true
+        )
+
+        XCTAssertEqual(allHardwareAndCallerFlags.protocolCodecs, [.hevc, .h264])
+        XCTAssertEqual(
+            VideoConfigValidator.sdrDecodeCapabilities(for: allHardwareAndCallerFlags).map(\.codec),
+            [.hevc, .h264]
+        )
+    }
+
+    func testAV1FallsBackToFirstAvailableSdrCapability() throws {
+        var av1 = validVideoConfig(epoch: 11)
+        av1.codec = .av1
+
+        switch VideoColorNegotiator(decodeCapabilities: [decodeCapability()]).evaluate(av1) {
+        case let .fallback(fallback, reason: _):
+            XCTAssertEqual(fallback.codec, .h264)
+            XCTAssertEqual(fallback.configEpoch, 12)
+            XCTAssertEqual(fallback.colorDescription, VideoColorNegotiator.legacySDRColor)
+        case .accepted, .rejected:
+            XCTFail("AV1 without a local decode capability should request a legacy SDR fallback")
+        }
+    }
+
     func testUnsupportedProfileAtMaximumEpochRejectsWithoutOverflow() {
         var config = validVideoConfig(epoch: .max)
         config.codec = .hevc

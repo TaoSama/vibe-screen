@@ -124,13 +124,18 @@ callback registry、latest pixel-buffer 越界、encoder capacity 非法/变化�
 若修复后的短时 heap 差分仍出现持续增长，再以分配栈日志重启主机并采样：
 
 ```bash
-# 关闭当前 Vibe Screen 后，带分配栈日志启动（会重置会话，与 TCC 无关）
-MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
-  "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen" &
+# 关闭当前 Vibe Screen 后，给 LaunchServices 会话设置分配栈日志环境，
+# 再通过 guarded launcher 启动已安装 Host（会重置会话，与 TCC 无关）。
+osascript -e 'quit app "Vibe Screen"' || true
+launchctl setenv MallocStackLogging 1
+launchctl setenv MallocStackLoggingNoCompact 1
+make baseline-macos-launch
 # 建立 adb reverse + 客户端连接，稳定流 10–15 分钟后：
 /usr/bin/malloc_history <pid> -allBySize | head -60   # 按大小聚合分配栈
 /usr/bin/heap <pid> | head -60                         # 按类聚合存活对象
 # 两次间隔采样对比 MALLOC_SMALL 中增长最快的分配栈/类。
+launchctl unsetenv MallocStackLogging
+launchctl unsetenv MallocStackLoggingNoCompact
 ```
 
 复测判据：先跑 10–15 分钟短时流，确认 Observation 对象计数与 host RSS 斜率不再

@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAC_APP_DELEGATE = ROOT / "baseline/MacHost/Sources/AppDelegate.swift"
+MAC_HOST_COMMAND_LINE = ROOT / "baseline/MacHost/Sources/HostCommandLine.swift"
 MAC_MAIN = ROOT / "baseline/MacHost/Sources/main.swift"
 MAC_SCREEN_CAPTURE = ROOT / "baseline/MacHost/Sources/ScreenCapture.swift"
 MAC_ENCODED_FRAME_SINK = ROOT / "baseline/MacHost/Sources/EncodedFrameSink.swift"
@@ -44,11 +45,13 @@ def require_compact(haystack: str, needle: str, *, label: str) -> None:
 
 class Phase3RealMediaSourceContractTests(unittest.TestCase):
     def test_real_media_self_test_is_registered_in_local_self_test_target(self) -> None:
+        command_line = source(MAC_HOST_COMMAND_LINE)
         main = source(MAC_MAIN)
         self_test = source(MAC_REAL_MEDIA_SELF_TEST)
         makefile = source(MAKEFILE)
 
-        self.assertIn("--phase3-real-media-self-test", main)
+        self.assertIn("--phase3-real-media-self-test", command_line)
+        self.assertIn("phase3RealMediaSelfTest", main)
         self.assertIn("InternetProductSessionRealMediaSelfTest.run()", main)
         self.assertIn("enum InternetProductSessionRealMediaSelfTest", self_test)
         self.assertIn("does not claim device decoder continuity", self_test)
@@ -107,10 +110,16 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         for snippet, label in (
             (
                 """
-                let session = InternetProductSession()
-                internetProductSession = session
+                makeSession: { InternetProductSession() }
                 """,
-                "Internet startup creates and retains the product session",
+                "Internet startup creates the product session",
+            ),
+            (
+                """
+                prepareSession: { session, configuration in
+                    self.internetProductSession = session
+                """,
+                "Internet startup retains the product session",
             ),
             (
                 "installInternetSessionCallbacks(session, sessionToken: sessionToken)",
@@ -126,7 +135,7 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
             ),
             (
                 """
-                try await screenCapture?.startStreaming(
+                try await self.screenCapture?.startStreaming(
                     to: session,
                 """,
                 "Internet startup streams real ScreenCapture output into the product session",

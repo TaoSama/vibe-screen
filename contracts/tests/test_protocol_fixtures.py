@@ -166,6 +166,7 @@ class ProtocolFixtureTest(unittest.TestCase):
                     self.assertEqual(expected["protocolVersion"], decoded["protocolVersion"])
                     self.assertEqual(expected["messageId"], decoded["messageId"])
                     self.assertEqual(expected["correlationId"], decoded.get("correlationId", "0"))
+                    self.assertEqual(expected["sessionId"], decoded.get("sessionId", ""))
                     self.assertEqual(expected["sessionEpoch"], decoded.get("sessionEpoch", "0"))
                     self.assertEqual(expected["sentAtMonotonicNs"], decoded["sentAtMonotonicNs"])
                     self.assertIn(expected["payloadCase"], decoded)
@@ -226,6 +227,98 @@ class ProtocolFixtureTest(unittest.TestCase):
         self.assertEqual("Q2xpcGJvYXJkIGZpeHR1cmUgcGF5bG9hZA==", content["content"])
         self.assertEqual(expected_sha, base64.b64decode(offer["sha256"]))
         self.assertEqual(expected_sha, base64.b64decode(content["sha256"]))
+
+    def test_bidirectional_clipboard_fixtures_cover_distinct_android_and_macos_origins(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        expected = {
+            "android": {
+                "offer": "clipboard_offer",
+                "request": "clipboard_request",
+                "content": "clipboard_content",
+                "origin": "android-golden",
+                "change_id": "AAECAwQFBgcICQoLDA0ODw==",
+                "payload": b"Clipboard fixture payload",
+            },
+            "macos": {
+                "offer": "clipboard_macos_offer",
+                "request": "clipboard_macos_request",
+                "content": "clipboard_macos_content",
+                "origin": "macos-golden",
+                "change_id": "EBESExQVFhcYGRobHB0eHw==",
+                "payload": b"Mac clipboard fixture payload",
+            },
+        }
+        with tempfile.TemporaryDirectory(prefix="vibescreen-bidirectional-clipboard-") as temporary:
+            temporary_root = Path(temporary)
+            decoded: dict[str, dict[str, object]] = {}
+            for fixture_set in expected.values():
+                for name in (fixture_set["offer"], fixture_set["request"], fixture_set["content"]):
+                    entry = fixtures[name]
+                    output = temporary_root / f"{name}.json"
+                    convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+                    decoded[name] = json.loads(output.read_text())
+
+        android_change_id = expected["android"]["change_id"]
+        macos_change_id = expected["macos"]["change_id"]
+        self.assertNotEqual(android_change_id, macos_change_id)
+        self.assertNotEqual(expected["android"]["payload"], expected["macos"]["payload"])
+        for fixture_set in expected.values():
+            offer = decoded[fixture_set["offer"]]["clipboardOffer"]
+            request = decoded[fixture_set["request"]]["clipboardRequest"]
+            content = decoded[fixture_set["content"]]["clipboardContent"]
+            digest = hashlib.sha256(fixture_set["payload"]).digest()
+
+            self.assertEqual(fixture_set["change_id"], offer["changeId"])
+            self.assertEqual(fixture_set["change_id"], request["changeId"])
+            self.assertEqual(fixture_set["change_id"], content["changeId"])
+            self.assertEqual(fixture_set["origin"], offer["originDeviceId"])
+            self.assertEqual(fixture_set["origin"], content["originDeviceId"])
+            self.assertEqual("text/plain", offer["mimeType"])
+            self.assertEqual("text/plain", content["mimeType"])
+            self.assertEqual(str(len(fixture_set["payload"])), offer["byteLength"])
+            self.assertEqual(base64.b64encode(fixture_set["payload"]).decode(), content["content"])
+            self.assertEqual(digest, base64.b64decode(offer["sha256"]))
+            self.assertEqual(digest, base64.b64decode(content["sha256"]))
+
+    def test_managed_policy_fixture_covers_clipboard_deny_wins_wire_shape(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        entry = fixtures["managed_policy_status_clipboard_deny"]
+        source = json.loads((FIXTURE_ROOT / entry["source"]).read_text())
+        with tempfile.TemporaryDirectory(prefix="vibescreen-managed-policy-fixture-") as temporary:
+            output = Path(temporary) / "managed_policy_status_clipboard_deny.json"
+            convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+            decoded = json.loads(output.read_text())
+
+        source_policy = source["managedPolicyStatus"]
+        self.assertFalse(source_policy["clipboardAllowed"])
+        policy = decoded["managedPolicyStatus"]
+        self.assertTrue(policy["managed"])
+        self.assertFalse(policy.get("clipboardAllowed", False))
+        self.assertTrue(policy["fileTransferAllowed"])
+        self.assertTrue(policy["audioAllowed"])
+        self.assertTrue(policy["wakeAllowed"])
+        self.assertEqual(["mac-golden"], policy["allowedHosts"])
+        self.assertTrue(policy["allowedHostsRestricted"])
+        results = policy["restrictionResults"]
+        by_name = {item["restriction"]: item for item in results}
+        self.assertEqual(
+            {
+                "clipboard",
+                "file_transfer",
+                "audio",
+                "wake",
+                "custom_gestures",
+                "host_actions",
+                "maximum_file_bytes",
+                "allowed_hosts",
+                "denied_hosts",
+            },
+            set(by_name),
+        )
+        source_results = {item["restriction"]: item for item in source_policy["restrictionResults"]}
+        self.assertFalse(source_results["clipboard"]["allowed"])
+        self.assertFalse(by_name["clipboard"].get("allowed", False))
+        self.assertTrue(all(item["source"] == "managed_configuration" for item in results))
 
     def test_file_transfer_fixtures_cover_control_and_bulk_contract(self) -> None:
         fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}

@@ -93,13 +93,20 @@ def valid_coturn_config(extra: str = "") -> str:
             "denied-peer-ip=198.18.0.0-198.19.255.255",
             "denied-peer-ip=198.51.100.0-198.51.100.255",
             "denied-peer-ip=203.0.113.0-203.0.113.255",
+            "denied-peer-ip=224.0.0.0-239.255.255.255",
             "denied-peer-ip=240.0.0.0-255.255.255.255",
-            "denied-peer-ip=::",
-            "denied-peer-ip=::1",
+            "denied-peer-ip=0:0:0:0:0:0:0:0-ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff",
+            "denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff",
+            "denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff",
+            "denied-peer-ip=100::-100::ffff:ffff:ffff:ffff",
+            "denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "denied-peer-ip=2001:db8::-2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+            "denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "denied-peer-ip=fec0::-feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "denied-peer-ip=ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             extra,
         ]
     )
@@ -306,6 +313,13 @@ class PublicNatTurnPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             path = write(Path(directory_name) / "production.conf", config)
             with self.assertRaisesRegex(PreflightError, "private peer denies"):
+                validate_coturn_config(path)
+
+    def test_coturn_config_rejects_ambiguous_ipv6_unspecified_single_address_deny(self) -> None:
+        config = valid_coturn_config("denied-peer-ip=::")
+        with tempfile.TemporaryDirectory() as directory_name:
+            path = write(Path(directory_name) / "production.conf", config)
+            with self.assertRaisesRegex(PreflightError, "ambiguous single-address IPv6 unspecified"):
                 validate_coturn_config(path)
 
     def test_tls_identity_requires_turn_realm_hostname_match(self) -> None:

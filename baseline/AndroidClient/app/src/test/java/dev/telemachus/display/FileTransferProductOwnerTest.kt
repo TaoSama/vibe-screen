@@ -732,6 +732,29 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `bulk send failure cancels outgoing transfer and reports result`() {
+        val outgoing = FakeOutgoingTransferStore(id = 107, payload = "bulk-fail".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        owner.activateSession()
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "bulk-fail.txt").also { it.writeText("bulk-fail") },
+            "text/plain",
+            FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        val update = owner.handleBulkSendFailed(transferId)
+
+        assertEquals(transferId, update.cancelTransferId)
+        assertEquals("bulk_send_failed", update.cancelReasonCode)
+        assertEquals(FileTransferProductOwner.TransferResult(false, "bulk_send_failed"), update.result)
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(0, owner.activeOutgoingTransferCount())
+    }
+
+    @Test
     fun `late outgoing terminal messages after drain do not notify again`() {
         val outgoing = FakeOutgoingTransferStore(id = 97, payload = "late-terminal".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -907,6 +930,8 @@ class FileTransferProductOwnerTest {
             offers.remove(transferId)
         }
 
+        override fun hasFileOffer(transferId: ByteString): Boolean = offers.containsKey(transferId)
+
         override fun clearFileOffers() {
             clearCount += 1
             offers.clear()
@@ -964,6 +989,8 @@ class FileTransferProductOwnerTest {
             if (removed) cancelledTransfers += transferId
             return removed
         }
+
+        override fun contains(transferId: ByteString): Boolean = activeOffers.containsKey(transferId)
 
         override fun cancelAll() {
             cancelAllCount += 1

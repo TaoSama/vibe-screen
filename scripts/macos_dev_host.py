@@ -39,6 +39,9 @@ USER_TCC_DATABASE_LABEL = "<user-tcc-db>"
 SYSTEM_TCC_DATABASE_LABEL = "<system-tcc-db>"
 EXPECTED_BUNDLE_ID = package_macos.EXPECTED_BUNDLE_ID
 EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
+REQUIRED_PERMISSION_CONTRACT_COMMIT = "d9d7fdf42b8a236d29ebe9f1969b576620b51ea8"
+PERMISSION_PROMPT_CONTRACT_COMMAND = ("swift", "scripts/verify_macos_permission_prompt_contract.swift")
+STATIC_CONTRACT_TIMEOUT_SECONDS = 30
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 ACCESSIBILITY_SERVICES = (ACCESSIBILITY_SERVICE,)
@@ -170,6 +173,8 @@ def parse_args() -> argparse.Namespace:
     add_common_options(install, include_sign_identity=True, include_output_dir=True)
     preflight = subparsers.add_parser("preflight", help="fail closed unless the installed Host is stable-signed and authorized")
     add_common_options(preflight, include_sign_identity=True)
+    launch = subparsers.add_parser("launch", help="preflight the installed Host, then launch /Applications/Vibe Screen.app")
+    add_common_options(launch, include_sign_identity=True)
     xctest_preflight = subparsers.add_parser(
         "xctest-preflight",
         help="fail closed unless the selected Apple developer directory can run SwiftPM XCTest",
@@ -259,7 +264,11 @@ def add_common_options(parser: argparse.ArgumentParser, *, include_sign_identity
     parser.add_argument(
         "--allow-source-mismatch",
         action="store_true",
-        help="record source mismatch but do not fail the preflight; use only for historical fixed-binary reruns",
+        help=(
+            "disabled legacy flag retained only to produce explicit fail-closed "
+            "reports for old scripts. Install, launch, readiness, and device "
+            "preflight paths fail when it is supplied."
+        ),
     )
     parser.add_argument("--tcc-db", type=Path, default=default_tcc_database(), help=argparse.SUPPRESS)
 
@@ -276,7 +285,11 @@ def run(*command: str, cwd: Path | None = None) -> str:
     return completed.stdout.strip()
 
 
-def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[int, str]:
+def run_best_effort(
+    *command: str,
+    timeout_seconds: int | None = None,
+    cwd: Path | None = None,
+) -> tuple[int, str]:
     try:
         completed = subprocess.run(
             command,
@@ -285,6 +298,7 @@ def run_best_effort(*command: str, timeout_seconds: int | None = None) -> tuple[
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
+            cwd=cwd,
         )
     except subprocess.TimeoutExpired as error:
         output = error.stdout if isinstance(error.stdout, str) else ""
@@ -784,11 +798,7 @@ def parse_codesign_details(output: str) -> dict[str, object]:
 
 
 def parse_designated_requirement(output: str) -> str | None:
-    for line in output.splitlines():
-        if "designated =>" in line:
-            return line.split("designated =>", 1)[1].strip()
-    stripped = output.strip()
-    return stripped or None
+    return package_macos.parse_designated_requirement(output)
 
 
 def parse_leaf_certificate_hash(requirement: str | None) -> str | None:
@@ -921,7 +931,50 @@ def bool_or_none(value: object) -> bool | None:
 
 
 def current_source_identity(source_root: Path) -> package_macos.SourceIdentity:
-    return package_macos.collect_source_identity(source_root.resolve())
+    resolved_source_root = source_root.resolve()
+    identity = package_macos.collect_source_identity(resolved_source_root)
+    errors = current_source_contract_errors(resolved_source_root)
+    if errors:
+        raise SystemExit("\n".join(errors))
+    return identity
+
+
+def current_source_contract_errors(source_root: Path) -> list[str]:
+    errors: list[str] = []
+    exit_code, output = run_best_effort(
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        REQUIRED_PERMISSION_CONTRACT_COMMIT,
+        "HEAD",
+        timeout_seconds=STATIC_CONTRACT_TIMEOUT_SECONDS,
+        cwd=source_root,
+    )
+    if exit_code != 0:
+        detail = redact_local_report_text(output.strip()) if output.strip() else "git merge-base returned no detail"
+        errors.append(
+            "current source HEAD does not contain required macOS permission "
+            f"prompt contract commit {REQUIRED_PERMISSION_CONTRACT_COMMIT}; "
+            f"rebase onto current main before Host install, launch, readiness, or device preflight ({detail})"
+        )
+    errors.extend(permission_prompt_contract_errors(source_root))
+    return errors
+
+
+def permission_prompt_contract_errors(source_root: Path) -> list[str]:
+    exit_code, output = run_best_effort(
+        *PERMISSION_PROMPT_CONTRACT_COMMAND,
+        timeout_seconds=STATIC_CONTRACT_TIMEOUT_SECONDS,
+        cwd=source_root,
+    )
+    if exit_code == 0:
+        return []
+    command = " ".join(PERMISSION_PROMPT_CONTRACT_COMMAND)
+    detail = redact_local_report_text(output.strip()) if output.strip() else "no output"
+    return [
+        f"macOS permission prompt contract failed before Host use: {command} "
+        f"exited {exit_code}: {detail}"
+    ]
 
 
 def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> PermissionStatus:
@@ -1113,17 +1166,27 @@ def append_signing_identity_errors(
         errors.append(
             "Host is ad-hoc signed; use the configured local signing identity so TCC grants survive rebuilds"
         )
-    elif metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
-        actual_leaf = metadata.leaf_certificate_hash or "missing"
-        errors.append(
-            f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+    else:
+        contract_error = package_macos.canonical_designated_requirement_contract_error(
+            metadata.designated_requirement,
+            expected_identifier=EXPECTED_BUNDLE_ID,
         )
-    elif (
-        expected_sign_identity
-        and not package_macos.is_sha1(expected_sign_identity)
-        and metadata.identity_name != expected_sign_identity
-    ):
-        errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
+        if contract_error:
+            errors.append(
+                "Host designated requirement is not canonical: "
+                f"{contract_error}"
+            )
+        if metadata.leaf_certificate_hash != EXPECTED_SIGNING_LEAF_SHA1:
+            actual_leaf = metadata.leaf_certificate_hash or "missing"
+            errors.append(
+                f"Host signing leaf SHA-1 is '{actual_leaf}', expected '{EXPECTED_SIGNING_LEAF_SHA1}'"
+            )
+        if (
+            expected_sign_identity
+            and not package_macos.is_sha1(expected_sign_identity)
+            and metadata.identity_name != expected_sign_identity
+        ):
+            errors.append(f"Host is signed by '{metadata.identity_name}', expected configured identity '{expected_sign_identity}'")
     if not metadata.cdhash:
         errors.append("codesign CDHash is missing")
     if not metadata.designated_requirement:
@@ -1138,22 +1201,22 @@ def append_source_provenance_errors(
     allow_source_mismatch: bool = False,
     require_source_identity: bool = False,
 ) -> None:
+    del allow_source_mismatch
     if source_identity is None:
         if require_source_identity:
             errors.append("current source identity is unavailable; refusing to install source-bound Host bundle")
         return
-    if source_identity.dirty and not allow_source_mismatch:
+    if source_identity.dirty:
         errors.append("source repository is dirty; rerun from a clean current-base checkout")
     if not metadata.source_commit or not metadata.source_tree or metadata.source_dirty is None:
-        if not allow_source_mismatch:
-            errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
+        errors.append("installed Host lacks source commit/tree provenance; rebuild with scripts/package_macos.py")
     else:
-        if metadata.source_dirty and not allow_source_mismatch:
+        if metadata.source_dirty:
             errors.append("installed Host was packaged from a dirty source tree")
         if (
             metadata.source_commit != source_identity.commit
             or metadata.source_tree != source_identity.tree
-        ) and not allow_source_mismatch:
+        ):
             errors.append("installed Host source provenance does not match the current source checkout")
 
 
@@ -1263,7 +1326,8 @@ Source dirty: {source_dirty}
 Current source commit: {source_identity.commit if source_identity else 'not checked'}
 Current source tree: {source_identity.tree if source_identity else 'not checked'}
 Current source dirty: {source_identity.dirty if source_identity else 'not checked'}
-Source mismatch allowed: {allow_source_mismatch}
+Legacy source mismatch flag requested: {allow_source_mismatch}
+Source mismatch bypass active: False
 Verification: {verification}
 
 Read-only TCC capture
@@ -1363,6 +1427,37 @@ def write_install_blocked_report(
     print(report, file=sys.stderr)
     print("macOS Host install failed before replacing the installed app", file=sys.stderr)
     return 2
+
+
+def write_preflight_blocked_report(
+    args: argparse.Namespace,
+    errors: list[str],
+    *,
+    install_path: Path | None = None,
+) -> int:
+    report = format_report(
+        None,
+        missing_permission_status("Host bundle was not inspected because preflight validation failed first"),
+        errors,
+        source_identity=None,
+        allow_source_mismatch=getattr(args, "allow_source_mismatch", False),
+        install_path=install_path or args.install_path.resolve(),
+    )
+    write_report(args.report, report)
+    print(report, file=sys.stderr)
+    print("macOS Host preflight failed", file=sys.stderr)
+    return 2
+
+
+def source_mismatch_flag_errors(command_name: str) -> list[str]:
+    return [
+        f"{command_name} refuses --allow-source-mismatch; source mismatch diagnostics are "
+        "historical report-only data and cannot authorize Host install, launch, readiness, or device gates"
+    ]
+
+
+def source_mismatch_flag_requested(args: argparse.Namespace) -> bool:
+    return getattr(args, "allow_source_mismatch", False) is True
 
 
 def write_report(path: Path, report: str) -> None:
@@ -1673,6 +1768,45 @@ def login_headless_record(
     }
 
 
+def uninspected_login_headless_record(blockers: list[str]) -> dict[str, Any]:
+    return login_headless_record(
+        HostStartupSettings(
+            domain=EXPECTED_BUNDLE_ID,
+            readable=False,
+            error="startup defaults not inspected",
+            auto_start_streaming_on_launch=None,
+            startup_mode=None,
+            has_completed_onboarding=None,
+            display_source=None,
+            selected_display_uuid=None,
+            selected_display_id=None,
+            stored_keys=(),
+            defaults_used=(),
+        ),
+        LoginItemReadiness(
+            state="unverified",
+            matched=False,
+            detail="login item not inspected",
+            evidence=(),
+            sfltool_dumpbtm_was_run=False,
+        ),
+        HostDisplayReadiness(
+            readable=False,
+            display_count=0,
+            active_display_count=None,
+            displays=(),
+            error="display inventory not inspected",
+        ),
+        LogReadiness(
+            path=str(DEFAULT_HOST_LOG_PATH),
+            readable=False,
+            error="host log not inspected",
+            markers=(),
+        ),
+        blockers,
+    )
+
+
 def build_readiness_document(
     inspection: HostInspection,
     listener: ListenerStatus,
@@ -1873,15 +2007,12 @@ def install_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
-    allow_source_mismatch = getattr(args, "allow_source_mismatch", False)
+    allow_source_mismatch = source_mismatch_flag_requested(args)
     source_root = getattr(args, "source_root", package_macos.REPOSITORY_ROOT)
     if allow_source_mismatch:
         return write_install_blocked_report(
             args,
-            [
-                "install refuses --allow-source-mismatch; use preflight/readiness only "
-                "for historical fixed-binary diagnostics"
-            ],
+            source_mismatch_flag_errors("install"),
         )
     try:
         source_identity = current_source_identity(source_root)
@@ -1959,6 +2090,8 @@ def preflight_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
+    if source_mismatch_flag_requested(args):
+        return write_preflight_blocked_report(args, source_mismatch_flag_errors("preflight"), install_path=install_path)
     try:
         refuse_ad_hoc_identity(args.sign_identity)
     except SystemExit as error:
@@ -1993,10 +2126,88 @@ def preflight_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def launch_command(args: argparse.Namespace) -> int:
+    install_path = args.install_path.resolve()
+    if not is_default_install_path(install_path):
+        raise SystemExit(f"refusing nonstandard launch path; use {DEFAULT_INSTALL_PATH}")
+    if source_mismatch_flag_requested(args):
+        return write_preflight_blocked_report(args, source_mismatch_flag_errors("launch"), install_path=install_path)
+    preflight_result = preflight_command(args)
+    if preflight_result != 0:
+        return preflight_result
+    try:
+        run("/usr/bin/open", str(install_path))
+    except subprocess.CalledProcessError as error:
+        detail = (error.stdout or str(error)).strip()
+        print(f"macOS Host launch failed: {redact_local_report_text(detail)}", file=sys.stderr)
+        return 2
+    print(f"Launched {install_path}")
+    return 0
+
+
 def readiness_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
+    if source_mismatch_flag_requested(args):
+        errors = source_mismatch_flag_errors("readiness")
+        report = format_report(
+            None,
+            missing_permission_status("Host bundle was not inspected because readiness validation failed first"),
+            errors,
+            allow_source_mismatch=True,
+            install_path=install_path,
+        )
+        write_report(args.report, report)
+        document = {
+            "schema_version": "vibescreen.host-readiness/v1",
+            "kind": "macos_host_shared_prerequisite_readiness",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "status": "blocked",
+            "signing_tcc_status": "blocked",
+            "listener_status": "blocked",
+            "virtual_hid_status": "blocked",
+            "login_headless_status": "blocked",
+            "can_start_host_rss_gate": False,
+            "can_start_trusted_lan_gate": False,
+            "can_start_native_hid_gate": False,
+            "can_start_stylus_gate": False,
+            "can_start_hardware_keyboard_gate": False,
+            "can_start_controller_runtime_gate": False,
+            "can_start_headless_login_gate": False,
+            "can_close_runtime_gates": False,
+            "blockers": errors,
+            "host": signing_record(None, install_path, None),
+            "permissions": permission_record(
+                missing_permission_status("Host bundle was not inspected because readiness validation failed first")
+            ),
+            "listener": {
+                "port": args.port,
+                "observed": False,
+                "output": "",
+                "error": "listener not inspected",
+            },
+            "entitlements": {
+                "app_path": str(install_path),
+                "virtual_hid": False,
+                "keys": [],
+                "error": "entitlements not inspected",
+            },
+            "login_headless": uninspected_login_headless_record(errors),
+            "safety": {
+                "read_only": True,
+                "starts_host": False,
+                "modifies_tcc": False,
+                "modifies_keychain": False,
+                "modifies_android": False,
+                "closes_runtime_gates": False,
+            },
+        }
+        write_json_report(args.json_output, document)
+        print(f"Wrote {args.report}")
+        print(f"Wrote {args.json_output}")
+        print(json.dumps(document, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
     inspection = inspect_host_without_throwing(
         install_path,
         args.tcc_db,
@@ -2055,6 +2266,8 @@ def main() -> int:
         return install_command(args)
     if args.command == "preflight":
         return preflight_command(args)
+    if args.command == "launch":
+        return launch_command(args)
     if args.command == "readiness":
         return readiness_command(args)
     raise AssertionError(f"unhandled command: {args.command}")

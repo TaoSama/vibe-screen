@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import SCHEMA_VERSION
+from .actionable_error_states import REQUIRED_ACTIONABLE_STATE_ID_SEQUENCE
 
 
 MANIFEST_KIND = "phase1_actionable_error_current_base"
@@ -38,7 +39,7 @@ SENSITIVE_TEXT_PATTERNS = (
     (re.compile("credential" + r"s/", re.IGNORECASE), "credential directory"),
     (re.compile("private" + r"[ -]key", re.IGNORECASE), "sensitive key material"),
 )
-REQUIRED_STATE_IDS = (
+MANDATORY_MANIFEST_STATE_IDS = (
     "host_screen_recording_denied",
     "accessibility_denied_or_limited",
     "tcp_54321_unavailable",
@@ -47,6 +48,8 @@ REQUIRED_STATE_IDS = (
     "lan_route_unavailable",
     "stale_epoch_or_session_errors",
 )
+REQUIRED_BLOCKED_UI_STATE_IDS = REQUIRED_ACTIONABLE_STATE_ID_SEQUENCE
+REQUIRED_STATE_IDS = MANDATORY_MANIFEST_STATE_IDS + REQUIRED_BLOCKED_UI_STATE_IDS
 VALID_STATUSES = frozenset(("pass", "blocked", "insufficient", "not_run"))
 VALID_ARTIFACT_KINDS = frozenset(
     (
@@ -344,9 +347,10 @@ def evaluate(manifest: dict[str, Any], *, repository_root: Path) -> dict[str, An
         _validate_state(state, index, ids, repository_root, errors)
         for index, state in enumerate(states)
     ]
-    missing_state_ids = sorted(set(REQUIRED_STATE_IDS).difference(ids))
+    missing_mandatory_state_ids = sorted(set(MANDATORY_MANIFEST_STATE_IDS).difference(ids))
+    missing_blocked_ui_state_ids = sorted(set(REQUIRED_BLOCKED_UI_STATE_IDS).difference(ids))
     unexpected_state_ids = sorted(ids.difference(REQUIRED_STATE_IDS))
-    for state_id in missing_state_ids:
+    for state_id in missing_mandatory_state_ids:
         errors.append(f"states: missing required state {state_id}")
     for state_id in unexpected_state_ids:
         errors.append(f"states: unexpected state {state_id}")
@@ -366,6 +370,8 @@ def evaluate(manifest: dict[str, Any], *, repository_root: Path) -> dict[str, An
     blocked_state_ids = sorted(
         item["id"] for item in required_results if item["status"] == "blocked"
     )
+    blocked_state_ids.extend(missing_blocked_ui_state_ids)
+    blocked_state_ids = sorted(set(blocked_state_ids))
     insufficient_state_ids = sorted(
         item["id"]
         for item in required_results

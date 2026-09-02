@@ -55,8 +55,10 @@ stores that remove their process-local routing and ledger state blockers for a
 production-shaped deployment, with local tests covering the shared store
 contracts. Authority now
 exposes an admin/operator session profile issuance primitive for already
-registered devices, but Mac/Android automatic invocation of that path,
-cross-service revocation propagation, real coturn exporter collection,
+registered devices, and the macOS host now wires local/offline
+Authority-backed session-profile request allocation, invocation, and
+fresh-session refresh. Android UI profile import, first lease bootstrap, device
+handoff, public-network E2E, cross-service revocation propagation, real coturn exporter collection,
 production scheduled reconciliation, active-allocation disconnect execution,
 authoritative coturn byte accounting, production multi-replica rollout, public
 ingress, global rate limits, and a production deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
