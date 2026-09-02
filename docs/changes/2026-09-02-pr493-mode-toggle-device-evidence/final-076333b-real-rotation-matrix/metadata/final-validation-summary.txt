@@ -1,18 +1,20 @@
 Final PR493 device matrix validation
 APK SHA-256: 076333b301475dfe3d949eab3c80f626053f3b68e95e500c4a8911ad669d4a87
 AndroidTest APK SHA-256: 0f2c36d433dc855f3b8b1407ba984887894f90025954963eded29d8aa66536b9
-Device model: P0110
+Device: {'manufacturer': 'nubia', 'model': 'P0110', 'codename': 'pacific', 'android_release': '16', 'sdk': '36', 'adb_serial': '<redacted-adb-serial>'}
+Device identity evidence: metadata/device-identity.txt
 Instrumentation p0110 landscape large-text layout: PASS
 Scenarios:
-- phone-portrait-day-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present
-- phone-portrait-night-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present
-- phone-portrait-day-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=unavailable
-- phone-portrait-night-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=unavailable
-- phone-landscape-day-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable
-- phone-landscape-night-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable
-- phone-landscape-day-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable
-- phone-landscape-night-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable
+- phone-portrait-day-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=False
+- phone-portrait-night-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=False
+- phone-portrait-day-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-portrait-night-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-day-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-night-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-day-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
+- phone-landscape-night-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=unavailable; xml_stable_state=False
 XML status counts: {'present': 2, 'unavailable': 6}
+XML evidence scope: semantic_minimum_only_not_stable_state
 XML semantic coverage: PASS
 Restored: {'font_scale_1_0': True, 'night_no': True, 'rotation_0': True, 'accelerometer_rotation_0': True, 'no_override_size': True, 'packages_stopped': True}
 Restored gate: PASS after Android-only cleanup reverification.

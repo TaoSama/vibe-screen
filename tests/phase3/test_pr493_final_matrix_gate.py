@@ -17,6 +17,7 @@ VALIDATION_PATH = (
     / "metadata"
     / "validation.json"
 )
+DEVICE_IDENTITY_PATH = VALIDATION_PATH.parent / "device-identity.txt"
 
 spec = importlib.util.spec_from_file_location("pr493_collect_final_matrix", COLLECTOR_PATH)
 assert spec is not None
@@ -32,6 +33,7 @@ def scenario(label: str, xml_status: str = "unavailable") -> dict[str, object]:
         "state_ok": True,
         "xml_status": xml_status,
         "xml_errors": [],
+        "xml_stable_state": False,
     }
 
 
@@ -51,7 +53,9 @@ def valid_summary() -> dict[str, object]:
     return {
         "apk_sha256": collector.EXPECTED_APK_SHA256,
         "android_test_apk_sha256": collector.EXPECTED_ANDROID_TEST_APK_SHA256,
-        "device_model": collector.EXPECTED_DEVICE_MODEL,
+        "device": dict(collector.EXPECTED_DEVICE_IDENTITY),
+        "device_identity_evidence": collector.EXPECTED_DEVICE_IDENTITY_EVIDENCE,
+        "xml_evidence_scope": collector.EXPECTED_XML_SEMANTIC_EVIDENCE_SCOPE,
         "instrumentation_p0110_landscape_large_text": True,
         "scenarios": current_scenarios(
             "phone-portrait-day-font1",
@@ -132,6 +136,26 @@ class FakeXmlDumpSession:
         return subprocess.CompletedProcess(list(args), returncode, stdout, stderr)
 
 
+class FakeDeviceIdentitySession:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+        self.outputs = {
+            ("devices",): "List of devices attached\nserial-1\tdevice\n",
+            ("shell", "getprop", "ro.product.manufacturer"): "nubia\n",
+            ("shell", "getprop", "ro.product.model"): "P0110\n",
+            ("shell", "getprop", "ro.product.device"): "pacific\n",
+            ("shell", "getprop", "ro.product.vendor.device"): "pacific\n",
+            ("shell", "getprop", "ro.build.product"): "qssi_64\n",
+            ("shell", "getprop", "ro.build.version.release"): "16\n",
+            ("shell", "getprop", "ro.build.version.sdk"): "36\n",
+        }
+
+    def adb_text(self, serial: str, *args: str, description: str | None = None) -> str:
+        del serial, description
+        self.calls.append(args)
+        return self.outputs[args]
+
+
 def capture_xml_with_fake(fake: FakeXmlDumpSession, tmp_path: Path, *, attempts_per_mode: int = 2) -> tuple[str, list[str], Path, Path]:
     metadata = tmp_path / "metadata"
     metadata.mkdir(parents=True, exist_ok=True)
@@ -169,7 +193,8 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         for key, expected in (
             ("apk_sha256", "apk_sha256 mismatch: 'tampered'"),
             ("android_test_apk_sha256", "android_test_apk_sha256 mismatch: 'tampered'"),
-            ("device_model", "device_model mismatch: 'tampered'"),
+            ("device_identity_evidence", "device_identity_evidence mismatch: 'tampered'"),
+            ("xml_evidence_scope", "xml_evidence_scope mismatch: 'tampered'"),
         ):
             with self.subTest(key=key):
                 summary = valid_summary()
@@ -177,11 +202,25 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
 
                 self.assertIn(expected, collector.summary_gate_errors(summary))
 
+    def test_device_identity_mismatch_fails_for_each_required_field(self) -> None:
+        for key in collector.EXPECTED_DEVICE_IDENTITY:
+            with self.subTest(key=key):
+                summary = valid_summary()
+                summary["device"][key] = "tampered"
+
+                errors = collector.summary_gate_errors(summary)
+
+                if key == "adb_serial":
+                    self.assertIn("device.adb_serial must be redacted: 'tampered'", errors)
+                else:
+                    self.assertIn(f"device.{key} mismatch: 'tampered'", errors)
+
     def test_identity_fields_missing_and_non_string_types_fail(self) -> None:
         for key, expected_prefix in (
             ("apk_sha256", "apk_sha256 mismatch"),
             ("android_test_apk_sha256", "android_test_apk_sha256 mismatch"),
-            ("device_model", "device_model mismatch"),
+            ("device_identity_evidence", "device_identity_evidence mismatch"),
+            ("xml_evidence_scope", "xml_evidence_scope mismatch"),
         ):
             with self.subTest(key=key, variant="missing"):
                 summary = valid_summary()
@@ -196,6 +235,74 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
                 self.assertTrue(
                     any(error.startswith(expected_prefix) for error in collector.summary_gate_errors(summary))
                 )
+
+    def test_device_identity_missing_and_non_string_types_fail(self) -> None:
+        for value in (None, [], "device", 1):
+            with self.subTest(value=value):
+                summary = valid_summary()
+                summary["device"] = value
+
+                self.assertIn(
+                    f"device must be an object: {type(value).__name__}",
+                    collector.summary_gate_errors(summary),
+                )
+
+        for key in collector.EXPECTED_DEVICE_IDENTITY:
+            with self.subTest(key=key, variant="missing"):
+                summary = valid_summary()
+                del summary["device"][key]
+
+                self.assertTrue(
+                    any(error.startswith(f"device.{key}") for error in collector.summary_gate_errors(summary))
+                )
+
+            with self.subTest(key=key, variant="non-string"):
+                summary = valid_summary()
+                summary["device"][key] = 1
+
+                self.assertTrue(
+                    any(error.startswith(f"device.{key}") for error in collector.summary_gate_errors(summary))
+                )
+
+    def test_device_identity_requires_redacted_serial(self) -> None:
+        summary = valid_summary()
+        summary["device"]["adb_serial"] = "unredacted-adb-serial-example"
+
+        self.assertIn(
+            "device.adb_serial must be redacted: 'unredacted-adb-serial-example'",
+            collector.summary_gate_errors(summary),
+        )
+
+    def test_collect_device_identity_writes_detailed_redacted_transcript(self) -> None:
+        fake = FakeDeviceIdentitySession()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            metadata = Path(tmp_dir) / "metadata"
+            identity = collector.collect_device_identity(
+                "serial-1",
+                metadata,
+                adb_text_func=fake.adb_text,
+            )
+            transcript = (metadata / "device-identity.txt").read_text(encoding="utf-8")
+
+        self.assertEqual(collector.public_device_identity(identity), collector.EXPECTED_DEVICE_IDENTITY)
+        self.assertEqual(
+            fake.calls,
+            [
+                ("devices",),
+                ("shell", "getprop", "ro.product.manufacturer"),
+                ("shell", "getprop", "ro.product.model"),
+                ("shell", "getprop", "ro.product.device"),
+                ("shell", "getprop", "ro.product.vendor.device"),
+                ("shell", "getprop", "ro.build.product"),
+                ("shell", "getprop", "ro.build.version.release"),
+                ("shell", "getprop", "ro.build.version.sdk"),
+            ],
+        )
+        self.assertIn("adb devices\nList of devices attached\n<redacted-adb-serial>\tdevice", transcript)
+        self.assertIn("adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer\nnubia", transcript)
+        self.assertIn("adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk\n36", transcript)
+        self.assertNotIn("serial-1", transcript)
+        self.assertNotIn("ro.product.manufacturer=nubia", transcript)
 
     def test_strict_boolean_gates_reject_truthy_non_bool_values(self) -> None:
         summary = valid_summary()
@@ -339,6 +446,16 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+    def test_required_default_portrait_xml_pair_passes_even_when_not_stable_state(self) -> None:
+        scenarios = current_scenarios(
+            "phone-portrait-day-font1",
+            "phone-portrait-night-font1",
+        )
+        scenarios[0]["xml_stable_state"] = False
+        scenarios[1]["xml_stable_state"] = False
+
+        self.assertEqual(collector.xml_coverage_errors(scenarios), [])
+
     def test_rejected_xml_fails_even_with_required_pair_present(self) -> None:
         scenarios = current_scenarios(
             "phone-portrait-day-font1",
@@ -411,6 +528,61 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
                     errors,
                 )
 
+    def test_present_xml_requires_xml_stable_state_key(self) -> None:
+        scenarios = current_scenarios(
+            "phone-portrait-day-font1",
+            "phone-portrait-night-font1",
+        )
+        del scenarios[0]["xml_stable_state"]
+
+        errors = collector.xml_coverage_errors(scenarios)
+
+        self.assertIn("present XML missing xml_stable_state: phone-portrait-day-font1", errors)
+
+    def test_present_xml_requires_xml_stable_state_bool(self) -> None:
+        for value in ("false", 0, [], None):
+            with self.subTest(value=value):
+                scenarios = current_scenarios(
+                    "phone-portrait-day-font1",
+                    "phone-portrait-night-font1",
+                )
+                scenarios[0]["xml_stable_state"] = value
+
+                errors = collector.xml_coverage_errors(scenarios)
+
+                self.assertIn(
+                    f"present XML xml_stable_state must be a bool: phone-portrait-day-font1={type(value).__name__}",
+                    errors,
+                )
+
+    def test_xml_stable_state_detects_progress_error_overlap(self) -> None:
+        transient_xml = """<?xml version='1.0' encoding='UTF-8'?>
+<hierarchy>
+  <node resource-id="dev.telemachus.display:id/connectionProgress" text="" bounds="[1,1][10,10]" />
+  <node resource-id="dev.telemachus.display:id/connectButton" text="TRY AGAIN" bounds="[1,20][10,30]" />
+</hierarchy>
+"""
+        stable_error_xml = """<?xml version='1.0' encoding='UTF-8'?>
+<hierarchy>
+  <node resource-id="dev.telemachus.display:id/connectionProgress" text="" bounds="[0,0][0,0]" />
+  <node resource-id="dev.telemachus.display:id/connectButton" text="TRY AGAIN" bounds="[1,20][10,30]" />
+</hierarchy>
+"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            transient = Path(tmp_dir) / "transient.xml"
+            stable_error = Path(tmp_dir) / "stable-error.xml"
+            transient.write_text(transient_xml, encoding="utf-8")
+            stable_error.write_text(stable_error_xml, encoding="utf-8")
+
+            self.assertFalse(collector.is_xml_stable_state(transient))
+            self.assertTrue(collector.is_xml_stable_state(stable_error))
+
+    def test_current_retained_portrait_xml_is_marked_non_stable(self) -> None:
+        metadata = VALIDATION_PATH.parent
+
+        self.assertFalse(collector.is_xml_stable_state(metadata / "phone-portrait-day-font1.xml"))
+        self.assertFalse(collector.is_xml_stable_state(metadata / "phone-portrait-night-font1.xml"))
+
     def test_restored_gate_rejects_missing_required_keys(self) -> None:
         errors = collector.restored_gate_errors({})
 
@@ -473,7 +645,29 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         validation = json.loads(VALIDATION_PATH.read_text(encoding="utf-8"))
 
         self.assertIs(validation["restored"]["packages_stopped"], True)
+        self.assertNotIn("device_model", validation)
+        self.assertEqual(validation["device"], collector.EXPECTED_DEVICE_IDENTITY)
+        self.assertEqual(validation["device_identity_evidence"], collector.EXPECTED_DEVICE_IDENTITY_EVIDENCE)
+        self.assertEqual(validation["xml_evidence_scope"], collector.EXPECTED_XML_SEMANTIC_EVIDENCE_SCOPE)
         self.assertEqual(collector.summary_gate_errors(validation), [])
+
+    def test_retained_device_identity_evidence_uses_collector_transcript_format(self) -> None:
+        evidence = DEVICE_IDENTITY_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("Android device identity from independent read-only adb commands", evidence)
+        self.assertIn("adb devices\nList of devices attached\n<redacted-adb-serial>\tdevice", evidence)
+        for prop, expected in (
+            ("ro.product.manufacturer", "nubia"),
+            ("ro.product.model", "P0110"),
+            ("ro.product.device", "pacific"),
+            ("ro.product.vendor.device", "pacific"),
+            ("ro.build.product", "qssi_64"),
+            ("ro.build.version.release", "16"),
+            ("ro.build.version.sdk", "36"),
+        ):
+            with self.subTest(prop=prop):
+                self.assertIn(f"adb -s <redacted-adb-serial> shell getprop {prop}\n{expected}", evidence)
+        self.assertNotIn("unredacted-adb-serial-example", evidence)
 
     def test_offline_package_stop_without_runtime_evidence_fails_closed(self) -> None:
         summary = valid_summary()

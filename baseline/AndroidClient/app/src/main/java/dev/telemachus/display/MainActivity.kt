@@ -551,6 +551,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enableAutomaticUsbConnect() {
+        cleanupCurrentSessionBeforeUsbLaunch()
         automaticUsbConnect = true
         prefs.connectionMode = ConnectionMode.USB
         binding.modeToggleGroup.check(R.id.modeUSB)
@@ -559,6 +560,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUsbWithoutAutomaticConnect() {
+        cleanupCurrentSessionBeforeUsbLaunch()
         automaticUsbConnect = false
         isReconnecting = false
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
@@ -570,6 +572,12 @@ class MainActivity : AppCompatActivity() {
             suppressUsbModeAutomaticConnect = false
         }
         applyModeVisibility(ConnectionMode.USB)
+    }
+
+    private fun cleanupCurrentSessionBeforeUsbLaunch() {
+        if (prefs.connectionMode != ConnectionMode.USB) {
+            cancelConnectionForModeSwitch()
+        }
     }
 
     private fun currentUsbPort(): Int =
@@ -1630,7 +1638,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 updateUsbTransportSubtitle()
                 binding.connectionProgress.visibility =
-                    if (connectionAttemptInProgress) View.VISIBLE else View.GONE
+                    if (connectionAttemptInProgress || isReconnecting) View.VISIBLE else View.GONE
                 val connectAction =
                     UsbConnectActionPolicy.resolve(
                         connectionAttemptInProgress = connectionAttemptInProgress,

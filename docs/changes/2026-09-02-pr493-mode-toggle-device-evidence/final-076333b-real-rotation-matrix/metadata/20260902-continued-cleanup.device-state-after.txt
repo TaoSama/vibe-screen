@@ -1,16 +1,44 @@
-timestamp=2026-09-02T13:49:59+0800
-command=adb -s <redacted-adb-serial> shell wm size; wm density; settings get system font_scale; cmd uimode night; cmd window user-rotation; settings get system accelerometer_rotation; settings get system user_rotation
+timestamp=2026-09-02T17:56:52+0800
+serial=<redacted-adb-serial>
 --- wm size ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell wm size
+output_begin
 Physical size: 1264x2800
+output_end
+exit_code=0
 --- wm density ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell wm density
+output_begin
 Physical density: 560
---- font_scale ---
+output_end
+exit_code=0
+--- font scale ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell settings get system font_scale
+output_begin
 1.0
---- night ---
+output_end
+exit_code=0
+--- night mode ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell cmd uimode night
+output_begin
 Night mode: no
---- user-rotation ---
+output_end
+exit_code=0
+--- user rotation ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell cmd window user-rotation
+output_begin
 lock 0
---- accelerometer_rotation ---
+output_end
+exit_code=0
+--- accelerometer rotation ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell settings get system accelerometer_rotation
+output_begin
 0
---- user_rotation ---
+output_end
+exit_code=0
+--- system user rotation ---
+command=/Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> shell settings get system user_rotation
+output_begin
 0
+output_end
+exit_code=0

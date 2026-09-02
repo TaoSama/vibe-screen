@@ -1,80 +1,145 @@
 {
   "apk_sha256": "076333b301475dfe3d949eab3c80f626053f3b68e95e500c4a8911ad669d4a87",
   "android_test_apk_sha256": "0f2c36d433dc855f3b8b1407ba984887894f90025954963eded29d8aa66536b9",
-  "device_model": "P0110",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "adb_serial": "<redacted-adb-serial>"
+  },
+  "device_identity_evidence": "metadata/device-identity.txt",
+  "xml_evidence_scope": "semantic_minimum_only_not_stable_state",
   "instrumentation_p0110_landscape_large_text": true,
   "scenarios": [
     {
       "label": "phone-portrait-day-font1",
-      "png_size": [1264, 2800],
-      "expected_size": [1264, 2800],
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "present",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-portrait-night-font1",
-      "png_size": [1264, 2800],
-      "expected_size": [1264, 2800],
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "present",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-portrait-day-font13",
-      "png_size": [1264, 2800],
-      "expected_size": [1264, 2800],
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "unavailable",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-portrait-night-font13",
-      "png_size": [1264, 2800],
-      "expected_size": [1264, 2800],
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "unavailable",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-landscape-day-font1",
-      "png_size": [2800, 1264],
-      "expected_size": [2800, 1264],
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "unavailable",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-landscape-night-font1",
-      "png_size": [2800, 1264],
-      "expected_size": [2800, 1264],
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "unavailable",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-landscape-day-font13",
-      "png_size": [2800, 1264],
-      "expected_size": [2800, 1264],
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "unavailable",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     },
     {
       "label": "phone-landscape-night-font13",
-      "png_size": [2800, 1264],
-      "expected_size": [2800, 1264],
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
       "png_ok": true,
       "state_ok": true,
       "xml_status": "unavailable",
-      "xml_errors": []
+      "xml_errors": [],
+      "xml_stable_state": false
     }
   ],
   "restored": {
@@ -114,7 +179,12 @@
       "20260902-continued-cleanup.force-stop-android-test.txt",
       "20260902-continued-cleanup.pidof-after-force-stop.txt",
       "20260902-continued-cleanup.adb-reverse-after.txt",
-      "20260902-continued-cleanup.device-state-after.txt"
-    ]
+      "20260902-continued-cleanup.device-state-after.txt",
+      "device-identity.txt",
+      "device-manufacturer.txt",
+      "device-codename.txt",
+      "android-api.txt"
+    ],
+    "device_identity": "device-identity.txt"
   }
 }

@@ -184,6 +184,48 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun automaticUsbLaunchCleansExistingModeSessionBeforePersistingUsbMode() {
+        val source = mainActivitySource()
+        val enableAutomaticUsbConnect = extractMethod(source, "private fun enableAutomaticUsbConnect")
+        val showUsbWithoutAutomaticConnect = extractMethod(source, "private fun showUsbWithoutAutomaticConnect")
+        val cleanup = extractMethod(source, "private fun cleanupCurrentSessionBeforeUsbLaunch")
+
+        assertTrue(
+            "Automatic USB launch cleanup must reuse the explicit mode-switch cleanup path",
+            cleanup.contains("cancelConnectionForModeSwitch()"),
+        )
+        assertTrue(
+            "Automatic USB launch cleanup must keep existing USB sessions instead of tearing them down unconditionally",
+            cleanup.replace(Regex("\\s+"), "")
+                .contains("if(prefs.connectionMode!=ConnectionMode.USB){cancelConnectionForModeSwitch()}"),
+        )
+        assertCleanupBeforeUsbModePersistence(enableAutomaticUsbConnect, "enableAutomaticUsbConnect")
+        assertCleanupBeforeUsbModePersistence(showUsbWithoutAutomaticConnect, "showUsbWithoutAutomaticConnect")
+    }
+
+    @Test
+    fun scheduledUsbReconnectShowsSpinnerWhileIdleAndTerminalModesHideIt() {
+        val updateDisconnectedHeader = extractMethod(mainActivitySource(), "private fun updateDisconnectedHeader")
+        val usbBranch = extractWhenBranch(updateDisconnectedHeader, "ConnectionMode.USB ->")
+        val wirelessBranch = extractWhenBranch(updateDisconnectedHeader, "ConnectionMode.WIRELESS ->")
+        val internetBranch = extractWhenBranch(updateDisconnectedHeader, "ConnectionMode.INTERNET ->")
+        val compactUsb = usbBranch.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Scheduled USB reconnect should show the header spinner before the connection attempt starts",
+            compactUsb.contains("if(connectionAttemptInProgress||isReconnecting)View.VISIBLEelseView.GONE"),
+        )
+        assertTrue(
+            "Wireless idle and terminal guidance should hide the USB header spinner",
+            wirelessBranch.contains("binding.connectionProgress.visibility = View.GONE"),
+        )
+        assertTrue(
+            "Internet idle and terminal guidance should hide the USB header spinner",
+            internetBranch.contains("binding.connectionProgress.visibility = View.GONE"),
+        )
+    }
+
+    @Test
     fun terminalGuidanceUsesModeSpecificInlineSurfaces() {
         val presenter = extractMethod(mainActivitySource(), "private fun showTerminalConnectionGuidance")
         val compact = presenter.replace(Regex("\\s+"), "")
@@ -1145,6 +1187,21 @@ class MainActivityTerminalGuidanceContractTest {
         )
     }
 
+    private fun assertCleanupBeforeUsbModePersistence(
+        block: String,
+        owner: String,
+    ) {
+        val cleanupIndex = block.indexOf("cleanupCurrentSessionBeforeUsbLaunch()")
+        val persistUsbModeIndex = block.indexOf("prefs.connectionMode = ConnectionMode.USB")
+
+        assertTrue("$owner must clean up the current LAN/Internet session first", cleanupIndex >= 0)
+        assertTrue("$owner must persist USB mode", persistUsbModeIndex >= 0)
+        assertTrue(
+            "$owner must clean up before writing prefs.connectionMode = USB",
+            cleanupIndex < persistUsbModeIndex,
+        )
+    }
+
     private fun extractMethod(source: String, signature: String): String {
         val declaration =
             Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")
@@ -1296,6 +1353,21 @@ class MainActivityTerminalGuidanceContractTest {
             }
         }
         error("Block closing brace not found: $marker")
+    }
+
+    private fun extractWhenBranch(
+        source: String,
+        marker: String,
+    ): String {
+        val start = source.indexOf(marker)
+        require(start >= 0) { "When branch not found: $marker" }
+        val nextBranch = Regex("\\n[\\t ]*ConnectionMode\\.")
+            .find(source, start + marker.length)
+            ?.range
+            ?.first
+            ?: source.indexOf("\n            }", start).takeIf { it > start }
+            ?: error("When branch end not found: $marker")
+        return source.substring(start, nextBranch)
     }
 
     private fun mainActivitySource(): String {
