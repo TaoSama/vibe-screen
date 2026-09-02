@@ -272,7 +272,7 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
                 decoderPresentationOwner.routeInternetFrame(
                     sessionCurrent = isCurrentInternetSession(),
                     frameSessionEpoch = frame.sessionEpoch,
-                    activeSessionEpoch = internetSessionEpoch,
+                    activeSessionEpoch = productSessionCoordinator.currentInternetSessionEpoch(),
                 ) { decoder ->
                     decoder.decode(
                         frame.payload,

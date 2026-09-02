@@ -270,7 +270,6 @@ class MainActivity : AppCompatActivity() {
     private var managedHostActionsAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
-    private var pendingIncomingFileDecision: (() -> Unit)? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -2473,8 +2472,8 @@ class MainActivity : AppCompatActivity() {
     private fun promptIncomingFileOffer(
         offer: dev.vibescreen.protocol.v1.FileOffer,
         isCurrentAndAllowed: () -> Boolean,
-        finishDecision: () -> Boolean = { true },
-        clearDecision: () -> Unit = {},
+        finishDecision: () -> Boolean,
+        clearDecision: () -> Unit,
         respond: (accepted: Boolean, reason: String) -> Boolean,
     ) {
         runOnUiThread {
@@ -2501,7 +2500,6 @@ class MainActivity : AppCompatActivity() {
                     fileTransferApprovalHandler.removeCallbacks(timeout)
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
-                    pendingIncomingFileDecision = null
                     respond(false, "user_denied")
                 }
             }
@@ -2511,7 +2509,6 @@ class MainActivity : AppCompatActivity() {
                     decided = true
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
-                    pendingIncomingFileDecision = null
                     respond(false, "approval_timeout")
                 }
                 showDedupedToast(R.string.file_transfer_offer_expired)
@@ -2532,14 +2529,12 @@ class MainActivity : AppCompatActivity() {
                         if (!finishDecision()) return@setPositiveButton
                         decided = true
                         pendingIncomingFileDialog = null
-                        pendingIncomingFileDecision = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
                         respond(true, "")
                     }
                     .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
                     .setOnCancelListener { rejectDecision() }
             pendingIncomingFileDialog = showImmersiveDialog(dialog)
-            pendingIncomingFileDecision = rejectDecision
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
     }
@@ -2580,14 +2575,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun activeInternetFileTransferSession(): ActiveFileTransferSession? {
         val session = internetSession ?: return null
-        val generation = internetGeneration
+        val generation = productSessionCoordinator.currentInternetGeneration()
         if (generation <= 0L || session.state != InternetProductSessionState.ACTIVE || !session.canTransferFiles) return null
         return ActiveFileTransferSession(
-            isCurrent = { generation == internetGeneration && internetSession === session },
-            isCurrentAndAllowed = { generation == internetGeneration && internetSession === session && session.canTransferFiles },
+            isCurrent = { generation == productSessionCoordinator.currentInternetGeneration() && internetSession === session },
+            isCurrentAndAllowed = {
+                generation == productSessionCoordinator.currentInternetGeneration() &&
+                    internetSession === session &&
+                    session.canTransferFiles
+            },
             negotiatedMaxFileBytes = session.negotiatedMaxFileBytes,
             stageOutgoingFile = { file ->
-                if (generation == internetGeneration && internetSession === session && session.canTransferFiles) {
+                if (generation == productSessionCoordinator.currentInternetGeneration() &&
+                    internetSession === session &&
+                    session.canTransferFiles
+                ) {
                     discardPendingOutgoingFileTransfer()
                     pendingInternetOutgoingFileTransfer = file
                     true
@@ -2732,14 +2734,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rejectPendingIncomingFileOffer() {
-        val decision = pendingIncomingFileDecision
-        if (decision != null) {
-            decision.invoke()
-        } else {
-            pendingIncomingFileDialog?.cancel()
-        }
+        pendingIncomingFileDialog?.cancel()
         pendingIncomingFileDialog = null
-        pendingIncomingFileDecision = null
         productSessionCoordinator.clearIncomingFileOffer()
     }
 
@@ -4629,14 +4625,16 @@ class MainActivity : AppCompatActivity() {
                     val session = sessionReference.get() ?: return
                     val callbackGeneration = generation
                     promptIncomingFileOffer(
-                        offer = offer,
-                        isCurrentAndAllowed = {
-                            callbackGeneration == internetGeneration &&
-                                internetSession === session &&
-                                session.canTransferFiles
-                        },
-                        respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) },
-                    )
+        offer = offer,
+        isCurrentAndAllowed = {
+            callbackGeneration == productSessionCoordinator.currentInternetGeneration() &&
+                internetSession === session &&
+                session.canTransferFiles
+        },
+        finishDecision = { true },
+        clearDecision = {},
+        respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) },
+    )
                 }
 
                 override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {

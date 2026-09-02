@@ -51,21 +51,21 @@ class MainActivityClipboardSystemBoundaryContractTest {
 
         assertBefore(
             directConfirmation,
-            "clipboardApprovalState.consumeDirectContent",
+            "productSessionCoordinator.consumeDirectClipboardContent",
             "writeRemoteClipboard(approved)",
         )
         assertTrue(
             "Direct content must be discarded when the user cancels overwrite confirmation",
-            directConfirmation.contains("clipboardApprovalState.discardDirectContent("),
+            directConfirmation.contains("productSessionCoordinator.discardDirectClipboardContent("),
         )
         assertBefore(
             receiveCallback,
-            "clipboardApprovalState.consumeSolicitedContent",
+            "productSessionCoordinator.consumeSolicitedClipboardContent",
             "writeRemoteClipboard(approved)",
         )
         assertTrue(
             "Unsolicited direct content must be staged instead of immediately written",
-            receiveCallback.contains("clipboardApprovalState.stageDirectContent") &&
+            receiveCallback.contains("productSessionCoordinator.stageDirectClipboardContent") &&
                 receiveCallback.contains("return@runOnUiThread"),
         )
     }
@@ -74,8 +74,8 @@ class MainActivityClipboardSystemBoundaryContractTest {
     fun getFromMacRequestsClipboardOnlyAfterCurrentSessionAndCapabilityChecks() {
         val receive = extractMethod(mainActivitySource(), "private fun receiveRemoteClipboard")
 
-        assertBefore(receive, "isCurrentSession(client, generation)", "clipboardApprovalState.directContentForConfirmation")
-        assertBefore(receive, "client.canSendClipboard", "clipboardApprovalState.directContentForConfirmation")
+        assertBefore(receive, "isCurrentSession(client, generation)", "productSessionCoordinator.directClipboardContentForConfirmation")
+        assertBefore(receive, "client.canSendClipboard", "productSessionCoordinator.directClipboardContentForConfirmation")
         assertBefore(receive, "isCurrentSession(client, generation)", "client.requestClipboard(offer.changeId)")
         assertBefore(receive, "client.canSendClipboard", "client.requestClipboard(offer.changeId)")
         assertTrue(
@@ -113,13 +113,13 @@ class MainActivityClipboardSystemBoundaryContractTest {
 
         assertTrue(
             "New sessions must bind approval state to the exact StreamClient generation",
-            activateSession.contains("clipboardApprovalState.activate(client, generation)"),
+            activateSession.contains("productSessionCoordinator.activate(client)"),
         )
         assertTrue(
             "Remote managed-policy clipboard deny must clear pending approvals",
             managedPolicyCallback.contains("if (!clipboard) {") &&
                 managedPolicyCallback.contains("cancelClipboardRequestTimeout()") &&
-                managedPolicyCallback.contains("clipboardApprovalState.clear()"),
+                managedPolicyCallback.contains("productSessionCoordinator.clearClipboardWorkflow()"),
         )
     }
 
