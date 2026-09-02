@@ -2751,6 +2751,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
             controllerAvailable: configuration.controllerAvailable,
+            fileTransferPolicy: configuration.fileTransferPolicy,
+            fileTransferApprovalTimeoutMilliseconds: configuration.fileTransferApprovalTimeoutMilliseconds,
             heartbeatIntervalMilliseconds: configuration.heartbeatIntervalMilliseconds,
             heartbeatTimeoutMilliseconds: configuration.heartbeatTimeoutMilliseconds,
             negotiationTimeoutMilliseconds: configuration.negotiationTimeoutMilliseconds,
@@ -2858,7 +2860,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 rotationDegrees: settings.rotation
             ),
             inputEnabled: settings.touchEnabled,
-            controllerAvailable: gameControllerRuntime.factory != nil
+            controllerAvailable: gameControllerRuntime.factory != nil,
+            fileTransferPolicy: .default
         )
     }
 
@@ -3090,6 +3093,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.settings.internetStatus = .revoked
                 self.settings.clientConnected = false
                 await self.stopServer(preserveRecoveryState: true)
+            }
+        }
+        session.onFileTransferApprovalRequested = { [weak self, weak session] offer, completion in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else {
+                    completion(false)
+                    return
+                }
+                completion(self.fileTransferController?.approveIncomingFileOffer(offer) ?? false)
+            }
+        }
+        session.onFileTransferCompleted = { [weak self, weak session] completed in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.handleIncomingFileCompleted(completed)
+            }
+        }
+        session.onFileTransferResult = { [weak self, weak session] _, direction, accepted, reason in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.handleFileTransferResult(
+                    direction: direction,
+                    accepted: accepted,
+                    reason: reason
+                )
+            }
+        }
+        session.onFileTransferAvailabilityChanged = { [weak self, weak session] _ in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.fileTransferController?.refreshAvailability()
             }
         }
 
@@ -3617,17 +3659,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyInternetSessionState(_ state: InternetProductSessionState) {
         switch state {
         case .idle:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = internetPairingMetadataIsComplete ? .paired : .idle
         case .connecting, .authenticating, .awaitingVideoConfiguration:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .connecting
             settings.clientConnected = false
         case .streaming(let path):
             guard path != .unknown else {
+                if internetProductSession != nil { fileTransferController?.unbind() }
                 settings.internetStatus = .failed
                 settings.internetErrorMessage =
                     "The selected ICE candidate path is unknown; no route was published."
                 settings.clientConnected = false
                 return
+            }
+            if let session = internetProductSession {
+                fileTransferController?.bind(
+                    server: session,
+                    fileTransferAvailable: session.fileTransferAvailable
+                )
             }
             settings.internetStatus = path == .relay ? .relay : .direct
             settings.clientConnected = true
@@ -3635,16 +3686,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetRecoverySuggestion = nil
             screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
         case .recovering:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .recovering
             settings.clientConnected = false
         case .failed(let reason):
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .failed
             settings.internetErrorMessage = reason
             settings.clientConnected = false
         case .revoked:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.internetStatus = .revoked
             settings.clientConnected = false
         case .closed:
+            if internetProductSession != nil { fileTransferController?.unbind() }
             settings.clientConnected = false
             if settings.internetStatus != .recovering,
                settings.internetStatus != .revoked,

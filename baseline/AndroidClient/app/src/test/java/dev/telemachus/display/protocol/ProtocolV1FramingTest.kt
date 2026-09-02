@@ -15,6 +15,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.MessageDigest
 
 class ProtocolV1FramingTest {
     @Test
@@ -121,6 +122,21 @@ class ProtocolV1FramingTest {
         }
     }
 
+    @Test
+    fun rejectsFileChunkHeadersLargerThan64KiB() {
+        val header =
+            FileChunkHeader
+                .newBuilder()
+                .setTransferId(com.google.protobuf.ByteString.copyFrom(ByteArray(70 * 1024)))
+                .setSessionEpoch(1)
+                .setPayloadLength(1)
+                .setChunkSha256(com.google.protobuf.ByteString.copyFrom(MessageDigest.getInstance("SHA-256").digest(byteArrayOf(1))))
+                .build()
+        val encoded = encodeVarint(header.toByteArray().size) + header.toByteArray() + byteArrayOf(1)
+
+        assertThrows(IOException::class.java) { ProtocolV1Framing.decodeFileChunk(encoded) }
+    }
+
     private fun fixtures(): File {
         val workingDirectory = requireNotNull(System.getProperty("user.dir"))
         var current = File(workingDirectory).canonicalFile
@@ -130,6 +146,18 @@ class ProtocolV1FramingTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("Protocol v1 fixtures not found from $workingDirectory")
+    }
+
+    private fun encodeVarint(value: Int): ByteArray {
+        var remaining = value
+        val result = ArrayList<Byte>()
+        do {
+            var next = remaining and 0x7f
+            remaining = remaining ushr 7
+            if (remaining != 0) next = next or 0x80
+            result += next.toByte()
+        } while (remaining != 0)
+        return result.toByteArray()
     }
 
     private class OneByteInputStream(bytes: ByteArray) : InputStream() {

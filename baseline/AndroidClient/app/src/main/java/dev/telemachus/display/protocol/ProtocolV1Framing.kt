@@ -33,6 +33,7 @@ internal data class ProtocolFrame(
 /** TCP framing shared by USB/LAN. Physical multiplexing never erases logical channel identity. */
 internal object ProtocolV1Framing {
     const val MAX_FRAME_BYTES = 16 * 1024 * 1024
+    const val MAX_FILE_CHUNK_HEADER_BYTES = 64 * 1024
     private const val PREFIX_BYTES = 5
 
     fun write(
@@ -114,13 +115,22 @@ internal object ProtocolV1Framing {
     fun decodeFileChunk(payload: ByteArray): FileChunkPayload {
         val coded = CodedInputStream.newInstance(payload)
         val headerLength = coded.readUInt32()
-        if (headerLength <= 0 || headerLength > coded.bytesUntilLimit) {
+        if (headerLength <= 0 || headerLength > MAX_FILE_CHUNK_HEADER_BYTES || headerLength > coded.bytesUntilLimit) {
             throw IOException("Invalid file chunk header length: $headerLength")
         }
         val header = FileChunkHeader.parseFrom(coded.readRawBytes(headerLength))
         val content = coded.readRawBytes(coded.bytesUntilLimit)
         if (header.payloadLength != content.size) throw IOException("File payload_length mismatch")
         return FileChunkPayload(header, content)
+    }
+
+    fun peekFileChunkHeader(payload: ByteArray): FileChunkHeader {
+        val coded = CodedInputStream.newInstance(payload)
+        val headerLength = coded.readUInt32()
+        if (headerLength <= 0 || headerLength > MAX_FILE_CHUNK_HEADER_BYTES || headerLength > coded.bytesUntilLimit) {
+            throw IOException("Invalid file chunk header length: $headerLength")
+        }
+        return FileChunkHeader.parseFrom(coded.readRawBytes(headerLength))
     }
 
     data class VideoPayload(

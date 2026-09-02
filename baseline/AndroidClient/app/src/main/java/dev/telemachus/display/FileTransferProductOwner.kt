@@ -121,6 +121,18 @@ internal class FileTransferProductOwner(
         pendingOfferGate.releaseFileOffer(offer.transferId)
     }
 
+    fun releaseFileOfferDecision(transferId: ByteString) {
+        pendingOfferGate.releaseFileOffer(transferId)
+    }
+
+    fun isPendingOrActiveIncomingTransfer(transferId: ByteString): Boolean {
+        val active = synchronized(lock) { incomingFileTransfers?.contains(transferId) == true }
+        return active || pendingOfferGate.hasFileOffer(transferId)
+    }
+
+    fun isActiveIncomingTransfer(transferId: ByteString): Boolean =
+        synchronized(lock) { incomingFileTransfers?.contains(transferId) == true }
+
     fun decideFileOffer(
         offer: FileOffer,
         acceptedByUser: Boolean,
@@ -287,6 +299,22 @@ internal class FileTransferProductOwner(
         synchronized(lock) { outgoingFileTransfers.remove(transferId) }?.cancel()
     }
 
+    fun cancelIncomingTransfer(transferId: ByteString): Boolean {
+        val manager = synchronized(lock) { incomingFileTransfers }
+        return manager?.cancel(transferId) == true
+    }
+
+    fun handleBulkSendFailed(transferId: ByteString): OutgoingUpdate {
+        val transfer = synchronized(lock) { outgoingFileTransfers.remove(transferId) }
+        transfer ?: return OutgoingUpdate()
+        transfer.cancel()
+        return OutgoingUpdate(
+            cancelTransferId = transferId,
+            cancelReasonCode = "bulk_send_failed",
+            result = TransferResult(accepted = false, reason = "bulk_send_failed"),
+        )
+    }
+
     fun rejectOutgoingTransfer(
         transferId: ByteString,
         prepared: PreparedOutgoingTransfer,
@@ -417,7 +445,11 @@ internal class FileTransferProductOwner(
             OutgoingUpdate(chunk = chunk)
         } catch (failure: FileTransferException) {
             synchronized(lock) { outgoingFileTransfers.remove(transferId) }?.cancel()
-            OutgoingUpdate(cancelTransferId = transferId, cancelReasonCode = failure.reasonCode)
+            OutgoingUpdate(
+                cancelTransferId = transferId,
+                cancelReasonCode = failure.reasonCode,
+                result = TransferResult(accepted = false, reason = failure.reasonCode),
+            )
         }
     }
 
@@ -504,6 +536,8 @@ internal class FileTransferProductOwner(
 
         fun cancel(transferId: ByteString): Boolean
 
+        fun contains(transferId: ByteString): Boolean
+
         fun cancelAll()
 
         fun activeTransferCount(): Int
@@ -524,6 +558,8 @@ internal class FileTransferProductOwner(
         override fun finish(transferId: ByteString): CompletedIncomingFile = manager.finish(transferId)
 
         override fun cancel(transferId: ByteString): Boolean = manager.cancel(transferId)
+
+        override fun contains(transferId: ByteString): Boolean = manager.contains(transferId)
 
         override fun cancelAll() = manager.cancelAll()
 
@@ -589,6 +625,8 @@ internal class FileTransferProductOwner(
         fun claimFileOffer(transferId: ByteString): PendingOfferOwner?
 
         fun releaseFileOffer(transferId: ByteString)
+
+        fun hasFileOffer(transferId: ByteString): Boolean
 
         fun clearFileOffers()
     }

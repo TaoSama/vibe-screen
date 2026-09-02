@@ -111,9 +111,10 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.audioDataChannel))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.bulkDataChannel))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.stylus))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.managedConfiguration))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.fileTransfer))
         XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.audio))
         XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.clipboard))
-        XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.fileTransfer))
         XCTAssertEqual(
             acceptedEnvelope.sessionAccepted.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes,
             UInt32(negotiatedMaximum)

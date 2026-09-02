@@ -6,6 +6,7 @@ import dev.telemachus.display.CONTROLLER_CONNECTION_ACK_TIMEOUT_MS
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
+import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.generateEphemeral
 import dev.telemachus.display.internet.security.pairingSha256
@@ -2823,6 +2824,8 @@ class InternetProductSessionTest {
         ResourceLimits
             .newBuilder()
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+            .setMaximumFileBytes(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES)
+            .setMaximumFileChunkBytes(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES)
 
     private fun media(
         frameId: Long,

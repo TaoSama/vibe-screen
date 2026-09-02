@@ -153,6 +153,9 @@ internal class StreamProtocolSessionOwner(
     fun releaseFileOffer(transferId: ByteString) =
         protocolSideEffectOwner.releaseFileOffer(transferId)
 
+    fun hasFileOffer(transferId: ByteString): Boolean =
+        protocolSideEffectOwner.hasFileOffer(transferId)
+
     fun clearFileOffers() = protocolSideEffectOwner.clearFileOffers()
 
     fun trackWakeHostRequest(

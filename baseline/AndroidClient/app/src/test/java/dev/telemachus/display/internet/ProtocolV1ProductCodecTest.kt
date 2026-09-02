@@ -8,6 +8,11 @@ import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.MediaPacketHeader
@@ -34,23 +39,27 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO_DATA_CHANNEL))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
         assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
-        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO_DATA_CHANNEL))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO))
         assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
-        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
             hello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes,
         )
+        assertEquals(512L * 1024L * 1024L, hello.clientHello.resourceLimits.maximumFileBytes)
+        assertEquals(64 * 1024, hello.clientHello.resourceLimits.maximumFileChunkBytes)
         assertEquals(listOf(Codec.CODEC_H264, Codec.CODEC_HEVC), hello.clientHello.codecsList.sortedBy { it.number })
 
         val touch =
@@ -136,6 +145,10 @@ class ProtocolV1ProductCodecTest {
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES.toLong(),
             decodedAccepted.maximumEncryptedMediaRecordBytes,
         )
+        assertEquals(1234L, decodedHost.maximumFileBytes)
+        assertEquals(4096, decodedHost.maximumFileChunkBytes)
+        assertEquals(1234L, decodedAccepted.maximumFileBytes)
+        assertEquals(4096, decodedAccepted.maximumFileChunkBytes)
     }
 
     @Test
@@ -384,6 +397,46 @@ class ProtocolV1ProductCodecTest {
         }
     }
 
+    @Test
+    fun encodesAndDecodesInternetFileTransferControlMessages() {
+        val transferId = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4))
+        val sha256 = ByteString.copyFrom(ByteArray(32) { it.toByte() })
+        val offer =
+            FileOffer
+                .newBuilder()
+                .setTransferId(transferId)
+                .setFileName("report.bin")
+                .setMimeType("application/octet-stream")
+                .setByteLength(5)
+                .setSha256(sha256)
+                .build()
+        val decodedOffer = codec.decodeControl(codec.encodeFileOffer(20, sessionId, 7, offer)).message
+        assertEquals(offer, (decodedOffer as ProductControlMessage.FileOfferReceived).offer)
+
+        val accept = FileAccept.newBuilder().setTransferId(transferId).setAccepted(false).setRejectionReason("user_denied").build()
+        val decodedAccept = codec.decodeControl(codec.encodeFileAccept(21, sessionId, 7, accept)).message
+        assertEquals(accept, (decodedAccept as ProductControlMessage.FileAcceptReceived).response)
+
+        val decodedProgress = codec.decodeControl(codec.encodeFileProgress(22, sessionId, 7, transferId, 5)).message
+        assertEquals(5L, (decodedProgress as ProductControlMessage.FileProgressReceived).progress.receivedBytes)
+
+        val decodedCancel = codec.decodeControl(codec.encodeFileCancel(23, sessionId, 7, transferId, "approval_timeout")).message
+        assertEquals("approval_timeout", (decodedCancel as ProductControlMessage.FileCancelReceived).cancellation.reasonCode)
+
+        val decodedComplete = codec.decodeControl(codec.encodeFileComplete(24, sessionId, 7, transferId, true, sha256, "")).message
+        assertEquals(sha256, (decodedComplete as ProductControlMessage.FileCompleteReceived).result.sha256)
+
+        val policy =
+            ManagedPolicyStatus
+                .newBuilder()
+                .setManaged(true)
+                .setFileTransferAllowed(false)
+                .setMaximumFileBytes(0)
+                .build()
+        val decodedPolicy = codec.decodeControl(baseEnvelope(25).setManagedPolicyStatus(policy).build().toByteArray()).message
+        assertEquals(policy, (decodedPolicy as ProductControlMessage.ManagedPolicyStatusReceived).status)
+    }
+
     private fun mediaHeader(payloadBytes: Int): MediaPacketHeader =
         MediaPacketHeader
             .newBuilder()
@@ -404,6 +457,8 @@ class ProtocolV1ProductCodecTest {
         ResourceLimits
             .newBuilder()
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+            .setMaximumFileBytes(1234)
+            .setMaximumFileChunkBytes(4096)
 
     private fun encodedVarintBytes(value: Int): Int {
         var remaining = value

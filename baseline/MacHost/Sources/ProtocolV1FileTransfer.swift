@@ -75,7 +75,7 @@ struct ProtocolV1RemoteManagedPolicy: Equatable {
     init(status: VSManagedPolicyStatus) {
         if status.managed {
             managed = true
-            fileTransferAllowed = status.fileTransferAllowed
+            fileTransferAllowed = status.fileTransferAllowed && status.maximumFileBytes > 0
             maximumFileBytes = status.maximumFileBytes
         } else {
             self = .unmanaged
@@ -122,6 +122,24 @@ struct ProtocolV1FileChunk: Equatable {
         guard Data(SHA256.hash(data: payload)) == header.chunkSha256 else {
             throw ProtocolV1FileTransferError.chunkDigestMismatch
         }
+    }
+
+    static func peekHeader(serializedFrame: Data) throws -> VSFileChunkHeader {
+        var cursor = 0
+        let headerLength = try decodeVarint(serializedFrame, cursor: &cursor)
+        guard headerLength > 0, headerLength <= maximumHeaderBytes else {
+            throw ProtocolV1FileTransferError.invalidChunkHeader
+        }
+        guard headerLength <= serializedFrame.count - cursor else {
+            throw ProtocolV1FileTransferError.invalidChunkHeader
+        }
+        let header = try VSFileChunkHeader(
+            serializedBytes: serializedFrame.dropFirst(cursor).prefix(headerLength)
+        )
+        guard !header.transferID.isEmpty else {
+            throw ProtocolV1FileTransferError.invalidTransferID
+        }
+        return header
     }
 
     func serializedFrame() throws -> Data {
@@ -195,6 +213,8 @@ enum ProtocolV1FileTransferError: Error, Equatable {
     case invalidFinalFlag
     case incompleteFile
     case digestMismatch
+    case approvalTimedOut
+    case bulkSendFailed
     case ioFailure(String)
 
     var reasonCode: String {
@@ -220,6 +240,8 @@ enum ProtocolV1FileTransferError: Error, Equatable {
         case .invalidFinalFlag: return "invalid_final_flag"
         case .incompleteFile: return "incomplete_file"
         case .digestMismatch: return "digest_mismatch"
+        case .approvalTimedOut: return "approval_timeout"
+        case .bulkSendFailed: return "bulk_send_failed"
         case .ioFailure: return "io_failure"
         }
     }

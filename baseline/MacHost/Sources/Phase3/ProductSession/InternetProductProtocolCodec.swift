@@ -189,10 +189,14 @@ struct InternetProductProtocolCodec {
     let peerDeviceID: String
     let inputEnabled: Bool
     let controllerAvailable: Bool
+    let fileTransferPolicy: ProtocolV1FileTransferPolicy
     private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
     private(set) var negotiatedMaximumEncryptedMediaRecordBytes: Int?
+    private(set) var remoteManagedPolicy: ProtocolV1RemoteManagedPolicy = .unmanaged
+    private(set) var peerFileTransferResourceLimits = VSResourceLimits()
+    private(set) var negotiatedFileTransferPolicy: ProtocolV1FileTransferPolicy
 
     private(set) var nextMessageID: UInt64 = 1
     private(set) var nextFrameID: UInt64 = 1
@@ -209,6 +213,7 @@ struct InternetProductProtocolCodec {
         video: InternetProductVideoConfiguration,
         inputEnabled: Bool = true,
         controllerAvailable: Bool = false,
+        fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
         limits: InternetTransportLimits
     ) throws {
         guard !sessionIdentifier.isEmpty, sessionEpoch > 0,
@@ -223,6 +228,8 @@ struct InternetProductProtocolCodec {
         self.peerDeviceID = peerDeviceID
         self.inputEnabled = inputEnabled
         self.controllerAvailable = controllerAvailable
+        self.fileTransferPolicy = fileTransferPolicy
+        self.negotiatedFileTransferPolicy = fileTransferPolicy
         self.video = video
         self.nextConfigEpoch = video.configEpoch < UInt64.max
             ? video.configEpoch + 1
@@ -273,6 +280,8 @@ struct InternetProductProtocolCodec {
 
     mutating func validate(_ hello: VSClientHello) throws {
         negotiatedMaximumEncryptedMediaRecordBytes = nil
+        negotiatedFileTransferPolicy = fileTransferPolicy
+        peerFileTransferResourceLimits = VSResourceLimits()
         guard hello.deviceID == peerDeviceID else {
             throw InternetProductProtocolError.peerIdentityMismatch
         }
@@ -310,6 +319,12 @@ struct InternetProductProtocolCodec {
             offeredMaximum,
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         )
+        if capabilities.contains(.fileTransfer) {
+            peerFileTransferResourceLimits = hello.resourceLimits
+            negotiatedFileTransferPolicy = fileTransferPolicy
+                .applying(remote: remoteManagedPolicy)
+                .negotiated(with: peerFileTransferResourceLimits)
+        }
         guard hello.codecs.contains(video.codec) else {
             throw InternetProductProtocolError.unsupportedCodec
         }
@@ -328,6 +343,8 @@ struct InternetProductProtocolCodec {
         limits.maximumEncryptedMediaRecordBytes = UInt32(
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         )
+        limits.maximumFileBytes = fileTransferPolicy.maximumFileBytes
+        limits.maximumFileChunkBytes = UInt32(clamping: fileTransferPolicy.maximumChunkBytes)
         hello.resourceLimits = limits
         var envelope = baseEnvelope()
         envelope.hostHello = hello
@@ -339,7 +356,9 @@ struct InternetProductProtocolCodec {
         peerSupportsTouch: Bool,
         peerSupportsStylus: Bool = false,
         peerSupportsStylusExtended: Bool = false,
-        peerSupportsController: Bool = false
+        peerSupportsController: Bool = false,
+        peerSupportsFileTransfer: Bool = false,
+        peerSupportsManagedConfiguration: Bool = false
     ) throws -> Data {
         var accepted = VSSessionAccepted()
         accepted.sessionID = sessionID
@@ -353,6 +372,8 @@ struct InternetProductProtocolCodec {
                     ? [.stylusExtended]
                     : [])
                 + (controllerAvailable && peerSupportsController ? [.controller] : [])
+                + (fileTransferPolicy.allowed && remoteManagedPolicy.fileTransferAllowed && peerSupportsFileTransfer ? [.fileTransfer] : [])
+                + (peerSupportsManagedConfiguration ? [.managedConfiguration] : [])
         ).sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
@@ -363,6 +384,10 @@ struct InternetProductProtocolCodec {
         limits.maximumEncryptedMediaRecordBytes = UInt32(
             negotiatedMaximumEncryptedMediaRecordBytes
         )
+        if fileTransferPolicy.allowed && remoteManagedPolicy.fileTransferAllowed && peerSupportsFileTransfer {
+            limits.maximumFileBytes = negotiatedFileTransferPolicy.maximumFileBytes
+            limits.maximumFileChunkBytes = UInt32(clamping: negotiatedFileTransferPolicy.maximumChunkBytes)
+        }
         accepted.negotiatedResourceLimits = limits
         var envelope = baseEnvelope()
         envelope.sessionAccepted = accepted
@@ -377,7 +402,70 @@ struct InternetProductProtocolCodec {
         if controllerAvailable {
             capabilities.insert(.controller)
         }
+        if fileTransferPolicy.allowed {
+            capabilities.insert(.fileTransfer)
+        }
+        capabilities.insert(.managedConfiguration)
         return capabilities
+    }
+
+    mutating func managedPolicyStatus(_ status: VSManagedPolicyStatus) throws -> Data {
+        var envelope = baseEnvelope()
+        envelope.managedPolicyStatus = status
+        return try encode(envelope)
+    }
+
+    mutating func updateRemoteManagedPolicy(_ status: VSManagedPolicyStatus) {
+        remoteManagedPolicy = ProtocolV1RemoteManagedPolicy(status: status)
+        negotiatedFileTransferPolicy = fileTransferPolicy
+            .applying(remote: remoteManagedPolicy)
+            .negotiated(with: peerFileTransferResourceLimits)
+    }
+
+    mutating func fileOffer(_ offer: VSFileOffer) throws -> Data {
+        var envelope = baseEnvelope()
+        envelope.fileOffer = offer
+        return try encode(envelope)
+    }
+
+    mutating func fileAccept(_ response: VSFileAccept) throws -> Data {
+        var envelope = baseEnvelope()
+        envelope.fileAccept = response
+        return try encode(envelope)
+    }
+
+    mutating func fileTransferProgress(transferID: Data, receivedBytes: UInt64) throws -> Data {
+        var progress = VSFileTransferProgress()
+        progress.transferID = transferID
+        progress.receivedBytes = receivedBytes
+        var envelope = baseEnvelope()
+        envelope.fileTransferProgress = progress
+        return try encode(envelope)
+    }
+
+    mutating func fileTransferComplete(
+        transferID: Data,
+        accepted: Bool,
+        sha256: Data,
+        rejectionReason: String
+    ) throws -> Data {
+        var result = VSFileTransferComplete()
+        result.transferID = transferID
+        result.accepted = accepted
+        result.sha256 = sha256
+        result.rejectionReason = accepted ? "" : rejectionReason
+        var envelope = baseEnvelope()
+        envelope.fileTransferComplete = result
+        return try encode(envelope)
+    }
+
+    mutating func fileTransferCancel(transferID: Data, reasonCode: String) throws -> Data {
+        var cancel = VSFileTransferCancel()
+        cancel.transferID = transferID
+        cancel.reasonCode = reasonCode
+        var envelope = baseEnvelope()
+        envelope.fileTransferCancel = cancel
+        return try encode(envelope)
     }
 
     mutating func videoConfiguration() throws -> Data {
