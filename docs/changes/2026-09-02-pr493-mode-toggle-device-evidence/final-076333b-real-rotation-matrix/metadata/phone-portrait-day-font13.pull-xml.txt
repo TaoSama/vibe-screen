@@ -1,0 +1,2 @@
+dump invalid; not pulling XML
+dump_returncode=0 remote_ls_returncode=1

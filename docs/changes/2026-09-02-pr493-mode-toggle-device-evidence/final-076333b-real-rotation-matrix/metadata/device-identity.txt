@@ -1,0 +1,28 @@
+Android device identity from independent read-only adb commands
+Recorded at: 2026-09-02T18:11:23+08:00
+Scope: device identity only; no Host, GUI, product binary, adb reverse creation, adb reverse modification, or adb reverse deletion was used.
+
+adb devices
+List of devices attached
+<redacted-adb-serial>	device
+
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+nubia
+
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+P0110
+
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+pacific
+
+adb -s <redacted-adb-serial> shell getprop ro.product.vendor.device
+pacific
+
+adb -s <redacted-adb-serial> shell getprop ro.build.product
+qssi_64
+
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+16
+
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+36

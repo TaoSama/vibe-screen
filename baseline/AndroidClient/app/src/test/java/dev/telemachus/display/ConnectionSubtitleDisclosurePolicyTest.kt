@@ -39,6 +39,21 @@ class ConnectionSubtitleDisclosurePolicyTest {
     }
 
     @Test
+    fun `large layout pressure still keeps guidance fully readable`() {
+        val presentation =
+            ConnectionSubtitleDisclosurePolicy.resolve(
+                connectionMode = ConnectionMode.USB,
+                stackedPortrait = false,
+                requestedExpanded = false,
+            )
+
+        assertFalse(presentation.expandable)
+        assertFalse(presentation.expanded)
+        assertEquals(ConnectionSubtitleDisclosurePolicy.MAX_LINES_UNLIMITED, presentation.maxLines)
+        assertFalse(presentation.ellipsizeEnd)
+    }
+
+    @Test
     fun `disclosure state resets after expansion`() {
         val state = ConnectionSubtitleDisclosureState()
 

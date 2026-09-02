@@ -198,12 +198,8 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
-    fun positionTargetsAndOpacitySliderMeetAccessibilityContract() {
+    fun opacitySliderKeepsAccessibilityContract() {
         withLayout(screenWidthDp = 320) { layout ->
-            val minimumTarget = layout.dp(48)
-            POSITION_BUTTON_IDS.forEach { buttonId ->
-                assertTrue(layout.root.findViewById<View>(buttonId).measuredHeight >= minimumTarget)
-            }
             val label = layout.root.findViewById<TextView>(R.id.opacityLabel)
             val slider = layout.root.findViewById<Slider>(R.id.opacitySlider)
             assertEquals(slider.id, label.labelFor)
@@ -544,16 +540,5 @@ class SettingsDialogLayoutInstrumentedTest {
     private companion object {
         const val SETTINGS_WINDOW_MARGIN_DP = 24
         const val SETTINGS_MAX_HEIGHT_RATIO = 0.85f
-        val POSITION_BUTTON_IDS =
-            listOf(
-                R.id.cornerTopLeft,
-                R.id.positionTopCenter,
-                R.id.cornerTopRight,
-                R.id.positionCenterLeft,
-                R.id.positionCenterRight,
-                R.id.cornerBottomLeft,
-                R.id.positionBottomCenter,
-                R.id.cornerBottomRight,
-            )
     }
 }

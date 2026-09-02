@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.view.Gravity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -11,6 +12,7 @@ class ConnectionPanelLayoutPolicyTest {
         val layout = ConnectionPanelLayoutPolicy.resolve(twoColumn = false, columnGapPx = 28)
 
         assertEquals(ConnectionPanelLayoutPolicy.Orientation.VERTICAL, layout.contentOrientation)
+        assertEquals(Gravity.TOP, layout.contentGravity)
         assertTrue(layout.header.widthMatchParent)
         assertTrue(layout.actions.widthMatchParent)
         assertEquals(0f, layout.header.weight, 0f)
@@ -24,6 +26,7 @@ class ConnectionPanelLayoutPolicyTest {
         val layout = ConnectionPanelLayoutPolicy.resolve(twoColumn = true, columnGapPx = 28)
 
         assertEquals(ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL, layout.contentOrientation)
+        assertEquals(Gravity.TOP, layout.contentGravity)
         assertFalse(layout.header.widthMatchParent)
         assertFalse(layout.actions.widthMatchParent)
         assertEquals(ConnectionPanelLayoutPolicy.HEADER_WEIGHT, layout.header.weight, 0f)
@@ -64,5 +67,32 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(0, narrowLandscape.columnGapPx)
         assertEquals(portrait.contentOrientation, narrowLandscape.contentOrientation)
         assertEquals(portrait.columnGapPx, narrowLandscape.columnGapPx)
+    }
+
+    @Test
+    fun `mode toggle stacks only for large-font stacked portrait`() {
+        val layout = ConnectionModeToggleLayoutPolicy.resolve(stackedPortrait = true, fontScale = 1.3f)
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+    }
+
+    @Test
+    fun `mode toggle stays segmented for default font stacked portrait`() {
+        val layout = ConnectionModeToggleLayoutPolicy.resolve(stackedPortrait = true, fontScale = 1.0f)
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+    }
+
+    @Test
+    fun `mode toggle stays segmented outside stacked portrait`() {
+        val layout = ConnectionModeToggleLayoutPolicy.resolve(stackedPortrait = false, fontScale = 1.3f)
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
     }
 }

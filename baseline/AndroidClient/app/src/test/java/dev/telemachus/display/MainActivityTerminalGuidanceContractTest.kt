@@ -184,6 +184,48 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun automaticUsbLaunchCleansExistingModeSessionBeforePersistingUsbMode() {
+        val source = mainActivitySource()
+        val enableAutomaticUsbConnect = extractMethod(source, "private fun enableAutomaticUsbConnect")
+        val showUsbWithoutAutomaticConnect = extractMethod(source, "private fun showUsbWithoutAutomaticConnect")
+        val cleanup = extractMethod(source, "private fun cleanupCurrentSessionBeforeUsbLaunch")
+
+        assertTrue(
+            "Automatic USB launch cleanup must reuse the explicit mode-switch cleanup path",
+            cleanup.contains("cancelConnectionForModeSwitch()"),
+        )
+        assertTrue(
+            "Automatic USB launch cleanup must keep existing USB sessions instead of tearing them down unconditionally",
+            cleanup.replace(Regex("\\s+"), "")
+                .contains("if(prefs.connectionMode!=ConnectionMode.USB){cancelConnectionForModeSwitch()}"),
+        )
+        assertCleanupBeforeUsbModePersistence(enableAutomaticUsbConnect, "enableAutomaticUsbConnect")
+        assertCleanupBeforeUsbModePersistence(showUsbWithoutAutomaticConnect, "showUsbWithoutAutomaticConnect")
+    }
+
+    @Test
+    fun scheduledUsbReconnectShowsSpinnerWhileIdleAndTerminalModesHideIt() {
+        val updateDisconnectedHeader = extractMethod(mainActivitySource(), "private fun updateDisconnectedHeader")
+        val usbBranch = extractWhenBranch(updateDisconnectedHeader, "ConnectionMode.USB ->")
+        val wirelessBranch = extractWhenBranch(updateDisconnectedHeader, "ConnectionMode.WIRELESS ->")
+        val internetBranch = extractWhenBranch(updateDisconnectedHeader, "ConnectionMode.INTERNET ->")
+        val compactUsb = usbBranch.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Scheduled USB reconnect should show the header spinner before the connection attempt starts",
+            compactUsb.contains("if(connectionAttemptInProgress||isReconnecting)View.VISIBLEelseView.GONE"),
+        )
+        assertTrue(
+            "Wireless idle and terminal guidance should hide the USB header spinner",
+            wirelessBranch.contains("binding.connectionProgress.visibility = View.GONE"),
+        )
+        assertTrue(
+            "Internet idle and terminal guidance should hide the USB header spinner",
+            internetBranch.contains("binding.connectionProgress.visibility = View.GONE"),
+        )
+    }
+
+    @Test
     fun terminalGuidanceUsesModeSpecificInlineSurfaces() {
         val presenter = extractMethod(mainActivitySource(), "private fun showTerminalConnectionGuidance")
         val compact = presenter.replace(Regex("\\s+"), "")
@@ -308,62 +350,105 @@ class MainActivityTerminalGuidanceContractTest {
         val disconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
         val entryPolicy = extractMethod(source, "private fun applyDisconnectedSettingsEntryPolicy")
         val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
-        val floatingSettingsBranch = extractBlockAfterMarker(entryPolicy, "if (!useInlineSettingsButton)")
+        val compactEntryPolicy = entryPolicy.replace(Regex("\\s+"), "")
+        val removedInlineSettingsFlag = "connection_panel_inline_settings_" + "button"
+        val removedFloatingSettingsBinding = "binding." + "settings" + "Button"
 
         assertTrue(
-            "Disconnected state should use the resource policy for inline settings",
-            entryPolicy.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
+            "Disconnected state should always expose the inline connection settings button",
+            compactEntryPolicy.contains("binding.connectionSettingsButton.visibility=View.VISIBLE"),
         )
-        assertTrue(
-            "Narrow layouts should show the inline connection settings button",
-            entryPolicy.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
+        assertFalse(
+            "Disconnected settings entry policy should no longer branch through resource flags",
+            entryPolicy.contains(removedInlineSettingsFlag) ||
+                entryPolicy.contains("resources.getBoolean"),
         )
-        assertTrue(
-            "Narrow layouts should hide the floating settings button",
-            entryPolicy.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
-        )
-        assertTrue(
-            "Wide layouts should keep the floating button above the connection panel",
-            entryPolicy.contains("if (!useInlineSettingsButton)"),
-        )
-        assertTrue(
-            "Wide disconnected settings button must sit above the connection panel",
-            floatingSettingsBranch.contains("settingsButton.bringToFront()"),
-        )
-        assertTrue(
-            "Wide disconnected settings button must have a higher z-order than the connection panel",
-            floatingSettingsBranch.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
-        )
-        assertTrue(
-            "Wide disconnected settings button must ignore overlay opacity and stay readable",
-            floatingSettingsBranch.contains("binding.settingsButton.alpha = 1f"),
+        assertFalse(
+            "Disconnected settings entry policy should not reference the removed floating settings affordance",
+            entryPolicy.contains(removedFloatingSettingsBinding),
         )
         assertTrue(
             "Disconnected entry policy must apply when the disconnected panel is first shown",
             disconnected.contains("applyDisconnectedSettingsEntryPolicy()"),
         )
         assertTrue(
-            "Configuration changes must re-evaluate inline versus floating settings entry while disconnected",
+            "Configuration changes must re-expose the inline settings entry while disconnected",
             configurationChanged.contains("if (!isConnected)") &&
                 configurationChanged.contains("applyDisconnectedSettingsEntryPolicy()"),
         )
     }
 
     @Test
-    fun floatingDisconnectedSettingsButtonExposesAccessibleClickTarget() {
-        val settingsButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsButton\"")
+    fun wideDisconnectedLayoutsKeepSettingsInlineSoRetryActionsAreUncovered() {
+        listOf(
+            "app/src/main/res/values-w600dp/bools.xml",
+            "app/src/main/res/values-w600dp-land/bools.xml",
+        ).forEach { path ->
+            val source = resourceSource(path)
+
+            assertTrue(
+                "$path should still opt into the wide two-column connection panel",
+                source.contains("""<bool name="connection_panel_two_column">true</bool>"""),
+            )
+        }
+        listOf(
+            "app/src/main/res/values/bools.xml",
+            "app/src/main/res/values-land/bools.xml",
+            "app/src/main/res/values-w600dp/bools.xml",
+            "app/src/main/res/values-w600dp-land/bools.xml",
+        ).forEach { path ->
+            val removedInlineSettingsFlag = "connection_panel_inline_settings_" + "button"
+            assertFalse(
+                "$path should not keep the removed inline-settings feature flag",
+                resourceSource(path).contains(removedInlineSettingsFlag),
+            )
+        }
+    }
+
+    @Test
+    fun wideLandscapeConnectionPanelUsesCompactVerticalMargins() {
+        val source = resourceSource("app/src/main/res/values-w600dp-land/dimens.xml")
 
         assertTrue(
-            "The clickable floating settings container needs the accessible label",
-            settingsButton.contains("android:contentDescription=\"@string/display_settings\""),
+            "Wide landscape has limited vertical space, so its connection panel margins must not inherit the taller wide-portrait value",
+            source.contains("""<dimen name="connection_panel_margin_vertical">12dp</dimen>"""),
+        )
+    }
+
+    @Test
+    fun wideLandscapeHeaderUsesCompactVerticalSpacing() {
+        val source = resourceSource("app/src/main/res/values-w600dp-land/dimens.xml")
+
+        assertTrue(
+            "Wide landscape large-text captures need a shorter header so the left column does not crop its guidance copy",
+            source.contains("""<dimen name="connection_icon_size">48dp</dimen>""") &&
+                source.contains("""<dimen name="connection_icon_margin_bottom">8dp</dimen>""") &&
+                source.contains("""<dimen name="connection_wordmark_margin_bottom">4dp</dimen>""") &&
+                source.contains("""<dimen name="connection_subtitle_margin_bottom">4dp</dimen>"""),
+        )
+    }
+
+    @Test
+    fun inlineDisconnectedSettingsButtonExposesAccessibleClickTarget() {
+        val source = mainActivityLayoutSource()
+        val inlineSettingsButton = extractXmlElement(source, "android:id=\"@+id/connectionSettingsButton\"")
+        val removedFloatingSettingsId = "android:id=\"@+id/" + "settings" + "Button\""
+
+        assertFalse(
+            "Disconnected settings must not keep a duplicate floating entry",
+            source.contains(removedFloatingSettingsId),
         )
         assertTrue(
-            "The floating settings container should be keyboard focusable",
-            settingsButton.contains("android:focusable=\"true\""),
+            "The inline settings button needs the accessible label",
+            inlineSettingsButton.contains("android:contentDescription=\"@string/display_settings\""),
         )
         assertTrue(
-            "The inner icon should not duplicate the parent accessibility node",
-            settingsButton.contains("android:importantForAccessibility=\"no\""),
+            "The inline settings button should expose visible settings text",
+            inlineSettingsButton.contains("android:text=\"@string/display_settings\""),
+        )
+        assertTrue(
+            "The inline settings button should keep the expected settings icon",
+            inlineSettingsButton.contains("app:icon=\"@drawable/ic_settings\""),
         )
     }
 
@@ -426,6 +511,168 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun connectionPanelOuterGeometryUsesResponsiveResources() {
+        val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
+        val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
+
+        assertTrue(
+            "Connection panel horizontal margin should adapt by resource qualifier",
+            settingsPanel.contains("android:layout_marginStart=\"@dimen/connection_panel_margin_horizontal\"") &&
+                settingsPanel.contains("android:layout_marginEnd=\"@dimen/connection_panel_margin_horizontal\""),
+        )
+        assertTrue(
+            "Connection panel vertical margin should adapt by resource qualifier",
+            settingsPanel.contains("android:layout_marginTop=\"@dimen/connection_panel_margin_vertical\"") &&
+                settingsPanel.contains("android:layout_marginBottom=\"@dimen/connection_panel_margin_vertical\""),
+        )
+        assertTrue(
+            "Connection panel max width should follow phone/tablet resource qualifiers",
+            settingsPanel.contains("app:layout_constraintWidth_max=\"@dimen/connection_panel_max_width\""),
+        )
+        assertFalse(
+            "Connection panel must not keep the old hard-coded 680dp cap",
+            settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
+        )
+        assertTrue(
+            "Horizontal connection layouts must not baseline-align the header against the actions column",
+            connectionContent.contains("android:baselineAligned=\"false\""),
+        )
+    }
+
+    @Test
+    fun statusOverlaySecurityTextCanWrapLongLinkState() {
+        val securityText = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/securityText\"")
+
+        assertTrue(
+            "Link/security copy can be long in transport error states, so it needs a second line",
+            securityText.contains("android:maxLines=\"2\""),
+        )
+        assertFalse(
+            "Link/security copy must not be forced through single-line ellipsizing",
+            securityText.contains("android:ellipsize=\"end\"") ||
+                securityText.contains("android:maxLines=\"1\""),
+        )
+    }
+
+    @Test
+    fun modeToggleButtonsCanWrapWithoutForcedTwoLineHeight() {
+        listOf("modeUSB", "modeWireless", "modeInternet").forEach { id ->
+            val button = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should allow labels to use a second line when needed",
+                button.contains("android:maxLines=\"2\""),
+            )
+            assertTrue(
+                "$id must retain the 48dp Material touch target minimum",
+                button.contains("android:minHeight=\"48dp\""),
+            )
+            assertFalse(
+                "$id must not force every label to occupy two text lines",
+                button.contains("android:lines="),
+            )
+            assertTrue(
+                "$id should keep logical padding for RTL-safe layout",
+                button.contains("android:paddingStart=\"2dp\"") &&
+                    button.contains("android:paddingEnd=\"2dp\""),
+            )
+            assertTrue(
+                "$id must zero physical Material padding so compact labels are not ellipsized",
+                button.contains("android:paddingLeft=\"0dp\"") &&
+                    button.contains("android:paddingRight=\"0dp\""),
+            )
+            assertTrue(
+                "$id must not reserve selected-icon space that can truncate short labels",
+                button.contains("app:icon=\"@null\"") && button.contains("app:iconSize=\"0dp\""),
+            )
+            assertTrue(
+                "$id must disable Material all-caps transformation",
+                button.contains("app:textAllCaps=\"false\""),
+            )
+            assertTrue(
+                "$id must keep natural letter spacing so short labels do not exceed their segment",
+                button.contains("android:letterSpacing=\"0\""),
+            )
+        }
+    }
+
+    @Test
+    fun modeToggleSegmentsUseEqualResponsiveWidths() {
+        listOf("modeUSB", "modeWireless", "modeInternet").forEach { id ->
+            val button = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should participate in the toggle row as an equal-width responsive segment",
+                button.contains("android:layout_width=\"0dp\"") &&
+                    button.contains("android:layout_weight=\"1\""),
+            )
+        }
+    }
+
+    @Test
+    fun usbRetryActionStaysAheadOfDiagnosticDetails() {
+        val source = mainActivityLayoutSource()
+        val usbIndex = source.indexOf("android:id=\"@+id/usbModeContent\"")
+        val errorIndex = source.indexOf("android:id=\"@+id/connectionErrorContainer\"")
+        val connectIndex = source.indexOf("android:id=\"@+id/connectButton\"")
+        val statusIndex = source.indexOf("android:id=\"@+id/statusIndicator\"")
+        val checklistIndex = source.indexOf("android:id=\"@+id/checklistContainer\"")
+
+        assertTrue("USB mode content should be present", usbIndex >= 0)
+        assertTrue("USB content should keep the inline error details available", errorIndex >= 0)
+        assertTrue("USB content should include the primary retry/connect action", connectIndex >= 0)
+        assertTrue("USB content should include the compact route status after the action", statusIndex >= 0)
+        assertTrue("USB content should include diagnostic checklist details", checklistIndex >= 0)
+        assertTrue(
+            "The retry/connect action must appear before long diagnostic details so it remains reachable at large font scale",
+            usbIndex < connectIndex && connectIndex < errorIndex && errorIndex < statusIndex && statusIndex < checklistIndex,
+        )
+
+        val connectButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectButton\"")
+        assertTrue(
+            "TRY AGAIN may wrap at large font scale, so the primary USB action must grow vertically",
+            connectButton.contains("android:layout_height=\"wrap_content\"") &&
+                connectButton.contains("android:minHeight=\"56dp\"") &&
+                connectButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
+    fun compactLayoutPressureKeepsGuidanceCompleteAndPrioritizesTheRetryAction() {
+        val source = mainActivitySource()
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
+        val disclosurePolicy =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionSubtitleDisclosurePolicy.kt")
+                .replace(Regex("\\s+"), "")
+        val connectionScroll = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionScroll\"")
+        val errorMessage = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionErrorMessage\"")
+
+        assertFalse(
+            "Compact landscape must not hide USB recovery steps by capping the error message",
+            applier.contains("applyErrorMessageDensity") ||
+                applier.contains("views.errorMessage") ||
+                source.contains("errorMessage = binding.connectionErrorMessage"),
+        )
+        assertFalse(
+            "Security and recovery guidance must not become a non-expandable ellipsized preview",
+            disclosurePolicy.contains("COMPACT_MAX_LINES") ||
+                disclosurePolicy.contains("ellipsizeEnd=compact"),
+        )
+        assertTrue(
+            "Full diagnostic text must remain in normal wrap-content layout so TalkBack and scrolling can access it",
+            errorMessage.contains("android:layout_height=\"wrap_content\"") &&
+                !errorMessage.contains("android:maxLines") &&
+                !errorMessage.contains("android:ellipsize"),
+        )
+        assertFalse(
+            "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",
+            connectionScroll.contains("android:fillViewport=\"true\""),
+        )
+    }
+
+    @Test
     fun overlayOpacityOnlyDimsTheStatsOverlay() {
         val source = mainActivitySource()
         val restoreOverlayPosition = extractMethod(source, "private fun restoreOverlayPosition")
@@ -450,17 +697,17 @@ class MainActivityTerminalGuidanceContractTest {
             updateOverlayOpacity.contains("binding.statusBar.alpha = opacity"),
         )
         assertFalse(
-            "Overlay opacity must not target the disconnected floating settings entry",
-            updateOverlayOpacity.contains("settingsButton"),
+            "Overlay opacity must not target the disconnected inline settings entry",
+            updateOverlayOpacity.contains("connectionSettingsButton"),
         )
         assertFalse(
-            "Restoring overlay state must not dim the disconnected floating settings entry",
-            restoreOverlayPosition.contains("settingsButton") ||
+            "Restoring overlay state must not dim the disconnected inline settings entry",
+            restoreOverlayPosition.contains("connectionSettingsButton") ||
                 restoreOverlayPosition.contains("updateSettingsButtonOpacity"),
         )
         assertFalse(
-            "Changing overlay opacity from Settings must not dim the disconnected floating settings entry",
-            opacitySliderListener.contains("settingsButton") ||
+            "Changing overlay opacity from Settings must not dim the disconnected inline settings entry",
+            opacitySliderListener.contains("connectionSettingsButton") ||
                 opacitySliderListener.contains("updateSettingsButtonOpacity"),
         )
         assertFalse(
@@ -940,6 +1187,21 @@ class MainActivityTerminalGuidanceContractTest {
         )
     }
 
+    private fun assertCleanupBeforeUsbModePersistence(
+        block: String,
+        owner: String,
+    ) {
+        val cleanupIndex = block.indexOf("cleanupCurrentSessionBeforeUsbLaunch()")
+        val persistUsbModeIndex = block.indexOf("prefs.connectionMode = ConnectionMode.USB")
+
+        assertTrue("$owner must clean up the current LAN/Internet session first", cleanupIndex >= 0)
+        assertTrue("$owner must persist USB mode", persistUsbModeIndex >= 0)
+        assertTrue(
+            "$owner must clean up before writing prefs.connectionMode = USB",
+            cleanupIndex < persistUsbModeIndex,
+        )
+    }
+
     private fun extractMethod(source: String, signature: String): String {
         val declaration =
             Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")
@@ -1093,6 +1355,21 @@ class MainActivityTerminalGuidanceContractTest {
         error("Block closing brace not found: $marker")
     }
 
+    private fun extractWhenBranch(
+        source: String,
+        marker: String,
+    ): String {
+        val start = source.indexOf(marker)
+        require(start >= 0) { "When branch not found: $marker" }
+        val nextBranch = Regex("\\n[\\t ]*ConnectionMode\\.")
+            .find(source, start + marker.length)
+            ?.range
+            ?.first
+            ?: source.indexOf("\n            }", start).takeIf { it > start }
+            ?: error("When branch end not found: $marker")
+        return source.substring(start, nextBranch)
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -1115,6 +1392,18 @@ class MainActivityTerminalGuidanceContractTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("activity_main.xml not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun resourceSource(relativePath: String): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            listOf(relativePath, "baseline/AndroidClient/$relativePath")
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("$relativePath not found from " + System.getProperty("user.dir"))
     }
 
     private fun extractXmlElement(

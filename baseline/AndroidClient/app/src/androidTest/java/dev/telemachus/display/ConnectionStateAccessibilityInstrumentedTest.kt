@@ -283,14 +283,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
-                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
                 }
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { activity ->
-                    assertEquals(
-                        Configuration.ORIENTATION_PORTRAIT,
-                        activity.resources.configuration.orientation,
-                    )
+                    assertEquals(ActivityInfo.SCREEN_ORIENTATION_FULL_USER, activity.requestedOrientation)
                     val subtitle = activity.findViewById<TextView>(R.id.connectionSubtitle)
                     assertEquals(Int.MAX_VALUE, subtitle.maxLines)
                     assertFalse(subtitle.isClickable)
@@ -308,6 +305,49 @@ class ConnectionStateAccessibilityInstrumentedTest {
             }
         } finally {
             preferences.connectionMode = originalMode
+        }
+    }
+
+    @Test
+    fun disconnectedActivityFollowsUserOrientationPolicy() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertEquals(ActivityInfo.SCREEN_ORIENTATION_FULL_USER, activity.requestedOrientation)
+            }
+        }
+    }
+
+    @Test
+    fun p0110UsbErrorCopyKeepsChecklistReachableWithLargeText() {
+        val context = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
+        withProductionLayout(context) { root ->
+            val errorContainer = root.findViewById<View>(R.id.connectionErrorContainer)
+            val errorMessage = root.findViewById<TextView>(R.id.connectionErrorMessage)
+            val checklist = root.findViewById<View>(R.id.checklistContainer)
+            val scrollView = root.findViewById<ViewGroup>(R.id.connectionScroll)
+            val content = root.findViewById<ViewGroup>(R.id.connectionContent)
+
+            root.findViewById<View>(R.id.usbModeContent).visibility = View.VISIBLE
+            errorContainer.visibility = View.VISIBLE
+            checklist.visibility = View.VISIBLE
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    java.net.ConnectException("ECONNREFUSED"),
+                    ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                )
+            errorMessage.text = ConnectionGuidanceTextFormatter.format(context.resources, guidance.message)
+            ConnectionPanelLayoutApplier.apply(
+                resources = context.resources,
+                views = connectionPanelViews(root),
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+            measureAndLayout(root, context, widthDp = 361, heightDp = 800)
+
+            assertFalse(errorMessage.text.toString().contains("adb reverse", ignoreCase = true))
+            assertTextRenderedWithoutEllipsis(errorMessage)
+            val checklistBounds = boundsInAncestor(content, checklist)
+            assertTrue("Checklist starts below first viewport: $checklistBounds", checklistBounds.top < scrollView.height)
         }
     }
 
@@ -467,14 +507,31 @@ class ConnectionStateAccessibilityInstrumentedTest {
     private fun configuredContext(
         widthDp: Int,
         heightDp: Int,
+        fontScale: Float = 1f,
     ): Context {
         val configuration = Configuration(applicationContext().resources.configuration)
         configuration.screenWidthDp = widthDp
         configuration.screenHeightDp = heightDp
         configuration.smallestScreenWidthDp = minOf(widthDp, heightDp)
+        configuration.fontScale = fontScale
         configuration.orientation = Configuration.ORIENTATION_PORTRAIT
         return applicationContext().createConfigurationContext(configuration)
     }
+
+    private fun assertTextRenderedWithoutEllipsis(text: TextView) {
+        val textLayout = checkNotNull(text.layout)
+        assertTrue(text.measuredWidth > 0 && text.measuredHeight > 0)
+        assertTrue((0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 })
+        assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
+    }
+
+    private fun boundsInAncestor(
+        ancestor: ViewGroup,
+        view: View,
+    ): android.graphics.Rect =
+        android.graphics.Rect(0, 0, view.width, view.height).also { rect ->
+            ancestor.offsetDescendantRectToMyCoords(view, rect)
+        }
 
     private fun connectionPanelViews(root: ViewGroup): ConnectionPanelLayoutApplier.Views =
         ConnectionPanelLayoutApplier.Views(

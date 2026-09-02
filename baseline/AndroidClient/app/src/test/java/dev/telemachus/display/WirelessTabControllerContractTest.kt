@@ -30,6 +30,34 @@ class WirelessTabControllerContractTest {
         assertTrue(onConnectError.contains("R.string.wireless_error_protocol_message"))
     }
 
+    @Test
+    fun scheduledReconnectShowsSpinnerAndStateTransitionsHideIdleAndTerminalPanels() {
+        val source = wirelessTabControllerSource()
+        val transition = extractMethod(source, "private fun transition")
+        val showAutomaticReconnect = extractMethod(source, "fun showAutomaticReconnect")
+        val showConnectionGuidance = extractMethod(source, "internal fun showConnectionGuidance")
+        val show = extractMethod(source, "fun show")
+
+        assertTrue(
+            "Scheduled reconnect should enter the connecting panel so its spinner is visible",
+            showAutomaticReconnect.contains("showConnecting(") && showAutomaticReconnect.contains("R.string.reconnecting_to_mac"),
+        )
+        assertTrue(
+            "Terminal wireless guidance should use the repair panel instead of leaving the reconnect spinner visible",
+            showConnectionGuidance.contains("transition(State.REPAIR_NEEDED)"),
+        )
+        assertTrue(
+            "Idle wireless state should use the paired idle panel instead of leaving the reconnect spinner visible",
+            show.contains("transition(State.PAIRED_IDLE)"),
+        )
+        assertTrue(
+            "The transition helper must make the reconnect spinner panel mutually exclusive with paired idle and repair panels",
+            transition.contains("views.connecting.visibility = if (next == State.CONNECTING) View.VISIBLE else View.GONE") &&
+                transition.contains("views.pairedIdle.visibility = if (next == State.PAIRED_IDLE) View.VISIBLE else View.GONE") &&
+                transition.contains("views.repair.visibility = if (next == State.REPAIR_NEEDED) View.VISIBLE else View.GONE"),
+        )
+    }
+
     private fun extractMethod(source: String, signature: String): String {
         val declaration =
             Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")

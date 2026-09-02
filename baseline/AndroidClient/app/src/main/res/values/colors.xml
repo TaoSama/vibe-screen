@@ -2,20 +2,44 @@
 <resources>
     <color name="launcher_background">#25272E</color>
 
-    <!-- Semantic design tokens. Screen chrome is intentionally near-neutral so
-         the streamed Mac desktop stays the visual focus; the green accent is
-         reserved for the primary/positive affordance and the stats FPS read. -->
-    <color name="surface">#101418</color>
-    <color name="surface_raised">#E6101418</color>
-    <color name="surface_scrim">#CC000000</color>
-    <color name="on_surface">#FFFFFF</color>
-    <color name="on_surface_muted">#A8B0B6</color>
-    <color name="on_surface_faint">#88FFFFFF</color>
-    <color name="accent">#3DA45C</color>
-    <color name="accent_wash">#334CAF50</color>
-    <color name="info">#4F9BEB</color>
-    <color name="danger">#E5544B</color>
-    <color name="danger_wash">#1AF44336</color>
-    <color name="warning">#E8A44B</color>
-    <color name="hairline">#33FFFFFF</color>
+    <!-- Semantic design tokens. The light palette keeps connection/setup UI
+         readable when Android follows the system theme; values-night restores
+         the darker streaming chrome. -->
+    <color name="surface">#F7FAF8</color>
+    <color name="surface_raised">#F5FFFFFF</color>
+    <color name="surface_panel">#FAFFFFFF</color>
+    <color name="surface_scrim">#EFFFFFFF</color>
+    <color name="surface_hairline">#14000000</color>
+    <color name="surface_wash">#0A000000</color>
+    <color name="surface_wash_stroke">#14000000</color>
+    <color name="on_surface">#111817</color>
+    <color name="on_surface_secondary">#33413D</color>
+    <color name="on_surface_muted">#56625E</color>
+    <color name="on_surface_subtle">#596561</color>
+    <color name="on_surface_faint">#5C6A65</color>
+    <color name="accent">#237A45</color>
+    <color name="accent_bright">#168348</color>
+    <color name="accent_button">#237A45</color>
+    <color name="on_accent_button">#FFFFFF</color>
+    <color name="info">#1B6FB4</color>
+    <color name="action">#005FCC</color>
+    <color name="link">#1F5FBF</color>
+    <color name="danger">#B42318</color>
+    <color name="danger_text">#A4161A</color>
+    <color name="danger_stroke">#D64B4B</color>
+    <color name="danger_wash">#18B42318</color>
+    <color name="warning">#936100</color>
+    <color name="warning_wash">#18936100</color>
+    <color name="warning_stroke">#66936100</color>
+    <color name="latency">#B51F6A</color>
+    <color name="hairline">#26000000</color>
+    <color name="outline_strong">#74847E</color>
+    <color name="disabled_surface">#DCE5E0</color>
+    <color name="disabled_on_surface">#6D7B76</color>
+    <color name="switch_thumb">#FFFFFF</color>
+    <color name="switch_thumb_unchecked">#FFFFFF</color>
+    <color name="switch_track_unchecked">#7A8883</color>
+    <color name="disconnected_gradient_start">#ECF6F0</color>
+    <color name="disconnected_gradient_center">#F7FAF8</color>
+    <color name="disconnected_gradient_end">#FFFFFF</color>
 </resources>
