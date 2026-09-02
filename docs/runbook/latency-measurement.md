@@ -78,6 +78,11 @@ and annotation method. A minimal shape is:
       "transport": "usb",
       "measurement_method": "external-camera",
       "gate_profile": "usb-glass-to-glass-sub50",
+      "evidence_provenance": {
+        "source": "real-device-capture",
+        "collection_context": "operator-collected latency evidence package",
+        "operator_assertion": "This package was collected from a real device run with retained artifacts."
+      },
       "camera": {
         "manufacturer": "camera vendor",
         "model": "camera model",
@@ -89,7 +94,11 @@ and annotation method. A minimal shape is:
         "raw_video": "raw-camera.mov",
         "recorded_at": "2026-08-19T00:00:00Z",
         "operator": "operator name",
-        "sha256": "raw video sha256"
+        "sha256": "raw video sha256",
+        "container": "mov",
+        "file_size_bytes": 12345678,
+        "frame_count": 7200,
+        "duration_ms": 30000
       },
       "samples": {
         "file": "samples.csv",
@@ -136,6 +145,11 @@ The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
 one annotated endpoint frame. The checker applies it to both the start and end
 frames before comparing P95 against the gate threshold.
 
+External-camera manifests must also bind the retained camera file shape. The
+helper derives `recording.container`, `recording.file_size_bytes`, and
+`recording.sha256` from `--raw-video`; provide `--recording-frame-count`
+and `--recording-duration-ms` from the captured file metadata.
+
 The `gate_artifacts` object is profile-specific. Use `usb_connection` for
 `usb-glass-to-glass-sub50`, `lan_network_preflight` for
 `lan-glass-to-glass-sub80`, and `input_actuation_record` for
@@ -162,6 +176,8 @@ manifest tool:
       --camera-mode 1080p240 \
       --camera-frame-rate-fps 240 \
       --camera-shutter-mode fixed \
+      --recording-frame-count 7200 \
+      --recording-duration-ms 30000 \
       --operator "operator name" \
       --annotator "annotator name" \
       --device-info latency-run/device-info.json \
@@ -213,6 +229,8 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --camera-mode 1080p240 \
   --camera-frame-rate-fps 240 \
   --camera-shutter-mode fixed \
+  --recording-frame-count 7200 \
+  --recording-duration-ms 30000 \
   --operator "operator name" \
   --annotator "annotator name" \
   --device-info "$EVIDENCE_DIR/device-info.json" \
@@ -264,6 +282,8 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --camera-mode 1080p240 \
   --camera-frame-rate-fps 240 \
   --camera-shutter-mode fixed \
+  --recording-frame-count 7200 \
+  --recording-duration-ms 30000 \
   --operator "operator name" \
   --annotator "annotator name" \
   --device-info "$EVIDENCE_DIR/device-info.json" \
@@ -413,6 +433,8 @@ section must provide:
 - `sync_procedure`: how the two clocks were aligned before the run.
 - `before_skew_ms`, `after_skew_ms`, and `max_drift_ms`: measured skew and
   drift over the measurement window.
+- `input_timestamp_uncertainty_ms` and `result_timestamp_uncertainty_ms`: the
+  worst-case timestamp uncertainty at each endpoint.
 - `total_error_budget_ms`: the worst-case timing error, which must be less
   than 5 ms.
 - `input_timestamp_method` and `result_timestamp_method`: how the physical
@@ -450,6 +472,8 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --before-skew-ms 1.2 \
   --after-skew-ms 1.5 \
   --max-drift-ms 0.8 \
+  --input-timestamp-uncertainty-ms 0.4 \
+  --result-timestamp-uncertainty-ms 0.6 \
   --total-error-budget-ms 3.5 \
   --input-timestamp-method "physical input timestamp method" \
   --result-timestamp-method "visible result timestamp method" \

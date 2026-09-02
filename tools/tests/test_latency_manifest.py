@@ -17,41 +17,43 @@ from tools.vibescreen_evidence.latency_manifest import (
     LatencyManifestError,
     build_latency_manifest,
 )
+from tools.tests.latency_test_helpers import minimal_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.latency_manifest"
-VALID_CAMERA_FIXTURE = REPOSITORY_ROOT / "tools" / "fixtures" / "latency" / "external-camera-valid" / "raw-camera-fixture.mov"
 
 
 def _base_metadata() -> dict[str, object]:
     return {
-        "run_id": "fixture-latency-manifest",
+        "run_id": "bench-latency-manifest",
         "latency_kind": "glass-to-glass",
         "transport": "usb",
         "gate_profile": GATE_USB_GLASS_TO_GLASS_SUB50,
         "camera": {
-            "manufacturer": "Fixture Camera Co",
-            "model": "Synthetic 240",
+            "manufacturer": "Bench Camera Co",
+            "model": "Retained 240",
             "mode": "1080p240",
             "frame_rate_fps": 240,
             "shutter_mode": "fixed",
         },
-        "recording_operator": "fixture",
+        "recording_operator": "bench operator",
+        "recording_frame_count": 600,
+        "recording_duration_ms": 2500,
         "samples_format": "csv",
         "annotation_method": "manual-frame-count",
-        "annotator": "fixture",
+        "annotator": "bench annotator",
         "device": {
-            "manufacturer": "Fixture",
-            "model": "Fixture Device",
-            "codename": "fixture",
-            "os_version": "Android fixture",
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "codename": "pacific",
+            "os_version": "Android 16 / SDK 36",
         },
-        "host": {"model": "Fixture Mac", "macos_version": "fixture"},
+        "host": {"model": "Mac16,8", "macos_version": "26.4.1"},
         "build": {
-            "repository_revision": "fixture-revision",
-            "host_artifact": "fixture-host",
-            "client_artifact": "fixture-client",
+            "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            "host_artifact": "Vibe Screen.app sha256 retained in commands.txt",
+            "client_artifact": "app-debug.apk sha256 retained in commands.txt",
         },
         "measurement_setup": {
             "stimulus": "mac display flash visible to the camera",
@@ -61,19 +63,19 @@ def _base_metadata() -> dict[str, object]:
             "mounting": "fixed tripod framing both screens",
             "clock_domain": "single-external-camera-timebase",
             "max_frame_annotation_uncertainty_ms": 4.2,
-            "notes": "Synthetic test package only.",
+            "notes": "Bench validation package with retained artifacts.",
         },
         "recorded_at": "2026-08-21T00:00:00Z",
     }
 
 
 def _write_fixture_files(root: Path) -> tuple[Path, Path]:
-    raw_video = root / "raw-camera-fixture.mov"
+    raw_video = root / "raw-camera-capture.mov"
     samples = root / "samples.csv"
-    raw_video.write_bytes(VALID_CAMERA_FIXTURE.read_bytes())
+    raw_video.write_bytes(minimal_mov())
     samples.write_text(
         "start_frame,end_frame,camera_fps\n"
-        "100,108,240\n200,209,240\n300,309,240\n400,409,240\n500,509,240\n",
+        "10,18,240\n110,119,240\n210,219,240\n310,319,240\n410,419,240\n",
         encoding="utf-8",
     )
     return raw_video, samples
@@ -81,19 +83,30 @@ def _write_fixture_files(root: Path) -> tuple[Path, Path]:
 
 def _write_synchronized_clock_samples(root: Path) -> Path:
     samples = root / "samples.csv"
-    samples.write_text("latency_ms\n12.5\n18.3\n15.1\n22.4\n19.7\n", encoding="utf-8")
+    samples.write_text("latency_ms\n13.2\n18.9\n15.6\n22.8\n20.1\n", encoding="utf-8")
     return samples
 
 
 def _write_artifact(root: Path, name: str = "usb-connection.txt") -> Path:
     artifact = root / name
-    artifact.write_text("fixture profile artifact\n", encoding="utf-8")
+    if name == "usb-connection.txt":
+        contents = "usb connection setup and active stream proof\n"
+    elif name == "internet-public-route-record.txt":
+        contents = "public route proof with active stream record\n"
+    elif name == "input-actuation.txt":
+        contents = "physical input actuation visible mac result proof\n"
+    else:
+        contents = "lan network preflight and active stream proof\n"
+    artifact.write_text(contents, encoding="utf-8")
     return artifact
 
 
 def _write_synchronization_artifact(root: Path) -> Path:
     artifact = root / "synchronization-record.txt"
-    artifact.write_text("fixture clock synchronization proof\n", encoding="utf-8")
+    artifact.write_text(
+        "clock synchronization proof with skew drift uncertainty and total error budget\n",
+        encoding="utf-8",
+    )
     return artifact
 
 
@@ -109,7 +122,7 @@ def _valid_internet_route() -> dict[str, object]:
             "credential_source": "authority-issued short-lived credential",
         },
         "remote_peer": {
-            "operator": "fixture",
+            "operator": "remote tester",
             "network": "remote carrier",
             "public_ip_asn": "AS64500",
             "location": "remote lab",
@@ -140,7 +153,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                 raw_video=raw_video,
                 samples=samples,
                 gate_artifact=artifact,
-                gate_artifact_description="Synthetic USB active-stream proof.",
+                gate_artifact_description="USB active-stream proof.",
                 **metadata,
             )
             (root / "manifest.json").write_text(
@@ -173,7 +186,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     raw_video=raw_video,
                     samples=samples,
                     gate_artifact=artifact,
-                    gate_artifact_description="Synthetic USB active-stream proof.",
+                    gate_artifact_description="USB active-stream proof.",
                     **metadata,
                 )
 
@@ -193,7 +206,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     raw_video=raw_video,
                     samples=outside_samples,
                     gate_artifact=artifact,
-                    gate_artifact_description="Synthetic USB active-stream proof.",
+                    gate_artifact_description="USB active-stream proof.",
                     **metadata,
                 )
 
@@ -226,7 +239,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                 samples=samples,
                 internet_route=_valid_internet_route(),
                 gate_artifact=artifact,
-                gate_artifact_description="Synthetic public Internet route proof.",
+                gate_artifact_description="Public Internet route and active stream proof.",
                 **metadata,
             )
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -268,7 +281,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     samples=samples,
                     internet_route=route,
                     gate_artifact=artifact,
-                    gate_artifact_description="Synthetic public Internet route proof.",
+                    gate_artifact_description="Public Internet route and active stream proof.",
                     **metadata,
                 )
 
@@ -302,7 +315,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                         samples=samples,
                         internet_route=route,
                         gate_artifact=artifact,
-                        gate_artifact_description="Synthetic public Internet route proof.",
+                        gate_artifact_description="Public Internet route and active stream proof.",
                         **metadata,
                     )
 
@@ -331,7 +344,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                         samples=samples,
                         internet_route=route,
                         gate_artifact=artifact,
-                        gate_artifact_description="Synthetic public Internet route proof.",
+                        gate_artifact_description="Public Internet route and active stream proof.",
                         **metadata,
                     )
 
@@ -350,7 +363,7 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     raw_video=raw_video,
                     samples=samples,
                     gate_artifact=artifact,
-                    gate_artifact_description="Synthetic public Internet route proof.",
+                    gate_artifact_description="Public Internet route and active stream proof.",
                     **metadata,
                 )
 
@@ -387,31 +400,35 @@ class LatencyManifestCliTest(unittest.TestCase):
             "--annotation-method",
             "manual-frame-count",
             "--camera-manufacturer",
-            "Fixture Camera Co",
+            "Bench Camera Co",
             "--camera-model",
-            "Synthetic 240",
+            "Retained 240",
             "--camera-mode",
             "1080p240",
             "--camera-frame-rate-fps",
             "240",
             "--camera-shutter-mode",
             "fixed",
+            "--recording-frame-count",
+            "600",
+            "--recording-duration-ms",
+            "2500",
             "--recorded-at",
             "2026-08-21T00:00:00Z",
             "--operator",
-            "fixture",
+            "bench operator",
             "--annotator",
-            "fixture",
+            "bench annotator",
             "--host-model",
-            "Fixture Mac",
+            "Mac16,8",
             "--macos-version",
-            "fixture",
+            "26.4.1",
             "--repository-revision",
-            "fixture-revision",
+            "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
             "--host-artifact",
-            "fixture-host",
+            "Vibe Screen.app sha256 retained in commands.txt",
             "--client-artifact",
-            "fixture-client",
+            "app-debug.apk sha256 retained in commands.txt",
             "--stimulus",
             "mac display flash visible to the camera",
             "--start-event-definition",
@@ -427,9 +444,9 @@ class LatencyManifestCliTest(unittest.TestCase):
             "--gate-artifact",
             str(artifact),
             "--gate-artifact-description",
-            "Synthetic USB active-stream proof.",
+            "USB active-stream proof.",
             "--notes",
-            "Synthetic test package only.",
+            "Bench validation package with retained artifacts.",
         ]
 
     def valid_synchronized_clock_cli_args(self, root: Path, samples: Path) -> list[str]:
@@ -455,25 +472,25 @@ class LatencyManifestCliTest(unittest.TestCase):
             "--annotation-method",
             "direct-latency-ms",
             "--annotator",
-            "fixture",
+            "bench annotator",
             "--device-manufacturer",
-            "Fixture",
+            "nubia",
             "--device-model",
-            "Fixture Device",
+            "P0110",
             "--device-codename",
-            "fixture",
+            "pacific",
             "--device-os-version",
-            "Android fixture",
+            "Android 16 / SDK 36",
             "--host-model",
-            "Fixture Mac",
+            "Mac16,8",
             "--macos-version",
-            "fixture",
+            "26.4.1",
             "--repository-revision",
-            "fixture-revision",
+            "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
             "--host-artifact",
-            "fixture-host",
+            "Vibe Screen.app sha256 retained in commands.txt",
             "--client-artifact",
-            "fixture-client",
+            "app-debug.apk sha256 retained in commands.txt",
             "--stimulus",
             "physical touch on Android screen",
             "--start-event-definition",
@@ -496,6 +513,10 @@ class LatencyManifestCliTest(unittest.TestCase):
             "1.5",
             "--max-drift-ms",
             "0.8",
+            "--input-timestamp-uncertainty-ms",
+            "0.0",
+            "--result-timestamp-uncertainty-ms",
+            "0.0",
             "--total-error-budget-ms",
             "3.5",
             "--input-timestamp-method",
@@ -505,13 +526,13 @@ class LatencyManifestCliTest(unittest.TestCase):
             "--gate-artifact",
             str(artifact),
             "--gate-artifact-description",
-            "Synthetic physical-input proof.",
+            "Physical input actuation and visible Mac result proof.",
             "--synchronization-artifact",
             str(synchronization_artifact),
             "--synchronization-artifact-description",
-            "Synthetic clock synchronization proof.",
+            "Clock synchronization proof with skew drift uncertainty and budget.",
             "--notes",
-            "Synthetic synchronized-clock package only.",
+            "Bench synchronized-clock package with retained artifacts.",
         ]
 
     def test_cli_writes_schema_compatible_manifest_from_device_info(self) -> None:
@@ -597,7 +618,7 @@ class LatencyManifestCliTest(unittest.TestCase):
             arguments[arguments.index("--gate-profile") + 1] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
             arguments[arguments.index("--gate-artifact") + 1] = str(artifact)
             arguments[arguments.index("--gate-artifact-description") + 1] = (
-                "Synthetic public Internet route proof."
+                "Public Internet route and active stream proof."
             )
 
             result = self.run_cli(
@@ -625,7 +646,7 @@ class LatencyManifestCliTest(unittest.TestCase):
                 "--turn-credential-source",
                 "authority-issued short-lived credential",
                 "--remote-peer-operator",
-                "fixture",
+                "remote tester",
                 "--remote-peer-network",
                 "remote carrier",
                 "--remote-peer-public-ip-asn",
@@ -691,7 +712,7 @@ class LatencyManifestCliTest(unittest.TestCase):
                 "--turn-credential-source",
                 "authority-issued short-lived credential",
                 "--remote-peer-operator",
-                "fixture",
+                "remote tester",
                 "--remote-peer-network",
                 "remote carrier",
                 "--remote-peer-public-ip-asn",

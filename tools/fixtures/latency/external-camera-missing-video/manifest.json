@@ -5,6 +5,11 @@
   "transport": "usb",
   "measurement_method": "external-camera",
   "gate_profile": "usb-glass-to-glass-sub50",
+  "evidence_provenance": {
+    "source": "synthetic-fixture",
+    "collection_context": "Repository latency checker fixture.",
+    "operator_assertion": "This package is synthetic and must not close a latency gate."
+  },
   "camera": {
     "manufacturer": "Fixture Camera Co",
     "model": "Synthetic 240",
@@ -16,7 +21,11 @@
     "raw_video": "missing-camera-video.mov",
     "recorded_at": "2026-08-19T00:00:00Z",
     "operator": "fixture",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "container": "mov",
+    "file_size_bytes": 1209,
+    "frame_count": 600,
+    "duration_ms": 2500
   },
   "samples": {
     "file": "samples.csv",

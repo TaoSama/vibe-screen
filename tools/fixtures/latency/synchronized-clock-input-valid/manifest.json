@@ -5,6 +5,11 @@
   "transport": "usb",
   "measurement_method": "synchronized-clock",
   "gate_profile": "input-p95-sub50",
+  "evidence_provenance": {
+    "source": "synthetic-fixture",
+    "collection_context": "Repository latency checker fixture.",
+    "operator_assertion": "This package is synthetic and must not close a latency gate."
+  },
   "synchronization": {
     "host_clock_source": "macOS system clock (CLOCK_REALTIME)",
     "device_clock_source": "Android SystemClock.elapsedRealtimeNanos",
@@ -12,6 +17,8 @@
     "before_skew_ms": 1.2,
     "after_skew_ms": 1.5,
     "max_drift_ms": 0.8,
+    "input_timestamp_uncertainty_ms": 0.0,
+    "result_timestamp_uncertainty_ms": 0.0,
     "total_error_budget_ms": 3.5,
     "input_timestamp_method": "Android MotionEvent.eventTime captured at touch dispatch",
     "result_timestamp_method": "macOS CGEvent timestamp captured at injection"

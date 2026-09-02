@@ -1287,6 +1287,8 @@ create the manifest with the dedicated helper:
       --camera-mode 1080p240 \
       --camera-frame-rate-fps 240 \
       --camera-shutter-mode fixed \
+      --recording-frame-count 7200 \
+      --recording-duration-ms 30000 \
       --operator "operator name" \
       --annotator "annotator name" \
       --device-info latency-run/device-info.json \
@@ -1325,6 +1327,8 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --camera-mode 1080p240 \
   --camera-frame-rate-fps 240 \
   --camera-shutter-mode fixed \
+  --recording-frame-count 7200 \
+  --recording-duration-ms 30000 \
   --operator "operator name" \
   --annotator "annotator name" \
   --device-info latency-run/device-info.json \
@@ -1378,15 +1382,17 @@ make evidence-latency-gate \
 ```
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
-the run ID, transport, profile, sample file, device identity, build identity,
-annotation method, and the profile-specific retained artifact: USB connection
-proof for `usb-glass-to-glass-sub50`, LAN network/stream preflight proof for
-`lan-glass-to-glass-sub80`, public Internet route proof for
-`internet-glass-to-glass-sub150`, or physical input actuation proof for
-`input-p95-sub50`. External-camera packages also bind the raw camera recording
-and camera mode; synchronized-clock input packages bind the clock sources,
-skew, drift, timestamp methods, sub-5 ms total error budget, and a retained
-`synchronization_record` artifact. The checker exits `0` only when the profile
+the run ID, transport, profile, sample file, evidence provenance, device
+identity, build identity, annotation method, and the profile-specific retained
+artifact: USB connection proof for `usb-glass-to-glass-sub50`, LAN
+network/stream preflight proof for `lan-glass-to-glass-sub80`, public Internet
+route proof for `internet-glass-to-glass-sub150`, or physical input actuation
+proof for `input-p95-sub50`. External-camera packages also bind the raw camera
+recording, camera mode, container, file size, frame count, and duration;
+synchronized-clock input packages bind the clock sources, skew, drift,
+timestamp methods, timestamp uncertainties, sub-5 ms total error budget, and a
+retained `synchronization_record` artifact. The checker exits `0` only when
+the profile
 verdict is `pass` and provenance is complete; missing raw video, missing
 profile artifacts, mismatched metadata, or incomplete synchronization proof
 stays `insufficient`. The step-by-step method is in
