@@ -1,3 +1,4 @@
+import Cocoa
 import Combine
 import XCTest
 @testable import Telemachus
@@ -227,6 +228,39 @@ final class StreamMetricsTests: XCTestCase {
         XCTAssertEqual(settingsChangeCount, 0)
     }
 
+    /// The AppKit bridge owns the only live subscriptions for rendered metrics.
+    /// When SwiftUI dismantles that bridge, later high-frequency samples must not
+    /// keep mutating retained AppKit labels or keep an old view tree subscribed.
+    @MainActor
+    func testLiveMetricsBridgeStopsRenderingAfterDismantle() async {
+        let metrics = StreamMetrics()
+        let view = LiveMetricsView(metrics: metrics)
+        let coordinator = view.makeCoordinator()
+        let container = coordinator.makeContainer()
+
+        metrics.update(fps: 60, bitrateMbps: 35)
+        await drainMainQueue()
+
+        XCTAssertTrue(renderedStrings(in: container).contains("60.0"))
+        XCTAssertTrue(renderedStrings(in: container).contains("35.0 Mbps"))
+
+        LiveMetricsView.dismantleNSView(container, coordinator: coordinator)
+        metrics.update(fps: 61, bitrateMbps: 36)
+        await drainMainQueue()
+
+        let renderedAfterDismantle = renderedStrings(in: container)
+        XCTAssertTrue(renderedAfterDismantle.contains("60.0"))
+        XCTAssertTrue(renderedAfterDismantle.contains("35.0 Mbps"))
+        XCTAssertFalse(
+            renderedAfterDismantle.contains("61.0"),
+            "A dismantled LiveMetricsView must not keep rendering new FPS samples."
+        )
+        XCTAssertFalse(
+            renderedAfterDismantle.contains("36.0 Mbps"),
+            "A dismantled LiveMetricsView must not keep rendering new bitrate samples."
+        )
+    }
+
     /// `setIfChanged` must publish only on a real change: an equal value is a
     /// no-op (no `objectWillChange`, returns false), and a differing value
     /// writes exactly once (returns true).
@@ -341,5 +375,29 @@ final class StreamMetricsTests: XCTestCase {
             writes,
             "Changing host-state samples must publish once per real write, with no extra root events."
         )
+    }
+
+    @MainActor
+    private func drainMainQueue() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
+    }
+
+    @MainActor
+    private func renderedStrings(in view: NSView) -> [String] {
+        var strings: [String] = []
+        collectRenderedStrings(from: view, into: &strings)
+        return strings
+    }
+
+    @MainActor
+    private func collectRenderedStrings(from view: NSView, into strings: inout [String]) {
+        if let label = view as? NSTextField {
+            strings.append(label.stringValue)
+        }
+        view.subviews.forEach { collectRenderedStrings(from: $0, into: &strings) }
     }
 }

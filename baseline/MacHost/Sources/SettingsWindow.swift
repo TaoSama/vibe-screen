@@ -1577,6 +1577,7 @@ struct LiveMetricsView: NSViewRepresentable {
         private var cancellables: Set<AnyCancellable> = []
         private let fpsValueLabel = Coordinator.makeValueLabel(color: .systemGreen)
         private let bitrateValueLabel = Coordinator.makeValueLabel(color: .controlAccentColor)
+        private static let metricLocale = Locale(identifier: "en_US_POSIX")
 
         init(metrics: StreamMetrics) {
             self.metrics = metrics
@@ -1598,13 +1599,13 @@ struct LiveMetricsView: NSViewRepresentable {
             metrics.fps
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] value in
-                    self?.fpsValueLabel.stringValue = String(format: "%.1f", value)
+                    self?.fpsValueLabel.stringValue = Coordinator.formatFPS(value)
                 }
                 .store(in: &cancellables)
             metrics.bitrateMbps
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] value in
-                    self?.bitrateValueLabel.stringValue = String(format: "%.1f Mbps", value)
+                    self?.bitrateValueLabel.stringValue = Coordinator.formatBitrate(value)
                 }
                 .store(in: &cancellables)
 
@@ -1613,6 +1614,14 @@ struct LiveMetricsView: NSViewRepresentable {
 
         func cancel() {
             cancellables.removeAll()
+        }
+
+        private static func formatFPS(_ value: Double) -> String {
+            String(format: "%.1f", locale: metricLocale, value)
+        }
+
+        private static func formatBitrate(_ value: Double) -> String {
+            String(format: "%.1f Mbps", locale: metricLocale, value)
         }
 
         private static func makeColumn(caption: String, valueLabel: NSTextField) -> NSView {
