@@ -505,6 +505,118 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(changed.display.logicalSize.height, 1440)
     }
 
+    func testStopDisplayReleasesStreamAndAllowsRestart() throws {
+        let session = try readySession()
+        XCTAssertNotNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
+
+        var stop = VSStopDisplay()
+        stop.displayID = "active-display"
+        let stopActions = session.handleControl(try envelope(
+            id: 4,
+            payload: .stopDisplay(stop)
+        ).serializedData())
+
+        XCTAssertTrue(stopActions.containsVideoStreamEnded(streamID: 1, reason: "client_stop_display"))
+        XCTAssertEqual(session.phase, .awaitingDisplayStart)
+        XCTAssertNil(try session.makeMediaFrame(payload: Data([2]), timestamp: 2, keyframe: true))
+        XCTAssertFalse(stopActions.containsClose)
+
+        let startActions = session.handleControl(try envelope(
+            id: 5,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        let startResponses = try controlEnvelopes(startActions)
+        guard case .videoConfig(let config)? = startResponses.last?.payload else {
+            return XCTFail("Expected VideoConfig after restarting display")
+        }
+        XCTAssertEqual(config.streamID, 2)
+        var result = VSVideoConfigResult()
+        result.configEpoch = config.configEpoch
+        result.streamID = config.streamID
+        result.accepted = true
+        XCTAssertTrue(session.handleControl(try envelope(
+            id: 6,
+            payload: .videoConfigResult(result)
+        ).serializedData()).containsConnectionReady)
+    }
+
+    func testStopDisplayRejectsForeignDisplayTarget() throws {
+        let session = try readySession()
+        var stop = VSStopDisplay()
+        stop.displayID = "other-display"
+
+        let actions = session.handleControl(try envelope(
+            id: 4,
+            payload: .stopDisplay(stop)
+        ).serializedData())
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testStopDisplayBeforeActiveStreamFailsClosed() throws {
+        let session = makeSession()
+        _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
+
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .stopDisplay(VSStopDisplay())
+        ).serializedData())
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testStopDisplayFreesSharedAllocatorDisplayOwner() throws {
+        let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 1)
+        let first = try readySession(
+            sessionID: Data([0x01]),
+            sessionEpoch: 1,
+            displayID: "shared-display",
+            displayAllocator: allocator,
+            maximumClients: 2,
+            clientCapabilities: [.touch, .multiDisplay, .multiClient],
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                maximumClients: 2
+            )
+        )
+        var stop = VSStopDisplay()
+        stop.displayID = "shared-display"
+        XCTAssertTrue(first.handleControl(try envelope(
+            id: 4,
+            sessionID: Data([0x01]),
+            sessionEpoch: 1,
+            payload: .stopDisplay(stop)
+        ).serializedData()).containsVideoStreamEnded(streamID: 1, reason: "client_stop_display"))
+
+        let second = try readySession(
+            sessionID: Data([0x02]),
+            sessionEpoch: 1,
+            displayID: "shared-display",
+            displayAllocator: allocator,
+            maximumClients: 2,
+            clientCapabilities: [.touch, .multiDisplay, .multiClient],
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                maximumClients: 2
+            )
+        )
+
+        var touch = touchEvent()
+        var target = VSInputTarget()
+        target.displayID = "shared-display"
+        target.streamID = 1
+        touch.target = target
+        XCTAssertTrue(second.handleControl(try envelope(
+            id: 4,
+            sessionID: Data([0x02]),
+            sessionEpoch: 1,
+            payload: .touchEvent(touch)
+        ).serializedData()).containsTouch)
+    }
+
     func testHostDisplayAllocatorIsolatesClientsEpochsAndStreamLimits() throws {
         let allocator = MultiClientDisplayAllocator(maximumClients: 2, maximumStreamsPerClient: 2)
         let first = MultiClientSessionKey(sessionID: Data([0x01]), epoch: 1)
@@ -532,7 +644,10 @@ final class ProtocolV1SessionTests: XCTestCase {
         }
 
         try allocator.register(second)
-        XCTAssertEqual(try allocator.allocateStream(for: "display-a", in: second), 1)
+        XCTAssertThrowsError(try allocator.allocateStream(for: "display-a", in: second)) { error in
+            XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .duplicateDisplay("display-a"))
+        }
+        XCTAssertEqual(try allocator.allocateStream(for: "display-d", in: second), 1)
         XCTAssertEqual(allocator.activeClientCount, 2)
         XCTAssertThrowsError(try allocator.register(MultiClientSessionKey(sessionID: Data([0x03]), epoch: 1))) { error in
             XCTAssertEqual(error as? MultiClientDisplayAllocatorError, .clientLimitReached(2))
@@ -2311,6 +2426,44 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertTrue(staleActions.containsClose)
     }
 
+    func testStopDisplayStopsAudioAndAllowsAudioRenegotiationOnRestart() throws {
+        let session = try readyAudioStreamingSession()
+        var stop = VSStopDisplay()
+        stop.displayID = "active-display"
+
+        let stopActions = session.handleControl(try envelope(
+            id: 6,
+            payload: .stopDisplay(stop)
+        ).serializedData())
+
+        XCTAssertTrue(stopActions.containsAudioStop(reason: "display_stopped"))
+        XCTAssertTrue(stopActions.containsVideoStreamEnded(streamID: 1, reason: "client_stop_display"))
+        XCTAssertEqual(session.phase, .awaitingDisplayStart)
+
+        let startActions = session.handleControl(try envelope(
+            id: 7,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        guard case .videoConfig(let videoConfig)? = try controlEnvelopes(startActions).last?.payload else {
+            return XCTFail("Expected VideoConfig after audio-backed display restart")
+        }
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = videoConfig.configEpoch
+        videoResult.streamID = videoConfig.streamID
+        videoResult.accepted = true
+
+        let readyAgain = try controlEnvelopes(session.handleControl(try envelope(
+            id: 8,
+            payload: .videoConfigResult(videoResult)
+        ).serializedData()))
+        guard case .audioConfig(let audioConfig)? = readyAgain.first?.payload else {
+            return XCTFail("Expected AudioConfig after restarting display")
+        }
+        XCTAssertEqual(videoConfig.streamID, 3)
+        XCTAssertEqual(audioConfig.streamID, 2)
+        XCTAssertEqual(audioConfig.configEpoch, 2)
+    }
+
     func testRejectedAudioConfigDoesNotRepeatOnVideoRenegotiation() throws {
         let session = try readyAudioPendingSession()
 
@@ -3656,6 +3809,14 @@ private extension Array where Element == ProtocolV1SessionAction {
     var containsScroll: Bool { contains { if case .scroll = $0 { true } else { false } } }
     var containsHeartbeat: Bool { contains { if case .heartbeat = $0 { true } else { false } } }
     var containsClose: Bool { contains { if case .close = $0 { true } else { false } } }
+    func containsVideoStreamEnded(streamID expectedStreamID: UInt64, reason expectedReason: String) -> Bool {
+        contains { action in
+            guard case .sendControl(let data) = action,
+                  let envelope = try? VSEnvelope(serializedBytes: data),
+                  case .videoStreamEnded(let ended)? = envelope.payload else { return false }
+            return ended.streamID == expectedStreamID && ended.reasonCode == expectedReason
+        }
+    }
     func containsAudioStop(reason expectedReason: String) -> Bool {
         contains {
             if case .stopAudio(let reason) = $0 { return reason == expectedReason }

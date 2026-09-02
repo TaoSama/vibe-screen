@@ -627,7 +627,14 @@ enum ProtocolV1SelfTest {
                 // expected
             }
             try allocator.register(secondKey)
-            guard try allocator.allocateStream(for: "second-display", in: secondKey) == 1,
+            do {
+                _ = try allocator.allocateStream(for: "second-display", in: secondKey)
+                failures.append("Host allocator allowed two clients to bind the same display")
+                return
+            } catch MultiClientDisplayAllocatorError.duplicateDisplay {
+                // expected
+            }
+            guard try allocator.allocateStream(for: "third-display", in: secondKey) == 1,
                   allocator.activeClientCount == 2 else {
                 failures.append("Host allocator did not isolate stream ids by client")
                 return
@@ -652,6 +659,11 @@ enum ProtocolV1SelfTest {
                 return
             } catch MultiClientDisplayAllocatorError.invalidSession {
                 // expected
+            }
+            guard allocator.release(streamID: 1, in: secondKey),
+                  try allocator.allocateStream(for: "third-display", in: nextFirstKey) == 2 else {
+                failures.append("Host allocator did not release display ownership for one stream")
+                return
             }
             allocator.disconnect(secondKey)
             guard allocator.activeClientCount == 1,
@@ -821,6 +833,23 @@ enum ProtocolV1SelfTest {
             }
             guard !duplicateDisplayActions.contains(where: { if case .selectDisplay = $0 { true } else { false } }) else {
                 failures.append("Duplicate display rebind emitted a selectDisplay action")
+                return
+            }
+
+            let stopSession = try readySession(clientCapabilities: [.touch, .multiDisplay])
+            var stop = VSStopDisplay()
+            stop.displayID = "active-display"
+            let stopActions = stopSession.handleControl(try envelope(
+                id: 4,
+                payload: .stopDisplay(stop)
+            ).serializedData())
+            guard stopActions.contains(where: { action in
+                guard case .sendControl(let data) = action,
+                      let envelope = try? VSEnvelope(serializedBytes: data),
+                      case .videoStreamEnded(let ended)? = envelope.payload else { return false }
+                return ended.streamID == 1 && ended.reasonCode == "client_stop_display"
+            }), stopSession.phase == .awaitingDisplayStart else {
+                failures.append("StopDisplay did not release the active display stream without closing the session")
                 return
             }
 

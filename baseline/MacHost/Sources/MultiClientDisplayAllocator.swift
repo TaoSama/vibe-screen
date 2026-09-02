@@ -31,6 +31,7 @@ final class MultiClientDisplayAllocator {
     }
 
     private var routesBySessionID: [Data: ClientRoute] = [:]
+    private var ownerByDisplay: [String: MultiClientSessionKey] = [:]
     private let lock = NSLock()
 
     init(maximumClients: Int, maximumStreamsPerClient: Int) {
@@ -58,6 +59,7 @@ final class MultiClientDisplayAllocator {
                 }
                 var route = ClientRoute(key: key)
                 try applyReservedStreamIDs(reservedStreamIDs, to: &route)
+                releaseDisplayOwners(for: existing)
                 routesBySessionID[key.sessionID] = route
                 return
             }
@@ -85,11 +87,17 @@ final class MultiClientDisplayAllocator {
         try withLock {
             try validate(displayID: displayID)
             var route = try route(for: key)
-            if let existing = route.streamByDisplay[displayID] { return existing }
+            try validateDisplayOwner(displayID, for: key)
+            if let existing = route.streamByDisplay[displayID] {
+                ownerByDisplay[displayID] = key
+                return existing
+            }
             guard route.bindingsByStream.count < maximumStreamsPerClient else {
                 throw MultiClientDisplayAllocatorError.streamLimitReached(maximumStreamsPerClient)
             }
-            let streamID = nextAvailableStreamID(in: route)
+            guard let streamID = nextAvailableStreamID(in: route) else {
+                throw MultiClientDisplayAllocatorError.streamLimitReached(maximumStreamsPerClient)
+            }
             bindLocked(
                 MultiClientDisplayStreamBinding(displayID: displayID, streamID: streamID),
                 route: &route
@@ -106,6 +114,7 @@ final class MultiClientDisplayAllocator {
             guard !route.reservedStreamIDs.contains(binding.streamID) else {
                 throw MultiClientDisplayAllocatorError.invalidBinding
             }
+            try validateDisplayOwner(binding.displayID, for: key)
             if let existingStream = route.streamByDisplay[binding.displayID], existingStream != binding.streamID {
                 throw MultiClientDisplayAllocatorError.duplicateDisplay(binding.displayID)
             }
@@ -122,6 +131,19 @@ final class MultiClientDisplayAllocator {
         try bind(MultiClientDisplayStreamBinding(displayID: displayID, streamID: streamID), to: key)
     }
 
+    @discardableResult
+    func release(streamID: UInt64, in key: MultiClientSessionKey) -> Bool {
+        withLock {
+            guard isValid(key), streamID > 0 else { return false }
+            guard var route = routesBySessionID[key.sessionID], route.key == key else { return false }
+            guard let binding = route.bindingsByStream.removeValue(forKey: streamID) else { return false }
+            route.streamByDisplay.removeValue(forKey: binding.displayID)
+            releaseDisplayOwner(binding.displayID, for: key)
+            routesBySessionID[key.sessionID] = route
+            return true
+        }
+    }
+
     func binding(streamID: UInt64, in key: MultiClientSessionKey) -> MultiClientDisplayStreamBinding? {
         withLock {
             guard isValid(key), streamID > 0 else { return nil }
@@ -133,7 +155,8 @@ final class MultiClientDisplayAllocator {
     func disconnect(_ key: MultiClientSessionKey) {
         withLock {
             guard isValid(key) else { return }
-            guard routesBySessionID[key.sessionID]?.key == key else { return }
+            guard let route = routesBySessionID[key.sessionID], route.key == key else { return }
+            releaseDisplayOwners(for: route)
             routesBySessionID.removeValue(forKey: key.sessionID)
         }
     }
@@ -160,10 +183,11 @@ final class MultiClientDisplayAllocator {
     }
 
     private func applyReservedStreamIDs(_ streamIDs: Set<UInt64>, to route: inout ClientRoute) throws {
-        guard !route.bindingsByStream.keys.contains(where: { streamIDs.contains($0) }) else {
+        let mergedStreamIDs = route.reservedStreamIDs.union(streamIDs)
+        guard !route.bindingsByStream.keys.contains(where: { mergedStreamIDs.contains($0) }) else {
             throw MultiClientDisplayAllocatorError.invalidBinding
         }
-        route.reservedStreamIDs = streamIDs
+        route.reservedStreamIDs = mergedStreamIDs
     }
 
     private func route(for key: MultiClientSessionKey) throws -> ClientRoute {
@@ -176,20 +200,46 @@ final class MultiClientDisplayAllocator {
     private func bindLocked(_ binding: MultiClientDisplayStreamBinding, route: inout ClientRoute) {
         if let previous = route.bindingsByStream[binding.streamID] {
             route.streamByDisplay.removeValue(forKey: previous.displayID)
+            releaseDisplayOwner(previous.displayID, for: route.key)
         }
         route.bindingsByStream[binding.streamID] = binding
         route.streamByDisplay[binding.displayID] = binding.streamID
+        ownerByDisplay[binding.displayID] = route.key
         if binding.streamID >= route.nextStreamID {
-            route.nextStreamID = binding.streamID + 1
+            route.nextStreamID = binding.streamID == UInt64.max ? UInt64.max : binding.streamID + 1
         }
     }
 
-    private func nextAvailableStreamID(in route: ClientRoute) -> UInt64 {
+    private func nextAvailableStreamID(in route: ClientRoute) -> UInt64? {
         var streamID = route.nextStreamID
-        while route.bindingsByStream[streamID] != nil || route.reservedStreamIDs.contains(streamID) {
+        let maximumAttempts = max(
+            1,
+            route.reservedStreamIDs.count + route.bindingsByStream.count + 1
+        )
+        for _ in 0..<maximumAttempts {
+            if route.bindingsByStream[streamID] == nil, !route.reservedStreamIDs.contains(streamID) {
+                return streamID
+            }
+            guard streamID < UInt64.max else { return nil }
             streamID += 1
         }
-        return streamID
+        return nil
+    }
+
+    private func validateDisplayOwner(_ displayID: String, for key: MultiClientSessionKey) throws {
+        guard let owner = ownerByDisplay[displayID], owner != key else { return }
+        throw MultiClientDisplayAllocatorError.duplicateDisplay(displayID)
+    }
+
+    private func releaseDisplayOwners(for route: ClientRoute) {
+        for binding in route.bindingsByStream.values {
+            releaseDisplayOwner(binding.displayID, for: route.key)
+        }
+    }
+
+    private func releaseDisplayOwner(_ displayID: String, for key: MultiClientSessionKey) {
+        guard ownerByDisplay[displayID] == key else { return }
+        ownerByDisplay.removeValue(forKey: displayID)
     }
 
     private func withLock<T>(_ body: () throws -> T) rethrows -> T {
