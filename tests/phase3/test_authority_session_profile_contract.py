@@ -85,6 +85,15 @@ def section_between(source: str, start_marker: str, end_marker: str) -> str:
     return source[start:end]
 
 
+def assert_ordered(source: str, markers: list[str]) -> None:
+    cursor = -1
+    for marker in markers:
+        next_cursor = source.find(marker, cursor + 1)
+        if next_cursor == -1:
+            raise AssertionError(f"expected marker after offset {cursor}: {marker!r}")
+        cursor = next_cursor
+
+
 class AuthoritySessionProfileContractTests(unittest.TestCase):
     def test_unsigned_lease_keys_match_mac_decoder_and_android_signed_profile(self) -> None:
         swift = read(MAC_LEASE_ISSUER)
@@ -223,6 +232,14 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("expiresAtUnixSeconds: requested.expiresAtUnixSeconds", issue)
         self.assertNotIn("validFor lifetime", issue)
         self.assertNotIn("nowSeconds + lifetime", issue)
+        expiry_validator = bracket_block(
+            issuer_source, "static func validateAuthorityExpiry", "{", "}"
+        )
+        self.assertIn("expiresAt > nowSeconds", expiry_validator)
+        self.assertIn(
+            "expiresAt <= nowSeconds + maximumAuthorityExpiryWindow",
+            expiry_validator,
+        )
 
         send = bracket_block(delivery, "static func send", "{", "}")
         self.assertIn("session.sendBulkRecord(result.payload, transferID: bulkTransferID)", send)
@@ -239,15 +256,73 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("bearerToken: delivery.hostSignalingToken", app_delegate)
         self.assertIn("queueInternetSessionLeaseDelivery(\n            delivery", app_delegate)
         self.assertIn("pendingInternetSessionLeaseDelivery", app_delegate)
+        self.assertIn("internetSessionLeaseDeliverySent", app_delegate)
         self.assertIn("queueInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("sendPendingInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("if case .streaming = state", app_delegate)
         self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", app_delegate)
         self.assertIn("serverLifecycle.ownsSession(sessionToken)", app_delegate)
         self.assertIn("internetProductSession === session", app_delegate)
+        startup = bracket_block(app_delegate, "private func startInternetProductSession", "{", "}")
+        assert_ordered(
+            startup,
+            [
+                "makeInternetProductSessionStartup",
+                "createInternetSessionLeaseDelivery",
+                "requireCurrentStart",
+                "internetProductSessionConfiguration",
+                "try session.start(configuration: configuration)",
+                "queueInternetSessionLeaseDelivery",
+                "screenCapture?.startStreaming",
+            ],
+        )
+        state_callback = section_between(
+            app_delegate,
+            "session.onStateChanged =",
+            "        session.onError =",
+        )
+        self.assertIn("guard self.sendPendingInternetSessionLeaseDelivery", state_callback)
+        self.assertIn("await self.failClosedInternetSessionLeaseDelivery", state_callback)
+        startup_builder = bracket_block(
+            app_delegate, "private func makeInternetProductSessionStartup", "{", "}"
+        )
+        assert_ordered(
+            startup_builder,
+            [
+                "makeInternetProductSessionConfiguration",
+                "makeInternetSessionProfileRequest",
+                "internetIssuerToken()",
+            ],
+        )
+        profile_request = bracket_block(
+            app_delegate, "private func makeInternetSessionProfileRequest", "{", "}"
+        )
+        self.assertIn("guard !settings.internetAccountID.isEmpty else", profile_request)
+        self.assertIn("PairedDeviceSecretNames.persistedPairing", profile_request)
+        self.assertIn("guard let pairingIdentifier", profile_request)
+        self.assertIn("guard let identityBindingName", profile_request)
+        self.assertIn("identityBinding.requireTarget", profile_request)
+        self.assertIn("loadVerifiedExisting(binding: identityBinding)", profile_request)
+        issuer_token = bracket_block(app_delegate, "private func internetIssuerToken", "{", "}")
+        self.assertIn("guard let tokenData", issuer_token)
+        self.assertIn("!token.isEmpty", issuer_token)
         queue = bracket_block(app_delegate, "private func queueInternetSessionLeaseDelivery", "{", "}")
+        self.assertIn("pendingInternetSessionLeaseDelivery = result", queue)
+        self.assertIn("return sendPendingInternetSessionLeaseDelivery", queue)
         self.assertIn("return true", queue)
         self.assertNotIn("return pendingInternetSessionLeaseDelivery == nil", queue)
+        sender = bracket_block(app_delegate, "private func sendPendingInternetSessionLeaseDelivery", "{", "}")
+        self.assertIn("return internetSessionLeaseDeliverySent", sender)
+        self.assertIn("pendingInternetSessionLeaseDelivery = nil", sender)
+        self.assertIn("internetSessionLeaseDeliverySent = true", sender)
+        fail_closed_delivery = bracket_block(
+            app_delegate, "private func failClosedInternetSessionLeaseDelivery", "{", "}"
+        )
+        self.assertIn("settings.internetStatus = .failed", fail_closed_delivery)
+        self.assertIn("await stopServer(preserveRecoveryState: true)", fail_closed_delivery)
+        teardown = bracket_block(app_delegate, "private func teardownStreamingComponents", "{", "}")
+        self.assertIn("pendingInternetSessionLeaseDelivery = nil", teardown)
+        self.assertIn("internetSessionLeaseDeliverySent = false", teardown)
 
     def test_android_product_session_imports_authenticated_session_lease_bulk(self) -> None:
         receiver = read(ANDROID_LEASE_RECEIVER)

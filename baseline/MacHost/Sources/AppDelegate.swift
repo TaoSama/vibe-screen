@@ -209,6 +209,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var internetProductSession: InternetProductSession?
     private var internetPairingCoordinator: InternetPairingCoordinator?
     private var pendingInternetSessionLeaseDelivery: InternetSessionLeaseDeliveryResult?
+    private var internetSessionLeaseDeliverySent = false
     typealias InternetSessionLeaseDeliveryProvisioner = (
         URL,
         String,
@@ -2889,10 +2890,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.applyInternetSessionState(state)
                 if case .streaming = state {
-                    self.sendPendingInternetSessionLeaseDelivery(
+                    guard self.sendPendingInternetSessionLeaseDelivery(
                         session: session,
                         sessionToken: sessionToken
-                    )
+                    ) else {
+                        await self.failClosedInternetSessionLeaseDelivery(
+                            reason: "The authoritative session lease could not be delivered to the peer.",
+                            session: session,
+                            sessionToken: sessionToken
+                        )
+                        return
+                    }
                 }
             }
         }
@@ -3522,7 +3530,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
               internetProductSession === session else { return false }
         pendingInternetSessionLeaseDelivery = result
         if case .streaming = session.snapshotState() {
-            sendPendingInternetSessionLeaseDelivery(
+            return sendPendingInternetSessionLeaseDelivery(
                 session: session,
                 sessionToken: sessionToken
             )
@@ -3538,10 +3546,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ) -> Bool {
         guard serverLifecycle.ownsSession(sessionToken),
               internetProductSession === session,
-              let delivery = pendingInternetSessionLeaseDelivery else { return false }
+              let delivery = pendingInternetSessionLeaseDelivery else {
+            return internetSessionLeaseDeliverySent
+        }
         guard InternetSessionLeaseDelivery.send(delivery, on: session) else { return false }
         pendingInternetSessionLeaseDelivery = nil
+        internetSessionLeaseDeliverySent = true
         return true
+    }
+
+    @MainActor
+    private func failClosedInternetSessionLeaseDelivery(
+        reason: String,
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) async {
+        guard serverLifecycle.ownsSession(sessionToken),
+              internetProductSession === session else { return }
+        settings.internetStatus = .failed
+        settings.internetErrorMessage = reason
+        settings.internetRecoverySuggestion =
+            "Reconnect with a fresh short-lived Internet session profile."
+        await stopServer(preserveRecoveryState: true)
     }
 
     @MainActor
@@ -3687,6 +3713,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenCapture = nil
         streamingServer = nil
         pendingInternetSessionLeaseDelivery = nil
+        internetSessionLeaseDeliverySent = false
         internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil
