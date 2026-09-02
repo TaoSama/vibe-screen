@@ -1387,6 +1387,41 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(harness.session.currentSessionEpoch, 2)
     }
 
+    func testFreshSessionRecoveryExposesAndClearsRecoveryConfiguration() throws {
+        let harness = try Harness(engineCount: 2, replacementSessionEpoch: 2)
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let recovery = expectation(description: "fresh-session recovery")
+        harness.session.onFreshSessionRecoveryRequired = { attempt in
+            XCTAssertEqual(attempt, 1)
+            let recoveryConfiguration = harness.session.currentRecoveryConfiguration
+            XCTAssertEqual(
+                recoveryConfiguration?.transport.sessionIdentifier,
+                harness.configuration.transport.sessionIdentifier
+            )
+            XCTAssertEqual(
+                recoveryConfiguration?.authoritativeSessionEpoch,
+                harness.configuration.authoritativeSessionEpoch
+            )
+            do {
+                try harness.session.provideFreshSession(configuration: replacementConfiguration)
+                recovery.fulfill()
+            } catch {
+                XCTFail("Installing the fresh session failed: \(error)")
+            }
+        }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.engine.emitPath(.init(interface: .wifi, isSatisfied: true, fingerprint: "wifi-a"))
+        harness.engine.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-b"))
+
+        wait(for: [recovery], timeout: 1)
+        XCTAssertNil(harness.session.currentRecoveryConfiguration)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+    }
+
     func testFreshSessionFallbackCanSynchronouslyInstallReplacementAfterICERestartUnsupported() throws {
         let harness = try Harness(
             engineCount: 2,

@@ -152,6 +152,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var freshSessionRecoveryBudget: FreshSessionRecoveryBudget
     private var state: InternetProductSessionState = .idle
     private var configuration: InternetProductSessionConfiguration?
+    private var recoveryConfiguration: InternetProductSessionConfiguration?
     private var transport: WebRTCInternetTransport?
     private var codec: InternetProductProtocolCodec?
     private var activePath: InternetPathKind?
@@ -190,6 +191,10 @@ final class InternetProductSession: EncodedFrameSink {
         performSync { codec?.sessionEpoch ?? 0 }
     }
 
+    var currentRecoveryConfiguration: InternetProductSessionConfiguration? {
+        performSync { recoveryConfiguration }
+    }
+
     init(
         engineFactory: @escaping EngineFactory = { ProductionWebRTCEngine() },
         securitySessionFactory: SecuritySessionFactory? = nil,
@@ -214,6 +219,7 @@ final class InternetProductSession: EncodedFrameSink {
             }
             try configuration.validate()
             freshSessionRecoveryBudget.reset()
+            recoveryConfiguration = nil
             try startFreshSession(configuration)
         }
     }
@@ -228,6 +234,7 @@ final class InternetProductSession: EncodedFrameSink {
             try configuration.validate()
             try startFreshSession(configuration)
             freshSessionRecoveryBudget.reset()
+            recoveryConfiguration = nil
         }
     }
 
@@ -241,6 +248,7 @@ final class InternetProductSession: EncodedFrameSink {
             let retiredTransport = transport
             transport = nil
             codec = nil
+            recoveryConfiguration = nil
             activePath = nil
             peerSupportsTouch = false
             peerSupportsStylus = false
@@ -2234,6 +2242,7 @@ final class InternetProductSession: EncodedFrameSink {
             return
         }
         let recoveryGeneration = sessionGeneration
+        recoveryConfiguration = configuration
         resetQueuedWork(generation: recoveryGeneration, limits: nil)
         let retiredTransport = transport
         transport = nil

@@ -362,6 +362,71 @@ class InternetSessionProfileStorePairingBindingTest {
         assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
     }
 
+    @Test
+    fun `production import rejects equal and stale replacement epochs against the stored profile`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        val storedProfile =
+            requireNotNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+        val storedSecretCount = fixture.secrets.entryCount
+
+        listOf(7L, 6L).forEach { candidate ->
+            fixture.secrets.resetPersistCount()
+
+            val failure =
+                assertThrows(IllegalArgumentException::class.java) {
+                    fixture.store.import(
+                        signedLeaseJson(fixture, candidate),
+                        fixture.factory,
+                        fixture.coordinator,
+                    )
+                }
+
+            assertTrue(failure.message.orEmpty().contains("strictly newer session epoch"))
+            assertEquals(0, fixture.secrets.persistCount)
+            assertEquals(storedSecretCount, fixture.secrets.entryCount)
+            assertEquals(
+                storedProfile,
+                fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null),
+            )
+        }
+    }
+
+    @Test
+    fun `invalid lease signature is rejected before credential persistence`() {
+        val fixture = recordedFixture()
+        fixture.secrets.resetPersistCount()
+        val secretCountBefore = fixture.secrets.entryCount
+
+        val tamperedLease =
+            signedLeaseJson(fixture, 7).let { json ->
+                val obj = JsonParser.parseString(json).asJsonObject
+                obj.addProperty(
+                    "lease_signature",
+                    Base64.getEncoder().encodeToString(ByteArray(64) { 1 }),
+                )
+                obj.toString()
+            }
+
+        val failure =
+            assertThrows(IllegalArgumentException::class.java) {
+                fixture.store.import(
+                    tamperedLease,
+                    fixture.factory,
+                    fixture.coordinator,
+                )
+            }
+
+        assertTrue(failure.message.orEmpty().contains("signature"))
+        assertEquals(0, fixture.secrets.persistCount)
+        assertEquals(secretCountBefore, fixture.secrets.entryCount)
+        assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+    }
+
     private fun recordedFixture(
         nowUnixSeconds: () -> Long = { 2_000_000_000 },
     ): PairingStoreFixture {

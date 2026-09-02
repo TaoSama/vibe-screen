@@ -1154,9 +1154,9 @@ profile; otherwise the replacement state is `blocked`.
   public Internet path, remote TURN route, controlled network handoff, packet
   capture, latency, or soak run was executed for this product slice; all
   corresponding release gates remain open.
-  This is unit/contract evidence only. It does not prove Mac/Android automatic
-  profile invocation, Android UI import, public Internet, real ScreenCaptureKit
-  capture, Android MediaCodec decode, active disconnect, handoff, latency, or
+  This is unit/contract evidence only. It does not prove Android UI profile
+  import, first lease bootstrap, public Internet, real ScreenCaptureKit capture,
+  Android MediaCodec decode, active disconnect, handoff, latency, or
   soak. A local `cd baseline/MacHost && swift test --filter
   InternetSessionLeaseIssuerTests` attempt was blocked by this environment with
   `no such module 'XCTest'`, so XCTest evidence remains external to this run.
