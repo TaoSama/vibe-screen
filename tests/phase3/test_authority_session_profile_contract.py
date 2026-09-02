@@ -437,7 +437,8 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("internetRevocationCoordinator,", connect)
         self.assertIn("isActive = ::isCurrentInternetSession", connect)
         self.assertIn("val productCallbacks = authenticatedSessionLeaseReceiver.importingCallbacks(callbacks)", connect)
-        self.assertIn("codec,\n                    productCallbacks,", connect)
+        normalized_connect = re.sub(r"\s+", " ", connect)
+        self.assertIn("codec, productCallbacks,", normalized_connect)
 
     def test_authority_documents_endpoint_signing_key_boundary(self) -> None:
         readme = read(AUTHORITY_README).lower()
@@ -447,7 +448,8 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("endpoint binding", readme)
         self.assertIn("paired local keychain identity", readme)
         self.assertIn("android-importable lease without the host private key", readme)
-        self.assertIn("must not fall\nback to local lease issuance", readme)
+        normalized_readme = re.sub(r"\s+", " ", readme)
+        self.assertIn("must not fall back to local lease issuance", normalized_readme)
 
 
 if __name__ == "__main__":

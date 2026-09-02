@@ -114,14 +114,20 @@ func TestAuthorityClientCreateSessionWithSessionProfile(t *testing.T) {
 	_, client := newTestAuthorityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		var request authoritySignalingRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatalf("decode authority request: %v", err)
+			t.Errorf("decode authority request: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
 		}
 		if request.SessionProfile == nil {
-			t.Fatal("authority request omitted session_profile")
+			t.Error("authority request omitted session_profile")
+			http.Error(w, "missing session_profile", http.StatusBadRequest)
+			return
 		}
 		if request.SessionProfile.PairingID != profileRequest.PairingID ||
 			request.SessionProfile.ClientIdentity.KeyID != profileRequest.ClientIdentity.KeyID {
-			t.Fatalf("unexpected authority profile request: %#v", request.SessionProfile)
+			t.Errorf("unexpected authority profile request: %#v", request.SessionProfile)
+			http.Error(w, "unexpected session_profile", http.StatusBadRequest)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)

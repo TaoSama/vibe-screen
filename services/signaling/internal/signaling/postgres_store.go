@@ -683,7 +683,7 @@ func (s *PostgresStore) Cleanup() int {
 
 func (s *PostgresStore) stats(ctx context.Context) (StoreStats, error) {
 	var stats StoreStats
-	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		if _, err := s.cleanupExpiredSessionsTx(ctx, tx); err != nil {
 			return err
 		}

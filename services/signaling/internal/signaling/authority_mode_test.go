@@ -118,15 +118,21 @@ func TestAuthorityModeCreateSessionForwardsSessionProfile(t *testing.T) {
 		}
 		var request authoritySignalingRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatalf("decode authority request: %v", err)
+			t.Errorf("decode authority request: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
 		}
 		if request.SessionProfile == nil {
-			t.Fatal("authority request omitted session_profile")
+			t.Error("authority request omitted session_profile")
+			http.Error(w, "missing session_profile", http.StatusBadRequest)
+			return
 		}
 		if request.SessionProfile.PairingID != profileRequest.PairingID ||
 			request.SessionProfile.HostIdentity.DeviceID != "host-1" ||
 			request.SessionProfile.ClientIdentity.DeviceID != "client-1" {
-			t.Fatalf("unexpected forwarded session_profile: %#v", request.SessionProfile)
+			t.Errorf("unexpected forwarded session_profile: %#v", request.SessionProfile)
+			http.Error(w, "unexpected session_profile", http.StatusBadRequest)
+			return
 		}
 		received.Store(true)
 		w.Header().Set("Content-Type", "application/json")

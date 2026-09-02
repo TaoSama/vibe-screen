@@ -464,6 +464,36 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
         }
     }
 
+    func testStartupPipelineThrowsCancellationErrorAndResetsWhenQueueIsStale() async throws {
+        var resetCount = 0
+        var startCalled = false
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in Self.delivery() },
+            requireCurrentStart: {},
+            applyDelivery: { configuration, _, _ in configuration },
+            prepareSession: { _, _ in },
+            queueDelivery: { _, _ in .stale },
+            resetDelivery: { resetCount += 1 },
+            startSession: { _, _ in
+                startCalled = true
+                XCTFail("session must not start when queue returns stale")
+            },
+            startCapture: { _, _ in XCTFail("capture must not start when queue returns stale") },
+            didStart: { XCTFail("startup must not complete when queue returns stale") }
+        )
+
+        do {
+            _ = try await pipeline.start(with: Self.plan())
+            XCTFail("Expected startup to throw CancellationError when queue is stale.")
+        } catch is CancellationError {
+            XCTAssertEqual(resetCount, 1)
+            XCTAssertFalse(startCalled)
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
     private final class TestInternetSession {
         var state: InternetProductSessionState = .idle
     }
