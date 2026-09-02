@@ -1,0 +1,96 @@
+{
+  "apk_sha256": "076333b301475dfe3d949eab3c80f626053f3b68e95e500c4a8911ad669d4a87",
+  "android_test_apk_sha256": "0f2c36d433dc855f3b8b1407ba984887894f90025954963eded29d8aa66536b9",
+  "device_model": "P0110",
+  "instrumentation_p0110_landscape_large_text": true,
+  "scenarios": [
+    {
+      "label": "phone-portrait-day-font1",
+      "png_size": [1264, 2800],
+      "expected_size": [1264, 2800],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-portrait-night-font1",
+      "png_size": [1264, 2800],
+      "expected_size": [1264, 2800],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-portrait-day-font13",
+      "png_size": [1264, 2800],
+      "expected_size": [1264, 2800],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-portrait-night-font13",
+      "png_size": [1264, 2800],
+      "expected_size": [1264, 2800],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-day-font1",
+      "png_size": [2800, 1264],
+      "expected_size": [2800, 1264],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-night-font1",
+      "png_size": [2800, 1264],
+      "expected_size": [2800, 1264],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-day-font13",
+      "png_size": [2800, 1264],
+      "expected_size": [2800, 1264],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    },
+    {
+      "label": "phone-landscape-night-font13",
+      "png_size": [2800, 1264],
+      "expected_size": [2800, 1264],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "unavailable",
+      "xml_errors": []
+    }
+  ],
+  "restored": {
+    "font_scale_1_0": true,
+    "night_no": true,
+    "rotation_0": true,
+    "accelerometer_rotation_0": true,
+    "no_override_size": true
+  },
+  "post_restore_processes": {
+    "packages_stopped": "not_reverified",
+    "basis": "The original evidence did not persist pidof output. Launcher focus is only indirect context, so the offline rebuild does not claim package-stop success. Current collector runs assert_packages_stopped after force-stop for future live captures."
+  },
+  "offline_rebuild": {
+    "rebuilt_at": "2026-09-02T12:45:04+08:00",
+    "source": "Existing screenshots, state files, XML files, install logs, instrumentation log, recorded app APK SHA-256, and locally computed androidTest APK SHA-256; no device recapture and no ADB command was run for this rebuild.",
+    "packages_stopped": "not_reverified; original evidence has no persisted pidof output"
+  }
+}

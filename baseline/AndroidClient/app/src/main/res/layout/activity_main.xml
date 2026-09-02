@@ -424,12 +424,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <androidx.core.widget.NestedScrollView
-            android:id="@+id/connectionScroll"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:overScrollMode="never"
-            android:fillViewport="true">
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/connectionScroll"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:overScrollMode="never">
 
         <LinearLayout
             android:id="@+id/connectionContent"
@@ -636,6 +635,23 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+            <!-- Connect Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/connectButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="56dp"
+                android:maxLines="2"
+                android:singleLine="false"
+                android:ellipsize="none"
+                android:text="@string/connect"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary_button_text"
+                app:cornerRadius="18dp"
+                app:backgroundTint="@color/primary_button_background"
+                android:layout_marginBottom="14dp" />
+
             <LinearLayout
                 android:id="@+id/connectionErrorContainer"
                 android:layout_width="match_parent"
@@ -668,23 +684,6 @@
                     android:textSize="12sp"
                     android:lineSpacingExtra="2dp" />
             </LinearLayout>
-
-            <!-- Connect Button -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/connectButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="56dp"
-                android:maxLines="2"
-                android:singleLine="false"
-                android:ellipsize="none"
-                android:text="@string/connect"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/primary_button_text"
-                app:cornerRadius="18dp"
-                app:backgroundTint="@color/primary_button_background"
-                android:layout_marginBottom="14dp" />
 
             <!-- Status Section -->
             <LinearLayout

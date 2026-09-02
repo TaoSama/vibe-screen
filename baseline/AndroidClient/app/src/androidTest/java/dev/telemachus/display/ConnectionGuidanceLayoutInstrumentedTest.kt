@@ -149,6 +149,40 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable() {
+        withLayout(widthDp = 800, heightDp = 361, fontScale = 1.3f) { layout ->
+            layout.showModeContent(R.id.usbModeContent)
+            layout.usbErrorContainer.visibility = View.VISIBLE
+            layout.checklistContainer.visibility = View.VISIBLE
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    java.net.ConnectException("ECONNREFUSED"),
+                    ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                )
+            layout.usbErrorMessage.text = ConnectionGuidanceTextFormatter.format(layout.context.resources, guidance.message)
+
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertRetryActionVisibleOnFirstScreen()
+            layout.assertTextRenderedWithoutEllipsis(layout.usbErrorMessage)
+            layout.assertFullyReachableByScroll(layout.usbErrorMessage)
+            layout.assertFullyReachableByScroll(layout.checklistContainer)
+            layout.assertHeaderAndActionsSeparated()
+            assertFalse(layout.usbErrorMessage.text.toString().contains("adb reverse", ignoreCase = true))
+            assertTrue(
+                "Retry action must stay before long USB diagnostic details",
+                layout.boundsInContent(layout.connectButton).bottom <=
+                    layout.boundsInContent(layout.usbErrorContainer).top,
+            )
+        }
+    }
+
+    @Test
     fun narrowPortraitKeepsModeLabelsReadableAtLargeFontScale() {
         withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
             layout.measureAndLayout()
@@ -267,6 +301,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val content = root.findViewById<LinearLayout>(R.id.connectionContent)
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
+        val usbErrorContainer = root.findViewById<View>(R.id.connectionErrorContainer)
+        val usbErrorMessage = root.findViewById<TextView>(R.id.connectionErrorMessage)
+        val checklistContainer = root.findViewById<View>(R.id.checklistContainer)
         val connectButton = root.findViewById<View>(R.id.connectButton)
         val inlineSettingsButton = root.findViewById<View>(R.id.connectionSettingsButton)
         val floatingSettingsButton = root.findViewById<View>(R.id.settingsButton)
@@ -463,6 +500,20 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             )
             assertTrue(
                 "Internet action " + actionBounds + " starts below the " +
+                    scrollView.height + "px first-screen viewport",
+                actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
+            )
+        }
+
+        fun assertRetryActionVisibleOnFirstScreen() {
+            scrollView.scrollTo(0, 0)
+            val actionBounds = boundsInContent(connectButton)
+            assertTrue(
+                "Retry action height was " + connectButton.height + "px",
+                connectButton.height >= dp(48),
+            )
+            assertTrue(
+                "Retry action " + actionBounds + " is outside the " +
                     scrollView.height + "px first-screen viewport",
                 actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
             )

@@ -1,3 +1,3 @@
-$ /Users/luwentao/Library/Android/sdk/platform-tools/adb -s <redacted-adb-serial> install -r /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+$ adb -s <redacted-adb-serial> install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 Performing Streamed Install
 Success

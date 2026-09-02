@@ -1,0 +1,12 @@
+[2026-09-02 11:51:45 CST] adb devices
+[2026-09-02 11:51:45 CST] install app and test apks
+[2026-09-02 11:51:47 CST] run target instrumentation
+[2026-09-02 11:51:48 CST] scenario phone-portrait-day-font1 rotation=0 font=1.0 night=no
+[2026-09-02 11:52:01 CST] scenario phone-portrait-night-font1 rotation=0 font=1.0 night=yes
+[2026-09-02 11:52:13 CST] scenario phone-portrait-day-font13 rotation=0 font=1.3 night=no
+[2026-09-02 11:52:34 CST] scenario phone-portrait-night-font13 rotation=0 font=1.3 night=yes
+[2026-09-02 11:52:55 CST] scenario phone-landscape-day-font1 rotation=1 font=1.0 night=no
+[2026-09-02 11:53:29 CST] scenario phone-landscape-night-font1 rotation=1 font=1.0 night=yes
+[2026-09-02 11:53:50 CST] scenario phone-landscape-day-font13 rotation=1 font=1.3 night=no
+[2026-09-02 11:54:11 CST] scenario phone-landscape-night-font13 rotation=1 font=1.3 night=yes
+[2026-09-02 11:54:33 CST] restore device

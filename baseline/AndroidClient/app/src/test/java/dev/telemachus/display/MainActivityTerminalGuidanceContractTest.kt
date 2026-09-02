@@ -576,13 +576,13 @@ class MainActivityTerminalGuidanceContractTest {
         val checklistIndex = source.indexOf("android:id=\"@+id/checklistContainer\"")
 
         assertTrue("USB mode content should be present", usbIndex >= 0)
-        assertTrue("USB content should keep the inline error before the retry action", errorIndex >= 0)
+        assertTrue("USB content should keep the inline error details available", errorIndex >= 0)
         assertTrue("USB content should include the primary retry/connect action", connectIndex >= 0)
         assertTrue("USB content should include the compact route status after the action", statusIndex >= 0)
         assertTrue("USB content should include diagnostic checklist details", checklistIndex >= 0)
         assertTrue(
-            "The retry/connect action must appear before diagnostic details so it remains reachable at large font scale",
-            usbIndex < errorIndex && errorIndex < connectIndex && connectIndex < statusIndex && statusIndex < checklistIndex,
+            "The retry/connect action must appear before long diagnostic details so it remains reachable at large font scale",
+            usbIndex < connectIndex && connectIndex < errorIndex && errorIndex < statusIndex && statusIndex < checklistIndex,
         )
 
         val connectButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectButton\"")
@@ -591,6 +591,41 @@ class MainActivityTerminalGuidanceContractTest {
             connectButton.contains("android:layout_height=\"wrap_content\"") &&
                 connectButton.contains("android:minHeight=\"56dp\"") &&
                 connectButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
+    fun compactLayoutPressureKeepsGuidanceCompleteAndPrioritizesTheRetryAction() {
+        val source = mainActivitySource()
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
+        val disclosurePolicy =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionSubtitleDisclosurePolicy.kt")
+                .replace(Regex("\\s+"), "")
+        val connectionScroll = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionScroll\"")
+        val errorMessage = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionErrorMessage\"")
+
+        assertFalse(
+            "Compact landscape must not hide USB recovery steps by capping the error message",
+            applier.contains("applyErrorMessageDensity") ||
+                applier.contains("views.errorMessage") ||
+                source.contains("errorMessage = binding.connectionErrorMessage"),
+        )
+        assertFalse(
+            "Security and recovery guidance must not become a non-expandable ellipsized preview",
+            disclosurePolicy.contains("COMPACT_MAX_LINES") ||
+                disclosurePolicy.contains("ellipsizeEnd=compact"),
+        )
+        assertTrue(
+            "Full diagnostic text must remain in normal wrap-content layout so TalkBack and scrolling can access it",
+            errorMessage.contains("android:layout_height=\"wrap_content\"") &&
+                !errorMessage.contains("android:maxLines") &&
+                !errorMessage.contains("android:ellipsize"),
+        )
+        assertFalse(
+            "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",
+            connectionScroll.contains("android:fillViewport=\"true\""),
         )
     }
 

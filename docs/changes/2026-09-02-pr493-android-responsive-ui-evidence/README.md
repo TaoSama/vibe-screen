@@ -10,7 +10,7 @@ This directory captures the local Android client validation for the PR 493 respo
 
 ## Device and install coverage
 
-- Device: `EP0110PZ0B9110300B` (`P0110`, Android device `pacific`).
+- Device: `<redacted-adb-serial>` (`P0110`, Android device `pacific`).
 - APK install evidence: `after/logs/install.txt` shows `Performing Streamed Install` followed by `Success`.
 - Host app was intentionally not started or installed, and no `adb reverse` rule was configured.
 - App-only log summary: `after/logs/logcat-app-summary.txt`. The observed `StreamClient` `ECONNREFUSED` entries are expected for this no-host, no-reverse validation pass.
@@ -27,6 +27,12 @@ Use these screenshots as the validated after-state matrix:
 - `after/matrix/tablet-portrait-night-font13-long-error.png`
 - `after/matrix/tablet-landscape-day-font1.png`
 - `after/matrix/tablet-landscape-night-font13.png`
+
+The phone-landscape, tablet-portrait, and tablet-landscape entries in this
+directory are `wm size` simulations on the physical P0110 device, with
+tablet-landscape additionally using `user_rotation=1`. They are useful layout
+coverage, but they are not physical tablet hardware evidence or the real
+rotation proof used by the final mode-toggle matrix.
 
 The same-named files under `after/metadata/` record the screen size, density, font scale, night mode, rotation, `adb reverse --list`, focused activity, and window frame for each screenshot.
 

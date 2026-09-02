@@ -1,1 +1,0 @@
-/sdcard/phone-portrait-night-font13.png: 1 file pulled, 0 skipped. 24.2 MB/s (227250 bytes in 0.009s)

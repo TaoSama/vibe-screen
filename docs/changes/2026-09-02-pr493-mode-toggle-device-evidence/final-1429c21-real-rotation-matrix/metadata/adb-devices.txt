@@ -1,2 +1,0 @@
-List of devices attached
-EP0110PZ0B9110300B	device

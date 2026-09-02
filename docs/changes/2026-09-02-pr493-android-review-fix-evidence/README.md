@@ -37,7 +37,7 @@ Both commands completed with `BUILD SUCCESSFUL` during the final local run.
 
 ## Android-only device verification
 
-Device: `EP0110PZ0B9110300B`, Nubia P0110. The debug APK was installed with
+Device: `<redacted-adb-serial>`, Nubia P0110. The debug APK was installed with
 `adb install -r` only. No Host app was launched or modified.
 
 The matrix captures day/night and font scale 1.0/1.3 for:

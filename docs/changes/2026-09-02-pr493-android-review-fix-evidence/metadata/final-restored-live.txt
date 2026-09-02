@@ -2,7 +2,7 @@ utc=2026-09-01T23:58:10Z
 local=2026-09-02 07:58:10 CST
 -- devices --
 List of devices attached
-EP0110PZ0B9110300B	device
+<redacted-adb-serial>	device
 
 -- wm size --
 Physical size: 1264x2800

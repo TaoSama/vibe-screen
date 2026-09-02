@@ -1,1 +1,0 @@
-/sdcard/phone-landscape-night-font13.png: 1 file pulled, 0 skipped. 24.5 MB/s (231678 bytes in 0.009s)

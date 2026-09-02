@@ -1,7 +1,7 @@
 label=phone-landscape-night-font13-recaptured
 2026-09-02T06:27:57+08:00
 List of devices attached
-EP0110PZ0B9110300B     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:26
+<redacted-adb-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:26
 
 -- wm size
 Physical size: 1264x2800
