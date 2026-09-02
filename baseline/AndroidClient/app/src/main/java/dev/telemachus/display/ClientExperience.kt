@@ -1086,6 +1086,45 @@ internal object ConnectionPanelLayoutPolicy {
         }
 }
 
+/**
+ * Keeps the mode switch compact in normal layouts while giving each label a
+ * full-width row in portrait large-text mode. The P0110 portrait width can fit
+ * three equal touch targets at the default scale, but 1.3x text needs the
+ * extra horizontal room to keep labels readable.
+ */
+internal object ConnectionModeToggleLayoutPolicy {
+    enum class Orientation {
+        VERTICAL,
+        HORIZONTAL,
+    }
+
+    data class Layout(
+        val orientation: Orientation,
+        val buttonWidthMatchParent: Boolean,
+        val buttonWeight: Float,
+    )
+
+    const val STACKED_FONT_SCALE_THRESHOLD = 1.3f
+
+    fun resolve(
+        stackedPortrait: Boolean,
+        fontScale: Float,
+    ): Layout =
+        if (stackedPortrait && fontScale >= STACKED_FONT_SCALE_THRESHOLD) {
+            Layout(
+                orientation = Orientation.VERTICAL,
+                buttonWidthMatchParent = true,
+                buttonWeight = 0f,
+            )
+        } else {
+            Layout(
+                orientation = Orientation.HORIZONTAL,
+                buttonWidthMatchParent = false,
+                buttonWeight = 1f,
+            )
+        }
+}
+
 internal object UsbConnectActionPolicy {
     enum class Action {
         CONNECT,

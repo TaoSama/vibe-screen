@@ -1,0 +1,148 @@
+Generated: 2026-09-02 10:24:14 CST
+APK: 1429c213396d42b452abfa53bc0d109c6e45ffd8fbbb14b7172d37bc8623b98a  app/build/outputs/apk/debug/app-debug.apk
+
+Screenshot timestamps and dimensions:
+2026-09-02 10:13:45 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-day-font1.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-day-font1.png: PNG image data, 2800 x 1264, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:15:00 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-day-font13.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-day-font13.png: PNG image data, 2800 x 1264, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:14:23 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-night-font1.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-night-font1.png: PNG image data, 2800 x 1264, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:15:38 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-night-font13.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-landscape-night-font13.png: PNG image data, 2800 x 1264, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:11:15 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-day-font1.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-day-font1.png: PNG image data, 1264 x 2800, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:12:30 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-day-font13.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-day-font13.png: PNG image data, 1264 x 2800, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:11:53 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-night-font1.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-night-font1.png: PNG image data, 1264 x 2800, 8-bit/color RGBA, non-interlaced
+2026-09-02 10:13:08 CST /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-night-font13.png
+  /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix/screenshots/phone-portrait-night-font13.png: PNG image data, 1264 x 2800, 8-bit/color RGBA, non-interlaced
+
+Touch target source contract:
+52:        android:layout_height="wrap_content"
+66:            android:layout_height="wrap_content"
+74:                android:layout_height="wrap_content"
+79:                    android:layout_height="wrap_content"
+86:                    android:layout_height="wrap_content"
+96:                android:layout_height="wrap_content"
+101:                    android:layout_height="wrap_content"
+108:                    android:layout_height="wrap_content"
+118:                android:layout_height="wrap_content"
+123:                    android:layout_height="wrap_content"
+130:                    android:layout_height="wrap_content"
+140:                android:layout_height="wrap_content"
+145:                    android:layout_height="wrap_content"
+152:                    android:layout_height="wrap_content"
+162:                android:layout_height="wrap_content"
+166:                    android:layout_height="wrap_content"
+173:                    android:layout_height="wrap_content"
+174:                    android:maxLines="2"
+188:        android:layout_height="wrap_content"
+202:            android:layout_height="wrap_content"
+210:                android:layout_height="wrap_content"
+222:                    android:layout_height="wrap_content"
+233:                    android:layout_height="wrap_content"
+246:                android:layout_height="wrap_content"
+276:                    android:layout_height="wrap_content"
+302:                android:layout_height="wrap_content"
+437:            android:layout_height="wrap_content"
+452:                android:layout_height="wrap_content"
+467:                android:layout_height="wrap_content"
+479:                android:layout_height="wrap_content"
+492:                android:layout_height="wrap_content"
+520:                android:layout_height="wrap_content"
+527:                android:layout_height="wrap_content"
+533:                    android:id="@+id/modeUSB"
+535:                    android:layout_height="wrap_content"
+542:                    android:maxLines="2"
+543:                    android:minHeight="48dp"
+566:                    android:id="@+id/modeWireless"
+568:                    android:layout_height="wrap_content"
+575:                    android:maxLines="2"
+576:                    android:minHeight="48dp"
+599:                    android:id="@+id/modeInternet"
+601:                    android:layout_height="wrap_content"
+608:                    android:maxLines="2"
+609:                    android:minHeight="48dp"
+636:                android:layout_height="wrap_content"
+642:                android:layout_height="wrap_content"
+653:                    android:layout_height="wrap_content"
+664:                    android:layout_height="wrap_content"
+674:                android:id="@+id/connectButton"
+676:                android:layout_height="wrap_content"
+677:                android:minHeight="56dp"
+678:                android:maxLines="2"
+692:                android:layout_height="wrap_content"
+712:                    android:layout_height="wrap_content"
+724:                android:layout_height="wrap_content"
+733:                    android:layout_height="wrap_content"
+743:                    android:layout_height="wrap_content"
+758:                        android:layout_height="wrap_content"
+768:                    android:layout_height="wrap_content"
+783:                        android:layout_height="wrap_content"
+793:                    android:layout_height="wrap_content"
+808:                        android:layout_height="wrap_content"
+818:                    android:layout_height="wrap_content"
+832:                        android:layout_height="wrap_content"
+845:                android:layout_height="wrap_content"
+851:                    android:layout_height="wrap_content"
+859:                        android:layout_height="wrap_content"
+869:                    android:layout_height="wrap_content"
+876:                        android:layout_height="wrap_content"
+890:                android:layout_height="wrap_content"
+891:                android:minHeight="48dp"
+908:                android:layout_height="wrap_content"
+916:                    android:layout_height="wrap_content"
+934:                        android:layout_height="wrap_content"
+945:                        android:layout_height="wrap_content"
+956:                    android:layout_height="wrap_content"
+965:                        android:layout_height="wrap_content"
+975:                        android:layout_height="wrap_content"
+984:                        android:layout_height="wrap_content"
+1006:                    android:layout_height="wrap_content"
+1016:                        android:layout_height="wrap_content"
+1027:                        android:layout_height="wrap_content"
+1037:                        android:layout_height="wrap_content"
+1048:                        android:layout_height="wrap_content"
+1056:                        android:layout_height="wrap_content"
+1066:                    android:layout_height="wrap_content"
+1076:                        android:layout_height="wrap_content"
+1087:                        android:layout_height="wrap_content"
+1097:                        android:layout_height="wrap_content"
+1119:                        android:layout_height="wrap_content"
+1129:                    android:layout_height="wrap_content"
+1140:                        android:layout_height="wrap_content"
+1151:                        android:layout_height="wrap_content"
+1172:                    android:layout_height="wrap_content"
+1182:                        android:layout_height="wrap_content"
+1192:                        android:layout_height="wrap_content"
+1215:                android:layout_height="wrap_content"
+1222:                    android:layout_height="wrap_content"
+1233:                    android:layout_height="wrap_content"
+1242:                    android:layout_height="wrap_content"
+1252:                        android:layout_height="wrap_content"
+1269:                        android:layout_height="wrap_content"
+1285:                    android:layout_height="wrap_content"
+1331:                    android:layout_height="wrap_content"
+1332:                    android:minHeight="48dp"
+1333:                    android:maxLines="2"
+1341:                    android:layout_height="wrap_content"
+1342:                    android:minHeight="48dp"
+1343:                    android:maxLines="2"
+1351:                    android:layout_height="wrap_content"
+1361:                    android:layout_height="wrap_content"
+1389:                android:layout_height="wrap_content"
+
+Order source contract:
+634:                android:id="@+id/usbModeContent"
+640:                android:id="@+id/connectionErrorContainer"
+674:                android:id="@+id/connectButton"
+703:                    android:id="@+id/statusIndicator"
+722:                android:id="@+id/checklistContainer"
+
+Resource contract tests:
+372:    fun wideLandscapeConnectionPanelUsesCompactVerticalMargins() {
+382:    fun wideLandscapeHeaderUsesCompactVerticalSpacing() {
+557:    fun modeToggleSegmentsUseEqualResponsiveWidths() {
+570:    fun usbRetryActionStaysAheadOfDiagnosticDetails() {

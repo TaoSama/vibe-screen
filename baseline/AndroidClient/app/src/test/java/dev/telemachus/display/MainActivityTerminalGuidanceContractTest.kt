@@ -323,7 +323,7 @@ class MainActivityTerminalGuidanceContractTest {
             entryPolicy.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
         )
         assertTrue(
-            "Wide layouts should keep the floating button above the connection panel",
+            "Layouts that opt out of inline settings should keep the floating button above the connection panel",
             entryPolicy.contains("if (!useInlineSettingsButton)"),
         )
         assertTrue(
@@ -346,6 +346,48 @@ class MainActivityTerminalGuidanceContractTest {
             "Configuration changes must re-evaluate inline versus floating settings entry while disconnected",
             configurationChanged.contains("if (!isConnected)") &&
                 configurationChanged.contains("applyDisconnectedSettingsEntryPolicy()"),
+        )
+    }
+
+    @Test
+    fun wideDisconnectedLayoutsKeepSettingsInlineSoRetryActionsAreUncovered() {
+        listOf(
+            "app/src/main/res/values-w600dp/bools.xml",
+            "app/src/main/res/values-w600dp-land/bools.xml",
+        ).forEach { path ->
+            val source = resourceSource(path)
+
+            assertTrue(
+                "$path should still opt into the wide two-column connection panel",
+                source.contains("""<bool name="connection_panel_two_column">true</bool>"""),
+            )
+            assertTrue(
+                "$path should keep settings inside the disconnected panel instead of floating over retry actions",
+                source.contains("""<bool name="connection_panel_inline_settings_button">true</bool>"""),
+            )
+        }
+    }
+
+    @Test
+    fun wideLandscapeConnectionPanelUsesCompactVerticalMargins() {
+        val source = resourceSource("app/src/main/res/values-w600dp-land/dimens.xml")
+
+        assertTrue(
+            "Wide landscape has limited vertical space, so its connection panel margins must not inherit the taller wide-portrait value",
+            source.contains("""<dimen name="connection_panel_margin_vertical">12dp</dimen>"""),
+        )
+    }
+
+    @Test
+    fun wideLandscapeHeaderUsesCompactVerticalSpacing() {
+        val source = resourceSource("app/src/main/res/values-w600dp-land/dimens.xml")
+
+        assertTrue(
+            "Wide landscape large-text captures need a shorter header so the left column does not crop its guidance copy",
+            source.contains("""<dimen name="connection_icon_size">48dp</dimen>""") &&
+                source.contains("""<dimen name="connection_icon_margin_bottom">8dp</dimen>""") &&
+                source.contains("""<dimen name="connection_wordmark_margin_bottom">4dp</dimen>""") &&
+                source.contains("""<dimen name="connection_subtitle_margin_bottom">4dp</dimen>"""),
         )
     }
 
@@ -428,6 +470,7 @@ class MainActivityTerminalGuidanceContractTest {
     @Test
     fun connectionPanelOuterGeometryUsesResponsiveResources() {
         val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
+        val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
 
         assertTrue(
             "Connection panel horizontal margin should adapt by resource qualifier",
@@ -446,6 +489,10 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(
             "Connection panel must not keep the old hard-coded 680dp cap",
             settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
+        )
+        assertTrue(
+            "Horizontal connection layouts must not baseline-align the header against the actions column",
+            connectionContent.contains("android:baselineAligned=\"false\""),
         )
     }
 
@@ -481,11 +528,70 @@ class MainActivityTerminalGuidanceContractTest {
                 "$id must not force every label to occupy two text lines",
                 button.contains("android:lines="),
             )
-            assertFalse(
-                "$id should rely on logical padding for RTL-safe layout",
-                button.contains("android:paddingLeft=") || button.contains("android:paddingRight="),
+            assertTrue(
+                "$id should keep logical padding for RTL-safe layout",
+                button.contains("android:paddingStart=\"2dp\"") &&
+                    button.contains("android:paddingEnd=\"2dp\""),
+            )
+            assertTrue(
+                "$id must zero physical Material padding so compact labels are not ellipsized",
+                button.contains("android:paddingLeft=\"0dp\"") &&
+                    button.contains("android:paddingRight=\"0dp\""),
+            )
+            assertTrue(
+                "$id must not reserve selected-icon space that can truncate short labels",
+                button.contains("app:icon=\"@null\"") && button.contains("app:iconSize=\"0dp\""),
+            )
+            assertTrue(
+                "$id must disable Material all-caps transformation",
+                button.contains("app:textAllCaps=\"false\""),
+            )
+            assertTrue(
+                "$id must keep natural letter spacing so short labels do not exceed their segment",
+                button.contains("android:letterSpacing=\"0\""),
             )
         }
+    }
+
+    @Test
+    fun modeToggleSegmentsUseEqualResponsiveWidths() {
+        listOf("modeUSB", "modeWireless", "modeInternet").forEach { id ->
+            val button = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should participate in the toggle row as an equal-width responsive segment",
+                button.contains("android:layout_width=\"0dp\"") &&
+                    button.contains("android:layout_weight=\"1\""),
+            )
+        }
+    }
+
+    @Test
+    fun usbRetryActionStaysAheadOfDiagnosticDetails() {
+        val source = mainActivityLayoutSource()
+        val usbIndex = source.indexOf("android:id=\"@+id/usbModeContent\"")
+        val errorIndex = source.indexOf("android:id=\"@+id/connectionErrorContainer\"")
+        val connectIndex = source.indexOf("android:id=\"@+id/connectButton\"")
+        val statusIndex = source.indexOf("android:id=\"@+id/statusIndicator\"")
+        val checklistIndex = source.indexOf("android:id=\"@+id/checklistContainer\"")
+
+        assertTrue("USB mode content should be present", usbIndex >= 0)
+        assertTrue("USB content should keep the inline error before the retry action", errorIndex >= 0)
+        assertTrue("USB content should include the primary retry/connect action", connectIndex >= 0)
+        assertTrue("USB content should include the compact route status after the action", statusIndex >= 0)
+        assertTrue("USB content should include diagnostic checklist details", checklistIndex >= 0)
+        assertTrue(
+            "The retry/connect action must appear before diagnostic details so it remains reachable at large font scale",
+            usbIndex < errorIndex && errorIndex < connectIndex && connectIndex < statusIndex && statusIndex < checklistIndex,
+        )
+
+        val connectButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectButton\"")
+        assertTrue(
+            "TRY AGAIN may wrap at large font scale, so the primary USB action must grow vertically",
+            connectButton.contains("android:layout_height=\"wrap_content\"") &&
+                connectButton.contains("android:minHeight=\"56dp\"") &&
+                connectButton.contains("android:maxLines=\"2\""),
+        )
     }
 
     @Test
@@ -1178,6 +1284,18 @@ class MainActivityTerminalGuidanceContractTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("activity_main.xml not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun resourceSource(relativePath: String): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            listOf(relativePath, "baseline/AndroidClient/$relativePath")
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("$relativePath not found from " + System.getProperty("user.dir"))
     }
 
     private fun extractXmlElement(

@@ -5,7 +5,8 @@
          panel splits into two weighted columns. Available width tracks the
          current window (multi-window aware), so split-screen and narrow
          freeform windows below this threshold keep the stacked single column
-         from values-land. -->
+         from values-land. The disconnected settings entry stays inline to avoid
+         covering the primary retry action. -->
     <bool name="connection_panel_two_column">true</bool>
-    <bool name="connection_panel_inline_settings_button">false</bool>
+    <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>

@@ -68,4 +68,31 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(portrait.contentOrientation, narrowLandscape.contentOrientation)
         assertEquals(portrait.columnGapPx, narrowLandscape.columnGapPx)
     }
+
+    @Test
+    fun `mode toggle stacks only for large-font stacked portrait`() {
+        val layout = ConnectionModeToggleLayoutPolicy.resolve(stackedPortrait = true, fontScale = 1.3f)
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+    }
+
+    @Test
+    fun `mode toggle stays segmented for default font stacked portrait`() {
+        val layout = ConnectionModeToggleLayoutPolicy.resolve(stackedPortrait = true, fontScale = 1.0f)
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+    }
+
+    @Test
+    fun `mode toggle stays segmented outside stacked portrait`() {
+        val layout = ConnectionModeToggleLayoutPolicy.resolve(stackedPortrait = false, fontScale = 1.3f)
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+    }
 }

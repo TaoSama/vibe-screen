@@ -1,0 +1,15 @@
+[2026-09-02 10:10:48] adb devices
+[2026-09-02 10:10:48] adb reverse before
+[2026-09-02 10:10:48] apk hash
+[2026-09-02 10:10:48] install apk
+[2026-09-02 10:10:50] adb reverse after install
+[2026-09-02 10:10:50] scenario phone-portrait-day-font1 rotation=0 font=1.0 night=day
+[2026-09-02 10:11:28] scenario phone-portrait-night-font1 rotation=0 font=1.0 night=night
+[2026-09-02 10:12:06] scenario phone-portrait-day-font13 rotation=0 font=1.3 night=day
+[2026-09-02 10:12:43] scenario phone-portrait-night-font13 rotation=0 font=1.3 night=night
+[2026-09-02 10:13:20] scenario phone-landscape-day-font1 rotation=1 font=1.0 night=day
+[2026-09-02 10:13:58] scenario phone-landscape-night-font1 rotation=1 font=1.0 night=night
+[2026-09-02 10:14:36] scenario phone-landscape-day-font13 rotation=1 font=1.3 night=day
+[2026-09-02 10:15:13] scenario phone-landscape-night-font13 rotation=1 font=1.3 night=night
+[2026-09-02 10:15:51] restore device defaults
+[2026-09-02 10:15:55] done /Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/pr493-android-responsive-ui-clean/docs/changes/2026-09-02-pr493-mode-toggle-device-evidence/final-1429c21-real-rotation-matrix

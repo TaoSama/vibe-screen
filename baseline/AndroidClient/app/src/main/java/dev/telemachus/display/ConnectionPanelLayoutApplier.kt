@@ -9,6 +9,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.google.android.material.button.MaterialButtonToggleGroup
 
 internal object ConnectionPanelLayoutApplier {
     data class Views(
@@ -36,15 +37,24 @@ internal object ConnectionPanelLayoutApplier {
                 ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
             }
         views.content.gravity = layout.contentGravity
+        val stackedPortrait =
+            layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL &&
+                resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        applyModeToggleLayout(
+            views = views,
+            layout =
+                ConnectionModeToggleLayoutPolicy.resolve(
+                    stackedPortrait = stackedPortrait,
+                    fontScale = resources.configuration.fontScale,
+                ),
+        )
         applySubtitleDisclosure(
             resources = resources,
             subtitle = views.subtitle,
             presentation =
                 ConnectionSubtitleDisclosurePolicy.resolve(
                     connectionMode = connectionMode,
-                    stackedPortrait =
-                        layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL &&
-                            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT,
+                    stackedPortrait = stackedPortrait,
                     requestedExpanded = subtitleExpanded,
                 ),
         )
@@ -164,6 +174,36 @@ internal object ConnectionPanelLayoutApplier {
         updateLayout(requiredView(views.actions, R.id.internetConnectButton)) { params ->
             params.topMargin = resources.getDimensionPixelSize(R.dimen.connection_primary_action_margin_top)
         }
+    }
+
+    private fun applyModeToggleLayout(
+        views: Views,
+        layout: ConnectionModeToggleLayoutPolicy.Layout,
+    ) {
+        val group = requiredView(views.actions, R.id.modeToggleGroup) as? MaterialButtonToggleGroup ?: return
+        group.orientation =
+            when (layout.orientation) {
+                ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
+                ConnectionModeToggleLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
+            }
+        listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
+            updateModeButtonLayout(requiredView(group, id), layout)
+        }
+    }
+
+    private fun updateModeButtonLayout(
+        view: View,
+        layout: ConnectionModeToggleLayoutPolicy.Layout,
+    ) {
+        val params = view.layoutParams as? LinearLayout.LayoutParams ?: return
+        params.width =
+            if (layout.buttonWidthMatchParent) {
+                ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                0
+            }
+        params.weight = layout.buttonWeight
+        view.layoutParams = params
     }
 
     private fun requiredView(

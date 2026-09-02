@@ -2,7 +2,8 @@
 <resources>
     <!-- Wide portrait windows have enough horizontal room for the same balanced
          header/actions split as wide landscape, while narrow phone portrait
-         keeps the default stacked layout. -->
+         keeps the default stacked layout. The disconnected settings entry stays
+         inside the panel so it cannot overlap recovery actions. -->
     <bool name="connection_panel_two_column">true</bool>
-    <bool name="connection_panel_inline_settings_button">false</bool>
+    <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>
