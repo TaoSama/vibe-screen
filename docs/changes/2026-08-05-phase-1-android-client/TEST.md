@@ -672,6 +672,13 @@ device-specific confirmation before starting visual/UI E2E, or record the same
 permission-controller Activity as a blocked external-system state. This record
 does not close any README acceptance gate.
 
+Current instrumentation runners must avoid creating this state by force-stopping
+and uninstalling only `dev.telemachus.display.test` after success, failure, or
+interruption, then recording that `pm list packages dev.telemachus.display.test`
+is empty. If the Nubia cross-package confirmation reappears, diagnose stale
+Android instrumentation residue first; do not report it as macOS Screen
+Recording or Accessibility/TCC rollback without separate Host evidence.
+
 Evidence:
 
 - [`evidence/2026-08-23-p0110-test-entry-system-ui-blocked/`](evidence/2026-08-23-p0110-test-entry-system-ui-blocked/)
@@ -702,6 +709,10 @@ visual/UI E2E harnesses should detect this permission-controller Activity, tap
 the positive action by resource id or bounds, and then explicitly launch the
 intended product Activity before judging product UI. This record does not close
 any README acceptance gate.
+
+For new evidence, prefer preventing the prompt entirely by removing
+`dev.telemachus.display.test` during instrumentation cleanup. The cleanup command
+set must not target the product package, product data, or ADB reverse mappings.
 
 Evidence:
 

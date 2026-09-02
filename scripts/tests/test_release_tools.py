@@ -2916,6 +2916,16 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertLess(android_job.index(baseline_gate), android_job.index(instrumentation_gate))
         self.assertEqual(android_job.count("assembleDebugAndroidTest"), 1)
         self.assertNotIn("connectedDebugAndroidTest", android_job)
+        for forbidden_device_operation in (
+            "am instrument",
+            "adb -s",
+            "adb shell",
+            "force-stop",
+            "uninstall dev.telemachus.display.test",
+            "reverse tcp:54321",
+        ):
+            with self.subTest(forbidden_device_operation=forbidden_device_operation):
+                self.assertNotIn(forbidden_device_operation, android_job)
 
     def test_phase3_gate_discovers_current_and_legacy_runner_tests(self) -> None:
         workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")

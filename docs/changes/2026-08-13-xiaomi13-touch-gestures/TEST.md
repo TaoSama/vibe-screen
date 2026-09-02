@@ -187,7 +187,15 @@ adb -s <redacted-adb-serial> install -r app/build/outputs/apk/androidTest/debug/
 adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display.test
+adb -s <redacted-adb-serial> uninstall dev.telemachus.display.test
+adb -s <redacted-adb-serial> shell pm list packages dev.telemachus.display.test
 ```
+
+The cleanup commands are mandatory after every success, failure, or interrupted
+instrumentation attempt. They target only `dev.telemachus.display.test`; do not
+clear or uninstall `dev.telemachus.display`, and do not create, remove, or repair
+ADB reverse mappings as part of this cleanup.
 
 Result: `OK (8 tests)` on 2026-08-23. This validates the settings dialog
 responsive layout and SharedPreferences round trip for the new shortcut choices

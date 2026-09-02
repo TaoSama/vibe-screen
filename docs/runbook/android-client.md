@@ -18,6 +18,18 @@ reverse mappings, probe the media port, or start a competing Mac host. Wait for
 the owner to remove the lock. A concurrent install or port probe invalidates a
 soak window even if the stream later recovers.
 
+Any runner that actively installs or runs Android instrumentation must clean up
+the instrumentation test package before releasing the device. The cleanup is
+limited to `dev.telemachus.display.test`: force-stop it, uninstall it, verify it
+is absent with `pm list packages`, and record those command results. The cleanup
+command set must not target the product package, product app data, or ADB reverse
+mappings; use separate evidence when a run needs to prove those states. CI jobs
+that only build `assembleDebugAndroidTest` are build-only and must not issue ADB
+device commands. On Nubia/P0110, a later system prompt asking whether Vibe
+Screen may open `dev.telemachus.display.test` means a stale instrumentation
+package was left on the device; classify it as Android test-package residue, not
+as macOS Screen Recording or Accessibility/TCC rollback.
+
 After coordination grants a short Android lease, atomically create
 `/tmp/vibe-screen-device-android.lock` before the first ADB command. Remove it
 immediately after stopping the test client/server and report the release so

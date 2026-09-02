@@ -33,7 +33,14 @@ adb -s "$ADB_SERIAL" install -r app/build/outputs/apk/androidTest/debug/app-debu
 adb -s "$ADB_SERIAL" shell am instrument -w -r \
   -e class 'dev.telemachus.display.SettingsDialogLayoutInstrumentedTest' \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s "$ADB_SERIAL" shell am force-stop dev.telemachus.display.test
+adb -s "$ADB_SERIAL" uninstall dev.telemachus.display.test
+adb -s "$ADB_SERIAL" shell pm list packages dev.telemachus.display.test
 ```
+
+The cleanup commands are part of the instrumentation boundary: force-stop and
+uninstall only `dev.telemachus.display.test`, verify it is absent, and do not
+target `dev.telemachus.display`, its data, or any ADB reverse mappings.
 
 ## Required device evidence
 

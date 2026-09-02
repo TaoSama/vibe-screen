@@ -71,6 +71,9 @@ make baseline-macos-host-readiness EVIDENCE_DIR=<evidence-dir>
 make evidence-usb-smoke-preflight EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL EVIDENCE_DIR=<evidence-dir> EVIDENCE_EXPECTED_MANUFACTURER=nubia EVIDENCE_EXPECTED_MODEL=P0110 EVIDENCE_EXPECTED_DEVICE=pacific EVIDENCE_EXPECTED_ANDROID_RELEASE=16 EVIDENCE_EXPECTED_SDK=36
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial REDACTED_P0110_USB_SERIAL --package dev.telemachus.display --port 54321 --allow-existing-device-lock --output <evidence-dir>/usb-live-smoke.json
 ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ClipboardManagerInstrumentedTest
+adb -s REDACTED_P0110_USB_SERIAL shell am force-stop dev.telemachus.display.test
+adb -s REDACTED_P0110_USB_SERIAL uninstall dev.telemachus.display.test
+adb -s REDACTED_P0110_USB_SERIAL shell pm list packages dev.telemachus.display.test
 ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.StreamProtocolActionDispatcherTest
 make clipboard-e2e-gate EVIDENCE_DIR=<evidence-dir>
 python3 scripts/phase3/evidence_privacy.py --evidence-dir <evidence-dir> --output <evidence-dir>/privacy-scan.json
@@ -113,4 +116,9 @@ flags were used.
   insufficient because instrumentation removed the product package; the later
   reinstall/relaunch smoke passed. This is not counted as a reconnect timing
   pass.
-
+- `connectedDebugAndroidTest` or direct `am instrument` runs must clean up the
+  Android test package after every terminal state by force-stopping, uninstalling,
+  and verifying the absence of `dev.telemachus.display.test`. The cleanup must not
+  target the product package/data or existing ADB reverse mappings. A later Nubia
+  cross-package launch confirmation for the `.test` package is Android instrumentation residue,
+  not evidence of macOS Screen Recording or Accessibility/TCC regression.
