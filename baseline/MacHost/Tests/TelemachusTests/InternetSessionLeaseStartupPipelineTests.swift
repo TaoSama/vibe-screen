@@ -494,6 +494,383 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
         }
     }
 
+    // MARK: - InternetSessionProfileAutomation
+
+    func testInitialRequestReusesPersistedIdentifierAndEpochWhenPersistedEpochExceedsDurableEpoch() throws {
+        let automation = InternetSessionProfileAutomation(requestIDFactory: {
+            XCTFail("must not allocate a new request ID when persisted epoch is authoritative")
+            return "authority-unexpected"
+        })
+        let persistedRequestID = "authority-persisted-1"
+        let persistedEpoch: UInt64 = 42
+        let durableEpoch: UInt64 = 7
+
+        let plan = try automation.initialRequest(
+            persistedRequestID: persistedRequestID,
+            persistedEpoch: persistedEpoch,
+            durableEpoch: durableEpoch
+        )
+
+        XCTAssertEqual(plan.requestID, persistedRequestID)
+        XCTAssertEqual(plan.authoritativeSessionEpoch, persistedEpoch)
+    }
+
+    func testInitialRequestAllocatesNextEpochWhenPersistedEpochDoesNotExceedDurableEpoch() throws {
+        let expectedRequestID = "authority-fresh-1"
+        let automation = InternetSessionProfileAutomation(requestIDFactory: { expectedRequestID })
+        let persistedEpoch: UInt64 = 5
+        let durableEpoch: UInt64 = 10
+
+        let plan = try automation.initialRequest(
+            persistedRequestID: "authority-persisted-1",
+            persistedEpoch: persistedEpoch,
+            durableEpoch: durableEpoch
+        )
+
+        XCTAssertEqual(plan.requestID, expectedRequestID)
+        XCTAssertEqual(
+            plan.authoritativeSessionEpoch,
+            max(persistedEpoch, durableEpoch) + 1
+        )
+    }
+
+    func testInitialRequestAllocatesNextEpochWhenPersistedEpochEqualsDurableEpoch() throws {
+        let expectedRequestID = "authority-fresh-equal"
+        let automation = InternetSessionProfileAutomation(requestIDFactory: { expectedRequestID })
+        let epoch: UInt64 = 10
+
+        let plan = try automation.initialRequest(
+            persistedRequestID: "authority-persisted-1",
+            persistedEpoch: epoch,
+            durableEpoch: epoch
+        )
+
+        XCTAssertEqual(plan.requestID, expectedRequestID)
+        XCTAssertEqual(plan.authoritativeSessionEpoch, epoch + 1)
+    }
+
+    func testInitialRequestAllocatesNextEpochWhenPersistedRequestIDIsInvalid() throws {
+        let expectedRequestID = "authority-fresh-2"
+        let automation = InternetSessionProfileAutomation(requestIDFactory: { expectedRequestID })
+        let persistedEpoch: UInt64 = 42
+        let durableEpoch: UInt64 = 7
+
+        let plan = try automation.initialRequest(
+            persistedRequestID: "",
+            persistedEpoch: persistedEpoch,
+            durableEpoch: durableEpoch
+        )
+
+        XCTAssertEqual(plan.requestID, expectedRequestID)
+        XCTAssertEqual(
+            plan.authoritativeSessionEpoch,
+            max(persistedEpoch, durableEpoch) + 1
+        )
+    }
+
+    func testRefreshRequestAllocatesNextEpochAfterMaximumOfAllEpochs() throws {
+        let expectedRequestID = "authority-refresh-1"
+        let automation = InternetSessionProfileAutomation(requestIDFactory: { expectedRequestID })
+        let currentEpoch: UInt64 = 3
+        let persistedEpoch: UInt64 = 5
+        let durableEpoch: UInt64 = 7
+
+        let plan = try automation.refreshRequest(
+            currentEpoch: currentEpoch,
+            persistedEpoch: persistedEpoch,
+            durableEpoch: durableEpoch
+        )
+
+        XCTAssertEqual(plan.requestID, expectedRequestID)
+        XCTAssertEqual(
+            plan.authoritativeSessionEpoch,
+            max(currentEpoch, persistedEpoch, durableEpoch) + 1
+        )
+    }
+
+    func testInitialRequestThrowsExhaustedEpochWhenBaselineReachesMaximum() {
+        let automation = InternetSessionProfileAutomation(requestIDFactory: { "authority-fresh" })
+        let baseline = SecurityLifecycle.maximumCrossPlatformSessionEpoch
+
+        XCTAssertThrowsError(
+            try automation.initialRequest(
+                persistedRequestID: "",
+                persistedEpoch: baseline,
+                durableEpoch: 0
+            )
+        ) { error in
+            XCTAssertEqual(error as? InternetSessionProfileAutomationError, .exhaustedEpoch)
+        }
+    }
+
+    func testInitialRequestThrowsExhaustedEpochWhenPersistedEpochExceedsMaximum() {
+        let automation = InternetSessionProfileAutomation(requestIDFactory: {
+            XCTFail("must not allocate a new request ID after epoch exhaustion")
+            return "authority-unexpected"
+        })
+
+        XCTAssertThrowsError(
+            try automation.initialRequest(
+                persistedRequestID: "authority-persisted",
+                persistedEpoch: SecurityLifecycle.maximumCrossPlatformSessionEpoch + 1,
+                durableEpoch: 0
+            )
+        ) { error in
+            XCTAssertEqual(error as? InternetSessionProfileAutomationError, .exhaustedEpoch)
+        }
+    }
+
+    func testInitialRequestThrowsInvalidRequestIDWhenFactoryReturnsInvalidIdentifier() {
+        let automation = InternetSessionProfileAutomation(requestIDFactory: { "" })
+
+        XCTAssertThrowsError(
+            try automation.initialRequest(
+                persistedRequestID: "",
+                persistedEpoch: 0,
+                durableEpoch: 0
+            )
+        ) { error in
+            XCTAssertEqual(error as? InternetSessionProfileAutomationError, .invalidRequestID)
+        }
+    }
+
+    // MARK: - InternetSessionLeaseStartupPipeline.refresh
+
+    func testRefreshHappyPathResetsDeliveryBeforeQueueingAndProvidingFreshSession() async throws {
+        let session = TestInternetSession()
+        let delivery = Self.delivery(sessionID: "refresh-session", hostToken: "refresh-host-token")
+        var events: [String] = []
+        var resetCount = 0
+        var providedConfiguration: InternetProductSessionConfiguration?
+
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in
+                events.append("createDelivery")
+                return delivery
+            },
+            requireCurrentStart: {
+                events.append("requireCurrentStart")
+            },
+            applyDelivery: { _, observedDelivery, _ in
+                events.append("applyDelivery")
+                return Self.configuration(
+                    sessionIdentifier: observedDelivery.sessionID,
+                    hostToken: observedDelivery.hostSignalingToken
+                )
+            },
+            prepareSession: { _, _ in },
+            queueDelivery: { observedDelivery, observedSession in
+                events.append("queueDelivery")
+                XCTAssertTrue(observedSession === session)
+                XCTAssertEqual(observedDelivery, delivery)
+                return .queued
+            },
+            resetDelivery: {
+                events.append("resetDelivery")
+                resetCount += 1
+            },
+            startSession: { _, _ in },
+            startCapture: { _, _ in },
+            didStart: {}
+        )
+
+        let plan = InternetSessionLeaseRefreshPlan(
+            currentConfiguration: Self.configuration(),
+            request: Self.profileRequest(),
+            signalingBaseURL: URL(string: "https://signal.example.test")!,
+            issuerToken: "issuer-token"
+        )
+
+        try await pipeline.refresh(session: session, with: plan) { observedSession, configuration in
+            events.append("provideFreshSession")
+            XCTAssertTrue(observedSession === session)
+            providedConfiguration = configuration
+        }
+
+        XCTAssertEqual(resetCount, 1)
+        XCTAssertEqual(providedConfiguration?.transport.sessionIdentifier, delivery.sessionID)
+        XCTAssertEqual(providedConfiguration?.transport.signaling?.bearerToken, delivery.hostSignalingToken)
+        XCTAssertEqual(events, [
+            "createDelivery",
+            "requireCurrentStart",
+            "applyDelivery",
+            "resetDelivery",
+            "queueDelivery",
+            "provideFreshSession"
+        ])
+    }
+
+    func testRefreshResetsDeliveryTwiceAndThrowsCancellationBeforeProvidingWhenQueueIsStale() async {
+        let session = TestInternetSession()
+        var resetCount = 0
+        var provideCalled = false
+
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in Self.delivery() },
+            requireCurrentStart: {},
+            applyDelivery: { configuration, _, _ in configuration },
+            prepareSession: { _, _ in },
+            queueDelivery: { _, _ in .stale },
+            resetDelivery: { resetCount += 1 },
+            startSession: { _, _ in },
+            startCapture: { _, _ in },
+            didStart: {}
+        )
+
+        let plan = InternetSessionLeaseRefreshPlan(
+            currentConfiguration: Self.configuration(),
+            request: Self.profileRequest(),
+            signalingBaseURL: URL(string: "https://signal.example.test")!,
+            issuerToken: "issuer-token"
+        )
+
+        do {
+            try await pipeline.refresh(session: session, with: plan) { _, _ in
+                provideCalled = true
+            }
+            XCTFail("Expected refresh to throw CancellationError when queue is stale.")
+        } catch is CancellationError {
+            // reset once to open a fresh lease cycle, then again in the stale
+            // error path.
+            XCTAssertEqual(resetCount, 2)
+            XCTAssertFalse(provideCalled)
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
+    func testRefreshDoesNotProvideSessionOrQueueWhenCreateDeliveryFails() async {
+        let session = TestInternetSession()
+        var provideCalled = false
+        var queueCalled = false
+        var resetCalled = false
+        let expectedError = NSError(domain: "test", code: 1, userInfo: nil)
+
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in throw expectedError },
+            requireCurrentStart: {
+                XCTFail("requireCurrentStart must not run after createDelivery failure")
+            },
+            applyDelivery: { _, _, _ in
+                XCTFail("applyDelivery must not run after createDelivery failure")
+                return Self.configuration()
+            },
+            prepareSession: { _, _ in },
+            queueDelivery: { _, _ in
+                queueCalled = true
+                return .queued
+            },
+            resetDelivery: { resetCalled = true },
+            startSession: { _, _ in },
+            startCapture: { _, _ in },
+            didStart: {}
+        )
+
+        let plan = InternetSessionLeaseRefreshPlan(
+            currentConfiguration: Self.configuration(),
+            request: Self.profileRequest(),
+            signalingBaseURL: URL(string: "https://signal.example.test")!,
+            issuerToken: "issuer-token"
+        )
+
+        do {
+            try await pipeline.refresh(session: session, with: plan) { _, _ in
+                provideCalled = true
+            }
+            XCTFail("Expected refresh to propagate createDelivery error.")
+        } catch {
+            XCTAssertEqual(error as NSError, expectedError)
+            XCTAssertFalse(provideCalled)
+            XCTAssertFalse(queueCalled)
+            XCTAssertFalse(resetCalled)
+        }
+    }
+
+    func testRefreshResetsDeliveryTwiceAndThrowsSecurityFailureBeforeProvidingWhenQueueDeliveryFails() async {
+        let session = TestInternetSession()
+        var resetCount = 0
+        var provideCalled = false
+
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in Self.delivery() },
+            requireCurrentStart: {},
+            applyDelivery: { configuration, _, _ in configuration },
+            prepareSession: { _, _ in },
+            queueDelivery: { _, _ in .deliveryFailed },
+            resetDelivery: { resetCount += 1 },
+            startSession: { _, _ in },
+            startCapture: { _, _ in },
+            didStart: {}
+        )
+
+        let plan = InternetSessionLeaseRefreshPlan(
+            currentConfiguration: Self.configuration(),
+            request: Self.profileRequest(),
+            signalingBaseURL: URL(string: "https://signal.example.test")!,
+            issuerToken: "issuer-token"
+        )
+
+        do {
+            try await pipeline.refresh(session: session, with: plan) { _, _ in
+                provideCalled = true
+            }
+            XCTFail("Expected refresh to throw security failure when delivery cannot be queued.")
+        } catch InternetProductSessionError.securityFailure(let reason) {
+            XCTAssertTrue(reason.contains("authoritative session lease"))
+            // reset once to open a fresh lease cycle, then again in the
+            // delivery-failed error path.
+            XCTAssertEqual(resetCount, 2)
+            XCTAssertFalse(provideCalled)
+        } catch {
+            XCTFail("Expected securityFailure, got \(error)")
+        }
+    }
+
+    func testRefreshResetsDeliveryAgainWhenProvideFreshSessionFails() async {
+        let session = TestInternetSession()
+        var resetCount = 0
+        var queuedDelivery: InternetSessionLeaseDeliveryResult?
+        let expectedError = NSError(domain: "test", code: 9, userInfo: nil)
+
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in Self.delivery() },
+            requireCurrentStart: {},
+            applyDelivery: { configuration, _, _ in configuration },
+            prepareSession: { _, _ in },
+            queueDelivery: { delivery, _ in
+                queuedDelivery = delivery
+                return .queued
+            },
+            resetDelivery: { resetCount += 1 },
+            startSession: { _, _ in },
+            startCapture: { _, _ in },
+            didStart: {}
+        )
+
+        let plan = InternetSessionLeaseRefreshPlan(
+            currentConfiguration: Self.configuration(),
+            request: Self.profileRequest(),
+            signalingBaseURL: URL(string: "https://signal.example.test")!,
+            issuerToken: "issuer-token"
+        )
+
+        do {
+            try await pipeline.refresh(session: session, with: plan) { _, _ in
+                throw expectedError
+            }
+            XCTFail("Expected refresh to propagate provideFreshSession error.")
+        } catch {
+            XCTAssertEqual(error as NSError, expectedError)
+            XCTAssertNotNil(queuedDelivery)
+            XCTAssertEqual(resetCount, 2)
+        }
+    }
+
     private final class TestInternetSession {
         var state: InternetProductSessionState = .idle
     }
