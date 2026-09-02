@@ -82,11 +82,13 @@ three rotations; one rotated angle is not enough to close the gate.
 4. Capture the Android visual result and a Host display snapshot while the Mac
    display is rotated.
 5. Probe the four corners and center. Keep the touch matrix, Host input/capture
-   log, Android logcat, stream stability counters, and proof that no session
-   teardown occurred. The JSON summary must also include the inverse-touch
-   mapping points in host logical-display coordinates: `top_left`, `top_right`,
-   `bottom_left`, `bottom_right`, and `center`, each marked within tolerance.
-6. Restore the original macOS display rotation and retain proof of restoration.
+   log, Android logcat, stream stability counters, and a retained no-session-
+   teardown audit for that exact display-kind and host-rotation pair. The JSON
+   summary must also include the inverse-touch mapping points in host logical-
+   display coordinates: `top_left`, `top_right`, `bottom_left`, `bottom_right`,
+   and `center`, each marked within tolerance.
+6. Restore the original macOS display rotation and retain both the operator
+   restoration plan and a post-restore host display snapshot.
 
 Repeat the same 90/180/270 sequence for a virtual display created by the Host.
 The virtual display run must identify the virtual display separately from the
@@ -103,6 +105,12 @@ display-kind and host-rotation pair: physical 90/180/270 plus virtual
       "kind": "host_display_rotation_acceptance",
       "runs": [
         {
+          "evidence_source": {
+            "capture_type": "real-device-run",
+            "device_runtime_class": "physical_android_device",
+            "synthetic_fixture": false,
+            "artifact_retention": "per-display-kind-and-rotation"
+          },
           "display_kind": "physical",
           "display_id": "<macOS physical display id/name>",
           "transport": "usb",
@@ -161,10 +169,13 @@ display-kind and host-rotation pair: physical 90/180/270 plus virtual
             "device_identity": "device-and-artifact-identity.txt",
             "host_display_snapshot_before": "physical-display-before.txt",
             "host_display_snapshot_rotated": "physical-display-rotated.txt",
+            "host_display_snapshot_restored": "physical-display-restored.txt",
             "android_screenshot": "android-physical-rotated-host-display.png",
             "touch_matrix": "physical-touch-matrix.txt",
             "host_log": "host.log",
-            "android_logcat": "logcat.txt"
+            "android_logcat": "logcat.txt",
+            "restoration_plan": "physical-restoration-plan.txt",
+            "session_teardown_audit": "physical-session-teardown-audit.txt"
           }
         }
       ]
@@ -172,9 +183,16 @@ display-kind and host-rotation pair: physical 90/180/270 plus virtual
 
 Repeat that entry for the remaining physical 180/270 and virtual 90/180/270
 runs. Use distinct physical versus virtual display IDs and do not reuse the
-rotated host-display snapshot, Android screenshot, or touch-matrix artifact
-between rotations of the same display kind. Validate it with retained-artifact
-checks enabled:
+rotated host-display snapshot, restored host-display snapshot, Android
+screenshot, touch-matrix artifact, restoration plan, or session-teardown audit
+between rotations of the same display kind. Each text artifact should include
+the display kind, display ID where relevant including Host and Android logs,
+host rotation, original rotation where relevant, device identity where relevant,
+and the explicit
+`host_display_rotation_restoration_plan=true` /
+`restored_original_host_rotation=true` / `no_session_teardown=true` markers for
+the corresponding retained proof. Validate it with retained-artifact checks
+enabled:
 
     PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
       "$RUN_DIR/host-display-rotation.json" \
@@ -184,10 +202,26 @@ checks enabled:
 The gate exits 0 only when both display kinds each cover host rotations
 90/180/270, every required probe is true, the inverse-touch matrix includes the
 four corners plus center in host logical-display coordinates, the device
-identity is explicit, the Host signing/TCC preflight is complete, artifact
-paths stay inside the evidence directory, and the retained files exist. It
-still does not prove anything beyond the captured real-device run named by that
-evidence directory.
+identity is explicit, the Host signing/TCC preflight is complete, each run
+declares a non-synthetic physical-Android real-device source, artifact paths
+stay inside the evidence directory, retained files exist, fixture/testdata paths
+are not used, and the required artifact markers match that run as independent
+`key=value` lines rather than prefix-only matches. It still does
+not prove anything beyond the captured real-device run named by that evidence
+directory.
+Each `error_px` value must match the Euclidean distance between the expected and
+observed Host coordinates. Host and Android logs must not contain retained
+teardown indicators such as `INVALID_STATE`, `INVALID_MEDIA_HEADER`,
+`session_teardown_detected=true`, `session_teardown=true`,
+`unexpected_disconnect=true`, or `peer disconnected unexpectedly`.
+
+The current-base aggregate must retain both `host-display-rotation.json` and
+`host-display-rotation-gate.json` beside its manifest. The current-base checker
+recomputes the evidence gate from the raw evidence with retained-artifact checks
+enabled and requires the retained gate output to match that recomputed result.
+Self-reported formal gate rows in the current-base manifest cannot close
+host-display rotation unless the reproducible gate output is `status=complete`
+with physical and virtual 90/180/270 coverage.
 
 ## Failure Modes
 
@@ -209,11 +243,23 @@ evidence directory.
   gate must fail even if a free-form touch matrix artifact exists.
 - An inverse-touch point whose numeric `error_px` exceeds the run-level
   `tolerance_px`: the gate must fail even if `within_tolerance` is marked true.
+- An inverse-touch point whose numeric `error_px` does not match the distance
+  between expected and observed Host coordinates: the gate must fail even if it
+  is below tolerance.
+- Host or Android logs containing retained teardown indicators such as
+  `INVALID_STATE` or `INVALID_MEDIA_HEADER`: the gate must fail even if
+  `probes.no_session_teardown` is marked true.
 - Client-local rotation substituted for host rotation: the gate must fail if
   host_rotation_degrees is 0 or if host_rotation_combined_with_client_transform
   is true.
 - Artifact path missing or outside the evidence directory: rerun collection or
   fix the summary to point at retained files before claiming acceptance.
+- Running the checker without `--check-artifacts`: the gate must fail; a JSON
+  summary alone cannot close real host-display rotation.
+- Fixture or testdata paths, placeholder files, or text artifacts missing the
+  matching display kind, display ID, rotation, restoration, no-teardown,
+  touch-matrix, or device markers: the gate must fail until retained real-run
+  artifacts are referenced.
 - Original host rotation not restored: stop and restore the display first; a
   run without restoration proof cannot close the gate.
 
