@@ -574,6 +574,19 @@ class LocalWebRTCPrivacyTests(unittest.TestCase):
         with self.assertRaisesRegex(E2EFailure, "legacy /var/tmp residue"):
             assert_no_new_coturn_residue(set())
 
+    def test_coturn_4_17_2_is_supported_by_version_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            turnserver = Path(temporary) / "turnserver"
+            turnserver.write_text(
+                "#!/bin/sh\nprintf 'coturn fixture\n4.17.2\n'\n",
+                encoding="utf-8",
+            )
+            turnserver.chmod(0o700)
+            with open_verified_external_executable(
+                turnserver, "coturn binary"
+            ) as snapshot:
+                self.assertEqual(supported_coturn_version(snapshot, ROOT), "4.17.2")
+
     def test_unsupported_coturn_version_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             turnserver = Path(temporary) / "turnserver"
