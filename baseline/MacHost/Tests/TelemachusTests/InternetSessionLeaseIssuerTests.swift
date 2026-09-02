@@ -485,6 +485,38 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
     }
 
+    func testSigningFailureDoesNotBurnLeaseEpoch() throws {
+        let signingIdentity = LeaseTestSigningIdentity(deviceID: "lease-host")
+        let failingIdentity = LeaseFailingSigningIdentity(
+            publicIdentity: signingIdentity.publicIdentity
+        )
+        let secretStore = LeaseMemorySecretStore()
+        let stateStore = LeaseMemoryStateStore()
+        stateStore.state.sessionEpoch = 4
+        try persistBinding(
+            signingIdentity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+
+        XCTAssertThrowsError(try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99),
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore },
+            signingIdentityLoader: { _ in failingIdentity }
+        ))
+        XCTAssertEqual(stateStore.state.sessionEpoch, 4)
+
+        let signed = try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99),
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore },
+            signingIdentityLoader: { _ in signingIdentity }
+        )
+        XCTAssertEqual(try issuedEpoch(signed), 99)
+        XCTAssertEqual(stateStore.state.sessionEpoch, 99)
+    }
+
     func testDurablePairingBindingFailsBeforeLeaseCredentialsOrEpoch() throws {
         let secretStore = LeaseMemorySecretStore()
         let stateStore = LeasePairingValidationFailureStore()
@@ -1058,6 +1090,20 @@ private final class LeaseTestSigningIdentity: InternetSessionLeaseSigningIdentit
         try InternetSessionLeaseIssuerTests.rawDigestSignature(
             privateKey: signingKey,
             digest: digest
+        )
+    }
+}
+
+private final class LeaseFailingSigningIdentity: InternetSessionLeaseSigningIdentity {
+    let publicIdentity: PlatformPublicIdentity
+
+    init(publicIdentity: PlatformPublicIdentity) {
+        self.publicIdentity = publicIdentity
+    }
+
+    func signTranscriptDigest(_ digest: Data) throws -> Data {
+        throw InternetSessionLeaseIssuerError.invalidInput(
+            "injected signing failure"
         )
     }
 }

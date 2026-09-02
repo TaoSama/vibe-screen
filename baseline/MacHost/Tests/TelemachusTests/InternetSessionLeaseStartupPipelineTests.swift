@@ -34,12 +34,6 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
                 XCTAssertEqual(configuration.transport.sessionIdentifier, delivery.sessionID)
                 XCTAssertEqual(configuration.transport.signaling?.bearerToken, delivery.hostSignalingToken)
             },
-            startSession: { observedSession, configuration in
-                events.append("session.start")
-                XCTAssertTrue(observedSession === session)
-                XCTAssertEqual(configuration.transport.sessionIdentifier, delivery.sessionID)
-                observedSession.state = .connecting
-            },
             queueDelivery: { observedDelivery, observedSession in
                 events.append("queueInternetSessionLeaseDelivery")
                 XCTAssertTrue(observedSession === session)
@@ -53,6 +47,16 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
                         return true
                     }
                 )
+            },
+            resetDelivery: {
+                events.append("resetDelivery")
+                lifecycle.reset()
+            },
+            startSession: { observedSession, configuration in
+                events.append("session.start")
+                XCTAssertTrue(observedSession === session)
+                XCTAssertEqual(configuration.transport.sessionIdentifier, delivery.sessionID)
+                observedSession.state = .connecting
             },
             startCapture: { observedSession, configuration in
                 events.append("startCapture")
@@ -91,8 +95,8 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
             "requireCurrentStart",
             "applyDelivery",
             "prepareSession",
-            "session.start",
             "queueInternetSessionLeaseDelivery",
+            "session.start",
             "startCapture",
             "didStart",
             "state.streaming",
@@ -146,17 +150,20 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
                 XCTAssertEqual(configuration.transport.sessionIdentifier, delivery.sessionID)
                 XCTAssertEqual(configuration.transport.signaling?.bearerToken, delivery.hostSignalingToken)
             },
+            queueDelivery: { observedDelivery, observedSession in
+                events.append("queueDelivery")
+                XCTAssertTrue(observedSession === session)
+                queuedDelivery = observedDelivery
+                return .queued
+            },
+            resetDelivery: {
+                events.append("resetDelivery")
+            },
             startSession: { observedSession, configuration in
                 events.append("session.start")
                 XCTAssertTrue(observedSession === session)
                 startedConfiguration = configuration
                 observedSession.state = .connecting
-            },
-            queueDelivery: { observedDelivery, observedSession in
-                events.append("queueDelivery")
-                XCTAssertTrue(observedSession === session)
-                queuedDelivery = observedDelivery
-                return true
             },
             startCapture: { observedSession, configuration in
                 events.append("startCapture")
@@ -181,8 +188,8 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
             "applyDelivery",
             "makeSession",
             "prepareSession",
-            "session.start",
             "queueDelivery",
+            "session.start",
             "startCapture",
             "didStart"
         ])
@@ -195,8 +202,9 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
             requireCurrentStart: {},
             applyDelivery: { configuration, _, _ in configuration },
             prepareSession: { _, _ in },
+            queueDelivery: { _, _ in .deliveryFailed },
+            resetDelivery: {},
             startSession: { session, _ in session.state = .streaming(.direct) },
-            queueDelivery: { _, _ in false },
             startCapture: { _, _ in XCTFail("capture must not start after lease delivery failure") },
             didStart: { XCTFail("startup must not complete after lease delivery failure") }
         )
@@ -215,12 +223,12 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
         var sentPayloads: [Data] = []
         var failClosedReasons: [String] = []
 
-        XCTAssertTrue(lifecycle.queue(
+        XCTAssertEqual(lifecycle.queue(
             delivery,
             isCurrent: { true },
             sessionState: { .connecting },
             send: { sentPayloads.append($0.payload); return true }
-        ))
+        ), .queued)
         XCTAssertEqual(lifecycle.pendingDelivery, delivery)
         XCTAssertFalse(lifecycle.deliverySent)
         XCTAssertTrue(sentPayloads.isEmpty)
@@ -247,22 +255,80 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
         XCTAssertTrue(failClosedReasons.isEmpty)
     }
 
+    func testLeaseDeliveryLifecycleDropsStaleStreamingCallbackWithoutFailClosed() async {
+        let lifecycle = InternetSessionLeaseDeliveryLifecycle()
+        let delivery = Self.delivery(payload: Data([0xA2]))
+        var sentPayloads: [Data] = []
+        var failClosedReasons: [String] = []
+
+        XCTAssertEqual(lifecycle.queue(
+            delivery,
+            isCurrent: { true },
+            sessionState: { .connecting },
+            send: { sentPayloads.append($0.payload); return true }
+        ), .queued)
+
+        await lifecycle.handleStateChange(
+            .streaming(.direct),
+            isCurrent: { false },
+            send: { _ in XCTFail("stale streaming callback must not deliver"); return true },
+            failClosed: { failClosedReasons.append($0) }
+        )
+
+        XCTAssertEqual(lifecycle.pendingDelivery, delivery)
+        XCTAssertFalse(lifecycle.deliverySent)
+        XCTAssertTrue(sentPayloads.isEmpty)
+        XCTAssertTrue(failClosedReasons.isEmpty)
+    }
+
+    func testLeaseDeliveryLifecycleTreatsRepeatedStreamingAsExactlyOnce() async {
+        let lifecycle = InternetSessionLeaseDeliveryLifecycle()
+        let delivery = Self.delivery(payload: Data([0xA3]))
+        var sentPayloads: [Data] = []
+        var failClosedReasons: [String] = []
+
+        XCTAssertEqual(lifecycle.queue(
+            delivery,
+            isCurrent: { true },
+            sessionState: { .connecting },
+            send: { sentPayloads.append($0.payload); return true }
+        ), .queued)
+
+        await lifecycle.handleStateChange(
+            .streaming(.direct),
+            isCurrent: { true },
+            send: { sentPayloads.append($0.payload); return true },
+            failClosed: { failClosedReasons.append($0) }
+        )
+        await lifecycle.handleStateChange(
+            .streaming(.relay),
+            isCurrent: { true },
+            send: { sentPayloads.append($0.payload); return true },
+            failClosed: { failClosedReasons.append($0) }
+        )
+
+        XCTAssertNil(lifecycle.pendingDelivery)
+        XCTAssertTrue(lifecycle.deliverySent)
+        XCTAssertEqual(sentPayloads, [delivery.payload])
+        XCTAssertTrue(failClosedReasons.isEmpty)
+    }
+
     func testLeaseDeliveryLifecycleRejectsStaleOwnershipWithoutMutatingState() {
         let lifecycle = InternetSessionLeaseDeliveryLifecycle()
 
-        XCTAssertFalse(lifecycle.queue(
+        XCTAssertEqual(lifecycle.queue(
             Self.delivery(),
             isCurrent: { false },
             sessionState: { .connecting },
             send: { _ in XCTFail("stale delivery must not send"); return true }
-        ))
+        ), .stale)
         XCTAssertNil(lifecycle.pendingDelivery)
         XCTAssertFalse(lifecycle.deliverySent)
 
-        XCTAssertFalse(lifecycle.sendPending(
+        XCTAssertEqual(lifecycle.sendPending(
             isCurrent: { false },
             send: { _ in XCTFail("stale pending delivery must not send"); return true }
-        ))
+        ), .stale)
     }
 
     func testLeaseDeliveryLifecycleFailsClosedWhenStreamingSendFails() async {
@@ -270,12 +336,12 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
         let delivery = Self.delivery(payload: Data([0xB1]))
         var failClosedReasons: [String] = []
 
-        XCTAssertFalse(lifecycle.queue(
+        XCTAssertEqual(lifecycle.queue(
             delivery,
             isCurrent: { true },
             sessionState: { .streaming(.direct) },
             send: { _ in false }
-        ))
+        ), .deliveryFailed)
         XCTAssertEqual(lifecycle.pendingDelivery, delivery)
         XCTAssertFalse(lifecycle.deliverySent)
 
@@ -311,6 +377,91 @@ final class InternetSessionLeaseStartupPipelineTests: XCTestCase {
         XCTAssertFalse(InternetSessionLeaseDelivery.send(delivery, on: session))
         XCTAssertEqual(session.receivedPayload, delivery.payload)
         XCTAssertEqual(session.receivedTransferID, InternetSessionLeaseDelivery.bulkTransferID)
+    }
+
+    func testLeaseDeliveryLifecycleReturnsNoPendingDeliveryWhenSendPendingWithoutQueue() {
+        let lifecycle = InternetSessionLeaseDeliveryLifecycle()
+
+        XCTAssertEqual(
+            lifecycle.sendPending(
+                isCurrent: { true },
+                send: { _ in XCTFail("must not send when no delivery is pending"); return true }
+            ),
+            .noPendingDelivery
+        )
+        XCTAssertNil(lifecycle.pendingDelivery)
+        XCTAssertFalse(lifecycle.deliverySent)
+    }
+
+    func testLeaseDeliveryLifecycleRejectsSecondQueueWhilePending() {
+        let lifecycle = InternetSessionLeaseDeliveryLifecycle()
+        let first = Self.delivery(payload: Data([0x01]))
+        let second = Self.delivery(payload: Data([0x02]))
+
+        XCTAssertEqual(lifecycle.queue(
+            first,
+            isCurrent: { true },
+            sessionState: { .connecting },
+            send: { _ in XCTFail("must not send while not streaming"); return true }
+        ), .queued)
+        XCTAssertEqual(lifecycle.pendingDelivery, first)
+
+        XCTAssertEqual(lifecycle.queue(
+            second,
+            isCurrent: { true },
+            sessionState: { .connecting },
+            send: { _ in XCTFail("must not send when a pending delivery already exists"); return true }
+        ), .alreadyPending)
+        XCTAssertEqual(lifecycle.pendingDelivery, first)
+        XCTAssertFalse(lifecycle.deliverySent)
+    }
+
+    func testStartupPipelineResetsDeliveryWhenStartSessionFails() async throws {
+        var resetCount = 0
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in Self.delivery() },
+            requireCurrentStart: {},
+            applyDelivery: { configuration, _, _ in configuration },
+            prepareSession: { _, _ in },
+            queueDelivery: { _, _ in .queued },
+            resetDelivery: { resetCount += 1 },
+            startSession: { _, _ in
+                throw NSError(domain: "test", code: 1, userInfo: nil)
+            },
+            startCapture: { _, _ in XCTFail("capture must not start after session start failure") },
+            didStart: { XCTFail("startup must not complete after session start failure") }
+        )
+
+        do {
+            _ = try await pipeline.start(with: Self.plan())
+            XCTFail("Expected startup to fail when session start throws.")
+        } catch {
+            XCTAssertEqual(resetCount, 1)
+        }
+    }
+
+    func testStartupPipelineResetsDeliveryWhenQueueRejects() async throws {
+        var resetCount = 0
+        let pipeline = InternetSessionLeaseStartupPipeline<TestInternetSession>(
+            makeSession: { TestInternetSession() },
+            createDelivery: { _, _, _ in Self.delivery() },
+            requireCurrentStart: {},
+            applyDelivery: { configuration, _, _ in configuration },
+            prepareSession: { _, _ in },
+            queueDelivery: { _, _ in .deliveryFailed },
+            resetDelivery: { resetCount += 1 },
+            startSession: { _, _ in XCTFail("session must not start after queue rejection") },
+            startCapture: { _, _ in XCTFail("capture must not start after queue rejection") },
+            didStart: { XCTFail("startup must not complete after queue rejection") }
+        )
+
+        do {
+            _ = try await pipeline.start(with: Self.plan())
+            XCTFail("Expected startup to fail when queue rejects delivery.")
+        } catch InternetProductSessionError.securityFailure {
+            XCTAssertEqual(resetCount, 1)
+        }
     }
 
     private final class TestInternetSession {

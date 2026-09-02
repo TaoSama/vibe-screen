@@ -7,6 +7,25 @@ struct InternetSessionLeaseStartupPlan {
     let issuerToken: String
 }
 
+enum InternetSessionLeaseDeliveryLifecycleDisposition: Equatable {
+    case queued
+    case delivered
+    case alreadyDelivered
+    case alreadyPending
+    case noPendingDelivery
+    case stale
+    case deliveryFailed
+
+    var permitsStartup: Bool {
+        switch self {
+        case .queued, .delivered, .alreadyDelivered:
+            return true
+        case .alreadyPending, .noPendingDelivery, .stale, .deliveryFailed:
+            return false
+        }
+    }
+}
+
 @MainActor
 final class InternetSessionLeaseDeliveryLifecycle {
     static let deliveryFailureReason =
@@ -20,27 +39,30 @@ final class InternetSessionLeaseDeliveryLifecycle {
         isCurrent: () -> Bool,
         sessionState: () -> InternetProductSessionState,
         send: (InternetSessionLeaseDeliveryResult) -> Bool
-    ) -> Bool {
-        guard isCurrent() else { return false }
+    ) -> InternetSessionLeaseDeliveryLifecycleDisposition {
+        guard isCurrent() else { return .stale }
+        guard !deliverySent else { return .alreadyDelivered }
+        guard pendingDelivery == nil else { return .alreadyPending }
         pendingDelivery = result
         if case .streaming = sessionState() {
             return sendPending(isCurrent: isCurrent, send: send)
         }
-        return true
+        return .queued
     }
 
     @discardableResult
     func sendPending(
         isCurrent: () -> Bool,
         send: (InternetSessionLeaseDeliveryResult) -> Bool
-    ) -> Bool {
-        guard isCurrent(), let delivery = pendingDelivery else {
-            return deliverySent
+    ) -> InternetSessionLeaseDeliveryLifecycleDisposition {
+        guard isCurrent() else { return .stale }
+        guard let delivery = pendingDelivery else {
+            return deliverySent ? .alreadyDelivered : .noPendingDelivery
         }
-        guard send(delivery) else { return false }
+        guard send(delivery) else { return .deliveryFailed }
         pendingDelivery = nil
         deliverySent = true
-        return true
+        return .delivered
     }
 
     func handleStateChange(
@@ -50,8 +72,10 @@ final class InternetSessionLeaseDeliveryLifecycle {
         failClosed: (String) async -> Void
     ) async {
         guard case .streaming = state else { return }
-        guard sendPending(isCurrent: isCurrent, send: send) else {
+        switch sendPending(isCurrent: isCurrent, send: send) {
+        case .deliveryFailed, .noPendingDelivery:
             await failClosed(Self.deliveryFailureReason)
+        case .delivered, .alreadyDelivered, .alreadyPending, .queued, .stale:
             return
         }
     }
@@ -80,8 +104,9 @@ struct InternetSessionLeaseStartupPipeline<Session: AnyObject> {
     let requireCurrentStart: () throws -> Void
     let applyDelivery: ApplyDelivery
     let prepareSession: (Session, InternetProductSessionConfiguration) -> Void
+    let queueDelivery: (InternetSessionLeaseDeliveryResult, Session) -> InternetSessionLeaseDeliveryLifecycleDisposition
+    let resetDelivery: () -> Void
     let startSession: (Session, InternetProductSessionConfiguration) throws -> Void
-    let queueDelivery: (InternetSessionLeaseDeliveryResult, Session) -> Bool
     let startCapture: (Session, InternetProductSessionConfiguration) async throws -> Void
     let didStart: () -> Void
 
@@ -100,11 +125,21 @@ struct InternetSessionLeaseStartupPipeline<Session: AnyObject> {
         )
         let session = makeSession()
         prepareSession(session, configuration)
-        try startSession(session, configuration)
-        guard queueDelivery(delivery, session) else {
+        let disposition = queueDelivery(delivery, session)
+        guard disposition.permitsStartup else {
+            resetDelivery()
+            if case .stale = disposition {
+                throw CancellationError()
+            }
             throw InternetProductSessionError.securityFailure(
                 "The authoritative session lease could not be attached to the active Internet session."
             )
+        }
+        do {
+            try startSession(session, configuration)
+        } catch {
+            resetDelivery()
+            throw error
         }
         try await startCapture(session, configuration)
         didStart()

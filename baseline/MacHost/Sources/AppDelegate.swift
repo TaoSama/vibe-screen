@@ -2570,15 +2570,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.installInternetSessionCallbacks(session, sessionToken: sessionToken)
                 self.screenCapture?.setCodec(.hevc)
             },
+            queueDelivery: { delivery, session in
+                self.internetSessionLeaseDeliveryLifecycle.queue(
+                    delivery,
+                    isCurrent: {
+                        self.serverLifecycle.ownsSession(sessionToken)
+                            && self.internetProductSession === session
+                    },
+                    sessionState: { session.snapshotState() },
+                    send: { delivery in
+                        InternetSessionLeaseDelivery.send(delivery, on: session)
+                    }
+                )
+            },
+            resetDelivery: {
+                self.internetSessionLeaseDeliveryLifecycle.reset()
+            },
             startSession: { session, configuration in
                 try session.start(configuration: configuration)
-            },
-            queueDelivery: { delivery, session in
-                self.queueInternetSessionLeaseDelivery(
-                    delivery,
-                    session: session,
-                    sessionToken: sessionToken
-                )
             },
             startCapture: { session, _ in
                 try await self.screenCapture?.startStreaming(
@@ -2905,10 +2914,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.applyInternetSessionState(state)
                 if case .streaming = state {
-                    await self.handleInternetSessionLeaseStateChange(
+                    await self.internetSessionLeaseDeliveryLifecycle.handleStateChange(
                         state,
-                        session: session,
-                        sessionToken: sessionToken
+                        isCurrent: {
+                            self.serverLifecycle.ownsSession(sessionToken)
+                                && self.internetProductSession === session
+                        },
+                        send: { delivery in
+                            InternetSessionLeaseDelivery.send(delivery, on: session)
+                        },
+                        failClosed: { reason in
+                            guard self.serverLifecycle.ownsSession(sessionToken),
+                                  self.internetProductSession === session else { return }
+                            self.settings.internetStatus = .failed
+                            self.settings.internetErrorMessage = reason
+                            self.settings.internetRecoverySuggestion =
+                                "Reconnect with a fresh short-lived Internet session profile."
+                            await self.stopServer(preserveRecoveryState: true)
+                        }
                     )
                 }
             }
@@ -3527,77 +3550,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             frameRate: committed.framesPerSecond,
             reconfigureCaptureSource: reconfigureCaptureSource
         )
-    }
-
-    @MainActor
-    private func queueInternetSessionLeaseDelivery(
-        _ result: InternetSessionLeaseDeliveryResult,
-        session: InternetProductSession,
-        sessionToken: UInt64
-    ) -> Bool {
-        internetSessionLeaseDeliveryLifecycle.queue(
-            result,
-            isCurrent: {
-                self.serverLifecycle.ownsSession(sessionToken)
-                    && self.internetProductSession === session
-            },
-            sessionState: { session.snapshotState() },
-            send: { delivery in
-                InternetSessionLeaseDelivery.send(delivery, on: session)
-            }
-        )
-    }
-
-    @MainActor
-    @discardableResult
-    private func sendPendingInternetSessionLeaseDelivery(
-        session: InternetProductSession,
-        sessionToken: UInt64
-    ) -> Bool {
-        internetSessionLeaseDeliveryLifecycle.sendPending(
-            isCurrent: {
-                self.serverLifecycle.ownsSession(sessionToken)
-                    && self.internetProductSession === session
-            },
-            send: { delivery in
-                InternetSessionLeaseDelivery.send(delivery, on: session)
-            }
-        )
-    }
-
-    @MainActor
-    private func handleInternetSessionLeaseStateChange(
-        _ state: InternetProductSessionState,
-        session: InternetProductSession,
-        sessionToken: UInt64
-    ) async {
-        guard case .streaming = state else { return }
-        guard sendPendingInternetSessionLeaseDelivery(
-            session: session,
-            sessionToken: sessionToken
-        ) else {
-            await failClosedInternetSessionLeaseDelivery(
-                reason: InternetSessionLeaseDeliveryLifecycle.deliveryFailureReason,
-                session: session,
-                sessionToken: sessionToken
-            )
-            return
-        }
-    }
-
-    @MainActor
-    private func failClosedInternetSessionLeaseDelivery(
-        reason: String,
-        session: InternetProductSession,
-        sessionToken: UInt64
-    ) async {
-        guard serverLifecycle.ownsSession(sessionToken),
-              internetProductSession === session else { return }
-        settings.internetStatus = .failed
-        settings.internetErrorMessage = reason
-        settings.internetRecoverySuggestion =
-            "Reconnect with a fresh short-lived Internet session profile."
-        await stopServer(preserveRecoveryState: true)
     }
 
     @MainActor

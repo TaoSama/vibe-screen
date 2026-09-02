@@ -419,11 +419,9 @@ enum InternetSessionLeaseIssuer {
             identity = try identityStore.loadVerifiedExisting(binding: identityBinding)
         }
         try identityBinding.verify(existing: identity.publicIdentity)
-        let epoch = try lifecycle.reserveSessionEpoch(
-            requested.authoritativeSessionEpoch
-        )
+        let proposedEpoch = requested.authoritativeSessionEpoch
         let payload = requested.authorizing(
-            epoch: epoch,
+            epoch: proposedEpoch,
             expiresAtUnixSeconds: requested.expiresAtUnixSeconds
         )
         let digest = InternetSessionLeaseCodec.digest(
@@ -431,6 +429,7 @@ enum InternetSessionLeaseIssuer {
             leaseHostKeyID: identity.publicIdentity.keyID
         )
         let signature = try identity.signTranscriptDigest(digest)
+        _ = try lifecycle.reserveSessionEpoch(proposedEpoch)
         return try InternetSessionLeaseCodec.encodeSigned(
             payload,
             leaseHostKeyID: identity.publicIdentity.keyID,

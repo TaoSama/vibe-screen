@@ -268,8 +268,10 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("sessionIdentifier: delivery.sessionID", app_delegate)
         self.assertIn("bearerToken: delivery.hostSignalingToken", app_delegate)
         self.assertIn("internetSessionLeaseDeliveryLifecycle", app_delegate)
-        self.assertIn("sendPendingInternetSessionLeaseDelivery", app_delegate)
-        self.assertIn("handleInternetSessionLeaseStateChange", app_delegate)
+        self.assertNotIn("sendPendingInternetSessionLeaseDelivery", app_delegate)
+        self.assertNotIn("private func handleInternetSessionLeaseStateChange", app_delegate)
+        self.assertNotIn("private func queueInternetSessionLeaseDelivery", app_delegate)
+        self.assertNotIn("private func failClosedInternetSessionLeaseDelivery", app_delegate)
         self.assertIn("if case .streaming = state", app_delegate)
         self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", app_delegate)
         self.assertIn("serverLifecycle.ownsSession(sessionToken)", app_delegate)
@@ -280,16 +282,18 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         self.assertIn("requireCurrentStart: { try self.requireCurrentStart(sessionToken) }", startup)
         self.assertIn("try self.internetProductSessionConfiguration(", startup)
         self.assertIn("try session.start(configuration: configuration)", startup)
-        self.assertIn("self.queueInternetSessionLeaseDelivery(", startup)
+        self.assertIn("self.internetSessionLeaseDeliveryLifecycle.queue(", startup)
         queue_call = bracket_block(
             startup,
-            "self.queueInternetSessionLeaseDelivery",
+            "self.internetSessionLeaseDeliveryLifecycle.queue",
             "(",
             ")",
         )
         self.assertIn("delivery,", queue_call)
-        self.assertIn("session: session", queue_call)
-        self.assertIn("sessionToken: sessionToken", queue_call)
+        self.assertIn("self.serverLifecycle.ownsSession(sessionToken)", queue_call)
+        self.assertIn("self.internetProductSession === session", queue_call)
+        self.assertIn("session.snapshotState()", queue_call)
+        self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", queue_call)
         self.assertIn("screenCapture?.startStreaming", startup)
         self.assertIn("pipeline.start(with: startup.leasePlan)", startup)
         pipeline_start = bracket_block(startup_pipeline, "func start(with plan:", "{", "}")
@@ -301,19 +305,31 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
                 "let configuration = try applyDelivery",
                 "let session = makeSession()",
                 "prepareSession(session, configuration)",
+                "let disposition = queueDelivery(delivery, session)",
+                "guard disposition.permitsStartup else",
+                "resetDelivery()",
                 "try startSession(session, configuration)",
-                "guard queueDelivery(delivery, session) else",
                 "try await startCapture(session, configuration)",
                 "didStart()",
             ],
         )
+        self.assertIn("disposition.permitsStartup", pipeline_start)
         self.assertIn("InternetProductSessionError.securityFailure", pipeline_start)
+        self.assertIn("throw CancellationError()", pipeline_start)
         state_callback = section_between(
             app_delegate,
             "session.onStateChanged =",
             "        session.onError =",
         )
-        self.assertIn("await self.handleInternetSessionLeaseStateChange", state_callback)
+        self.assertIn(
+            "await self.internetSessionLeaseDeliveryLifecycle.handleStateChange",
+            state_callback,
+        )
+        self.assertIn("self.serverLifecycle.ownsSession(sessionToken)", state_callback)
+        self.assertIn("self.internetProductSession === session", state_callback)
+        self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", state_callback)
+        self.assertIn("settings.internetStatus = .failed", state_callback)
+        self.assertIn("await self.stopServer(preserveRecoveryState: true)", state_callback)
         startup_builder = bracket_block(
             app_delegate, "private func makeInternetProductSessionStartup", "{", "}"
         )
@@ -337,37 +353,26 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         issuer_token = bracket_block(app_delegate, "private func internetIssuerToken", "{", "}")
         self.assertIn("guard let tokenData", issuer_token)
         self.assertIn("!token.isEmpty", issuer_token)
+        self.assertIn(
+            "enum InternetSessionLeaseDeliveryLifecycleDisposition", startup_pipeline
+        )
+        self.assertIn("case stale", startup_pipeline)
+        self.assertIn("case deliveryFailed", startup_pipeline)
+        self.assertIn("case alreadyPending", startup_pipeline)
+        self.assertIn("case noPendingDelivery", startup_pipeline)
         lifecycle = bracket_block(startup_pipeline, "final class InternetSessionLeaseDeliveryLifecycle", "{", "}")
         self.assertIn("private(set) var pendingDelivery", lifecycle)
         self.assertIn("private(set) var deliverySent = false", lifecycle)
+        self.assertIn("guard pendingDelivery == nil else { return .alreadyPending }", lifecycle)
         self.assertIn("pendingDelivery = result", lifecycle)
         self.assertIn("if case .streaming = sessionState()", lifecycle)
-        self.assertIn("return true", lifecycle)
-        self.assertIn("return deliverySent", lifecycle)
+        self.assertIn("return .stale", lifecycle)
+        self.assertIn("return .queued", lifecycle)
+        self.assertIn("return deliverySent ? .alreadyDelivered : .noPendingDelivery", lifecycle)
+        self.assertIn("return .deliveryFailed", lifecycle)
         self.assertIn("pendingDelivery = nil", lifecycle)
         self.assertIn("deliverySent = true", lifecycle)
         self.assertIn("await failClosed(Self.deliveryFailureReason)", lifecycle)
-        queue = bracket_block(app_delegate, "private func queueInternetSessionLeaseDelivery", "{", "}")
-        self.assertIn("internetSessionLeaseDeliveryLifecycle.queue", queue)
-        self.assertIn("self.serverLifecycle.ownsSession(sessionToken)", queue)
-        self.assertIn("self.internetProductSession === session", queue)
-        self.assertIn("session.snapshotState()", queue)
-        self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", queue)
-        sender = bracket_block(app_delegate, "private func sendPendingInternetSessionLeaseDelivery", "{", "}")
-        self.assertIn("internetSessionLeaseDeliveryLifecycle.sendPending", sender)
-        self.assertIn("self.serverLifecycle.ownsSession(sessionToken)", sender)
-        self.assertIn("self.internetProductSession === session", sender)
-        self.assertIn("InternetSessionLeaseDelivery.send(delivery, on: session)", sender)
-        state_change = bracket_block(app_delegate, "private func handleInternetSessionLeaseStateChange", "{", "}")
-        self.assertIn("guard case .streaming = state else { return }", state_change)
-        self.assertIn("sendPendingInternetSessionLeaseDelivery(", state_change)
-        self.assertIn("InternetSessionLeaseDeliveryLifecycle.deliveryFailureReason", state_change)
-        self.assertIn("await failClosedInternetSessionLeaseDelivery", state_change)
-        fail_closed_delivery = bracket_block(
-            app_delegate, "private func failClosedInternetSessionLeaseDelivery", "{", "}"
-        )
-        self.assertIn("settings.internetStatus = .failed", fail_closed_delivery)
-        self.assertIn("await stopServer(preserveRecoveryState: true)", fail_closed_delivery)
         teardown = bracket_block(app_delegate, "private func teardownStreamingComponents", "{", "}")
         self.assertIn("internetSessionLeaseDeliveryLifecycle.reset()", teardown)
 
@@ -389,6 +394,14 @@ class AuthoritySessionProfileContractTests(unittest.TestCase):
         )
         self.assertIn(
             "testLeaseDeliveryLifecycleRejectsStaleOwnershipWithoutMutatingState",
+            startup_tests,
+        )
+        self.assertIn(
+            "testLeaseDeliveryLifecycleDropsStaleStreamingCallbackWithoutFailClosed",
+            startup_tests,
+        )
+        self.assertIn(
+            "testLeaseDeliveryLifecycleTreatsRepeatedStreamingAsExactlyOnce",
             startup_tests,
         )
         self.assertIn(
