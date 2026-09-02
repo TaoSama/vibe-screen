@@ -660,6 +660,9 @@ class MainActivity : AppCompatActivity() {
             startChecklistUpdates()
         }
         applyConnectionPanelLayout(mode)
+        if (!isConnected) {
+            applyDisconnectedSettingsEntryPolicy()
+        }
         updateDisconnectedHeader(mode)
     }
 
@@ -1484,6 +1487,9 @@ class MainActivity : AppCompatActivity() {
         binding.connectionSettingsButton.setOnClickListener {
             showSettingsDialog()
         }
+        binding.internetConnectionSettingsButton.setOnClickListener {
+            showSettingsDialog()
+        }
 
         setupInternetUi()
         binding.connectionSubtitle.setOnClickListener {
@@ -1671,11 +1677,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun internetWaitingTitleResource(): Int =
-        if (resources.getBoolean(R.bool.connection_panel_two_column)) {
-            R.string.internet_waiting_title_compact
-        } else {
-            R.string.internet_waiting_title
-        }
+        R.string.internet_waiting_title_compact
 
     private fun setupInternetUi() {
         QUARANTINED_INTERNET_SESSION.get()?.let { internetSession = it }
@@ -1969,6 +1971,7 @@ class MainActivity : AppCompatActivity() {
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
         binding.connectionSettingsButton.visibility = View.GONE
+        binding.internetConnectionSettingsButton.visibility = View.GONE
         LiveRegionTextApplier.apply(binding.statusText, connectedStatus)
         updateOverlayVisibility(prefs.showStatsOverlay)
         revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
@@ -2003,7 +2006,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyDisconnectedSettingsEntryPolicy() {
-        binding.connectionSettingsButton.visibility = View.VISIBLE
+        val internetMode = prefs.connectionMode == ConnectionMode.INTERNET
+        binding.connectionSettingsButton.visibility = if (internetMode) View.GONE else View.VISIBLE
+        binding.internetConnectionSettingsButton.visibility = if (internetMode) View.VISIBLE else View.GONE
     }
 
     /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */

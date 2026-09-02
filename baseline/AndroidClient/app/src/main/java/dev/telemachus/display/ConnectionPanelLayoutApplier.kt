@@ -37,14 +37,12 @@ internal object ConnectionPanelLayoutApplier {
                 ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
             }
         views.content.gravity = layout.contentGravity
-        val stackedPortrait =
-            layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL &&
-                resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val stackedContent = layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL
         applyModeToggleLayout(
             views = views,
             layout =
                 ConnectionModeToggleLayoutPolicy.resolve(
-                    stackedPortrait = stackedPortrait,
+                    stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
                 ),
         )
@@ -54,7 +52,8 @@ internal object ConnectionPanelLayoutApplier {
             presentation =
                 ConnectionSubtitleDisclosurePolicy.resolve(
                     connectionMode = connectionMode,
-                    stackedPortrait = stackedPortrait,
+                    stackedPortrait =
+                        stackedContent && resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT,
                     requestedExpanded = subtitleExpanded,
                 ),
         )

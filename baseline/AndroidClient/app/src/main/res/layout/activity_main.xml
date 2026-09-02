@@ -1021,6 +1021,7 @@
                         style="?attr/materialButtonOutlinedStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:minHeight="48dp"
                         android:text="@string/disconnect"
                         android:layout_marginBottom="8dp" />
 
@@ -1029,6 +1030,7 @@
                         style="?attr/materialButtonOutlinedStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:minHeight="48dp"
                         android:text="@string/forget_this_mac"
                         android:textColor="@color/danger_text"
                         app:strokeColor="@color/danger_stroke" />
@@ -1092,6 +1094,7 @@
                         style="?attr/materialButtonOutlinedStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:minHeight="48dp"
                         android:text="@string/forget_this_mac"
                         android:textColor="@color/danger_text"
                         app:strokeColor="@color/danger_stroke" />
@@ -1203,6 +1206,16 @@
                     android:accessibilityLiveRegion="polite" />
 
                 <TextView
+                    android:id="@+id/internetStateText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/internet_state_idle"
+                    android:textColor="@color/on_surface_subtle"
+                    android:textSize="13sp"
+                    android:accessibilityLiveRegion="polite" />
+
+                <TextView
                     android:id="@+id/internetRouteLabel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1225,6 +1238,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
+                        android:minHeight="48dp"
                         android:maxLines="1"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
@@ -1242,6 +1256,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
+                        android:minHeight="48dp"
                         android:maxLines="1"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
@@ -1299,36 +1314,72 @@
                     app:backgroundTint="@color/primary_button_background"
                     app:cornerRadius="18dp" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/internetDisconnectButton"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="48dp"
-                    android:maxLines="2"
-                    android:text="@string/disconnect"
-                    android:visibility="gone" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/internetRevokeButton"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="48dp"
-                    android:maxLines="2"
-                    android:gravity="center"
-                    android:text="@string/internet_revoke_local"
-                    android:textColor="@color/internet_danger_text" />
-
-                <TextView
-                    android:id="@+id/internetStateText"
+                <LinearLayout
+                    android:id="@+id/internetSecondaryActions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="@string/internet_state_idle"
-                    android:textColor="@color/on_surface_subtle"
-                    android:textSize="13sp"
-                    android:accessibilityLiveRegion="polite" />
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetConnectionSettingsButton"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="48dp"
+                        android:maxLines="2"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:contentDescription="@string/display_settings"
+                        android:text="@string/display_settings"
+                        android:textColor="@color/on_surface_subtle"
+                        android:visibility="gone"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:icon="@drawable/ic_settings"
+                        app:iconGravity="textStart"
+                        app:iconPadding="8dp"
+                        app:iconTint="@color/on_surface_subtle"
+                        app:strokeColor="@color/outline_strong" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetDisconnectButton"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:minHeight="48dp"
+                        android:maxLines="2"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/disconnect"
+                        android:visibility="gone"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetRevokeButton"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:minHeight="48dp"
+                        android:maxLines="2"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:contentDescription="@string/internet_revoke_local"
+                        android:gravity="center"
+                        android:text="@string/internet_revoke_local_short"
+                        android:textColor="@color/internet_danger_text"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/internetErrorText"
@@ -1359,27 +1410,34 @@
                 app:iconTint="@color/on_surface_subtle"
                 app:strokeColor="@color/outline_strong" />
 
-            <TextView
+            <LinearLayout
+                android:id="@+id/connectionLegalFooter"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:autoLink="web"
-                android:gravity="center"
-                android:linksClickable="true"
-                android:text="@string/fork_credit"
-                android:textColor="@color/on_surface_faint"
-                android:textColorLink="@color/link"
-                android:textSize="10sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/openSourceLicensesButton"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
                 android:layout_gravity="center_horizontal"
-                android:contentDescription="@string/open_source_licenses_description"
-                android:text="@string/open_source_licenses"
-                android:textColor="@color/on_surface_muted" />
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/connectionLegalSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/open_source_notices_summary"
+                    android:textColor="@color/on_surface_faint"
+                    android:textSize="10sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/openSourceLicensesButton"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_gravity="center_horizontal"
+                    android:contentDescription="@string/open_source_licenses_description"
+                    android:text="@string/open_source_licenses"
+                    android:textColor="@color/on_surface_muted" />
+            </LinearLayout>
 
             </LinearLayout>
             <!-- /connectionActions -->
