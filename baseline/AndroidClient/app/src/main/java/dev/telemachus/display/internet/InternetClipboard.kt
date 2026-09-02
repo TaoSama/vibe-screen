@@ -375,8 +375,17 @@ internal data class InternetManagedPolicy(
             )
         }
 
-        fun fromProtocolPolicy(policy: ProtocolV1Session.ManagedPolicy): InternetManagedPolicy =
-            InternetManagedPolicy(
+        fun fromProtocolPolicy(policy: ProtocolV1Session.ManagedPolicy): InternetManagedPolicy {
+            if (!policy.isManaged) return UNMANAGED
+            val results = policy.restrictionResults.map { result ->
+                InternetManagedRestrictionResult(
+                    restriction = result.restriction,
+                    allowed = result.allowed,
+                    source = result.source,
+                    reason = result.reason,
+                )
+            }
+            return InternetManagedPolicy(
                 isManaged = policy.isManaged,
                 clipboardAllowed = policy.clipboardAllowed,
                 fileTransferAllowed = policy.fileTransferAllowed,
@@ -388,15 +397,9 @@ internal data class InternetManagedPolicy(
                 allowedHosts = policy.allowedHosts,
                 allowedHostsRestricted = policy.allowedHostsRestricted,
                 deniedHosts = policy.deniedHosts,
-                restrictionResults = policy.restrictionResults.map { result ->
-                    InternetManagedRestrictionResult(
-                        restriction = result.restriction,
-                        allowed = result.allowed,
-                        source = result.source,
-                        reason = result.reason,
-                    )
-                },
+                restrictionResults = results.ifEmpty { null },
             )
+        }
 
         fun hasCompleteRestrictionResults(status: ManagedPolicyStatus): Boolean {
             if (!status.managed) return true
