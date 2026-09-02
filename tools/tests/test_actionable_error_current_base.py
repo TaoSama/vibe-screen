@@ -80,6 +80,16 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(set(report["required_state_ids"]), set(REQUIRED_STATE_IDS))
         self.assertIn("host_screen_recording_denied", report["blocked_state_ids"])
         self.assertIn("tcp_54321_unavailable", report["blocked_state_ids"])
+        self.assertTrue(
+            {
+                "android-internet-webrtc-disconnected",
+                "android-codec-negotiation-failed",
+                "android-managed-policy-deny",
+                "android-unsupported-peripheral-kind",
+                "android-file-transfer-policy-deny",
+                "android-clipboard-policy-deny",
+            }.issubset(set(report["blocked_state_ids"])),
+        )
 
     def test_real_current_base_report_matches_schema(self) -> None:
         report = evaluate(self.load_real_manifest(), repository_root=REPOSITORY_ROOT)
@@ -124,6 +134,13 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "fail")
         self.assertIn("states: missing required state usb_disconnected", report["errors"])
+
+    def test_missing_new_current_base_ui_state_is_blocked_not_malformed(self) -> None:
+        report = evaluate(self.load_real_manifest(), repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertEqual(report["errors"], [])
+        self.assertIn("android-clipboard-policy-deny", report["blocked_state_ids"])
 
     def test_rejects_relabeling_p0110_as_xiaomi(self) -> None:
         manifest = self.load_real_manifest()

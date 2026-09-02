@@ -116,6 +116,15 @@ REQUIRED_ACTIONABLE_CONTRACTS = {
 }
 REQUIRED_ACTIONABLE_CONTRACT_CODES = frozenset(REQUIRED_ACTIONABLE_CONTRACTS)
 REQUIRED_CONTRACT_FIELDS = ("code", "title", "body", "action")
+REQUIRED_ACTIONABLE_STATE_ID_SEQUENCE = (
+    "android-internet-webrtc-disconnected",
+    "android-codec-negotiation-failed",
+    "android-managed-policy-deny",
+    "android-unsupported-peripheral-kind",
+    "android-file-transfer-policy-deny",
+    "android-clipboard-policy-deny",
+)
+REQUIRED_ACTIONABLE_STATE_IDS = frozenset(REQUIRED_ACTIONABLE_STATE_ID_SEQUENCE)
 
 REQUIRED_STATE_FIELDS = (
     "id",
@@ -439,6 +448,7 @@ def _validate_state(
     ids: set[str],
     contract_codes: dict[str, str],
     covered_contract_codes: set[str],
+    covered_required_state_ids: set[str],
     errors: list[str],
     *,
     repository_root: Path | None = None,
@@ -580,6 +590,41 @@ def _validate_state(
                     ):
                         covered_contract_codes.add(raw_code)
 
+    is_required_actionable_state = (
+        isinstance(state_id, str) and state_id in REQUIRED_ACTIONABLE_STATE_IDS
+    )
+    if is_required_actionable_state:
+        has_required_state_gate_status = state.get("gate_status") == "covered-offline"
+        has_required_state_readme_boundary = state.get("readme_gate_closure") is False
+        has_required_state_fields = (
+            _non_empty_string(state.get("failed_layer"))
+            and _non_empty_string(state.get("ui_surface"))
+            and _non_empty_string(state.get("user_action"))
+            and state.get("retry_behavior") in VALID_RETRY_BEHAVIORS
+        )
+        if not has_required_state_gate_status:
+            errors.append(
+                f"{prefix}.gate_status: required actionable state {state_id} "
+                "must be covered-offline"
+            )
+        if not has_local_offline_evidence:
+            errors.append(
+                f"{prefix}.offline_evidence: required actionable state {state_id} "
+                "must cite local offline evidence"
+            )
+        if not has_required_state_readme_boundary:
+            errors.append(
+                f"{prefix}.readme_gate_closure: required actionable state {state_id} "
+                "must stay false for offline coverage"
+            )
+        if (
+            has_required_state_gate_status
+            and has_local_offline_evidence
+            and has_required_state_readme_boundary
+            and has_required_state_fields
+        ):
+            covered_required_state_ids.add(str(state_id))
+
     android_failure_kinds = state.get("android_session_failure_kinds", [])
     if android_failure_kinds is None:
         android_failure_kinds = []
@@ -615,6 +660,7 @@ def evaluate(
     ids: set[str] = set()
     contract_codes: dict[str, str] = {}
     covered_contract_codes: set[str] = set()
+    covered_required_state_ids: set[str] = set()
     for index, state in enumerate(states):
         _validate_state(
             state,
@@ -622,6 +668,7 @@ def evaluate(
             ids,
             contract_codes,
             covered_contract_codes,
+            covered_required_state_ids,
             errors,
             repository_root=repository_root,
         )
@@ -645,12 +692,23 @@ def evaluate(
         )
         for kind in missing_session_failure_kinds:
             errors.append(f"android_session_failure_kinds: missing {kind}")
+        unknown_session_failure_kinds = sorted(
+            covered_session_failure_kinds.difference(android_session_failure_kinds)
+        )
+        for kind in unknown_session_failure_kinds:
+            errors.append(f"android_session_failure_kinds: unknown {kind}")
+    else:
+        unknown_session_failure_kinds = []
 
     missing_contract_codes = sorted(
         REQUIRED_ACTIONABLE_CONTRACT_CODES.difference(contract_codes)
     )
     for code in missing_contract_codes:
         errors.append(f"required_actionable_contracts: missing {code}")
+
+    missing_required_state_ids = sorted(REQUIRED_ACTIONABLE_STATE_IDS.difference(ids))
+    for state_id in missing_required_state_ids:
+        errors.append(f"required_actionable_states: missing {state_id}")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -663,11 +721,15 @@ def evaluate(
         "android_state_count": len(android_state_ids),
         "macos_host_state_count": len(host_state_ids),
         "reviewed_open_prs": _integer_list(matrix.get("reviewed_open_prs")),
+        "required_actionable_state_ids": sorted(REQUIRED_ACTIONABLE_STATE_IDS),
+        "covered_actionable_state_ids": sorted(covered_required_state_ids),
+        "missing_actionable_state_ids": missing_required_state_ids,
         "required_actionable_contract_codes": sorted(REQUIRED_ACTIONABLE_CONTRACT_CODES),
         "covered_actionable_contract_codes": sorted(covered_contract_codes),
         "missing_actionable_contract_codes": missing_contract_codes,
         "covered_android_session_failure_kinds": sorted(covered_session_failure_kinds),
         "missing_android_session_failure_kinds": missing_session_failure_kinds,
+        "unknown_android_session_failure_kinds": unknown_session_failure_kinds,
         "errors": errors,
         "interpretation": (
             "This offline gate validates matrix ownership and drift coverage only. "
