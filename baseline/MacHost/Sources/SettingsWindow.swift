@@ -1274,7 +1274,7 @@ struct RotationButton: View {
 
 private struct InternetSection: View {
     @ObservedObject var settings: DisplaySettings
-    @State private var signalingToken = ""
+    @State private var issuerToken = ""
     @State private var turnCredential = ""
     @State private var pairingDeviceRequest = ""
 
@@ -1307,7 +1307,10 @@ private struct InternetSection: View {
                     Text("Local development session profile")
                         .font(.system(size: 11, weight: .semibold))
 
-                    TextField("Short-lived session ID", text: $settings.internetSessionIdentifier)
+                    TextField("Short-lived request ID", text: $settings.internetSessionIdentifier)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(settings.internetStatus.isActive)
+                    TextField("Authority account ID", text: $settings.internetAccountID)
                         .textFieldStyle(.roundedBorder)
                         .disabled(settings.internetStatus.isActive)
                     TextField(
@@ -1329,7 +1332,7 @@ private struct InternetSection: View {
                         .textFieldStyle(.roundedBorder)
                         .disabled(settings.internetStatus.isActive)
 
-                    SecureField("Short-lived host role token", text: $signalingToken)
+                    SecureField("Short-lived issuer token", text: $issuerToken)
                         .textFieldStyle(.roundedBorder)
                     SecureField("TURN credential (if TURN is configured)", text: $turnCredential)
                         .textFieldStyle(.roundedBorder)
@@ -1337,14 +1340,14 @@ private struct InternetSection: View {
                     HStack {
                         Button("Save credentials to Keychain") {
                             if settings.saveInternetCredentials(
-                                signalingToken: signalingToken,
+                                issuerToken: issuerToken,
                                 turnCredential: turnCredential
                             ) {
-                                signalingToken = ""
+                                issuerToken = ""
                                 turnCredential = ""
                             }
                         }
-                        .disabled(signalingToken.isEmpty)
+                        .disabled(issuerToken.isEmpty)
                         Spacer()
                         Text(settings.internetCredentialsAvailable ? "Keychain ready" : "Credentials required")
                             .font(.system(size: 10))
@@ -1724,6 +1727,9 @@ class DisplaySettings: ObservableObject {
     @Published var internetSessionIdentifier: String {
         didSet { save("internetSessionIdentifier", internetSessionIdentifier) }
     }
+    @Published var internetAccountID: String {
+        didSet { save("internetAccountID", internetAccountID) }
+    }
     @Published var internetICEURLs: String {
         didSet {
             if Self.isSafeInternetICEURLList(internetICEURLs) {
@@ -1903,6 +1909,9 @@ class DisplaySettings: ObservableObject {
         self.internetRoutePreference = InternetRoutePreference(rawValue: internetRouteRaw) ?? .preferDirect
         self.internetSessionIdentifier = defaults.string(
             forKey: keyPrefix + "internetSessionIdentifier"
+        ) ?? ""
+        self.internetAccountID = defaults.string(
+            forKey: keyPrefix + "internetAccountID"
         ) ?? ""
         let storedInternetICEURLs = defaults.string(
             forKey: keyPrefix + "internetICEURLs"
@@ -2093,8 +2102,11 @@ class DisplaySettings: ObservableObject {
         onDisconnectInternetSession?()
     }
 
-    func saveInternetCredentials(signalingToken: String, turnCredential: String) -> Bool {
-        onSaveInternetCredentials?(signalingToken, turnCredential) ?? false
+    func saveInternetCredentials(
+        issuerToken: String,
+        turnCredential: String
+    ) -> Bool {
+        onSaveInternetCredentials?(issuerToken, turnCredential) ?? false
     }
 
     func completeInternetPairing(deviceRequest: String) {
@@ -2123,7 +2135,8 @@ class DisplaySettings: ObservableObject {
                     "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "hideDockIcon", "startupMode",
                     "displaySource", "selectedDisplayID", "selectedDisplayUUID", "adbDeviceSerial",
                     "internetSignalingEndpoint", "internetRoutePreference",
-                    "internetSessionIdentifier", "internetICEURLs", "internetTURNUsername",
+                    "internetSessionIdentifier", "internetAccountID",
+                    "internetICEURLs", "internetTURNUsername",
                     "internetPeerDeviceID", "internetSharedSecretName",
                     "internetBootstrapSecretName", "internetTranscriptContextBase64",
                     "internetHostDeviceID", "internetPeerKeyID", "internetPeerKeyEpoch",
@@ -2156,6 +2169,7 @@ class DisplaySettings: ObservableObject {
         internetSignalingEndpoint = "http://127.0.0.1:8088"
         internetRoutePreference = .preferDirect
         internetSessionIdentifier = ""
+        internetAccountID = ""
         internetICEURLs = "stun:127.0.0.1:9"
         internetTURNUsername = ""
         internetPeerDeviceID = ""

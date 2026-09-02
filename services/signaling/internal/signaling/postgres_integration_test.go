@@ -1239,6 +1239,62 @@ func TestValidateDatabaseClock(t *testing.T) {
 	}
 }
 
+func TestPostgresStatsCountsActiveTombstoneReservedAndWaiters(t *testing.T) {
+	store, _ := openSignalingIntegrationStore(t, testConfig())
+	ctx := context.Background()
+
+	stats := store.Stats()
+	if stats.ActiveSessions != 0 || stats.Tombstones != 0 || stats.ReservedRecords != 0 || stats.BlockedWaiters != 0 {
+		t.Fatalf("initial stats=%#v, want all zero", stats)
+	}
+
+	created, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "stats-active", TTL: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats = store.Stats()
+	if stats.ActiveSessions != 1 || stats.Tombstones != 0 || stats.ReservedRecords != 1 || stats.BlockedWaiters != 0 {
+		t.Fatalf("after create stats=%#v, want active=1 tombstone=0 reserved=1 waiters=0", stats)
+	}
+
+	invalidated, err := store.Invalidate(ctx, created.SessionID)
+	if err != nil || !invalidated {
+		t.Fatalf("invalidate invalidated=%t err=%v", invalidated, err)
+	}
+	stats = store.Stats()
+	if stats.ActiveSessions != 0 || stats.Tombstones != 1 || stats.ReservedRecords != 1 || stats.BlockedWaiters != 0 {
+		t.Fatalf("after invalidate stats=%#v, want active=0 tombstone=1 reserved=1 waiters=0", stats)
+	}
+
+	second, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "stats-waiter", TTL: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pollCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	pollDone := make(chan struct{})
+	go func() {
+		_, _, _ = store.PollAuthorized(pollCtx, second.SessionID, RoleDevice, 0, true)
+		close(pollDone)
+	}()
+	waitForPostgresWaiter(t, store, second.SessionID, RoleDevice, 1)
+
+	stats = store.Stats()
+	if stats.ActiveSessions != 1 || stats.Tombstones != 1 || stats.ReservedRecords != 2 || stats.BlockedWaiters != 1 {
+		t.Fatalf("with waiter stats=%#v, want active=1 tombstone=1 reserved=2 waiters=1", stats)
+	}
+
+	cancel()
+	<-pollDone
+	waitForPostgresWaiter(t, store, second.SessionID, RoleDevice, 0)
+
+	stats = store.Stats()
+	if stats.BlockedWaiters != 0 {
+		t.Fatalf("after cancel waiters=%d, want 0", stats.BlockedWaiters)
+	}
+}
+
 func waitForPostgresWaiter(t *testing.T, store *PostgresStore, sessionID string, role Role, want int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

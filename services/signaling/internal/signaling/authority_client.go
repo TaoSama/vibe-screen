@@ -3,6 +3,7 @@ package signaling
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,21 +31,23 @@ var ErrAuthorityUnavailable = errors.New("authority service unavailable")
 
 // authoritySignalingRequest mirrors the authority service's SignalingRequest.
 type authoritySignalingRequest struct {
-	RequestID      string `json:"request_id"`
-	AccountID      string `json:"account_id"`
-	HostDeviceID   string `json:"host_device_id"`
-	ClientDeviceID string `json:"client_device_id"`
-	SessionEpoch   uint64 `json:"session_epoch"`
-	TTLSeconds     int64  `json:"ttl_seconds"`
+	RequestID      string                 `json:"request_id"`
+	AccountID      string                 `json:"account_id"`
+	HostDeviceID   string                 `json:"host_device_id"`
+	ClientDeviceID string                 `json:"client_device_id"`
+	SessionEpoch   uint64                 `json:"session_epoch"`
+	TTLSeconds     int64                  `json:"ttl_seconds"`
+	SessionProfile *SessionProfileRequest `json:"session_profile,omitempty"`
 }
 
 // authoritySignalingAdmission mirrors the authority service's SignalingAdmission.
 type authoritySignalingAdmission struct {
-	SessionID   string    `json:"session_id"`
-	HostToken   string    `json:"host_token"`
-	ClientToken string    `json:"client_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	Created     bool      `json:"created"`
+	SessionID      string                  `json:"session_id"`
+	HostToken      string                  `json:"host_token"`
+	ClientToken    string                  `json:"client_token"`
+	ExpiresAt      time.Time               `json:"expires_at"`
+	Created        bool                    `json:"created"`
+	SessionProfile *SessionProfileResponse `json:"session_profile,omitempty"`
 }
 
 type authoritySignalingAuthorization struct {
@@ -158,10 +161,157 @@ func (c *AuthorityClient) CreateSession(ctx context.Context, request authoritySi
 	if !validIdentifier(admission.SessionID) || !validIdentifier(admission.HostToken) ||
 		!validIdentifier(admission.ClientToken) || admission.HostToken == admission.ClientToken ||
 		!admission.ExpiresAt.After(time.Now()) ||
-		(response.status == http.StatusCreated) != admission.Created {
+		(response.status == http.StatusCreated) != admission.Created ||
+		!validAuthoritySessionProfile(request, admission) {
 		return authoritySignalingAdmission{}, fmt.Errorf("%w: incomplete admission", ErrAuthorityUnavailable)
 	}
 	return admission, nil
+}
+
+func validAuthoritySessionProfile(request authoritySignalingRequest, admission authoritySignalingAdmission) bool {
+	if request.SessionProfile == nil {
+		return admission.SessionProfile == nil
+	}
+	profile := admission.SessionProfile
+	if profile == nil || profile.AccountID != request.AccountID ||
+		profile.PairingID != request.SessionProfile.PairingID ||
+		profile.SignalingSessionID != admission.SessionID ||
+		profile.HostSignalingToken != admission.HostToken ||
+		!profile.ExpiresAt.Equal(admission.ExpiresAt) ||
+		profile.Created != admission.Created ||
+		len(profile.UnsignedAndroidLease) == 0 || len(profile.UnsignedAndroidLease) > authorityMaxResponseBytes ||
+		!json.Valid(profile.UnsignedAndroidLease) {
+		return false
+	}
+	lease, ok := decodeAuthorityUnsignedAndroidLease(profile.UnsignedAndroidLease)
+	if !ok {
+		return false
+	}
+	return lease.Version == 1 &&
+		lease.PairingID == request.SessionProfile.PairingID &&
+		lease.PinnedHostID == request.HostDeviceID &&
+		lease.PinnedDeviceID == request.ClientDeviceID &&
+		lease.LeaseDeviceKeyID == request.SessionProfile.ClientIdentity.KeyID &&
+		lease.SignalingURL == request.SessionProfile.SignalingURL &&
+		lease.SignalingSessionID == admission.SessionID &&
+		lease.SessionEpoch == request.SessionEpoch &&
+		lease.HostIdentityEpoch == request.SessionProfile.HostIdentity.KeyEpoch &&
+		lease.DeviceIdentityEpoch == request.SessionProfile.ClientIdentity.KeyEpoch &&
+		lease.ExpiresAt == uint64(admission.ExpiresAt.Unix()) &&
+		lease.TranscriptContext == request.SessionProfile.TranscriptContext &&
+		lease.ProtocolSessionID == base64.StdEncoding.EncodeToString([]byte(admission.SessionID)) &&
+		lease.SignalingToken == admission.ClientToken &&
+		sameAuthorityICE(lease.ICEServers, request.SessionProfile.ICEServers) &&
+		lease.AllowInsecureTesting == request.SessionProfile.AllowInsecureForTesting
+}
+
+func decodeAuthorityUnsignedAndroidLease(raw json.RawMessage) (authorityUnsignedAndroidLease, bool) {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &root); err != nil || !sameJSONKeys(root, authorityUnsignedAndroidLeaseKeys) {
+		return authorityUnsignedAndroidLease{}, false
+	}
+	if !sameICEKeys(root["ice_servers"]) {
+		return authorityUnsignedAndroidLease{}, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var lease authorityUnsignedAndroidLease
+	if err := decoder.Decode(&lease); err != nil {
+		return authorityUnsignedAndroidLease{}, false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return authorityUnsignedAndroidLease{}, false
+	}
+	return lease, true
+}
+
+func sameJSONKeys(root map[string]json.RawMessage, expected map[string]struct{}) bool {
+	if len(root) != len(expected) {
+		return false
+	}
+	for key := range root {
+		if _, ok := expected[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func sameICEKeys(raw json.RawMessage) bool {
+	var servers []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &servers); err != nil || len(servers) == 0 {
+		return false
+	}
+	for _, server := range servers {
+		if !sameJSONKeys(server, authorityUnsignedAndroidLeaseICEKeys) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameAuthorityICE(raw json.RawMessage, expected []LeaseICEServer) bool {
+	if len(expected) == 0 {
+		return false
+	}
+	var actual []LeaseICEServer
+	if err := json.Unmarshal(raw, &actual); err != nil {
+		return false
+	}
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i := range actual {
+		if len(actual[i].URLs) != len(expected[i].URLs) ||
+			!sameOptionalString(actual[i].Username, expected[i].Username) ||
+			!sameOptionalString(actual[i].Credential, expected[i].Credential) {
+			return false
+		}
+		for j := range actual[i].URLs {
+			if actual[i].URLs[j] != expected[i].URLs[j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func sameOptionalString(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+type authorityUnsignedAndroidLease struct {
+	Version              int             `json:"version"`
+	PairingID            string          `json:"pairing_id"`
+	PinnedHostID         string          `json:"pinned_host_id"`
+	PinnedDeviceID       string          `json:"pinned_device_id"`
+	LeaseDeviceKeyID     string          `json:"lease_device_key_id"`
+	SignalingURL         string          `json:"signaling_url"`
+	SignalingSessionID   string          `json:"signaling_session_id"`
+	SessionEpoch         uint64          `json:"session_epoch"`
+	HostIdentityEpoch    uint64          `json:"host_identity_epoch"`
+	DeviceIdentityEpoch  uint64          `json:"device_identity_epoch"`
+	ExpiresAt            uint64          `json:"expires_at"`
+	TranscriptContext    string          `json:"transcript_context"`
+	ProtocolSessionID    string          `json:"protocol_session_id"`
+	SignalingToken       string          `json:"signaling_token"`
+	ICEServers           json.RawMessage `json:"ice_servers"`
+	AllowInsecureTesting bool            `json:"allow_insecure_for_testing"`
+}
+
+var authorityUnsignedAndroidLeaseKeys = map[string]struct{}{
+	"version": {}, "pairing_id": {}, "pinned_host_id": {}, "pinned_device_id": {},
+	"lease_device_key_id": {}, "signaling_url": {}, "signaling_session_id": {},
+	"session_epoch": {}, "host_identity_epoch": {}, "device_identity_epoch": {},
+	"expires_at": {}, "transcript_context": {}, "protocol_session_id": {},
+	"signaling_token": {}, "ice_servers": {}, "allow_insecure_for_testing": {},
+}
+
+var authorityUnsignedAndroidLeaseICEKeys = map[string]struct{}{
+	"urls": {}, "username": {}, "credential": {},
 }
 
 // AuthorizeRole asks the authority to validate a role token for a session.

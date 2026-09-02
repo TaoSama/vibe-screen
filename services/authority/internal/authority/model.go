@@ -16,20 +16,22 @@ var (
 )
 
 type SignalingRequest struct {
-	RequestID      string `json:"request_id"`
-	AccountID      string `json:"account_id"`
-	HostDeviceID   string `json:"host_device_id"`
-	ClientDeviceID string `json:"client_device_id"`
-	SessionEpoch   uint64 `json:"session_epoch"`
-	TTLSeconds     int64  `json:"ttl_seconds"`
+	RequestID      string                          `json:"request_id"`
+	AccountID      string                          `json:"account_id"`
+	HostDeviceID   string                          `json:"host_device_id"`
+	ClientDeviceID string                          `json:"client_device_id"`
+	SessionEpoch   uint64                          `json:"session_epoch"`
+	TTLSeconds     int64                           `json:"ttl_seconds"`
+	SessionProfile *SignalingSessionProfileRequest `json:"session_profile,omitempty"`
 }
 
 type SignalingAdmission struct {
-	SessionID   string    `json:"session_id"`
-	HostToken   string    `json:"host_token"`
-	ClientToken string    `json:"client_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	Created     bool      `json:"created"`
+	SessionID      string                  `json:"session_id"`
+	HostToken      string                  `json:"host_token"`
+	ClientToken    string                  `json:"client_token"`
+	ExpiresAt      time.Time               `json:"expires_at"`
+	Created        bool                    `json:"created"`
+	SessionProfile *SessionProfileResponse `json:"session_profile,omitempty"`
 }
 
 type SignalingAuthorization struct {
@@ -49,6 +51,17 @@ type LeaseICEServer struct {
 	URLs       []string `json:"urls"`
 	Username   *string  `json:"username"`
 	Credential *string  `json:"credential"`
+}
+
+type SignalingSessionProfileRequest struct {
+	PairingID               string               `json:"pairing_id"`
+	HostIdentity            PublicDeviceIdentity `json:"host_identity"`
+	ClientIdentity          PublicDeviceIdentity `json:"client_identity"`
+	SignalingURL            string               `json:"signaling_url"`
+	TranscriptContext       string               `json:"transcript_context"`
+	ProtocolSessionID       string               `json:"protocol_session_id"`
+	ICEServers              []LeaseICEServer     `json:"ice_servers"`
+	AllowInsecureForTesting bool                 `json:"allow_insecure_for_testing"`
 }
 
 type SessionProfileRequest struct {

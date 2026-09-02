@@ -327,19 +327,11 @@ func (s *PostgresStore) IssueSessionProfile(ctx context.Context, request Session
 				return err
 			}
 			admission := s.admission(existingSessionID, expiresAt, false)
-			unsignedLease, err := unsignedAndroidLease(request, admission)
+			response, err := sessionProfileResponse(request, admission, false)
 			if err != nil {
 				return err
 			}
-			result = SessionProfileResponse{
-				AccountID:            request.AccountID,
-				PairingID:            request.PairingID,
-				SignalingSessionID:   existingSessionID,
-				HostSignalingToken:   admission.HostToken,
-				ExpiresAt:            expiresAt,
-				Created:              false,
-				UnsignedAndroidLease: unsignedLease,
-			}
+			result = response
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -363,22 +355,14 @@ func (s *PostgresStore) IssueSessionProfile(ctx context.Context, request Session
 		if !admission.Created {
 			return ErrConflict
 		}
-		unsignedLease, err := unsignedAndroidLease(request, admission)
+		response, err := sessionProfileResponse(request, admission, true)
 		if err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO authority_session_profile_issuance(request_id,request_sha256,account_id,host_device_id,client_device_id,signaling_session_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, request.RequestID, digest[:], request.AccountID, request.HostIdentity.DeviceID, request.ClientIdentity.DeviceID, admission.SessionID, now); err != nil {
 			return err
 		}
-		result = SessionProfileResponse{
-			AccountID:            request.AccountID,
-			PairingID:            request.PairingID,
-			SignalingSessionID:   admission.SessionID,
-			HostSignalingToken:   admission.HostToken,
-			ExpiresAt:            admission.ExpiresAt,
-			Created:              true,
-			UnsignedAndroidLease: unsignedLease,
-		}
+		result = response
 		return nil
 	})
 	return result, err
@@ -407,13 +391,17 @@ func (s *PostgresStore) createSignalingTx(ctx context.Context, tx pgx.Tx, reques
 	var revokedAt *time.Time
 	err := tx.QueryRow(ctx, `SELECT session_id,account_id,host_device_id,client_device_id,session_epoch,extract(epoch from expires_at-created_at)::bigint,expires_at,revoked_at FROM authority_signaling_sessions WHERE request_id=$1 FOR UPDATE`, request.RequestID).Scan(&sessionID, &existingRequest.AccountID, &existingRequest.HostDeviceID, &existingRequest.ClientDeviceID, &existingRequest.SessionEpoch, &existingRequest.TTLSeconds, &expiresAt, &revokedAt)
 	if err == nil {
-		if existingRequest.AccountID != request.AccountID || existingRequest.HostDeviceID != request.HostDeviceID || existingRequest.ClientDeviceID != request.ClientDeviceID || existingRequest.SessionEpoch != request.SessionEpoch || existingRequest.TTLSeconds != request.TTLSeconds {
+		if !sameSignalingAdmissionRequest(existingRequest, request) {
 			return SignalingAdmission{}, ErrConflict
 		}
 		if revokedAt != nil || !now.Before(expiresAt) {
 			return SignalingAdmission{}, ErrRevoked
 		}
-		return s.admission(sessionID, expiresAt, false), nil
+		admission := s.admission(sessionID, expiresAt, false)
+		if err := s.attachSignalingSessionProfileTx(ctx, tx, request, &admission, now); err != nil {
+			return SignalingAdmission{}, err
+		}
+		return admission, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return SignalingAdmission{}, err
@@ -452,7 +440,63 @@ func (s *PostgresStore) createSignalingTx(ctx context.Context, tx pgx.Tx, reques
 	if err != nil {
 		return SignalingAdmission{}, err
 	}
-	return s.admission(sessionID, expiresAt, true), nil
+	admission := s.admission(sessionID, expiresAt, true)
+	if err := s.attachSignalingSessionProfileTx(ctx, tx, request, &admission, now); err != nil {
+		return SignalingAdmission{}, err
+	}
+	return admission, nil
+}
+
+func (s *PostgresStore) attachSignalingSessionProfileTx(ctx context.Context, tx pgx.Tx, request SignalingRequest, admission *SignalingAdmission, now time.Time) error {
+	profileRequestID := signalingProfileRequestID(request.RequestID)
+	if request.SessionProfile == nil {
+		var marker int
+		err := tx.QueryRow(ctx, `SELECT 1 FROM authority_session_profile_issuance WHERE request_id=$1 FOR UPDATE`, profileRequestID).Scan(&marker)
+		if err == nil {
+			return ErrConflict
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	profileRequest, err := sessionProfileRequestFromSignaling(request)
+	if err != nil {
+		return err
+	}
+	digest, err := profileRequestDigest(profileRequest)
+	if err != nil {
+		return err
+	}
+	var existingDigest []byte
+	var existingSessionID string
+	err = tx.QueryRow(ctx, `SELECT request_sha256,signaling_session_id FROM authority_session_profile_issuance WHERE request_id=$1 FOR UPDATE`, profileRequest.RequestID).Scan(&existingDigest, &existingSessionID)
+	if err == nil {
+		if !hmac.Equal(existingDigest, digest[:]) || existingSessionID != admission.SessionID {
+			return ErrConflict
+		}
+		response, err := sessionProfileResponse(profileRequest, *admission, false)
+		if err != nil {
+			return err
+		}
+		admission.SessionProfile = &response
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if !admission.Created {
+		return ErrConflict
+	}
+	response, err := sessionProfileResponse(profileRequest, *admission, true)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO authority_session_profile_issuance(request_id,request_sha256,account_id,host_device_id,client_device_id,signaling_session_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, profileRequest.RequestID, digest[:], profileRequest.AccountID, profileRequest.HostIdentity.DeviceID, profileRequest.ClientIdentity.DeviceID, admission.SessionID, now); err != nil {
+		return err
+	}
+	admission.SessionProfile = &response
+	return nil
 }
 
 func (s *PostgresStore) AuthorizeSignaling(ctx context.Context, sessionID, token string, now time.Time) (SignalingAuthorization, error) {
@@ -914,7 +958,60 @@ func profileSignalingRequestID(requestID string) string {
 	return fmt.Sprintf("profile-%x", digest[:16])
 }
 
+func signalingProfileRequestID(requestID string) string {
+	digest := sha256.Sum256([]byte(requestID))
+	return fmt.Sprintf("signaling-profile-%x", digest[:16])
+}
+
+func sessionProfileRequestFromSignaling(request SignalingRequest) (SessionProfileRequest, error) {
+	if request.SessionProfile == nil {
+		return SessionProfileRequest{}, errors.New("missing session profile request")
+	}
+	if request.SessionProfile.HostIdentity.DeviceID != request.HostDeviceID || request.SessionProfile.ClientIdentity.DeviceID != request.ClientDeviceID {
+		return SessionProfileRequest{}, errors.New("session profile identity does not match signaling admission")
+	}
+	return SessionProfileRequest{
+		RequestID:               signalingProfileRequestID(request.RequestID),
+		AccountID:               request.AccountID,
+		PairingID:               request.SessionProfile.PairingID,
+		HostIdentity:            request.SessionProfile.HostIdentity,
+		ClientIdentity:          request.SessionProfile.ClientIdentity,
+		SignalingURL:            request.SessionProfile.SignalingURL,
+		SessionEpoch:            request.SessionEpoch,
+		TTLSeconds:              request.TTLSeconds,
+		TranscriptContext:       request.SessionProfile.TranscriptContext,
+		ProtocolSessionID:       request.SessionProfile.ProtocolSessionID,
+		ICEServers:              request.SessionProfile.ICEServers,
+		AllowInsecureForTesting: request.SessionProfile.AllowInsecureForTesting,
+	}, nil
+}
+
+func sameSignalingAdmissionRequest(existing, request SignalingRequest) bool {
+	return existing.AccountID == request.AccountID &&
+		existing.HostDeviceID == request.HostDeviceID &&
+		existing.ClientDeviceID == request.ClientDeviceID &&
+		existing.SessionEpoch == request.SessionEpoch &&
+		existing.TTLSeconds == request.TTLSeconds
+}
+
+func sessionProfileResponse(request SessionProfileRequest, admission SignalingAdmission, created bool) (SessionProfileResponse, error) {
+	unsignedLease, err := unsignedAndroidLease(request, admission)
+	if err != nil {
+		return SessionProfileResponse{}, err
+	}
+	return SessionProfileResponse{
+		AccountID:            request.AccountID,
+		PairingID:            request.PairingID,
+		SignalingSessionID:   admission.SessionID,
+		HostSignalingToken:   admission.HostToken,
+		ExpiresAt:            admission.ExpiresAt,
+		Created:              created,
+		UnsignedAndroidLease: unsignedLease,
+	}, nil
+}
+
 func unsignedAndroidLease(request SessionProfileRequest, admission SignalingAdmission) (json.RawMessage, error) {
+	protocolSessionID := base64.StdEncoding.EncodeToString([]byte(admission.SessionID))
 	root := map[string]any{
 		"version":                    1,
 		"pairing_id":                 request.PairingID,
@@ -928,7 +1025,7 @@ func unsignedAndroidLease(request SessionProfileRequest, admission SignalingAdmi
 		"device_identity_epoch":      request.ClientIdentity.KeyEpoch,
 		"expires_at":                 uint64(admission.ExpiresAt.Unix()),
 		"transcript_context":         request.TranscriptContext,
-		"protocol_session_id":        request.ProtocolSessionID,
+		"protocol_session_id":        protocolSessionID,
 		"signaling_token":            admission.ClientToken,
 		"ice_servers":                request.ICEServers,
 		"allow_insecure_for_testing": request.AllowInsecureForTesting,

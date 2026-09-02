@@ -196,6 +196,9 @@ func (s *PostgresStore) Create(ctx context.Context, request CreateSessionRequest
 }
 
 func (s *PostgresStore) createLocal(ctx context.Context, request CreateSessionRequest) (SessionResponse, bool, error) {
+	if request.SessionProfile != nil {
+		return SessionResponse{}, false, ErrConflict
+	}
 	response := SessionResponse{}
 	created := false
 	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
@@ -252,6 +255,7 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 	admission, err := s.authority.CreateSession(ctx, authoritySignalingRequest{
 		RequestID: request.RequestID, AccountID: request.AccountID, HostDeviceID: request.HostDeviceID,
 		ClientDeviceID: request.ClientDeviceID, SessionEpoch: request.SessionEpoch, TTLSeconds: int64(request.TTL / time.Second),
+		SessionProfile: request.SessionProfile,
 	})
 	if err != nil {
 		if reserved {
@@ -333,7 +337,7 @@ func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request Cre
 }
 
 func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request CreateSessionRequest, admission authoritySignalingAdmission) (SessionResponse, bool, error) {
-	response := SessionResponse{SessionID: admission.SessionID, HostToken: admission.HostToken, DeviceToken: admission.ClientToken, ExpiresAt: admission.ExpiresAt}
+	response := SessionResponse{SessionID: admission.SessionID, HostToken: admission.HostToken, DeviceToken: admission.ClientToken, ExpiresAt: admission.ExpiresAt, SessionProfile: admission.SessionProfile}
 	created := false
 	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
 		if err := s.cleanupTx(ctx, tx); err != nil {
@@ -679,7 +683,7 @@ func (s *PostgresStore) Cleanup() int {
 
 func (s *PostgresStore) stats(ctx context.Context) (StoreStats, error) {
 	var stats StoreStats
-	err := s.createTransaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		if _, err := s.cleanupExpiredSessionsTx(ctx, tx); err != nil {
 			return err
 		}

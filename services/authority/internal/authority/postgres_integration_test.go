@@ -2,6 +2,8 @@ package authority
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -190,6 +192,70 @@ func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
 	}
 	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(6*time.Second)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
+	}
+}
+
+func TestPostgresSignalingAdmissionSessionProfileReplayIsDurableAndExact(t *testing.T) {
+	store, cfg := openIntegrationStore(t)
+	ctx := context.Background()
+	profile := testSessionProfileRequest(t, "profile-template", 7)
+	if err := store.EnsureAccount(ctx, profile.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{profile.HostIdentity.DeviceID, profile.ClientIdentity.DeviceID} {
+		if err := store.RegisterDevice(ctx, profile.AccountID, deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	request := signalingRequestWithSessionProfile(profile, "durable-profile-signaling")
+	created, err := store.CreateSignaling(ctx, request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Created || created.SessionProfile == nil || !created.SessionProfile.Created {
+		t.Fatalf("unexpected created admission profile: %#v", created)
+	}
+	var lease map[string]any
+	if err := json.Unmarshal(created.SessionProfile.UnsignedAndroidLease, &lease); err != nil {
+		t.Fatal(err)
+	}
+	if lease["signaling_session_id"] != created.SessionID ||
+		lease["protocol_session_id"] != base64.StdEncoding.EncodeToString([]byte(created.SessionID)) ||
+		lease["signaling_token"] != created.ClientToken {
+		t.Fatalf("unsigned lease did not bind signaling admission: %#v", lease)
+	}
+
+	restarted, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.CreateSignaling(ctx, request, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.Created || replayed.SessionProfile == nil || replayed.SessionProfile.Created || replayed.SessionID != created.SessionID || replayed.HostToken != created.HostToken || replayed.ClientToken != created.ClientToken {
+		t.Fatalf("durable profile replay changed stable fields: replay=%#v created=%#v", replayed, created)
+	}
+	changed := request
+	changed.SessionProfile = &SignalingSessionProfileRequest{
+		PairingID:               request.SessionProfile.PairingID,
+		HostIdentity:            request.SessionProfile.HostIdentity,
+		ClientIdentity:          request.SessionProfile.ClientIdentity,
+		SignalingURL:            request.SessionProfile.SignalingURL,
+		TranscriptContext:       request.SessionProfile.TranscriptContext,
+		ProtocolSessionID:       base64.StdEncoding.EncodeToString([]byte("changed-protocol-session")),
+		ICEServers:              request.SessionProfile.ICEServers,
+		AllowInsecureForTesting: request.SessionProfile.AllowInsecureForTesting,
+	}
+	if _, err := restarted.CreateSignaling(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed signaling profile replay error=%v, want ErrConflict", err)
+	}
+	omitted := request
+	omitted.SessionProfile = nil
+	if _, err := restarted.CreateSignaling(ctx, omitted, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("omitted signaling profile replay error=%v, want ErrConflict", err)
 	}
 }
 

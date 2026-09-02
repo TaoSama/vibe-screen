@@ -110,10 +110,16 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
         for snippet, label in (
             (
                 """
-                let session = InternetProductSession()
-                internetProductSession = session
+                makeSession: { InternetProductSession() }
                 """,
-                "Internet startup creates and retains the product session",
+                "Internet startup creates the product session",
+            ),
+            (
+                """
+                prepareSession: { session, configuration in
+                    self.internetProductSession = session
+                """,
+                "Internet startup retains the product session",
             ),
             (
                 "installInternetSessionCallbacks(session, sessionToken: sessionToken)",
@@ -129,7 +135,7 @@ class Phase3RealMediaSourceContractTests(unittest.TestCase):
             ),
             (
                 """
-                try await screenCapture?.startStreaming(
+                try await self.screenCapture?.startStreaming(
                     to: session,
                 """,
                 "Internet startup streams real ScreenCapture output into the product session",

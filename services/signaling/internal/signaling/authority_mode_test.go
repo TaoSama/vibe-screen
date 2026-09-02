@@ -104,6 +104,145 @@ func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
 	}
 }
 
+func TestAuthorityModeCreateSessionForwardsSessionProfile(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Second)
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	unsignedLease := testUnsignedAndroidLease(t, profileRequest, authoritySignalingAdmission{
+		SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1", ExpiresAt: expiresAt, Created: true,
+	})
+	var received atomic.Bool
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/signaling/sessions" || r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode authority request: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if request.SessionProfile == nil {
+			t.Error("authority request omitted session_profile")
+			http.Error(w, "missing session_profile", http.StatusBadRequest)
+			return
+		}
+		if request.SessionProfile.PairingID != profileRequest.PairingID ||
+			request.SessionProfile.HostIdentity.DeviceID != "host-1" ||
+			request.SessionProfile.ClientIdentity.DeviceID != "client-1" {
+			t.Errorf("unexpected forwarded session_profile: %#v", request.SessionProfile)
+			http.Error(w, "unexpected session_profile", http.StatusBadRequest)
+			return
+		}
+		received.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID: "sess-1", HostToken: "host-token-1", ClientToken: "client-token-1",
+			ExpiresAt: expiresAt, Created: true,
+			SessionProfile: &SessionProfileResponse{
+				AccountID: "acct-1", PairingID: profileRequest.PairingID,
+				SignalingSessionID: "sess-1", HostSignalingToken: "host-token-1",
+				ExpiresAt: expiresAt, Created: true, UnsignedAndroidLease: unsignedLease,
+			},
+		})
+	}))
+	defer authorityServer.Close()
+
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
+	service.SetReady(true)
+	handler := service.Handler()
+	body, err := json.Marshal(createSessionRequest{
+		RequestID: "req-1", AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1",
+		SessionEpoch: 7, TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	if !received.Load() {
+		t.Fatal("authority did not receive session_profile")
+	}
+	var created SessionResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.SessionProfile == nil ||
+		created.SessionProfile.SignalingSessionID != "sess-1" ||
+		string(created.SessionProfile.UnsignedAndroidLease) != string(unsignedLease) {
+		t.Fatalf("session_profile was not returned to caller: %#v", created.SessionProfile)
+	}
+}
+
+func TestValidateSessionProfileRejectsICEURLsWithoutEndpoint(t *testing.T) {
+	for _, raw := range []string{"stun:", "stuns:", "turn:", "turns:"} {
+		t.Run(raw, func(t *testing.T) {
+			profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+			profileRequest.ICEServers = []LeaseICEServer{{URLs: []string{raw}}}
+
+			err := validateSessionProfileRequest(profileRequest, "host-1", "client-1")
+			if err == nil || !strings.Contains(err.Error(), "ICE URL is invalid") {
+				t.Fatalf("validateSessionProfileRequest(%q) error = %v, want ICE URL is invalid", raw, err)
+			}
+		})
+	}
+}
+
+func TestValidateSessionProfileAcceptsICEURLsWithEndpoint(t *testing.T) {
+	username := "turn-user"
+	credential := "turn-credential"
+	testCases := []struct {
+		name   string
+		server LeaseICEServer
+	}{
+		{name: "stun opaque host", server: LeaseICEServer{URLs: []string{"stun:stun.example.test"}}},
+		{name: "stun authority host", server: LeaseICEServer{URLs: []string{"stun://stun.example.test"}}},
+		{
+			name: "turn opaque host",
+			server: LeaseICEServer{
+				URLs:       []string{"turn:turn.example.test?transport=udp"},
+				Username:   &username,
+				Credential: &credential,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+			profileRequest.ICEServers = []LeaseICEServer{tc.server}
+
+			if err := validateSessionProfileRequest(profileRequest, "host-1", "client-1"); err != nil {
+				t.Fatalf("validateSessionProfileRequest() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestLocalModeRejectsSessionProfile(t *testing.T) {
+	profileRequest := testSessionProfileRequest(t, "host-1", "client-1")
+	cfg := testConfig()
+	service := testServerWithStore(t, cfg, NewMemoryStore(cfg, nil))
+	body, err := json.Marshal(createSessionRequest{
+		RequestID: "req-1", TTLSeconds: 60, SessionProfile: profileRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := performRequest(t, service.Handler(), http.MethodPost, "/v1/sessions", testIssuerToken, string(body))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "session_profile requires production authority mode") {
+		t.Fatalf("unexpected rejection body: %s", response.Body.String())
+	}
+}
+
 func TestAuthorityModeCreateSessionReplay(t *testing.T) {
 	var calls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
