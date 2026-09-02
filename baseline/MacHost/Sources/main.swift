@@ -1,73 +1,50 @@
 import Foundation
 import AppKit
 
-if CommandLine.arguments.contains("--issue-phase3-internet-lease") {
+let commandLine = HostCommandLine.parse(arguments: CommandLine.arguments)
+if let errorMessage = commandLine.errorMessage {
+    FileHandle.standardError.write(Data((errorMessage + "\n").utf8))
+    exit(EXIT_FAILURE)
+}
+
+switch commandLine.launchMode {
+case .command(.issuePhase3InternetLease):
     exit(InternetSessionLeaseCLI.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.transportSelfTest):
+    exit(TransportSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.reliabilitySelfTest):
+    exit(ReliabilityCoreSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.protocolV1SelfTest):
+    exit(ProtocolV1SelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.videoEncoderSelfTest):
+    exit(VideoEncoderSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.audioCaptureSelfTest):
+    exit(AudioCaptureSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.hostSelfTest):
+    exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3InternetSelfTest):
+    exit(InternetTransportSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3InternetLeaseSelfTest):
+    exit(InternetSessionLeaseSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3WebRTCLoopbackSelfTest):
+    exit(ProductionWebRTCEngineSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3WebRTCSignalingSelfTest):
+    exit(ProductionWebRTCEngineSelfTest.runWithSignalingService() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3ProductSignalingSelfTest):
+    exit(InternetProductSessionSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3ProductAndroidInteropHost):
+    exit(InternetProductExternalHostE2E.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.phase3RealMediaSelfTest):
+    exit(InternetProductSessionRealMediaSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+case .command(.iOSLoopback(let expectsInvalidTarget)):
+    exit(IOSClientLoopbackHost.run(expectsInvalidTarget: expectsInvalidTarget)
+        ? EXIT_SUCCESS
+        : EXIT_FAILURE)
+case .gui:
+    break
 }
 
 print("🚀 Vibe Screen starting...")
-
-if CommandLine.arguments.contains("--transport-self-test") {
-    exit(TransportSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--reliability-self-test") {
-    exit(ReliabilityCoreSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--protocol-v1-self-test") {
-    exit(ProtocolV1SelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--video-encoder-self-test") {
-    exit(VideoEncoderSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--audio-capture-self-test") {
-    exit(AudioCaptureSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--host-self-test") {
-    exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-internet-self-test") {
-    exit(InternetTransportSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-internet-lease-self-test") {
-    exit(InternetSessionLeaseSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-webrtc-loopback-self-test") {
-    exit(ProductionWebRTCEngineSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-webrtc-signaling-self-test") {
-    exit(ProductionWebRTCEngineSelfTest.runWithSignalingService() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-product-signaling-self-test") {
-    exit(InternetProductSessionSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-product-android-interop-host") {
-    exit(InternetProductExternalHostE2E.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if CommandLine.arguments.contains("--phase3-real-media-self-test") {
-    exit(InternetProductSessionRealMediaSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-}
-
-if let scenario = ProcessInfo.processInfo.environment["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO"] {
-    guard scenario == "lifecycle" || scenario == "invalid-target" else {
-        FileHandle.standardError.write(Data("Unknown iOS loopback scenario.\n".utf8))
-        exit(EXIT_FAILURE)
-    }
-    exit(IOSClientLoopbackHost.run(expectsInvalidTarget: scenario == "invalid-target")
-        ? EXIT_SUCCESS
-        : EXIT_FAILURE)
-}
 
 // Entry point
 let app = NSApplication.shared

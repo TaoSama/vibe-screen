@@ -2935,18 +2935,24 @@ class PrepareReleaseTests(unittest.TestCase):
 
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
         self.assertIn("baseline-macos-permission-prompt-contract:", makefile)
+        self.assertIn("baseline-macos-host-cli-contract:", makefile)
         self.assertIn("baseline-macos-launch:", makefile)
         self.assertIn(
             "\tswift scripts/verify_macos_permission_prompt_contract.swift",
             makefile,
         )
+        self.assertIn(
+            "\tswift scripts/verify_macos_host_cli_contract.swift",
+            makefile,
+        )
         self.assertIn("\tbaseline-macos-xctest-preflight \\", makefile)
         self.assertIn("\tbaseline-macos-permission-prompt-contract \\", makefile)
+        self.assertIn("\tbaseline-macos-host-cli-contract \\", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py xctest-preflight", makefile)
         self.assertIn("python3 scripts/macos_dev_host.py launch", makefile)
         self.assertRegex(
             makefile,
-            r"(?m)^baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-xctest-preflight$",
+            r"(?m)^baseline-macos-test: baseline-macos-permission-prompt-contract baseline-macos-host-cli-contract baseline-macos-xctest-preflight$",
         )
         self.assertRegex(
             makefile,
