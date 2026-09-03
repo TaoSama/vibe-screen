@@ -590,7 +590,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
-    def test_fragmented_iso_bmff_video_is_accepted(self) -> None:
+    def test_readable_iso_bmff_video_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.copy_valid_package(root)
@@ -765,6 +765,53 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "manifest.recording.raw_video contains placeholder term 'placeholder'; real-device-capture latency evidence must use concrete run metadata",
             report["gate"]["reasons"],
         )
+
+    def test_real_capture_gate_artifact_placeholder_filename_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            usb_connection = gate_artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            previous_artifact = root / str(usb_connection["file"])
+            artifact = root / "placeholder-usb-connection.txt"
+            previous_artifact.rename(artifact)
+            usb_connection["file"] = artifact.name
+            usb_connection["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.gate_artifacts.usb_connection.file contains placeholder term 'placeholder'; real-device-capture latency evidence must use concrete run metadata",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_capture_free_text_fixture_term_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            camera = manifest["camera"]
+            setup = manifest["measurement_setup"]
+            assert isinstance(camera, dict)
+            assert isinstance(setup, dict)
+            camera["mode"] = "fixture-mounted 1080p240 capture"
+            setup["mounting"] = "device clamped in a machined fixture"
+            setup["notes"] = "fixture label appears only in free-text lab notes"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
 
     def test_recording_file_size_bytes_must_match_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

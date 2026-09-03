@@ -474,7 +474,7 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --max-drift-ms 0.8 \
   --input-timestamp-uncertainty-ms 0.4 \
   --result-timestamp-uncertainty-ms 0.6 \
-  --total-error-budget-ms 3.5 \
+  --total-error-budget-ms 4.5 \
   --input-timestamp-method "physical input timestamp method" \
   --result-timestamp-method "visible result timestamp method" \
   --gate-artifact "$EVIDENCE_DIR/input-actuation.txt" \

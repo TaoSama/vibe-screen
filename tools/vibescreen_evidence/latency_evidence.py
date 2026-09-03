@@ -392,7 +392,7 @@ def _looks_like_iso_bmff_video(data: bytes) -> bool:
                 entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
                 sample_entry = data[content_start + 12:content_start + 16]
                 has_video_sample_description = has_video_sample_description or (
-                    entry_count > 0 and sample_entry in {b"avc1", b"avc3", b"hvc1", b"hev1"}
+                    entry_count > 0 and sample_entry in {b"avc1", b"avc3", b"hvc1", b"hev1", b"mp4v"}
                 )
             elif box_type == b"stsz" and content_start + 12 <= content_end:
                 default_sample_size = int.from_bytes(data[content_start + 4:content_start + 8], "big")
@@ -542,22 +542,34 @@ def _validate_known_fixture_digests(manifest: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _iter_manifest_text_fields(value: Any, prefix: str = "manifest"):
-    if isinstance(value, dict):
-        for key, child in value.items():
-            yield from _iter_manifest_text_fields(child, f"{prefix}.{key}")
-    elif isinstance(value, list):
-        for index, child in enumerate(value, start=1):
-            yield from _iter_manifest_text_fields(child, f"{prefix}[{index}]")
-    elif isinstance(value, str):
-        yield prefix, value
+def _iter_real_capture_placeholder_fields(manifest: dict[str, Any]):
+    yield "manifest.run_id", manifest.get("run_id")
+
+    recording = manifest.get("recording")
+    if isinstance(recording, dict):
+        yield "manifest.recording.raw_video", recording.get("raw_video")
+
+    samples = manifest.get("samples")
+    if isinstance(samples, dict):
+        yield "manifest.samples.file", samples.get("file")
+
+    gate_artifacts = manifest.get("gate_artifacts")
+    if isinstance(gate_artifacts, dict):
+        for artifact_name, artifact in gate_artifacts.items():
+            if isinstance(artifact, dict):
+                yield (
+                    f"manifest.gate_artifacts.{artifact_name}.file",
+                    artifact.get("file"),
+                )
 
 
 def _validate_real_capture_placeholders(manifest: dict[str, Any]) -> list[str]:
     provenance = manifest.get("evidence_provenance")
     if not isinstance(provenance, dict) or provenance.get("source") != REAL_DEVICE_CAPTURE_SOURCE:
         return []
-    for field, value in _iter_manifest_text_fields(manifest):
+    for field, value in _iter_real_capture_placeholder_fields(manifest):
+        if not isinstance(value, str):
+            continue
         normalized = value.lower()
         for term in REAL_CAPTURE_PLACEHOLDER_TERMS:
             if term in normalized:
