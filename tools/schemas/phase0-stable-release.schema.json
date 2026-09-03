@@ -17,6 +17,7 @@
     "gate_summaries",
     "readme_guard",
     "source_guard",
+    "owner_pr_guard",
     "manifest_source",
     "reasons"
   ],
@@ -61,6 +62,32 @@
         "verdict": {"enum": ["pass", "insufficient"]},
         "expected_source_commit": {"type": ["string", "null"]},
         "manifest_base_commit": {"type": ["string", "null"]},
+        "reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "owner_pr_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "command",
+        "repository",
+        "queried_at",
+        "state",
+        "open_pr_numbers",
+        "owner_prs",
+        "stale_owner_prs",
+        "reasons"
+      ],
+      "properties": {
+        "verdict": {"enum": ["pass", "insufficient"]},
+        "command": {"type": ["string", "null"]},
+        "repository": {"enum": ["TaoSama/vibe-screen", null]},
+        "queried_at": {"type": ["string", "null"]},
+        "state": {"type": ["string", "null"]},
+        "open_pr_numbers": {"type": "array", "items": {"type": "integer"}},
+        "owner_prs": {"type": "array", "items": {"type": "integer"}},
+        "stale_owner_prs": {"type": "array", "items": {"type": "integer"}},
         "reasons": {"type": "array", "items": {"type": "string"}}
       }
     },

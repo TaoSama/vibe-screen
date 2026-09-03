@@ -123,7 +123,7 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
-    fun `phase zero docs identify closed module ownership gate without closing release blockers`() {
+    fun `phase zero docs identify closed ownership sub gate without closing runtime gates`() {
         val readme = repositorySource(REPOSITORY_README)
         val audit = repositorySource(OPEN_GATES_AUDIT)
         val phaseZeroTech = repositorySource(PHASE_ZERO_TECH)
@@ -145,17 +145,19 @@ class StreamClientOwnershipBoundaryContractTest {
         }
         assertTrue(phaseZeroStatus.contains("`MainActivity` hands renderer viewport/layout/render-target readiness/admission"))
         assertTrue(phaseZeroStatus.contains("`RendererOwner` and `RendererViewportState`"))
+        assertTrue(phaseZeroStatus.contains("Android decoder admission"))
+        assertTrue(phaseZeroStatus.contains("UI/product-session coordination now have focused owner coverage"))
         assertTrue(phaseZeroStatus.contains("`ProductSessionCoordinator` owns Internet generation/freshness"))
-        assertTrue(phaseZeroStatus.contains("module ownership sub-gate now passes"))
-        assertFalse(phaseZeroStatus.contains("remaining module ownership"))
-        assertFalse(phaseZeroStatus.contains("remaining decoder platform-adapter/device-evidence slice"))
-        assertTrue(readme.normalizedWhitespace().contains("WakeHost real sleeping-Mac"))
-        assertTrue(audit.contains("#259"))
-        assertTrue(audit.contains("current-base owner gate"))
-        assertTrue(audit.contains("Module extraction draft PRs [#211]"))
-        assertTrue(audit.contains("superseded by [#259]"))
-        assertTrue(audit.contains("The module ownership sub-gate is closed"))
-        assertTrue(audit.contains("runtime/product release evidence remains tracked by separate aggregate gates"))
+        assertTrue(phaseZeroStatus.contains("current-base module ownership state is tracked by"))
+        assertTrue(phaseZeroStatus.contains("`make phase0-module-ownership-gate`"))
+        assertTrue(phaseZeroStatus.contains("`can_close_phase0_module_ownership_extraction=true`"))
+        assertTrue(phaseZeroStatus.contains("WakeHost real sleeping-Mac"))
+        assertTrue(phaseZeroStatus.contains("runtime/product evidence gates"))
+        assertTrue(phaseZeroStatus.contains("fail-closed requirements"))
+        assertTrue(audit.contains("Phase 0 module ownership extraction"))
+        assertTrue(audit.contains("No source-boundary gap remains for this sub-gate"))
+        assertTrue(audit.contains("Keep `make phase0-module-ownership-gate` passing"))
+        assertTrue(audit.contains("the open PR snapshot contains only PR #531"))
         assertFalse(audit.contains("remaining module ownership"))
         assertFalse(audit.contains("Remaining module gaps are the decoder platform-adapter/device-evidence"))
         assertFalse(audit.contains("README.md:288-293"))
@@ -163,6 +165,8 @@ class StreamClientOwnershipBoundaryContractTest {
         assertTrue(phaseZeroTechStatus.contains("owner now owns request lifecycle"))
         assertTrue(phaseZeroTechStatus.contains("sleeping-Mac wake, router/NIC WOL behavior"))
         assertTrue(phaseZeroTechStatus.contains("Decoder ownership and UI/product session ownership now have focused"))
+        assertTrue(phaseZeroTechStatus.contains("owner coverage beyond lifecycle admission"))
+        assertTrue(phaseZeroTechStatus.contains("The Phase 0 module-ownership sub-gate is closed by source/offline boundaries only"))
         assertFalse(phaseZeroTechStatus.contains("before Phase 0 module ownership can be called complete"))
         assertTrue(phaseZeroTechStatus.contains("`FileTransferProductOwner` owns the Android file-transfer product"))
         assertTrue(phaseZeroTechStatus.contains("`RendererOwner` gates viewport/layout, render-target"))

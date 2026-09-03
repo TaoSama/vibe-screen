@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import datetime as _datetime
 import json
 import subprocess
 import sys
@@ -64,6 +65,13 @@ def complete_manifest() -> dict[str, object]:
             "owner": "Vibe Screen core team",
             "audit_source": "docs/audit.md",
         },
+        "open_pr_snapshot": {
+            "repository": "TaoSama/vibe-screen",
+            "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
+            "queried_at": "2026-08-22",
+            "state": "open",
+            "open_pr_numbers": [],
+        },
         "required_gates": [
             {
                 "id": gate_id,
@@ -90,6 +98,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertTrue(summary["can_mark_phase0_stable_release"])
         self.assertEqual(summary["blocking_required_gates"], [])
         self.assertEqual(summary["source_guard"]["verdict"], "pass")
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
 
     def test_open_sub_gate_blocks_aggregate_without_failing_readme_guard(self) -> None:
         manifest = complete_manifest()
@@ -269,6 +278,125 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertIn("source.base_commit", summary["reasons"][0])
         self.assertEqual(summary["readme_guard"]["verdict"], "pass")
 
+    def test_owner_prs_require_open_pr_snapshot(self) -> None:
+        manifest = complete_manifest()
+        manifest.pop("open_pr_snapshot")
+        gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [158]
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "insufficient")
+        self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [158])
+        self.assertIn(
+            "owner_prs require open_pr_snapshot",
+            summary["owner_pr_guard"]["reasons"][0],
+        )
+
+    def test_owner_prs_must_match_current_open_pr_snapshot(self) -> None:
+        manifest = complete_manifest()
+        gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [158]
+        manifest["open_pr_snapshot"]["open_pr_numbers"] = []
+
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "insufficient")
+        self.assertEqual(summary["owner_pr_guard"]["owner_prs"], [158])
+        self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [158])
+        self.assertIn("#158", summary["owner_pr_guard"]["reasons"][0])
+
+    def test_owner_prs_can_match_current_open_pr_snapshot(self) -> None:
+        manifest = complete_manifest()
+        gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [158]
+        manifest["open_pr_snapshot"]["open_pr_numbers"] = [158, 232]
+
+        summary = evaluate_manifest(manifest, readme_text="Phase 0 stable-release summary")
+
+        self.assertEqual(summary["aggregate_verdict"], "pass")
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+        self.assertEqual(summary["owner_pr_guard"]["repository"], "TaoSama/vibe-screen")
+        self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
+
+    def test_open_pr_snapshot_rejects_wrong_repository(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["repository"] = "TaoSama/other"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "open_pr_snapshot.repository"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_command_must_target_repository(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list --repo TaoSama/other --state open --limit 200 --json number"
+        )
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must list open PRs for TaoSama/vibe-screen"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_rejects_missing_repo_option(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list --state open --limit 200 --json number"
+        )
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must list open PRs for TaoSama/vibe-screen"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_accepts_gh_short_options(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list -R TaoSama/vibe-screen -s open --limit 200 --json number"
+        )
+
+        summary = evaluate_manifest(
+            manifest,
+            readme_text="Phase 0 stable-release summary",
+            evaluation_date=_datetime.date(2026, 8, 22),
+        )
+
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+
+    def test_open_pr_snapshot_rejects_malformed_command(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list --repo 'TaoSama/vibe-screen --state open"
+        )
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must list open PRs for TaoSama/vibe-screen"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_rejects_future_queried_at(self) -> None:
+        manifest = complete_manifest()
+        manifest["source"]["audit_date"] = "2026-08-23"
+        manifest["open_pr_snapshot"]["queried_at"] = "2026-08-23"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "queried_at must not be in the future"
+        ):
+            evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                evaluation_date=_datetime.date(2026, 8, 22),
+            )
+
+    def test_open_pr_snapshot_date_must_not_be_after_audit_date(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["queried_at"] = "2026-08-23"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must not be after manifest source.audit_date"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
     def test_manifest_source_requires_traceable_fields(self) -> None:
         manifest = complete_manifest()
         manifest["source"] = {"base_commit": "abc123", "audit_date": "20260822"}
@@ -281,6 +409,23 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertIn("manifest source.owner must be a non-empty string", summary["reasons"])
         self.assertIn("manifest source.audit_source must be a non-empty string", summary["reasons"])
         self.assertIn("manifest source.audit_date must use YYYY-MM-DD format", summary["reasons"])
+
+    def test_manifest_source_rejects_future_audit_date(self) -> None:
+        manifest = complete_manifest()
+        manifest["source"]["audit_date"] = "2026-08-23"
+
+        summary = evaluate_manifest(
+            manifest,
+            readme_text=GUARDED_README_TEXT,
+            evaluation_date=_datetime.date(2026, 8, 22),
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+        self.assertIn(
+            "manifest source.audit_date must not be in the future",
+            summary["reasons"],
+        )
 
     def test_stale_manifest_requires_readme_guard_even_when_sub_gates_pass(self) -> None:
         summary = evaluate_manifest(
@@ -460,6 +605,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertFalse(summary["can_mark_phase0_stable_release"])
         self.assertEqual(summary["readme_guard"]["verdict"], "pass")
         self.assertEqual(summary["closed_required_gate_count"], 6)
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+        self.assertEqual(summary["owner_pr_guard"]["open_pr_numbers"], [531])
+        self.assertEqual(summary["owner_pr_guard"]["owner_prs"], [])
         macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
         self.assertEqual(macos_gate["verdict"], "open")
         self.assertIn(

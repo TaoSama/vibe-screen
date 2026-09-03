@@ -7,8 +7,10 @@ readiness, synthetic, historical, or blocked sub-gate evidence as a pass.
 from __future__ import annotations
 
 import argparse
+import datetime as _datetime
 import json
 import re
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -22,6 +24,7 @@ STATUS_BLOCKED = "blocked"
 STATUS_FAIL = "fail"
 STATUS_INSUFFICIENT = "insufficient"
 STATUS_OPEN = "open"
+EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 ALLOWED_VERDICTS = {
     STATUS_PASS,
     STATUS_BLOCKED,
@@ -120,6 +123,15 @@ def _owner_prs(gate: dict[str, Any]) -> list[int]:
     return value
 
 
+def _int_list(record: dict[str, Any], field: str) -> list[int]:
+    value = record.get(field, [])
+    if not isinstance(value, list) or not all(isinstance(item, int) for item in value):
+        raise Phase0StableReleaseError(f"{field} must be a list of integers")
+    if len(value) != len(set(value)):
+        raise Phase0StableReleaseError(f"{field} must not contain duplicates")
+    return value
+
+
 def _required_bool(gate: dict[str, Any]) -> bool:
     value = gate.get("required_for_stable_release", True)
     if not isinstance(value, bool):
@@ -202,6 +214,135 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _open_pr_snapshot_guard(
+    manifest: dict[str, Any],
+    gate_summaries: Sequence[dict[str, Any]],
+    *,
+    evaluation_date: _datetime.date | None = None,
+) -> dict[str, Any]:
+    owner_prs = sorted({
+        owner_pr
+        for summary in gate_summaries
+        for owner_pr in summary["owner_prs"]
+    })
+    snapshot = manifest.get("open_pr_snapshot")
+    if snapshot is None:
+        reasons = []
+        if owner_prs:
+            reasons.append(
+                "owner_prs require open_pr_snapshot from `gh pr list --state open`"
+            )
+        return {
+            "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+            "command": None,
+            "repository": None,
+            "queried_at": None,
+            "state": None,
+            "open_pr_numbers": [],
+            "owner_prs": owner_prs,
+            "stale_owner_prs": owner_prs,
+            "reasons": reasons,
+        }
+    if not isinstance(snapshot, dict):
+        raise Phase0StableReleaseError("open_pr_snapshot must be an object")
+
+    command = _string(snapshot, "command")
+    repository = _string(snapshot, "repository")
+    queried_at = _string(snapshot, "queried_at")
+    state = _string(snapshot, "state")
+    if repository != EXPECTED_OPEN_PR_REPOSITORY:
+        raise Phase0StableReleaseError(
+            "open_pr_snapshot.repository must be TaoSama/vibe-screen"
+        )
+    if state != "open":
+        raise Phase0StableReleaseError("open_pr_snapshot.state must be open")
+    parsed_queried_at = _parse_manifest_date(
+        queried_at, "open_pr_snapshot.queried_at"
+    )
+    if evaluation_date is None:
+        evaluation_date = _datetime.date.today()
+    if parsed_queried_at > evaluation_date:
+        raise Phase0StableReleaseError(
+            "open_pr_snapshot.queried_at must not be in the future"
+        )
+    source = manifest.get("source", {})
+    if isinstance(source, dict):
+        audit_date = source.get("audit_date")
+        if isinstance(audit_date, str) and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}", audit_date
+        ):
+            parsed_audit_date = _parse_manifest_date(
+                audit_date, "manifest source.audit_date"
+            )
+            if parsed_queried_at > parsed_audit_date:
+                raise Phase0StableReleaseError(
+                    "open_pr_snapshot.queried_at must not be after "
+                    "manifest source.audit_date"
+                )
+    if not _is_expected_open_pr_command(command, repository):
+        raise Phase0StableReleaseError(
+            "open_pr_snapshot.command must list open PRs for TaoSama/vibe-screen"
+        )
+
+    open_pr_numbers = sorted(_int_list(snapshot, "open_pr_numbers"))
+    stale_owner_prs = [
+        owner_pr for owner_pr in owner_prs if owner_pr not in open_pr_numbers
+    ]
+    reasons = []
+    if stale_owner_prs:
+        reasons.append(
+            "owner_prs are not present in open_pr_snapshot.open_pr_numbers: "
+            + ", ".join(f"#{owner_pr}" for owner_pr in stale_owner_prs)
+        )
+    return {
+        "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+        "command": command,
+        "repository": repository,
+        "queried_at": queried_at,
+        "state": state,
+        "open_pr_numbers": open_pr_numbers,
+        "owner_prs": owner_prs,
+        "stale_owner_prs": stale_owner_prs,
+        "reasons": reasons,
+    }
+
+
+def _is_expected_open_pr_command(command: str, repository: str) -> bool:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if tokens[:3] != ["gh", "pr", "list"]:
+        return False
+    repo = _option_value(tokens, "--repo") or _option_value(tokens, "-R")
+    state = _option_value(tokens, "--state") or _option_value(tokens, "-s")
+    return (
+        repo == repository
+        and state == "open"
+    )
+
+
+def _parse_manifest_date(value: str, field: str) -> _datetime.date:
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        raise Phase0StableReleaseError(f"{field} must use YYYY-MM-DD format")
+    try:
+        return _datetime.date.fromisoformat(value)
+    except ValueError as error:
+        raise Phase0StableReleaseError(
+            f"{field} must use a valid calendar date"
+        ) from error
+
+
+def _option_value(tokens: Sequence[str], name: str) -> str | None:
+    prefix = f"{name}="
+    for index, token in enumerate(tokens):
+        if token.startswith(prefix):
+            return token[len(prefix) :]
+        if token == name and index + 1 < len(tokens):
+            return tokens[index + 1]
+    return None
+
+
 def _readme_guard(
     *,
     manifest: dict[str, Any],
@@ -271,6 +412,7 @@ def evaluate_manifest(
     *,
     readme_text: str | None = None,
     expected_source_commit: str | None = None,
+    evaluation_date: _datetime.date | None = None,
 ) -> dict[str, Any]:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise Phase0StableReleaseError("schema_version must be vibescreen.evidence/v1")
@@ -282,7 +424,9 @@ def evaluate_manifest(
     if not isinstance(source, dict):
         raise Phase0StableReleaseError("source must be an object")
 
-    source_guard = _source_guard(source, expected_source_commit)
+    source_guard = _source_guard(
+        source, expected_source_commit, evaluation_date=evaluation_date
+    )
 
     gates_value = manifest.get("required_gates")
     if not isinstance(gates_value, list):
@@ -299,6 +443,10 @@ def evaluate_manifest(
             duplicate_gate_ids.append(summary["id"])
         seen_gate_ids.add(summary["id"])
         gate_summaries.append(summary)
+
+    owner_pr_guard = _open_pr_snapshot_guard(
+        manifest, gate_summaries, evaluation_date=evaluation_date
+    )
 
     missing_gate_ids = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in seen_gate_ids]
     unexpected_required_gate_ids = [
@@ -337,6 +485,7 @@ def evaluate_manifest(
     aggregate_passed = (
         not malformed_reasons
         and source_guard["verdict"] == STATUS_PASS
+        and owner_pr_guard["verdict"] == STATUS_PASS
         and not blocking_gates
         and not any(summary["issues"] for summary in gate_summaries)
     )
@@ -353,6 +502,7 @@ def evaluate_manifest(
     elif (
         malformed_reasons
         or source_guard["verdict"] == STATUS_INSUFFICIENT
+        or owner_pr_guard["verdict"] == STATUS_INSUFFICIENT
         or any(summary["issues"] for summary in gate_summaries)
     ):
         aggregate_verdict = STATUS_INSUFFICIENT
@@ -377,10 +527,12 @@ def evaluate_manifest(
         "gate_summaries": gate_summaries,
         "readme_guard": readme_guard,
         "source_guard": source_guard,
+        "owner_pr_guard": owner_pr_guard,
         "manifest_source": source,
         "reasons": [
             *malformed_reasons,
             *source_guard["reasons"],
+            *owner_pr_guard["reasons"],
             *gate_reasons,
             *readme_guard["reasons"],
         ],
@@ -388,7 +540,10 @@ def evaluate_manifest(
 
 
 def _source_guard(
-    source: dict[str, Any], expected_source_commit: str | None
+    source: dict[str, Any],
+    expected_source_commit: str | None,
+    *,
+    evaluation_date: _datetime.date | None = None,
 ) -> dict[str, Any]:
     base_commit = source.get("base_commit")
     reasons: list[str] = []
@@ -408,6 +563,20 @@ def _source_guard(
         r"[0-9]{4}-[0-9]{2}-[0-9]{2}", audit_date
     ):
         reasons.append("manifest source.audit_date must use YYYY-MM-DD format")
+    else:
+        if evaluation_date is None:
+            evaluation_date = _datetime.date.today()
+        try:
+            parsed_audit_date = _parse_manifest_date(
+                audit_date, "manifest source.audit_date"
+            )
+        except Phase0StableReleaseError as error:
+            reasons.append(str(error))
+        else:
+            if parsed_audit_date > evaluation_date:
+                reasons.append(
+                    "manifest source.audit_date must not be in the future"
+                )
 
     return {
         "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
