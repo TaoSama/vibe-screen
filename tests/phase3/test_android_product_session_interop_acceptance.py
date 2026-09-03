@@ -267,11 +267,16 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             try:
                 raise InteropError("primary failed")
             except InteropError:
-                raise_or_note_cleanup_failure([RuntimeError("cleanup failed")])
+                raise_or_note_cleanup_failure([
+                    RuntimeError("test package cleanup failed"),
+                    RuntimeError("reverse cleanup failed"),
+                ])
                 raise
         except InteropError as error:
             self.assertEqual(str(error), "primary failed")
-            self.assertTrue(any("cleanup failed" in note for note in getattr(error, "__notes__", [])))
+            notes = getattr(error, "__notes__", [])
+            self.assertTrue(any("test package cleanup failed" in note for note in notes))
+            self.assertTrue(any("reverse cleanup failed" in note for note in notes))
         else:  # pragma: no cover - the nested raise must keep the primary error.
             self.fail("primary error was not raised")
 
@@ -458,6 +463,14 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         for output in ("OK (2 tests)\n", "FAILURES!!!\nOK (1 test)\n", "INSTRUMENTATION_FAILED"):
             with self.assertRaises(InteropError):
                 validate_instrumentation_result(output)
+
+    def test_runner_marks_test_package_cleanup_before_install_test_adb_call(self) -> None:
+        runner_source = ROOT / "scripts/phase3/android_product_session_interop_acceptance.py"
+        source = runner_source.read_text(encoding="utf-8")
+        marker_index = source.index("test_package_cleanup_needed = True")
+        install_test_index = source.index('name="install-test"')
+
+        self.assertLess(marker_index, install_test_index)
 
     def test_ui_marker_requires_exact_complete_assertions(self) -> None:
         marker = " ".join((UI_MARKER_PREFIX, *UI_MARKER_FLAGS))

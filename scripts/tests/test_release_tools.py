@@ -2916,6 +2916,10 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertLess(android_job.index(baseline_gate), android_job.index(instrumentation_gate))
         self.assertEqual(android_job.count("assembleDebugAndroidTest"), 1)
         self.assertNotIn("connectedDebugAndroidTest", android_job)
+        self.assertNotRegex(
+            android_job,
+            r"(?m)^\s*(?:-\s+)?(?:run:\s*)?(?:\S*/)?adb(?:\.exe)?(?:\s|$)",
+        )
         for forbidden_device_operation in (
             "am instrument",
             "adb -s",

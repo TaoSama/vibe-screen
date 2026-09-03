@@ -695,9 +695,12 @@ def raise_or_note_cleanup_failure(cleanup_failures: Sequence[Exception]) -> None
         "device cleanup could not run under the valid lease; reacquire a matching live lease "
         "before safely removing the private config and ADB reverse mapping"
     )
+    failure_summary = "; ".join(str(failure) for failure in cleanup_failures)
     if primary_error is not None:
         if hasattr(primary_error, "add_note"):
-            primary_error.add_note(f"{message}: {cleanup_failures[0]}")
+            primary_error.add_note(f"{message}: {failure_summary}")
+        else:  # pragma: no cover - Python < 3.11 compatibility path
+            print(f"warning: {message}: {failure_summary}", file=sys.stderr)
         return
     raise InteropError(message) from cleanup_failures[0]
 
@@ -976,6 +979,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 name="install-app",
             )
             require_artifacts_unchanged(paths, artifacts)
+            # The test package can be installed even when the adb subprocess times out before returning.
             test_package_cleanup_needed = True
             adb.device(
                 ["install", "-r", "-t", str(paths["test_apk"])],

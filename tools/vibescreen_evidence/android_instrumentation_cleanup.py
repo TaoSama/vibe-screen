@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Callable, Sequence
+from typing import Callable
 
 
 DEFAULT_TEST_PACKAGE = "dev.telemachus.display.test"
@@ -23,6 +23,12 @@ EXPECTED_CLEANUP_SCOPE = {
     "product_data": "not_targeted",
     "adb_reverse": "not_targeted",
 }
+ABSENT_PACKAGE_MARKERS = (
+    "delete_failed_internal_error",
+    "not installed for",
+    "unknown package",
+    "not installed",
+)
 
 
 class InstrumentationCleanupError(RuntimeError):
@@ -65,7 +71,7 @@ class InstrumentationCleanupResult:
 
     def to_dict(self) -> dict[str, object]:
         data = asdict(self)
-        data["commands"] = [asdict(command) for command in self.commands]
+        data["commands"] = list(data["commands"])
         data["ok"] = self.ok
         return data
 
@@ -87,6 +93,8 @@ def cleanup_android_instrumentation_test_package(
 
     if not test_package.strip():
         raise ValueError("test_package must not be empty")
+    if test_package != DEFAULT_TEST_PACKAGE:
+        raise ValueError(f"test_package must be {DEFAULT_TEST_PACKAGE!r}")
 
     started = _utc_now()
     commands: list[CleanupCommandResult] = []
@@ -182,8 +190,56 @@ def instrumentation_cleanup_result_errors(
             errors.append(
                 f"{field_prefix}.commands[{index}].package_name mismatch: {command.get('package_name')!r}"
             )
-        if tuple(command.get("command", ())) != expected_arguments:
-            errors.append(f"{field_prefix}.commands[{index}].command mismatch: {command.get('command')!r}")
+        raw_command = command.get("command")
+        if not isinstance(raw_command, (list, tuple)):
+            errors.append(
+                f"{field_prefix}.commands[{index}].command must be a list: {type(raw_command).__name__}"
+            )
+            continue
+        if tuple(raw_command) != expected_arguments:
+            errors.append(f"{field_prefix}.commands[{index}].command mismatch: {raw_command!r}")
+        errors.extend(_cleanup_command_outcome_errors(command, index, field_prefix, expected_package))
+    return errors
+
+
+def _cleanup_command_outcome_errors(
+    command: dict[str, object],
+    index: int,
+    field_prefix: str,
+    expected_package: str,
+) -> list[str]:
+    prefix = f"{field_prefix}.commands[{index}]"
+    errors: list[str] = []
+    name = command.get("name")
+    returncode = command.get("returncode")
+    if type(returncode) is not int:
+        return [f"{prefix}.returncode must be an int: {type(returncode).__name__}"]
+    stdout = command.get("stdout")
+    stderr = command.get("stderr")
+    if not isinstance(stdout, str):
+        errors.append(f"{prefix}.stdout must be a string: {type(stdout).__name__}")
+        stdout = ""
+    if not isinstance(stderr, str):
+        errors.append(f"{prefix}.stderr must be a string: {type(stderr).__name__}")
+        stderr = ""
+    if errors:
+        return errors
+
+    if name == "force_stop_test_package" and returncode != 0:
+        errors.append(f"{prefix}.returncode must be 0 for force-stop cleanup: {returncode!r}")
+    elif name == "uninstall_test_package" and returncode != 0:
+        output = f"{stdout}\n{stderr}".lower()
+        if not any(marker in output for marker in ABSENT_PACKAGE_MARKERS):
+            errors.append(
+                f"{prefix}.returncode must be 0 or prove package absence for uninstall cleanup: {returncode!r}"
+            )
+    elif name == "verify_test_package_absent":
+        if returncode != 0:
+            errors.append(f"{prefix}.returncode must be 0 for package absence verification: {returncode!r}")
+        expected_line = f"package:{expected_package}".lower()
+        lines = [line.strip().lower() for line in stdout.splitlines()]
+        if expected_line in lines:
+            errors.append(f"{prefix}.stdout still lists {expected_package!r}")
     return errors
 
 
@@ -219,13 +275,7 @@ def _is_absent_package_result(result: CleanupCommandResult) -> bool:
     if result.name != "uninstall_test_package" or result.returncode == 0:
         return False
     output = f"{result.stdout}\n{result.stderr}".lower()
-    absent_markers = (
-        "delete_failed_internal_error",
-        "not installed for",
-        "unknown package",
-        "not installed",
-    )
-    return any(marker in output for marker in absent_markers)
+    return any(marker in output for marker in ABSENT_PACKAGE_MARKERS)
 
 
 def _package_listing_is_absent(result: CleanupCommandResult) -> bool:

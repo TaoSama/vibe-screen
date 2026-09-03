@@ -596,8 +596,7 @@ def summary_gate_errors(summary):
         errors.append(f"device_identity_evidence mismatch: {summary.get('device_identity_evidence')!r}")
     if summary.get("instrumentation_p0110_landscape_large_text") is not True:
         errors.append("instrumentation p0110 landscape large-text layout failed")
-    if "android_instrumentation_cleanup" in summary:
-        errors.extend(instrumentation_cleanup_gate_errors(summary.get("android_instrumentation_cleanup")))
+    errors.extend(instrumentation_cleanup_gate_errors(summary.get("android_instrumentation_cleanup")))
     results = summary.get("scenarios", [])
     scenario_errors = scenario_label_errors(results)
     errors.extend(scenario_errors)

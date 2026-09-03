@@ -460,6 +460,14 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
             errors,
         )
 
+    def test_summary_requires_android_instrumentation_cleanup_record(self) -> None:
+        summary = valid_summary()
+        del summary["android_instrumentation_cleanup"]
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertIn("android_instrumentation_cleanup must be an object: NoneType", errors)
+
     def test_summary_rejects_android_instrumentation_cleanup_scope_drift(self) -> None:
         summary = valid_summary()
         cleanup = valid_instrumentation_cleanup()
@@ -486,6 +494,30 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         errors = collector.summary_gate_errors(summary)
 
         self.assertIn("android_instrumentation_cleanup.commands[1].command mismatch: ['uninstall', 'dev.telemachus.display']", errors)
+
+    def test_summary_rejects_tampered_android_instrumentation_cleanup_outcomes(self) -> None:
+        summary = valid_summary()
+        cleanup = valid_instrumentation_cleanup()
+        cleanup["commands"][0]["returncode"] = 1
+        cleanup["commands"][1]["returncode"] = 1
+        cleanup["commands"][1]["stdout"] = "Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]\n"
+        cleanup["commands"][2]["stdout"] = f"package:{collector.TEST_PACKAGE}\n"
+        summary["android_instrumentation_cleanup"] = cleanup
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[0].returncode must be 0 for force-stop cleanup: 1",
+            errors,
+        )
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[1].returncode must be 0 or prove package absence for uninstall cleanup: 1",
+            errors,
+        )
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[2].stdout still lists 'dev.telemachus.display.test'",
+            errors,
+        )
 
     def test_strict_boolean_gates_reject_truthy_non_bool_values(self) -> None:
         summary = valid_summary()
