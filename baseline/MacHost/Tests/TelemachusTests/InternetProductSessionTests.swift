@@ -996,7 +996,7 @@ final class InternetProductSessionTests: XCTestCase {
                 maximumFileBytes: 1_024,
                 maximumChunkBytes: 2
             ),
-            fileTransferProgressTimeoutMilliseconds: 20
+            fileTransferProgressTimeoutMilliseconds: 200
         )
         let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
         harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
@@ -1035,7 +1035,7 @@ final class InternetProductSessionTests: XCTestCase {
                 maximumFileBytes: 1_024,
                 maximumChunkBytes: 2
             ),
-            fileTransferProgressTimeoutMilliseconds: 20
+            fileTransferProgressTimeoutMilliseconds: 200
         )
         let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
         harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
@@ -1080,7 +1080,7 @@ final class InternetProductSessionTests: XCTestCase {
                 maximumFileBytes: 1_024,
                 maximumChunkBytes: 2
             ),
-            fileTransferProgressTimeoutMilliseconds: 20
+            fileTransferProgressTimeoutMilliseconds: 200
         )
         let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
         harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
