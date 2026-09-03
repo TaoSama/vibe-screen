@@ -1,7 +1,7 @@
 # Open gates coverage audit
 
 Date: 2026-08-22 local / 2026-08-21 UTC
-Last refreshed: 2026-09-04
+Last refreshed: 2026-09-04 local / 2026-09-03 UTC
 Base: `origin/main` at `93d4450a5e583a54fe53616993cc9865c370c076`
 Scope: audit only. This document does not close any README gate and does not
 change product status.
@@ -39,7 +39,7 @@ change product status.
   empty. Historical merged PR numbers may appear in prose only as baseline
   context.
 
-## 2026-09-04 refresh
+## 2026-09-04 local / 2026-09-03 UTC refresh
 
 - The current base is the PR #536 merge commit `93d4450a5e583a54fe53616993cc9865c370c076`.
 - PR #535 and PR #536 are merged, and there were no open PRs when this refresh

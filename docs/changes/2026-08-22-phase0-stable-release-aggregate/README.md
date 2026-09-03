@@ -1,7 +1,7 @@
 # Phase 0 stable-release aggregate owner
 
 Date: 2026-08-29
-Last refreshed: 2026-09-04
+Last refreshed: 2026-09-04 local / 2026-09-03 UTC
 Base: origin/main at 93d4450a5e583a54fe53616993cc9865c370c076
 Status: open. This document does not close Phase 0 and does not change product
 status.
@@ -102,7 +102,7 @@ make phase0-stable-release-gate \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
-The 2026-09-04 manifest refresh binds the aggregate source guard to
+The 2026-09-03 UTC manifest refresh binds the aggregate source guard to
 `93d4450a5e583a54fe53616993cc9865c370c076`, records the current open-PR
 snapshot as empty, keeps all required gate `owner_prs` lists empty, and keeps
 the Android/macOS clipboard and file-transfer product E2E gates as required
