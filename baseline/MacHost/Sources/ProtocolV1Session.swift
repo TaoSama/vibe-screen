@@ -143,6 +143,21 @@ private struct ProtocolV1AudioState: Equatable {
         return wasActive
     }
 
+    mutating func stop() -> Bool {
+        switch status {
+        case .idle:
+            return false
+        case .awaitingResult(let configEpoch), .streaming(let configEpoch):
+            if configEpoch >= nextConfigEpoch {
+                nextConfigEpoch = configEpoch == UInt64.max ? UInt64.max : configEpoch + 1
+            }
+            status = .idle
+            return true
+        case .disabled:
+            return false
+        }
+    }
+
     static func config(configEpoch: UInt64) -> VSAudioConfig {
         var config = VSAudioConfig()
         config.streamID = streamID
@@ -841,6 +856,9 @@ final class ProtocolV1SessionCoordinator {
             }
             return [.startAudio(config)]
 
+        case .stopDisplay(let stop):
+            return stopDisplay(stop, correlationID: envelope.messageID)
+
         case .ping(let ping):
             var pong = VSPong()
             pong.sequence = ping.sequence
@@ -1458,6 +1476,48 @@ final class ProtocolV1SessionCoordinator {
         let displayMatches = !hasDisplayID || binding.displayID == target.displayID
         let streamMatches = !hasStreamID || target.streamID == streamID
         return displayMatches && streamMatches
+    }
+
+    private func stopDisplay(
+        _ stop: VSStopDisplay,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        let streamID: UInt64
+        switch phase {
+        case .streaming(_, let activeStreamID), .awaitingVideoConfig(_, let activeStreamID):
+            streamID = activeStreamID
+        default:
+            return invalidState("StopDisplay arrived before a display stream was active.", correlationID)
+        }
+        guard let binding = displayAllocator.binding(streamID: streamID, in: sessionKey) else {
+            return invalidState("StopDisplay referenced an unknown display stream.", correlationID)
+        }
+        guard stop.displayID.isEmpty || stop.displayID == binding.displayID else {
+            return invalidState("StopDisplay target does not match the active display stream.", correlationID)
+        }
+        guard displayAllocator.release(streamID: streamID, in: sessionKey) else {
+            return invalidState("StopDisplay could not release the active display stream.", correlationID)
+        }
+        phase = .awaitingDisplayStart
+        advertisedVideoGeometry = nil
+        pendingVideoPreferencesToken = 0
+        _ = stylusSequenceState.consumeReset()
+        resetControllerState()
+        pendingHostActionInvocations.removeAll()
+        pendingWakeHostRequests.removeAll()
+        var actions: [ProtocolV1SessionAction] = []
+        if audioState.stop() {
+            actions.append(.stopAudio(reason: "display_stopped"))
+        }
+        var ended = VSVideoStreamEnded()
+        ended.streamID = streamID
+        ended.reasonCode = "client_stop_display"
+        do {
+            actions.append(.sendControl(try encode(payload: .videoStreamEnded(ended), correlationID: correlationID)))
+            return actions
+        } catch {
+            return serializationFailure()
+        }
     }
 
     private func acceptsPeripheralKind(_ kind: String) -> Bool {
