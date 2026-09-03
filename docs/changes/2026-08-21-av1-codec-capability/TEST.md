@@ -14,9 +14,10 @@ Android, and iOS policy surfaces.
 It must stay green until AV1 is intentionally promoted from later-phase/backlog
 work into a real Host/device stream codec. The gate checks both product wording
 and source admission points so a future change cannot accidentally claim AV1 as
-shipped, advertise AV1 from the Host, map AV1 into Android product offers, or
-remove the blocked-evidence record without updating the implementation and
-evidence contract together.
+shipped, treat the reserved `CODEC_AV1` enum as product admission, advertise
+AV1 from the Host, map AV1 into Android product offers, or remove the
+blocked-evidence record without updating the implementation and evidence
+contract together.
 
 ## Offline coverage
 
