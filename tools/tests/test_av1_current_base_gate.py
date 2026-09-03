@@ -101,7 +101,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("Android MediaCodec HEVC/H.264 decode", row)
         self.assertIn("AV1 is a later-phase/backlog codec", row)
         self.assertIn("not a current Host/device stream codec", row)
-        self.assertIn("Protocol v1 reserves CODEC_AV1", row)
+        self.assertIn("Protocol v1 only reserves CODEC_AV1", row)
         self.assertIn("runtime-admission foundation is in place", row)
         self.assertIn("the current Host does not advertise AV1", row)
         self.assertIn("Android does not offer AV1 in product sessions", row)
