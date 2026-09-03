@@ -18,6 +18,13 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
     private var clipboardRuntimeAvailable = false
     private var fileTransferRuntimeAvailable = false
     private var hostActionsRuntimeAvailable = false
+    private val clipboardApprovalState = ClipboardApprovalState<ClientIdentity>()
+    private var pendingOutgoingFileTransfer: PendingOutgoingFileTransfer<ClientIdentity>? = null
+    private var pendingIncomingFileOffer: PendingIncomingFileOffer<ClientIdentity>? = null
+    @Volatile private var internetSessionToken: Any? = null
+    @Volatile private var internetGeneration = NO_GENERATION
+    @Volatile private var internetSessionEpoch = NO_GENERATION
+    private var requiredFreshInternetEpoch = NO_GENERATION
 
     fun activate(client: ClientIdentity): Long {
         val generation = sessionState.activate(client)
@@ -26,6 +33,7 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         connected = false
         transportConnected = false
         clearUiState()
+        clipboardApprovalState.activate(client, generation)
         return generation
     }
 
@@ -61,7 +69,12 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         client: ClientIdentity,
         generation: Long,
         binding: ClientSessionBinding,
-    ): Boolean = sessionState.updateNegotiatedSession(client, generation, binding)
+    ): Boolean {
+        if (!sessionState.updateNegotiatedSession(client, generation, binding)) return false
+        if (!binding.capabilities.clipboard) resetClipboardWorkflow()
+        if (!binding.capabilities.fileTransfer) clearFileTransferWorkflow()
+        return true
+    }
 
     fun onConnectionStatus(
         client: ClientIdentity,
@@ -175,6 +188,8 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         clipboardRuntimeAvailable = clipboard
         fileTransferRuntimeAvailable = fileTransfer
         hostActionsRuntimeAvailable = hostActions
+        if (!clipboardRuntimeAvailable) resetClipboardWorkflow()
+        if (!fileTransferRuntimeAvailable) clearFileTransferWorkflow()
         return true
     }
 
@@ -182,6 +197,209 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         val state = renderState()
         if (!state.hostActionsEnabled || state.hostActions.none { it.id == actionId }) return Command.None
         return Command.InvokeHostAction(actionId)
+    }
+
+    fun beginInternetSession(sessionEpoch: Long): Long {
+        internetGeneration += 1
+        internetSessionToken = null
+        internetSessionEpoch = sessionEpoch
+        return internetGeneration
+    }
+
+    fun attachInternetSession(
+        generation: Long,
+        sessionToken: Any,
+    ): Boolean {
+        if (!isInternetGenerationCurrent(generation)) return false
+        internetSessionToken = sessionToken
+        return true
+    }
+
+    fun acceptsInternetSession(
+        generation: Long,
+        sessionToken: Any?,
+    ): Boolean =
+        sessionToken != null &&
+            internetGeneration == generation &&
+            internetSessionToken === sessionToken
+
+    fun isInternetGenerationCurrent(generation: Long): Boolean = internetGeneration == generation
+
+    fun currentInternetGeneration(): Long = internetGeneration
+
+    fun currentInternetSessionEpoch(): Long = internetSessionEpoch
+
+    fun requiredFreshInternetEpoch(): Long = requiredFreshInternetEpoch
+
+    fun requiresFreshInternetLease(sessionEpoch: Long): Boolean = sessionEpoch <= requiredFreshInternetEpoch
+
+    fun clearInternetFreshnessRequirement() {
+        requiredFreshInternetEpoch = NO_GENERATION
+    }
+
+    fun markFreshInternetSessionRequired(
+        generation: Long,
+        sessionToken: Any?,
+    ): Boolean {
+        if (!acceptsInternetSession(generation, sessionToken)) return false
+        requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, internetSessionEpoch)
+        return true
+    }
+
+    fun markInternetSessionStartFailed(
+        generation: Long,
+        sessionEpoch: Long,
+    ): Boolean {
+        if (!isInternetGenerationCurrent(generation)) return false
+        requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, sessionEpoch)
+        return true
+    }
+
+    fun invalidateInternetSession() {
+        internetGeneration += 1
+        internetSessionToken = null
+        internetSessionEpoch = NO_GENERATION
+    }
+
+    fun revokeInternetPairing() {
+        requiredFreshInternetEpoch = Long.MAX_VALUE
+        invalidateInternetSession()
+    }
+
+    fun hasPendingClipboardReceive(
+        client: ClientIdentity,
+        generation: Long,
+    ): Boolean = clipboardControlsEnabled(client, generation) && clipboardApprovalState.hasPendingReceive(client, generation)
+
+    fun stageClipboardOffer(
+        client: ClientIdentity,
+        generation: Long,
+        offer: PendingClipboardOffer,
+    ): Boolean = clipboardControlsEnabled(client, generation) && clipboardApprovalState.stageOffer(client, generation, offer)
+
+    fun stageDirectClipboardContent(
+        client: ClientIdentity,
+        generation: Long,
+        content: ClipboardContentData,
+    ): Boolean = clipboardControlsEnabled(client, generation) && clipboardApprovalState.stageDirectContent(client, generation, content)
+
+    fun clipboardOfferForRequest(
+        client: ClientIdentity,
+        generation: Long,
+    ): PendingClipboardOffer? =
+        if (clipboardControlsEnabled(client, generation)) clipboardApprovalState.offerForRequest(client, generation) else null
+
+    fun directClipboardContentForConfirmation(
+        client: ClientIdentity,
+        generation: Long,
+    ): ClipboardContentData? =
+        if (clipboardControlsEnabled(client, generation)) clipboardApprovalState.directContentForConfirmation(client, generation) else null
+
+    fun approveClipboardOffer(
+        client: ClientIdentity,
+        generation: Long,
+        changeId: ByteArray,
+    ): Boolean = clipboardControlsEnabled(client, generation) && clipboardApprovalState.approveOffer(client, generation, changeId)
+
+    fun cancelClipboardOfferApproval(
+        client: ClientIdentity,
+        generation: Long,
+        changeId: ByteArray,
+    ): Boolean = clipboardApprovalState.cancelOfferApproval(client, generation, changeId)
+
+    fun consumeSolicitedClipboardContent(
+        client: ClientIdentity,
+        generation: Long,
+        content: ClipboardContentData,
+    ): ClipboardContentData? =
+        if (clipboardControlsEnabled(client, generation)) {
+            clipboardApprovalState.consumeSolicitedContent(client, generation, content)
+        } else {
+            null
+        }
+
+    fun consumeDirectClipboardContent(
+        client: ClientIdentity,
+        generation: Long,
+        changeId: ByteArray,
+    ): ClipboardContentData? =
+        if (clipboardControlsEnabled(client, generation)) {
+            clipboardApprovalState.consumeDirectContent(client, generation, changeId)
+        } else {
+            null
+        }
+
+    fun discardDirectClipboardContent(
+        client: ClientIdentity,
+        generation: Long,
+        changeId: ByteArray,
+    ) {
+        clipboardApprovalState.discardDirectContent(client, generation, changeId)
+    }
+
+    fun clearClipboardWorkflow() {
+        resetClipboardWorkflow()
+    }
+
+    fun requestOutgoingFileTransfer(
+        client: ClientIdentity,
+        generation: Long,
+    ): Boolean = fileTransferControlsEnabled(client, generation)
+
+    fun stageOutgoingFileTransfer(
+        client: ClientIdentity,
+        generation: Long,
+        fileToken: Any,
+    ): Boolean {
+        if (!fileTransferControlsEnabled(client, generation)) return false
+        pendingOutgoingFileTransfer = PendingOutgoingFileTransfer(client, generation, fileToken)
+        return true
+    }
+
+    fun takePendingOutgoingFileTransfer(): Any? {
+        val pending = pendingOutgoingFileTransfer ?: return null
+        pendingOutgoingFileTransfer = null
+        return pending.fileToken
+    }
+
+    fun beginIncomingFileOffer(
+        client: ClientIdentity,
+        generation: Long,
+        offerToken: Any,
+    ): Boolean {
+        if (!fileTransferControlsEnabled(client, generation) || pendingIncomingFileOffer != null) return false
+        pendingIncomingFileOffer = PendingIncomingFileOffer(client, generation, offerToken)
+        return true
+    }
+
+    fun acceptsIncomingFileOffer(
+        client: ClientIdentity,
+        generation: Long,
+        offerToken: Any,
+    ): Boolean =
+        pendingIncomingFileOffer?.let {
+            it.client === client && it.generation == generation && it.offerToken === offerToken
+        } == true
+
+    fun finishIncomingFileOffer(
+        client: ClientIdentity,
+        generation: Long,
+        offerToken: Any,
+    ): Boolean {
+        if (!acceptsIncomingFileOffer(client, generation, offerToken)) return false
+        pendingIncomingFileOffer = null
+        return true
+    }
+
+    fun clearIncomingFileOffer() {
+        pendingIncomingFileOffer = null
+    }
+
+    fun clearFileTransferWorkflow(): Any? {
+        val outgoing = pendingOutgoingFileTransfer?.fileToken
+        pendingOutgoingFileTransfer = null
+        pendingIncomingFileOffer = null
+        return outgoing
     }
 
     fun renderState(): RenderState {
@@ -227,7 +445,35 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         clipboardRuntimeAvailable = false
         fileTransferRuntimeAvailable = false
         hostActionsRuntimeAvailable = false
+        clipboardApprovalState.clear()
+        clearFileTransferWorkflow()
     }
+
+    private fun resetClipboardWorkflow() {
+        clipboardApprovalState.clear()
+        val client = activeClient ?: return
+        if (activeGeneration != NO_GENERATION) {
+            clipboardApprovalState.activate(client, activeGeneration)
+        }
+    }
+
+    private fun fileTransferControlsEnabled(
+        client: ClientIdentity,
+        generation: Long,
+    ): Boolean =
+        accepts(client, generation) &&
+            connected &&
+            ClientControlAvailability.isSupported(ClientControl.FILE_TRANSFER, currentBinding().capabilities) &&
+            fileTransferRuntimeAvailable
+
+    private fun clipboardControlsEnabled(
+        client: ClientIdentity,
+        generation: Long,
+    ): Boolean =
+        accepts(client, generation) &&
+            connected &&
+            ClipboardMenuPolicy.isAvailable(currentBinding().capabilities.clipboard) &&
+            clipboardRuntimeAvailable
 
     data class RenderState(
         val connected: Boolean,
@@ -265,6 +511,18 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         val displays: List<StreamDisplayOption> = emptyList(),
         val selectedId: String = "",
         val pendingDisplayId: String? = null,
+    )
+
+    private data class PendingOutgoingFileTransfer<ClientIdentity : Any>(
+        val client: ClientIdentity,
+        val generation: Long,
+        val fileToken: Any,
+    )
+
+    private data class PendingIncomingFileOffer<ClientIdentity : Any>(
+        val client: ClientIdentity,
+        val generation: Long,
+        val offerToken: Any,
     )
 
     private companion object {

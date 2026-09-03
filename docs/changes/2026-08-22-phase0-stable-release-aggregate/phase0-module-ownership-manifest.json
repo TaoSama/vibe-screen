@@ -196,9 +196,10 @@
       "id": "decoder_ownership",
       "title": "Android decoder ownership boundary",
       "required_for_phase0_stable": true,
-      "status": "partial",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt",
+      "status": "closed",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt",
       "evidence_paths": [
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/VideoDecoder.kt",
@@ -207,20 +208,16 @@
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderPresentationOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ActiveDecoderCallbackBindingTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderStartupGateTest.kt",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt"
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinatorTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderOwnershipBoundaryContractTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderPresentationOwnerTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest --tests dev.telemachus.display.AndroidDecoderLifecycleOwnerTest --tests dev.telemachus.display.ActiveDecoderCallbackBindingTest --tests dev.telemachus.display.DecoderStartupGateTest --tests dev.telemachus.display.DecoderUseGateTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainSessionDisplayLifecycleTest --tests dev.telemachus.display.internet.InternetVideoDecoderLifecycleTest"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderPresentationOwnerTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest --tests dev.telemachus.display.AndroidDecoderLifecycleOwnerTest --tests dev.telemachus.display.ActiveDecoderCallbackBindingTest --tests dev.telemachus.display.DecoderStartupGateTest --tests dev.telemachus.display.DecoderUseGateTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainSessionDisplayLifecycleTest --tests dev.telemachus.display.internet.InternetVideoDecoderLifecycleTest --tests dev.telemachus.display.DecoderOwnershipBoundaryContractTest",
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.AndroidDecoderConfigurationCoordinatorTest"
       ],
-      "blockers": [
-        "AndroidDecoderLifecycleOwner owns decoder admission, stale callback gating, startup commit, structural fallback recording, initialization failure reporting, and exactly-once release for local and Internet app sessions; DecoderPresentationOwner now owns active decoder gating, configuration generation, render-target identity, decoder presentation commit/rollback, and local/Internet frame routing.",
-        "Phase 0 decoder ownership remains partial because MainActivity still creates the platform VideoDecoder against Android Surface/Display objects and applies UI/window side effects as the Android platform adapter, and no current-source real Android device decoder lifecycle evidence is attached to this focused offline owner slice."
-      ],
-      "fail_closed_checklist": [
-        "Keep AndroidDecoderLifecycleOwner and DecoderPresentationOwner free of Android UI, MediaCodec, concrete transport sockets, StreamClient side-effect owners, and Protocol v1 session dependencies.",
-        "Keep MainActivity as a platform adapter only: it may create VideoDecoder with the active Surface/Display and apply UI side effects, but it must not reclaim decoder gate, configuration-generation, render-target, presentation-transaction, or frame-routing state.",
-        "Attach current-source device or equivalent product-session evidence for decoder creation, replacement, stale-frame rejection, and disconnect cleanup before this boundary can be treated as complete."
-      ]
+      "blockers": [],
+      "fail_closed_checklist": []
     },
     {
       "id": "renderer_ownership",
@@ -250,7 +247,7 @@
       "id": "ui_product_session_boundaries",
       "title": "Android UI and product-session boundary",
       "required_for_phase0_stable": true,
-      "status": "partial",
+      "status": "closed",
       "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
@@ -262,16 +259,8 @@
       "focused_tests": [
         "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.ProductSessionCoordinatorTest --tests dev.telemachus.display.ProductSessionOwnershipBoundaryContractTest"
       ],
-      "blockers": [
-        "ProductSessionCoordinator now owns local StreamClient session freshness, negotiated binding access, display and host-action intent command mapping, control availability, connection-attempt admission, disconnect cleanup, and stale callback rejection for the UI-facing local session path.",
-        "MainActivity still coordinates Internet product sessions, renderer callbacks, clipboard approval dialogs, file-transfer picker/storage prompts, and connection lifecycle side-effect execution.",
-        "No current-base contract yet proves UI owns only presentation and intent production across both local and Internet product-session paths."
-      ],
-      "fail_closed_checklist": [
-        "Extend the product-session coordinator beyond the local StreamClient UI path to cover Internet product-session UI state and lifecycle intent routing.",
-        "Move clipboard and file-transfer UI workflow state behind coordinator-owned decisions while keeping Android clipboard, file picker, storage, and protocol side effects in their current owners.",
-        "Keep renderer, decoder, protocol/session, file-transfer, WakeHost, and Internet session ownership in separate modules or owner classes with dependency-direction checks."
-      ]
+      "blockers": [],
+      "fail_closed_checklist": []
     }
   ]
 }

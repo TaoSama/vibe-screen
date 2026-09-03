@@ -54,6 +54,12 @@ class ProductSessionOwnershipBoundaryContractTest {
             "sessionState.accepts(client, generation)",
             "sessionState.updateNegotiatedSession(client, generation, binding)",
             "sessionState.invalidate(client, generation)",
+            "clipboardApprovalState",
+            "pendingOutgoingFileTransfer",
+            "pendingIncomingFileDecision",
+            "internetSessionEpoch",
+            "internetGeneration",
+            "private var requiredFreshInternetEpoch",
         ).forEach { reference ->
             assertFalse("MainActivity must not keep local product-session state path `$reference`", source.contains(reference))
         }

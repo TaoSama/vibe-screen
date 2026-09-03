@@ -217,6 +217,7 @@ class AndroidDecoderLifecycleOwnerTest {
             listOf(
                 PRODUCTION_DECODER_LIFECYCLE_OWNER,
                 PRODUCTION_DECODER_PRESENTATION_OWNER,
+                PRODUCTION_DECODER_CONFIGURATION_COORDINATOR,
             ).joinToString("\n") { repositorySource(it) }
 
         FORBIDDEN_OWNER_REFERENCES.forEach { reference ->
@@ -230,13 +231,16 @@ class AndroidDecoderLifecycleOwnerTest {
     @Test
     fun mainActivityDelegatesDecoderPresentationStateToOwner() {
         val source = repositorySource(MAIN_ACTIVITY)
+        val coordinatorSource = repositorySource(PRODUCTION_DECODER_CONFIGURATION_COORDINATOR)
 
         assertTrue(source.contains("private val decoderPresentationOwner ="))
-        assertTrue(source.contains("decoderPresentationOwner.publishLocalDecoder"))
-        assertTrue(source.contains("decoderPresentationOwner.publishInternetDecoder"))
+        assertTrue(source.contains("decoderConfigurationCoordinator"))
         assertTrue(source.contains("decoderPresentationOwner.routeLocalFrame"))
         assertTrue(source.contains("decoderPresentationOwner.routeInternetFrame"))
         assertTrue(source.contains("decoderPresentationOwner.detachCurrentDecoder"))
+
+        assertTrue(coordinatorSource.contains("decoderPresentationOwner.publishLocalDecoder"))
+        assertTrue(coordinatorSource.contains("decoderPresentationOwner.publishInternetDecoder"))
 
         FORBIDDEN_MAIN_ACTIVITY_RECLAIMED_INTERNALS.forEach { reference ->
             assertFalse(
@@ -383,6 +387,8 @@ class AndroidDecoderLifecycleOwnerTest {
             "app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt"
         const val PRODUCTION_DECODER_PRESENTATION_OWNER =
             "app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt"
+        const val PRODUCTION_DECODER_CONFIGURATION_COORDINATOR =
+            "app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt"
         const val MAIN_ACTIVITY =
             "app/src/main/java/dev/telemachus/display/MainActivity.kt"
 
