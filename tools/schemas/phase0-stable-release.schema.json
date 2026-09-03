@@ -68,22 +68,22 @@
     "owner_pr_guard": {
       "type": "object",
       "additionalProperties": false,
-        "required": [
-          "verdict",
-          "command",
-          "repository",
-          "queried_at",
+      "required": [
+        "verdict",
+        "command",
+        "repository",
+        "queried_at",
         "state",
         "open_pr_numbers",
         "owner_prs",
         "stale_owner_prs",
         "reasons"
       ],
-        "properties": {
-          "verdict": {"enum": ["pass", "insufficient"]},
-          "command": {"type": ["string", "null"]},
-          "repository": {"type": ["string", "null"]},
-          "queried_at": {"type": ["string", "null"]},
+      "properties": {
+        "verdict": {"enum": ["pass", "insufficient"]},
+        "command": {"type": ["string", "null"]},
+        "repository": {"enum": ["TaoSama/vibe-screen", null]},
+        "queried_at": {"type": ["string", "null"]},
         "state": {"type": ["string", "null"]},
         "open_pr_numbers": {"type": "array", "items": {"type": "integer"}},
         "owner_prs": {"type": "array", "items": {"type": "integer"}},

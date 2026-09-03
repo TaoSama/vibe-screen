@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import datetime as _datetime
 import json
 import subprocess
 import sys
@@ -348,6 +349,45 @@ class Phase0StableReleaseTest(unittest.TestCase):
         ):
             evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
 
+    def test_open_pr_snapshot_accepts_gh_short_options(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list -R TaoSama/vibe-screen -s open --limit 200 --json number"
+        )
+
+        summary = evaluate_manifest(
+            manifest,
+            readme_text="Phase 0 stable-release summary",
+            evaluation_date=_datetime.date(2026, 8, 22),
+        )
+
+        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+
+    def test_open_pr_snapshot_rejects_malformed_command(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list --repo 'TaoSama/vibe-screen --state open"
+        )
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must list open PRs for TaoSama/vibe-screen"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_rejects_future_queried_at(self) -> None:
+        manifest = complete_manifest()
+        manifest["source"]["audit_date"] = "2026-08-23"
+        manifest["open_pr_snapshot"]["queried_at"] = "2026-08-23"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "queried_at must not be in the future"
+        ):
+            evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                evaluation_date=_datetime.date(2026, 8, 22),
+            )
+
     def test_open_pr_snapshot_date_must_not_be_after_audit_date(self) -> None:
         manifest = complete_manifest()
         manifest["open_pr_snapshot"]["queried_at"] = "2026-08-23"
@@ -369,6 +409,23 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertIn("manifest source.owner must be a non-empty string", summary["reasons"])
         self.assertIn("manifest source.audit_source must be a non-empty string", summary["reasons"])
         self.assertIn("manifest source.audit_date must use YYYY-MM-DD format", summary["reasons"])
+
+    def test_manifest_source_rejects_future_audit_date(self) -> None:
+        manifest = complete_manifest()
+        manifest["source"]["audit_date"] = "2026-08-23"
+
+        summary = evaluate_manifest(
+            manifest,
+            readme_text=GUARDED_README_TEXT,
+            evaluation_date=_datetime.date(2026, 8, 22),
+        )
+
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+        self.assertIn(
+            "manifest source.audit_date must not be in the future",
+            summary["reasons"],
+        )
 
     def test_stale_manifest_requires_readme_guard_even_when_sub_gates_pass(self) -> None:
         summary = evaluate_manifest(

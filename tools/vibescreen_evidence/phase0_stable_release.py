@@ -215,7 +215,10 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
 
 
 def _open_pr_snapshot_guard(
-    manifest: dict[str, Any], gate_summaries: Sequence[dict[str, Any]]
+    manifest: dict[str, Any],
+    gate_summaries: Sequence[dict[str, Any]],
+    *,
+    evaluation_date: _datetime.date | None = None,
 ) -> dict[str, Any]:
     owner_prs = sorted({
         owner_pr
@@ -256,7 +259,9 @@ def _open_pr_snapshot_guard(
     parsed_queried_at = _parse_manifest_date(
         queried_at, "open_pr_snapshot.queried_at"
     )
-    if parsed_queried_at > _datetime.date.today():
+    if evaluation_date is None:
+        evaluation_date = _datetime.date.today()
+    if parsed_queried_at > evaluation_date:
         raise Phase0StableReleaseError(
             "open_pr_snapshot.queried_at must not be in the future"
         )
@@ -309,9 +314,11 @@ def _is_expected_open_pr_command(command: str, repository: str) -> bool:
         return False
     if tokens[:3] != ["gh", "pr", "list"]:
         return False
+    repo = _option_value(tokens, "--repo") or _option_value(tokens, "-R")
+    state = _option_value(tokens, "--state") or _option_value(tokens, "-s")
     return (
-        _option_value(tokens, "--repo") == repository
-        and _option_value(tokens, "--state") == "open"
+        repo == repository
+        and state == "open"
     )
 
 
@@ -330,7 +337,7 @@ def _option_value(tokens: Sequence[str], name: str) -> str | None:
     prefix = f"{name}="
     for index, token in enumerate(tokens):
         if token.startswith(prefix):
-            return token[len(prefix):]
+            return token[len(prefix) :]
         if token == name and index + 1 < len(tokens):
             return tokens[index + 1]
     return None
@@ -405,6 +412,7 @@ def evaluate_manifest(
     *,
     readme_text: str | None = None,
     expected_source_commit: str | None = None,
+    evaluation_date: _datetime.date | None = None,
 ) -> dict[str, Any]:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise Phase0StableReleaseError("schema_version must be vibescreen.evidence/v1")
@@ -416,7 +424,9 @@ def evaluate_manifest(
     if not isinstance(source, dict):
         raise Phase0StableReleaseError("source must be an object")
 
-    source_guard = _source_guard(source, expected_source_commit)
+    source_guard = _source_guard(
+        source, expected_source_commit, evaluation_date=evaluation_date
+    )
 
     gates_value = manifest.get("required_gates")
     if not isinstance(gates_value, list):
@@ -434,7 +444,9 @@ def evaluate_manifest(
         seen_gate_ids.add(summary["id"])
         gate_summaries.append(summary)
 
-    owner_pr_guard = _open_pr_snapshot_guard(manifest, gate_summaries)
+    owner_pr_guard = _open_pr_snapshot_guard(
+        manifest, gate_summaries, evaluation_date=evaluation_date
+    )
 
     missing_gate_ids = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in seen_gate_ids]
     unexpected_required_gate_ids = [
@@ -528,7 +540,10 @@ def evaluate_manifest(
 
 
 def _source_guard(
-    source: dict[str, Any], expected_source_commit: str | None
+    source: dict[str, Any],
+    expected_source_commit: str | None,
+    *,
+    evaluation_date: _datetime.date | None = None,
 ) -> dict[str, Any]:
     base_commit = source.get("base_commit")
     reasons: list[str] = []
@@ -548,6 +563,20 @@ def _source_guard(
         r"[0-9]{4}-[0-9]{2}-[0-9]{2}", audit_date
     ):
         reasons.append("manifest source.audit_date must use YYYY-MM-DD format")
+    else:
+        if evaluation_date is None:
+            evaluation_date = _datetime.date.today()
+        try:
+            parsed_audit_date = _parse_manifest_date(
+                audit_date, "manifest source.audit_date"
+            )
+        except Phase0StableReleaseError as error:
+            reasons.append(str(error))
+        else:
+            if parsed_audit_date > evaluation_date:
+                reasons.append(
+                    "manifest source.audit_date must not be in the future"
+                )
 
     return {
         "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
