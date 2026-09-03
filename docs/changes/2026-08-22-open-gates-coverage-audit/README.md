@@ -1,18 +1,18 @@
 # Open gates coverage audit
 
 Date: 2026-08-22 local / 2026-08-21 UTC
-Last refreshed: 2026-09-03
-Base: `origin/main` at `daa111e1c23e9d4487f7a478454f9e3a847f25a1`
+Last refreshed: 2026-09-04
+Base: `origin/main` at `93d4450a5e583a54fe53616993cc9865c370c076`
 Scope: audit only. This document does not close any README gate and does not
 change product status.
 
 ## Inputs checked
 
 - `git fetch origin main --prune` completed before this refresh.
-- `git merge-base --is-ancestor daa111e1c23e9d4487f7a478454f9e3a847f25a1 HEAD`
-  confirmed the PR #534 merge commit is included in the audited base.
-- `gh pr view 533 --json number,state,mergedAt,mergeCommit,title,url` and
-  `gh pr view 534 --json number,state,mergedAt,mergeCommit,title,url`
+- `git merge-base --is-ancestor 93d4450a5e583a54fe53616993cc9865c370c076 HEAD`
+  confirmed the PR #536 merge commit is included in the audited base.
+- `gh pr view 535 --json number,state,mergedAt,mergeCommit,title,url` and
+  `gh pr view 536 --json number,state,mergedAt,mergeCommit,title,url`
   confirmed both PRs are merged.
 - `gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url`
   returned no open PRs before this refresh PR was opened, so there are no
@@ -39,11 +39,11 @@ change product status.
   empty. Historical merged PR numbers may appear in prose only as baseline
   context.
 
-## 2026-09-03 refresh
+## 2026-09-04 refresh
 
-- The current base is the PR #534 merge commit `daa111e1c23e9d4487f7a478454f9e3a847f25a1`.
-- PR #533 and PR #534 are merged, and there were no open PRs when this refresh
-  branch captured the snapshot. Previous owner mappings from #157 through #534
+- The current base is the PR #536 merge commit `93d4450a5e583a54fe53616993cc9865c370c076`.
+- PR #535 and PR #536 are merged, and there were no open PRs when this refresh
+  branch captured the snapshot. Previous owner mappings from #157 through #536
   are now merged, closed, or superseded historical context rather than active
   external gate owners.
 - The Phase 0 module-ownership sub-gate now passes on current main. This closes

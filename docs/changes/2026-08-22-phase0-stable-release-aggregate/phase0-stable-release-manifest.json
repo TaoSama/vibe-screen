@@ -3,16 +3,16 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "daa111e1c23e9d4487f7a478454f9e3a847f25a1",
+    "base_commit": "93d4450a5e583a54fe53616993cc9865c370c076",
     "base_ref": "origin/main",
-    "audit_date": "2026-09-03",
+    "audit_date": "2026-09-04",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
-    "queried_at": "2026-09-03",
+    "queried_at": "2026-09-04",
     "state": "open",
     "open_pr_numbers": []
   },
