@@ -9,6 +9,7 @@ from vibescreen_evidence.reconnect_timing import (
     DISRUPTION_ADB_REVERSE,
     DISRUPTION_CLIENT_KILL,
     DISRUPTION_LAN_NETWORK,
+    DISRUPTIONS,
     ReconnectTimingEvidenceError,
     parse_android_diag_events,
     parse_android_logcat_events,
@@ -19,6 +20,7 @@ from vibescreen_evidence.reconnect_timing import (
 MODULE = "vibescreen_evidence.reconnect_timing"
 REPOSITORY_ROOT = Path(__file__).parents[2]
 FIXTURE_DIR = REPOSITORY_ROOT / "tools" / "fixtures" / "reconnect-timing"
+GATE_SCHEMA_PATH = REPOSITORY_ROOT / "tools" / "schemas" / "reconnect-timing-gate.schema.json"
 
 
 def complete_attempt(disruption: str = DISRUPTION_CLIENT_KILL, transport: str = "usb") -> dict:
@@ -785,6 +787,42 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
     def test_rejects_non_finite_threshold(self) -> None:
         with self.assertRaisesRegex(ReconnectTimingEvidenceError, "threshold_ms"):
             summarize({"attempts": [complete_attempt()]}, threshold_ms=float("nan"))
+
+
+class ReconnectTimingGateSchemaTest(unittest.TestCase):
+    def test_schema_requires_complete_gate_scope_before_closing(self) -> None:
+        schema = json.loads(GATE_SCHEMA_PATH.read_text(encoding="utf-8"))
+        closing_branches = [
+            branch
+            for branch in schema["allOf"]
+            if branch.get("if", {})
+            .get("properties", {})
+            .get("can_close_timing_gate", {})
+            .get("const")
+            is True
+        ]
+
+        self.assertEqual(len(closing_branches), 1)
+        closing_schema = closing_branches[0]["then"]
+        self.assertIn("full_gate_required_disruptions", closing_schema["required"])
+        self.assertIn("full_gate_missing_disruptions", closing_schema["required"])
+        self.assertEqual(
+            closing_schema["properties"]["required_disruptions"]["const"],
+            list(DISRUPTIONS),
+        )
+        self.assertEqual(
+            closing_schema["properties"]["full_gate_required_disruptions"]["const"],
+            list(DISRUPTIONS),
+        )
+        self.assertEqual(closing_schema["properties"]["missing_required_disruptions"]["const"], [])
+        self.assertEqual(closing_schema["properties"]["full_gate_missing_disruptions"]["const"], [])
+
+        contains_by_disruption = {
+            condition["contains"]["properties"]["disruption"]["const"]:
+                condition["contains"]["properties"]["verdict"]["const"]
+            for condition in closing_schema["properties"]["attempts"]["allOf"]
+        }
+        self.assertEqual(contains_by_disruption, {disruption: "pass" for disruption in DISRUPTIONS})
 
 
 class ReconnectTimingCliTest(unittest.TestCase):

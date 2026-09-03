@@ -45,7 +45,68 @@
     },
     {
       "if": {"properties": {"can_close_timing_gate": {"const": true}}},
-      "then": {"properties": {"verdict": {"const": "pass"}}}
+      "then": {
+        "required": [
+          "full_gate_required_disruptions",
+          "full_gate_missing_disruptions"
+        ],
+        "properties": {
+          "verdict": {"const": "pass"},
+          "required_disruptions": {
+            "const": [
+              "client-kill",
+              "adb-reverse-disconnect",
+              "lan-network-interrupt"
+            ]
+          },
+          "missing_required_disruptions": {"const": []},
+          "full_gate_required_disruptions": {
+            "const": [
+              "client-kill",
+              "adb-reverse-disconnect",
+              "lan-network-interrupt"
+            ]
+          },
+          "full_gate_missing_disruptions": {"const": []},
+          "attempts": {
+            "allOf": [
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["disruption", "verdict"],
+                  "properties": {
+                    "disruption": {"const": "client-kill"},
+                    "verdict": {"const": "pass"}
+                  }
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["disruption", "verdict"],
+                  "properties": {
+                    "disruption": {"const": "adb-reverse-disconnect"},
+                    "verdict": {"const": "pass"}
+                  }
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["disruption", "verdict"],
+                  "properties": {
+                    "disruption": {"const": "lan-network-interrupt"},
+                    "verdict": {"const": "pass"}
+                  }
+                },
+                "minContains": 1
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }
