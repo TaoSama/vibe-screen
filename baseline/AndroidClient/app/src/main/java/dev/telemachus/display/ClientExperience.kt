@@ -1199,9 +1199,14 @@ internal object UsbTransportDisplayPolicy {
         return Projection(
             subtitleResource =
                 when (snapshot.adbTransport) {
-                    AdbTransportKind.USB -> R.string.usb_waiting_description
-                    AdbTransportKind.WIRELESS -> R.string.wireless_adb_waiting_description
-                    AdbTransportKind.UNAVAILABLE -> R.string.adb_transport_waiting_description
+                    AdbTransportKind.USB -> R.string.usb_ready_waiting_description
+                    AdbTransportKind.WIRELESS -> R.string.wireless_adb_ready_waiting_description
+                    AdbTransportKind.UNAVAILABLE ->
+                        if (snapshot.usbDataConnected) {
+                            R.string.usb_debugging_unavailable_waiting_description
+                        } else {
+                            R.string.adb_transport_waiting_description
+                        }
                 },
             debuggingLabelResource =
                 when {

@@ -181,7 +181,10 @@
     <string name="clipboard_request_timed_out">The Mac didn\'t provide the clipboard. Try again.</string>
     <string name="clipboard_write_failed">Couldn\'t copy the Mac clipboard to this device.</string>
     <string name="usb_waiting_description">Keep the USB cable connected and open Vibe Screen on your Mac. This device will connect automatically.</string>
+    <string name="usb_ready_waiting_description">USB debugging is ready on this device. Open Vibe Screen on your Mac, then tap Try again if it does not connect automatically.</string>
     <string name="wireless_adb_waiting_description">Keep wireless debugging enabled and the Mac\u2019s ADB connection active, then open Vibe Screen on your Mac. This device will connect automatically.</string>
+    <string name="wireless_adb_ready_waiting_description">Wireless debugging is ready on this device. Keep the Mac\u2019s ADB connection active, open Vibe Screen on your Mac, then tap Try again if needed.</string>
+    <string name="usb_debugging_unavailable_waiting_description">USB is connected, but Android debugging is not available on this connection. Use a data-capable cable, enable USB debugging, and approve this Mac.</string>
     <string name="adb_transport_waiting_description">Connect a USB data cable or enable wireless debugging, then open Vibe Screen on your Mac. This device will connect automatically.</string>
     <string name="usb">USB</string>
     <string name="trusted_lan">LAN</string>
@@ -275,8 +278,8 @@
     <string name="connection_guidance_usb_route_unavailable_prefix">The Android-to-Mac route is unavailable.</string>
     <string name="connection_guidance_usb_timeout_prefix">Confirm Vibe Screen is ready for USB connections on your Mac.</string>
     <string name="connection_guidance_usb_unknown_prefix">Check Vibe Screen on your Mac and retry.</string>
-    <string name="connection_guidance_usb_recovery_usb">%1$s Keep the USB data cable connected, accept the debugging prompt on this device, then use the Mac app’s USB repair action. If it still fails, confirm no other Mac app is using TCP %2$d, restart Vibe Screen on the Mac, and retry.</string>
-    <string name="connection_guidance_usb_recovery_wireless_adb">%1$s Keep Wireless debugging enabled, approve the Mac on this device, then use the Mac app’s USB repair action. If it still fails, confirm no other Mac app is using TCP %2$d, restart Vibe Screen on the Mac, and retry.</string>
+    <string name="connection_guidance_usb_recovery_usb">%1$s Keep the USB data cable connected, accept the debugging prompt on this device, then run USB repair from the Mac app. If it still fails, confirm no other Mac app is using TCP %2$d, restart Vibe Screen on the Mac, and retry.</string>
+    <string name="connection_guidance_usb_recovery_wireless_adb">%1$s Keep Wireless debugging enabled, approve the Mac on this device, then run USB repair from the Mac app. If it still fails, confirm no other Mac app is using TCP %2$d, restart Vibe Screen on the Mac, and retry.</string>
     <string name="connection_guidance_usb_recovery_unavailable">%1$s Enable Developer options, connect a USB data cable with USB debugging or turn on Wireless debugging, approve the Mac, then retry from the Mac app. If it still fails, confirm no other Mac app is using TCP %2$d and restart Vibe Screen on the Mac.</string>
     <string name="connection_guidance_lan_host_unavailable_message">Open Vibe Screen on your Mac in LAN mode. Confirm both devices use the same trusted Wi-Fi, the saved host address and port %1$d are current, and the macOS firewall allows Vibe Screen, then reconnect or scan a fresh QR code.</string>
     <string name="connection_guidance_lan_network_unavailable_message">Reconnect both devices to the same trusted Wi-Fi and disable VPN or guest-network isolation. Verify the saved Mac address and port %1$d, then reconnect.</string>
