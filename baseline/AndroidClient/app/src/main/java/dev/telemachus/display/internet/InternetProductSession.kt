@@ -25,6 +25,7 @@ import dev.telemachus.display.protocol.FileTransferException
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.ProtocolV1Framing
 import dev.telemachus.display.protocol.RemoteManagedPolicy
+import dev.vibescreen.protocol.v1.AudioConfig
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
@@ -314,6 +315,7 @@ class InternetProductSession internal constructor(
     networkMonitor: NetworkMonitor,
     private val clock: MonotonicClock,
     private val codec: ProtocolV1ProductCodec,
+    private val audioPlayback: InternetAudioPlayback? = null,
     private val callbacks: InternetProductSessionCallbacks,
     private val revocationStore: InternetProductRevocationStore,
     private val revocationCoordinator: InternetProductRevocationCoordinator,
@@ -345,6 +347,8 @@ class InternetProductSession internal constructor(
     private var clipboard: InternetClipboard? = null
     private var negotiatedFilePolicy = localFileTransferPolicy.copy(allowed = false, maximumFileBytes = 0L)
     private val outgoingFileTransferDeadlines = LinkedHashMap<ByteString, OutgoingFileTransferDeadline>()
+    private var currentAudioConfiguration: AudioConfig? = null
+    private var audioPlaybackConfigured = false
     private var negotiationStarted = false
     private var freshSessionRequested = false
     private var heartbeatIntervalMillis = 0L
@@ -890,6 +894,7 @@ class InternetProductSession internal constructor(
             }
         if (shouldClose) {
             runBestEffort(
+                { stopAudioPlayback("session_close")?.let { throw it } },
                 { transport.close() },
                 { lease.close() },
                 { transition(InternetProductSessionState.CLOSED) },
@@ -1018,6 +1023,7 @@ class InternetProductSession internal constructor(
                 failIfOwned(owner, IllegalStateException("Session rejected (${message.reasonCode}); retryable=${message.retryable}"))
             }
             is ProductControlMessage.VideoConfiguration -> handleVideoConfiguration(owner, message.value)
+            is ProductControlMessage.AudioConfiguration -> handleAudioConfiguration(owner, message.config)
             is ProductControlMessage.Pong -> notifyPongIfOwned(owner, message.sequence)
             is ProductControlMessage.InputAck -> notifyInputAckIfOwned(owner, message.inputId, message.accepted, message.rejectionReason)
             is ProductControlMessage.Ping -> {
@@ -1097,6 +1103,7 @@ class InternetProductSession internal constructor(
                 }
             }
             val reservation = pending
+            if (reservation != null) stopAudioPlayback("session_revoked")?.let(callbacks::onFailure)
             if (reservation != null) {
                 try {
                     revocationStore.persistPendingAuthenticatedRevocation(lease.pairingIdentifier, reason)
@@ -1464,6 +1471,134 @@ class InternetProductSession internal constructor(
         }
     }
 
+    private fun handleAudioConfiguration(
+        owner: TransportOwner,
+        config: AudioConfig,
+    ) {
+        val playback = audioPlayback
+        var validationFailure: Throwable? = null
+        var configurationRejectionReason: String? = null
+        var idempotentAcceptedConfiguration = false
+        val shouldConfigure =
+            synchronized(lock) {
+                if (!acceptsTransportCallbackLocked(owner)) return
+                val currentEpoch = currentAudioConfiguration?.configEpoch ?: 0L
+                when {
+                    !acceptedSession || state != InternetProductSessionState.ACTIVE || currentVideoConfiguration == null -> {
+                        validationFailure = IllegalStateException("Audio configuration arrived before active video streaming")
+                        false
+                    }
+                    Capability.CAPABILITY_AUDIO !in expectedNegotiatedCapabilities -> {
+                        validationFailure = IllegalStateException("Audio configuration arrived without a negotiated audio session")
+                        false
+                    }
+                    playback == null || !playback.canAdvertiseAudio -> {
+                        validationFailure = IllegalStateException("Audio playback is unavailable for a negotiated audio session")
+                        false
+                    }
+                    config.streamId <= 0L || config.configEpoch <= 0L -> {
+                        configurationRejectionReason = "invalid_audio_config_epoch"
+                        false
+                    }
+                    config.configEpoch <= currentEpoch -> {
+                        if (audioPlaybackConfigured && currentAudioConfiguration == config) {
+                            idempotentAcceptedConfiguration = true
+                        } else {
+                            configurationRejectionReason = "invalid_audio_config_epoch"
+                        }
+                        false
+                    }
+                    else -> true
+                }
+            }
+        validationFailure?.let {
+            failIfOwned(owner, it)
+            return
+        }
+        if (idempotentAcceptedConfiguration) {
+            val response =
+                codec.encodeAudioConfigResult(
+                    nextMessageId(),
+                    lease.protocolSessionId,
+                    lease.authoritativeSessionEpoch,
+                    config,
+                    accepted = true,
+                    rejectionReason = "",
+                )
+            val sendFailed =
+                synchronized(lock) {
+                    acceptsTransportCallbackLocked(owner) && !transport.sendControl(response)
+                }
+            if (sendFailed) {
+                failIfOwned(owner, IllegalStateException("Required Protocol v1 audio configuration result could not be queued"))
+            }
+            return
+        }
+        configurationRejectionReason?.let { reason ->
+            val response =
+                codec.encodeAudioConfigResult(
+                    nextMessageId(),
+                    lease.protocolSessionId,
+                    lease.authoritativeSessionEpoch,
+                    config,
+                    accepted = false,
+                    rejectionReason = reason,
+                )
+            val sendFailed =
+                synchronized(lock) {
+                    acceptsTransportCallbackLocked(owner) && !transport.sendControl(response)
+                }
+            if (sendFailed) {
+                failIfOwned(owner, IllegalStateException("Required Protocol v1 audio configuration result could not be queued"))
+            }
+            return
+        }
+        if (!shouldConfigure || playback == null) return
+
+        val decision =
+            try {
+                playback.configure(config, lease.authoritativeSessionEpoch)
+            } catch (_: Throwable) {
+                InternetAudioDecision.reject("audio_playback_configuration_failed")
+            }
+        val response =
+            codec.encodeAudioConfigResult(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                config,
+                decision.accepted,
+                decision.rejectionReason,
+            )
+        var sendFailed = false
+        var staleAfterConfigure = false
+        synchronized(lock) {
+            if (!acceptsTransportCallbackLocked(owner) || !acceptedSession || state != InternetProductSessionState.ACTIVE) {
+                staleAfterConfigure = true
+                return@synchronized
+            }
+            if (!transport.sendControl(response)) {
+                sendFailed = true
+            } else if (decision.accepted) {
+                currentAudioConfiguration = config
+                audioPlaybackConfigured = true
+            } else {
+                currentAudioConfiguration = null
+                audioPlaybackConfigured = false
+            }
+        }
+        if (staleAfterConfigure && decision.accepted) {
+            stopAudioPlayback("stale_audio_configuration")?.let { failIfOwned(owner, it) }
+        }
+        if (sendFailed) {
+            val failure = IllegalStateException("Required Protocol v1 audio configuration result could not be queued")
+            if (decision.accepted) stopAudioPlayback("audio_config_result_send_failed")?.let(failure::addSuppressed)
+            failIfOwned(owner, failure)
+        } else if (!decision.accepted) {
+            stopAudioPlayback("audio_configuration_rejected")?.let { failIfOwned(owner, it) }
+        }
+    }
+
     private fun isVideoConfigurationReservationActive(
         owner: TransportOwner,
         reservation: PendingVideoConfiguration,
@@ -1568,10 +1703,27 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         payload: ByteArray,
     ) {
-        val streamId = currentStreamId()
+        val route = currentAudioRecordRoute()
+        val streamId = route.streamId
         if (streamId <= 0) return
+        var playbackFailure: String? = null
         handleAdvancedRecord(owner, payload, AdvancedChannelBinding.Audio(INTERNET_DISPLAY_ID, streamId)) { record ->
-            callbacks.onAudioRecord(record.copyOf())
+            if (route.productPlayback) {
+                val decision =
+                    try {
+                        audioPlayback?.submit(record) ?: InternetAudioDecision.reject("audio_playback_unavailable")
+                    } catch (_: Throwable) {
+                        InternetAudioDecision.reject("audio_playback_submit_failed")
+                    }
+                if (!decision.accepted) playbackFailure = decision.rejectionReason
+            } else {
+                callbacks.onAudioRecord(record.copyOf())
+            }
+        }
+        playbackFailure?.let { reason ->
+            val failure = IllegalArgumentException("Protocol v1 audio record was rejected: $reason")
+            stopAudioPlayback(reason)?.let(failure::addSuppressed)
+            failIfOwned(owner, failure)
         }
     }
 
@@ -2002,8 +2154,9 @@ class InternetProductSession internal constructor(
                         state = InternetProductSessionState.RECOVERING
                         true
                     }
-                }
+            }
             if (!reserved) return
+            stopAudioPlayback("fresh_session_required")?.let(callbacks::onFailure)
             if (stateChanged) callbacks.onStateChanged(InternetProductSessionState.RECOVERING)
             if (closeTransport) transport.close()
             if (synchronized(lock) { !closed && freshSessionRequested && state == InternetProductSessionState.RECOVERING }) {
@@ -2155,8 +2308,9 @@ class InternetProductSession internal constructor(
                         true
                     }
                 }
-            }
+        }
         if (notify) {
+            stopAudioPlayback("session_failure")?.let(error::addSuppressed)
             notifyTerminalFailureIfCurrent(error)
             releaseFailedSessionCredentials()
         }
@@ -2177,8 +2331,9 @@ class InternetProductSession internal constructor(
                         true
                     }
                 }
-            }
+        }
         if (notify) {
+            stopAudioPlayback("session_failure")?.let(error::addSuppressed)
             notifyTerminalFailureIfCurrent(error)
             releaseFailedSessionCredentials()
         }
@@ -2208,7 +2363,10 @@ class InternetProductSession internal constructor(
                     }
                 }
             }
-        if (changed) notifyStateIfOwned(owner, next)
+        if (changed) {
+            if (next == InternetProductSessionState.CLOSED) stopAudioPlayback("transport_closed")?.let(callbacks::onFailure)
+            notifyStateIfOwned(owner, next)
+        }
     }
 
     private fun notifyStateIfOwned(
@@ -2361,6 +2519,8 @@ class InternetProductSession internal constructor(
         controllerSendQueue.clear()
         controllerConnectionAcks.reset()
         currentVideoConfiguration = null
+        currentAudioConfiguration = null
+        audioPlaybackConfigured = false
         pendingVideoConfiguration = null
         hostMaximumClipboardBytes = 0L
         negotiatedMaximumClipboardBytes = 0L
@@ -2380,6 +2540,31 @@ class InternetProductSession internal constructor(
         )
 
     private fun currentStreamId(): Long = synchronized(lock) { currentVideoConfiguration?.streamId ?: 0 }
+
+    private fun currentAudioRecordRoute(): AudioRecordRoute =
+        synchronized(lock) {
+            val configuration = currentAudioConfiguration
+            AudioRecordRoute(
+                streamId = configuration?.streamId ?: currentVideoConfiguration?.streamId ?: 0,
+                productPlayback =
+                    audioPlaybackConfigured &&
+                        configuration != null &&
+                        Capability.CAPABILITY_AUDIO in expectedNegotiatedCapabilities,
+            )
+        }
+
+    private fun stopAudioPlayback(reason: String): Throwable? {
+        synchronized(lock) {
+            currentAudioConfiguration = null
+            audioPlaybackConfigured = false
+        }
+        return try {
+            audioPlayback?.stop(reason)
+            null
+        } catch (failure: Throwable) {
+            IllegalStateException("Audio playback stop failed", failure)
+        }
+    }
 
     private data class TransportOwner(val generation: Long)
 
@@ -2431,6 +2616,11 @@ class InternetProductSession internal constructor(
             pendingFileOffers.clear()
         }
     }
+
+    private data class AudioRecordRoute(
+        val streamId: Long,
+        val productPlayback: Boolean,
+    )
 
     private class PendingVideoConfiguration(
         val configEpoch: Long,
@@ -2485,6 +2675,7 @@ class InternetProductSession internal constructor(
             clock: MonotonicClock,
             codec: ProtocolV1ProductCodec,
             callbacks: InternetProductSessionCallbacks,
+            audioPlayback: InternetAudioPlayback? = null,
             revocationStore: InternetProductRevocationStore,
             revocationCoordinator: InternetProductRevocationCoordinator,
             nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
@@ -2528,6 +2719,7 @@ class InternetProductSession internal constructor(
                     networkMonitor,
                     clock,
                     codec,
+                    audioPlayback,
                     callbacks,
                     revocationStore,
                     revocationCoordinator,

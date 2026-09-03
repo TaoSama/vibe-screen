@@ -175,6 +175,45 @@ enum InternetControllerAdmission {
     case rejected(inputID: UInt64, reason: String)
 }
 
+struct InternetProductAudioConfiguration: Equatable {
+    static let streamID: UInt64 = 2
+    static let configEpoch: UInt64 = 1
+    static let sampleRateHz: UInt32 = 48_000
+    static let channelCount: UInt32 = 2
+    static let framesPerPacket: UInt32 = 480
+
+    let streamID: UInt64
+    let configEpoch: UInt64
+    let sampleRateHz: UInt32
+    let channelCount: UInt32
+    let framesPerPacket: UInt32
+
+    init(
+        streamID: UInt64 = Self.streamID,
+        configEpoch: UInt64 = Self.configEpoch,
+        sampleRateHz: UInt32 = Self.sampleRateHz,
+        channelCount: UInt32 = Self.channelCount,
+        framesPerPacket: UInt32 = Self.framesPerPacket
+    ) {
+        self.streamID = streamID
+        self.configEpoch = configEpoch
+        self.sampleRateHz = sampleRateHz
+        self.channelCount = channelCount
+        self.framesPerPacket = framesPerPacket
+    }
+
+    var protocolConfig: VSAudioConfig {
+        var config = VSAudioConfig()
+        config.streamID = streamID
+        config.configEpoch = configEpoch
+        config.codec = .pcmS16Le
+        config.sampleRateHz = sampleRateHz
+        config.channelCount = channelCount
+        config.framesPerPacket = framesPerPacket
+        return config
+    }
+}
+
 struct InternetProductProtocolCodec {
     static let protocolVersion: UInt32 = 1
     static let requiredCapabilities: Set<VSCapability> = [
@@ -195,6 +234,7 @@ struct InternetProductProtocolCodec {
     let controllerAvailable: Bool
     let managedPolicy: ManagedPolicy
     let fileTransferPolicy: ProtocolV1FileTransferPolicy
+    let audioAvailable: Bool
     private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
@@ -222,6 +262,7 @@ struct InternetProductProtocolCodec {
         controllerAvailable: Bool = false,
         managedPolicy: ManagedPolicy = .unmanaged,
         fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
+        audioAvailable: Bool = false,
         limits: InternetTransportLimits
     ) throws {
         guard !sessionIdentifier.isEmpty, sessionEpoch > 0,
@@ -239,6 +280,7 @@ struct InternetProductProtocolCodec {
         self.managedPolicy = managedPolicy
         self.fileTransferPolicy = fileTransferPolicy
         self.negotiatedFileTransferPolicy = fileTransferPolicy
+        self.audioAvailable = audioAvailable
         self.video = video
         self.nextConfigEpoch = video.configEpoch < UInt64.max
             ? video.configEpoch + 1
@@ -388,7 +430,8 @@ struct InternetProductProtocolCodec {
         peerSupportsStylusExtended: Bool = false,
         peerSupportsController: Bool = false,
         peerSupportsFileTransfer: Bool = false,
-        peerSupportsManagedConfiguration: Bool = false
+        peerSupportsManagedConfiguration: Bool = false,
+        peerSupportsAudio: Bool = false
     ) throws -> Data {
         var accepted = VSSessionAccepted()
         accepted.sessionID = sessionID
@@ -418,6 +461,9 @@ struct InternetProductProtocolCodec {
         }
         if baseNegotiatedCapabilities.contains(.managedConfiguration) || peerSupportsManagedConfiguration {
             negotiatedCapabilities.insert(.managedConfiguration)
+        }
+        if audioAvailable && peerSupportsAudio {
+            negotiatedCapabilities.insert(.audio)
         }
         accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
@@ -455,6 +501,9 @@ struct InternetProductProtocolCodec {
             capabilities.insert(.fileTransfer)
         }
         capabilities.insert(.managedConfiguration)
+        if audioAvailable {
+            capabilities.insert(.audio)
+        }
         return capabilities
     }
 
@@ -571,6 +620,16 @@ struct InternetProductProtocolCodec {
         configuration.rotationDegrees = UInt32(video.rotationDegrees)
         var envelope = baseEnvelope()
         envelope.videoConfig = configuration
+        return try encode(envelope)
+    }
+
+    mutating func audioConfiguration() throws -> VSAudioConfig {
+        InternetProductAudioConfiguration().protocolConfig
+    }
+
+    mutating func audioConfigurationControl() throws -> Data {
+        var envelope = baseEnvelope()
+        envelope.audioConfig = try audioConfiguration()
         return try encode(envelope)
     }
 

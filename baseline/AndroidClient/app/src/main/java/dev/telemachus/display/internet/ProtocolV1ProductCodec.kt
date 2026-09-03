@@ -6,6 +6,8 @@ import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
+import dev.vibescreen.protocol.v1.AudioConfig
+import dev.vibescreen.protocol.v1.AudioConfigResult
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
 import dev.vibescreen.protocol.v1.ClipboardRequest
@@ -196,6 +198,8 @@ sealed class ProductControlMessage {
 
     data class VideoConfiguration(val value: ProductVideoConfiguration) : ProductControlMessage()
 
+    data class AudioConfiguration(val config: AudioConfig) : ProductControlMessage()
+
     data class Pong(val sequence: Long) : ProductControlMessage()
     data class InputAck(
         val inputId: Long,
@@ -328,6 +332,15 @@ internal interface ProtocolV1ProductCodec {
         rejectionReason: String,
     ): ByteArray
 
+    fun encodeAudioConfigResult(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        config: AudioConfig,
+        accepted: Boolean,
+        rejectionReason: String,
+    ): ByteArray
+
     fun decodeControl(payload: ByteArray): DecodedProductControl
 
     fun decodeMediaFragment(payload: ByteArray): ProductMediaFragment
@@ -340,12 +353,14 @@ internal class ProtobufProtocolV1ProductCodec(
     private val supportedCodecs: Set<ProductVideoCodec>,
     private val advertiseController: Boolean = false,
     override val localManagedPolicy: InternetManagedPolicy = InternetManagedPolicy.UNMANAGED,
+    private val advertiseAudio: Boolean = false,
     private val monotonicNanos: () -> Long = System::nanoTime,
 ) : ProtocolV1ProductCodec {
     override val offeredCapabilities: Set<Capability> =
         buildSet {
             addAll(OFFERED_CLIENT_CAPABILITIES)
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
+            if (advertiseAudio) add(Capability.CAPABILITY_AUDIO)
         }.filteredBy(localManagedPolicy)
 
     init {
@@ -622,6 +637,26 @@ internal class ProtobufProtocolV1ProductCodec(
         return envelope(messageId, sessionId, sessionEpoch).setFileTransferComplete(result).build().toByteArray()
     }
 
+    override fun encodeAudioConfigResult(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        config: AudioConfig,
+        accepted: Boolean,
+        rejectionReason: String,
+    ): ByteArray {
+        require(accepted || rejectionReason.isNotBlank()) { "Rejected audio configuration requires a reason" }
+        val result =
+            AudioConfigResult
+                .newBuilder()
+                .setStreamId(config.streamId)
+                .setConfigEpoch(config.configEpoch)
+                .setAccepted(accepted)
+                .setRejectionReason(rejectionReason.take(MAX_REASON_BYTES))
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setAudioConfigResult(result).build().toByteArray()
+    }
+
     override fun decodeControl(payload: ByteArray): DecodedProductControl {
         require(payload.size in 1..MAX_CONTROL_BYTES) { "Control envelope size is invalid" }
         val envelope = parseEnvelope(payload)
@@ -659,6 +694,7 @@ internal class ProtobufProtocolV1ProductCodec(
                     ProductControlMessage.SessionRejected(value.reasonCode, value.message, value.retryable)
                 }
                 Envelope.PayloadCase.VIDEO_CONFIG -> ProductControlMessage.VideoConfiguration(envelope.videoConfig.toProduct())
+                Envelope.PayloadCase.AUDIO_CONFIG -> ProductControlMessage.AudioConfiguration(envelope.audioConfig)
                 Envelope.PayloadCase.PONG -> ProductControlMessage.Pong(envelope.pong.sequence)
                 Envelope.PayloadCase.INPUT_ACK -> {
                     val value = envelope.inputAck
@@ -842,6 +878,7 @@ internal class ProtobufProtocolV1ProductCodec(
                 when (capability) {
                     Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
                     Capability.CAPABILITY_FILE_TRANSFER -> policy.effectiveFileTransferAllowed
+                    Capability.CAPABILITY_AUDIO -> policy.audioAllowed
                     else -> true
                 }
             }

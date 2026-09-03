@@ -101,6 +101,13 @@ final class InternetProductSession: EncodedFrameSink {
         let timer: DispatchSourceTimer
     }
 
+    private enum AudioConfigurationState: Equatable {
+        case idle
+        case awaitingResult(streamID: UInt64, configEpoch: UInt64)
+        case streaming(streamID: UInt64, configEpoch: UInt64)
+        case disabled(reason: String)
+    }
+
     var onStateChanged: ((InternetProductSessionState) -> Void)?
     var onError: ((InternetProductSessionError) -> Void)?
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
@@ -131,6 +138,7 @@ final class InternetProductSession: EncodedFrameSink {
         InternetAdaptiveRequestToken,
         InternetProductVideoConfiguration
     ) -> Void)?
+    var audioCapture: InternetAudioCapture?
     var onAudioRecordReceived: ((Data) -> Void)?
     var onBulkRecordReceived: ((Data) -> Void)?
     var onClipboardOfferReceived: ((ClipboardOfferMetadata) -> Void)?
@@ -178,6 +186,9 @@ final class InternetProductSession: EncodedFrameSink {
     private var clipboardCore: ClipboardCore?
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var baseNegotiatedCapabilities: Set<VSCapability> = []
+    private var peerSupportsAudio = false
+    private var audioNegotiated = false
+    private var audioConfigurationState: AudioConfigurationState = .idle
     private var stylusSequenceState = StylusSequenceState()
     private var adaptiveRequestSequence = InternetAdaptiveRequestSequence()
     private var pendingAdaptiveRequest: InternetAdaptiveRequestToken?
@@ -261,6 +272,7 @@ final class InternetProductSession: EncodedFrameSink {
             _ = advanceSessionGeneration()
             terminalProtocolFailureGeneration = nil
             resetQueuedWork(generation: sessionGeneration, limits: nil)
+            stopAudioCapture(reason: "session_close")
             stopHeartbeat()
             stopNegotiationDeadline()
             let retiredTransport = transport
@@ -273,6 +285,9 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylusExtended = false
             peerSupportsController = false
             resetFileTransferNegotiationState(reasonCode: "session_deactivated")
+            peerSupportsAudio = false
+            audioNegotiated = false
+            audioConfigurationState = .idle
             transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetProductNegotiationState()
@@ -295,6 +310,7 @@ final class InternetProductSession: EncodedFrameSink {
             _ = advanceSessionGeneration()
             terminalProtocolFailureGeneration = nil
             resetQueuedWork(generation: sessionGeneration, limits: nil)
+            stopAudioCapture(reason: "session_revoke")
             stopHeartbeat()
             stopNegotiationDeadline()
             let retiredTransport = transport
@@ -306,6 +322,9 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylusExtended = false
             peerSupportsController = false
             resetFileTransferNegotiationState(reasonCode: "session_deactivated")
+            peerSupportsAudio = false
+            audioNegotiated = false
+            audioConfigurationState = .idle
             transportRecoveryResumeState = nil
             _ = stylusSequenceState.consumeReset()
             resetProductNegotiationState()
@@ -676,6 +695,9 @@ final class InternetProductSession: EncodedFrameSink {
     private func startFreshSession(_ configuration: InternetProductSessionConfiguration) throws {
         stopHeartbeat()
         stopNegotiationDeadline()
+        if case .streaming = audioConfigurationState {
+            stopAudioCapture(reason: "fresh_session_start")
+        }
         terminalProtocolFailureGeneration = nil
         let retiredTransport = transport
         guard advanceSessionGeneration() else {
@@ -721,6 +743,9 @@ final class InternetProductSession: EncodedFrameSink {
             controllerAvailable: configuration.controllerAvailable,
             managedPolicy: configuration.managedPolicy,
             fileTransferPolicy: configuration.fileTransferPolicy,
+            audioAvailable: configuration.managedPolicy.audioAllowed
+                && configuration.audioCaptureAvailable
+                && audioCapture?.canAdvertiseCapture == true,
             limits: configuration.limits
         )
         let transport = WebRTCInternetTransport(
@@ -741,12 +766,15 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylusExtended = false
         peerSupportsController = false
         resetFileTransferNegotiationState(reasonCode: "session_deactivated")
-        incomingFileTransferManager = makeIncomingFileTransferManager(
-            configuration: configuration
-        )
+        peerSupportsAudio = false
+        audioNegotiated = false
+        audioConfigurationState = .idle
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetProductNegotiationState(localPolicy: configuration.managedPolicy)
+        incomingFileTransferManager = makeIncomingFileTransferManager(
+            configuration: configuration
+        )
         resetAdaptiveVideoState()
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
@@ -869,7 +897,10 @@ final class InternetProductSession: EncodedFrameSink {
             beginTransportRecovery(attempt: attempt, generation: generation)
         case .failed(let reason): fail(.securityFailure(reason))
         case .closed:
-            if state != .revoked { setState(.closed) }
+            if state != .revoked {
+                stopAudioCapture(reason: "transport_closed")
+                setState(.closed)
+            }
         }
     }
 
@@ -910,6 +941,9 @@ final class InternetProductSession: EncodedFrameSink {
                 } else {
                     clipboardCore = nil
                 }
+                peerSupportsAudio = codec.audioAvailable
+                    && hello.capabilities.contains(.audio)
+                audioNegotiated = peerSupportsAudio
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
@@ -918,7 +952,8 @@ final class InternetProductSession: EncodedFrameSink {
                     peerSupportsStylusExtended: peerSupportsStylusExtended,
                     peerSupportsController: peerSupportsController,
                     peerSupportsFileTransfer: peerSupportsFileTransfer,
-                    peerSupportsManagedConfiguration: peerSupportsManagedConfiguration
+                    peerSupportsManagedConfiguration: peerSupportsManagedConfiguration,
+                    peerSupportsAudio: peerSupportsAudio
                 ))
                 if peerSupportsManagedConfiguration {
                     try sendControl(codec.managedPolicyStatus(
@@ -968,6 +1003,8 @@ final class InternetProductSession: EncodedFrameSink {
                         "waiting for the authoritative selected ICE candidate path"
                     )
                 }
+                let shouldStartAudioNegotiation = committedVideoConfiguration == nil
+                    && pendingRuntimeVideoConfiguration == nil
                 setState(.streaming(path))
                 stopNegotiationDeadline()
                 startHeartbeat()
@@ -986,6 +1023,18 @@ final class InternetProductSession: EncodedFrameSink {
                     || queuedAdaptiveProfile != nil {
                     resumeQueuedAdaptiveWork(generation: generation)
                 }
+                if shouldStartAudioNegotiation, var currentCodec = self.codec {
+                    try beginAudioConfigurationIfNeeded(codec: &currentCodec)
+                    self.codec = currentCodec
+                }
+
+            case .audioConfigResult(let result) where isStreaming || state == .awaitingVideoConfiguration:
+                try handleAudioConfigurationResult(
+                    result,
+                    generation: generation,
+                    codec: &codec
+                )
+                self.codec = codec
 
             case .ping(let ping):
                 try sendControl(codec.pong(
@@ -1119,6 +1168,7 @@ final class InternetProductSession: EncodedFrameSink {
                 case .fileTransferCancel: payloadName = "FileTransferCancel"
                 case .fileTransferComplete: payloadName = "FileTransferComplete"
                 case .managedPolicyStatus: payloadName = "ManagedPolicyStatus"
+                case .audioConfigResult: payloadName = "AudioConfigResult"
                 case .disconnectNotice: payloadName = "DisconnectNotice"
                 case nil: payloadName = "empty payload"
                 default: payloadName = "unsupported payload"
@@ -1488,19 +1538,25 @@ final class InternetProductSession: EncodedFrameSink {
         deferredRotationDegrees = nil
     }
 
-    private func resetProductNegotiationState(localPolicy: ManagedPolicy = .unmanaged) {
+    private func resetProductNegotiationState(
+        localPolicy: ManagedPolicy = .unmanaged,
+        reasonCode: String = "session_deactivated"
+    ) {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         peerSupportsController = false
         peerSupportsClipboard = false
-        peerSupportsManagedConfiguration = false
+        resetFileTransferNegotiationState(reasonCode: reasonCode)
         remoteManagedClipboardAllowed = true
         managedPolicyResolver = ManagedPolicyResolver(localPolicy: localPolicy)
         clipboardCore?.reset()
         clipboardCore = nil
         negotiatedCapabilities = []
         baseNegotiatedCapabilities = []
+        peerSupportsAudio = false
+        audioNegotiated = false
+        audioConfigurationState = .idle
     }
 
     private func policyFilteredCapabilities(
@@ -1510,6 +1566,7 @@ final class InternetProductSession: EncodedFrameSink {
         var filtered = capabilities
         if !policy.clipboardAllowed { filtered.remove(.clipboard) }
         if !policy.fileTransferAllowed { filtered.remove(.fileTransfer) }
+        if !policy.audioAllowed { filtered.remove(.audio) }
         return filtered
     }
 
@@ -2113,6 +2170,161 @@ final class InternetProductSession: EncodedFrameSink {
             && codec?.remoteManagedPolicy.fileTransferAllowed == true
     }
 
+    private func beginAudioConfigurationIfNeeded(
+        codec: inout InternetProductProtocolCodec
+    ) throws {
+        guard audioNegotiated,
+              case .idle = audioConfigurationState else { return }
+        let config = try codec.audioConfiguration()
+        audioConfigurationState = .awaitingResult(
+            streamID: config.streamID,
+            configEpoch: config.configEpoch
+        )
+        do {
+            try sendControl(try codec.audioConfigurationControl())
+        } catch {
+            audioConfigurationState = .idle
+            throw error
+        }
+    }
+
+    private func handleAudioConfigurationResult(
+        _ result: VSAudioConfigResult,
+        generation: UInt64,
+        codec: inout InternetProductProtocolCodec
+    ) throws {
+        guard audioNegotiated else {
+            throw InternetProductProtocolError.missingCapability(.audio)
+        }
+        guard case .awaitingResult(let streamID, let configEpoch) = audioConfigurationState else { return }
+        guard result.streamID == streamID,
+              result.configEpoch == configEpoch else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "AudioConfigResult does not match the pending audio configuration."
+            )
+        }
+        guard result.accepted else {
+            let reason = result.rejectionReason.isEmpty
+                ? "audio_config_rejected"
+                : result.rejectionReason
+            audioConfigurationState = .disabled(reason: reason)
+            stopAudioCapture(reason: reason)
+            return
+        }
+        let config = try codec.audioConfiguration()
+        guard config.streamID == result.streamID,
+              config.configEpoch == result.configEpoch else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "AudioConfigResult referenced a stale audio configuration."
+            )
+        }
+        guard let audioCapture else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "Audio was negotiated without a capture adapter."
+            )
+        }
+        guard startAudioCapture(
+            audioCapture,
+            config: config,
+            sessionEpoch: codec.sessionEpoch,
+            generation: generation
+        ) else { return }
+        audioConfigurationState = .streaming(
+            streamID: result.streamID,
+            configEpoch: result.configEpoch
+        )
+    }
+
+    private func restartAudioCaptureIfNeeded(
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) throws {
+        guard audioNegotiated, case .streaming = audioConfigurationState else { return }
+        guard let audioCapture else {
+            disableAudioCapture(reason: "audio_capture_unavailable")
+            return
+        }
+        _ = startAudioCapture(
+            audioCapture,
+            config: try codec.audioConfiguration(),
+            sessionEpoch: codec.sessionEpoch,
+            generation: generation
+        )
+    }
+
+    private func recoverAudioAfterTransportReconnect(
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) throws {
+        guard audioNegotiated else { return }
+        switch audioConfigurationState {
+        case .streaming:
+            try restartAudioCaptureIfNeeded(codec: &codec, generation: generation)
+        case .awaitingResult(let streamID, let configEpoch):
+            let config = try codec.audioConfiguration()
+            guard config.streamID == streamID, config.configEpoch == configEpoch else {
+                throw InternetProductProtocolError.unexpectedMessage(
+                    "Pending audio configuration no longer matches the product codec."
+                )
+            }
+            try sendControl(try codec.audioConfigurationControl())
+        case .idle, .disabled:
+            break
+        }
+    }
+
+    private func startAudioCapture(
+        _ audioCapture: InternetAudioCapture,
+        config: VSAudioConfig,
+        sessionEpoch: UInt64,
+        generation: UInt64
+    ) -> Bool {
+        let sessionReference = WeakInternetProductSessionReference(self)
+        do {
+            try audioCapture.start(
+                config: config,
+                sessionEpoch: sessionEpoch,
+                onPacket: { [sessionReference] packet in
+                    sessionReference.value?.sendAudioPacket(packet, generation: generation)
+                },
+                onError: { [sessionReference] error in
+                    sessionReference.value?.queue.async { [sessionReference] in
+                        guard let session = sessionReference.value,
+                              session.sessionGeneration == generation else { return }
+                        session.disableAudioCapture(reason: error.localizedDescription)
+                    }
+                }
+            )
+            return true
+        } catch {
+            disableAudioCapture(reason: "audio_capture_start_failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func disableAudioCapture(reason: String) {
+        audioConfigurationState = .disabled(reason: reason)
+        stopAudioCapture(reason: reason)
+    }
+
+    private func sendAudioPacket(_ packet: Data, generation: UInt64) {
+        queue.async { [weak self] in
+            guard let self, self.sessionGeneration == generation, self.isStreaming else { return }
+            guard case .streaming = self.audioConfigurationState else { return }
+            _ = self.sendAdvancedRecord(
+                packet,
+                binding: .audio(
+                    displayID: "internet-display",
+                    streamID: InternetProductAudioConfiguration.streamID
+                )
+            )
+        }
+    }
+
+    private func stopAudioCapture(reason: String) {
+        audioCapture?.stop(reason: reason)
+    }
+
     private func sendControl(_ payload: Data) throws {
         guard let transport else {
             throw InternetProductSessionError.invalidConfiguration(
@@ -2440,6 +2652,7 @@ final class InternetProductSession: EncodedFrameSink {
         }
         stopHeartbeat()
         stopNegotiationDeadline()
+        stopAudioCapture(reason: "fresh_session_recovery")
         guard advanceSessionGeneration() else {
             fail(.securityFailure("Internet product session generation was exhausted."))
             return
@@ -2456,6 +2669,9 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylusExtended = false
         peerSupportsController = false
         resetFileTransferNegotiationState(reasonCode: "session_deactivated")
+        peerSupportsAudio = false
+        audioNegotiated = false
+        audioConfigurationState = .idle
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetProductNegotiationState()
@@ -2478,6 +2694,7 @@ final class InternetProductSession: EncodedFrameSink {
               attempt > 0 else { return }
         stopHeartbeat()
         stopNegotiationDeadline()
+        stopAudioCapture(reason: "transport_recovery")
         if transportRecoveryResumeState == nil {
             transportRecoveryResumeState = state
         }
@@ -2492,6 +2709,19 @@ final class InternetProductSession: EncodedFrameSink {
             setState(.streaming(path))
             startHeartbeat()
             onKeyframeRequired?()
+            if var codec {
+                do {
+                    try recoverAudioAfterTransportReconnect(
+                        codec: &codec,
+                        generation: sessionGeneration
+                    )
+                    self.codec = codec
+                } catch let error as InternetProductProtocolError {
+                    fail(.protocolFailure(error))
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
+            }
         case .awaitingVideoConfiguration:
             setState(.awaitingVideoConfiguration)
         case .connecting, .authenticating, .recovering, nil:
@@ -2737,6 +2967,7 @@ final class InternetProductSession: EncodedFrameSink {
         if case .failed = state { return }
         stopHeartbeat()
         stopNegotiationDeadline()
+        stopAudioCapture(reason: "session_failure")
         terminalProtocolFailureGeneration = nil
         _ = advanceSessionGeneration()
         resetQueuedWork(generation: sessionGeneration, limits: nil)
@@ -2749,6 +2980,9 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylusExtended = false
         peerSupportsController = false
         resetFileTransferNegotiationState(reasonCode: "session_deactivated")
+        peerSupportsAudio = false
+        audioNegotiated = false
+        audioConfigurationState = .idle
         transportRecoveryResumeState = nil
         _ = stylusSequenceState.consumeReset()
         resetProductNegotiationState()
@@ -2835,5 +3069,13 @@ extension InternetProductSession: ClipboardServer {
     @discardableResult
     func sendClipboardRequest(_ request: VSClipboardRequest) -> Bool {
         requestClipboardContent(changeID: request.changeID)
+    }
+}
+
+private final class WeakInternetProductSessionReference: @unchecked Sendable {
+    weak var value: InternetProductSession?
+
+    init(_ value: InternetProductSession) {
+        self.value = value
     }
 }

@@ -268,10 +268,283 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertFalse(harness.engine.didClose)
     }
 
+    func testInternetAudioNegotiationStartsCaptureAndSendsPcmPackets() throws {
+        let audioCapture = ProductFakeInternetAudioCapture()
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsAudio: true))
+
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        let negotiation = try harness.sentControlEnvelopes().prefix(3)
+        guard case .hostHello = negotiation[0].payload,
+              case .sessionAccepted = negotiation[1].payload,
+              case .videoConfig = negotiation[2].payload else {
+            return XCTFail("Audio-capable negotiation must keep host hello, session accepted, video config order")
+        }
+        XCTAssertTrue(negotiation[0].hostHello.capabilities.contains(.audio))
+        XCTAssertTrue(negotiation[1].sessionAccepted.negotiatedCapabilities.contains(.audio))
+
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        XCTAssertTrue(harness.waitForSentControlCount(4))
+        let audioConfigEnvelope = try XCTUnwrap(harness.sentControlEnvelopes().last)
+        guard case .audioConfig(let config) = audioConfigEnvelope.payload else {
+            return XCTFail("Initial video ACK must trigger AudioConfig when audio was negotiated")
+        }
+        XCTAssertEqual(config.streamID, InternetProductAudioConfiguration.streamID)
+        XCTAssertEqual(config.configEpoch, InternetProductAudioConfiguration.configEpoch)
+        XCTAssertEqual(config.codec, .pcmS16Le)
+        XCTAssertEqual(config.sampleRateHz, InternetProductAudioConfiguration.sampleRateHz)
+        XCTAssertEqual(config.channelCount, InternetProductAudioConfiguration.channelCount)
+        XCTAssertEqual(config.framesPerPacket, InternetProductAudioConfiguration.framesPerPacket)
+        XCTAssertEqual(audioCapture.startCount, 0)
+
+        harness.receiveControl(harness.audioConfigResult(messageID: 3, accepted: true))
+
+        XCTAssertTrue(audioCapture.waitForStartCount(1))
+        XCTAssertEqual(audioCapture.lastStartedConfig, config)
+        XCTAssertEqual(audioCapture.lastStartedSessionEpoch, harness.session.currentSessionEpoch)
+
+        let payload = Data([0x10, 0x11, 0x12, 0x13])
+        let frame = try Self.audioFrame(
+            streamID: config.streamID,
+            sessionEpoch: harness.session.currentSessionEpoch,
+            configEpoch: config.configEpoch,
+            sequence: 7,
+            frameCount: 1,
+            payload: payload
+        )
+        audioCapture.emitPacket(frame)
+
+        XCTAssertTrue(harness.waitForSentAudioCount(1))
+        let sent = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .audio })
+        XCTAssertEqual(sent.payload, frame)
+        let decoded = try MacHostAudioPacketCodec.decode(sent.payload)
+        XCTAssertEqual(decoded.header.streamID, InternetProductAudioConfiguration.streamID)
+        XCTAssertEqual(decoded.header.sessionEpoch, harness.session.currentSessionEpoch)
+        XCTAssertEqual(decoded.header.configEpoch, InternetProductAudioConfiguration.configEpoch)
+        XCTAssertEqual(decoded.header.sequence, 7)
+        XCTAssertEqual(decoded.payload, payload)
+    }
+
+    func testInternetAudioConfigRejectionDisablesCaptureWithoutFailingVideo() throws {
+        let audioCapture = ProductFakeInternetAudioCapture()
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsAudio: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertTrue(harness.waitForSentControlCount(4))
+
+        harness.receiveControl(harness.audioConfigResult(
+            messageID: 3,
+            accepted: false,
+            reason: "audio_track_start_failed"
+        ))
+
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+        XCTAssertEqual(audioCapture.startCount, 0)
+        XCTAssertEqual(audioCapture.stopReasons, ["audio_track_start_failed"])
+
+        audioCapture.emitPacket(Data([0x01, 0x02]))
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertTrue(harness.engine.sentPlaintext.filter { $0.channel == .audio }.isEmpty)
+    }
+
+    func testInternetAudioCaptureStartFailureDisablesAudioWithoutFailingVideo() throws {
+        let audioCapture = ProductFakeInternetAudioCapture(
+            startError: InternetProductAudioTestError.captureStartFailed
+        )
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsAudio: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertTrue(harness.waitForSentControlCount(4))
+
+        harness.receiveControl(harness.audioConfigResult(messageID: 3, accepted: true))
+
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+        XCTAssertEqual(audioCapture.startCount, 1)
+        XCTAssertEqual(
+            audioCapture.stopReasons,
+            ["audio_capture_start_failed: capture_start_failed"]
+        )
+
+        audioCapture.emitPacket(Data([0x31, 0x32]))
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertTrue(harness.engine.sentPlaintext.filter { $0.channel == .audio }.isEmpty)
+    }
+
+    func testInternetAudioCaptureRuntimeErrorDisablesAudioWithoutFailingVideo() throws {
+        let audioCapture = ProductFakeInternetAudioCapture()
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try reachStreamingWithAudio(harness, audioCapture: audioCapture)
+
+        audioCapture.emitError(InternetProductAudioTestError.captureRuntimeFailed)
+
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+        XCTAssertEqual(audioCapture.stopReasons, ["capture_runtime_failed"])
+
+        audioCapture.emitPacket(Data([0x41, 0x42]))
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertTrue(harness.engine.sentPlaintext.filter { $0.channel == .audio }.isEmpty)
+    }
+
+    func testInternetAudioCapabilityRequiresPolicyAvailabilityAndCaptureAdapter() throws {
+        let cases: [(String, ProductFakeInternetAudioCapture?, Bool, ManagedPolicy)] = [
+            ("missing adapter", nil, true, .unmanaged),
+            ("capture unavailable", ProductFakeInternetAudioCapture(), false, .unmanaged),
+            ("capture cannot advertise", ProductFakeInternetAudioCapture(canAdvertiseCapture: false), true, .unmanaged),
+            ("policy denied", ProductFakeInternetAudioCapture(), true, .failClosed),
+        ]
+
+        for (name, audioCapture, audioCaptureAvailable, managedPolicy) in cases {
+            let harness = try Harness(
+                audioCapture: audioCapture,
+                audioCaptureAvailable: audioCaptureAvailable,
+                managedPolicy: managedPolicy
+            )
+            try harness.session.start(configuration: harness.configuration)
+            harness.engine.emitConnection(.connected(path: .direct))
+            harness.receiveControl(harness.clientHello(messageID: 1, supportsAudio: true))
+
+            XCTAssertTrue(harness.waitForSentControlCount(3), name)
+            let controls = try harness.sentControlEnvelopes().prefix(3)
+            XCTAssertFalse(controls[0].hostHello.capabilities.contains(.audio), name)
+            XCTAssertFalse(controls[1].sessionAccepted.negotiatedCapabilities.contains(.audio), name)
+
+            harness.receiveControl(harness.videoAccepted(messageID: 2))
+            Thread.sleep(forTimeInterval: 0.05)
+            XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct), name)
+            XCTAssertFalse(harness.engine.didClose, name)
+            XCTAssertEqual(audioCapture?.startCount ?? 0, 0, name)
+            XCTAssertEqual(
+                harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+                3,
+                "No AudioConfig should be sent when host audio is not available: \(name)"
+            )
+        }
+    }
+
+    func testInternetAudioContinuesAcrossCompletedVideoReconfiguration() throws {
+        let audioCapture = ProductFakeInternetAudioCapture()
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try reachStreamingWithAudio(harness, audioCapture: audioCapture)
+        XCTAssertEqual(audioCapture.startCount, 1)
+
+        try harness.session.updateRotation(90)
+        harness.receiveControl(harness.videoAccepted(messageID: 4, configEpoch: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertEqual(audioCapture.startCount, 1)
+
+        let frame = try Self.audioFrame(
+            streamID: InternetProductAudioConfiguration.streamID,
+            sessionEpoch: harness.session.currentSessionEpoch,
+            configEpoch: InternetProductAudioConfiguration.configEpoch,
+            sequence: 9,
+            frameCount: 1,
+            payload: Data([0x21, 0x22])
+        )
+        audioCapture.emitPacket(frame)
+
+        XCTAssertTrue(harness.waitForSentAudioCount(1))
+        let sent = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .audio })
+        XCTAssertEqual(sent.payload, frame)
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testInternetAudioCaptureRestartsAfterTransportRecovery() throws {
+        let audioCapture = ProductFakeInternetAudioCapture()
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try reachStreamingWithAudio(harness, audioCapture: audioCapture)
+        XCTAssertEqual(audioCapture.startCount, 1)
+
+        harness.engine.emitConnection(.disconnected)
+
+        XCTAssertTrue(audioCapture.waitForStopCount(1))
+        XCTAssertTrue(harness.waitForState(.recovering(attempt: 1)))
+        XCTAssertEqual(audioCapture.stopReasons, ["transport_recovery"])
+        XCTAssertEqual(harness.engine.restartICECount, 1)
+
+        harness.engine.emitConnection(.connected(path: .direct))
+
+        XCTAssertTrue(audioCapture.waitForStartCount(2))
+        XCTAssertTrue(harness.waitForState(.streaming(.direct)))
+        XCTAssertEqual(audioCapture.lastStartedConfig?.streamID, InternetProductAudioConfiguration.streamID)
+        XCTAssertEqual(audioCapture.lastStartedConfig?.configEpoch, InternetProductAudioConfiguration.configEpoch)
+        XCTAssertEqual(audioCapture.lastStartedSessionEpoch, harness.session.currentSessionEpoch)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            4,
+            "Transport recovery should restart the existing capture instead of sending a second AudioConfig."
+        )
+    }
+
+    func testInternetAudioConfigurationIsResentAfterRecoveryWhileAwaitingResult() throws {
+        let audioCapture = ProductFakeInternetAudioCapture()
+        let harness = try Harness(audioCapture: audioCapture, audioCaptureAvailable: true)
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsAudio: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertTrue(harness.waitForSentControlCount(4))
+
+        let initialAudioConfigEnvelope = try XCTUnwrap(harness.sentControlEnvelopes().last)
+        guard case .audioConfig(let initialConfig) = initialAudioConfigEnvelope.payload else {
+            return XCTFail("Initial video ACK must send AudioConfig before recovery")
+        }
+        XCTAssertEqual(audioCapture.startCount, 0)
+
+        harness.engine.emitConnection(.disconnected)
+
+        XCTAssertTrue(audioCapture.waitForStopCount(1))
+        XCTAssertTrue(harness.waitForState(.recovering(attempt: 1)))
+        XCTAssertEqual(audioCapture.stopReasons, ["transport_recovery"])
+
+        harness.engine.emitConnection(.connected(path: .direct))
+
+        XCTAssertTrue(harness.waitForState(.streaming(.direct)))
+        XCTAssertTrue(harness.waitForSentControlCount(5))
+        let resentAudioConfigEnvelope = try XCTUnwrap(harness.sentControlEnvelopes().last)
+        guard case .audioConfig(let resentConfig) = resentAudioConfigEnvelope.payload else {
+            return XCTFail("Transport recovery must resend pending AudioConfig")
+        }
+        XCTAssertEqual(resentConfig, initialConfig)
+        XCTAssertEqual(audioCapture.startCount, 0)
+
+        harness.receiveControl(harness.audioConfigResult(messageID: 3, accepted: true))
+
+        XCTAssertTrue(audioCapture.waitForStartCount(1))
+        XCTAssertEqual(audioCapture.lastStartedConfig, initialConfig)
+        XCTAssertEqual(audioCapture.lastStartedSessionEpoch, harness.session.currentSessionEpoch)
+
+        harness.receiveControl(harness.audioConfigResult(messageID: 4, accepted: true))
+
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertEqual(audioCapture.startCount, 1)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
     func testClipboardLocalInvalidInputReturnsFalseWithoutClosingSession() throws {
         let harness = try Harness()
         try reachStreaming(harness, supportsClipboard: true)
-        let controlCount = harness.sentControlEnvelopes().count
+        let controlCount = try harness.sentControlEnvelopes().count
 
         XCTAssertFalse(harness.session.shareClipboard(text: ""))
         XCTAssertFalse(harness.session.shareClipboard(
@@ -280,7 +553,7 @@ final class InternetProductSessionTests: XCTestCase {
 
         XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
         XCTAssertFalse(harness.engine.didClose)
-        XCTAssertEqual(harness.sentControlEnvelopes().count, controlCount)
+        XCTAssertEqual(try harness.sentControlEnvelopes().count, controlCount)
     }
 
     func testClipboardOfferRequestSolicitedAndDirectContentCallbacks() throws {
@@ -956,7 +1229,7 @@ final class InternetProductSessionTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
         let transferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
-        XCTAssertTrue(harness.sentControlEnvelopes(engineIndex: 1).contains { envelope in
+        XCTAssertTrue(try harness.sentControlEnvelopes(engineIndex: 1).contains { envelope in
             guard case .fileOffer(let offer) = envelope.payload else { return false }
             return offer.transferID == transferID
         })
@@ -2317,6 +2590,41 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
     }
 
+    private func reachStreamingWithAudio(
+        _ harness: Harness,
+        audioCapture: ProductFakeInternetAudioCapture
+    ) throws {
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsAudio: true))
+        harness.receiveControl(harness.videoAccepted(
+            messageID: 2,
+            configEpoch: harness.configuration.video.configEpoch
+        ))
+        XCTAssertTrue(harness.waitForSentControlCount(4))
+        harness.receiveControl(harness.audioConfigResult(messageID: 3, accepted: true))
+        XCTAssertTrue(audioCapture.waitForStartCount(1))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    private static func audioFrame(
+        streamID: UInt64,
+        sessionEpoch: UInt64,
+        configEpoch: UInt64,
+        sequence: UInt64,
+        frameCount: UInt32,
+        payload: Data
+    ) throws -> Data {
+        var header = VSAudioPacketHeader()
+        header.streamID = streamID
+        header.sessionEpoch = sessionEpoch
+        header.configEpoch = configEpoch
+        header.sequence = sequence
+        header.frameCount = frameCount
+        header.payloadLength = UInt32(payload.count)
+        return try MacHostAudioPacketCodec.encode(header: header, payload: payload)
+    }
+
     func testInitialVideoAckWithWrongEpochFailsClosed() throws {
         let harness = try Harness()
         try harness.session.start(configuration: harness.configuration)
@@ -3333,7 +3641,10 @@ private final class Harness {
         controllerAvailable: Bool = false,
         fileTransferPolicy: ProtocolV1FileTransferPolicy = .default,
         fileTransferApprovalTimeoutMilliseconds: UInt32 = 60_000,
-        fileTransferProgressTimeoutMilliseconds: UInt32 = 30_000
+        fileTransferProgressTimeoutMilliseconds: UInt32 = 30_000,
+        audioCapture: ProductFakeInternetAudioCapture? = nil,
+        audioCaptureAvailable: Bool = false,
+        managedPolicy: ManagedPolicy = .unmanaged
     ) throws {
         let configurationCount = max(1, engineCount)
         let configurations = (0..<configurationCount).map { index in
@@ -3345,7 +3656,9 @@ private final class Harness {
                 controllerAvailable: controllerAvailable,
                 fileTransferPolicy: fileTransferPolicy,
                 fileTransferApprovalTimeoutMilliseconds: fileTransferApprovalTimeoutMilliseconds,
-                fileTransferProgressTimeoutMilliseconds: fileTransferProgressTimeoutMilliseconds
+                fileTransferProgressTimeoutMilliseconds: fileTransferProgressTimeoutMilliseconds,
+                audioCaptureAvailable: audioCaptureAvailable,
+                managedPolicy: managedPolicy
             )
         }
         let pairs = try configurations.map { configuration in
@@ -3391,6 +3704,7 @@ private final class Harness {
             revocationHandler: { _, _ in nil },
             freshSessionRecoveryPolicy: freshSessionRecoveryPolicy
         )
+        session.audioCapture = audioCapture
     }
 
     private static func makeConfiguration(
@@ -3401,7 +3715,9 @@ private final class Harness {
         controllerAvailable: Bool,
         fileTransferPolicy: ProtocolV1FileTransferPolicy,
         fileTransferApprovalTimeoutMilliseconds: UInt32,
-        fileTransferProgressTimeoutMilliseconds: UInt32
+        fileTransferProgressTimeoutMilliseconds: UInt32,
+        audioCaptureAvailable: Bool,
+        managedPolicy: ManagedPolicy
     ) -> InternetProductSessionConfiguration {
         InternetProductSessionConfiguration(
             transport: WebRTCTransportConfiguration(
@@ -3432,9 +3748,11 @@ private final class Harness {
                 configEpoch: videoConfigEpoch
             ),
             controllerAvailable: controllerAvailable,
+            managedPolicy: managedPolicy,
             fileTransferPolicy: fileTransferPolicy,
             fileTransferApprovalTimeoutMilliseconds: fileTransferApprovalTimeoutMilliseconds,
             fileTransferProgressTimeoutMilliseconds: fileTransferProgressTimeoutMilliseconds,
+            audioCaptureAvailable: audioCaptureAvailable,
             heartbeatIntervalMilliseconds: 10_000,
             heartbeatTimeoutMilliseconds: 20_000,
             negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
@@ -3466,6 +3784,7 @@ private final class Harness {
         supportsClipboard: Bool = false,
         supportsFileTransfer: Bool = false,
         supportsManagedConfiguration: Bool = false,
+        supportsAudio: Bool = false,
         sessionEpoch: UInt64 = 1
     ) -> VSEnvelope {
         var range = VSProtocolRange()
@@ -3482,6 +3801,7 @@ private final class Harness {
         if supportsClipboard { hello.capabilities.append(.clipboard) }
         if supportsFileTransfer { hello.capabilities.append(.fileTransfer) }
         if supportsManagedConfiguration { hello.capabilities.append(.managedConfiguration) }
+        if supportsAudio { hello.capabilities.append(.audio) }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]
@@ -3497,6 +3817,23 @@ private final class Harness {
         hello.resourceLimits = limits
         var envelope = baseEnvelope(messageID: messageID, sessionEpoch: sessionEpoch)
         envelope.clientHello = hello
+        return envelope
+    }
+
+    func audioConfigResult(
+        messageID: UInt64,
+        accepted: Bool,
+        streamID: UInt64 = InternetProductAudioConfiguration.streamID,
+        configEpoch: UInt64 = InternetProductAudioConfiguration.configEpoch,
+        reason: String = ""
+    ) -> VSEnvelope {
+        var result = VSAudioConfigResult()
+        result.streamID = streamID
+        result.configEpoch = configEpoch
+        result.accepted = accepted
+        result.rejectionReason = reason
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.audioConfigResult = result
         return envelope
     }
 
@@ -3772,11 +4109,10 @@ private final class Harness {
         }
     }
 
-    func sentControlEnvelopes(engineIndex: Int = 0) -> [VSEnvelope] {
-        selectedEngine(engineIndex).sentPlaintext.compactMap { item in
-            guard item.channel == .control else { return nil }
-            return try? VSEnvelope(serializedBytes: item.payload)
-        }
+    func sentControlEnvelopes(engineIndex: Int = 0) throws -> [VSEnvelope] {
+        try selectedEngine(engineIndex).sentPlaintext
+            .filter { $0.channel == .control }
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
     }
 
     func waitForClipboardOffer(engineIndex: Int = 0) -> Bool {
@@ -3784,7 +4120,7 @@ private final class Harness {
     }
 
     func sentClipboardOfferEnvelope(engineIndex: Int = 0) -> VSEnvelope? {
-        sentControlEnvelopes(engineIndex: engineIndex).first { envelope in
+        (try? sentControlEnvelopes(engineIndex: engineIndex))?.first { envelope in
             if case .clipboardOffer = envelope.payload { return true }
             return false
         }
@@ -3792,10 +4128,10 @@ private final class Harness {
 
     func waitForClipboardRequest(changeID: Data, engineIndex: Int = 0) -> Bool {
         waitUntil {
-            self.sentControlEnvelopes(engineIndex: engineIndex).contains { envelope in
+            (try? self.sentControlEnvelopes(engineIndex: engineIndex).contains { envelope in
                 guard case .clipboardRequest(let request) = envelope.payload else { return false }
                 return request.changeID == changeID
-            }
+            }) == true
         }
     }
 
@@ -3804,7 +4140,7 @@ private final class Harness {
     }
 
     func sentClipboardContentEnvelope(engineIndex: Int = 0) -> VSEnvelope? {
-        sentControlEnvelopes(engineIndex: engineIndex).first { envelope in
+        (try? sentControlEnvelopes(engineIndex: engineIndex))?.first { envelope in
             if case .clipboardContent = envelope.payload { return true }
             return false
         }
@@ -3815,6 +4151,13 @@ private final class Harness {
             if case .failed = self.session.snapshotState() { return true }
             return false
         }
+    }
+
+    func waitForState(
+        _ expected: InternetProductSessionState,
+        timeout: TimeInterval = 1
+    ) -> Bool {
+        waitUntil(timeout: timeout) { self.session.snapshotState() == expected }
     }
 
     func waitForSentMediaCount(_ count: Int) -> Bool {
@@ -4119,6 +4462,97 @@ private func makeTemporaryFile(name: String, contents: Data) throws -> URL {
     let fileURL = directory.appendingPathComponent(name, isDirectory: false)
     try contents.write(to: fileURL)
     return fileURL
+}
+
+private enum InternetProductAudioTestError: Error, LocalizedError {
+    case captureStartFailed
+    case captureRuntimeFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .captureStartFailed:
+            return "capture_start_failed"
+        case .captureRuntimeFailed:
+            return "capture_runtime_failed"
+        }
+    }
+}
+
+private final class ProductFakeInternetAudioCapture: InternetAudioCapture, @unchecked Sendable {
+    private let lock = NSLock()
+    private let advertised: Bool
+    private let startError: Error?
+    private var onPacketHandler: (@Sendable (Data) -> Void)?
+    private var onErrorHandler: (@Sendable (Error) -> Void)?
+    private var starts: [(config: VSAudioConfig, sessionEpoch: UInt64)] = []
+    private var stops: [String] = []
+
+    init(canAdvertiseCapture: Bool = true, startError: Error? = nil) {
+        advertised = canAdvertiseCapture
+        self.startError = startError
+    }
+
+    var canAdvertiseCapture: Bool { advertised }
+    var startCount: Int { withCaptureLock { starts.count } }
+    var stopReasons: [String] { withCaptureLock { stops } }
+    var lastStartedConfig: VSAudioConfig? { withCaptureLock { starts.last?.config } }
+    var lastStartedSessionEpoch: UInt64? { withCaptureLock { starts.last?.sessionEpoch } }
+
+    func start(
+        config: VSAudioConfig,
+        sessionEpoch: UInt64,
+        onPacket: @escaping @Sendable (Data) -> Void,
+        onError: @escaping @Sendable (Error) -> Void
+    ) throws {
+        withCaptureLock {
+            starts.append((config, sessionEpoch))
+            onPacketHandler = onPacket
+            onErrorHandler = onError
+        }
+        if let startError { throw startError }
+    }
+
+    func stop(reason: String) {
+        withCaptureLock {
+            stops.append(reason)
+            onPacketHandler = nil
+            onErrorHandler = nil
+        }
+    }
+
+    func emitPacket(_ packet: Data) {
+        let handler = withCaptureLock { onPacketHandler }
+        handler?(packet)
+    }
+
+    func emitError(_ error: Error) {
+        let handler = withCaptureLock { onErrorHandler }
+        handler?(error)
+    }
+
+    func waitForStartCount(_ count: Int, timeout: TimeInterval = 1) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if startCount >= count { return true }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        return startCount >= count
+    }
+
+    func waitForStopCount(_ count: Int, timeout: TimeInterval = 1) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if stopReasons.count >= count { return true }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        return stopReasons.count >= count
+    }
+
+    private func withCaptureLock<T>(_ operation: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return operation()
+    }
 }
 
 private func waitForMonotonicDuration(_ duration: TimeInterval) {
