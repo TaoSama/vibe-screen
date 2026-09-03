@@ -1,6 +1,12 @@
 {
   "blocked_state_ids": [
     "accessibility_denied_or_limited",
+    "android-clipboard-policy-deny",
+    "android-codec-negotiation-failed",
+    "android-file-transfer-policy-deny",
+    "android-internet-webrtc-disconnected",
+    "android-managed-policy-deny",
+    "android-unsupported-peripheral-kind",
     "host_screen_recording_denied",
     "lan_route_unavailable",
     "tcp_54321_unavailable"
@@ -25,6 +31,12 @@
   "kind": "phase1_actionable_error_current_base_gate",
   "reasons": [
     "blocked: accessibility_denied_or_limited",
+    "blocked: android-clipboard-policy-deny",
+    "blocked: android-codec-negotiation-failed",
+    "blocked: android-file-transfer-policy-deny",
+    "blocked: android-internet-webrtc-disconnected",
+    "blocked: android-managed-policy-deny",
+    "blocked: android-unsupported-peripheral-kind",
     "blocked: host_screen_recording_denied",
     "blocked: lan_route_unavailable",
     "blocked: tcp_54321_unavailable",
@@ -39,7 +51,13 @@
     "adb_reverse_missing",
     "usb_disconnected",
     "lan_route_unavailable",
-    "stale_epoch_or_session_errors"
+    "stale_epoch_or_session_errors",
+    "android-internet-webrtc-disconnected",
+    "android-codec-negotiation-failed",
+    "android-managed-policy-deny",
+    "android-unsupported-peripheral-kind",
+    "android-file-transfer-policy-deny",
+    "android-clipboard-policy-deny"
   ],
   "run_id": "2026-08-30-p0110-current-base-owner",
   "schema_version": "vibescreen.evidence/v1",
