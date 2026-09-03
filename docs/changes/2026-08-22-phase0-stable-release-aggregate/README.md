@@ -1,8 +1,8 @@
 # Phase 0 stable-release aggregate owner
 
 Date: 2026-08-29
-Last refreshed: 2026-09-02
-Base: origin/main at b81bd4ab93f3d2816c76d6395f061aa42b15d272
+Last refreshed: 2026-09-03
+Base: origin/main at 5a0f18f01b1847a283554d651a8b1062b04b0712
 Status: open. This document does not close Phase 0 and does not change product
 status.
 
@@ -39,7 +39,7 @@ stable-release claim is allowed:
 | Controller runtime acceptance | blocked | #217, #220, #270 | Latest current-base readiness remains blocked: no physical controller, identity-signed Host with approved virtual HID entitlement, Mac-side response, and neutral disconnect release are recorded in one pass bundle. |
 | Android/macOS clipboard product E2E | blocked | none | Local P0110 `ClipboardManager` smoke and offline/protocol checks pass, but Host readiness is blocked and no retained bidirectional Android `ClipboardManager` <-> macOS `NSPasteboard` product transfer evidence exists with exact endpoints, explicit user action, Protocol v1 session ownership, verified session epoch/origin, 16-byte change IDs, SHA-256 equality, bounded byte length, and distinct final markers. |
 | Android/macOS file-transfer product E2E | blocked | none | Android control-bar instrumentation, focused JVM tests, and protocol fixtures pass, but Host readiness is blocked and no retained bidirectional product transfer evidence proves file offer/request/content packets, receiver approval, remote write, SHA-256 equality, session epoch, and cancel cleanup. |
-| Phase 0 module ownership extraction | open | #218, #259, #372; #211 and #221 superseded by #259 | The current-base module ownership manifest closes Android TCP transport, several `StreamClient` owner slices, protocol/session ownership, file-transfer/WakeHost product ownership, and renderer ownership. Decoder and UI/product session boundaries remain partial. WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence remain separate fail-closed gates. |
+| Phase 0 module ownership extraction | pass | #218, #259, #372; #211 and #221 superseded by #259 | The current-base module ownership manifest closes Android TCP transport, `StreamClient` owner slices, protocol/session ownership, file-transfer/WakeHost product ownership, renderer ownership, decoder ownership, and UI/product session boundaries. WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence remain separate fail-closed gates and still block Phase 0 stable release. |
 
 Trusted LAN current-worktree stream/reconnect, login-item/headless reboot, and
 Developer ID notarized distribution remain important release-readiness items,
@@ -67,10 +67,9 @@ make phase0-module-ownership-gate
 
 The command writes
 .build/evidence/phase0-module-ownership/phase0-module-ownership-summary.json.
-It exits zero while the manifest is well formed, even when the summary verdict
-is blocked. Use `PHASE0_MODULE_OWNERSHIP_REQUIRE_PASS=1` only before attempting
-to close the module ownership sub-gate; current main must fail that stricter
-mode until every required boundary is closed with focused evidence.
+It exits zero while the manifest is well formed. Use
+`PHASE0_MODULE_OWNERSHIP_REQUIRE_PASS=1` when checking that every required
+module ownership boundary remains closed with focused evidence.
 
 Run the release-claim gate before changing README to any completed/stable Phase
 0 wording:

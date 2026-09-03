@@ -75,6 +75,20 @@ class DecoderOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `video decoder does not own resolution reconfiguration`() {
+        val decoder = source(VIDEO_DECODER)
+
+        assertFalse(
+            "VideoDecoder must not recreate MediaCodec for resolution changes; route reconfiguration through AndroidDecoderConfigurationCoordinator",
+            decoder.contains("fun updateResolution("),
+        )
+        assertFalse(
+            "VideoDecoder must not request resolution-change keyframes from an internal reconfiguration path",
+            decoder.contains("resolution changed"),
+        )
+    }
+
+    @Test
     fun `local and internet codec failure actions do not record structural failures directly`() {
         val activity = source(MAIN_ACTIVITY)
 
@@ -131,6 +145,8 @@ class DecoderOwnershipBoundaryContractTest {
             "app/src/test/java/dev/telemachus/display/AndroidDecoderLifecycleOwnerTest.kt"
         const val MAIN_ACTIVITY =
             "app/src/main/java/dev/telemachus/display/MainActivity.kt"
+        const val VIDEO_DECODER =
+            "app/src/main/java/dev/telemachus/display/VideoDecoder.kt"
 
         val FORBIDDEN_OWNER_REFERENCES =
             listOf(

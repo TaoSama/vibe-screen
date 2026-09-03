@@ -100,25 +100,6 @@ class VideoDecoder(
         setupDecoder()
     }
 
-    fun updateResolution(
-        width: Int,
-        height: Int,
-    ) {
-        if (width != currentWidth || height != currentHeight) {
-            currentWidth = width
-            currentHeight = height
-            release()
-            startupGate = createStartupGate()
-            setupDecoder()
-            when (val result = startupGate.commit { true }) {
-                DecoderStartupCommitResult.Committed -> Unit
-                DecoderStartupCommitResult.NotCommitted -> error("Decoder recreation was discarded")
-                is DecoderStartupCommitResult.Failed -> error(result.reason)
-            }
-            requestKeyframe("resolution changed", force = true)
-        }
-    }
-
     fun updateScaleMode(scaleMode: VideoScaleMode) {
         currentScaleMode = scaleMode
         try {

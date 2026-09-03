@@ -332,17 +332,20 @@ hands renderer viewport/layout/render-target readiness/admission to
 `RendererOwner` and `RendererViewportState`; Android decoder admission,
 lifecycle callbacks, active decoder gating, renderer presentation,
 local/Internet frame routing, and Internet decoder-presentation rollback now
-have focused owner coverage. `MainActivity` remains the Android platform adapter
-that creates `VideoDecoder` with the active `Surface` and applies UI side
-effects. This is still not completion of Phase 0 module ownership: the remaining
-decoder platform-adapter/device-evidence slice and UI/product session boundaries
-are still being extracted.
-WakeHost real
+have focused owner coverage. `ProductSessionCoordinator` owns Internet
+generation/freshness, clipboard, file-transfer, and host-action product state.
+The Phase 0 module ownership sub-gate now passes on current main; remaining
+Phase 0 blockers are runtime/product evidence gates such as Host RSS, native
+pointer HID, controller runtime, clipboard, and file-transfer E2E.
+`MainActivity` remains the Android platform adapter that creates `VideoDecoder`
+with the active `Surface` and applies UI side
+effects. This does not complete Phase 0 stable release because runtime/product
+acceptance remains tracked by the separate aggregate gates above. WakeHost real
 sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence
 remain separate fail-closed gates.
 The current-base owner state is tracked by
-`make phase0-module-ownership-gate`, which must remain blocked until every
-required boundary is closed with focused evidence.
+`make phase0-module-ownership-gate`; the stable-release aggregate still remains
+blocked until the runtime/product evidence gates pass.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.

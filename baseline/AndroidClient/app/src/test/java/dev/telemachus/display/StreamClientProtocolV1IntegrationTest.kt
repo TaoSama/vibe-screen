@@ -529,7 +529,9 @@ class StreamClientProtocolV1IntegrationTest {
                         val result = readEnvelope(peer)
                         assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
                         assertTrue(result.videoConfigResult.accepted)
-                        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
+                        val keyframeRequest = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, keyframeRequest.payloadCase)
+                        assertEquals("decoder_configuration_committed", keyframeRequest.requestKeyframe.reasonCode)
                         peer.soTimeout = 200
                         assertNull(readEnvelopeOrNull(peer))
 

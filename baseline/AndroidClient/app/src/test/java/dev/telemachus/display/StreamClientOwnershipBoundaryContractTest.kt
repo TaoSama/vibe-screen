@@ -123,7 +123,7 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
-    fun `phase zero docs identify current base ownership gate without closing open module work`() {
+    fun `phase zero docs identify closed module ownership gate without closing release blockers`() {
         val readme = repositorySource(REPOSITORY_README)
         val audit = repositorySource(OPEN_GATES_AUDIT)
         val phaseZeroTech = repositorySource(PHASE_ZERO_TECH)
@@ -145,16 +145,25 @@ class StreamClientOwnershipBoundaryContractTest {
         }
         assertTrue(phaseZeroStatus.contains("`MainActivity` hands renderer viewport/layout/render-target readiness/admission"))
         assertTrue(phaseZeroStatus.contains("`RendererOwner` and `RendererViewportState`"))
-        assertTrue(readme.normalizedWhitespace().contains("remaining decoder platform-adapter/device-evidence slice"))
+        assertTrue(phaseZeroStatus.contains("`ProductSessionCoordinator` owns Internet generation/freshness"))
+        assertTrue(phaseZeroStatus.contains("module ownership sub-gate now passes"))
+        assertFalse(phaseZeroStatus.contains("remaining module ownership"))
+        assertFalse(phaseZeroStatus.contains("remaining decoder platform-adapter/device-evidence slice"))
         assertTrue(readme.normalizedWhitespace().contains("WakeHost real sleeping-Mac"))
         assertTrue(audit.contains("#259"))
         assertTrue(audit.contains("current-base owner gate"))
         assertTrue(audit.contains("Module extraction draft PRs [#211]"))
         assertTrue(audit.contains("superseded by [#259]"))
-        assertTrue(audit.contains("Remaining module gaps are the decoder platform-adapter/device-evidence"))
+        assertTrue(audit.contains("The module ownership sub-gate is closed"))
+        assertTrue(audit.contains("runtime/product release evidence remains tracked by separate aggregate gates"))
+        assertFalse(audit.contains("remaining module ownership"))
+        assertFalse(audit.contains("Remaining module gaps are the decoder platform-adapter/device-evidence"))
+        assertFalse(audit.contains("README.md:288-293"))
         assertTrue(phaseZeroTechStatus.contains("The WakeHost product"))
         assertTrue(phaseZeroTechStatus.contains("owner now owns request lifecycle"))
         assertTrue(phaseZeroTechStatus.contains("sleeping-Mac wake, router/NIC WOL behavior"))
+        assertTrue(phaseZeroTechStatus.contains("Decoder ownership and UI/product session ownership now have focused"))
+        assertFalse(phaseZeroTechStatus.contains("before Phase 0 module ownership can be called complete"))
         assertTrue(phaseZeroTechStatus.contains("`FileTransferProductOwner` owns the Android file-transfer product"))
         assertTrue(phaseZeroTechStatus.contains("`RendererOwner` gates viewport/layout, render-target"))
         assertTrue(phaseZeroTechStatus.contains("render-target readiness actions, and local/Internet frame admission"))
