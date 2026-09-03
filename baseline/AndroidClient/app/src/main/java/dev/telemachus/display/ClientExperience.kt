@@ -479,6 +479,12 @@ internal object DisplayCapsulePolicy {
         EXTERNAL,
     }
 
+    data class TextState(
+        val activeLabel: String,
+        val pendingLabel: String?,
+        val switching: Boolean,
+    )
+
     /** Display selection is offered only when negotiated and there is a choice. */
     fun isSelectable(
         displaySelection: Boolean,
@@ -502,6 +508,17 @@ internal object DisplayCapsulePolicy {
         displays: List<StreamDisplayOption>,
         pendingId: String?,
     ): StreamDisplayOption? = pendingId?.let { id -> displays.firstOrNull { it.id == id } }
+
+    fun textState(
+        displays: List<StreamDisplayOption>,
+        selectedId: String,
+        pendingId: String?,
+    ): TextState =
+        TextState(
+            activeLabel = capsuleLabel(displays, selectedId),
+            pendingLabel = pendingOption(displays, pendingId)?.name?.trim()?.takeIf { it.isNotEmpty() },
+            switching = pendingId != null,
+        )
 
     /**
      * Label shown on the capsule. Falls back to the primary/first display when

@@ -57,6 +57,34 @@ class DisplayCapsulePolicyTest {
     }
 
     @Test
+    fun `text state preserves pending switch even when target display is missing`() {
+        val state =
+            DisplayCapsulePolicy.textState(
+                displays = listOf(option("a", "Built-in", primary = true)),
+                selectedId = "a",
+                pendingId = "removed",
+            )
+
+        assertEquals("Built-in", state.activeLabel)
+        assertNull(state.pendingLabel)
+        assertTrue(state.switching)
+    }
+
+    @Test
+    fun `text state includes trimmed pending display name when known`() {
+        val state =
+            DisplayCapsulePolicy.textState(
+                displays = listOf(option("a", "Built-in"), option("b", "  Sidecar  ")),
+                selectedId = "a",
+                pendingId = "b",
+            )
+
+        assertEquals("Built-in", state.activeLabel)
+        assertEquals("Sidecar", state.pendingLabel)
+        assertTrue(state.switching)
+    }
+
+    @Test
     fun `label prefers selected display`() {
         val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
         assertEquals("Sidecar", DisplayCapsulePolicy.capsuleLabel(displays, "b"))
