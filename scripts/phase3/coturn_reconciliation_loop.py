@@ -13,6 +13,7 @@ public Internet release evidence.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import math
@@ -35,6 +36,7 @@ MAX_STATE_BYTES = 512 * 1024
 STATE_FIELDS = frozenset({"schema", "source_id", "updated_at", "missing_allocations"})
 MISSING_FIELDS = frozenset({"first_seen_at", "last_seen_at", "consecutive_count"})
 IDENTIFIER = coturn_reconcile.IDENTIFIER
+LOCAL_DISCONNECT_EXECUTOR = Path(__file__).resolve().with_name("coturn_disconnect_executor.py")
 
 
 class LoopError(RuntimeError):
@@ -294,16 +296,52 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-attempts", type=int, default=0)
     parser.add_argument("--retry-backoff-seconds", type=_non_negative_float, default=1.0)
     parser.add_argument(
+        "--disconnect-state",
+        type=Path,
+        help="active-allocation state JSON consumed by the bundled local disconnect executor",
+    )
+    parser.add_argument(
+        "--disconnect-audit-log",
+        type=Path,
+        help="append-only JSONL audit path for the bundled local disconnect executor",
+    )
+    parser.add_argument(
         "--disconnect-command",
         nargs=argparse.REMAINDER,
         default=(),
-        help="external idempotent active-allocation disconnect executor; use after all other flags",
+        help="custom external idempotent active-allocation disconnect executor; use after all other flags",
     )
     return parser
 
 
+def build_local_disconnect_command(disconnect_state: Path, audit_log: Path) -> tuple[str, ...]:
+    if not LOCAL_DISCONNECT_EXECUTOR.exists():
+        _fail(f"local disconnect executor is missing: {LOCAL_DISCONNECT_EXECUTOR}")
+    return (
+        sys.executable,
+        str(LOCAL_DISCONNECT_EXECUTOR),
+        "--state",
+        str(disconnect_state),
+        "--audit-log",
+        str(audit_log),
+    )
+
+
 def settings_from_args(args: argparse.Namespace) -> coturn_reconcile.Settings:
-    return coturn_reconcile.settings_from_args(args)
+    if args.disconnect_state is not None:
+        if args.disconnect_command:
+            _fail("--disconnect-state cannot be combined with --disconnect-command")
+        if args.disconnect_audit_log is None:
+            _fail("--disconnect-state requires --disconnect-audit-log")
+    elif args.disconnect_audit_log is not None:
+        _fail("--disconnect-audit-log requires --disconnect-state")
+    settings = coturn_reconcile.settings_from_args(args)
+    if args.disconnect_state is None:
+        return settings
+    return replace(
+        settings,
+        disconnect_command=build_local_disconnect_command(args.disconnect_state, args.disconnect_audit_log),
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
