@@ -3871,8 +3871,8 @@ class MainActivity : AppCompatActivity() {
             initialHeight = height,
             mime = mime,
             initialScaleMode = scaleMode,
-            onFrameDecoded = { decoder, buffer ->
-                callbacks.onFrameDecoded(decoder, buffer, onFrameDecoded)
+            onFrameDecoded = { _, buffer ->
+                callbacks.onFrameDecoded(buffer, onFrameDecoded)
             },
             onKeyframeRequired = { decoder, force, reason ->
                 callbacks.onKeyframeRequired(decoder, force, reason) { f, r -> onActiveKeyframeRequired(f, r) }

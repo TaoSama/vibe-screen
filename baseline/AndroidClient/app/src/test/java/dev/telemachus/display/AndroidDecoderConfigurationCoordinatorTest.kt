@@ -350,7 +350,44 @@ class AndroidDecoderConfigurationCoordinatorTest {
         assertEquals(1, codecFailureCalls)
     }
 
-    private class Fixture {
+    @Test
+    fun frameDecodedCallbackReleasesBufferWithoutActiveDecoderGateOrUiDispatch() {
+        var ownerThreadPosts = 0
+        val fixture = Fixture(
+            postCommit = { action ->
+                ownerThreadPosts++
+                action()
+            },
+        )
+        val decoder = Any()
+        lateinit var callbacks: DecoderCreationCallbacks<Any>
+
+        fixture.coordinator.configureLocal(
+            request =
+                fixture.localRequest(
+                    publishConfigurationCommit = { publish -> publish() },
+                ),
+            createDecoder = { cb ->
+                callbacks = cb
+                decoder
+            },
+        ) { result ->
+            assertEquals(AndroidDecoderConfigurationResult.Configured, result)
+        }
+
+        fixture.decoderPresentationOwner.detachExpectedDecoderForQuarantine(decoder)
+        val frame = byteArrayOf(1, 2, 3)
+        var releasedFrame: ByteArray? = null
+
+        callbacks.onFrameDecoded(frame) { releasedFrame = it }
+
+        assertSame(frame, releasedFrame)
+        assertEquals(1, ownerThreadPosts)
+    }
+
+    private class Fixture(
+        postCommit: (() -> Unit) -> Unit = { it() },
+    ) {
         val decoderPresentationOwner =
             DecoderPresentationOwner<Any, TestInternetConfiguration>(
                 rendererOwner = RendererOwner(),
@@ -362,7 +399,7 @@ class AndroidDecoderConfigurationCoordinatorTest {
             AndroidDecoderConfigurationCoordinator<Any, TestInternetConfiguration>(
                 decoderPresentationOwner = decoderPresentationOwner,
                 executeDecoderWork = { it() },
-                postCommit = { it() },
+                postCommit = postCommit,
                 updateScaleMode = { },
                 commitStartup = { _, publish ->
                     if (publish()) DecoderStartupCommitResult.Committed

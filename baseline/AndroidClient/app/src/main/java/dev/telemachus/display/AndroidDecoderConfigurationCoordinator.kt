@@ -406,15 +406,10 @@ internal class DecoderCreationCallbacks<Decoder : Any> internal constructor(
     private val postActiveCallback: (() -> Unit) -> Unit,
 ) {
     fun onFrameDecoded(
-        decoder: Decoder,
         frame: ByteArray,
         action: (ByteArray) -> Unit,
     ) {
-        postActiveCallback {
-            lifecycleOwner.runIfActive(decoder, attempt) {
-                action(frame)
-            }
-        }
+        action(frame)
     }
 
     fun onKeyframeRequired(

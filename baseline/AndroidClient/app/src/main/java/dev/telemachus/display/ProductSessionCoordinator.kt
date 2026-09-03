@@ -439,14 +439,14 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         clearUiState()
     }
 
-    private fun clearUiState(): Any? {
+    private fun clearUiState() {
         displayState = DisplayState()
         hostActions = emptyList()
         clipboardRuntimeAvailable = false
         fileTransferRuntimeAvailable = false
         hostActionsRuntimeAvailable = false
         clipboardApprovalState.clear()
-        return clearFileTransferWorkflow()
+        clearFileTransferWorkflow()
     }
 
     private fun resetClipboardWorkflow() {
