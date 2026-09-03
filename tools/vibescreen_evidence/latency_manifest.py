@@ -317,6 +317,18 @@ def _validate_profile(kind: str, transport: str, gate_profile: str) -> None:
         )
 
 
+def _validate_recording_timeline(
+    frame_count: int, duration_ms: float, frame_rate_fps: float
+) -> None:
+    expected_duration_ms = frame_count * 1000.0 / frame_rate_fps
+    allowed_delta_ms = max(1000.0 / frame_rate_fps, 1.0)
+    if abs(duration_ms - expected_duration_ms) > allowed_delta_ms:
+        raise LatencyManifestError(
+            "recording.duration_ms must match recording.frame_count and "
+            "camera.frame_rate_fps within one frame"
+        )
+
+
 def build_latency_manifest(
     *,
     evidence_dir: Path,
@@ -430,6 +442,14 @@ def build_latency_manifest(
             raise LatencyManifestError("recording.operator is required for external-camera")
         raw_video_relative = _package_relative_path(raw_video, evidence_dir, "raw video")
         raw_video_path = evidence_dir.resolve() / raw_video_relative
+        frame_count = _positive_integer(recording_frame_count, "recording.frame_count")
+        duration_ms = _positive_finite_number(
+            recording_duration_ms, "recording.duration_ms"
+        )
+        frame_rate_fps = _required_finite_number(
+            camera.get("frame_rate_fps"), "camera.frame_rate_fps"
+        )
+        _validate_recording_timeline(frame_count, duration_ms, frame_rate_fps)
         manifest["camera"] = camera
         manifest["recording"] = {
             "raw_video": raw_video_relative,
@@ -439,12 +459,8 @@ def build_latency_manifest(
             "sha256": _sha256(raw_video_path),
             "container": _external_camera_container(raw_video_path),
             "file_size_bytes": raw_video_path.stat().st_size,
-            "frame_count": _positive_integer(
-                recording_frame_count, "recording.frame_count"
-            ),
-            "duration_ms": _positive_finite_number(
-                recording_duration_ms, "recording.duration_ms"
-            ),
+            "frame_count": frame_count,
+            "duration_ms": duration_ms,
         }
     else:
         if synchronization is None:

@@ -210,6 +210,49 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     **metadata,
                 )
 
+    def test_rejects_inconsistent_recording_timeline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root)
+            metadata = _base_metadata()
+            metadata["recording_duration_ms"] = 3000
+
+            with self.assertRaisesRegex(
+                LatencyManifestError,
+                "recording.duration_ms must match recording.frame_count and camera.frame_rate_fps",
+            ):
+                build_latency_manifest(
+                    evidence_dir=root,
+                    raw_video=raw_video,
+                    samples=samples,
+                    gate_artifact=artifact,
+                    gate_artifact_description="USB active-stream proof.",
+                    **metadata,
+                )
+
+    def test_rejects_missing_direct_camera_frame_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root)
+            metadata = _base_metadata()
+            camera = dict(metadata["camera"])
+            del camera["frame_rate_fps"]
+            metadata["camera"] = camera
+
+            with self.assertRaisesRegex(
+                LatencyManifestError, "camera.frame_rate_fps is required"
+            ):
+                build_latency_manifest(
+                    evidence_dir=root,
+                    raw_video=raw_video,
+                    samples=samples,
+                    gate_artifact=artifact,
+                    gate_artifact_description="USB active-stream proof.",
+                    **metadata,
+                )
+
     def test_requires_profile_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
