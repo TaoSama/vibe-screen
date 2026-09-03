@@ -45,6 +45,14 @@ packet emission only after authorization, retained packet capture or router log,
 observed Mac wake, post-wake Host availability, and negative rejected attempts
 for unpaired, expired, replayed, and wrong-signature requests.
 
+The offline security evidence must now identify focused coverage for clock-skew
+accept/reject boundaries, active/previous/unknown key rotation behavior,
+host/device identity binding, replay-store eviction, SecureOn password raw-byte
+format validation, and rejected non-allowlisted broadcast targets. These are
+necessary but not sufficient: hardware WOL remains blocked until the real sleep,
+network delivery, packet capture, wake observation, and post-wake availability
+artifacts are retained.
+
 When any blocking hardware/network prerequisite is absent, the gate must report
 `blocked` and both `can_close_wake_host_current_base_gate` and
 `can_claim_sleeping_mac_wake` must remain false.

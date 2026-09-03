@@ -9,6 +9,19 @@ session device identity, reject nonce replay, validate broadcast targets, and
 send a standard UDP Wake-on-LAN magic packet only after policy admits the
 request.
 
+The macOS authorizer now accepts an explicit rotation window of active plus
+previous shared secrets, keyed by `keyID`, and can be constructed with expected
+host/device IDs when the caller has the negotiated identities available. The
+HMAC transcript still includes `hostID`, `deviceID`, `requestID`, target MAC,
+SecureOn bytes, timestamps, nonce, and key ID, so rebinding a signed request to
+another device invalidates the proof. Replay tracking remains key-scoped and
+bounded, with oldest-entry eviction to avoid unbounded memory growth.
+
+The WOL packet builder accepts SecureOn only as absent or exactly six raw bytes.
+The UDP target parser admits only `255.255.255.255` and RFC1918 directed
+broadcasts ending in `.255`; unicast, public directed broadcast, octal-like
+IPv4 spellings, malformed addresses, and port zero fail closed before any send.
+
 The earlier #199 draft attempted a stricter pairing-bound ECDSA proof and
 session-id/epoch transcript. It was based on an older mainline and conflicts
 with #225 across the same WakeHost runtime files. For the current-base evidence
@@ -30,6 +43,12 @@ summary is intentionally conservative:
 - `insufficient` when the run has the blocking hardware prerequisites but still
   lacks non-blocking evidence such as retained logs or negative security cases.
 - `fail` when a real or claimed WakeHost attempt failed.
+
+`paired_authorization_offline_passed` is intentionally backed by more specific
+required observations: clock-skew boundaries, key rotation, cross-device identity
+binding, replay-store eviction, SecureOn format validation, and broadcast-target
+allowlist negative coverage. Supplying those booleans still cannot close the
+gate without the real sleeping-Mac and network WOL artifacts.
 
 The Makefile target writes a default blocked summary when no observations file
 is supplied:
