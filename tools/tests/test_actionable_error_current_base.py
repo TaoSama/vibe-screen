@@ -215,6 +215,36 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         self.assertIn("repository.baseline: must be a non-empty string", report["errors"])
         self.assertIn("repository.notes: must contain at least one note", report["errors"])
 
+    def test_runtime_rejects_schema_forbidden_extra_fields(self) -> None:
+        manifest = self.load_real_manifest()
+        repository = manifest["repository"]
+        device = manifest["device"]
+        states = manifest["states"]
+        assert isinstance(repository, dict)
+        assert isinstance(device, dict)
+        assert isinstance(states, list)
+        first_state = states[0]
+        assert isinstance(first_state, dict)
+        artifacts = first_state["artifacts"]
+        assert isinstance(artifacts, list)
+        first_artifact = artifacts[0]
+        assert isinstance(first_artifact, dict)
+
+        manifest["unexpected_top_level"] = True
+        repository["unexpected_repository_field"] = True
+        device["unexpected_device_field"] = True
+        first_state["unexpected_state_field"] = True
+        first_artifact["unexpected_artifact_field"] = True
+
+        report = evaluate(manifest, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn("manifest.unexpected_top_level: unexpected field", report["errors"])
+        self.assertIn("repository.unexpected_repository_field: unexpected field", report["errors"])
+        self.assertIn("device.unexpected_device_field: unexpected field", report["errors"])
+        self.assertIn("states[0].unexpected_state_field: unexpected field", report["errors"])
+        self.assertIn("states[0].artifacts[0].unexpected_artifact_field: unexpected field", report["errors"])
+
     def test_non_pass_state_cannot_close(self) -> None:
         manifest = self.load_real_manifest()
         states = manifest["states"]
@@ -372,6 +402,7 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertEqual(report["verdict"], "blocked")
+        self.assertEqual(report["source"]["manifest"], str(MANIFEST_PATH))
 
     def test_cli_without_allow_blocked_exits_nonzero_for_real_blocked_record(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

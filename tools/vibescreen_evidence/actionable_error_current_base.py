@@ -51,6 +51,39 @@ MANDATORY_MANIFEST_STATE_IDS = (
 REQUIRED_BLOCKED_UI_STATE_IDS = REQUIRED_ACTIONABLE_STATE_ID_SEQUENCE
 REQUIRED_STATE_IDS = MANDATORY_MANIFEST_STATE_IDS + REQUIRED_BLOCKED_UI_STATE_IDS
 VALID_STATUSES = frozenset(("pass", "blocked", "insufficient", "not_run"))
+ALLOWED_TOP_LEVEL_FIELDS = frozenset(
+    (
+        "schema_version",
+        "kind",
+        "run_id",
+        "created_at",
+        "evidence_boundary",
+        "can_close_readme_phase1_actionable_errors_gate",
+        "repository",
+        "device",
+        "states",
+        "notes",
+    )
+)
+ALLOWED_REPOSITORY_FIELDS = frozenset(
+    ("name", "branch", "collected_at_commit", "evaluated_at_commit", "baseline", "notes")
+)
+ALLOWED_DEVICE_FIELDS = frozenset(EXPECTED_DEVICE)
+ALLOWED_STATE_FIELDS = frozenset(
+    (
+        "id",
+        "status",
+        "classification",
+        "owner",
+        "observed_on_device",
+        "can_close_state",
+        "closure_requirements",
+        "blockers",
+        "notes",
+        "artifacts",
+    )
+)
+ALLOWED_ARTIFACT_FIELDS = frozenset(("path", "sha256", "kind", "description"))
 VALID_ARTIFACT_KINDS = frozenset(
     (
         "device_identity",
@@ -112,6 +145,17 @@ def _string_list(value: Any) -> list[str]:
     return [item for item in value if item.strip()]
 
 
+def _reject_unexpected_fields(
+    value: dict[str, Any],
+    *,
+    allowed: frozenset[str],
+    prefix: str,
+    errors: list[str],
+) -> None:
+    for field in sorted(set(value).difference(allowed)):
+        errors.append(f"{prefix}.{field}: unexpected field")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -138,6 +182,12 @@ def _artifact_path(repository_root: Path, raw_path: Any) -> Path | None:
 
 
 def _validate_top_level(manifest: dict[str, Any], errors: list[str]) -> None:
+    _reject_unexpected_fields(
+        manifest,
+        allowed=ALLOWED_TOP_LEVEL_FIELDS,
+        prefix="manifest",
+        errors=errors,
+    )
     if manifest.get("schema_version") != SCHEMA_VERSION:
         errors.append(f"schema_version: must be {SCHEMA_VERSION}")
     if manifest.get("kind") != MANIFEST_KIND:
@@ -158,6 +208,12 @@ def _validate_top_level(manifest: dict[str, Any], errors: list[str]) -> None:
     if not isinstance(repository, dict):
         errors.append("repository: must be an object")
     else:
+        _reject_unexpected_fields(
+            repository,
+            allowed=ALLOWED_REPOSITORY_FIELDS,
+            prefix="repository",
+            errors=errors,
+        )
         for field in (
             "name",
             "branch",
@@ -174,6 +230,12 @@ def _validate_top_level(manifest: dict[str, Any], errors: list[str]) -> None:
     if not isinstance(device, dict):
         errors.append("device: must be an object")
     else:
+        _reject_unexpected_fields(
+            device,
+            allowed=ALLOWED_DEVICE_FIELDS,
+            prefix="device",
+            errors=errors,
+        )
         for field, expected in EXPECTED_DEVICE.items():
             value = device.get(field)
             if not _non_empty_string(value):
@@ -228,6 +290,12 @@ def _validate_artifacts(
             errors.append(f"{prefix}: must be an object")
             continue
         artifact = artifact_value
+        _reject_unexpected_fields(
+            artifact,
+            allowed=ALLOWED_ARTIFACT_FIELDS,
+            prefix=prefix,
+            errors=errors,
+        )
         kind = artifact.get("kind")
         if kind not in VALID_ARTIFACT_KINDS:
             errors.append(
@@ -269,6 +337,12 @@ def _validate_state(
 ) -> dict[str, Any]:
     prefix = f"states[{index}]"
     state_id = state.get("id")
+    _reject_unexpected_fields(
+        state,
+        allowed=ALLOWED_STATE_FIELDS,
+        prefix=prefix,
+        errors=errors,
+    )
     if not _non_empty_string(state_id):
         errors.append(f"{prefix}.id: must be a non-empty string")
         state_id = f"<invalid-{index}>"
@@ -328,7 +402,12 @@ def _validate_state(
     }
 
 
-def evaluate(manifest: dict[str, Any], *, repository_root: Path) -> dict[str, Any]:
+def evaluate(
+    manifest: dict[str, Any],
+    *,
+    repository_root: Path,
+    source_manifest: Path | str | None = None,
+) -> dict[str, Any]:
     errors: list[str] = []
     _validate_top_level(manifest, errors)
     states_value = manifest.get("states")
@@ -407,7 +486,7 @@ def evaluate(manifest: dict[str, Any], *, repository_root: Path) -> dict[str, An
         "verdict": verdict,
         "run_id": manifest.get("run_id") if isinstance(manifest.get("run_id"), str) else None,
         "source": {
-            "manifest": str(manifest.get("source_manifest", "")),
+            "manifest": str(source_manifest or ""),
             "repository_name": repository.get("name", ""),
             "collected_at_commit": repository.get("collected_at_commit", ""),
             "evaluated_at_commit": repository.get("evaluated_at_commit", ""),
@@ -478,8 +557,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         manifest = load_manifest(args.manifest)
-        manifest["source_manifest"] = str(args.manifest)
-        report = evaluate(manifest, repository_root=args.repository_root)
+        report = evaluate(
+            manifest,
+            repository_root=args.repository_root,
+            source_manifest=args.manifest,
+        )
     except (ActionableErrorCurrentBaseError, OSError, TypeError, ValueError) as error:
         report = _failure_report(args.manifest, str(error))
     try:
