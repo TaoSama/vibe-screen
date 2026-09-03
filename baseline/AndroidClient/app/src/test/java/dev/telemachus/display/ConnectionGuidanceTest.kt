@@ -32,6 +32,7 @@ class ConnectionGuidanceTest {
             assertEquals(ConnectionFailureKind.USB_ROUTE_UNAVAILABLE, guidance.kind)
             assertEquals(expectedRecoveryResource, guidance.message.resourceId)
             assertEquals(text(R.string.connection_guidance_usb_route_unavailable_prefix), guidance.message.args[0])
+            assertEquals(54321, guidance.message.args[1])
             assertFalse(containsStringArg(guidance.message, "adb reverse"))
             assertFalse(containsStringArg(guidance.message, "tcp:54321"))
         }
@@ -294,6 +295,7 @@ class ConnectionGuidanceTest {
                 assertEquals("$transport ${failure.javaClass.simpleName}", expectedKind, guidance.kind)
                 assertEquals(expectedRecoveryResource, guidance.message.resourceId)
                 assertEquals(expectedPrefixResource, (guidance.message.args[0] as ConnectionGuidanceText).resourceId)
+                assertEquals(54321, guidance.message.args[1])
                 assertFalse(containsStringArg(guidance.message, "adb reverse"))
                 assertFalse(containsStringArg(guidance.message, "tcp:54321"))
             }
@@ -314,6 +316,8 @@ class ConnectionGuidanceTest {
         resources.forEach { name ->
             val text = strings.stringResource(name)
             assertTrue(text, text.contains("Mac app", ignoreCase = true))
+            assertTrue(text, text.contains("TCP %2\$d", ignoreCase = true))
+            assertTrue(text, text.contains("restart Vibe Screen on the Mac", ignoreCase = true))
             forbidden.forEach { fragment ->
                 assertFalse("$name must not expose $fragment", text.contains(fragment, ignoreCase = true))
             }
