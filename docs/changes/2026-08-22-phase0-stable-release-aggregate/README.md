@@ -2,14 +2,13 @@
 
 Date: 2026-08-29
 Last refreshed: 2026-09-03
-Base: origin/main at a40588663cf484f5acad16b8d9f222cbb19c8605
+Base: origin/main at daa111e1c23e9d4487f7a478454f9e3a847f25a1
 Status: open. This document does not close Phase 0 and does not change product
 status.
 Open PR input: `gh pr list --repo TaoSama/vibe-screen --state open --limit 200
 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url`
-returned only PR #531, this audit PR. It is not an owner for any remaining
-Phase 0 release gate, so there are no active external open PR owners at this
-refresh.
+returned no open PRs. PR #533 and PR #534 are merged, so there are no active
+external open PR owners at this refresh.
 
 ## Purpose
 
@@ -104,12 +103,12 @@ make phase0-stable-release-gate \
 ```
 
 The 2026-09-03 manifest refresh binds the aggregate source guard to
-`a40588663cf484f5acad16b8d9f222cbb19c8605`, records the current open-PR
-snapshot containing only PR #531, keeps all required gate `owner_prs` lists
-empty, and keeps the Android/macOS clipboard and file-transfer product E2E
-gates as required Phase 0 gates that are blocked. The last retained summary
-bundle remains under `evidence/2026-08-28-current-main-gate-blocked/` and should
-be regenerated after this manifest change is merged.
+`daa111e1c23e9d4487f7a478454f9e3a847f25a1`, records the current open-PR
+snapshot as empty, keeps all required gate `owner_prs` lists empty, and keeps
+the Android/macOS clipboard and file-transfer product E2E gates as required
+Phase 0 gates that are blocked. The last retained summary bundle remains under
+`evidence/2026-08-28-current-main-gate-blocked/` and should be regenerated
+after this manifest change is merged.
 
 ## Update rules
 
