@@ -355,8 +355,10 @@ class MainActivityTerminalGuidanceContractTest {
         val removedFloatingSettingsBinding = "binding." + "settings" + "Button"
 
         assertTrue(
-            "Disconnected state should always expose the inline connection settings button",
-            compactEntryPolicy.contains("binding.connectionSettingsButton.visibility=View.VISIBLE"),
+            "Disconnected state should keep settings visible in the active mode main flow",
+            compactEntryPolicy.contains("valinternetMode=prefs.connectionMode==ConnectionMode.INTERNET") &&
+                compactEntryPolicy.contains("binding.connectionSettingsButton.visibility=if(internetMode)View.GONEelseView.VISIBLE") &&
+                compactEntryPolicy.contains("binding.internetConnectionSettingsButton.visibility=if(internetMode)View.VISIBLEelseView.GONE"),
         )
         assertFalse(
             "Disconnected settings entry policy should no longer branch through resource flags",
@@ -432,6 +434,7 @@ class MainActivityTerminalGuidanceContractTest {
     fun inlineDisconnectedSettingsButtonExposesAccessibleClickTarget() {
         val source = mainActivityLayoutSource()
         val inlineSettingsButton = extractXmlElement(source, "android:id=\"@+id/connectionSettingsButton\"")
+        val internetSettingsButton = extractXmlElement(source, "android:id=\"@+id/internetConnectionSettingsButton\"")
         val removedFloatingSettingsId = "android:id=\"@+id/" + "settings" + "Button\""
 
         assertFalse(
@@ -449,6 +452,129 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "The inline settings button should keep the expected settings icon",
             inlineSettingsButton.contains("app:icon=\"@drawable/ic_settings\""),
+        )
+        assertTrue(
+            "Internet needs its own inline settings target before the legal footer",
+            internetSettingsButton.contains("android:contentDescription=\"@string/display_settings\"") &&
+                internetSettingsButton.contains("android:text=\"@string/display_settings\"") &&
+                internetSettingsButton.contains("app:icon=\"@drawable/ic_settings\""),
+        )
+        assertTrue(
+            "Internet settings must keep the 48dp touch target minimum while sharing the secondary action row",
+            internetSettingsButton.contains("android:minHeight=\"48dp\"") &&
+                internetSettingsButton.contains("android:layout_height=\"wrap_content\"") &&
+                internetSettingsButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
+    fun internetDisconnectedFlowKeepsStatusAndSecondaryActionsBeforeLegalFooter() {
+        val source = mainActivityLayoutSource()
+        val internetMode = source.substring(
+            source.indexOf("android:id=\"@+id/internetModeContent\""),
+            source.indexOf("<!-- ============= /INTERNET MODE CONTENT ============= -->"),
+        )
+        val profileIndex = internetMode.indexOf("android:id=\"@+id/internetProfileSummary\"")
+        val stateIndex = internetMode.indexOf("android:id=\"@+id/internetStateText\"")
+        val routeIndex = internetMode.indexOf("android:id=\"@+id/internetRouteToggleGroup\"")
+        val scanIndex = internetMode.indexOf("android:id=\"@+id/internetScanProfileButton\"")
+        val importIndex = internetMode.indexOf("android:id=\"@+id/internetImportProfileButton\"")
+        val connectIndex = internetMode.indexOf("android:id=\"@+id/internetConnectButton\"")
+        val settingsIndex = internetMode.indexOf("android:id=\"@+id/internetConnectionSettingsButton\"")
+        val revokeIndex = internetMode.indexOf("android:id=\"@+id/internetRevokeButton\"")
+        val errorIndex = internetMode.indexOf("android:id=\"@+id/internetErrorText\"")
+        val footerIndex = source.indexOf("android:id=\"@+id/connectionLegalFooter\"")
+        val internetModeIndex = source.indexOf("android:id=\"@+id/internetModeContent\"")
+
+        assertTrue("Internet profile summary should be present", profileIndex >= 0)
+        assertTrue("Internet state should be present", stateIndex >= 0)
+        assertTrue("Internet route policy should be present", routeIndex >= 0)
+        assertTrue("Internet scan/import actions should be present", scanIndex >= 0 && importIndex >= 0)
+        assertTrue("Internet connect action should be present", connectIndex >= 0)
+        assertTrue("Internet settings and revoke actions should be present", settingsIndex >= 0 && revokeIndex >= 0)
+        assertTrue("Internet error region should remain reachable after actions", errorIndex >= 0)
+        assertTrue(
+            "Internet status must appear before route and connect controls so idle/failed state is visible without scrolling past actions",
+            profileIndex < stateIndex && stateIndex < routeIndex && routeIndex < scanIndex &&
+                scanIndex < importIndex && importIndex < connectIndex && connectIndex < settingsIndex &&
+                settingsIndex < revokeIndex && revokeIndex < errorIndex,
+        )
+        assertTrue(
+            "Legal attribution belongs after the connection actions, not inside the Internet primary flow",
+            footerIndex > internetModeIndex,
+        )
+    }
+
+    @Test
+    fun internetSecondaryActionsShareCompactAccessibleRow() {
+        val source = mainActivityLayoutSource()
+        val row = source.substring(
+            source.indexOf("android:id=\"@+id/internetSecondaryActions\""),
+            source.indexOf("android:id=\"@+id/internetErrorText\""),
+        )
+        val settingsIndex = row.indexOf("android:id=\"@+id/internetConnectionSettingsButton\"")
+        val disconnectIndex = row.indexOf("android:id=\"@+id/internetDisconnectButton\"")
+        val revokeIndex = row.indexOf("android:id=\"@+id/internetRevokeButton\"")
+
+        assertTrue("Internet secondary actions should render in one compact row", row.contains("android:orientation=\"horizontal\""))
+        assertTrue("Settings, disconnect, and revoke should share the same row order", settingsIndex >= 0 && settingsIndex < disconnectIndex && disconnectIndex < revokeIndex)
+        listOf("internetConnectionSettingsButton", "internetDisconnectButton", "internetRevokeButton").forEach { id ->
+            val button = extractXmlElement(row, "android:id=\"@+id/$id\"")
+            assertTrue(
+                "$id should stay responsive in the secondary row",
+                button.contains("android:layout_width=\"0dp\"") &&
+                    button.contains("android:layout_weight=\"1\"") &&
+                    button.contains("android:minHeight=\"48dp\"") &&
+                    button.contains("android:maxLines=\"2\"") &&
+                    button.contains("android:paddingStart=\"4dp\"") &&
+                    button.contains("android:paddingEnd=\"4dp\"") &&
+                    button.contains("app:autoSizeTextType=\"uniform\"") &&
+                    button.contains("app:autoSizeMinTextSize=\"10sp\"") &&
+                    button.contains("app:autoSizeMaxTextSize=\"14sp\""),
+            )
+        }
+    }
+
+    @Test
+    fun openSourceAttributionRemainsReachableWithoutOccupyingPrimaryCopySpace() {
+        val source = mainActivityLayoutSource()
+        val footer = source.substring(
+            source.indexOf("android:id=\"@+id/connectionLegalFooter\""),
+            source.indexOf("<!-- /connectionActions -->"),
+        )
+        val openSourceButton = extractXmlElement(footer, "android:id=\"@+id/openSourceLicensesButton\"")
+        val strings = resourceSource("app/src/main/res/values/strings.xml")
+        val buildScript = resourceSource("app/build.gradle.kts")
+        val noticeDialog = extractMethod(mainActivitySource(), "private fun showOpenSourceNotices")
+
+        assertTrue(
+            "The legal footer should be constrained by the connection panel width so the summary can wrap at large font scales",
+            footer.contains("android:layout_width=\"match_parent\""),
+        )
+        assertFalse(
+            "The long upstream URL should not occupy the disconnected primary flow; complete attribution lives in packaged notices",
+            footer.contains("@string/fork_credit"),
+        )
+        assertTrue(
+            "The footer still needs a visible attribution summary",
+            footer.contains("@string/open_source_notices_summary") &&
+                strings.contains("Source attribution and dependency terms are in notices."),
+        )
+        assertTrue(
+            "The notices entry must remain a 48dp accessible tap target",
+            openSourceButton.contains("android:layout_height=\"48dp\"") &&
+                openSourceButton.contains("android:contentDescription=\"@string/open_source_licenses_description\""),
+        )
+        assertTrue(
+            "Packaged notices must include the project NOTICE and generated runtime dependency license report",
+            buildScript.contains("include(\"LICENSE\", \"NOTICE\", \"licenses/Apache-2.0.txt\")") &&
+                buildScript.contains("ANDROID_RUNTIME_DEPENDENCY_LICENSES.md"),
+        )
+        assertTrue(
+            "The dialog should show complete packaged upstream and dependency notices",
+            noticeDialog.contains("assets.open(UPSTREAM_NOTICE_ASSET)") &&
+                noticeDialog.contains("assets.open(DEPENDENCY_LICENSES_ASSET)") &&
+                noticeDialog.contains("setTitle(R.string.open_source_notices_title)"),
         )
     }
 
@@ -507,6 +633,45 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Internet revoke copy should be allowed to use a second line instead of clipping",
             revokeButton.contains("android:maxLines=\"2\""),
+        )
+    }
+
+    @Test
+    fun internetRoutePolicyToggleKeepsAccessibleTouchTargets() {
+        listOf("internetPreferDirect", "internetForceRelay").forEach { id ->
+            val button = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should keep the 48dp touch target minimum",
+                button.contains("android:minHeight=\"48dp\""),
+            )
+        }
+    }
+
+    @Test
+    fun wirelessSecondaryActionsKeepAccessibleTouchTargets() {
+        listOf("wirelessDisconnectButton", "wirelessForgetButton", "wirelessIdleForgetButton").forEach { id ->
+            val button = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should keep the 48dp touch target minimum",
+                button.contains("android:minHeight=\"48dp\""),
+            )
+        }
+    }
+
+    @Test
+    fun internetDisconnectedTitleUsesCompactPreviewCopy() {
+        val titleResolver = extractMethod(mainActivitySource(), "private fun internetWaitingTitleResource")
+
+        assertTrue(
+            "Internet disconnected title should use the compact preview copy on phones so primary actions stay discoverable",
+            titleResolver.contains("R.string.internet_waiting_title_compact"),
+        )
+        assertFalse(
+            "The longer development-preview title should not be selected at runtime for the disconnected card",
+            titleResolver.contains("R.string.internet_waiting_title\n") ||
+                titleResolver.contains("R.string.internet_waiting_title }"),
         )
     }
 

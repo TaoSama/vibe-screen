@@ -182,9 +182,8 @@
     <string name="usb">USB</string>
     <string name="trusted_lan">LAN</string>
     <string name="internet">Internet</string>
-    <string name="internet_waiting_title">Internet development preview</string>
     <string name="internet_waiting_title_compact">Internet preview</string>
-    <string name="internet_waiting_description">Experimental Internet transport. Protocol v1 application records are encrypted on direct and TURN routes. Public Internet traversal, real display capture, cross-service revocation, and soak stability are not yet accepted.</string>
+    <string name="internet_waiting_description">Preview Internet transport; Protocol v1 application records are encrypted. Public Internet traversal, real display capture, cross-service revocation, and soak stability are not yet accepted.</string>
     <string name="internet_security_details_collapsed">Internet security details visible</string>
     <string name="internet_security_details_expanded">Internet security details visible</string>
     <string name="internet_security_details_expand_action">Expand Internet security details</string>
@@ -199,6 +198,7 @@
     <string name="internet_import_profile">Import</string>
     <string name="internet_connect">Connect preview</string>
     <string name="internet_revoke_local">Revoke this Mac on this device</string>
+    <string name="internet_revoke_local_short">Revoke Mac</string>
     <string name="internet_state_idle">Idle · encrypted records required</string>
     <string name="internet_state_label_idle">Idle</string>
     <string name="internet_state_label_connecting">Connecting</string>
@@ -322,7 +322,7 @@
     <string name="connect_wirelessly">Connect wirelessly</string>
     <string name="wireless_pair_once">Pair once with the QR code shown by Vibe Screen on your Mac.</string>
     <string name="connected_streaming">Connected — streaming active</string>
-    <string name="fork_credit">A fork of SideScreen by Tran Vuong Quoc Dat and contributors\nhttps://github.com/tranvuongquocdat/SideScreen</string>
+    <string name="open_source_notices_summary">Source attribution and dependency terms are in notices.</string>
     <string name="open_source_licenses">Open-source licenses</string>
     <string name="open_source_licenses_description">View copyright notices and third-party dependency licenses</string>
     <string name="open_source_notices_title">Open-source notices</string>
