@@ -26,6 +26,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     PRODUCT_INTEROP_EVIDENCE_BOUNDARIES,
     Adb,
     AdbGateJournal,
+    CleanupCommandResult,
     InteropError,
     LEASE_TASK,
     build_parser,
@@ -35,6 +36,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     redact,
     read_private_ice_configuration,
     read_private_external,
+    raise_or_note_cleanup_failure,
     require_external_output,
     require_artifacts_unchanged,
     private_config_device_commands,
@@ -211,6 +213,72 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             gates = [json.loads(line) for line in gate_path.read_text().splitlines()]
             self.assertEqual([gate["phase"] for gate in gates], ["before", "after"])
             self.assertEqual([gate["gate_valid"] for gate in gates], [True, False])
+
+    def test_adb_device_cleanup_records_nonzero_without_throwing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            lease = Path(directory) / "internet.lock"
+            write_private(lease, self._lease_bytes())
+            records = []
+            gate_path = Path(directory) / "gates.jsonl"
+            completed = subprocess.CompletedProcess(
+                [],
+                1,
+                stdout=b"Failure [DELETE_FAILED_INTERNAL_ERROR]",
+                stderr=b"Unknown package: dev.telemachus.display.test",
+            )
+            with mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.INTERNET_LEASE_LOCK", lease
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.MANDATORY_DEVICE_LOCKS", ()
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.DEVICE_LOCK_GLOB", "no-test-locks-*"
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance._pid_is_alive", return_value=True
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.subprocess.run",
+                return_value=completed,
+            ):
+                snapshot = capture_lease("a" * 40)
+                journal = AdbGateJournal(gate_path, snapshot, "a" * 40, [])
+                adb = Adb("adb", "device-1", snapshot, "a" * 40, [], records, journal)
+
+                result = adb.device_cleanup(
+                    ["uninstall", "dev.telemachus.display.test"],
+                    name="uninstall_test_package",
+                    package_name="dev.telemachus.display.test",
+                )
+
+            self.assertIsInstance(result, CleanupCommandResult)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(records[0].name, "uninstall_test_package")
+            self.assertEqual(records[0].returncode, 1)
+            gates = [json.loads(line) for line in gate_path.read_text().splitlines()]
+            self.assertEqual([gate["phase"] for gate in gates], ["before", "after"])
+            self.assertEqual(gates[-1]["execution"], "nonzero")
+
+    def test_cleanup_failure_is_raised_when_no_primary_error_exists(self) -> None:
+        with self.assertRaisesRegex(InteropError, "device cleanup could not run") as context:
+            raise_or_note_cleanup_failure([RuntimeError("cleanup failed")])
+
+        self.assertIsInstance(context.exception.__cause__, RuntimeError)
+
+    def test_cleanup_failure_is_not_raised_over_primary_error(self) -> None:
+        try:
+            try:
+                raise InteropError("primary failed")
+            except InteropError:
+                raise_or_note_cleanup_failure([
+                    RuntimeError("test package cleanup failed"),
+                    RuntimeError("reverse cleanup failed"),
+                ])
+                raise
+        except InteropError as error:
+            self.assertEqual(str(error), "primary failed")
+            notes = getattr(error, "__notes__", [])
+            self.assertTrue(any("test package cleanup failed" in note for note in notes))
+            self.assertTrue(any("reverse cleanup failed" in note for note in notes))
+        else:  # pragma: no cover - the nested raise must keep the primary error.
+            self.fail("primary error was not raised")
 
     def test_gate_journal_rejects_replacement_and_mode_change(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -395,6 +463,14 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         for output in ("OK (2 tests)\n", "FAILURES!!!\nOK (1 test)\n", "INSTRUMENTATION_FAILED"):
             with self.assertRaises(InteropError):
                 validate_instrumentation_result(output)
+
+    def test_runner_marks_test_package_cleanup_before_install_test_adb_call(self) -> None:
+        runner_source = ROOT / "scripts/phase3/android_product_session_interop_acceptance.py"
+        source = runner_source.read_text(encoding="utf-8")
+        marker_index = source.index("test_package_cleanup_needed = True")
+        install_test_index = source.index('name="install-test"')
+
+        self.assertLess(marker_index, install_test_index)
 
     def test_ui_marker_requires_exact_complete_assertions(self) -> None:
         marker = " ".join((UI_MARKER_PREFIX, *UI_MARKER_FLAGS))

@@ -6,13 +6,27 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from xml.etree import ElementTree
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+TOOLS_ROOT = REPO_ROOT / "tools"
+if str(TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TOOLS_ROOT))
+
+from vibescreen_evidence.android_instrumentation_cleanup import (
+    CleanupCommandResult,
+    DEFAULT_TEST_PACKAGE,
+    cleanup_android_instrumentation_test_package,
+    instrumentation_cleanup_result_errors,
+    require_instrumentation_cleanup_ok,
+)
+
 
 PACKAGE = "dev.telemachus.display"
-TEST_PACKAGE = "dev.telemachus.display.test"
+TEST_PACKAGE = DEFAULT_TEST_PACKAGE
 ACTIVITY = "dev.telemachus.display/.MainActivity"
 EXPECTED_DEVICE_MANUFACTURER = "nubia"
 EXPECTED_DEVICE_MODEL = "P0110"
@@ -263,7 +277,28 @@ def restore_device(serial):
 
 def force_stop_apps(serial):
     adb_required(serial, "shell", "am", "force-stop", PACKAGE, description="force-stop app")
-    adb_required(serial, "shell", "am", "force-stop", TEST_PACKAGE, description="force-stop androidTest app")
+
+
+def cleanup_instrumentation_test_package(serial, metadata_dir):
+    def runner(name, package_name, command):
+        proc = adb(serial, *command)
+        return CleanupCommandResult(
+            name=name,
+            package_name=package_name,
+            command=tuple(command),
+            returncode=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+        )
+
+    result = cleanup_android_instrumentation_test_package(runner, test_package=TEST_PACKAGE)
+    write_text(
+        metadata_dir / "android-instrumentation-cleanup.json",
+        json.dumps(result.to_dict(), indent=2) + "\n",
+        serial,
+    )
+    require_instrumentation_cleanup_ok(result)
+    return result
 
 
 def assert_packages_stopped(serial):
@@ -540,6 +575,10 @@ def restored_gate_errors(restored):
     return errors
 
 
+def instrumentation_cleanup_gate_errors(cleanup):
+    return instrumentation_cleanup_result_errors(cleanup, expected_package=TEST_PACKAGE)
+
+
 def summary_gate_errors(summary):
     errors = []
     if not isinstance(summary, dict):
@@ -557,6 +596,7 @@ def summary_gate_errors(summary):
         errors.append(f"device_identity_evidence mismatch: {summary.get('device_identity_evidence')!r}")
     if summary.get("instrumentation_p0110_landscape_large_text") is not True:
         errors.append("instrumentation p0110 landscape large-text layout failed")
+    errors.extend(instrumentation_cleanup_gate_errors(summary.get("android_instrumentation_cleanup")))
     results = summary.get("scenarios", [])
     scenario_errors = scenario_label_errors(results)
     errors.extend(scenario_errors)
@@ -834,13 +874,20 @@ def write_summary(out_dir, serial, summary):
     if xml_errors:
         lines.extend(f"- {error}" for error in xml_errors)
     lines.append(f"Restored: {summary['restored']}")
+    cleanup = summary.get("android_instrumentation_cleanup")
+    if cleanup is not None:
+        lines.append(f"Android instrumentation cleanup: {cleanup}")
     write_text(out_dir / "metadata" / "final-validation-summary.txt", "\n".join(lines) + "\n", serial)
 
 
-def run_final_cleanup(serial, log_file, *, original_failure=None):
+def run_final_cleanup(serial, log_file, *, original_failure=None, metadata_dir=None):
     cleanup_steps = (
         ("restore_device", restore_device),
         ("force_stop_apps", force_stop_apps),
+        (
+            "cleanup_instrumentation_test_package",
+            lambda serial: cleanup_instrumentation_test_package(serial, metadata_dir or log_file.parent),
+        ),
         ("assert_packages_stopped", assert_packages_stopped),
     )
     first_cleanup_failure = None
@@ -880,6 +927,7 @@ def main():
 
     serial = args.serial
     original_failure = None
+    cleanup_completed = False
     try:
         log(log_file, "adb devices")
         write_text(metadata / "adb-devices.txt", adb_text(serial, "devices", description="adb devices"), serial)
@@ -914,10 +962,12 @@ def main():
         log(log_file, "restore device")
         restore_device(serial)
         force_stop_apps(serial)
+        instrumentation_cleanup = cleanup_instrumentation_test_package(serial, metadata)
         restored = wait_for_state(serial, 0, "1.0", "no", require_activity=False)
         write_text(metadata / "final-restored.state-after.txt", restored, serial)
         assert_packages_stopped(serial)
         assert_reverse_empty(serial, metadata, "final")
+        cleanup_completed = True
 
         summary = {
             "apk_sha256": actual_sha,
@@ -935,6 +985,7 @@ def main():
                 "no_override_size": "Override size" not in restored,
                 "packages_stopped": True,
             },
+            "android_instrumentation_cleanup": instrumentation_cleanup.to_dict(),
         }
         write_summary(out_dir, serial, summary)
         assert_no_serial_leak(out_dir, serial)
@@ -948,7 +999,8 @@ def main():
         original_failure = failure
         raise
     finally:
-        run_final_cleanup(serial, log_file, original_failure=original_failure)
+        if not cleanup_completed:
+            run_final_cleanup(serial, log_file, original_failure=original_failure, metadata_dir=metadata)
 
 
 if __name__ == "__main__":

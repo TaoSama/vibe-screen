@@ -42,6 +42,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+TOOLS_ROOT = Path(__file__).resolve().parents[2] / "tools"
+if str(TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TOOLS_ROOT))
+
+from vibescreen_evidence.android_instrumentation_cleanup import (
+    CleanupCommandResult,
+    InstrumentationCleanupResult,
+    cleanup_android_instrumentation_test_package,
+    require_instrumentation_cleanup_ok,
+)
+
 
 INTERNET_LEASE_LOCK = Path("/tmp/vibe-screen-device-internet.lock")
 LEASE_TASK = "phase3-android-internet-acceptance"
@@ -52,6 +63,7 @@ MANDATORY_DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-android.lock"),
 )
 APP_PACKAGE = "dev.telemachus.display"
+TEST_PACKAGE = f"{APP_PACKAGE}.test"
 TEST_RUNNER = f"{APP_PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = f"{APP_PACKAGE}.internet.InternetProductSessionInteropInstrumentedTest"
 UI_TEST_CLASS = f"{APP_PACKAGE}.InternetMainActivityAcceptanceInstrumentedTest"
@@ -421,7 +433,37 @@ class Adb:
                stdin: bytes | None = None, name: str = "adb-device") -> str:
         return self._run([self.executable, "-s", self.endpoint, *arguments], timeout, stdin, name)
 
+    def device_cleanup(self, arguments: Sequence[str], *, timeout: float = 60,
+                       name: str, package_name: str) -> CleanupCommandResult:
+        result = self._run_completed(
+            [self.executable, "-s", self.endpoint, *arguments],
+            timeout,
+            None,
+            name,
+            allow_nonzero=True,
+        )
+        return CleanupCommandResult(
+            name=name,
+            package_name=package_name,
+            command=tuple(arguments),
+            returncode=result.returncode,
+            stdout=(result.stdout or b"").decode("utf-8", errors="replace"),
+            stderr=(result.stderr or b"").decode("utf-8", errors="replace"),
+        )
+
     def _run(self, command: list[str], timeout: float, stdin: bytes | None, name: str) -> str:
+        result = self._run_completed(command, timeout, stdin, name, allow_nonzero=False)
+        return (result.stdout or b"").decode("utf-8", errors="replace").strip()
+
+    def _run_completed(
+        self,
+        command: list[str],
+        timeout: float,
+        stdin: bytes | None,
+        name: str,
+        *,
+        allow_nonzero: bool,
+    ) -> subprocess.CompletedProcess[bytes]:
         sequence = self.gate_journal.next_sequence()
         try:
             self.gate_journal.record(sequence, name, "before", "pending")
@@ -450,12 +492,12 @@ class Adb:
             stderr_bytes=len(stderr),
             elapsed_seconds=round(time.monotonic() - started, 3),
         ))
-        if result.returncode != 0:
+        if result.returncode != 0 and not allow_nonzero:
             raise InteropError(
                 f"{name} failed ({result.returncode}); stdout_sha256={sha256_bytes(stdout)} "
                 f"stderr_sha256={sha256_bytes(stderr)}"
             )
-        return stdout.decode("utf-8", errors="replace").strip()
+        return result
 
     def _record_after(self, sequence: int, name: str, execution: str) -> None:
         try:
@@ -643,6 +685,24 @@ def write_private(path: Path, data: bytes) -> None:
         if descriptor >= 0:
             os.close(descriptor)
         Path(temporary_name).unlink(missing_ok=True)
+
+
+def raise_or_note_cleanup_failure(cleanup_failures: Sequence[Exception]) -> None:
+    if not cleanup_failures:
+        return
+    primary_error = sys.exc_info()[1]
+    message = (
+        "device cleanup could not run under the valid lease; reacquire a matching live lease "
+        "before safely removing the private config and ADB reverse mapping"
+    )
+    failure_summary = "; ".join(str(failure) for failure in cleanup_failures)
+    if primary_error is not None:
+        if hasattr(primary_error, "add_note"):
+            primary_error.add_note(f"{message}: {failure_summary}")
+        else:  # pragma: no cover - Python < 3.11 compatibility path
+            print(f"warning: {message}: {failure_summary}", file=sys.stderr)
+        return
+    raise InteropError(message) from cleanup_failures[0]
 
 
 def require_external_output(path: Path, repo: Path, label: str) -> Path:
@@ -864,6 +924,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         host_process: subprocess.Popen[bytes] | None = None
         config_name: str | None = None
         reverse_installed = False
+        instrumentation_cleanup: InstrumentationCleanupResult | None = None
+        test_package_cleanup_needed = False
         try:
             wait_ready(host_url, signaling, args.timeout)
             status, session = http_json(
@@ -917,7 +979,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 name="install-app",
             )
             require_artifacts_unchanged(paths, artifacts)
-            require_artifacts_unchanged(paths, artifacts)
+            # The test package can be installed even when the adb subprocess times out before returning.
+            test_package_cleanup_needed = True
             adb.device(
                 ["install", "-r", "-t", str(paths["test_apk"])],
                 timeout=args.install_timeout,
@@ -1063,6 +1126,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 write_private(route_raw_dir / name, raw.encode())
         finally:
             cleanup_failures: list[Exception] = []
+            if test_package_cleanup_needed:
+                try:
+                    instrumentation_cleanup = cleanup_android_instrumentation_test_package(
+                        lambda name, package_name, command: adb.device_cleanup(
+                            command,
+                            name=name,
+                            package_name=package_name,
+                        ),
+                        test_package=TEST_PACKAGE,
+                    )
+                    write_private(
+                        route_raw_dir / "android-instrumentation-cleanup.json",
+                        (json.dumps(instrumentation_cleanup.to_dict(), indent=2) + "\n").encode(),
+                    )
+                    require_instrumentation_cleanup_ok(instrumentation_cleanup)
+                except Exception as error:
+                    cleanup_failures.append(error)
             if config_name is not None:
                 try:
                     adb.device(
@@ -1089,11 +1169,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 except subprocess.TimeoutExpired:
                     signaling.kill()
                     signaling.wait()
-            if cleanup_failures:
-                raise InteropError(
-                    "device cleanup could not run under the valid lease; reacquire a matching live lease "
-                    "before safely removing the private config and ADB reverse mapping"
-                ) from cleanup_failures[0]
+            raise_or_note_cleanup_failure(cleanup_failures)
 
     java_toolchain = toolchain("java", ["-version"])
     swift_toolchain = toolchain("swift", ["--version"])
@@ -1164,6 +1240,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 hashlib.sha256,
             ).hexdigest(),
         },
+        "android_instrumentation_cleanup": instrumentation_cleanup.to_dict()
+        if instrumentation_cleanup is not None
+        else None,
         "evidence_boundaries": dict(EVIDENCE_BOUNDARIES),
     }
     return report

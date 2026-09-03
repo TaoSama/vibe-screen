@@ -10,6 +10,140 @@ from vibescreen_evidence.adb import (
     _parse_thermal,
     _parse_total_pss,
 )
+from vibescreen_evidence.android_instrumentation_cleanup import (
+    CleanupCommandResult,
+    EXPECTED_CLEANUP_SCOPE,
+    InstrumentationCleanupError,
+    cleanup_android_instrumentation_test_package,
+    instrumentation_cleanup_result_errors,
+    require_instrumentation_cleanup_ok,
+)
+
+
+class AndroidInstrumentationCleanupTest(unittest.TestCase):
+    def _runner(self, responses):
+        calls = []
+
+        def run(name, package_name, command):
+            calls.append((name, package_name, command))
+            response = responses.get(name, (0, "", ""))
+            return CleanupCommandResult(
+                name=name,
+                package_name=package_name,
+                command=tuple(command),
+                returncode=response[0],
+                stdout=response[1],
+                stderr=response[2],
+            )
+
+        return run, calls
+
+    def test_cleanup_force_stops_uninstalls_and_verifies_test_package_only(self):
+        runner, calls = self._runner({"uninstall_test_package": (0, "Success\n", "")})
+
+        result = cleanup_android_instrumentation_test_package(runner)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.cleanup_scope, EXPECTED_CLEANUP_SCOPE)
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "force_stop_test_package",
+                    "dev.telemachus.display.test",
+                    ("shell", "am", "force-stop", "dev.telemachus.display.test"),
+                ),
+                (
+                    "uninstall_test_package",
+                    "dev.telemachus.display.test",
+                    ("uninstall", "dev.telemachus.display.test"),
+                ),
+                (
+                    "verify_test_package_absent",
+                    "dev.telemachus.display.test",
+                    ("shell", "pm", "list", "packages", "dev.telemachus.display.test"),
+                ),
+            ],
+        )
+
+    def test_cleanup_is_idempotent_when_test_package_is_already_absent(self):
+        runner, _calls = self._runner(
+            {
+                "uninstall_test_package": (
+                    1,
+                    "Failure [DELETE_FAILED_INTERNAL_ERROR]\n",
+                    "Unknown package: dev.telemachus.display.test\n",
+                )
+            }
+        )
+
+        result = cleanup_android_instrumentation_test_package(runner)
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.commands[1].package_was_absent)
+
+    def test_cleanup_fails_closed_when_test_package_remains_installed(self):
+        runner, _calls = self._runner(
+            {
+                "verify_test_package_absent": (
+                    0,
+                    "package:dev.telemachus.display.test\n",
+                    "",
+                )
+            }
+        )
+
+        result = cleanup_android_instrumentation_test_package(runner)
+
+        self.assertFalse(result.ok)
+        with self.assertRaises(InstrumentationCleanupError):
+            require_instrumentation_cleanup_ok(result)
+
+    def test_cleanup_rejects_non_default_package_before_running_commands(self):
+        runner, calls = self._runner({})
+
+        for package_name in ("dev.telemachus.display", "com.example.other.test"):
+            with self.subTest(package_name=package_name):
+                with self.assertRaisesRegex(ValueError, "test_package must be 'dev.telemachus.display.test'"):
+                    cleanup_android_instrumentation_test_package(runner, test_package=package_name)
+
+        self.assertEqual(calls, [])
+
+    def test_cleanup_validator_rejects_missing_command_without_traceback(self):
+        runner, _calls = self._runner({"uninstall_test_package": (0, "Success\n", "")})
+        result = cleanup_android_instrumentation_test_package(runner).to_dict()
+        result["commands"][0]["command"] = None
+
+        errors = instrumentation_cleanup_result_errors(result)
+
+        self.assertIn("android_instrumentation_cleanup.commands[0].command must be a list: NoneType", errors)
+
+    def test_cleanup_validator_rejects_missing_command_outcome(self):
+        runner, _calls = self._runner({"uninstall_test_package": (0, "Success\n", "")})
+        result = cleanup_android_instrumentation_test_package(runner).to_dict()
+        del result["commands"][0]["returncode"]
+
+        errors = instrumentation_cleanup_result_errors(result)
+
+        self.assertIn("android_instrumentation_cleanup.commands[0].returncode must be an int: NoneType", errors)
+
+    def test_cleanup_validator_rejects_tampered_failed_command_outcomes(self):
+        runner, _calls = self._runner({"uninstall_test_package": (0, "Success\n", "")})
+        result = cleanup_android_instrumentation_test_package(runner).to_dict()
+        result["commands"][0]["returncode"] = 1
+        result["commands"][1]["returncode"] = 1
+        result["commands"][1]["stdout"] = "Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]\n"
+        result["commands"][1]["stderr"] = ""
+        result["commands"][2]["stdout"] = "package:dev.telemachus.display.test\n"
+
+        errors = instrumentation_cleanup_result_errors(result)
+
+        self.assertIn("android_instrumentation_cleanup.commands[0].returncode must be 0 for force-stop cleanup: 1", errors)
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[1].returncode must be 0 or prove package absence for uninstall cleanup: 1",
+            errors,
+        )
+        self.assertIn("android_instrumentation_cleanup.commands[2].stdout still lists 'dev.telemachus.display.test'", errors)
 
 
 class ADBClientTest(unittest.TestCase):

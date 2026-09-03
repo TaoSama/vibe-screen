@@ -12,6 +12,60 @@
   "device_identity_evidence": "metadata/device-identity.txt",
   "xml_evidence_scope": "semantic_minimum_only_not_stable_state",
   "instrumentation_p0110_landscape_large_text": true,
+  "android_instrumentation_cleanup": {
+    "schema": "dev.vibescreen.android-instrumentation-cleanup/v1",
+    "ok": true,
+    "package_name": "dev.telemachus.display.test",
+    "force_stop_ok": true,
+    "uninstall_ok": true,
+    "package_absent_after_cleanup": true,
+    "cleanup_scope": {
+      "target": "instrumentation_test_package",
+      "product_package": "not_targeted",
+      "product_data": "not_targeted",
+      "adb_reverse": "not_targeted"
+    },
+    "commands": [
+      {
+        "name": "force_stop_test_package",
+        "package_name": "dev.telemachus.display.test",
+        "command": [
+          "shell",
+          "am",
+          "force-stop",
+          "dev.telemachus.display.test"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "name": "uninstall_test_package",
+        "package_name": "dev.telemachus.display.test",
+        "command": [
+          "uninstall",
+          "dev.telemachus.display.test"
+        ],
+        "returncode": 0,
+        "stdout": "Success\n",
+        "stderr": ""
+      },
+      {
+        "name": "verify_test_package_absent",
+        "package_name": "dev.telemachus.display.test",
+        "command": [
+          "shell",
+          "pm",
+          "list",
+          "packages",
+          "dev.telemachus.display.test"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ]
+  },
   "scenarios": [
     {
       "label": "phone-portrait-day-font1",

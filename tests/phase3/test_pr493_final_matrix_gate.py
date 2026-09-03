@@ -49,6 +49,51 @@ def valid_restored() -> dict[str, bool]:
     return {key: True for key in collector.REQUIRED_RESTORE_KEYS}
 
 
+def valid_instrumentation_cleanup() -> dict[str, object]:
+    return {
+        "schema": "dev.vibescreen.android-instrumentation-cleanup/v1",
+        "package_name": collector.TEST_PACKAGE,
+        "started_at_utc": "2026-09-02T00:00:00+00:00",
+        "finished_at_utc": "2026-09-02T00:00:01+00:00",
+        "force_stop_ok": True,
+        "uninstall_ok": True,
+        "package_absent_after_cleanup": True,
+        "cleanup_scope": {
+            "target": "instrumentation_test_package",
+            "product_package": "not_targeted",
+            "product_data": "not_targeted",
+            "adb_reverse": "not_targeted",
+        },
+        "ok": True,
+        "commands": [
+            {
+                "name": "force_stop_test_package",
+                "package_name": collector.TEST_PACKAGE,
+                "command": ["shell", "am", "force-stop", collector.TEST_PACKAGE],
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "",
+            },
+            {
+                "name": "uninstall_test_package",
+                "package_name": collector.TEST_PACKAGE,
+                "command": ["uninstall", collector.TEST_PACKAGE],
+                "returncode": 0,
+                "stdout": "Success\n",
+                "stderr": "",
+            },
+            {
+                "name": "verify_test_package_absent",
+                "package_name": collector.TEST_PACKAGE,
+                "command": ["shell", "pm", "list", "packages", collector.TEST_PACKAGE],
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "",
+            },
+        ],
+    }
+
+
 def valid_summary() -> dict[str, object]:
     return {
         "apk_sha256": collector.EXPECTED_APK_SHA256,
@@ -62,6 +107,7 @@ def valid_summary() -> dict[str, object]:
             "phone-portrait-night-font1",
         ),
         "restored": valid_restored(),
+        "android_instrumentation_cleanup": valid_instrumentation_cleanup(),
     }
 
 
@@ -315,6 +361,7 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
     def test_final_cleanup_preserves_original_failure(self) -> None:
         original_restore = collector.restore_device
         original_force_stop = collector.force_stop_apps
+        original_cleanup_test_package = collector.cleanup_instrumentation_test_package
         original_assert_stopped = collector.assert_packages_stopped
         calls: list[str] = []
 
@@ -329,24 +376,36 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         try:
             collector.restore_device = failing_restore
             collector.force_stop_apps = lambda serial: calls.append(f"force-stop:{serial}")
+            collector.cleanup_instrumentation_test_package = lambda serial, metadata: calls.append(f"cleanup-test:{serial}")
             collector.assert_packages_stopped = failing_assert_stopped
             with tempfile.TemporaryDirectory() as tmp_dir:
                 log_file = Path(tmp_dir) / "run.log"
+                metadata = Path(tmp_dir) / "metadata"
 
-                collector.run_final_cleanup("serial-1", log_file, original_failure=RuntimeError("primary failed"))
+                collector.run_final_cleanup(
+                    "serial-1",
+                    log_file,
+                    original_failure=RuntimeError("primary failed"),
+                    metadata_dir=metadata,
+                )
 
-                self.assertEqual(calls, ["restore:serial-1", "force-stop:serial-1", "pidof:serial-1"])
+                self.assertEqual(
+                    calls,
+                    ["restore:serial-1", "force-stop:serial-1", "cleanup-test:serial-1", "pidof:serial-1"],
+                )
                 log_text = log_file.read_text(encoding="utf-8")
                 self.assertIn("cleanup step restore_device failed: restore failed", log_text)
                 self.assertIn("cleanup step assert_packages_stopped failed: pidof failed", log_text)
         finally:
             collector.restore_device = original_restore
             collector.force_stop_apps = original_force_stop
+            collector.cleanup_instrumentation_test_package = original_cleanup_test_package
             collector.assert_packages_stopped = original_assert_stopped
 
     def test_final_cleanup_raises_cleanup_failure_without_original_failure(self) -> None:
         original_restore = collector.restore_device
         original_force_stop = collector.force_stop_apps
+        original_cleanup_test_package = collector.cleanup_instrumentation_test_package
         original_assert_stopped = collector.assert_packages_stopped
         calls: list[str] = []
 
@@ -364,6 +423,7 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         try:
             collector.restore_device = failing_restore
             collector.force_stop_apps = passing_force_stop
+            collector.cleanup_instrumentation_test_package = lambda serial, metadata: calls.append(f"cleanup-test:{serial}")
             collector.assert_packages_stopped = failing_assert_stopped
             with tempfile.TemporaryDirectory() as tmp_dir:
                 log_file = Path(tmp_dir) / "run.log"
@@ -371,14 +431,93 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "restore failed"):
                     collector.run_final_cleanup("serial-1", log_file)
 
-                self.assertEqual(calls, ["restore:serial-1", "force-stop:serial-1", "pidof:serial-1"])
+                self.assertEqual(
+                    calls,
+                    ["restore:serial-1", "force-stop:serial-1", "cleanup-test:serial-1", "pidof:serial-1"],
+                )
                 log_text = log_file.read_text(encoding="utf-8")
                 self.assertIn("cleanup step restore_device failed: restore failed", log_text)
                 self.assertIn("cleanup step assert_packages_stopped failed: pidof failed", log_text)
         finally:
             collector.restore_device = original_restore
             collector.force_stop_apps = original_force_stop
+            collector.cleanup_instrumentation_test_package = original_cleanup_test_package
             collector.assert_packages_stopped = original_assert_stopped
+
+    def test_summary_requires_successful_android_instrumentation_cleanup(self) -> None:
+        summary = valid_summary()
+        summary["android_instrumentation_cleanup"] = {
+            **valid_instrumentation_cleanup(),
+            "package_absent_after_cleanup": False,
+            "ok": False,
+        }
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertIn("android_instrumentation_cleanup.ok is not verified true: False", errors)
+        self.assertIn(
+            "android_instrumentation_cleanup.package_absent_after_cleanup is not verified true: False",
+            errors,
+        )
+
+    def test_summary_requires_android_instrumentation_cleanup_record(self) -> None:
+        summary = valid_summary()
+        del summary["android_instrumentation_cleanup"]
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertIn("android_instrumentation_cleanup must be an object: NoneType", errors)
+
+    def test_summary_rejects_android_instrumentation_cleanup_scope_drift(self) -> None:
+        summary = valid_summary()
+        cleanup = valid_instrumentation_cleanup()
+        cleanup["cleanup_scope"] = {
+            "target": "instrumentation_test_package",
+            "product_package": "not_targeted",
+            "product_data": "not_targeted",
+            "adb_reverse": "modified",
+        }
+        summary["android_instrumentation_cleanup"] = cleanup
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertTrue(
+            any(error.startswith("android_instrumentation_cleanup.cleanup_scope mismatch") for error in errors)
+        )
+
+    def test_summary_rejects_android_instrumentation_cleanup_command_drift(self) -> None:
+        summary = valid_summary()
+        cleanup = valid_instrumentation_cleanup()
+        cleanup["commands"][1]["command"] = ["uninstall", collector.PACKAGE]
+        summary["android_instrumentation_cleanup"] = cleanup
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertIn("android_instrumentation_cleanup.commands[1].command mismatch: ['uninstall', 'dev.telemachus.display']", errors)
+
+    def test_summary_rejects_tampered_android_instrumentation_cleanup_outcomes(self) -> None:
+        summary = valid_summary()
+        cleanup = valid_instrumentation_cleanup()
+        cleanup["commands"][0]["returncode"] = 1
+        cleanup["commands"][1]["returncode"] = 1
+        cleanup["commands"][1]["stdout"] = "Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]\n"
+        cleanup["commands"][2]["stdout"] = f"package:{collector.TEST_PACKAGE}\n"
+        summary["android_instrumentation_cleanup"] = cleanup
+
+        errors = collector.summary_gate_errors(summary)
+
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[0].returncode must be 0 for force-stop cleanup: 1",
+            errors,
+        )
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[1].returncode must be 0 or prove package absence for uninstall cleanup: 1",
+            errors,
+        )
+        self.assertIn(
+            "android_instrumentation_cleanup.commands[2].stdout still lists 'dev.telemachus.display.test'",
+            errors,
+        )
 
     def test_strict_boolean_gates_reject_truthy_non_bool_values(self) -> None:
         summary = valid_summary()
