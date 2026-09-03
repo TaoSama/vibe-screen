@@ -32,7 +32,7 @@ platform scaffolding under active development.
 | macOS Host compatibility | Compatibility matrix gate is open. Apple silicon has local exercise, historical device evidence, and published blocked `macos-hardware-compatibility-gate` summaries for Mac16,8 current-base readiness, with the latest current-base refresh under [2026-08-31-macos-host-compatibility-current-base-codex-task-blocked](docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md); no passing row exists because stable signing/TCC, source-bound Host provenance, full macOS checks, and runtime stream/input/reconnect evidence are missing. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence before support claims |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264 encoding, and Android MediaCodec HEVC/H.264 decode. AV1 is a later-phase/backlog codec, not a current Host/device stream codec: Protocol v1 reserves CODEC_AV1 and the macOS/Android/iOS runtime-admission foundation is in place, but the current Host does not advertise AV1, Android does not offer AV1 in product sessions, iOS does not advertise AV1 decode capability, and no AV1 real-stream Host/device acceptance is recorded; see the [AV1 codec capability gate](docs/changes/2026-08-21-av1-codec-capability/TEST.md) record |
-| Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. This is not system-output capture. The 2026-08-30 Nubia P0110/pacific current-base refresh remains blocked because the installed Host is not a current-source stable-signed Microphone/TCC-ready bundle, no Host listener was observed, and retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`, `AudioTrack` write, or playback-confirmation evidence |
+| Audio | Protocol v1 USB/LAN now wires a capability-gated PCM S16LE microphone-capture path from the macOS Host to Android `AudioTrack`, with offline Host/Android protocol, packetization, playback, and LAN secure-record tests. Internet mode now also has Protocol v1 Host-to-Android PCM microphone DataChannel wiring over protected `vibescreen.audio.v1`, with offline coverage for macOS capture-adapter boundaries, Android playback-adapter admission, packet routing, fail-closed rejection, recovery, and disconnect cleanup. This is not system-output capture and does not prove real Android/macOS audio E2E. The 2026-08-30 Nubia P0110/pacific current-base refresh remains blocked because the installed Host is not a current-source stable-signed Microphone/TCC-ready bundle, no Host listener was observed, and retained logs show no `CAPABILITY_AUDIO`, accepted `AudioConfig`, channel `3`, `AudioTrack` write, or playback-confirmation evidence. Real public-Internet audio playback evidence remains open |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. The Xiaomi 13/fuxi fixed-binary rerun is still blocked by Accessibility authorization for that exact Host binary. A stable-signed fixed-binary rerun has passed on the Nubia P0110/pacific Android 16 substitute, closing only the general Android substitute rerun gate and keeping the device identity distinct from Xiaomi 13/fuxi evidence; physical-finger/manual UX remains a separate gate |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent is verified for software/protocol keyboard input on device; hardware-keyboard workflow acceptance remains blocked and is owned by the [hardware-keyboard current-base owner](./docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-30-phase2-hardware-keyboard-current-base-owner/README.md). Native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation; the [current-base owner refresh](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/README.md) remains fail-closed without an Android-visible HID mouse or equivalent pointer source. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. The [2026-08-31 Nubia P0110/pacific stylus current-base refresh](docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-31-nubia-p0110-pacific-stylus-current-base-blocked/README.md) exposes pressure/tilt-capable `goodix_stylus_input` hardware but remains blocked because Host readiness is not stable signed/TCC-ready and no physical drawing, same-session Android forwarding, Host stylus injection excerpt, or visible macOS drawing-app output was captured. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect; see the [controller runtime acceptance gate](docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md). A generic peripheral-input admission framework is defined offline and fails closed for unsupported kinds; it does not claim support for any concrete peripheral hardware. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
@@ -653,10 +653,10 @@ short-lived session-profile import, direct/forced-TURN selection, product-sessio
 state and recovery errors. The repository also includes authenticated signaling
 with explicit memory/PostgreSQL store backends, a coturn credential/quota control
 plane and pinned Compose data plane, and production libwebrtc adapters.
-Control uses a reliable ordered DataChannel;
-media uses an unordered zero-retransmit channel with bounded latest-frame policy.
-Protocol v1 AES-256-GCM records protect both channels above WebRTC so a TURN
-relay handles only ciphertext.
+Control uses a reliable ordered DataChannel; media and audio use unordered
+zero-retransmit channels, and bulk uses an ordered reliable channel. Protocol
+v1 AES-256-GCM records protect those channels above WebRTC so a TURN relay
+handles only ciphertext.
 QR pairing has a current-base offline fail-closed slice: Android accepts only the
 canonical `vibescreen://pair?v=1&o=` envelope before decoding one-time material,
 macOS consumes an offer on the first redemption attempt even when the request is
@@ -708,11 +708,18 @@ Mac desktop content is visible in the Android UI; missing UI evidence keeps the
 gate blocked.
 The current-base advanced DataChannel owner is also fail-closed: it tracks
 audio playback, explicit clipboard transfer, and bounded file transfer over the
-Internet WebRTC control/audio/bulk DataChannels as product flows. Existing
-USB/LAN audio, clipboard, and file-transfer evidence plus raw audio/bulk
-Internet channel hook tests remain readiness only; without retained, hashed real
-macOS+Android public-Internet product-flow artifacts, this child gate stays
-blocked.
+Internet WebRTC control/audio/bulk DataChannels as product flows. The current
+Internet audio implementation reuses the USB/LAN PCM S16LE microphone-capture
+contract over the protected WebRTC audio DataChannel: macOS advertises audio
+only when managed policy, capture availability, and the capture adapter allow it,
+sends `AudioConfig` after the initial video configuration is acknowledged, and
+streams packets on audio stream `2`; Android accepts/rejects the config through
+its PCM playback adapter, submits packets to `AudioTrack`, and stops playback on
+disconnect, fresh-session recovery, failure, or revocation. This is offline
+product-flow coverage only. Existing USB/LAN audio, clipboard, and file-transfer
+evidence plus Internet audio/bulk hook tests remain readiness evidence; without
+retained, hashed real macOS+Android public-Internet product-flow artifacts, this
+child gate stays blocked.
 The current-base package-level checker
 `vibescreen_evidence.phase3_internet_release_gate` now makes the Internet
 soak/latency boundary executable: it requires public-path and deployed remote
@@ -1024,12 +1031,15 @@ increase it.
 - The Android and macOS Internet record layers now derive separate directional
   keys, durable nonce counters, and replay domains for control, media, audio,
   and bulk. A shared fixed-vector fixture covers all four AES-256-GCM record
-  channels and legacy-compatible key rotation. Audio/bulk WebRTC transport
-  channels are now wired into the macOS and Android Internet product sessions
-  as raw Protocol v1 records with owner-scoped admission and bounded backlog
-  behavior. Audio capture/playback, clipboard/file-transfer product flows over
-  those channels, and public-network end-to-end behavior remain unproved and are
-  now tracked by a dedicated fail-closed current-base gate.
+  channels and legacy-compatible key rotation. The Internet audio product path
+  now carries Host-to-Android PCM S16LE microphone packets over the protected
+  audio DataChannel with offline coverage for capability gating,
+  `AudioConfig`/`AudioConfigResult`, packetization, Android playback admission,
+  capture/playback failure isolation, transport recovery restart, and disconnect
+  cleanup. Public-network audio E2E, real Microphone/TCC authorization, real
+  Android `AudioTrack` output, Mac system-output capture, and clipboard/file
+  transfer product flows over Internet DataChannels remain unproved and are
+  tracked by fail-closed current-base gates.
 - The macOS Host and Android client now share a transport-neutral, bounded
   single-file transfer domain over Protocol v1 for the existing USB/LAN TCP
   session. File offers require explicit receiver approval and default to reject;

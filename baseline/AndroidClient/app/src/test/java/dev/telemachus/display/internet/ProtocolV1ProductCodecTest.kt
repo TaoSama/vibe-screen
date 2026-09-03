@@ -4,6 +4,8 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.vibescreen.protocol.v1.AudioCodec
+import dev.vibescreen.protocol.v1.AudioConfig
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
@@ -31,6 +33,7 @@ import org.junit.Test
 class ProtocolV1ProductCodecTest {
     private val codec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.H264, ProductVideoCodec.HEVC)) { 99 }
     private val controllerCodec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.H264, ProductVideoCodec.HEVC), advertiseController = true) { 99 }
+    private val audioCodec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.H264, ProductVideoCodec.HEVC), advertiseAudio = true) { 99 }
     private val sessionId = "session-1".toByteArray()
 
     @Test
@@ -370,6 +373,42 @@ class ProtocolV1ProductCodecTest {
     }
 
     @Test
+    fun advertiseAudioAddsOptionalAudioCapabilityWithoutMakingItRequired() {
+        val hello = Envelope.parseFrom(audioCodec.encodeClientHello(1, sessionId, 7)).clientHello
+
+        assertTrue(hello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
+        assertFalse(hello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO))
+        assertEquals(audioCodec.offeredCapabilities, hello.capabilitiesList.toSet())
+    }
+
+    @Test
+    fun decodesAudioConfigAndEncodesAudioConfigResult() {
+        val config = audioConfig()
+        val decoded =
+            codec.decodeControl(
+                baseEnvelope(8)
+                    .setAudioConfig(config)
+                    .build()
+                    .toByteArray(),
+            ).message as ProductControlMessage.AudioConfiguration
+
+        assertEquals(config, decoded.config)
+
+        val accepted = Envelope.parseFrom(codec.encodeAudioConfigResult(9, sessionId, 7, config, true, ""))
+        assertEquals(Envelope.PayloadCase.AUDIO_CONFIG_RESULT, accepted.payloadCase)
+        assertEquals(2L, accepted.audioConfigResult.streamId)
+        assertEquals(1L, accepted.audioConfigResult.configEpoch)
+        assertTrue(accepted.audioConfigResult.accepted)
+
+        val rejected = Envelope.parseFrom(codec.encodeAudioConfigResult(10, sessionId, 7, config, false, "audio_track_start_failed"))
+        assertFalse(rejected.audioConfigResult.accepted)
+        assertEquals("audio_track_start_failed", rejected.audioConfigResult.rejectionReason)
+        assertThrows(IllegalArgumentException::class.java) {
+            codec.encodeAudioConfigResult(11, sessionId, 7, config, false, "")
+        }
+    }
+
+    @Test
     fun encodeControllerProducesValidProtoEvent() {
         val sample =
             ControllerStateSample(
@@ -538,6 +577,17 @@ class ProtocolV1ProductCodecTest {
             .setKeyframe(true)
             .setCodec(Codec.CODEC_HEVC)
             .setPayloadLength(payloadBytes)
+            .build()
+
+    private fun audioConfig(): AudioConfig =
+        AudioConfig
+            .newBuilder()
+            .setStreamId(2)
+            .setConfigEpoch(1)
+            .setCodec(AudioCodec.AUDIO_CODEC_PCM_S16LE)
+            .setSampleRateHz(48_000)
+            .setChannelCount(2)
+            .setFramesPerPacket(480)
             .build()
 
     private fun mediaRecordLimits(

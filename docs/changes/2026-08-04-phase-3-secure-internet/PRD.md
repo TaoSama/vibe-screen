@@ -35,7 +35,8 @@ The repository currently contains:
 - macOS/Android platform security lifecycle code and deterministic policy/network
   simulation;
 - macOS and Android product-session composition, manual pairing/profile import,
-  protected Protocol v1 control/media DataChannels, and direct/forced-TURN UI;
+  protected Protocol v1 control/media/audio DataChannels, a Host-to-Android
+  microphone PCM audio product path, and direct/forced-TURN UI;
 - a pinned coturn Compose data-plane definition. The recorded local
   forced-relay verification used the host-installed coturn 4.16.0 binary; it
   does not prove execution of the pinned container image.
@@ -148,8 +149,8 @@ cryptographic primitive may be introduced.
 - making a public, unauthenticated Mac endpoint discoverable;
 - allowing the signaling or relay service to decrypt screen or input data;
 - replacing WebRTC congestion control with a project-specific transport;
-- audio, clipboard, file transfer, multiple clients, managed-device enrollment,
-  or account recovery;
+- bidirectional or system-output audio, clipboard, file transfer, multiple
+  clients, managed-device enrollment, or account recovery;
 - treating WebRTC DTLS/SRTP alone as the product's relay-independent E2EE claim;
 - silently routing trusted-LAN mode or explicit plaintext legacy fallback through
   the Internet.
@@ -208,11 +209,12 @@ Internet soak or latency acceptance.
 
 ### Required device evidence
 
-The target Xiaomi 13 (2211133C) at `$ADB_ENDPOINT` must be connected with ADB, identified,
-installed, paired, streamed across a genuine Internet/TURN path, exercised for
-touch and keyboard, disconnected/reconnected, switched between networks, and
-soaked. Commands, device properties, APK/version hashes, host/client revision,
-relay route evidence, structured logs, and timestamps must be archived using the
+The target Xiaomi 13 (2211133C) at `$ADB_ENDPOINT` must be connected with ADB,
+identified, installed, paired, streamed across a genuine Internet/TURN path,
+exercised for touch, keyboard, and any claimed audio product flow,
+disconnected/reconnected, switched between networks, and soaked. Commands,
+device properties, APK/version hashes, host/client revision, relay route evidence,
+structured logs, and timestamps must be archived using the
 [TEST evidence template](TEST.md#android-internet-evidence-template).
 
 ## Release gate

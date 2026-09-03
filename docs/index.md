@@ -30,6 +30,7 @@
 - [Protocol v1 file transfer E2E](changes/2026-08-21-file-transfer-e2e/TEST.md)
 - [Trusted LAN smoke verification](changes/2026-08-20-trusted-lan-smoke/TEST.md)
 - [P0110 Android audio current-base owner](changes/2026-08-24-p0110-audio-current-base/TEST.md)
+- [Internet audio DataChannel verification](changes/2026-09-01-internet-audio-datachannel/TEST.md)
 - [Phase 4 HarmonyOS NEXT client](changes/2026-08-04-phase-4-harmony/PRD.md)
   - [Technical design](changes/2026-08-04-phase-4-harmony/TECH.md)
   - [Verification record](changes/2026-08-04-phase-4-harmony/TEST.md)

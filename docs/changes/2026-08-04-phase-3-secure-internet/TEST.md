@@ -317,8 +317,10 @@ observations. USB, trusted-LAN-only, private-network-only, local loopback,
 synthetic loopback, synthetic peer, forced-local-coturn, synthetic media, blocked
 runs, or Nubia evidence claiming Xiaomi/fuxi identity fail closed. A
 DataChannel record-layer pass proves only the Internet DataChannel transport
-boundary; audio_capture_playback, clipboard_sync, and file_transfer must remain
-not_claimed until real public Internet product-flow evidence exists.
+boundary. Offline product-session tests may document an implementation slice,
+but the release manifest's `audio_capture_playback`, `clipboard_sync`, and
+`file_transfer` claims must remain `not_claimed` until retained real public
+Internet product-flow evidence exists.
 
 ```json
 {
@@ -783,6 +785,16 @@ raw audio/bulk hook tests must not be used as pass evidence for this gate. A
 pass would remain a child gate and would not close the broader public Internet
 release gate.
 
+The narrower 2026-09-01 Internet audio DataChannel implementation record is
+offline-only. It verifies that the macOS product session can negotiate and feed
+Host-to-Android PCM S16LE microphone packets through the protected audio
+DataChannel boundary, and that Android accepts, rejects, routes, and cleans up
+the playback adapter state without raw callback leakage. It must still be
+reported as `audio_capture_playback: not_claimed` in any Phase 3 public release
+manifest until a signed Host, real Microphone/TCC grant, real Android device
+playback, public Internet route, packet-capture confidentiality, handoff,
+latency, and soak record are retained together.
+
 For the narrower public Internet WebRTC bulk file-transfer product-flow owner,
 run `make phase3-webrtc-bulk-product-flow` with
 `PHASE3_WEBRTC_BULK_MANIFEST_JSON` pointing at
@@ -1040,6 +1052,22 @@ named by that run:
   peer. The input frames are synthetic `CVPixelBuffer`s and the check still does
   not start ScreenCaptureKit/CGDisplayStream, instantiate Android MediaCodec, or
   produce Android UI evidence.
+- A 2026-09-01 implementation slice on branch
+  `codex/internet-audio-datachannel` wires the Internet audio product path
+  end-to-end inside the product sessions while remaining offline-only. macOS now
+  advertises optional audio only when policy and capture availability allow it,
+  sends `AudioConfig` after the first video configuration is accepted, and
+  disables audio without dropping video when peer rejection, capture start
+  failure, capture runtime error, or transport recovery requires it. Android now
+  advertises audio only with a playback adapter, rejects missing capability or
+  stale/invalid audio epochs, routes accepted PCM packets to playback, preserves
+  the raw callback only for unconfigured audio records, and stops playback on
+  close, failure, fresh-session, revocation, and transport closure. Focused
+  offline checks are recorded in
+  [`../2026-09-01-internet-audio-datachannel/TEST.md`](../2026-09-01-internet-audio-datachannel/TEST.md).
+  This record proves neither Host runtime permission flow nor real Android
+  `AudioTrack` output, public Internet routing, packet-capture confidentiality,
+  handoff continuity, latency, or soak.
 - The prior curated Android interop record remains
   [withdrawn](evidence/android-product-interop.json). Its claimed source commit
   does not exist in this repository, and raw host output, instrumentation output,

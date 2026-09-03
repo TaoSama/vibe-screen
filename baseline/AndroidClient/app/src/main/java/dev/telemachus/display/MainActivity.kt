@@ -82,6 +82,7 @@ import dev.telemachus.display.internet.ProductVideoConfiguration
 import dev.telemachus.display.internet.ProductVideoConfigurationEffect
 import dev.telemachus.display.internet.ProductVideoDecision
 import dev.telemachus.display.internet.ProductVideoFrame
+import dev.telemachus.display.internet.ProtocolInternetAudioPlayback
 import dev.telemachus.display.internet.ProtobufProtocolV1ProductCodec
 import dev.telemachus.display.internet.runBestEffort
 import dev.telemachus.display.internet.security.AndroidDeviceIdentityStore
@@ -4742,6 +4743,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        val audioPlayback = ProtocolInternetAudioPlayback()
         val codec =
             ProtobufProtocolV1ProductCodec(
                 localDeviceId = internetDeviceId,
@@ -4753,6 +4755,7 @@ class MainActivity : AppCompatActivity() {
                 localManagedPolicy = InternetManagedPolicy.fromProtocolPolicy(
                     ManagedConfigurationProvider(applicationContext).loadPolicy(),
                 ),
+                advertiseAudio = audioPlayback.canAdvertiseAudio,
             )
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -4930,6 +4933,7 @@ class MainActivity : AppCompatActivity() {
                     dev.telemachus.display.internet.MonotonicClock { android.os.SystemClock.elapsedRealtime() },
                     codec,
                     productCallbacks,
+                    audioPlayback,
                     object : InternetProductRevocationStore {
                         override fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
                             internetProfileStore.persistPendingAuthenticatedRevocation(pairingIdentifier, reason)

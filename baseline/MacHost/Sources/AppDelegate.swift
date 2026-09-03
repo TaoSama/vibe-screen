@@ -2564,6 +2564,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             },
             prepareSession: { session, configuration in
                 self.internetProductSession = session
+                session.audioCapture = MacHostInternetAudioCapture()
                 self.settings.internetAdaptiveMediaControl = .active(
                     bitrateMbps: configuration.video.bitrateKbps / 1_000,
                     framesPerSecond: configuration.video.framesPerSecond,
@@ -2627,10 +2628,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         streamSize: (width: Int, height: Int)
     ) throws -> InternetProductSessionStartup {
         let allocation = try allocateInternetSessionProfileRequest()
+        let audioCaptureProbe = MacHostInternetAudioCapture()
         let configuration = try makeInternetProductSessionConfiguration(
             streamSize: streamSize,
             requestID: allocation.requestID,
-            authoritativeSessionEpoch: allocation.authoritativeSessionEpoch
+            authoritativeSessionEpoch: allocation.authoritativeSessionEpoch,
+            audioCaptureAvailable: audioCaptureProbe.canAdvertiseCapture
         )
         guard let signalingBaseURL = configuration.transport.signaling?.endpoint else {
             throw InternetProductSessionError.invalidConfiguration(
@@ -2791,6 +2794,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
             controllerAvailable: configuration.controllerAvailable,
+            managedPolicy: configuration.managedPolicy,
+            fileTransferPolicy: configuration.fileTransferPolicy,
+            fileTransferApprovalTimeoutMilliseconds: configuration.fileTransferApprovalTimeoutMilliseconds,
+            fileTransferProgressTimeoutMilliseconds: configuration.fileTransferProgressTimeoutMilliseconds,
+            audioCaptureAvailable: configuration.audioCaptureAvailable,
             heartbeatIntervalMilliseconds: configuration.heartbeatIntervalMilliseconds,
             heartbeatTimeoutMilliseconds: configuration.heartbeatTimeoutMilliseconds,
             negotiationTimeoutMilliseconds: configuration.negotiationTimeoutMilliseconds,
@@ -2926,9 +2934,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
             controllerAvailable: configuration.controllerAvailable,
+            managedPolicy: configuration.managedPolicy,
             fileTransferPolicy: configuration.fileTransferPolicy,
             fileTransferApprovalTimeoutMilliseconds: configuration.fileTransferApprovalTimeoutMilliseconds,
             fileTransferProgressTimeoutMilliseconds: configuration.fileTransferProgressTimeoutMilliseconds,
+            audioCaptureAvailable: configuration.audioCaptureAvailable,
             heartbeatIntervalMilliseconds: configuration.heartbeatIntervalMilliseconds,
             heartbeatTimeoutMilliseconds: configuration.heartbeatTimeoutMilliseconds,
             negotiationTimeoutMilliseconds: configuration.negotiationTimeoutMilliseconds,
@@ -2939,7 +2949,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeInternetProductSessionConfiguration(
         streamSize: (width: Int, height: Int),
         requestID: String,
-        authoritativeSessionEpoch: UInt64
+        authoritativeSessionEpoch: UInt64,
+        audioCaptureAvailable: Bool = false
     ) throws -> InternetProductSessionConfiguration {
         guard internetPairingMetadataIsComplete else {
             throw InternetProductSessionError.invalidConfiguration(
@@ -2993,6 +3004,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         let peerIdentity = try pinnedInternetPeerIdentity()
+        let managedPolicy = ManagedConfigurationProvider().loadPolicy()
         let iceServer = WebRTCICEServer(
             urls: iceURLs,
             username: hasTURN ? settings.internetTURNUsername : nil,
@@ -3029,8 +3041,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ),
             inputEnabled: settings.touchEnabled,
             controllerAvailable: gameControllerRuntime.factory != nil,
-            managedPolicy: ManagedConfigurationProvider().loadPolicy(),
-            fileTransferPolicy: .default
+            managedPolicy: managedPolicy,
+            fileTransferPolicy: .default,
+            audioCaptureAvailable: audioCaptureAvailable
         )
     }
 

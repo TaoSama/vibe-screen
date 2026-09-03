@@ -19,6 +19,9 @@ import dev.telemachus.display.internet.security.generateEphemeral
 import dev.telemachus.display.internet.security.pairingSha256
 import dev.telemachus.display.internet.security.publicPoint
 import dev.telemachus.display.internet.security.toPairingHex
+import dev.vibescreen.protocol.v1.AudioCodec
+import dev.vibescreen.protocol.v1.AudioConfig
+import dev.vibescreen.protocol.v1.AudioPacketHeader
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
@@ -236,6 +239,14 @@ class InternetProductSessionTest {
             deviceName = "Android",
             supportedCodecs = setOf(ProductVideoCodec.HEVC),
             advertiseController = true,
+            monotonicNanos = { 1 },
+        )
+    private val audioCodec =
+        ProtobufProtocolV1ProductCodec(
+            localDeviceId = "device-1",
+            deviceName = "Android",
+            supportedCodecs = setOf(ProductVideoCodec.HEVC),
+            advertiseAudio = true,
             monotonicNanos = { 1 },
         )
 
@@ -2008,6 +2019,198 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun negotiatedInternetAudioConfiguresPlaybackAfterVideoConfiguration() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true)
+
+        val clientHello = Envelope.parseFrom(peer.control.first()).clientHello
+        assertTrue(clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
+
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+
+        val result = Envelope.parseFrom(peer.control.last()).audioConfigResult
+        assertTrue(result.accepted)
+        assertEquals(2L, result.streamId)
+        assertEquals(1L, result.configEpoch)
+        assertEquals(listOf(audioConfig() to 7L), playback.configured)
+        assertTrue(playback.stops.isEmpty())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun acceptedInternetAudioPacketsSubmitToPlaybackAndSuppressRawCallback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true)
+        val config = audioConfig()
+        peer.receive(controlEnvelope(4).setAudioConfig(config).build())
+        val packet = audioPacket(config)
+
+        peer.audio(packet)
+
+        assertEquals(1, playback.submitted.size)
+        assertArrayEquals(packet, playback.submitted.single())
+        assertTrue(callbacks.audio.isEmpty())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun audioConfigurationWithoutNegotiatedAudioFailsClosed() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor)
+
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertTrue(playback.configured.isEmpty())
+        assertEquals(1, callbacks.failures.size)
+        assertEquals(
+            "Audio configuration arrived without a negotiated audio session",
+            callbacks.failures.single().message,
+        )
+    }
+
+    @Test
+    fun rejectedInternetAudioConfigurationRespondsWithoutStartingPlayback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback(configureDecision = InternetAudioDecision.reject("audio_track_start_failed"))
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true)
+
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+
+        val result = Envelope.parseFrom(peer.control.last()).audioConfigResult
+        assertFalse(result.accepted)
+        assertEquals("audio_track_start_failed", result.rejectionReason)
+        assertEquals(listOf(audioConfig() to 7L), playback.configured)
+        assertEquals(listOf("audio_configuration_rejected"), playback.stops)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun repeatedAcceptedInternetAudioConfigurationIsIdempotent() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true)
+
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+        peer.receive(controlEnvelope(5).setAudioConfig(audioConfig()).build())
+
+        val result = Envelope.parseFrom(peer.control.last()).audioConfigResult
+        assertTrue(result.accepted)
+        assertEquals("", result.rejectionReason)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(1, playback.configured.size)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun staleInternetAudioConfigurationIsRejectedWithoutFailingSession() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true)
+
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+        peer.receive(controlEnvelope(5).setAudioConfig(audioConfig(streamId = 3)).build())
+
+        val result = Envelope.parseFrom(peer.control.last()).audioConfigResult
+        assertFalse(result.accepted)
+        assertEquals("invalid_audio_config_epoch", result.rejectionReason)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(1, playback.configured.size)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun negotiatedInternetAudioWithoutPlaybackAdapterFailsClosed() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, codec = audioCodec)
+        activateWithVideo(session, peer, monitor, audio = true)
+
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.failures.size)
+        assertEquals(
+            "Audio playback is unavailable for a negotiated audio session",
+            callbacks.failures.single().message,
+        )
+    }
+
+    @Test
+    fun rejectedInternetAudioPacketFailsClosedAndStopsPlayback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true)
+        peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+        playback.submitDecision = InternetAudioDecision.reject("invalid_audio_header")
+
+        peer.audio(byteArrayOf(0x01))
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(listOf("invalid_audio_header", "session_failure"), playback.stops)
+        assertEquals(1, callbacks.failures.size)
+        assertEquals(
+            "Protocol v1 audio record was rejected: invalid_audio_header",
+            callbacks.failures.single().message,
+        )
+    }
+
+    @Test
+    fun configuredInternetAudioStopsOnCloseFreshSessionAndRevocation() {
+        listOf("close", "fresh", "revocation").forEach { terminal ->
+            val peer = ProductFakePeerEngine()
+            val monitor = ProductFakeNetworkMonitor()
+            val callbacks = ProductCallbacks()
+            val playback = ProductFakeAudioPlayback()
+            val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+            activateWithVideo(session, peer, monitor, audio = true)
+            peer.receive(controlEnvelope(4).setAudioConfig(audioConfig()).build())
+
+            when (terminal) {
+                "close" -> session.close()
+                "fresh" -> monitor.available("cellular")
+                "revocation" -> peer.receive(revocationEnvelope(5))
+            }
+
+            assertTrue(playback.stops.isNotEmpty())
+            assertEquals(
+                when (terminal) {
+                    "close" -> "session_close"
+                    "fresh" -> "fresh_session_required"
+                    else -> "session_revoked"
+                },
+                playback.stops.first(),
+            )
+        }
+    }
+
+    @Test
     fun audioRecordBeforeVideoConfigurationIsDroppedWithoutFailingSession() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
@@ -3251,6 +3454,7 @@ class InternetProductSessionTest {
         revocationStore: InternetProductRevocationStore = ProductRevocationStore(),
         codec: ProtocolV1ProductCodec = this.codec,
         nextControllerInputId: () -> Long = { error("Unexpected controller input id allocation") },
+        audioPlayback: InternetAudioPlayback? = null,
     ) = InternetProductSession(
         lease = lease,
         configuration =
@@ -3263,6 +3467,7 @@ class InternetProductSessionTest {
         networkMonitor = monitor,
         clock = clock,
         codec = codec,
+        audioPlayback = audioPlayback,
         callbacks = callbacks,
         revocationStore = revocationStore,
         revocationCoordinator = revocationCoordinator,
@@ -3283,6 +3488,7 @@ class InternetProductSessionTest {
         clipboard: Boolean = false,
         fileTransfer: Boolean = false,
         managedConfiguration: Boolean = false,
+        audio: Boolean = false,
     ) {
         session.start()
         monitor.available("wifi")
@@ -3310,6 +3516,10 @@ class InternetProductSessionTest {
         if (managedConfiguration) {
             hello.addCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
             accepted.addNegotiatedCapabilities(Capability.CAPABILITY_MANAGED_CONFIGURATION)
+        }
+        if (audio) {
+            hello.addCapabilities(Capability.CAPABILITY_AUDIO)
+            accepted.addNegotiatedCapabilities(Capability.CAPABILITY_AUDIO)
         }
         peer.receive(controlEnvelope(1).setHostHello(hello).build())
         peer.receive(controlEnvelope(2).setSessionAccepted(accepted).build())
@@ -3532,6 +3742,51 @@ class InternetProductSessionTest {
             payload,
         )
 
+    private fun audioConfig(
+        streamId: Long = 2,
+        configEpoch: Long = 1,
+    ): AudioConfig =
+        AudioConfig
+            .newBuilder()
+            .setStreamId(streamId)
+            .setConfigEpoch(configEpoch)
+            .setCodec(AudioCodec.AUDIO_CODEC_PCM_S16LE)
+            .setSampleRateHz(48_000)
+            .setChannelCount(2)
+            .setFramesPerPacket(480)
+            .build()
+
+    private fun audioPacket(
+        config: AudioConfig,
+        sequence: Long = 0,
+    ): ByteArray {
+        val payload = ByteArray(config.framesPerPacket * config.channelCount * 2) { 0x55 }
+        val header =
+            AudioPacketHeader
+                .newBuilder()
+                .setStreamId(config.streamId)
+                .setSessionEpoch(lease.authoritativeSessionEpoch)
+                .setConfigEpoch(config.configEpoch)
+                .setSequence(sequence)
+                .setFrameCount(config.framesPerPacket)
+                .setPayloadLength(payload.size)
+                .build()
+        val headerBytes = header.toByteArray()
+        return audioVarint(headerBytes.size) + headerBytes + payload
+    }
+
+    private fun audioVarint(value: Int): ByteArray {
+        var remaining = value
+        val output = mutableListOf<Byte>()
+        do {
+            var next = remaining and 0x7f
+            remaining = remaining ushr 7
+            if (remaining > 0) next = next or 0x80
+            output += next.toByte()
+        } while (remaining > 0)
+        return output.toByteArray()
+    }
+
     private fun mediaRecordWithExactSize(targetBytes: Int): ByteArray {
         require(targetBytes in 2..InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES)
         var payloadBytes = targetBytes
@@ -3659,6 +3914,30 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     override fun onFailure(error: Throwable) { failures += error }
     override fun onRouteSelected(route: PeerRoute) { routes += route }
     override fun onRevoked(reason: String) { revocationEvents?.add("callback") }
+}
+
+private class ProductFakeAudioPlayback(
+    override val canAdvertiseAudio: Boolean = true,
+    private val configureDecision: InternetAudioDecision = InternetAudioDecision.ACCEPT,
+) : InternetAudioPlayback {
+    val configured = mutableListOf<Pair<AudioConfig, Long>>()
+    val submitted = mutableListOf<ByteArray>()
+    val stops = mutableListOf<String>()
+    var submitDecision: InternetAudioDecision = InternetAudioDecision.ACCEPT
+
+    override fun configure(config: AudioConfig, sessionEpoch: Long): InternetAudioDecision {
+        configured += config to sessionEpoch
+        return configureDecision
+    }
+
+    override fun submit(serializedFrame: ByteArray): InternetAudioDecision {
+        submitted += serializedFrame.copyOf()
+        return submitDecision
+    }
+
+    override fun stop(reason: String) {
+        stops += reason
+    }
 }
 
 private class ProductFakeNetworkMonitor(
