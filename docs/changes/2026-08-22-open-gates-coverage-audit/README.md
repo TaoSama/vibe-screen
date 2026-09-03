@@ -42,9 +42,10 @@ change product status.
 ## 2026-09-03 refresh
 
 - The current base is the PR #534 merge commit `daa111e1c23e9d4487f7a478454f9e3a847f25a1`.
-- PR #533 and PR #534 are merged, and there are no open PRs at the time of this audit. Previous
-  owner mappings from #157 through #411 are now merged, closed, or superseded
-  historical context rather than active external gate owners.
+- PR #533 and PR #534 are merged, and there are no open PRs at the time of
+  this audit. Previous owner mappings from #157 through #534 are now merged,
+  closed, or superseded historical context rather than active external gate
+  owners.
 - The Phase 0 module-ownership sub-gate now passes on current main. This closes
   only the source/offline module-boundary requirement. It does not close any
   missing runtime evidence gate.
