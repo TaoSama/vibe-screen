@@ -762,8 +762,152 @@ class ProtocolV1ClipboardTest {
         assertNotNull(session.requestClipboard(hostChangeId))
     }
 
+    @Test
+    fun bidirectionalProductFlowContractKeepsMarkersChangeIdsAndDigestsDistinct() {
+        val session = clipboardSession()
+        val androidMarker = "android-to-macos-marker-2026-09-04"
+        val macosMarker = "macos-to-android-marker-2026-09-04"
+
+        val androidOfferEnvelope = session.offerClipboard(androidMarker) ?: throw AssertionError("offer failed")
+        val androidOffer = androidOfferEnvelope.clipboardOffer
+        assertEquals(16, androidOffer.changeId.size())
+        assertEquals(deviceId, androidOffer.originDeviceId)
+        assertEquals("text/plain", androidOffer.mimeType)
+        assertEquals(androidMarker.toByteArray(Charsets.UTF_8).size.toLong(), androidOffer.byteLength)
+        assertArrayEquals(sha256(androidMarker.toByteArray(Charsets.UTF_8)), androidOffer.sha256.toByteArray())
+
+        val hostRequestsAndroidClipboard =
+            base(10)
+                .setClipboardRequest(ClipboardRequest.newBuilder().setChangeId(androidOffer.changeId))
+                .build()
+        val androidContentEnvelope =
+            session.receive(hostRequestsAndroidClipboard)
+                .filterIsInstance<ProtocolV1Session.Action.Send>()
+                .single()
+                .envelope
+        val androidContent = androidContentEnvelope.clipboardContent
+        assertEquals(androidOffer.changeId, androidContent.changeId)
+        assertEquals(deviceId, androidContent.originDeviceId)
+        assertEquals("text/plain", androidContent.mimeType)
+        assertEquals(androidMarker, androidContent.content.toString(Charsets.UTF_8))
+        assertArrayEquals(androidOffer.sha256.toByteArray(), androidContent.sha256.toByteArray())
+
+        val macosBytes = macosMarker.toByteArray(Charsets.UTF_8)
+        val macosChangeId = ByteString.copyFrom(ByteArray(16) { (it + 0x10).toByte() })
+        val macosSha = ByteString.copyFrom(sha256(macosBytes))
+        val macosOffer =
+            base(11)
+                .setClipboardOffer(
+                    ClipboardOffer
+                        .newBuilder()
+                        .setChangeId(macosChangeId)
+                        .setOriginDeviceId(hostId)
+                        .setMimeType("text/plain")
+                        .setByteLength(macosBytes.size.toLong())
+                        .setSha256(macosSha),
+                ).build()
+
+        val offered = session.receive(macosOffer).single() as ProtocolV1Session.Action.ClipboardOffered
+        assertEquals(macosChangeId, offered.changeId)
+        val requestMacosClipboard = session.requestClipboard(macosChangeId) ?: throw AssertionError("request failed")
+        assertEquals(macosChangeId, requestMacosClipboard.clipboardRequest.changeId)
+
+        val macosContent =
+            base(12)
+                .setClipboardContent(
+                    ClipboardContent
+                        .newBuilder()
+                        .setChangeId(macosChangeId)
+                        .setOriginDeviceId(hostId)
+                        .setMimeType("text/plain")
+                        .setContent(ByteString.copyFrom(macosBytes))
+                        .setSha256(macosSha),
+                ).build()
+        val received = session.receive(macosContent).single() as ProtocolV1Session.Action.ClipboardContentReceived
+        assertEquals(macosChangeId, received.changeId)
+        assertEquals(hostId, received.originDeviceId)
+        assertEquals("text/plain", received.mimeType)
+        assertEquals(macosMarker, received.content.toString(Charsets.UTF_8))
+        assertArrayEquals(macosSha.toByteArray(), received.sha256.toByteArray())
+        assertFalse(received.pending)
+
+        assertFalse(androidMarker == macosMarker)
+        assertFalse(androidOffer.changeId == macosChangeId)
+        assertFalse(androidContent.sha256 == macosSha)
+        assertEquals(7L, androidContentEnvelope.sessionEpoch)
+        assertEquals(7L, macosContent.sessionEpoch)
+    }
+
+    @Test
+    fun productFlowOverwriteCancelFailureAndDenyWinsStayFailClosed() {
+        val session = clipboardSession()
+        val oldChangeId = ByteString.copyFrom(ByteArray(16) { (it + 0x20).toByte() })
+        val newChangeId = ByteString.copyFrom(ByteArray(16) { (it + 0x30).toByte() })
+        val oldBytes = "macos-cancelled-marker-2026-09-04".toByteArray(Charsets.UTF_8)
+        val newBytes = "macos-overwrite-marker-2026-09-04".toByteArray(Charsets.UTF_8)
+
+        session.receive(clipboardOfferEnvelope(10, oldChangeId, oldBytes))
+        val oldRequest = session.requestClipboard(oldChangeId) ?: throw AssertionError("old request failed")
+        assertEquals(oldChangeId, oldRequest.clipboardRequest.changeId)
+
+        session.receive(clipboardOfferEnvelope(11, newChangeId, newBytes))
+        assertNull(session.requestClipboard(oldChangeId))
+        assertFalse(session.expireClipboardRequest(oldChangeId))
+        val lateOldContent = session.receive(clipboardContentEnvelope(12, oldChangeId, oldBytes))
+        val pending = lateOldContent.single() as ProtocolV1Session.Action.ClipboardContentReceived
+        assertTrue(pending.pending)
+
+        val newRequest = session.requestClipboard(newChangeId) ?: throw AssertionError("new request failed")
+        assertEquals(newChangeId, newRequest.clipboardRequest.changeId)
+        val badBytes = "macos-failed-marker-2026-09-04".toByteArray(Charsets.UTF_8)
+        val badContent = clipboardContentEnvelope(13, newChangeId, badBytes)
+        val failure = assertThrows(ProtocolV1Failure::class.java) { session.receive(badContent) }
+        assertEquals("invalid_peer_message", failure.reason)
+
+        val denied = managedPolicyStatus(clipboardAllowed = false)
+        session.receive(base(14).setManagedPolicyStatus(denied).build())
+        assertFalse(session.canSendClipboard)
+        assertNull(session.offerClipboard("android-denied-marker-2026-09-04"))
+        assertNull(session.requestClipboard(newChangeId))
+        val deniedContent = clipboardContentEnvelope(15, newChangeId, newBytes)
+        val deniedFailure = assertThrows(ProtocolV1Failure::class.java) { session.receive(deniedContent) }
+        assertEquals("invalid_peer_message", deniedFailure.reason)
+    }
+
     private fun sha256(bytes: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(bytes)
+
+    private fun clipboardOfferEnvelope(
+        id: Long,
+        changeId: ByteString,
+        bytes: ByteArray,
+    ): Envelope =
+        base(id)
+            .setClipboardOffer(
+                ClipboardOffer
+                    .newBuilder()
+                    .setChangeId(changeId)
+                    .setOriginDeviceId(hostId)
+                    .setMimeType("text/plain")
+                    .setByteLength(bytes.size.toLong())
+                    .setSha256(ByteString.copyFrom(sha256(bytes))),
+            ).build()
+
+    private fun clipboardContentEnvelope(
+        id: Long,
+        changeId: ByteString,
+        bytes: ByteArray,
+    ): Envelope =
+        base(id)
+            .setClipboardContent(
+                ClipboardContent
+                    .newBuilder()
+                    .setChangeId(changeId)
+                    .setOriginDeviceId(hostId)
+                    .setMimeType("text/plain")
+                    .setContent(ByteString.copyFrom(bytes))
+                    .setSha256(ByteString.copyFrom(sha256(bytes))),
+            ).build()
 
     private fun singleVideoConfigurationRequested(
         actions: List<ProtocolV1Session.Action>,

@@ -260,6 +260,10 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
         "write_failure_absent",
         "cleanup_completed",
         "utf8_valid",
+        "overwrite_confirmed",
+        "cancel_does_not_write",
+        "failure_does_not_write",
+        "deny_wins_observed",
     )
     reasons = [
         f"{label}.{field} must be true"
@@ -297,6 +301,33 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
         reasons.append(f"{label}.source_system_clipboard must be {source}")
     if direction.get("destination_system_clipboard") != destination:
         reasons.append(f"{label}.destination_system_clipboard must be {destination}")
+    final_marker = direction.get("final_marker")
+    if not isinstance(final_marker, str) or final_marker != marker:
+        reasons.append(f"{label}.final_marker must equal marker after the destination system clipboard write")
+    overwrite_marker = direction.get("overwrite_marker")
+    if not isinstance(overwrite_marker, str) or len(overwrite_marker.strip()) < 8:
+        reasons.append(f"{label}.overwrite_marker must identify the explicit overwrite text marker")
+    cancelled_marker = direction.get("cancelled_marker")
+    if not isinstance(cancelled_marker, str) or len(cancelled_marker.strip()) < 8:
+        reasons.append(f"{label}.cancelled_marker must identify the cancelled transfer marker")
+    failed_marker = direction.get("failed_marker")
+    if not isinstance(failed_marker, str) or len(failed_marker.strip()) < 8:
+        reasons.append(f"{label}.failed_marker must identify the failed transfer marker")
+    deny_marker = direction.get("deny_marker")
+    if not isinstance(deny_marker, str) or len(deny_marker.strip()) < 8:
+        reasons.append(f"{label}.deny_marker must identify the managed-policy denied marker")
+    marker_fields = ("marker", "overwrite_marker", "cancelled_marker", "failed_marker", "deny_marker")
+    seen_markers: dict[str, str] = {}
+    for field in marker_fields:
+        value = direction.get(field)
+        if not isinstance(value, str) or len(value.strip()) < 8:
+            continue
+        normalized = value.strip()
+        previous = seen_markers.get(normalized)
+        if previous is not None:
+            reasons.append(f"{label}.{field} must be distinct from {previous}")
+        else:
+            seen_markers[normalized] = field
     return reasons
 
 
@@ -483,6 +514,7 @@ def derive_gate(
             "showing explicit user action, source system clipboard read, remote system clipboard write, "
             "Protocol v1 session ownership, verified session ID and session epoch, verified origin device ID, change ID, "
             "SHA-256 digest, text/plain MIME, strict UTF-8 validation, bounded byte length, receiver approval, "
+            "overwrite confirmation, cancel/no-write behavior, failure/no-write behavior, deny-wins managed-policy blocking, "
             "absence of send/write failures, cleanup completion, exact source/destination system clipboard endpoints, "
             "distinct final marker matches, distinct change IDs, and distinct SHA-256 digests. Offline or "
             "synthetic coverage alone remains readiness evidence."
