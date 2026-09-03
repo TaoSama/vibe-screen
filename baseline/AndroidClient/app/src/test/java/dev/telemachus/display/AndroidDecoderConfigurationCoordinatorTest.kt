@@ -111,6 +111,43 @@ class AndroidDecoderConfigurationCoordinatorTest {
     }
 
     @Test
+    fun localReconfigurationAfterOwnerReleasePublishesNewDecoderForNewConfigEpoch() {
+        val scaleModeUpdates = mutableListOf<Any>()
+        val fixture = Fixture(updateScaleMode = { scaleModeUpdates += it })
+        val firstDecoder = Any()
+        val secondDecoder = Any()
+
+        fixture.coordinator.configureLocal(
+            request = fixture.localRequest(),
+            createDecoder = { firstDecoder },
+        ) { result ->
+            assertEquals(AndroidDecoderConfigurationResult.Configured, result)
+        }
+
+        val replacementConfiguration = fixture.decoderPresentationOwner.publishLocalVideoConfiguration(
+            width = 1920,
+            height = 1080,
+            configEpoch = 43L,
+        )
+        fixture.decoderPresentationOwner.releaseCurrentDecoder(fixture.releasedDecoders::add)
+
+        fixture.coordinator.configureLocal(
+            request =
+                fixture.localRequest(
+                    configuration = replacementConfiguration,
+                    expectedConfigEpoch = replacementConfiguration.configEpoch,
+                ),
+            createDecoder = { secondDecoder },
+        ) { result ->
+            assertEquals(AndroidDecoderConfigurationResult.Configured, result)
+        }
+
+        assertEquals(listOf(firstDecoder), fixture.releasedDecoders)
+        assertEquals(listOf(firstDecoder, secondDecoder), scaleModeUpdates)
+        assertSame(secondDecoder, fixture.decoderPresentationOwner.currentDecoder())
+    }
+
+    @Test
     fun localCreateFailureReportsFailure() {
         val fixture = Fixture()
         val failure = DecoderInitializationException(
@@ -387,6 +424,7 @@ class AndroidDecoderConfigurationCoordinatorTest {
 
     private class Fixture(
         postCommit: (() -> Unit) -> Unit = { it() },
+        updateScaleMode: (Any) -> Unit = {},
     ) {
         val decoderPresentationOwner =
             DecoderPresentationOwner<Any, TestInternetConfiguration>(
@@ -400,7 +438,7 @@ class AndroidDecoderConfigurationCoordinatorTest {
                 decoderPresentationOwner = decoderPresentationOwner,
                 executeDecoderWork = { it() },
                 postCommit = postCommit,
-                updateScaleMode = { },
+                updateScaleMode = updateScaleMode,
                 commitStartup = { _, publish ->
                     if (publish()) DecoderStartupCommitResult.Committed
                     else DecoderStartupCommitResult.NotCommitted

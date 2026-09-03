@@ -459,7 +459,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["aggregate_verdict"], "blocked")
         self.assertFalse(summary["can_mark_phase0_stable_release"])
         self.assertEqual(summary["readme_guard"]["verdict"], "pass")
-        self.assertEqual(summary["closed_required_gate_count"], 5)
+        self.assertEqual(summary["closed_required_gate_count"], 6)
         macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
         self.assertEqual(macos_gate["verdict"], "open")
         self.assertIn(
