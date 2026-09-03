@@ -152,6 +152,39 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun rawTimedOutTransportMessagesUseModeSpecificTimeoutGuidance() {
+        val contexts =
+            listOf(
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB) to
+                    R.string.connection_guidance_usb_recovery_usb,
+                ConnectionGuidanceContext.trustedLan(54321) to R.string.connection_guidance_lan_timeout_message,
+                ConnectionGuidanceContext.internet() to R.string.connection_guidance_internet_timeout_message,
+            )
+        val failures =
+            listOf(
+                IOException("Connection timed out"),
+                ConnectException("connect failed: ETIMEDOUT (Connection timed out)"),
+            )
+
+        contexts.forEach { (context, expectedMessageResource) ->
+            failures.forEach { failure ->
+                val guidance = ConnectionGuidanceFactory.from(failure, context)
+
+                assertEquals("${context.mode} ${failure.message}", ConnectionFailureKind.TIMEOUT, guidance.kind)
+                assertEquals(expectedMessageResource, guidance.message.resourceId)
+                if (context.mode == ConnectionMode.USB) {
+                    assertEquals(
+                        R.string.connection_guidance_usb_timeout_prefix,
+                        (guidance.message.args[0] as ConnectionGuidanceText).resourceId,
+                    )
+                } else {
+                    assertNoAdbReferences(guidance)
+                }
+            }
+        }
+    }
+
+    @Test
     fun sessionFailureKindsRouteToTheRightGuidanceFamily() {
         val cases =
             listOf(

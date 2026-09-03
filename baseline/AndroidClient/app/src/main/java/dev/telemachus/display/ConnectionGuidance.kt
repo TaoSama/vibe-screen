@@ -138,6 +138,12 @@ internal object ConnectionGuidanceFactory {
         if (throwable is SessionProtocolException) return from(throwable.failure, context)
         val causes = causeChain(throwable)
         return when {
+            causes.any { it is SocketTimeoutException } ||
+                causes.containMessage("timeout") ||
+                causes.containMessage("timed out") ||
+                causes.containMessage("ETIMEDOUT") ->
+                timeout(context)
+
             causes.containMessage("before display configuration") ||
                 causes.containMessage("Protocol upgrade probe closed before a response") ->
                 hostNotRunning(context)
@@ -153,9 +159,6 @@ internal object ConnectionGuidanceFactory {
 
             causes.isConnectionRefused() ->
                 hostNotRunning(context)
-
-            causes.any { it is SocketTimeoutException } || causes.containMessage("timeout") ->
-                timeout(context)
 
             else ->
                 unknown(context)
