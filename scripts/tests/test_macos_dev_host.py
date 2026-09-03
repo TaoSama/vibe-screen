@@ -2959,6 +2959,38 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             self.assertTrue(status.is_allowed((macos_dev_host.ACCESSIBILITY_SERVICE,)))
             self.assertTrue(status.is_allowed(macos_dev_host.MICROPHONE_SERVICES))
 
+    def test_tcc_permission_state_uses_latest_row_per_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_database(
+                database_path,
+                [
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 0, 4, 10),
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 20),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 30),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 0, 4, 40),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 50),
+                    ("kTCCServiceAccessibility", "other.bundle", 0, 2, 4, 60),
+                ],
+            )
+
+            status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
+
+        self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
+        self.assertFalse(status.is_allowed(macos_dev_host.ACCESSIBILITY_SERVICES))
+        self.assertTrue(status.is_allowed(macos_dev_host.MICROPHONE_SERVICES))
+        self.assertEqual(
+            status.latest_row(macos_dev_host.ACCESSIBILITY_SERVICES),
+            macos_dev_host.TCCRow(
+                "kTCCServiceAccessibility",
+                "dev.telemachus.display",
+                0,
+                0,
+                4,
+                40,
+            ),
+        )
+
     def test_query_tcc_rows_combines_multiple_read_only_databases(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
