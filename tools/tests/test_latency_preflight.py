@@ -66,7 +66,7 @@ class LatencyPreflightReportTest(unittest.TestCase):
             profile["missing_requirements"],
         )
 
-    def test_passing_formal_report_can_close_selected_profile(self) -> None:
+    def test_committed_fixture_formal_report_keeps_profile_blocked(self) -> None:
         input_document = {
             "schema_version": "vibescreen.evidence/v1",
             "gate_profiles": [
@@ -94,9 +94,16 @@ class LatencyPreflightReportTest(unittest.TestCase):
         )
 
         profile = report["gate_profiles"][0]
-        self.assertEqual(report["status"], "ready")
-        self.assertTrue(profile["can_close_performance_gate"])
-        self.assertEqual(profile["formal_report"]["verdict"], "pass")
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(profile["can_attempt_formal_gate"])
+        self.assertFalse(profile["can_close_performance_gate"])
+        self.assertEqual(profile["formal_report"]["verdict"], "insufficient")
+        self.assertTrue(
+            any(
+                "synthetic latency fixtures cannot close" in reason
+                for reason in profile["formal_gate_reasons"]
+            )
+        )
 
     def test_invalid_formal_manifest_keeps_profile_blocked(self) -> None:
         input_document = {

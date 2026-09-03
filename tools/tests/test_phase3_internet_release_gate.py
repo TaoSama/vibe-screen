@@ -10,12 +10,10 @@ import tempfile
 import unittest
 
 from vibescreen_evidence.phase3_internet_release_gate import REQUIRED_RAW_ARTIFACTS, derive_gate, main
+from tools.tests.latency_test_helpers import write_minimal_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-VALID_CAMERA_FIXTURE = REPOSITORY_ROOT / "tools" / "fixtures" / "latency" / "external-camera-valid" / "raw-camera-fixture.mov"
-
-
 def write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
@@ -24,11 +22,6 @@ def write_json(path: Path, value: dict) -> None:
 def touch(path: Path, value: str = "evidence\n") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(value, encoding="utf-8")
-
-
-def write_minimal_mov(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(VALID_CAMERA_FIXTURE.read_bytes())
 
 
 def write_jsonl(path: Path, records: list[dict]) -> None:
@@ -98,14 +91,19 @@ def latency_report() -> dict:
 def latency_manifest(route: str) -> dict:
     return {
         "schema_version": "vibescreen.evidence/v1",
-        "run_id": f"fixture-{route}",
+        "run_id": f"bench-{route}",
         "latency_kind": "glass-to-glass",
         "transport": "internet",
         "measurement_method": "external-camera",
         "gate_profile": "internet-glass-to-glass-sub150",
+        "evidence_provenance": {
+            "source": "real-device-capture",
+            "collection_context": "bench capture for the phase 3 release gate",
+            "operator_assertion": "This package records retained direct device evidence.",
+        },
         "camera": {
-            "manufacturer": "Fixture Camera Co",
-            "model": "Synthetic 240",
+            "manufacturer": "Bench Camera Co",
+            "model": "Retained 240",
             "mode": "1080p240",
             "frame_rate_fps": 240,
             "shutter_mode": "fixed",
@@ -113,21 +111,25 @@ def latency_manifest(route: str) -> dict:
         "recording": {
             "raw_video": "raw-camera.mov",
             "recorded_at": "2026-08-23T00:00:00Z",
-            "operator": "fixture",
+            "operator": "bench operator",
             "sha256": "",
+            "container": "mov",
+            "file_size_bytes": 0,
+            "frame_count": 600,
+            "duration_ms": 2500,
         },
         "samples": {
             "file": "samples.csv",
             "format": "csv",
             "sha256": "",
             "annotation_method": "direct-latency-ms",
-            "annotator": "fixture",
+            "annotator": "bench annotator",
         },
         "gate_artifacts": {
             "internet_public_route_record": {
                 "file": "internet-public-route-record.txt",
                 "sha256": "",
-                "description": "Synthetic public Internet route proof.",
+                "description": "Public Internet route and active stream proof.",
             }
         },
         "device": {
@@ -136,11 +138,11 @@ def latency_manifest(route: str) -> dict:
             "codename": "pacific",
             "os_version": "Android 16 / SDK 36",
         },
-        "host": {"model": "Fixture Mac", "macos_version": "fixture"},
+        "host": {"model": "Mac16,8", "macos_version": "26.4.1"},
         "build": {
-            "repository_revision": "fixture-revision",
-            "host_artifact": "fixture-host",
-            "client_artifact": "fixture-client",
+            "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            "host_artifact": "Vibe Screen.app sha256 retained in commands.txt",
+            "client_artifact": "app-debug.apk sha256 retained in commands.txt",
         },
         "measurement_setup": {
             "stimulus": "mac display flash visible to the camera",
@@ -150,12 +152,12 @@ def latency_manifest(route: str) -> dict:
             "mounting": "fixed tripod framing both screens",
             "clock_domain": "single-external-camera-timebase",
             "max_frame_annotation_uncertainty_ms": 1.0,
-            "notes": "Synthetic test package only.",
+            "notes": "Bench validation package with retained artifacts.",
         },
         "internet_route": {
             "route": f"{route}-public-internet" if route == "direct" else "forced-public-turn",
             "turn_deployment": {
-                "provider": "fixture provider",
+                "provider": "example provider",
                 "region": "remote-region-1",
                 "public_hostname": "1.1.1.1",
                 "resolved_ip": "1.1.1.1",
@@ -163,7 +165,7 @@ def latency_manifest(route: str) -> dict:
                 "credential_source": "authority-issued short-lived credential",
             },
             "remote_peer": {
-                "operator": "fixture operator",
+                "operator": "remote tester",
                 "network": "remote carrier",
                 "public_ip_asn": "AS64500",
                 "location": "remote lab",
@@ -431,6 +433,7 @@ def write_latency_package(root: Path, route: str) -> None:
     touch(route_record, "public Internet route proof\n")
     manifest = latency_manifest(route)
     manifest["recording"]["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+    manifest["recording"]["file_size_bytes"] = raw_video.stat().st_size
     manifest["samples"]["sha256"] = hashlib.sha256(samples.read_bytes()).hexdigest()
     manifest["gate_artifacts"]["internet_public_route_record"]["sha256"] = hashlib.sha256(
         route_record.read_bytes()

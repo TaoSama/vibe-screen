@@ -13,6 +13,7 @@ from tools.vibescreen_evidence.latency import (
     GATE_USB_GLASS_TO_GLASS_SUB50,
 )
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
+from tools.tests.latency_test_helpers import minimal_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -21,26 +22,102 @@ FIXTURE_DIR = REPOSITORY_ROOT / "tools" / "fixtures" / "latency"
 
 
 class LatencyEvidenceReportTest(unittest.TestCase):
+    def mark_real_capture_manifest(self, manifest: dict[str, object], run_id: str) -> None:
+        manifest["run_id"] = run_id
+        manifest["evidence_provenance"] = {
+            "source": "real-device-capture",
+            "collection_context": "bench capture in the current latency lab",
+            "operator_assertion": "This package records a retained device capture run.",
+        }
+        replacements = {
+            "Fixture": "Bench",
+            "fixture": "bench",
+            "Synthetic": "Retained",
+            "synthetic": "retained",
+            "checker": "validation",
+        }
+
+        def scrub(value: object, field_name: str | None = None) -> object:
+            if isinstance(value, dict):
+                return {key: scrub(child, str(key)) for key, child in value.items()}
+            if isinstance(value, list):
+                return [scrub(child, field_name) for child in value]
+            if isinstance(value, str):
+                for old, new in replacements.items():
+                    value = value.replace(old, new)
+            return value
+
+        for section in ("camera", "recording", "samples", "device", "host", "build", "measurement_setup", "gate_artifacts"):
+            if section in manifest:
+                manifest[section] = scrub(manifest[section])
+
+    def update_recording_metadata(self, root: Path, manifest: dict[str, object]) -> None:
+        recording = manifest["recording"]
+        assert isinstance(recording, dict)
+        raw_video = root / str(recording["raw_video"])
+        recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+        recording["file_size_bytes"] = raw_video.stat().st_size
+        recording["container"] = raw_video.suffix.lower().lstrip(".")
+        recording["frame_count"] = 600
+        recording["duration_ms"] = 2500
+
     def copy_valid_package(self, root: Path) -> dict[str, object]:
         source = FIXTURE_DIR / "external-camera-valid"
         manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
-        (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
-        (root / "raw-camera-fixture.mov").write_bytes(
-            (source / "raw-camera-fixture.mov").read_bytes()
+        self.mark_real_capture_manifest(manifest, "bench-external-camera-valid")
+        samples_bytes = (
+            "start_frame,end_frame,camera_fps\n"
+            "10,18,240\n110,119,240\n210,219,240\n"
+            "310,319,240\n410,419,240\n"
+        ).encode("utf-8")
+        (root / "samples.csv").write_bytes(samples_bytes)
+        recording = manifest["recording"]
+        assert isinstance(recording, dict)
+        recording["raw_video"] = "raw-camera-capture.mov"
+        (root / "raw-camera-capture.mov").write_bytes(
+            minimal_mov(b"retained-device-usb-video-fragment")
         )
-        (root / "usb-connection.txt").write_bytes(
-            (source / "usb-connection.txt").read_bytes()
+        (root / "usb-connection.txt").write_text(
+            "adb reverse tcp:54321 tcp:54321\nactive usb stream observed on real device\n",
+            encoding="utf-8",
         )
+        samples = manifest["samples"]
+        assert isinstance(samples, dict)
+        samples["sha256"] = hashlib.sha256(samples_bytes).hexdigest()
+        self.update_recording_metadata(root, manifest)
+        artifacts = manifest["gate_artifacts"]
+        assert isinstance(artifacts, dict)
+        usb_connection = artifacts["usb_connection"]
+        assert isinstance(usb_connection, dict)
+        usb_connection["sha256"] = hashlib.sha256((root / "usb-connection.txt").read_bytes()).hexdigest()
         return manifest
 
     def copy_synchronized_clock_package(self, root: Path) -> dict[str, object]:
         source = FIXTURE_DIR / "synchronized-clock-input-valid"
         manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
-        (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
-        (root / "input-actuation.txt").write_bytes((source / "input-actuation.txt").read_bytes())
-        (root / "synchronization-record.txt").write_bytes(
-            (source / "synchronization-record.txt").read_bytes()
+        self.mark_real_capture_manifest(manifest, "bench-synchronized-clock-input")
+        samples_bytes = b"latency_ms\n13.1\n18.3\n15.1\n22.4\n19.7\n"
+        (root / "samples.csv").write_bytes(samples_bytes)
+        (root / "input-actuation.txt").write_text(
+            "physical input actuation visible; visible mac-side result recorded\n",
+            encoding="utf-8",
         )
+        (root / "synchronization-record.txt").write_text(
+            "clock synchronization proof: before skew, after skew, drift, input timestamp uncertainty, result timestamp uncertainty, total error budget\n",
+            encoding="utf-8",
+        )
+        samples = manifest["samples"]
+        assert isinstance(samples, dict)
+        samples["sha256"] = hashlib.sha256(samples_bytes).hexdigest()
+        artifacts = manifest["gate_artifacts"]
+        assert isinstance(artifacts, dict)
+        for key, filename in (
+            ("input_actuation_record", "input-actuation.txt"),
+            ("synchronization_record", "synchronization-record.txt"),
+        ):
+            artifact = artifacts[key]
+            assert isinstance(artifact, dict)
+            artifact["sha256"] = hashlib.sha256((root / filename).read_bytes()).hexdigest()
         return manifest
 
     def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
@@ -67,7 +144,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                 "credential_source": "authority-issued short-lived credential",
             },
             "remote_peer": {
-                "operator": "fixture",
+                "operator": "remote tester",
                 "network": "remote carrier",
                 "public_ip_asn": "AS64500",
                 "location": "remote lab",
@@ -89,12 +166,12 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         manifest["transport"] = "internet"
         manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
         route_artifact = root / "internet-public-route-record.txt"
-        route_artifact.write_text("fixture public Internet route proof\n", encoding="utf-8")
+        route_artifact.write_text("public route proof with active stream\n", encoding="utf-8")
         manifest["gate_artifacts"] = {
             "internet_public_route_record": {
                 "file": route_artifact.name,
                 "sha256": hashlib.sha256(route_artifact.read_bytes()).hexdigest(),
-                "description": "Synthetic public Internet route proof.",
+                "description": "Public Internet route and active stream proof.",
             }
         }
         self.replace_samples(root, manifest, "latency_ms\n90\n100\n110\n120\n130\n")
@@ -103,11 +180,79 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         samples["annotation_method"] = "direct-latency-ms"
         return manifest
 
-    def test_valid_external_camera_package_passes(self) -> None:
+    def test_committed_external_camera_fixture_is_insufficient(self) -> None:
         report = build_latency_evidence_report(
             manifest_path=FIXTURE_DIR / "external-camera-valid" / "manifest.json",
             gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
         )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertEqual(report["gate"]["sample_count"], 5)
+        self.assertTrue(
+            any("synthetic latency fixtures cannot close" in reason for reason in report["gate"]["reasons"])
+        )
+        self.assertIn(
+            "known repository latency fixture artifacts cannot close external latency gates",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_capture_manifest_under_fixture_path_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "tools" / "fixtures" / "latency" / "copied-real-package"
+            root.mkdir(parents=True)
+            manifest = self.copy_valid_package(root)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertIn(
+            "latency manifests under tools/fixtures/latency cannot close external latency gates",
+            report["gate"]["reasons"],
+        )
+
+    def test_known_fixture_digest_blocks_real_shaped_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            fixture_manifest = json.loads(
+                (FIXTURE_DIR / "external-camera-valid" / "manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["sha256"] = fixture_manifest["recording"]["sha256"]
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertIn(
+            "known repository latency fixture artifacts cannot close external latency gates",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_device_shaped_external_camera_package_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
 
         self.assertEqual(report["verdict"], "pass")
         self.assertTrue(report["gate"]["can_close_performance_gate"])
@@ -298,17 +443,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_numeric_camera_frame_rate_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "external-camera-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_valid_package(root)
             manifest["camera"]["frame_rate_fps"] = 240
-            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            (root / "samples.csv").write_text((source / "samples.csv").read_text(encoding="utf-8"), encoding="utf-8")
-            (root / "raw-camera-fixture.mov").write_bytes(
-                (source / "raw-camera-fixture.mov").read_bytes()
-            )
-            (root / "usb-connection.txt").write_bytes(
-                (source / "usb-connection.txt").read_bytes()
-            )
+            self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -320,17 +457,9 @@ class LatencyEvidenceReportTest(unittest.TestCase):
     def test_manifest_mismatch_is_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "external-camera-valid"
-            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest = self.copy_valid_package(root)
             manifest["transport"] = "lan"
-            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            (root / "samples.csv").write_text((source / "samples.csv").read_text(encoding="utf-8"), encoding="utf-8")
-            (root / "raw-camera-fixture.mov").write_bytes(
-                (source / "raw-camera-fixture.mov").read_bytes()
-            )
-            (root / "usb-connection.txt").write_bytes(
-                (source / "usb-connection.txt").read_bytes()
-            )
+            self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -338,18 +467,16 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             )
 
         self.assertEqual(report["verdict"], "insufficient")
-        self.assertTrue(any("requires --transport usb" in reason for reason in report["gate"]["reasons"]))
+        self.assertTrue(any("manifest.transport must be usb" in reason for reason in report["gate"]["reasons"]))
 
     def test_modified_raw_camera_artifact_is_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = FIXTURE_DIR / "external-camera-valid"
-            (root / "manifest.json").write_bytes((source / "manifest.json").read_bytes())
-            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
-            (root / "raw-camera-fixture.mov").write_bytes(b"modified recording")
-            (root / "usb-connection.txt").write_bytes(
-                (source / "usb-connection.txt").read_bytes()
-            )
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            (root / str(recording["raw_video"])).write_bytes(b"modified recording")
+            self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
@@ -367,11 +494,33 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.copy_valid_package(root)
-            raw_video = root / "raw-camera-fixture.mov"
-            raw_video.write_text("synthetic camera placeholder\n", encoding="utf-8")
             recording = manifest["recording"]
             assert isinstance(recording, dict)
-            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_text("synthetic camera placeholder\n", encoding="utf-8")
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must be a readable camera video container with a supported layout",
+            report["gate"]["reasons"],
+        )
+
+    def test_ebml_bytes_renamed_to_mov_are_insufficient_even_with_matching_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(b"\x1aE\xdf\xa3" + b"matroska" + (b"\x00" * 64))
+            self.update_recording_metadata(root, manifest)
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -389,11 +538,11 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.copy_valid_package(root)
-            raw_video = root / "raw-camera-fixture.mov"
-            raw_video.write_bytes(b"\x00\x00\x00\x18ftypqt  \x00\x00\x00\x00qt  mp42" + (b"\x00" * 32))
             recording = manifest["recording"]
             assert isinstance(recording, dict)
-            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(b"\x00\x00\x00\x18ftypqt  \x00\x00\x00\x00qt  mp42" + (b"\x00" * 32))
+            self.update_recording_metadata(root, manifest)
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -414,20 +563,20 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.copy_valid_package(root)
-            raw_video = root / "raw-camera-fixture.mov"
-            stsd = box(b"stsd", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + box(b"mp4v", b"\x00" * 16))
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            raw_video = root / str(recording["raw_video"])
+            stsd = box(b"stsd", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + box(b"avc1", b"\x00" * 16))
             stsz = box(b"stsz", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + (1).to_bytes(4, "big"))
             stbl = box(b"stbl", stsd + stsz)
             minf = box(b"minf", stbl)
             hdlr = box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 8)
             mdia = box(b"mdia", hdlr + minf)
-            trak = box(b"trak", mdia)
-            moov = box(b"moov", trak)
+            trak = box(b"trak", box(b"tkhd", b"\x00" * 16) + mdia)
+            moov = box(b"moov", box(b"mvhd", b"\x00" * 16) + trak)
             ftyp = box(b"ftyp", b"qt  \x00\x00\x00\00qt  ")
             raw_video.write_bytes(ftyp + box(b"mdat", b"X") + moov)
-            recording = manifest["recording"]
-            assert isinstance(recording, dict)
-            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            self.update_recording_metadata(root, manifest)
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -441,29 +590,15 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
-    def test_fragmented_iso_bmff_video_is_accepted(self) -> None:
-        def box(name: bytes, payload: bytes) -> bytes:
-            return (len(payload) + 8).to_bytes(4, "big") + name + payload
-
+    def test_readable_iso_bmff_video_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.copy_valid_package(root)
-            raw_video = root / "raw-camera-fixture.mov"
-            stsd = box(b"stsd", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big") + box(b"avc1", b"\x00" * 16))
-            stbl = box(b"stbl", stsd)
-            minf = box(b"minf", stbl)
-            hdlr = box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 8)
-            mdia = box(b"mdia", hdlr + minf)
-            trak = box(b"trak", mdia)
-            moov = box(b"moov", trak)
-            trun = box(b"trun", b"\x00\x00\x00\x00" + (1).to_bytes(4, "big"))
-            traf = box(b"traf", trun)
-            moof = box(b"moof", traf)
-            ftyp = box(b"ftyp", b"qt  \x00\x00\x00\x00qt  ")
-            raw_video.write_bytes(ftyp + moov + moof + box(b"mdat", b"video-fragment"))
             recording = manifest["recording"]
             assert isinstance(recording, dict)
-            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(minimal_mov(b"video-fragment"))
+            self.update_recording_metadata(root, manifest)
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -477,11 +612,11 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = self.copy_valid_package(root)
-            raw_video = root / "raw-camera-fixture.mov"
-            raw_video.write_bytes(b"notesftyp" + (root / "raw-camera-fixture.mov").read_bytes())
             recording = manifest["recording"]
             assert isinstance(recording, dict)
-            recording["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(b"notesftyp" + raw_video.read_bytes())
+            self.update_recording_metadata(root, manifest)
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -492,6 +627,249 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertEqual(report["verdict"], "insufficient")
         self.assertIn(
             "recording.raw_video must be a readable camera video container with a supported layout",
+            report["gate"]["reasons"],
+        )
+
+    def test_ebml_mkv_recording_is_insufficient_even_with_matching_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            previous_raw_video = root / str(recording["raw_video"])
+            previous_raw_video.unlink()
+            recording["raw_video"] = "raw-camera-capture.mkv"
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(b"\x1aE\xdf\xa3" + b"matroska" + (b"\x00" * 32))
+            recording["container"] = "mkv"
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any(
+                reason in report["gate"]["reasons"]
+                for reason in (
+                    "manifest.recording.container must be one of: mov, mp4, m4v",
+                    "recording.raw_video must use a supported external-camera container extension",
+                    "recording.container must match recording.raw_video extension",
+                )
+            )
+        )
+
+    def test_ebml_webm_recording_is_insufficient_even_with_matching_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            previous_raw_video = root / str(recording["raw_video"])
+            previous_raw_video.unlink()
+            recording["raw_video"] = "raw-camera-capture.webm"
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(b"\x1aE\xdf\xa3" + b"webm" + (b"\x00" * 32))
+            recording["container"] = "webm"
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertTrue(
+            any(
+                reason in report["gate"]["reasons"]
+                for reason in (
+                    "manifest.recording.container must be one of: mov, mp4, m4v",
+                    "recording.raw_video must use a supported external-camera container extension",
+                    "recording.container must match recording.raw_video extension",
+                )
+            )
+        )
+
+    def test_real_capture_raw_video_placeholder_filename_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            previous_raw_video = root / str(recording["raw_video"])
+            raw_video = root / "synthetic-capture.mov"
+            previous_raw_video.rename(raw_video)
+            recording["raw_video"] = raw_video.name
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.recording.raw_video contains placeholder term 'synthetic'; real-device-capture latency evidence must use concrete run metadata",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_capture_samples_placeholder_filename_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            samples = manifest["samples"]
+            assert isinstance(samples, dict)
+            previous_samples = root / str(samples["file"])
+            samples_file = root / "fixture-samples.csv"
+            previous_samples.rename(samples_file)
+            samples["file"] = samples_file.name
+            samples["sha256"] = hashlib.sha256(samples_file.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.samples.file contains placeholder term 'fixture'; real-device-capture latency evidence must use concrete run metadata",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_capture_placeholder_term_in_file_names_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            previous_raw_video = root / str(recording["raw_video"])
+            raw_video = root / "placeholder-capture.mov"
+            previous_raw_video.rename(raw_video)
+            recording["raw_video"] = raw_video.name
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.recording.raw_video contains placeholder term 'placeholder'; real-device-capture latency evidence must use concrete run metadata",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_capture_gate_artifact_placeholder_filename_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            usb_connection = gate_artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            previous_artifact = root / str(usb_connection["file"])
+            artifact = root / "placeholder-usb-connection.txt"
+            previous_artifact.rename(artifact)
+            usb_connection["file"] = artifact.name
+            usb_connection["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.gate_artifacts.usb_connection.file contains placeholder term 'placeholder'; real-device-capture latency evidence must use concrete run metadata",
+            report["gate"]["reasons"],
+        )
+
+    def test_real_capture_free_text_fixture_term_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            camera = manifest["camera"]
+            setup = manifest["measurement_setup"]
+            assert isinstance(camera, dict)
+            assert isinstance(setup, dict)
+            camera["mode"] = "fixture-mounted 1080p240 capture"
+            setup["mounting"] = "device clamped in a machined fixture"
+            setup["notes"] = "fixture label appears only in free-text lab notes"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_recording_file_size_bytes_must_match_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["file_size_bytes"] = int(recording["file_size_bytes"]) + 1
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.file_size_bytes must match recording.raw_video size",
+            report["gate"]["reasons"],
+        )
+
+    def test_recording_duration_must_match_frame_count_and_frame_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["duration_ms"] = 3000
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.duration_ms must match recording.frame_count and camera.frame_rate_fps within one frame",
+            report["gate"]["reasons"],
+        )
+
+    def test_recording_container_must_match_file_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["container"] = "mp4"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.container must match the raw video file extension",
             report["gate"]["reasons"],
         )
 
@@ -667,6 +1045,46 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_recording_file_size_bytes_must_be_integer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["file_size_bytes"] = float(recording["file_size_bytes"]) + 0.5
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.recording.file_size_bytes must be an integer",
+            report["gate"]["reasons"],
+        )
+
+    def test_recording_frame_count_must_be_integer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            recording["frame_count"] = 600.5
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.recording.frame_count must be an integer",
+            report["gate"]["reasons"],
+        )
+
     def test_schema_rejects_unknown_manifest_properties(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -814,7 +1232,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                 "lan_network_preflight": {
                     "file": "missing-lan-preflight.txt",
                     "sha256": "0" * 64,
-                    "description": "Synthetic LAN preflight proof.",
+                    "description": "LAN active-stream preflight proof.",
                 }
             }
             self.write_manifest(root, manifest)
@@ -893,11 +1311,13 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             gate_profile=GATE_INPUT_P95_SUB50,
         )
 
-        self.assertEqual(report["verdict"], "pass")
-        self.assertTrue(report["gate"]["can_close_performance_gate"])
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
         self.assertEqual(report["gate"]["sample_count"], 5)
         self.assertEqual(report["measurement_method"], "synchronized-clock")
-        self.assertEqual(report["gate"]["reasons"], [])
+        self.assertTrue(
+            any("synthetic latency fixtures cannot close" in reason for reason in report["gate"]["reasons"])
+        )
 
     def test_synchronized_clock_requires_input_kind(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -984,7 +1404,13 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         )
 
     def test_synchronized_clock_components_must_fit_total_budget(self) -> None:
-        for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
+        for field in (
+            "before_skew_ms",
+            "after_skew_ms",
+            "max_drift_ms",
+            "input_timestamp_uncertainty_ms",
+            "result_timestamp_uncertainty_ms",
+        ):
             with self.subTest(field=field):
                 with tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
@@ -1022,8 +1448,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "insufficient")
         self.assertIn(
-            "synchronization.before_skew_ms + synchronization.after_skew_ms + "
-            "synchronization.max_drift_ms must be less than or equal to "
+            "synchronization error-budget components must sum to less than or equal to "
             "synchronization.total_error_budget_ms",
             report["gate"]["reasons"],
         )
@@ -1063,17 +1488,18 @@ class LatencyEvidenceCliTest(unittest.TestCase):
             check=False,
         )
 
-    def test_cli_passes_valid_external_camera_package(self) -> None:
+    def test_cli_reports_committed_external_camera_fixture_insufficient(self) -> None:
         result = self.run_cli(
             str(FIXTURE_DIR / "external-camera-valid" / "manifest.json"),
             "--gate-profile",
             GATE_USB_GLASS_TO_GLASS_SUB50,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
         output = json.loads(result.stdout)
-        self.assertEqual(output["verdict"], "pass")
+        self.assertEqual(output["verdict"], "insufficient")
         self.assertEqual(output["measurement_method"], "external-camera")
+        self.assertFalse(output["gate"]["can_close_performance_gate"])
 
     def test_cli_outputs_insufficient_json_for_missing_manifest(self) -> None:
         result = self.run_cli(

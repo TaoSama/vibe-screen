@@ -43,6 +43,21 @@ PROFILE_ARTIFACT_FIELDS = {
     GATE_INTERNET_GLASS_TO_GLASS_SUB150: "internet_public_route_record",
     GATE_INPUT_P95_SUB50: "input_actuation_record",
 }
+REAL_DEVICE_CAPTURE_SOURCE = "real-device-capture"
+SYNTHETIC_FIXTURE_SOURCE = "synthetic-fixture"
+EVIDENCE_PROVENANCE_SOURCES = (REAL_DEVICE_CAPTURE_SOURCE, SYNTHETIC_FIXTURE_SOURCE)
+EXTERNAL_CAMERA_CONTAINERS = {
+    ".mov": "mov",
+    ".mp4": "mp4",
+    ".m4v": "m4v",
+}
+SYNCHRONIZATION_BUDGET_COMPONENTS = (
+    "before_skew_ms",
+    "after_skew_ms",
+    "max_drift_ms",
+    "input_timestamp_uncertainty_ms",
+    "result_timestamp_uncertainty_ms",
+)
 
 
 class LatencyManifestError(RuntimeError):
@@ -101,6 +116,15 @@ def _artifact_reference(path: Path, evidence_dir: Path, field: str, description:
         "sha256": _sha256(evidence_dir.resolve() / relative),
         "description": _non_empty(description, f"{field}.description"),
     }
+
+
+def _external_camera_container(path: Path) -> str:
+    container = EXTERNAL_CAMERA_CONTAINERS.get(path.suffix.lower())
+    if container is None:
+        raise LatencyManifestError(
+            "raw video must use a supported extension: .mov, .mp4, or .m4v"
+        )
+    return container
 
 
 def _repository_revision(repo: Path) -> str:
@@ -265,6 +289,21 @@ def _non_negative_finite_number(value: float | None, field: str) -> float:
     return number
 
 
+def _positive_finite_number(value: float | None, field: str) -> float:
+    number = _required_finite_number(value, field)
+    if number <= 0:
+        raise LatencyManifestError(f"{field} must be greater than zero")
+    return number
+
+
+def _positive_integer(value: int | None, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise LatencyManifestError(f"{field} must be an integer")
+    if value <= 0:
+        raise LatencyManifestError(f"{field} must be greater than zero")
+    return value
+
+
 def _validate_profile(kind: str, transport: str, gate_profile: str) -> None:
     profile = GATE_PROFILES[gate_profile]
     if profile["kind"] != kind:
@@ -275,6 +314,18 @@ def _validate_profile(kind: str, transport: str, gate_profile: str) -> None:
     if expected_transport is not None and expected_transport != transport:
         raise LatencyManifestError(
             f"gate profile {gate_profile} requires transport {expected_transport}"
+        )
+
+
+def _validate_recording_timeline(
+    frame_count: int, duration_ms: float, frame_rate_fps: float
+) -> None:
+    expected_duration_ms = frame_count * 1000.0 / frame_rate_fps
+    allowed_delta_ms = max(1000.0 / frame_rate_fps, 1.0)
+    if abs(duration_ms - expected_duration_ms) > allowed_delta_ms:
+        raise LatencyManifestError(
+            "recording.duration_ms must match recording.frame_count and "
+            "camera.frame_rate_fps within one frame"
         )
 
 
@@ -293,7 +344,10 @@ def build_latency_manifest(
     host: dict[str, str],
     build: dict[str, str],
     measurement_setup: dict[str, Any],
+    evidence_provenance: dict[str, str] | None = None,
     measurement_method: str = METHOD_EXTERNAL_CAMERA,
+    recording_frame_count: int | None = None,
+    recording_duration_ms: float | None = None,
     raw_video: Path | None = None,
     camera: dict[str, Any] | None = None,
     recording_operator: str | None = None,
@@ -309,6 +363,10 @@ def build_latency_manifest(
     if measurement_method not in MEASUREMENT_METHODS:
         raise LatencyManifestError(f"unsupported measurement method: {measurement_method}")
     _validate_profile(latency_kind, transport, gate_profile)
+    if latency_kind == KIND_GLASS_TO_GLASS and measurement_method != METHOD_EXTERNAL_CAMERA:
+        raise LatencyManifestError(
+            "glass-to-glass latency requires external-camera measurement"
+        )
     if measurement_method == METHOD_SYNCHRONIZED_CLOCK and latency_kind != KIND_INPUT:
         raise LatencyManifestError("synchronized-clock measurement_method requires latency_kind input")
     if measurement_method == METHOD_SYNCHRONIZED_CLOCK and annotation_method != ANNOTATION_DIRECT_LATENCY_MS:
@@ -321,6 +379,20 @@ def build_latency_manifest(
         )
     if gate_artifact_description is None:
         raise LatencyManifestError("gate artifact description is required")
+    provenance = evidence_provenance or {
+        "source": REAL_DEVICE_CAPTURE_SOURCE,
+        "collection_context": "operator-collected latency evidence package",
+        "operator_assertion": (
+            "This package was collected from a real device run with retained artifacts."
+        ),
+    }
+    if provenance.get("source") not in EVIDENCE_PROVENANCE_SOURCES:
+        raise LatencyManifestError(
+            "evidence_provenance.source must be real-device-capture or synthetic-fixture"
+        )
+    for field in ("collection_context", "operator_assertion"):
+        if not isinstance(provenance.get(field), str) or not provenance[field].strip():
+            raise LatencyManifestError(f"evidence_provenance.{field} must not be empty")
 
     samples_relative = _package_relative_path(samples, evidence_dir, "samples file")
     manifest = {
@@ -330,6 +402,17 @@ def build_latency_manifest(
         "transport": transport,
         "measurement_method": measurement_method,
         "gate_profile": gate_profile,
+        "evidence_provenance": {
+            "source": str(provenance["source"]),
+            "collection_context": _non_empty(
+                str(provenance["collection_context"]),
+                "evidence_provenance.collection_context",
+            ),
+            "operator_assertion": _non_empty(
+                str(provenance["operator_assertion"]),
+                "evidence_provenance.operator_assertion",
+            ),
+        },
         "samples": {
             "file": samples_relative,
             "format": samples_format,
@@ -358,13 +441,26 @@ def build_latency_manifest(
         if recording_operator is None:
             raise LatencyManifestError("recording.operator is required for external-camera")
         raw_video_relative = _package_relative_path(raw_video, evidence_dir, "raw video")
+        raw_video_path = evidence_dir.resolve() / raw_video_relative
+        frame_count = _positive_integer(recording_frame_count, "recording.frame_count")
+        duration_ms = _positive_finite_number(
+            recording_duration_ms, "recording.duration_ms"
+        )
+        frame_rate_fps = _required_finite_number(
+            camera.get("frame_rate_fps"), "camera.frame_rate_fps"
+        )
+        _validate_recording_timeline(frame_count, duration_ms, frame_rate_fps)
         manifest["camera"] = camera
         manifest["recording"] = {
             "raw_video": raw_video_relative,
             "recorded_at": recorded_at
             or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "operator": _non_empty(recording_operator, "recording.operator"),
-            "sha256": _sha256(evidence_dir.resolve() / raw_video_relative),
+            "sha256": _sha256(raw_video_path),
+            "container": _external_camera_container(raw_video_path),
+            "file_size_bytes": raw_video_path.stat().st_size,
+            "frame_count": frame_count,
+            "duration_ms": duration_ms,
         }
     else:
         if synchronization is None:
@@ -427,6 +523,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--camera-mode")
     parser.add_argument("--camera-frame-rate-fps", type=float)
     parser.add_argument("--camera-shutter-mode")
+    parser.add_argument("--recording-frame-count", type=int)
+    parser.add_argument("--recording-duration-ms", type=float)
     parser.add_argument("--recorded-at")
     parser.add_argument("--operator")
     parser.add_argument("--annotator", required=True)
@@ -453,6 +551,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--before-skew-ms", type=float)
     parser.add_argument("--after-skew-ms", type=float)
     parser.add_argument("--max-drift-ms", type=float)
+    parser.add_argument("--input-timestamp-uncertainty-ms", type=float)
+    parser.add_argument("--result-timestamp-uncertainty-ms", type=float)
     parser.add_argument("--total-error-budget-ms", type=float)
     parser.add_argument("--input-timestamp-method")
     parser.add_argument("--result-timestamp-method")
@@ -501,6 +601,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="record that peers were not on the same private network",
     )
     parser.add_argument("--notes", required=True)
+    parser.add_argument(
+        "--evidence-source",
+        choices=EVIDENCE_PROVENANCE_SOURCES,
+        default=REAL_DEVICE_CAPTURE_SOURCE,
+        help=(
+            "real-device-capture can close a gate when all checks pass; "
+            "synthetic-fixture is for tests and always remains insufficient"
+        ),
+    )
+    parser.add_argument(
+        "--collection-context",
+        help="where/how this latency package was collected",
+    )
+    parser.add_argument(
+        "--operator-assertion",
+        help="operator statement that the package is real evidence or a synthetic fixture",
+    )
     return parser
 
 
@@ -560,10 +677,18 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "frame_rate_fps": frame_rate_fps,
             "shutter_mode": _required_text(args.camera_shutter_mode, "camera.shutter_mode"),
         }
+        recording_frame_count = _positive_integer(
+            args.recording_frame_count, "recording.frame_count"
+        )
+        recording_duration_ms = _positive_finite_number(
+            args.recording_duration_ms, "recording.duration_ms"
+        )
         measurement_setup["clock_domain"] = CLOCK_DOMAIN_EXTERNAL_CAMERA
         measurement_setup["max_frame_annotation_uncertainty_ms"] = annotation_uncertainty_ms
         synchronization = None
     else:
+        recording_frame_count = None
+        recording_duration_ms = None
         synchronization = {
             "host_clock_source": _required_text(
                 args.host_clock_source, "synchronization.host_clock_source"
@@ -583,6 +708,14 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "max_drift_ms": _non_negative_finite_number(
                 args.max_drift_ms, "synchronization.max_drift_ms"
             ),
+            "input_timestamp_uncertainty_ms": _non_negative_finite_number(
+                args.input_timestamp_uncertainty_ms,
+                "synchronization.input_timestamp_uncertainty_ms",
+            ),
+            "result_timestamp_uncertainty_ms": _non_negative_finite_number(
+                args.result_timestamp_uncertainty_ms,
+                "synchronization.result_timestamp_uncertainty_ms",
+            ),
             "total_error_budget_ms": _non_negative_finite_number(
                 args.total_error_budget_ms, "synchronization.total_error_budget_ms"
             ),
@@ -597,14 +730,12 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
             raise LatencyManifestError(
                 "synchronization.total_error_budget_ms must be less than 5 ms"
             )
-        component_sum = (
-            synchronization["before_skew_ms"]
-            + synchronization["after_skew_ms"]
-            + synchronization["max_drift_ms"]
+        component_sum = sum(
+            float(synchronization[field]) for field in SYNCHRONIZATION_BUDGET_COMPONENTS
         )
         if component_sum > synchronization["total_error_budget_ms"]:
             raise LatencyManifestError(
-                "synchronization skew and drift components must fit total_error_budget_ms"
+                "synchronization error-budget components must fit total_error_budget_ms"
             )
         camera = None
         measurement_setup["clock_domain"] = CLOCK_DOMAIN_SYNCHRONIZED_CLOCK
@@ -674,7 +805,24 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
         host=host,
         build=build,
         measurement_setup=measurement_setup,
+        evidence_provenance={
+            "source": args.evidence_source,
+            "collection_context": args.collection_context
+            or (
+                "synthetic latency checker fixture"
+                if args.evidence_source == SYNTHETIC_FIXTURE_SOURCE
+                else "operator-collected latency evidence package"
+            ),
+            "operator_assertion": args.operator_assertion
+            or (
+                "This package is a synthetic fixture and must not close a latency gate."
+                if args.evidence_source == SYNTHETIC_FIXTURE_SOURCE
+                else "This package was collected from a real device run with retained artifacts."
+            ),
+        },
         measurement_method=args.measurement_method,
+        recording_frame_count=recording_frame_count,
+        recording_duration_ms=recording_duration_ms,
         synchronization=synchronization,
         gate_artifact=args.gate_artifact,
         gate_artifact_description=args.gate_artifact_description,
