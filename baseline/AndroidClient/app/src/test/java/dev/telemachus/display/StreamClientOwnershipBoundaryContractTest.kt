@@ -165,6 +165,8 @@ class StreamClientOwnershipBoundaryContractTest {
         assertTrue(phaseZeroTechStatus.contains("owner now owns request lifecycle"))
         assertTrue(phaseZeroTechStatus.contains("sleeping-Mac wake, router/NIC WOL behavior"))
         assertTrue(phaseZeroTechStatus.contains("Decoder ownership and UI/product session ownership now have focused"))
+        assertTrue(phaseZeroTechStatus.contains("owner coverage beyond lifecycle admission"))
+        assertTrue(phaseZeroTechStatus.contains("The Phase 0 module-ownership sub-gate is closed by source/offline boundaries only"))
         assertFalse(phaseZeroTechStatus.contains("before Phase 0 module ownership can be called complete"))
         assertTrue(phaseZeroTechStatus.contains("`FileTransferProductOwner` owns the Android file-transfer product"))
         assertTrue(phaseZeroTechStatus.contains("`RendererOwner` gates viewport/layout, render-target"))

@@ -83,13 +83,13 @@ display-geometry state, and frame admission must flow through
 `DecoderPresentationOwner`/`RendererOwner`. This is offline/module evidence
 only: sleeping-Mac wake, router/NIC WOL behavior, Host signing/TCC readiness,
 and retained product logs remain blocked by the WakeHost current-base hardware
-gate. Decoder ownership beyond lifecycle admission now has focused decoder
-presentation owner coverage. `MainActivity` still creates `VideoDecoder` against
-live Android `Surface`/`Display` objects as the platform adapter, and no
-current-source device decoder-lifecycle evidence is attached. The Phase 0
-module-ownership sub-gate is closed by source/offline boundaries only; decoder
-device evidence, UI/product runtime behavior, and other hardware-dependent
-evidence remain separate fail-closed gates.
+gate. Decoder ownership and UI/product session ownership now have focused
+owner coverage beyond lifecycle admission. `MainActivity` still creates
+`VideoDecoder` against live Android `Surface`/`Display` objects as the platform
+adapter, and no current-source device decoder-lifecycle evidence is attached.
+The Phase 0 module-ownership sub-gate is closed by source/offline boundaries
+only; decoder device evidence, UI/product runtime behavior, and other
+hardware-dependent evidence remain separate fail-closed gates.
 
 ## Protocol v1
 

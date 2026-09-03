@@ -78,9 +78,10 @@ change product status.
 
 The old audit tracked overlapping open PR clusters for Host RSS/signing, Phase 2,
 Phase 3, HarmonyOS, clipboard/file transfer, WakeHost, iOS, latency, and module
-ownership. As of this refresh, the open PR snapshot contains only PR #531, this audit PR. Those clusters are
-retired from current ownership tracking; any future owner must appear in the
-fresh GitHub open-PR snapshot and in the manifest `owner_prs` list.
+ownership. As of this refresh, the open PR snapshot contains only PR #531, this
+audit PR. Those clusters are retired from current ownership tracking; any future
+owner must appear in the fresh GitHub open-PR snapshot and in the manifest
+`owner_prs` list.
 
 ## Practical next queue
 
