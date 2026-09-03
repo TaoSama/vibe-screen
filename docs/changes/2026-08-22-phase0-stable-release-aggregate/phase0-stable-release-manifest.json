@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "a40588663cf484f5acad16b8d9f222cbb19c8605",
+    "base_commit": "daa111e1c23e9d4487f7a478454f9e3a847f25a1",
     "base_ref": "origin/main",
     "audit_date": "2026-09-03",
     "owner": "Vibe Screen core team",
@@ -14,9 +14,7 @@
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
     "queried_at": "2026-09-03",
     "state": "open",
-    "open_pr_numbers": [
-      531
-    ]
+    "open_pr_numbers": []
   },
   "readme_guard": {
     "required_phrases": [

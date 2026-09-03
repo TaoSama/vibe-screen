@@ -157,7 +157,7 @@ class StreamClientOwnershipBoundaryContractTest {
         assertTrue(audit.contains("Phase 0 module ownership extraction"))
         assertTrue(audit.contains("No source-boundary gap remains for this sub-gate"))
         assertTrue(audit.contains("Keep `make phase0-module-ownership-gate` passing"))
-        assertTrue(audit.contains("the open PR snapshot contains only PR #531"))
+        assertTrue(audit.contains("the open PR snapshot is empty"))
         assertFalse(audit.contains("remaining module ownership"))
         assertFalse(audit.contains("Remaining module gaps are the decoder platform-adapter/device-evidence"))
         assertFalse(audit.contains("README.md:288-293"))
