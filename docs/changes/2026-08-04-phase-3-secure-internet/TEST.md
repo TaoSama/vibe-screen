@@ -803,9 +803,12 @@ archive the current fail-closed state before a real run exists, run
 `make phase3-webrtc-bulk-product-flow-blocked-baseline`. The child gate passes
 only when retained artifacts prove a real macOS Host and real Android device used
 a deployed public TURN relay WebRTC route for approved bidirectional
-`vibescreen.bulk.v1` file transfer, including offer/request/chunk/progress/
-completion observations, final SHA-256 equality, bounded queue/backpressure
-behavior, cancel and disconnect cleanup, no plaintext fallback, no synthetic
+`vibescreen.bulk.v1` file transfer. The retained evidence must include
+Authority-bound TURN credential and coturn allocation lease validation,
+offer/request observations, ordered chunk offsets, per-chunk SHA-256 validation,
+monotonic progress, final chunk observation, final file SHA-256 equality, bounded
+queue/backpressure behavior, transfer-timeout cancellation with transfer-slot
+recovery, cancel and disconnect cleanup, no plaintext fallback, no synthetic
 peer, and AES-256-GCM channel/session/key separation. It also carries a release
 closure checklist for relay production readiness, real capture-to-MediaCodec
 continuity, network handoff, cross-service revocation, external-camera latency,

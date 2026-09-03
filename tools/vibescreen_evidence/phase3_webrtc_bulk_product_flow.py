@@ -33,6 +33,7 @@ OWNER_BRANCH = "codex/phase3-public-internet-bulk-gate"
 CORE_REQUIREMENTS = {
     "source_current_base": "manifest source commit matches a clean current checkout",
     "public_relay_webrtc_route": "real macOS and Android peers select a deployed public TURN relay WebRTC route",
+    "coturn_lease_validation": "TURN credential and allocation leases are bound to Authority session ownership and expiry",
     "bulk_file_transfer_product_flow": "approved bidirectional file transfer uses vibescreen.bulk.v1 with chunks, progress, completion, and SHA-256 verification",
     "bulk_backpressure_and_cleanup": "bulk send/receive queues are bounded and cancel/disconnect cleanup is observed",
     "secure_record_layer": "bulk traffic uses the Phase 3 AES-256-GCM record layer with channel/session/key separation",
@@ -311,6 +312,10 @@ def _direction_reasons(direction: Any, label: str) -> list[str]:
         "remote_file_written",
         "final_sha256_match",
         "session_epoch_verified",
+        "chunk_offsets_ordered",
+        "chunk_payload_sha256_verified",
+        "progress_offsets_monotonic",
+        "final_chunk_observed",
     )
     reasons = [f"{label}.{field} must be true" for field in required_true if direction.get(field) is not True]
     if direction.get("transport") != "webrtc_datachannel":
@@ -343,11 +348,31 @@ def _file_transfer_flow_reasons(record: dict[str, Any], source: str) -> list[str
         "receiver_backpressure_observed",
         "oversized_payload_rejected",
         "stale_owner_rejected",
+        "transfer_timeout_cancel_observed",
+        "timeout_frees_transfer_slot_observed",
         "cancel_cleanup_observed",
         "disconnect_cleanup_observed",
     ):
         if cleanup.get(field) is not True:
             reasons.append(f"{source}.file_transfer.cleanup.{field} must be true")
+    return reasons
+
+
+def _coturn_lease_reasons(record: dict[str, Any], source: str) -> list[str]:
+    lease = _dict(record.get("coturn_lease_validation"))
+    reasons: list[str] = []
+    for field in (
+        "turn_credential_lease_observed",
+        "allocation_lease_observed",
+        "authority_session_binding_verified",
+        "device_binding_verified",
+        "lease_expiry_checked",
+        "revoked_lease_rejected",
+        "allocation_reconciliation_observed",
+        "coturn_username_bound_to_device",
+    ):
+        if lease.get(field) is not True:
+            reasons.append(f"{source}.coturn_lease_validation.{field} must be true")
     return reasons
 
 
@@ -378,6 +403,7 @@ def _validate_evidence_record(record: Any, *, evidence_root: Path | None) -> tup
     problems: list[str] = []
     artifacts: list[str] = []
     problems.extend(_validate_artifact_metadata(record, "manifest evidence"))
+    problems.extend(_coturn_lease_reasons(record, "manifest evidence"))
     problems.extend(_file_transfer_flow_reasons(record, "manifest evidence"))
     problems.extend(_secure_record_reasons(record, "manifest evidence"))
 
@@ -386,6 +412,7 @@ def _validate_evidence_record(record: Any, *, evidence_root: Path | None) -> tup
     if path is not None and path.is_file():
         artifact = _load_json(path)
         problems.extend(_validate_artifact_metadata(artifact, "retained artifact"))
+        problems.extend(_coturn_lease_reasons(artifact, "retained artifact"))
         problems.extend(_file_transfer_flow_reasons(artifact, "retained artifact"))
         problems.extend(_secure_record_reasons(artifact, "retained artifact"))
     return not problems, problems, artifacts
@@ -524,7 +551,9 @@ def derive_gate(
                 item
                 for item in (
                     "public Internet WebRTC relay route to a real Android device" if verdict != PASS else "",
-                    "approved bidirectional file transfer over vibescreen.bulk.v1" if verdict != PASS else "",
+                    "Authority-bound TURN credential and coturn allocation lease validation" if checks.get("coturn_lease_validation", {}).get("passed") is not True else "",
+                    "approved bidirectional file transfer over vibescreen.bulk.v1 with ordered chunks, per-chunk SHA-256, monotonic progress, and final file SHA-256" if verdict != PASS else "",
+                    "bulk transfer timeout cancellation and transfer-slot recovery" if checks.get("bulk_backpressure_and_cleanup", {}).get("passed") is not True else "",
                     "relay.taoai.site production DNS, /readyz, disk, TURN, and secret-source readiness" if closure_checklist.get("relay_production_prerequisites", {}).get("passed") is not True else "",
                     "real ScreenCaptureKit/CGDisplayStream to Android MediaCodec continuity" if closure_checklist.get("real_capture_to_mediacodec", {}).get("passed") is not True else "",
                     "network handoff, revocation, external-camera latency, packet-capture, and two-hour soak release evidence" if any(not check["passed"] for check in closure_checklist.values()) else "",
@@ -540,10 +569,12 @@ def derive_gate(
             },
             "interpretation": (
                 "A pass requires retained evidence for a real public Internet WebRTC relay session, "
-                "approved bidirectional file transfer over vibescreen.bulk.v1, bounded bulk "
-                "backpressure and cleanup, AES-256-GCM record-layer separation, and every listed "
-                "Phase 3 release prerequisite. Relay deployment preflight work, including PR #404-style "
-                "readyz/DNS/disk hardening, is not product E2E evidence by itself."
+                "Authority-bound TURN credential/allocation leases, approved bidirectional file "
+                "transfer over vibescreen.bulk.v1, ordered chunks with per-chunk SHA-256 and final "
+                "file SHA-256 verification, bounded bulk backpressure, timeout cancellation and "
+                "cleanup, AES-256-GCM record-layer separation, and every listed Phase 3 release "
+                "prerequisite. Relay deployment preflight work, including PR #404-style readyz/DNS/"
+                "disk hardening, is not product E2E evidence by itself."
             ),
         }
     )
