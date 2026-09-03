@@ -7,8 +7,8 @@ Status: open. This document does not close Phase 0 and does not change product
 status.
 Open PR input: `gh pr list --repo TaoSama/vibe-screen --state open --limit 200
 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url`
-returned no open PRs. PR #533 and PR #534 are merged, so there are no active
-external open PR owners at this refresh.
+returned no open PRs before this refresh PR was opened. PR #533 and PR #534 are
+merged, so there are no active external open PR owners at this refresh.
 
 ## Purpose
 

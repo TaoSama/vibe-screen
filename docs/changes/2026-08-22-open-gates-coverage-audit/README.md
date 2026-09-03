@@ -15,8 +15,8 @@ change product status.
   `gh pr view 534 --json number,state,mergedAt,mergeCommit,title,url`
   confirmed both PRs are merged.
 - `gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url`
-  returned no open PRs, so there are no active external open PR owners in this
-  refresh.
+  returned no open PRs before this refresh PR was opened, so there are no
+  active external open PR owners in this refresh.
 - Evidence and command coverage were scanned under `README.md`,
   `docs/changes`, `docs/testing.md`, `Makefile`, `scripts/`, and `tools/`.
 - The Phase 0 stable-release aggregate manifest now records the same open-PR
@@ -42,10 +42,10 @@ change product status.
 ## 2026-09-03 refresh
 
 - The current base is the PR #534 merge commit `daa111e1c23e9d4487f7a478454f9e3a847f25a1`.
-- PR #533 and PR #534 are merged, and there are no open PRs at the time of
-  this audit. Previous owner mappings from #157 through #534 are now merged,
-  closed, or superseded historical context rather than active external gate
-  owners.
+- PR #533 and PR #534 are merged, and there were no open PRs when this refresh
+  branch captured the snapshot. Previous owner mappings from #157 through #534
+  are now merged, closed, or superseded historical context rather than active
+  external gate owners.
 - The Phase 0 module-ownership sub-gate now passes on current main. This closes
   only the source/offline module-boundary requirement. It does not close any
   missing runtime evidence gate.
