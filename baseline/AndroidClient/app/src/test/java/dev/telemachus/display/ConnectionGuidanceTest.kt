@@ -316,6 +316,8 @@ class ConnectionGuidanceTest {
         resources.forEach { name ->
             val text = strings.stringResource(name)
             assertTrue(text, text.contains("Mac app", ignoreCase = true))
+            assertFalse(text, text.contains("Mac app’s", ignoreCase = true))
+            assertFalse(text, text.contains("Mac app's", ignoreCase = true))
             assertTrue(text, text.contains("TCP %2\$d", ignoreCase = true))
             assertTrue(text, text.contains("restart Vibe Screen on the Mac", ignoreCase = true))
             forbidden.forEach { fragment ->
