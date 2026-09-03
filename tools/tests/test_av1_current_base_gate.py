@@ -29,6 +29,9 @@ AV1_P0110_CURRENT_BASE_REFRESH_PATH = (
     / "docs/changes/2026-08-21-av1-codec-capability/evidence"
     / "2026-08-29-nubia-p0110-av1-current-base-refresh/README.md"
 )
+PROTOCOL_COMMON_PROTO_PATH = (
+    REPOSITORY_ROOT / "contracts/proto/vibescreen/protocol/v1/common.proto"
+)
 MAC_CODEC_LIMITS_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/CodecLimits.swift"
 MAC_VIDEO_ENCODER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/VideoEncoder.swift"
 MAC_STREAMING_SERVER_PATH = REPOSITORY_ROOT / "baseline/MacHost/Sources/StreamingServer.swift"
@@ -73,6 +76,21 @@ IOS_SELF_TEST_PATH = REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenIOSSelfTest/m
 
 
 class AV1CurrentBaseGateTests(unittest.TestCase):
+    def test_protocol_reserves_av1_without_turning_it_into_product_admission(self) -> None:
+        common_proto = PROTOCOL_COMMON_PROTO_PATH.read_text(encoding="utf-8")
+        readme = README_PATH.read_text(encoding="utf-8")
+        gate = AV1_GATE_PATH.read_text(encoding="utf-8")
+        normalized_gate = " ".join(gate.split())
+
+        self.assertRegex(
+            common_proto,
+            r"enum\s+Codec\s*\{[^}]*CODEC_H264\s*=\s*1;"
+            r"[^}]*CODEC_HEVC\s*=\s*2;[^}]*CODEC_AV1\s*=\s*3;",
+        )
+        self.assertIn("Protocol v1 only reserves CODEC_AV1", readme)
+        self.assertIn("Protocol v1 already contains CODEC_AV1", normalized_gate)
+        self.assertIn("real AV1 implementation and evidence gate", normalized_gate)
+
     def test_readme_keeps_av1_as_backlog_not_current_stream_support(self) -> None:
         readme = README_PATH.read_text(encoding="utf-8")
         video_rows = [line for line in readme.splitlines() if line.startswith("| Video |")]
@@ -83,7 +101,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("Android MediaCodec HEVC/H.264 decode", row)
         self.assertIn("AV1 is a later-phase/backlog codec", row)
         self.assertIn("not a current Host/device stream codec", row)
-        self.assertIn("Protocol v1 reserves CODEC_AV1", row)
+        self.assertIn("Protocol v1 only reserves CODEC_AV1", row)
         self.assertIn("runtime-admission foundation is in place", row)
         self.assertIn("the current Host does not advertise AV1", row)
         self.assertIn("Android does not offer AV1 in product sessions", row)
@@ -247,6 +265,7 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
             AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH,
             AV1_P0110_CAPABILITY_EVIDENCE_PATH,
             AV1_P0110_CURRENT_BASE_REFRESH_PATH,
+            PROTOCOL_COMMON_PROTO_PATH,
             Path(__file__),
         ]
         forbidden_values = [
