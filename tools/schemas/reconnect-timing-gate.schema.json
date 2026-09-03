@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/reconnect-timing-gate.schema.json",
+  "title": "Vibe Screen reconnect timing gate summary v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "run_id",
+    "kind",
+    "profile",
+    "verdict",
+    "can_close_timing_gate",
+    "can_close_requested_scope",
+    "required_disruptions",
+    "missing_required_disruptions",
+    "attempts",
+    "reasons"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "reconnect_timing_gate"},
+    "profile": {"const": "phase1-reconnect-within-3s"},
+    "verdict": {"enum": ["pass", "blocked", "insufficient", "fail"]},
+    "can_close_timing_gate": {"type": "boolean"},
+    "can_close_requested_scope": {"type": "boolean"},
+    "full_gate_required_disruptions": {"type": "array", "items": {"type": "string"}},
+    "full_gate_missing_disruptions": {"type": "array", "items": {"type": "string"}},
+    "threshold_ms": {"type": "number", "exclusiveMinimum": 0},
+    "required_disruptions": {"type": "array", "items": {"type": "string"}},
+    "missing_required_disruptions": {"type": "array", "items": {"type": "string"}},
+    "attempts": {"type": "array", "items": {"type": "object"}},
+    "device": {"type": "object"},
+    "host": {"type": "object"},
+    "artifact_paths": {"type": "array", "items": {"type": "string"}},
+    "blocked_reasons": {"type": "array", "items": {"type": "string"}},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "pass"}}},
+      "then": {"properties": {"can_close_requested_scope": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"can_close_timing_gate": {"const": true}}},
+      "then": {
+        "required": [
+          "full_gate_required_disruptions",
+          "full_gate_missing_disruptions"
+        ],
+        "properties": {
+          "verdict": {"const": "pass"},
+          "required_disruptions": {
+            "const": [
+              "client-kill",
+              "adb-reverse-disconnect",
+              "lan-network-interrupt"
+            ]
+          },
+          "missing_required_disruptions": {"const": []},
+          "full_gate_required_disruptions": {
+            "const": [
+              "client-kill",
+              "adb-reverse-disconnect",
+              "lan-network-interrupt"
+            ]
+          },
+          "full_gate_missing_disruptions": {"const": []},
+          "attempts": {
+            "allOf": [
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["disruption", "verdict"],
+                  "properties": {
+                    "disruption": {"const": "client-kill"},
+                    "verdict": {"const": "pass"}
+                  }
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["disruption", "verdict"],
+                  "properties": {
+                    "disruption": {"const": "adb-reverse-disconnect"},
+                    "verdict": {"const": "pass"}
+                  }
+                },
+                "minContains": 1
+              },
+              {
+                "contains": {
+                  "type": "object",
+                  "required": ["disruption", "verdict"],
+                  "properties": {
+                    "disruption": {"const": "lan-network-interrupt"},
+                    "verdict": {"const": "pass"}
+                  }
+                },
+                "minContains": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -18,6 +18,17 @@ Protocol v1 connection epoch, Android session/config epochs, first received
 frame, and Android decoder first output frame. LAN attempts also must prove the
 trusted-LAN encrypted record path and rule out legacy plaintext fallback.
 
+The offline checker is fail-closed for provenance. A passing attempt must be
+declared as retained real-device evidence with `real_device_evidence=true` and
+`synthetic_fixture=false`; complete synthetic fixtures remain `blocked`. The
+checker verifies that the Android Protocol v1 acceptance/session,
+connection-opened, first-frame, and decoder-first-output epoch markers are
+internally consistent, and that the first frame's `config_epoch` matches the
+attempt configuration epoch. It also requires LAN security evidence text with
+`trusted_lan_encrypted=true` and `trusted_lan_legacy_plaintext=false`, while any
+contradictory `trusted_lan_encrypted=false` or
+`trusted_lan_legacy_plaintext=true` marker blocks the LAN attempt.
+
 ## Current blocked result
 
 Current-base reconnect matrix owner evidence is under
@@ -76,6 +87,22 @@ Run the focused evidence-tool tests:
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
   python3 -m unittest tools.tests.test_reconnect_timing -v
 ```
+
+Run the schema smoke and synthetic fixture guard:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m unittest tools.tests.test_schemas -v
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
+  python3 -m vibescreen_evidence.reconnect_timing \
+  tools/fixtures/reconnect-timing/synthetic-complete-observations.json \
+  --run-id fixture-reconnect-timing-synthetic-complete
+```
+
+The fixture command is expected to exit `3` with `verdict=blocked`; it proves
+that structurally complete synthetic evidence cannot close the reconnect timing
+gate.
 
 Run the Android telemetry regression:
 

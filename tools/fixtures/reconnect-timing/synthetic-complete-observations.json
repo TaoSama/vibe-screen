@@ -1,0 +1,91 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "reconnect_timing_observations",
+  "run_id": "fixture-reconnect-timing-synthetic-complete",
+  "device": {
+    "manufacturer": "Fixture",
+    "model": "Fixture Device",
+    "codename": "fixture",
+    "os_version": "Android fixture"
+  },
+  "host": {
+    "model": "Fixture Mac",
+    "macos_version": "fixture"
+  },
+  "attempts": [
+    {
+      "name": "client-kill",
+      "disruption": "client-kill",
+      "transport": "usb",
+      "real_device_evidence": false,
+      "synthetic_fixture": true,
+      "host_pid_before": 1234,
+      "host_pid_after": 1234,
+      "host_connection_epoch": 11,
+      "android_session_epoch": 1,
+      "config_epoch": 3,
+      "events": {
+        "disruption_started_ms": 10000,
+        "protocol_v1_accepted_ms": 10600,
+        "protocol_v1_session_epoch": 1,
+        "connection_opened_session_epoch": 1,
+        "first_frame_ms": 10780,
+        "first_frame_session_epoch": 1,
+        "first_frame_config_epoch": 3,
+        "first_output_frame_ms": 10830,
+        "first_output_frame_session_epoch": 1
+      }
+    },
+    {
+      "name": "adb-reverse-disconnect",
+      "disruption": "adb-reverse-disconnect",
+      "transport": "usb",
+      "real_device_evidence": false,
+      "synthetic_fixture": true,
+      "host_pid_before": 1234,
+      "host_pid_after": 1234,
+      "host_connection_epoch": 12,
+      "android_session_epoch": 2,
+      "config_epoch": 4,
+      "adb_reverse_restored": true,
+      "events": {
+        "disruption_started_ms": 20000,
+        "protocol_v1_accepted_ms": 20700,
+        "protocol_v1_session_epoch": 2,
+        "connection_opened_session_epoch": 2,
+        "first_frame_ms": 20900,
+        "first_frame_session_epoch": 2,
+        "first_frame_config_epoch": 4,
+        "first_output_frame_ms": 21050,
+        "first_output_frame_session_epoch": 2
+      }
+    },
+    {
+      "name": "lan-network-interrupt",
+      "disruption": "lan-network-interrupt",
+      "transport": "lan",
+      "real_device_evidence": false,
+      "synthetic_fixture": true,
+      "host_pid_before": 1234,
+      "host_pid_after": 1234,
+      "host_connection_epoch": 13,
+      "android_session_epoch": 3,
+      "config_epoch": 5,
+      "trusted_lan_encrypted": true,
+      "trusted_lan_legacy_plaintext": false,
+      "trusted_lan_security_log": "trusted_lan_encrypted=true trusted_lan_legacy_plaintext=false",
+      "events": {
+        "disruption_started_ms": 30000,
+        "protocol_v1_accepted_ms": 30650,
+        "protocol_v1_session_epoch": 3,
+        "connection_opened_session_epoch": 3,
+        "first_frame_ms": 30850,
+        "first_frame_session_epoch": 3,
+        "first_frame_config_epoch": 5,
+        "first_output_frame_ms": 30980,
+        "first_output_frame_session_epoch": 3
+      }
+    }
+  ],
+  "notes": "Synthetic complete-shape fixture for checker tests only; must remain blocked."
+}

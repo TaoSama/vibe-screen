@@ -206,6 +206,14 @@ three disruption kinds:
   record negotiation, no legacy plaintext fallback, Protocol v1 recovery, and
   first decoder output frame.
 
+Mark each real attempt with `real_device_evidence=true` and
+`synthetic_fixture=false`. Do not set these fields for dry runs, copied log
+snippets, loopback harnesses, or fixtures; the checker treats them as blocked
+rather than pass evidence. LAN attempts must include `trusted_lan_security_log`
+or `trusted_lan_security_log_path` with both `trusted_lan_encrypted=true` and
+`trusted_lan_legacy_plaintext=false`, and they must not contain contradictory
+`trusted_lan_encrypted=false` or `trusted_lan_legacy_plaintext=true` markers.
+
 Evaluate the record with the fail-closed summary tool:
 
 ```bash

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/reconnect-timing-observations.schema.json",
+  "title": "Vibe Screen reconnect timing observations v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "kind", "attempts"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "reconnect_timing_observations"},
+    "run_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "minLength": 1},
+    "device": {"type": "object"},
+    "host": {"type": "object"},
+    "notes": {"type": "string"},
+    "blocked_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "attempts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/attempt"}
+    }
+  },
+  "$defs": {
+    "positiveInteger": {"type": "integer", "minimum": 1},
+    "finiteNumber": {"type": "number"},
+    "events": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "disruption_started_ms": {"$ref": "#/$defs/finiteNumber"},
+        "protocol_v1_accepted_ms": {"$ref": "#/$defs/finiteNumber"},
+        "protocol_v1_session_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "connection_opened_session_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "first_frame_ms": {"$ref": "#/$defs/finiteNumber"},
+        "first_frame_session_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "first_frame_config_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "first_output_frame_ms": {"$ref": "#/$defs/finiteNumber"},
+        "first_output_frame_session_epoch": {"$ref": "#/$defs/positiveInteger"}
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["disruption", "transport"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "disruption": {
+          "enum": ["client-kill", "adb-reverse-disconnect", "lan-network-interrupt"]
+        },
+        "transport": {"enum": ["usb", "lan"]},
+        "status": {"enum": ["blocked"]},
+        "blocking_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "real_device_evidence": {"type": "boolean"},
+        "synthetic_fixture": {"type": "boolean"},
+        "host_pid_before": {"$ref": "#/$defs/positiveInteger"},
+        "host_pid_after": {"$ref": "#/$defs/positiveInteger"},
+        "host_connection_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "android_session_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "protocol_v1_session_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "config_epoch": {"$ref": "#/$defs/positiveInteger"},
+        "disruption_started_at_ms": {"$ref": "#/$defs/finiteNumber"},
+        "adb_reverse_restored": {"type": "boolean"},
+        "trusted_lan_encrypted": {"type": "boolean"},
+        "trusted_lan_legacy_plaintext": {"type": "boolean"},
+        "trusted_lan_security_log": {"type": "string"},
+        "trusted_lan_security_log_path": {"type": "string", "minLength": 1},
+        "android_diag": {"type": "string"},
+        "android_diag_path": {"type": "string", "minLength": 1},
+        "android_logcat": {"type": "string"},
+        "android_logcat_path": {"type": "string", "minLength": 1},
+        "host_log": {"type": "string"},
+        "host_log_path": {"type": "string", "minLength": 1},
+        "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "events": {"$ref": "#/$defs/events"}
+      }
+    }
+  }
+}

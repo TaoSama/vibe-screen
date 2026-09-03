@@ -144,6 +144,13 @@ Only a summary with `verdict=pass` and `can_close_timing_gate=true` can close
 the README gate. An incremental run may return `verdict=pass` for the requested
 scenario and `can_close_requested_scope=true`, but it must still keep
 `can_close_timing_gate=false` until all three disruption scenarios pass.
+Every passing attempt must be real-device evidence: set
+`real_device_evidence=true` and `synthetic_fixture=false` only for retained
+device/Host artifacts from an actual disruption. Synthetic fixtures and empty
+attempt arrays are blocked. LAN attempts additionally need retained
+secure-record text proving `trusted_lan_encrypted=true` and
+`trusted_lan_legacy_plaintext=false`; contradictory plaintext or unencrypted
+markers keep the verdict blocked.
 
 ### File Transfer And WebRTC Bulk Gates
 
