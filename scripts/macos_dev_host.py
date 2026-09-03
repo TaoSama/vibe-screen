@@ -100,8 +100,15 @@ class PermissionStatus:
     readable: bool
     error: str | None = None
 
+    def latest_row(self, services: tuple[str, ...]) -> TCCRow | None:
+        candidates = [row for row in self.rows if row.service in services]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda row: row.last_modified if row.last_modified is not None else -1)
+
     def is_allowed(self, services: tuple[str, ...]) -> bool:
-        return any(row.service in services and row.auth_value == ALLOWED_AUTH_VALUE for row in self.rows)
+        row = self.latest_row(services)
+        return row is not None and row.auth_value == ALLOWED_AUTH_VALUE
 
     def allowed_state(self, services: tuple[str, ...]) -> bool | None:
         if not self.readable:
