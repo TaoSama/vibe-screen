@@ -65,6 +65,7 @@ def complete_manifest() -> dict[str, object]:
             "audit_source": "docs/audit.md",
         },
         "open_pr_snapshot": {
+            "repository": "TaoSama/vibe-screen",
             "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
             "queried_at": "2026-08-22",
             "state": "open",
@@ -313,7 +314,48 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         self.assertEqual(summary["aggregate_verdict"], "pass")
         self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+        self.assertEqual(summary["owner_pr_guard"]["repository"], "TaoSama/vibe-screen")
         self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
+
+    def test_open_pr_snapshot_rejects_wrong_repository(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["repository"] = "TaoSama/other"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "open_pr_snapshot.repository"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_command_must_target_repository(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list --repo TaoSama/other --state open --limit 200 --json number"
+        )
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must list open PRs for TaoSama/vibe-screen"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_rejects_missing_repo_option(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["command"] = (
+            "gh pr list --state open --limit 200 --json number"
+        )
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must list open PRs for TaoSama/vibe-screen"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_date_must_not_be_after_audit_date(self) -> None:
+        manifest = complete_manifest()
+        manifest["open_pr_snapshot"]["queried_at"] = "2026-08-23"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must not be after manifest source.audit_date"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
 
     def test_manifest_source_requires_traceable_fields(self) -> None:
         manifest = complete_manifest()

@@ -85,12 +85,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "repository",
         "command",
         "queried_at",
         "state",
         "open_pr_numbers"
       ],
       "properties": {
+        "repository": {
+          "const": "TaoSama/vibe-screen"
+        },
         "command": {
           "type": "string",
           "minLength": 1

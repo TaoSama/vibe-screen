@@ -7,8 +7,10 @@ readiness, synthetic, historical, or blocked sub-gate evidence as a pass.
 from __future__ import annotations
 
 import argparse
+import datetime as _datetime
 import json
 import re
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -22,6 +24,7 @@ STATUS_BLOCKED = "blocked"
 STATUS_FAIL = "fail"
 STATUS_INSUFFICIENT = "insufficient"
 STATUS_OPEN = "open"
+EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 ALLOWED_VERDICTS = {
     STATUS_PASS,
     STATUS_BLOCKED,
@@ -229,6 +232,7 @@ def _open_pr_snapshot_guard(
         return {
             "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
             "command": None,
+            "repository": None,
             "queried_at": None,
             "state": None,
             "open_pr_numbers": [],
@@ -240,19 +244,45 @@ def _open_pr_snapshot_guard(
         raise Phase0StableReleaseError("open_pr_snapshot must be an object")
 
     command = _string(snapshot, "command")
+    repository = _string(snapshot, "repository")
     queried_at = _string(snapshot, "queried_at")
     state = _string(snapshot, "state")
+    if repository != EXPECTED_OPEN_PR_REPOSITORY:
+        raise Phase0StableReleaseError(
+            "open_pr_snapshot.repository must be TaoSama/vibe-screen"
+        )
     if state != "open":
         raise Phase0StableReleaseError("open_pr_snapshot.state must be open")
-    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", queried_at):
-        raise Phase0StableReleaseError("open_pr_snapshot.queried_at must use YYYY-MM-DD format")
-    if "gh pr list" not in command or "--state open" not in command:
+    parsed_queried_at = _parse_manifest_date(
+        queried_at, "open_pr_snapshot.queried_at"
+    )
+    if parsed_queried_at > _datetime.date.today():
         raise Phase0StableReleaseError(
-            "open_pr_snapshot.command must be the gh open-PR listing command"
+            "open_pr_snapshot.queried_at must not be in the future"
+        )
+    source = manifest.get("source", {})
+    if isinstance(source, dict):
+        audit_date = source.get("audit_date")
+        if isinstance(audit_date, str) and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}", audit_date
+        ):
+            parsed_audit_date = _parse_manifest_date(
+                audit_date, "manifest source.audit_date"
+            )
+            if parsed_queried_at > parsed_audit_date:
+                raise Phase0StableReleaseError(
+                    "open_pr_snapshot.queried_at must not be after "
+                    "manifest source.audit_date"
+                )
+    if not _is_expected_open_pr_command(command, repository):
+        raise Phase0StableReleaseError(
+            "open_pr_snapshot.command must list open PRs for TaoSama/vibe-screen"
         )
 
     open_pr_numbers = sorted(_int_list(snapshot, "open_pr_numbers"))
-    stale_owner_prs = [owner_pr for owner_pr in owner_prs if owner_pr not in open_pr_numbers]
+    stale_owner_prs = [
+        owner_pr for owner_pr in owner_prs if owner_pr not in open_pr_numbers
+    ]
     reasons = []
     if stale_owner_prs:
         reasons.append(
@@ -262,6 +292,7 @@ def _open_pr_snapshot_guard(
     return {
         "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
         "command": command,
+        "repository": repository,
         "queried_at": queried_at,
         "state": state,
         "open_pr_numbers": open_pr_numbers,
@@ -269,6 +300,40 @@ def _open_pr_snapshot_guard(
         "stale_owner_prs": stale_owner_prs,
         "reasons": reasons,
     }
+
+
+def _is_expected_open_pr_command(command: str, repository: str) -> bool:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if tokens[:3] != ["gh", "pr", "list"]:
+        return False
+    return (
+        _option_value(tokens, "--repo") == repository
+        and _option_value(tokens, "--state") == "open"
+    )
+
+
+def _parse_manifest_date(value: str, field: str) -> _datetime.date:
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        raise Phase0StableReleaseError(f"{field} must use YYYY-MM-DD format")
+    try:
+        return _datetime.date.fromisoformat(value)
+    except ValueError as error:
+        raise Phase0StableReleaseError(
+            f"{field} must use a valid calendar date"
+        ) from error
+
+
+def _option_value(tokens: Sequence[str], name: str) -> str | None:
+    prefix = f"{name}="
+    for index, token in enumerate(tokens):
+        if token.startswith(prefix):
+            return token[len(prefix):]
+        if token == name and index + 1 < len(tokens):
+            return tokens[index + 1]
+    return None
 
 
 def _readme_guard(

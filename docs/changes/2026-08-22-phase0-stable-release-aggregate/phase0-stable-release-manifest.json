@@ -10,6 +10,7 @@
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "open_pr_snapshot": {
+    "repository": "TaoSama/vibe-screen",
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
     "queried_at": "2026-09-03",
     "state": "open",
