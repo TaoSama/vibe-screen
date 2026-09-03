@@ -318,6 +318,26 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["owner_pr_guard"]["repository"], "TaoSama/vibe-screen")
         self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
 
+    def test_owner_prs_reject_bool_values(self) -> None:
+        manifest = complete_manifest()
+        gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [True]
+        manifest["open_pr_snapshot"]["open_pr_numbers"] = [1]
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "owner_prs must be a list of integers"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_open_pr_snapshot_rejects_bool_pr_numbers(self) -> None:
+        manifest = complete_manifest()
+        gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [1]
+        manifest["open_pr_snapshot"]["open_pr_numbers"] = [True]
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "open_pr_numbers must be a list of integers"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
     def test_open_pr_snapshot_rejects_wrong_repository(self) -> None:
         manifest = complete_manifest()
         manifest["open_pr_snapshot"]["repository"] = "TaoSama/other"
@@ -388,12 +408,24 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 evaluation_date=_datetime.date(2026, 8, 22),
             )
 
+    def test_open_pr_snapshot_date_must_match_audit_date(self) -> None:
+        manifest = complete_manifest()
+        stale_owner = gate_by_id(manifest, "host_rss_2h_no_growth")
+        stale_owner["owner_prs"] = [158]
+        manifest["open_pr_snapshot"]["open_pr_numbers"] = [158]
+        manifest["open_pr_snapshot"]["queried_at"] = "2026-08-21"
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "must match manifest source.audit_date"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
     def test_open_pr_snapshot_date_must_not_be_after_audit_date(self) -> None:
         manifest = complete_manifest()
         manifest["open_pr_snapshot"]["queried_at"] = "2026-08-23"
 
         with self.assertRaisesRegex(
-            Phase0StableReleaseError, "must not be after manifest source.audit_date"
+            Phase0StableReleaseError, "must match manifest source.audit_date"
         ):
             evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
 
@@ -413,6 +445,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
     def test_manifest_source_rejects_future_audit_date(self) -> None:
         manifest = complete_manifest()
         manifest["source"]["audit_date"] = "2026-08-23"
+        manifest.pop("open_pr_snapshot")
 
         summary = evaluate_manifest(
             manifest,

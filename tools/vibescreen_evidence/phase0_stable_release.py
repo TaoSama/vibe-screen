@@ -118,14 +118,14 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
 
 def _owner_prs(gate: dict[str, Any]) -> list[int]:
     value = gate.get("owner_prs", [])
-    if not isinstance(value, list) or not all(isinstance(item, int) for item in value):
+    if not isinstance(value, list) or not all(type(item) is int for item in value):
         raise Phase0StableReleaseError("owner_prs must be a list of integers")
     return value
 
 
 def _int_list(record: dict[str, Any], field: str) -> list[int]:
     value = record.get(field, [])
-    if not isinstance(value, list) or not all(isinstance(item, int) for item in value):
+    if not isinstance(value, list) or not all(type(item) is int for item in value):
         raise Phase0StableReleaseError(f"{field} must be a list of integers")
     if len(value) != len(set(value)):
         raise Phase0StableReleaseError(f"{field} must not contain duplicates")
@@ -274,9 +274,9 @@ def _open_pr_snapshot_guard(
             parsed_audit_date = _parse_manifest_date(
                 audit_date, "manifest source.audit_date"
             )
-            if parsed_queried_at > parsed_audit_date:
+            if parsed_queried_at != parsed_audit_date:
                 raise Phase0StableReleaseError(
-                    "open_pr_snapshot.queried_at must not be after "
+                    "open_pr_snapshot.queried_at must match "
                     "manifest source.audit_date"
                 )
     if not _is_expected_open_pr_command(command, repository):
