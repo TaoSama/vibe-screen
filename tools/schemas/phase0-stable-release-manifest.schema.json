@@ -81,6 +81,36 @@
         "$ref": "#/$defs/gate"
       }
     },
+    "open_pr_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "queried_at",
+        "state",
+        "open_pr_numbers"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queried_at": {
+          "type": "string",
+          "format": "date"
+        },
+        "state": {
+          "const": "open"
+        },
+        "open_pr_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
     "deferred_or_later_phase_gates": {
       "type": "array",
       "items": {

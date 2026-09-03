@@ -331,21 +331,18 @@ routing to focused boundary owners with offline contract coverage. `MainActivity
 hands renderer viewport/layout/render-target readiness/admission to
 `RendererOwner` and `RendererViewportState`; Android decoder admission,
 lifecycle callbacks, active decoder gating, renderer presentation,
-local/Internet frame routing, and Internet decoder-presentation rollback now
-have focused owner coverage. `ProductSessionCoordinator` owns Internet
-generation/freshness, clipboard, file-transfer, and host-action product state.
-The Phase 0 module ownership sub-gate now passes on current main; remaining
-Phase 0 blockers are runtime/product evidence gates such as Host RSS, native
-pointer HID, controller runtime, clipboard, and file-transfer E2E.
-`MainActivity` remains the Android platform adapter that creates `VideoDecoder`
-with the active `Surface` and applies UI side
-effects. This does not complete Phase 0 stable release because runtime/product
-acceptance remains tracked by the separate aggregate gates above. WakeHost real
-sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence
-remain separate fail-closed gates.
-The current-base owner state is tracked by
-`make phase0-module-ownership-gate`; the stable-release aggregate still remains
-blocked until the runtime/product evidence gates pass.
+local/Internet frame routing, Internet decoder-presentation rollback, and
+UI/product-session coordination now have focused owner coverage.
+`ProductSessionCoordinator` owns Internet generation/freshness, clipboard,
+file-transfer, and host-action product state. `MainActivity` remains the
+Android platform adapter that creates `VideoDecoder` with the active `Surface`
+and applies UI side effects. The current-base module ownership state is tracked
+by `make phase0-module-ownership-gate`, which now reports
+`can_close_phase0_module_ownership_extraction=true` on current main. This does
+not complete Phase 0 stable release because runtime/product evidence gates such
+as Host RSS, native pointer HID, controller runtime, clipboard, file-transfer
+E2E, WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained
+product evidence remain separate fail-closed requirements.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
@@ -994,7 +991,7 @@ increase it.
   gate evidence package are all present; Android, portable-only, or blocked
   readiness records cannot close those owner gates. The
   [current-base gate audit](docs/changes/2026-08-04-phase-4-harmony/CURRENT_BASE_AUDIT.md)
-  records the open PR owner map and marks this gate as the current-base
+  records the gate ownership map and marks this gate as the current-base
   aggregate owner path. The latest current-base rerun remains blocked and is
   archived at
   [2026-08-29-current-base-harmony-blocked](docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-29-current-base-harmony-blocked/README.md).
@@ -1066,9 +1063,9 @@ increase it.
   broadcast target before sending. This is offline and loopback test evidence
   only: sleeping-Mac wake, router broadcast behavior, NIC firmware settings, and
   cross-subnet delivery remain real-device gates. The current-base WakeHost
-  evidence owner is #199 after being rebased onto the #225 baseline; it provides
-  a fail-closed evidence gate for the latest mainline instead of treating the
-  offline magic-packet baseline as a hardware pass.
+  evidence owner tooling is now on main as `make wake-host-current-base-gate`;
+  it provides a fail-closed evidence gate for the latest mainline instead of
+  treating the offline magic-packet baseline as a hardware pass.
 - Managed configuration now has an offline-verified deny-wins product-policy
   model across macOS Host, Android, and iOS: Protocol v1 carries complete
   restriction results, local parse errors fail closed, allowlists intersect,
@@ -1114,12 +1111,12 @@ increase it.
   ownership model, and macOS/Android/iOS/Harmony owner status. Single-client
   display selection or display-switch evidence remains separate and cannot
   close this gate.
-- The current-base aggregate gate records per-gate owner PRs while it remains
-  fail-closed. PR #290 owns the aggregate and device-acceptance validator, #251
-  owns iOS hardware VideoToolbox readiness, and #253 owns Host advanced-adapter
-  readiness. Passing status under a mismatched owner, Simulator output, unsigned
-  archives, MacHost loopback, and Android evidence cannot close those iOS
-  hardware or Host-adapter gates.
+- The current-base aggregate gate records per-gate ownership while it remains
+  fail-closed. The mainline owner gates now include the iOS aggregate
+  device-acceptance validator, iOS hardware VideoToolbox readiness, and Host
+  advanced-adapter readiness. Passing status under a mismatched owner, Simulator
+  output, unsigned archives, MacHost loopback, and Android evidence cannot close
+  those iOS hardware or Host-adapter gates.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. The hardware VideoToolbox behavior gate now has a

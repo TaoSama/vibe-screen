@@ -120,6 +120,15 @@ def _owner_prs(gate: dict[str, Any]) -> list[int]:
     return value
 
 
+def _int_list(record: dict[str, Any], field: str) -> list[int]:
+    value = record.get(field, [])
+    if not isinstance(value, list) or not all(isinstance(item, int) for item in value):
+        raise Phase0StableReleaseError(f"{field} must be a list of integers")
+    if len(value) != len(set(value)):
+        raise Phase0StableReleaseError(f"{field} must not contain duplicates")
+    return value
+
+
 def _required_bool(gate: dict[str, Any]) -> bool:
     value = gate.get("required_for_stable_release", True)
     if not isinstance(value, bool):
@@ -199,6 +208,66 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
         "evidence_paths": evidence_paths,
         "blockers": blockers,
         "issues": issues,
+    }
+
+
+def _open_pr_snapshot_guard(
+    manifest: dict[str, Any], gate_summaries: Sequence[dict[str, Any]]
+) -> dict[str, Any]:
+    owner_prs = sorted({
+        owner_pr
+        for summary in gate_summaries
+        for owner_pr in summary["owner_prs"]
+    })
+    snapshot = manifest.get("open_pr_snapshot")
+    if snapshot is None:
+        reasons = []
+        if owner_prs:
+            reasons.append(
+                "owner_prs require open_pr_snapshot from `gh pr list --state open`"
+            )
+        return {
+            "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+            "command": None,
+            "queried_at": None,
+            "state": None,
+            "open_pr_numbers": [],
+            "owner_prs": owner_prs,
+            "stale_owner_prs": owner_prs,
+            "reasons": reasons,
+        }
+    if not isinstance(snapshot, dict):
+        raise Phase0StableReleaseError("open_pr_snapshot must be an object")
+
+    command = _string(snapshot, "command")
+    queried_at = _string(snapshot, "queried_at")
+    state = _string(snapshot, "state")
+    if state != "open":
+        raise Phase0StableReleaseError("open_pr_snapshot.state must be open")
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", queried_at):
+        raise Phase0StableReleaseError("open_pr_snapshot.queried_at must use YYYY-MM-DD format")
+    if "gh pr list" not in command or "--state open" not in command:
+        raise Phase0StableReleaseError(
+            "open_pr_snapshot.command must be the gh open-PR listing command"
+        )
+
+    open_pr_numbers = sorted(_int_list(snapshot, "open_pr_numbers"))
+    stale_owner_prs = [owner_pr for owner_pr in owner_prs if owner_pr not in open_pr_numbers]
+    reasons = []
+    if stale_owner_prs:
+        reasons.append(
+            "owner_prs are not present in open_pr_snapshot.open_pr_numbers: "
+            + ", ".join(f"#{owner_pr}" for owner_pr in stale_owner_prs)
+        )
+    return {
+        "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+        "command": command,
+        "queried_at": queried_at,
+        "state": state,
+        "open_pr_numbers": open_pr_numbers,
+        "owner_prs": owner_prs,
+        "stale_owner_prs": stale_owner_prs,
+        "reasons": reasons,
     }
 
 
@@ -300,6 +369,8 @@ def evaluate_manifest(
         seen_gate_ids.add(summary["id"])
         gate_summaries.append(summary)
 
+    owner_pr_guard = _open_pr_snapshot_guard(manifest, gate_summaries)
+
     missing_gate_ids = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in seen_gate_ids]
     unexpected_required_gate_ids = [
         summary["id"]
@@ -337,6 +408,7 @@ def evaluate_manifest(
     aggregate_passed = (
         not malformed_reasons
         and source_guard["verdict"] == STATUS_PASS
+        and owner_pr_guard["verdict"] == STATUS_PASS
         and not blocking_gates
         and not any(summary["issues"] for summary in gate_summaries)
     )
@@ -353,6 +425,7 @@ def evaluate_manifest(
     elif (
         malformed_reasons
         or source_guard["verdict"] == STATUS_INSUFFICIENT
+        or owner_pr_guard["verdict"] == STATUS_INSUFFICIENT
         or any(summary["issues"] for summary in gate_summaries)
     ):
         aggregate_verdict = STATUS_INSUFFICIENT
@@ -377,10 +450,12 @@ def evaluate_manifest(
         "gate_summaries": gate_summaries,
         "readme_guard": readme_guard,
         "source_guard": source_guard,
+        "owner_pr_guard": owner_pr_guard,
         "manifest_source": source,
         "reasons": [
             *malformed_reasons,
             *source_guard["reasons"],
+            *owner_pr_guard["reasons"],
             *gate_reasons,
             *readme_guard["reasons"],
         ],

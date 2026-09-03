@@ -3,11 +3,19 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "5a0f18f01b1847a283554d651a8b1062b04b0712",
+    "base_commit": "a40588663cf484f5acad16b8d9f222cbb19c8605",
     "base_ref": "origin/main",
     "audit_date": "2026-09-03",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
+  },
+  "open_pr_snapshot": {
+    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
+    "queried_at": "2026-09-03",
+    "state": "open",
+    "open_pr_numbers": [
+      531
+    ]
   },
   "readme_guard": {
     "required_phrases": [
@@ -129,9 +137,7 @@
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/latency-preflight.json"
       ],
-      "owner_prs": [
-        167
-      ],
+      "owner_prs": [],
       "blockers": [
         "The latest current-base latency preflight remains blocked readiness; no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
@@ -152,17 +158,7 @@
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-31-current-base-host-rss-failclosed-readiness/README.md"
       ],
-      "owner_prs": [
-        158,
-        195,
-        222,
-        230,
-        237,
-        260,
-        329,
-        376,
-        387
-      ],
+      "owner_prs": [],
       "blockers": [
         "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
         "No current-source host_rss_gate pass exists.",
@@ -179,11 +175,7 @@
         "docs/testing.md",
         "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/native-pointer-hid-summary.json"
       ],
-      "owner_prs": [
-        232,
-        268,
-        361
-      ],
+      "owner_prs": [],
       "blockers": [
         "No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
         "The latest current-base native-pointer HID summaries remain blocked and do not retain Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window."
@@ -199,12 +191,7 @@
         "docs/changes/2026-08-19-controller-runtime-acceptance/TEST.md",
         "docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-e647b6d/controller-runtime-summary.json"
       ],
-      "owner_prs": [
-        217,
-        220,
-        270,
-        411
-      ],
+      "owner_prs": [],
       "blockers": [
         "No physical Android controller runtime run is recorded.",
         "No identity-signed Host with approved virtual HID entitlement, Host availability, Mac-side response, and neutral release on disconnect is recorded in one pass evidence bundle."
@@ -265,13 +252,7 @@
         "docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-module-ownership-manifest.json",
         "tools/vibescreen_evidence/phase0_module_ownership.py"
       ],
-      "owner_prs": [
-        211,
-        218,
-        221,
-        259,
-        372
-      ],
+      "owner_prs": [],
       "blockers": []
     }
   ],
