@@ -41,6 +41,19 @@
         "body": "USB mode cannot reach the Mac because the Android-to-Mac reverse route for TCP 54321 is missing, refused, or stale.",
         "action": "Reconnect or authorize the Android device, use the Mac app USB repair action to restore the reverse route, then retry."
       },
+      "android_guidance_contract": {
+        "context": "usb",
+        "sample_failure": {
+          "source": "throwable",
+          "type": "ConnectException",
+          "message": "ECONNREFUSED"
+        },
+        "kind": "USB_ROUTE_UNAVAILABLE",
+        "status_resource": "connection_guidance_adb_route_unavailable_title",
+        "message_resource": "connection_guidance_usb_recovery_usb",
+        "message_prefix_resource": "connection_guidance_usb_route_unavailable_prefix",
+        "recovery_button_action": "connectButton.try_again"
+      },
       "retry_behavior": "bounded_auto_retry",
       "offline_evidence": [
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
@@ -66,6 +79,19 @@
         "body": "The Android device is no longer reachable over the authorized USB debugging transport, so the client cannot use the local stream route.",
         "action": "Reconnect the cable, unlock and authorize the phone, wait for the Mac app to repair USB routing, then retry."
       },
+      "android_guidance_contract": {
+        "context": "usb",
+        "sample_failure": {
+          "source": "throwable",
+          "type": "NoRouteToHostException",
+          "message": "ENETUNREACH"
+        },
+        "kind": "NETWORK_UNREACHABLE",
+        "status_resource": "connection_guidance_adb_route_unavailable_title",
+        "message_resource": "connection_guidance_usb_recovery_usb",
+        "message_prefix_resource": "connection_guidance_usb_route_unavailable_prefix",
+        "recovery_button_action": "connectButton.try_again"
+      },
       "retry_behavior": "bounded_auto_retry",
       "offline_evidence": [
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
@@ -84,13 +110,25 @@
       "source_classifier": "ConnectionGuidanceFactory.networkUnreachable with LAN context",
       "android_session_failure_kinds": [],
       "ui_surface": "Wireless repair surface",
-      "user_visible_copy": "connection_guidance_network_unavailable_title plus connection_guidance_lan_network_unavailable_message",
+      "user_visible_copy": "connection_guidance_lan_route_unavailable_title plus connection_guidance_lan_network_unavailable_message",
       "user_action": "Reconnect both devices to the same trusted Wi-Fi, disable VPN or guest isolation, verify the saved Mac address and port, then reconnect.",
       "contract": {
         "code": "lan_route_unavailable",
         "title": "LAN route unavailable",
         "body": "Trusted LAN cannot route from the Android device to the saved Mac address and port on the same private network.",
         "action": "Reconnect both devices to the same trusted Wi-Fi, disable VPN or guest isolation, verify the saved Mac address and port, then reconnect."
+      },
+      "android_guidance_contract": {
+        "context": "lan",
+        "sample_failure": {
+          "source": "throwable",
+          "type": "NoRouteToHostException",
+          "message": "ENETUNREACH"
+        },
+        "kind": "NETWORK_UNREACHABLE",
+        "status_resource": "connection_guidance_lan_route_unavailable_title",
+        "message_resource": "connection_guidance_lan_network_unavailable_message",
+        "recovery_button_action": "wirelessReconnectButton.reconnect"
       },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
@@ -109,13 +147,25 @@
       "source_classifier": "RendererOwner, StreamMediaFrameRouter, ProtocolV1Session, file-transfer, audio, clipboard, and action dispatch stale-epoch guards",
       "android_session_failure_kinds": [],
       "ui_surface": "Protocol diagnostics and reconnect guidance when stale epochs repeat or become terminal",
-      "user_visible_copy": "Fresh-session guidance: reconnect the current session and update both peers if stale epoch rejection repeats.",
+      "user_visible_copy": "connection_guidance_stale_session_title plus connection_guidance_stale_session_message",
       "user_action": "Reconnect to force a fresh session epoch; if the stale-epoch error repeats, update Vibe Screen on both devices and collect logs before claiming device recovery.",
       "contract": {
         "code": "stale_epoch_or_session_errors",
         "title": "Stale session epoch",
         "body": "The client rejected data from an older Protocol v1 session or configuration epoch to protect the current stream state.",
         "action": "Reconnect for a fresh session epoch; if it repeats, update both devices and collect logs instead of treating recovery as device-verified."
+      },
+      "android_guidance_contract": {
+        "context": "internet",
+        "sample_failure": {
+          "source": "session_failure",
+          "kind": "INVALID_MEDIA_PAYLOAD",
+          "message": "stale_session_epoch"
+        },
+        "kind": "STALE_SESSION",
+        "status_resource": "connection_guidance_stale_session_title",
+        "message_resource": "connection_guidance_stale_session_message",
+        "recovery_button_action": "internetConnectButton.fresh_session_retry"
       },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
@@ -406,6 +456,16 @@
         "body": "The macOS Host cannot capture a display because Screen Recording permission is missing or stale for the installed app identity.",
         "action": "Grant Screen Recording to the installed Vibe Screen app in System Settings, quit, reopen, and rerun the Host preflight."
       },
+      "host_cli_contract": {
+        "pre_gui_fail_closed": true,
+        "exit_code": "EXIT_FAILURE",
+        "stderr_error_messages": [
+          "Unknown Vibe Screen Host CLI flag: --self-test",
+          "Multiple Vibe Screen Host CLI commands are not supported.",
+          "Unknown iOS loopback scenario."
+        ],
+        "no_permission_prompt_on_parse_failure": true
+      },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
         "baseline/MacHost/Sources/PermissionOnboardingView.swift",
@@ -430,6 +490,16 @@
         "title": "Accessibility permission denied",
         "body": "macOS input injection or window movement is unavailable because Accessibility is not granted to the stable signed Host app.",
         "action": "Grant Accessibility to the stable signed installed app, quit and reopen Vibe Screen, then retry input or window movement."
+      },
+      "host_cli_contract": {
+        "pre_gui_fail_closed": true,
+        "exit_code": "EXIT_FAILURE",
+        "stderr_error_messages": [
+          "Unknown Vibe Screen Host CLI flag: --self-test",
+          "Multiple Vibe Screen Host CLI commands are not supported.",
+          "Unknown iOS loopback scenario."
+        ],
+        "no_permission_prompt_on_parse_failure": true
       },
       "retry_behavior": "manual_retry",
       "offline_evidence": [
@@ -475,6 +545,16 @@
         "title": "TCP 54321 unavailable",
         "body": "The Host is not reachable on TCP port 54321 because the listener is absent, failed to start, or the port is occupied.",
         "action": "Start or restart Vibe Screen on the Mac. If another process is listening on TCP 54321, stop it and restart Vibe Screen."
+      },
+      "host_cli_contract": {
+        "pre_gui_fail_closed": true,
+        "exit_code": "EXIT_FAILURE",
+        "stderr_error_messages": [
+          "Unknown Vibe Screen Host CLI flag: --self-test",
+          "Multiple Vibe Screen Host CLI commands are not supported.",
+          "Unknown iOS loopback scenario."
+        ],
+        "no_permission_prompt_on_parse_failure": true
       },
       "retry_behavior": "manual_retry",
       "offline_evidence": [

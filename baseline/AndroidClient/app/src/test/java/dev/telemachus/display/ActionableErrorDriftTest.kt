@@ -3,6 +3,8 @@ package dev.telemachus.display
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
+import java.net.ConnectException
+import java.net.NoRouteToHostException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -34,6 +36,30 @@ class ActionableErrorDriftTest {
         assertEquals(EXPECTED_CONTRACTS.map { it.code }.toSet(), statesByCode.keys)
     }
 
+    @Test
+    fun androidGuidanceContractsStayBoundToActualGuidanceOutput() {
+        val statesByCode = loadActionableErrorMatrix()
+
+        EXPECTED_ANDROID_GUIDANCE_CONTRACT_CODES.forEach { code ->
+            val state = requireNotNull(statesByCode[code]) { "Missing actionable contract $code" }
+            val guidanceContract = requireNotNull(state.getAsJsonObject("android_guidance_contract")) {
+                "Missing Android guidance contract for $code"
+            }
+            val guidance = guidanceFrom(guidanceContract)
+
+            assertEquals(code, ConnectionFailureKind.valueOf(guidanceContract.get("kind").asString), guidance.kind)
+            assertEquals(code, stringResourceId(guidanceContract.get("status_resource").asString), guidance.status.resourceId)
+            assertEquals(code, stringResourceId(guidanceContract.get("message_resource").asString), guidance.message.resourceId)
+            guidanceContract.get("message_prefix_resource")?.asString?.let { prefixResourceName ->
+                val prefix = guidance.message.args.firstOrNull() as? ConnectionGuidanceText
+                assertNotNull("$code must retain the nested message prefix", prefix)
+                requireNotNull(prefix)
+                assertEquals(code, stringResourceId(prefixResourceName), prefix.resourceId)
+            }
+            assertRecoveryActionIsWired(code, guidanceContract.get("recovery_button_action").asString)
+        }
+    }
+
     private fun loadActionableErrorMatrix(): Map<String, JsonObject> {
         val matrix = JsonParser.parseString(actionableErrorMatrixFile().readText()).asJsonObject
         val states = matrix.getAsJsonArray("states")
@@ -57,6 +83,75 @@ class ActionableErrorDriftTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("actionable-error-states.json not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun guidanceFrom(contract: JsonObject): ConnectionGuidance {
+        val context =
+            when (contract.get("context").asString) {
+                "usb" -> ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB)
+                "lan" -> ConnectionGuidanceContext.trustedLan(54321)
+                "internet" -> ConnectionGuidanceContext.internet()
+                else -> error("Unknown Android guidance context: " + contract.get("context").asString)
+            }
+        val sample = contract.getAsJsonObject("sample_failure")
+        return when (sample.get("source").asString) {
+            "throwable" -> ConnectionGuidanceFactory.from(throwableFrom(sample), context)
+            "session_failure" ->
+                ConnectionGuidanceFactory.from(
+                    SessionFailure.protocol(
+                        SessionFailureKind.valueOf(sample.get("kind").asString),
+                        sample.get("message").asString,
+                    ),
+                    context,
+                )
+            else -> error("Unknown Android guidance sample source: " + sample.get("source").asString)
+        }
+    }
+
+    private fun throwableFrom(sample: JsonObject): Throwable =
+        when (sample.get("type").asString) {
+            "ConnectException" -> ConnectException(sample.get("message").asString)
+            "NoRouteToHostException" -> NoRouteToHostException(sample.get("message").asString)
+            else -> error("Unknown Android guidance throwable type: " + sample.get("type").asString)
+        }
+
+    private fun assertRecoveryActionIsWired(
+        code: String,
+        recoveryButtonAction: String,
+    ) {
+        val mainActivity = resourceSource("app/src/main/java/dev/telemachus/display/MainActivity.kt")
+        val wirelessController = resourceSource("app/src/main/java/dev/telemachus/display/WirelessTabController.kt")
+        val layout = resourceSource("app/src/main/res/layout/activity_main.xml")
+        when (recoveryButtonAction) {
+            "connectButton.try_again" -> {
+                assertTrue(code, layout.contains("android:id=\"@+id/connectButton\""))
+                assertTrue(code, mainActivity.contains("binding.connectButton.setOnClickListener"))
+            }
+            "wirelessReconnectButton.reconnect" -> {
+                assertTrue(code, layout.contains("android:id=\"@+id/wirelessReconnectButton\""))
+                assertTrue(code, mainActivity.contains("reconnectButton = binding.wirelessReconnectButton"))
+                assertTrue(code, wirelessController.contains("views.reconnectButton.setOnClickListener"))
+                assertTrue(code, wirelessController.contains("attemptAutoConnect(entry)"))
+            }
+            "internetConnectButton.fresh_session_retry" -> {
+                assertTrue(code, layout.contains("android:id=\"@+id/internetConnectButton\""))
+                assertTrue(code, mainActivity.contains("binding.internetConnectButton.setOnClickListener { connectInternet() }"))
+            }
+            else -> error("Unknown recovery button action: $recoveryButtonAction")
+        }
+    }
+
+    private fun stringResourceId(name: String): Int =
+        R.string::class.java.getDeclaredField(name).getInt(null)
+
+    private fun resourceSource(path: String): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            val candidate = current.resolve(path)
+            if (candidate.isFile) return candidate.readText()
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("resource not found: $path from " + System.getProperty("user.dir"))
     }
 
     private data class ExpectedContract(
@@ -118,6 +213,14 @@ class ActionableErrorDriftTest {
                     body = "The client rejected data from an older Protocol v1 session or configuration epoch to protect the current stream state.",
                     action = "Reconnect for a fresh session epoch; if it repeats, update both devices and collect logs instead of treating recovery as device-verified.",
                 ),
+            )
+
+        val EXPECTED_ANDROID_GUIDANCE_CONTRACT_CODES =
+            setOf(
+                "adb_reverse_missing",
+                "usb_disconnected",
+                "lan_route_unavailable",
+                "stale_epoch_or_session_errors",
             )
     }
 }

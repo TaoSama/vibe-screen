@@ -20,6 +20,7 @@ enum ContractError: Error, CustomStringConvertible {
 let sourceRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let mainPath = "baseline/MacHost/Sources/main.swift"
 let parserPath = "baseline/MacHost/Sources/HostCommandLine.swift"
+let actionableErrorStatesPath = "docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json"
 
 let expectedCommandFlags = [
     "--issue-phase3-internet-lease",
@@ -43,6 +44,31 @@ let expectedGuiFlags = [
     "--prefer-cgdisplaystream"
 ]
 
+let expectedParseFailureMessages = [
+    "Unknown Vibe Screen Host CLI flag: --self-test",
+    "Multiple Vibe Screen Host CLI commands are not supported.",
+    "Unknown iOS loopback scenario."
+]
+
+let parseFailurePermissionPromptTokens = [
+    "CGRequestScreenCaptureAccess",
+    "AXIsProcessTrustedWithOptions",
+    "kAXTrustedCheckOptionPrompt",
+    "x-apple.systempreferences"
+]
+
+let expectedHostCliContractCodes: Set<String> = [
+    "host_screen_recording_denied",
+    "accessibility_denied_or_limited",
+    "tcp_54321_unavailable"
+]
+
+let parserMessageTokens = [
+    "Unknown Vibe Screen Host CLI flag: ",
+    "Multiple Vibe Screen Host CLI commands are not supported.",
+    "Unknown iOS loopback scenario."
+]
+
 func read(_ path: String) throws -> String {
     let url = sourceRoot.appendingPathComponent(path)
     guard FileManager.default.fileExists(atPath: url.path) else {
@@ -53,6 +79,18 @@ func read(_ path: String) throws -> String {
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
     guard condition() else { throw ContractError.violation(message) }
+}
+
+func jsonObject(at path: String) throws -> [String: Any] {
+    let url = sourceRoot.appendingPathComponent(path)
+    guard FileManager.default.fileExists(atPath: url.path) else {
+        throw ContractError.missingFile(path)
+    }
+    let data = try Data(contentsOf: url)
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw ContractError.violation(path + " must contain a JSON object")
+    }
+    return object
 }
 
 func requireTokenOrder(_ first: String, before second: String, in source: String) throws {
@@ -78,6 +116,15 @@ struct LaunchModeSwitchCase {
     let label: String
     let bodyLines: [String]
     let isDefault: Bool
+}
+
+func requireNoPermissionPromptTokens(_ source: String, context: String) throws {
+    for token in parseFailurePermissionPromptTokens {
+        try require(
+            !source.contains(token),
+            context + " must not reference permission prompt token " + token
+        )
+    }
 }
 
 enum LaunchModeSwitchLabelKind {
@@ -946,9 +993,77 @@ func verifyParserBehavior() throws {
     _ = try run(binaryURL.path, [])
 }
 
+func verifyPreGuiParseFailureContract(main: String, parser: String) throws {
+    try requireTokenOrder(
+        "HostCommandLine.parse(arguments: CommandLine.arguments)",
+        before: "if let errorMessage = commandLine.errorMessage",
+        in: main
+    )
+    try requireTokenOrder(
+        "if let errorMessage = commandLine.errorMessage",
+        before: "switch commandLine.launchMode",
+        in: main
+    )
+    try requireTokenOrder("FileHandle.standardError.write", before: "exit(EXIT_FAILURE)", in: main)
+    try requireTokenOrder("exit(EXIT_FAILURE)", before: "switch commandLine.launchMode", in: main)
+    try requireTokenOrder("exit(EXIT_FAILURE)", before: "NSApplication.shared", in: main)
+    try requireTokenOrder("exit(EXIT_FAILURE)", before: "AppDelegate()", in: main)
+
+    guard let switchRange = main.range(of: "switch commandLine.launchMode") else {
+        throw ContractError.violation("main.swift must switch on commandLine.launchMode")
+    }
+    let preSwitchMain = String(main[..<switchRange.lowerBound])
+    try requireNoPermissionPromptTokens(preSwitchMain, context: "main.swift parse-failure block")
+    try requireNoPermissionPromptTokens(parser, context: "HostCommandLine parser")
+}
+
+func verifyActionableErrorHostCliContracts(manifest: [String: Any], parser: String) throws {
+    guard let states = manifest["states"] as? [[String: Any]] else {
+        throw ContractError.violation("\(actionableErrorStatesPath) states must be an array")
+    }
+    var foundCodes = Set<String>()
+    for state in states {
+        guard
+            let contract = state["contract"] as? [String: Any],
+            let code = contract["code"] as? String,
+            expectedHostCliContractCodes.contains(code)
+        else { continue }
+        foundCodes.insert(code)
+        guard let hostCliContract = state["host_cli_contract"] as? [String: Any] else {
+            throw ContractError.violation("\(code) must declare host_cli_contract")
+        }
+        try require(
+            hostCliContract["pre_gui_fail_closed"] as? Bool == true,
+            "\(code).host_cli_contract.pre_gui_fail_closed must be true"
+        )
+        try require(
+            hostCliContract["exit_code"] as? String == "EXIT_FAILURE",
+            "\(code).host_cli_contract.exit_code must be EXIT_FAILURE"
+        )
+        try require(
+            hostCliContract["no_permission_prompt_on_parse_failure"] as? Bool == true,
+            "\(code).host_cli_contract.no_permission_prompt_on_parse_failure must be true"
+        )
+        guard let messages = hostCliContract["stderr_error_messages"] as? [String] else {
+            throw ContractError.violation("\(code).host_cli_contract.stderr_error_messages must be string array")
+        }
+        try require(
+            messages == expectedParseFailureMessages,
+            "\(code).host_cli_contract.stderr_error_messages must match the stable parser errors"
+        )
+        for token in parserMessageTokens {
+            try require(parser.contains(token), "HostCommandLine parser must contain \(token)")
+        }
+    }
+
+    let missing = expectedHostCliContractCodes.subtracting(foundCodes).sorted()
+    try require(missing.isEmpty, "missing Host CLI manifest contract(s): " + missing.joined(separator: ", "))
+}
+
 do {
     let main = try read(mainPath)
     let parser = try read(parserPath)
+    let actionableErrorStates = try jsonObject(at: actionableErrorStatesPath)
 
     try require(
         main.contains("HostCommandLine.parse(arguments: CommandLine.arguments)"),
@@ -992,6 +1107,8 @@ do {
         "HostCommandLine must reject unknown double-dash flags without blocking single-dash macOS arguments"
     )
 
+    try verifyPreGuiParseFailureContract(main: main, parser: parser)
+    try verifyActionableErrorHostCliContracts(manifest: actionableErrorStates, parser: parser)
     try verifyLaunchModeSwitchFixtures()
     try verifyParserBehavior()
 
