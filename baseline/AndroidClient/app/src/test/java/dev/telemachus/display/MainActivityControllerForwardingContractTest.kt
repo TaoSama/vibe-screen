@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -259,8 +260,10 @@ class MainActivityControllerForwardingContractTest {
 
         assertContains(displaysCallback, "customGestures = customGestures")
         assertContains(displaysCallback, "hostActions = managedHostActions")
-        assertContains(managedPolicyCallback, "managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed")
-        assertContains(managedPolicyCallback, "managedHostActionsAllowed = !status.managed || status.hostActionsAllowed")
+        assertContains(managedPolicyCallback, "val availability =")
+        assertContains(managedPolicyCallback, "ManagedPolicyUiAvailabilityPolicy.combine(")
+        assertContains(managedPolicyCallback, "managedCustomGesturesAllowed = availability.customGesturesAllowed")
+        assertContains(managedPolicyCallback, "managedHostActionsAllowed = availability.hostActionsAllowed")
         assertContains(managedPolicyCallback, "val negotiated = callbackClient.negotiatedCapabilities()")
         assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated")
         assertContains(managedPolicyCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated")
@@ -340,10 +343,62 @@ class MainActivityControllerForwardingContractTest {
         assertContains(displaysCallback, "if (keyboard || nativePointer || controller || peripheralInputFramework)")
         assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
         assertContains(displaysCallback, "if (controller) synchronizeControllerDevices(\"capability negotiation\")")
-        assertContains(usbConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
+        assertContains(usbConnect, "val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()")
+        assertContains(usbConnect, "managedPolicyProvider = { localManagedPolicy }")
+        assertContains(usbConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)")
         assertContains(wirelessConnect, "advertiseController = true")
         assertContains(wirelessConnect, "wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf())")
+        assertContains(wirelessConnect, "managedPolicyProvider = { localManagedPolicy }")
+        assertContains(wirelessConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)")
         assertContains(streamClient, "advertiseController = advertiseController")
+    }
+
+    @Test
+    fun usbLanManagedPolicySnapshotFeedsCustomGestureAndHostActionDenyWins() {
+        val source = mainActivitySource()
+        val applyLocal = extractMethod(source, "private fun applyLocalManagedPolicySnapshot")
+        val activateSession = extractMethod(source, "private fun activateSession")
+        val usbConnect = extractMethod(source, "private fun connect(")
+        val wirelessConnect = extractMethod(source, "private fun connectWireless(")
+        val managedPolicyCallback = extractCallback(source, "callbackClient.onManagedPolicyReceived = managedPolicy@")
+
+        assertContains(applyLocal, "localCustomGesturesAllowed = policy.customGesturesAllowed")
+        assertContains(applyLocal, "localHostActionsAllowed = policy.hostActionsAllowed")
+        assertContains(applyLocal, "managedCustomGesturesAllowed = localCustomGesturesAllowed")
+        assertContains(applyLocal, "managedHostActionsAllowed = localHostActionsAllowed")
+        assertFalse(activateSession.contains("managedCustomGesturesAllowed = true"))
+        assertFalse(activateSession.contains("managedHostActionsAllowed = true"))
+        assertBefore(usbConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)", "val callbackGeneration = activateSession(callbackClient)")
+        assertBefore(wirelessConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)", "val callbackGeneration = activateSession(callbackClient)")
+        assertContains(managedPolicyCallback, "ManagedPolicyUiAvailabilityPolicy.combine(")
+        assertContains(managedPolicyCallback, "localCustomGesturesAllowed = localCustomGesturesAllowed")
+        assertContains(managedPolicyCallback, "localHostActionsAllowed = localHostActionsAllowed")
+        assertContains(managedPolicyCallback, "remoteStatus = status")
+        assertContains(managedPolicyCallback, "managedCustomGesturesAllowed = availability.customGesturesAllowed")
+        assertContains(managedPolicyCallback, "managedHostActionsAllowed = availability.hostActionsAllowed")
+    }
+
+    @Test
+    fun internetManagedPolicySnapshotFeedsCustomGestureAndHostActionDenyWins() {
+        val source = mainActivitySource()
+        val internetConnect = extractMethod(source, "private fun connectInternet(")
+        val internetManagedPolicyCallback =
+            extractCallback(internetConnect, "override fun onManagedPolicyReceived(status: ManagedPolicyStatus)")
+
+        assertContains(source, "import dev.vibescreen.protocol.v1.ManagedPolicyStatus")
+        assertContains(internetConnect, "val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()")
+        assertContains(internetConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)")
+        assertContains(internetConnect, "localManagedPolicy = InternetManagedPolicy.fromProtocolPolicy(localManagedPolicy)")
+        assertBefore(internetConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)", "val codec =")
+        assertBefore(internetConnect, "val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()", "val codec =")
+        assertContains(internetManagedPolicyCallback, "ManagedPolicyUiAvailabilityPolicy.combine(")
+        assertContains(internetManagedPolicyCallback, "localCustomGesturesAllowed = localCustomGesturesAllowed")
+        assertContains(internetManagedPolicyCallback, "localHostActionsAllowed = localHostActionsAllowed")
+        assertContains(internetManagedPolicyCallback, "remoteStatus = status")
+        assertContains(internetManagedPolicyCallback, "managedCustomGesturesAllowed = availability.customGesturesAllowed")
+        assertContains(internetManagedPolicyCallback, "managedHostActionsAllowed = availability.hostActionsAllowed")
+        assertContains(internetManagedPolicyCallback, "refreshFileTransferControl()")
+        assertContains(internetManagedPolicyCallback, "refreshTransferReadinessInSettings()")
     }
 
     @Test

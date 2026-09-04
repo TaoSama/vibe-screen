@@ -437,7 +437,10 @@ internal class ProtocolV1Session(
                     hostActionsAllowed = status.hostActionsAllowed,
                     maximumFileBytes = status.maximumFileBytes,
                     allowedHosts = hosts,
-                    allowedHostsRestricted = status.allowedHostsRestricted || hosts.isNotEmpty(),
+                    allowedHostsRestricted =
+                        status.allowedHostsRestricted ||
+                            hosts.isNotEmpty() ||
+                            !hasCompleteRestrictionResults(status),
                     deniedHosts = deniedHosts,
                     restrictionResults = results.ifEmpty { null },
                 )
@@ -762,7 +765,10 @@ internal class ProtocolV1Session(
 
     val canRequestWakeHost: Boolean
         @Synchronized
-        get() = state == State.STREAMING && Capability.CAPABILITY_WAKE_HOST in negotiatedCapabilities
+        get() =
+            state == State.STREAMING &&
+                Capability.CAPABILITY_WAKE_HOST in negotiatedCapabilities &&
+                managedPolicyResolver.effectivePolicy.wakeAllowed
 
     val canReceiveAudio: Boolean
         @Synchronized
@@ -1146,6 +1152,7 @@ internal class ProtocolV1Session(
     ): Envelope? {
         if (state != State.STREAMING) return null
         if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) return null
+        if (!managedPolicyResolver.effectivePolicy.wakeAllowed) return null
         if (requestId.isEmpty) return null
         if (peerHostId.isBlank()) return null
         if (pendingWakeHostRequests.contains(requestId)) return null
@@ -1965,6 +1972,10 @@ internal class ProtocolV1Session(
         // negotiated capability and a live session are required.
         if (!isNegotiated()) throw protocolFailure("HostActionCatalog in state $state")
         if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) {
+            if (Capability.CAPABILITY_HOST_ACTIONS in baseNegotiatedCapabilities) {
+                availableHostActions = emptyList()
+                return emptyList()
+            }
             throw protocolFailure("HostActionCatalog without negotiated host actions")
         }
         if (!managedPolicyResolver.effectivePolicy.hostActionsAllowed) {
@@ -1991,6 +2002,10 @@ internal class ProtocolV1Session(
     private fun onHostActionResult(envelope: Envelope): List<Action> {
         if (!isNegotiated()) throw protocolFailure("HostActionResult in state $state")
         if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) {
+            if (Capability.CAPABILITY_HOST_ACTIONS in baseNegotiatedCapabilities) {
+                pendingHostActionInvocations.clear()
+                return emptyList()
+            }
             throw protocolFailure("HostActionResult without negotiated host actions")
         }
         if (!managedPolicyResolver.effectivePolicy.hostActionsAllowed) {
@@ -2286,6 +2301,9 @@ internal class ProtocolV1Session(
         if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
             throw protocolFailure("WakeHostRequest without negotiated wake host")
         }
+        if (!managedPolicyResolver.effectivePolicy.wakeAllowed) {
+            throw protocolFailure("WakeHostRequest blocked by managed policy")
+        }
         if (state != State.STREAMING) throw protocolFailure("WakeHostRequest before streaming")
         val request = envelope.wakeHostRequest
         if (request.requestId.isEmpty) throw protocolFailure("WakeHostRequest missing request id")
@@ -2300,13 +2318,14 @@ internal class ProtocolV1Session(
 
     private fun onWakeHostResult(envelope: Envelope): List<Action> {
         if (!isNegotiated()) throw protocolFailure("WakeHostResult in state $state")
-        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
-            throw protocolFailure("WakeHostResult without negotiated wake host")
-        }
         val result = envelope.wakeHostResult
         if (result.requestId.isEmpty) throw protocolFailure("WakeHostResult missing request id")
         if (!result.accepted && result.rejectionReason.isBlank()) {
             throw protocolFailure("Rejected WakeHostResult requires a reason")
+        }
+        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
+            if (Capability.CAPABILITY_WAKE_HOST in baseNegotiatedCapabilities) return emptyList()
+            throw protocolFailure("WakeHostResult without negotiated wake host")
         }
         if (!pendingWakeHostRequests.remove(result.requestId)) {
             return emptyList()
@@ -2382,11 +2401,27 @@ internal class ProtocolV1Session(
                 availableHostActions.isNotEmpty() ||
                 pendingHostActionInvocations.isNotEmpty()
         val hadAudioState = Capability.CAPABILITY_AUDIO in negotiatedCapabilities && audioStreamId > 0L
+        val pendingWakeRequestIds =
+            if (Capability.CAPABILITY_WAKE_HOST in negotiatedCapabilities) {
+                pendingWakeHostRequests.toList()
+            } else {
+                emptyList()
+            }
         negotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
         val actions = mutableListOf<Action>(Action.ManagedPolicyReceived(status))
         if (hadAudioState && Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) {
             clearAudioState()
             actions += Action.AudioStopped("managed_policy_audio_denied")
+        }
+        if (pendingWakeRequestIds.isNotEmpty() && Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
+            pendingWakeHostRequests.clear()
+            actions += pendingWakeRequestIds.map { requestId ->
+                Action.WakeHostCompleted(
+                    requestId = requestId,
+                    accepted = false,
+                    rejectionReason = "managed_policy_denied",
+                )
+            }
         }
         if (!effective.hostActionsAllowed) {
             availableHostActions = emptyList()
@@ -2453,9 +2488,18 @@ internal class ProtocolV1Session(
         accepted: Boolean,
         rejectionReason: String,
         correlationId: Long,
+        allowAfterWakeCapabilityRemoval: Boolean = false,
     ): Envelope? {
         if (state != State.STREAMING && state != State.REDISPLAY_REQUESTED) return null
-        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) return null
+        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
+            if (
+                !allowAfterWakeCapabilityRemoval ||
+                accepted ||
+                Capability.CAPABILITY_WAKE_HOST !in baseNegotiatedCapabilities
+            ) {
+                return null
+            }
+        }
         if (requestId.isEmpty) return null
         return envelope(correlationId = correlationId)
             .setWakeHostResult(

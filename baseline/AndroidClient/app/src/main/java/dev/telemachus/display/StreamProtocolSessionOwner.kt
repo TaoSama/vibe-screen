@@ -162,11 +162,24 @@ internal class StreamProtocolSessionOwner(
         requestId: ByteString,
         session: ProtocolV1Session,
         connectionGeneration: Long,
-    ): Boolean = protocolSideEffectOwner.trackWakeHostRequest(requestId, session, connectionGeneration)
+        correlationId: Long = 0L,
+    ): Boolean = protocolSideEffectOwner.trackWakeHostRequest(requestId, session, connectionGeneration, correlationId)
 
     fun releaseWakeHostRequest(
         requestId: ByteString,
         session: ProtocolV1Session,
         connectionGeneration: Long,
     ): Boolean = protocolSideEffectOwner.releaseWakeHostRequest(requestId, session, connectionGeneration)
+
+    fun hasWakeHostRequest(
+        requestId: ByteString,
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): Boolean = protocolSideEffectOwner.hasWakeHostRequest(requestId, session, connectionGeneration)
+
+    fun cancelWakeHostRequests(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): List<StreamProtocolSideEffectOwner.PendingWakeHostRequest> =
+        protocolSideEffectOwner.cancelWakeHostRequests(session, connectionGeneration)
 }

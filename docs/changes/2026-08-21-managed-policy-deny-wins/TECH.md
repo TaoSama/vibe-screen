@@ -11,11 +11,16 @@ entry for each product restriction: clipboard, file_transfer, audio, wake,
 custom_gestures, host_actions, maximum_file_bytes, allowed_hosts, and
 denied_hosts. source and reason must be non-empty. The allowed value must match
 the scalar or list policy fields in the same message.
+denied_hosts.allowed is true only when the denied_hosts list is empty.
 
 ## Local policy parsing
 
 macOS and iOS read Apple managed configuration from
 UserDefaults.standard.dictionary(forKey: "com.apple.configuration.managed").
+Android reads managed configuration from
+RestrictionsManager.applicationRestrictions and snapshots the resulting product
+policy before creating each USB/LAN StreamClient. Internet sessions use the same
+Protocol v1 ManagedPolicyStatus shape and InternetManagedPolicy resolver.
 The supported keys are:
 
 | Key | Type | Missing value |
@@ -27,8 +32,8 @@ The supported keys are:
 | CustomGesturesAllowed | bool | denied |
 | HostActionsAllowed | bool | denied |
 | MaximumFileBytes | non-negative number | 0 |
-| AllowedHosts | string array | unrestricted unless allowed_hosts_restricted is set by policy construction |
-| DeniedHosts | string array | empty denylist |
+| AllowedHosts | string array/list, or comma/newline separated string on Android | unrestricted unless allowed_hosts_restricted is set by policy construction |
+| DeniedHosts | string array/list, or comma/newline separated string on Android | empty denylist |
 
 Host IDs are trimmed and lowercased. Blank host entries are ignored. Any wrong
 type or negative MaximumFileBytes fails closed: the local policy becomes
@@ -50,6 +55,13 @@ and latest remote policy on every update:
 - denied_hosts is applied after allowlist merging, so a host present in both
   allowlist and denylist is denied.
 
+allowed_hosts_restricted is derived as true when the explicit flag is true,
+when allowed_hosts is non-empty, or when a managed status is restored with
+incomplete restriction_results. The last case keeps low-level status conversion
+host-fail-closed even before the session-layer validation rejects the malformed
+peer message. If both sides are otherwise unrestricted, a non-empty denylist is
+still enforced directly by host lookup; only non-denied hosts remain allowed.
+
 The effective policy emits fresh restriction_results with
 source=effective_deny_wins. The allowed_hosts result describes the final
 allowlist after denylist subtraction, and the denied_hosts result is false when
@@ -69,12 +81,28 @@ and only then sends ListDisplaysRequest. A denied Host action policy clears the
 local catalog and pending invocations. A host identity denied by the final
 allow/deny result fails closed.
 
+Android also applies local policy to UI-only controls before the first peer
+status arrives: local CustomGesturesAllowed and HostActionsAllowed are ANDed
+with the latest remote/effective status callbacks so a remote allow cannot
+restore a locally denied control. WakeHost uses the effective policy at request
+creation and receive time; when a remote policy update removes wake capability,
+pending wake requests are completed as managed_policy_denied and cleared, while
+late results for a formerly negotiated wake capability are ignored. Internet
+audio capability is removed when audio is denied, active playback is stopped
+with managed_policy_audio_denied, and later audio records are not routed through
+the raw callback fallback.
+
 iOS validates restriction_results before applying a remote status. Invalid
 managed policy terminates the session as permanent failure. Valid remote policy
 is merged through the same resolver used by local reloads, so newer remote
 statuses recompute from local policy rather than accumulating stale denials.
 
 ## Source values
+
+Source values are explanatory labels for humans and audits. They are not a
+security decision enum; validation only requires that managed peers provide a
+complete, internally consistent, non-empty source and reason for each
+restriction. Current local sources are:
 
 - unmanaged: no local managed configuration is present.
 - managed_configuration: parsed local managed configuration or policy fixture.

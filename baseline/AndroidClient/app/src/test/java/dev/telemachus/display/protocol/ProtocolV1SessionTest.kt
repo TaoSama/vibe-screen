@@ -336,6 +336,8 @@ class ProtocolV1SessionTest {
         assertFalse(policy.hostActionsAllowed)
         assertEquals(0, policy.maximumFileBytes)
         assertTrue(policy.allowedHosts.isEmpty())
+        assertTrue(policy.allowedHostsRestricted)
+        assertFalse(policy.allowsHost("any-host"))
     }
 
     @Test
@@ -1228,6 +1230,50 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun managedPolicyStatusWithDuplicateRestrictionResultsFailsClosed() {
+        val session = managedPolicyAwaitingSession()
+        val status = managedStatus(fileTransferAllowed = true, maximumFileBytes = 4_096)
+        val results = status.restrictionResultsList
+        val duplicate =
+            status.toBuilder()
+                .clearRestrictionResults()
+                .addAllRestrictionResults(
+                    results.filter { it.restriction != ProtocolV1Session.ManagedPolicy.RESTRICTION_WAKE } + results.first(),
+                ).build()
+
+        assertFalse(ProtocolV1Session.ManagedPolicy.hasCompleteRestrictionResults(duplicate))
+        assertInvalidPeerMessage { session.receive(managedPolicyStatus(4, duplicate)) }
+    }
+
+    @Test
+    fun managedPolicyStatusWithEmptyRestrictionExplanationFailsClosed() {
+        val status = managedStatus(fileTransferAllowed = true, maximumFileBytes = 4_096)
+        val sourceIndex = status.restrictionResultsList.indexOfFirst {
+            it.restriction == ProtocolV1Session.ManagedPolicy.RESTRICTION_WAKE
+        }
+        val emptySource =
+            status.toBuilder()
+                .setRestrictionResults(
+                    sourceIndex,
+                    status.restrictionResultsList[sourceIndex].toBuilder().setSource("").build(),
+                ).build()
+        assertFalse(ProtocolV1Session.ManagedPolicy.hasCompleteRestrictionResults(emptySource))
+        assertInvalidPeerMessage { managedPolicyAwaitingSession().receive(managedPolicyStatus(4, emptySource)) }
+
+        val reasonIndex = status.restrictionResultsList.indexOfFirst {
+            it.restriction == ProtocolV1Session.ManagedPolicy.RESTRICTION_HOST_ACTIONS
+        }
+        val emptyReason =
+            status.toBuilder()
+                .setRestrictionResults(
+                    reasonIndex,
+                    status.restrictionResultsList[reasonIndex].toBuilder().setReason(" "),
+                ).build()
+        assertFalse(ProtocolV1Session.ManagedPolicy.hasCompleteRestrictionResults(emptyReason))
+        assertInvalidPeerMessage { managedPolicyAwaitingSession().receive(managedPolicyStatus(4, emptyReason)) }
+    }
+
+    @Test
     fun managedPolicyStatusWithMismatchedRestrictionResultFailsClosed() {
         val session = session()
         session.clientHello()
@@ -1257,6 +1303,8 @@ class ProtocolV1SessionTest {
         session.receive(hostActionCatalog(8))
         assertTrue(session.canInvokeHostActions)
         assertEquals(listOf("move-window", "return-windows"), session.hostActions.map { it.id })
+        val invocationId = ByteString.copyFrom(byteArrayOf(0x21, 0x22))
+        assertNotNull(session.invokeHostAction("move-window", invocationId))
 
         val denied =
             ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
@@ -1274,6 +1322,9 @@ class ProtocolV1SessionTest {
         assertFalse(Capability.CAPABILITY_HOST_ACTIONS in session.negotiated)
         assertFalse(session.canInvokeHostActions)
         assertNull(session.invokeHostAction("move-window", ByteString.copyFrom(byteArrayOf(1))))
+        assertTrue(session.receive(hostActionResult(10, invocationId, accepted = true)).isEmpty())
+        assertTrue(session.receive(hostActionCatalog(11)).isEmpty())
+        assertTrue(session.hostActions.isEmpty())
     }
 
     @Test
@@ -1943,6 +1994,19 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun localManagedPolicyWakeDenySuppressesWakeHostCapability() {
+        val local =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                wakeAllowed = false,
+            )
+        val session = session(localManagedPolicy = local, advertiseWakeHost = true)
+        val hello = session.clientHello()
+
+        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_WAKE_HOST))
+    }
+
+    @Test
     fun requestWakeHostTracksResultByRequestId() {
         val session = wakeHostStreamingSession()
         val requestId = ByteString.copyFrom(byteArrayOf(0x44))
@@ -2040,6 +2104,36 @@ class ProtocolV1SessionTest {
         assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "other-host")) }
 
         assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "mac-host", deviceId = "other-device")) }
+    }
+
+    @Test
+    fun remoteManagedPolicyWakeDenyClearsPendingWakeRequestAndIgnoresStaleResult() {
+        val session = wakeHostManagedStreamingSession()
+        val requestId = ByteString.copyFrom(byteArrayOf(0x61))
+        val mac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
+        assertNotNull(session.requestWakeHost(requestId, mac))
+
+        val denied =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                wakeAllowed = false,
+                maximumFileBytes = 4_096,
+                allowedHosts = setOf("host"),
+                allowedHostsRestricted = true,
+            ).toStatus()
+        val actions = session.receive(managedPolicyStatus(9, denied))
+        val cancellation =
+            actions.single {
+                it is ProtocolV1Session.Action.WakeHostCompleted && it.requestId == requestId
+            } as ProtocolV1Session.Action.WakeHostCompleted
+
+        assertFalse(Capability.CAPABILITY_WAKE_HOST in session.negotiated)
+        assertFalse(session.canRequestWakeHost)
+        assertFalse(cancellation.accepted)
+        assertEquals("managed_policy_denied", cancellation.rejectionReason)
+        assertNull(session.requestWakeHost(ByteString.copyFrom(byteArrayOf(0x62)), mac))
+        assertTrue(session.receive(wakeHostResult(10, requestId, accepted = true)).isEmpty())
+        assertInvalidPeerMessage { streamingSession().receive(wakeHostResult(11, requestId, accepted = true)) }
     }
 
     @Test
@@ -2859,6 +2953,27 @@ class ProtocolV1SessionTest {
             )
         }
 
+    private fun wakeHostManagedStreamingSession(): ProtocolV1Session {
+        val capabilities = wakeHostCaps + Capability.CAPABILITY_MANAGED_CONFIGURATION
+        return session(advertiseWakeHost = true).also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = capabilities))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = capabilities))
+            it.receive(managedPolicyStatus(4, managedStatus(fileTransferAllowed = true, maximumFileBytes = 4_096)))
+            it.receive(displayList(5))
+            it.receive(startDisplay(6))
+            val requested =
+                it.receive(videoConfig(7)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+    }
+
     private fun videoControlStreamingSession(): ProtocolV1Session =
         session().also {
             it.clientHello()
@@ -2951,6 +3066,15 @@ class ProtocolV1SessionTest {
             val requested = it.receive(videoConfig(7)).single() as ProtocolV1Session.Action.VideoConfigurationRequested
             it.completeVideoConfiguration(3, requested.configurationToken, true, "")
         }
+    }
+
+    private fun managedPolicyAwaitingSession(): ProtocolV1Session {
+        val session = session()
+        session.clientHello()
+        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION)
+        session.receive(hostHello(2, advertisedCapabilities = caps))
+        session.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+        return session
     }
 
     private fun assertInvalidPeerMessage(block: () -> Unit) {

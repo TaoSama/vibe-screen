@@ -118,7 +118,7 @@ class StreamProtocolActionDispatcherTest {
                 "host-action-result:true:",
                 "clipboard-offered:clipboard-offer-id:42",
                 "clipboard-content:clipboard-data-id:false:42",
-                "managed-policy:false",
+                "managed-policy:false:42",
                 "file-offer:transfer:42",
                 "file-accept:transfer:false:42",
                 "file-progress:transfer:42",
@@ -371,8 +371,12 @@ class StreamProtocolActionDispatcherTest {
             events += "clipboard-content:" + changeId.toStringUtf8() + ":" + pending + ":" + connectionGeneration
         }
 
-        override fun onManagedPolicyReceived(status: ManagedPolicyStatus) {
-            events += "managed-policy:" + status.managed
+        override fun onManagedPolicyReceived(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            status: ManagedPolicyStatus,
+        ) {
+            events += "managed-policy:" + status.managed + ":" + connectionGeneration
         }
 
         override fun onFileOfferReceived(

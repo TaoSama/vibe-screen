@@ -369,7 +369,10 @@ internal data class InternetManagedPolicy(
                 hostActionsAllowed = status.hostActionsAllowed,
                 maximumFileBytes = status.maximumFileBytes,
                 allowedHosts = status.allowedHostsList.toSet(),
-                allowedHostsRestricted = status.allowedHostsRestricted || status.allowedHostsList.isNotEmpty(),
+                allowedHostsRestricted =
+                    status.allowedHostsRestricted ||
+                        status.allowedHostsList.isNotEmpty() ||
+                        !hasCompleteRestrictionResults(status),
                 deniedHosts = status.deniedHostsList.toSet(),
                 restrictionResults = results.ifEmpty { null },
             )

@@ -77,7 +77,7 @@ internal class WakeHostProductOwner(
         correlationId: Long,
     ) {
         if (!sessionOwner.isCurrent(session, connectionGeneration)) return
-        if (!sessionOwner.trackWakeHostRequest(request.requestId, session, connectionGeneration)) {
+        if (!sessionOwner.trackWakeHostRequest(request.requestId, session, connectionGeneration, correlationId)) {
             val submission =
                 submitCompletion(
                     session = session,
@@ -127,7 +127,29 @@ internal class WakeHostProductOwner(
             accepted = command.accepted,
             rejectionReason = command.rejectionReason,
             correlationId = command.correlationId,
+            allowAfterWakeCapabilityRemoval = command.allowAfterWakeCapabilityRemoval,
         )
+    }
+
+    fun cancelPendingForPolicyDeny(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ) {
+        val cancelled = sessionOwner.cancelWakeHostRequests(session, connectionGeneration)
+        cancelled.forEach { pendingRequest ->
+            val submission =
+                submitCompletion(
+                    session = session,
+                    connectionGeneration = connectionGeneration,
+                    requestId = pendingRequest.requestId,
+                    accepted = false,
+                    rejectionReason = POLICY_DENIED_REASON,
+                    correlationId = pendingRequest.correlationId,
+                    requiresTrackedReservation = false,
+                    allowAfterWakeCapabilityRemoval = true,
+                )
+            if (!isOutboundAdmitted(submission)) endForCompletionBackpressure(submission)
+        }
     }
 
     fun deliverCompletion(
@@ -148,6 +170,9 @@ internal class WakeHostProductOwner(
     ) {
         if (!sessionOwner.isCurrent(session, connectionGeneration)) {
             sessionOwner.releaseWakeHostRequest(request.requestId, session, connectionGeneration)
+            return
+        }
+        if (!sessionOwner.hasWakeHostRequest(request.requestId, session, connectionGeneration)) {
             return
         }
         val (accepted, reason) = performRequest(request) { packet ->
@@ -198,6 +223,7 @@ internal class WakeHostProductOwner(
         rejectionReason: String,
         correlationId: Long,
         requiresTrackedReservation: Boolean = true,
+        allowAfterWakeCapabilityRemoval: Boolean = false,
     ): OutboundCommandScheduler.Submission =
         submitOutbound(
             OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
@@ -209,6 +235,7 @@ internal class WakeHostProductOwner(
                 rejectionReason = rejectionReason,
                 correlationId = correlationId,
                 requiresTrackedReservation = requiresTrackedReservation,
+                allowAfterWakeCapabilityRemoval = allowAfterWakeCapabilityRemoval,
             ),
             protocolActionTimeoutMs,
         )
@@ -247,5 +274,6 @@ internal class WakeHostProductOwner(
         private const val STALE_SESSION_REASON = "stale_session"
         private const val PACKET_SEND_FAILED_REASON = "wake_packet_send_failed"
         private const val DISPATCH_FAILED_REASON = "wake_host_dispatch_failed"
+        private const val POLICY_DENIED_REASON = "managed_policy_denied"
     }
 }
