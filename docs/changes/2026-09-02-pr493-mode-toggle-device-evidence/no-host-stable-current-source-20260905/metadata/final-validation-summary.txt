@@ -1,0 +1,18 @@
+PR493 current-source no-host bounded stable XML attempt
+Source revision: 3c97f98f21e8bc2a58f44a0a1e586f78cb874e89
+Device: nubia / P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>
+APK SHA-256: e7dc02b7655cd6548f838c07ce0402559c9777e2b27c631a0f6f8e0f3856b25f
+AndroidTest APK SHA-256: 1bd55c3ac59c2aa14537823d0110d63c7c972fe118e60611b2e4a79e12d81222
+XML evidence scope: current_source_no_host_bounded_6_stable_xml
+Product adb reverse tcp:54321 absent before: True
+Product adb reverse tcp:54321 absent after: True
+Scenarios:
+- phone-portrait-day-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=True; xml_errors=[]
+- phone-portrait-night-font1: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=True; xml_errors=[]
+- phone-portrait-day-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=True; xml_errors=[]
+- phone-portrait-night-font13: 1264x2800; expected 1264x2800; png_ok=True; state_ok=True; xml=present; xml_stable_state=True; xml_errors=[]
+- phone-landscape-day-font1: 1264x2800; expected 2800x1264; png_ok=False; state_ok=False; xml=present; xml_stable_state=True; xml_errors=[]
+- phone-landscape-night-font1: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=present; xml_stable_state=True; xml_errors=[]
+- phone-landscape-day-font13: 1264x2800; expected 2800x1264; png_ok=False; state_ok=False; xml=unavailable; xml_stable_state=False; xml_errors=['no stable semantic XML captured']
+- phone-landscape-night-font13: 2800x1264; expected 2800x1264; png_ok=True; state_ok=True; xml=present; xml_stable_state=True; xml_errors=[]
+Scope boundary: Android-only no-host UI evidence; does not close Android/macOS product E2E, Host, streaming, latency, clipboard, or file-transfer gates.

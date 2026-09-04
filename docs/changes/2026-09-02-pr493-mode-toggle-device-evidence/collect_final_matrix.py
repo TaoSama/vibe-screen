@@ -68,6 +68,26 @@ REQUIRED_SEMANTIC_XML_LABELS = (
 )
 EXPECTED_SCENARIO_LABELS = tuple(label for label, *_ in SCENARIOS)
 KNOWN_XML_STATUSES = {"present", "unavailable", "rejected"}
+XML_COMMON_USB_DISCONNECTED_FRAGMENTS = (
+    "USB",
+    "LAN",
+    "Internet",
+    "Waiting for your Mac",
+)
+XML_LEGACY_RETRY_FRAGMENTS = (
+    "Keep the USB cable connected",
+    "TRY AGAIN",
+    "USB route unavailable",
+    "The Android-to-Mac route is unavailable",
+    "USB repair action",
+)
+XML_NO_HOST_IDLE_FRAGMENTS = (
+    "USB debugging is ready on this device",
+    "CONNECT",
+    "Looking for Vibe Screen on your Mac",
+    "DISPLAY SETTINGS",
+)
+XML_UNSTABLE_ERROR = "XML captured before stable disconnected UI state"
 REQUIRED_RESTORE_KEYS = (
     "font_scale_1_0",
     "night_no",
@@ -414,10 +434,8 @@ def node_texts_and_checks(xml_path):
 
 
 def is_xml_stable_state(xml_path):
-    texts, _mode_checks, progress_visible = node_texts_and_checks(xml_path)
-    text_blob = "\n".join(texts)
-    has_terminal_error_ui = "TRY AGAIN" in text_blob or "USB route unavailable" in text_blob
-    return not (progress_visible and has_terminal_error_ui)
+    _texts, _mode_checks, progress_visible = node_texts_and_checks(xml_path)
+    return not progress_visible
 
 
 def validate_scenario_xml(xml_path):
@@ -430,20 +448,16 @@ def validate_scenario_xml(xml_path):
         errors.append("LAN mode is not unchecked")
     if mode_checks.get("modeInternet") != ["false"]:
         errors.append("Internet mode is not unchecked")
-    expected_fragments = [
-        "USB",
-        "LAN",
-        "Internet",
-        "Waiting for your Mac",
-        "Keep the USB cable connected",
-        "TRY AGAIN",
-        "USB route unavailable",
-        "The Android-to-Mac route is unavailable",
-        "USB repair action",
-    ]
-    for fragment in expected_fragments:
+    for fragment in XML_COMMON_USB_DISCONNECTED_FRAGMENTS:
         if fragment not in text_blob:
             errors.append(f"missing XML text: {fragment}")
+    if not any(
+        all(fragment in text_blob for fragment in variant_fragments)
+        for variant_fragments in (XML_LEGACY_RETRY_FRAGMENTS, XML_NO_HOST_IDLE_FRAGMENTS)
+    ):
+        errors.append(
+            "XML text matches neither legacy retry guidance nor no-Host idle guidance"
+        )
     return errors
 
 
@@ -669,6 +683,7 @@ def capture_ui_xml(
     device_epoch_func=device_epoch_seconds,
     remote_mtime_func=remote_file_mtime,
     validate_func=validate_scenario_xml,
+    stable_state_func=is_xml_stable_state,
     sleep_func=time.sleep,
 ):
     if attempts_per_mode < 1:
@@ -735,9 +750,23 @@ def capture_ui_xml(
                         attempt_lines.append("result=rejected")
                         attempt_lines.append("xml_errors=" + "; ".join(xml_errors))
                     else:
-                        attempt_lines.append("result=present")
-                        write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
-                        return "present", []
+                        try:
+                            xml_stable_state = stable_state_func(local_xml)
+                        except Exception as exc:
+                            xml_stable_state = False
+                            xml_errors = [f"stable-state parse failed: {exc}"]
+                        if not xml_stable_state:
+                            xml_errors = xml_errors or [XML_UNSTABLE_ERROR]
+                            rejected_errors.extend(xml_errors)
+                            local_xml.unlink(missing_ok=True)
+                            attempt_lines.append("result=unstable")
+                            attempt_lines.append("xml_stable_state=false")
+                            attempt_lines.append("xml_errors=" + "; ".join(xml_errors))
+                        else:
+                            attempt_lines.append("result=present")
+                            attempt_lines.append("xml_stable_state=true")
+                            write_xml_attempt_evidence(metadata_dir, label, attempt_lines, serial)
+                            return "present", []
             else:
                 local_xml.unlink(missing_ok=True)
                 if dump.returncode == 0 and "ERROR" not in dump_output:
@@ -797,9 +826,7 @@ def capture_scenario(serial, out_dir, log_file, label, rotation, font, night, ex
     require_success(pull_png, f"pull screenshot {label}")
 
     xml_status, xml_errors = capture_ui_xml(serial, metadata, label, remote_xml, local_xml)
-    xml_stable_state = False
-    if xml_status == "present" and local_xml.exists():
-        xml_stable_state = is_xml_stable_state(local_xml)
+    xml_stable_state = xml_status == "present"
 
     state_after = collect_state(serial)
     write_text(metadata / f"{label}.state-after.txt", state_after, serial)

@@ -1,0 +1,8 @@
+PR493 current-source no-host stable XML matrix commands
+Scope: Android-only; explicit auto_connect=false; no Host launch; no adb reverse creation/modification/deletion.
+adb devices
+adb -s <redacted-adb-serial> reverse --list
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer/model/device/vendor.device/build.version.release/build.version.sdk
+adb -s <redacted-adb-serial> install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+for each scenario: force-stop app; set font/night/rotation; start MainActivity --ez auto_connect false; wait for state; capture screencap and uiautomator XML
+restore font/night/rotation; force-stop app; read pidof and adb reverse --list

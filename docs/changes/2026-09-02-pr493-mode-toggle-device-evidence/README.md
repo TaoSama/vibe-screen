@@ -35,6 +35,44 @@ The final matrix contains eight Android-only captures from the installed APK. Al
 `final-076333b-real-rotation-matrix/metadata/validation.json` and `final-076333b-real-rotation-matrix/metadata/final-validation-summary.txt` record the 8/8 `png_ok=true` and `state_ok=true` result. The validation metadata records the device as `nubia`/`P0110`/`pacific` on Android `16` / API `36`, with the ADB serial redacted. The semantic XML coverage gate requires at least two `present` XML captures and specifically requires the two default portrait scenarios, `phone-portrait-day-font1` and `phone-portrait-night-font1`; this retained evidence satisfies that gate only under `semantic_minimum_only_not_stable_state` scope.
 The validation metadata was rebuilt offline from the existing screenshots, state files, XML files, install logs, instrumentation log, the recorded app APK SHA-256, and the locally computed androidTest APK SHA-256 after the collector script was hardened. No device recapture or ADB command was run for that metadata rebuild. A later Android-only cleanup recheck then reverified `restored.packages_stopped=true` without launching Host, GUI, product binaries, or mutating adb reverse state.
 
+## Current-Source No-Host Stable XML Attempt
+
+Directory: `no-host-stable-current-source-20260905/`
+
+This Android-only follow-up was collected from then-current `origin/main` source
+revision `3c97f98f21e8bc2a58f44a0a1e586f78cb874e89` using an APK with SHA-256
+`e7dc02b7655cd6548f838c07ce0402559c9777e2b27c631a0f6f8e0f3856b25f`. The app
+was launched with `--ez auto_connect false` for each scenario so the default USB
+screen stayed in a no-Host disconnected state rather than entering automatic
+retry. Device identity is retained as `nubia` / `P0110` / `pacific` / Android
+`16` / SDK `36`, with the ADB serial redacted.
+
+This run overlaps in time with another no-Host Android task using the same
+physical device, so it is retained as bounded supplemental evidence rather than
+an 8/8 replacement matrix. The self-consistent stable XML captures are:
+
+| Scenario | Screenshot | XML | Result |
+| --- | --- | --- | --- |
+| Portrait, day, font scale 1.0 | `no-host-stable-current-source-20260905/screenshots/phone-portrait-day-font1.png` | `no-host-stable-current-source-20260905/metadata/phone-portrait-day-font1.xml` | stable XML, screenshot size, and state all pass |
+| Portrait, night, font scale 1.0 | `no-host-stable-current-source-20260905/screenshots/phone-portrait-night-font1.png` | `no-host-stable-current-source-20260905/metadata/phone-portrait-night-font1.xml` | stable XML, screenshot size, and state all pass |
+| Portrait, day, font scale 1.3 | `no-host-stable-current-source-20260905/screenshots/phone-portrait-day-font13.png` | `no-host-stable-current-source-20260905/metadata/phone-portrait-day-font13.xml` | stable XML, screenshot size, and state all pass |
+| Portrait, night, font scale 1.3 | `no-host-stable-current-source-20260905/screenshots/phone-portrait-night-font13.png` | `no-host-stable-current-source-20260905/metadata/phone-portrait-night-font13.xml` | stable XML, screenshot size, and state all pass |
+| Landscape, night, font scale 1.0 | `no-host-stable-current-source-20260905/screenshots/phone-landscape-night-font1.png` | `no-host-stable-current-source-20260905/metadata/phone-landscape-night-font1.xml` | stable XML, screenshot size, and state all pass |
+| Landscape, night, font scale 1.3 | `no-host-stable-current-source-20260905/screenshots/phone-landscape-night-font13.png` | `no-host-stable-current-source-20260905/metadata/phone-landscape-night-font13.xml` | stable XML, screenshot size, and state all pass |
+
+The two landscape/day attempts are not used as passing evidence.
+`phone-landscape-day-font1` was captured before Android reported the requested
+landscape state, and `phone-landscape-day-font13` did not produce stable XML.
+Because of the concurrent device use, no additional device-mutating commands
+were run to recapture those two scenarios.
+
+The retained current-source XML files demonstrate the steady disconnected USB
+semantic state: `modeUSB` checked, `modeWireless` and `modeInternet` unchecked,
+`Waiting for your Mac`, USB-ready guidance, `CONNECT`, `Looking for Vibe Screen
+on your Mac`, and `DISPLAY SETTINGS`, with `connectionProgress` absent from the
+accessible bounds. This evidence does not close Android/macOS product E2E, Host
+readiness, streaming, latency, clipboard, or file-transfer gates.
+
 ## Guardrails
 
 - `final-076333b-real-rotation-matrix/metadata/adb-reverse-before.txt`, `adb-reverse-after.txt`, and `adb-reverse-final.txt` are empty.

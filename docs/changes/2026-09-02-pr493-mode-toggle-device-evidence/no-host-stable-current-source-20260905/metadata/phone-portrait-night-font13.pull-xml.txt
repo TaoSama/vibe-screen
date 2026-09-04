@@ -1,0 +1,9 @@
+mode=normal attempt=1
+returncode=0
+UI hierchary dumped to: /sdcard/vibe_pr493_current_1788539301660_phone-portrait-night-font13.xml
+
+pull_returncode=0
+
+/sdcard/vibe_pr493_current_1788539301660_phone-portrait-night-font13.xml: 1 file pulled, 0 skipped. 2.3 MB/s (12963 bytes in 0.005s)
+result=present
+xml_stable_state=true
