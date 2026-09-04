@@ -1,0 +1,60 @@
+{
+  "schema_version": "vibescreen.evidence/no-host-transfer-controls/v1",
+  "date": "2026-09-04",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "serial": "<redacted-adb-serial>"
+  },
+  "source": {
+    "repository": "TaoSama/vibe-screen",
+    "base_commit": "322815420bfa24af40aa4cfd79425ff6803522cd",
+    "branch": "codex/android-no-host-transfer-controls-smoke-20260904"
+  },
+  "preconditions": {
+    "adb_reverse_tcp_54321_present": false,
+    "mac_host_started": false,
+    "macos_tcc_touched": false
+  },
+  "observed_ui": {
+    "foreground_activity": "dev.telemachus.display/.MainActivity",
+    "state": "waiting_for_mac",
+    "visible_text_contains": [
+      "VIBE SCREEN",
+      "Waiting for your Mac",
+      "USB",
+      "LAN",
+      "Internet",
+      "CONNECT",
+      "Looking for Vibe Screen on your Mac",
+      "Connection details",
+      "DISPLAY SETTINGS",
+      "OPEN-SOURCE LICENSES"
+    ],
+    "forbidden_controls_absent": [
+      "Clipboard",
+      "File transfer",
+      "Cancel file transfer",
+      "Mac content available"
+    ]
+  },
+  "verdict": "pass",
+  "claims": {
+    "no_host_transfer_controls_hidden": true,
+    "clipboard_product_e2e": false,
+    "file_transfer_product_e2e": false
+  },
+  "retained_artifacts": [
+    "README.md",
+    "adb-install.txt",
+    "adb-no-host-stable-capture.txt",
+    "adb-no-host-ui-capture.txt",
+    "device-identity.txt",
+    "window-no-host-stable.xml",
+    "screen-no-host-stable.png",
+    "screen-no-host.png"
+  ]
+}

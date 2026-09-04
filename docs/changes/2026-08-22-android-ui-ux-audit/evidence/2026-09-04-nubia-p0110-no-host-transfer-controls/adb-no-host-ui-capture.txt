@@ -1,0 +1,11 @@
+$ adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+$ adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect true
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+$ adb -s <redacted-adb-serial> shell dumpsys window | grep mCurrentFocus
+  mCurrentFocus=Window{e8466cd u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{148291838 u0 dev.telemachus.display/.MainActivity t1027}
+$ adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-no-host.xml
+ERROR: could not get idle state.
+$ adb -s <redacted-adb-serial> pull /sdcard/vibescreen-no-host.xml
+adb: error: failed to stat remote object '/sdcard/vibescreen-no-host.xml': No such file or directory
+$ adb -s <redacted-adb-serial> exec-out screencap -p > screen-no-host.png

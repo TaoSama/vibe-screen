@@ -198,6 +198,26 @@ unavailable. No file offer/request/content exchange, sender file selection,
 receiver approval, destination file write, cancel cleanup, or end-to-end SHA-256
 equality was observed, so the README gate remains open.
 
+## 2026-09-04 Nubia P0110 no-Host control visibility smoke
+
+Evidence:
+[`../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls`](../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/README.md).
+
+Status remains open. The smoke starts from `origin/main` at
+`322815420bfa24af40aa4cfd79425ff6803522cd`, installs the debug Android client
+on a Nubia P0110 / pacific / Android 16 / SDK 36, removes the product
+`tcp:54321` ADB reverse, and starts the app without launching a macOS Host.
+The stable UIAutomator dump shows the no-Host waiting screen and confirms that
+`Clipboard`, `File transfer`, `Cancel file transfer`, and `Mac content
+available` controls are absent before a product session negotiates the relevant
+Protocol v1 capabilities.
+
+This is positive Android UI/UX fail-closed evidence only. It does not prove
+Android <-> macOS clipboard transfer, file-transfer offer/request/content
+packets, receiver approval, remote file writes, SHA-256 equality, progress, or
+cancel cleanup; the product E2E gate remains blocked until those artifacts are
+retained from a real Host/device session.
+
 ## 2026-08-28 Nubia P0110 current-source USB refresh
 
 Evidence:
