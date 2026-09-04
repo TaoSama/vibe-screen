@@ -3,7 +3,7 @@
   "kind": "phase0_module_ownership_current_base_manifest",
   "phase": "phase0",
   "source": {
-    "base_commit": "f669dc3521c97364533653016747bc1cb4f8d015",
+    "base_commit": "b02c36420d1c7784c0e6153bfd908aef3bd41da5",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Phase 0 module ownership extraction owner"

@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "f669dc3521c97364533653016747bc1cb4f8d015",
+    "base_commit": "b02c36420d1c7784c0e6153bfd908aef3bd41da5",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Vibe Screen core team",
@@ -14,7 +14,7 @@
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
     "queried_at": "2026-09-04",
     "state": "open",
-    "open_pr_numbers": []
+    "open_pr_numbers": [556]
   },
   "readme_guard": {
     "required_phrases": [
@@ -50,7 +50,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33836207037"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33848805775"
       ],
       "owner_prs": [],
       "blockers": []
@@ -63,7 +63,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33836207037"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33848805775"
       ],
       "owner_prs": [],
       "blockers": []
@@ -76,7 +76,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33836207037",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33848805775",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -239,6 +239,7 @@
         "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
+        "docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/README.md",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_manifest.py"
@@ -247,6 +248,8 @@
       "blockers": [
         "Host readiness is blocked on stable signing, source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, virtual HID entitlement, and login/headless readiness.",
         "Android now exposes incoming file-transfer progress and user cancellation in source and contract tests, but this is not a retained Host-backed bidirectional product transfer pass.",
+        "Android PR #551/#552/#553 add no-Host readiness, outgoing progress, and progress-state race hardening, but these are source/contract readiness rather than retained Host-backed bidirectional product transfer evidence.",
+        "PR #555 records P0110 no-Host transfer UI smoke only; it does not prove real Host readiness, stream establishment, Protocol v1 handshake with a real Host, or Android/macOS file bytes landing behavior.",
         "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup.",
         "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass."
       ]
