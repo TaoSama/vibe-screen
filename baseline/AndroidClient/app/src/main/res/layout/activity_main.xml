@@ -358,6 +358,7 @@
                     android:layout_width="@dimen/control_bar_transfer_progress_width"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:accessibilityLiveRegion="polite"
                     android:ellipsize="middle"
                     android:gravity="center_vertical"
                     android:maxLines="1"

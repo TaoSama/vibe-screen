@@ -11,6 +11,7 @@ internal object ControlBarAccessibilityPolicy {
     enum class RevealReason {
         USER_REQUEST,
         SESSION_STARTED,
+        ACTIVE_TRANSFER,
     }
 
     fun shouldAutoHide(touchExplorationEnabled: Boolean): Boolean = !touchExplorationEnabled
@@ -23,6 +24,7 @@ internal object ControlBarAccessibilityPolicy {
             when (revealReason) {
                 RevealReason.SESSION_STARTED -> SESSION_STARTED_AUTO_HIDE_MS
                 RevealReason.USER_REQUEST -> STANDARD_AUTO_HIDE_MS
+                RevealReason.ACTIVE_TRANSFER -> null
             }
         } else {
             null
@@ -607,6 +609,7 @@ internal object ControlBarLayoutPolicy {
         val columnActionSpacingPx: Int,
         val statusMinimumWidthPx: Int,
         val statusGapPx: Int,
+        val transferProgressWidthPx: Int,
     ) {
         init {
             require(horizontalContentPaddingPx >= 0)
@@ -617,19 +620,22 @@ internal object ControlBarLayoutPolicy {
             require(columnActionSpacingPx >= 0)
             require(statusMinimumWidthPx > 0)
             require(statusGapPx >= 0)
+            require(transferProgressWidthPx >= 0)
         }
 
         fun horizontalActionsWidthPx(
             hostActionsVisible: Boolean,
             clipboardVisible: Boolean,
             fileTransferVisible: Boolean = false,
+            transferProgressVisible: Boolean = false,
         ): Int {
             val settingsWidth = buttonSizePx + actionMarginPx * 2
             val disconnectWidth = buttonSizePx + disconnectSeparationPx
             val hostWidth = if (hostActionsVisible) buttonSizePx + actionMarginPx * 2 else 0
             val clipboardWidth = if (clipboardVisible) buttonSizePx + actionMarginPx * 2 else 0
             val fileTransferWidth = if (fileTransferVisible) buttonSizePx + actionMarginPx * 2 else 0
-            return hostWidth + clipboardWidth + fileTransferWidth + settingsWidth + disconnectWidth
+            val transferProgressWidth = if (transferProgressVisible) transferProgressWidthPx + actionMarginPx else 0
+            return hostWidth + clipboardWidth + fileTransferWidth + transferProgressWidth + settingsWidth + disconnectWidth
         }
     }
 
@@ -647,8 +653,15 @@ internal object ControlBarLayoutPolicy {
         clipboardVisible: Boolean,
         geometry: Geometry,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
     ): Mode {
-        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
+        val actionWidthPx =
+            geometry.horizontalActionsWidthPx(
+                hostActionsVisible,
+                clipboardVisible,
+                fileTransferVisible,
+                transferProgressVisible,
+            )
         val statusWidthPx = geometry.statusMinimumWidthPx + geometry.statusGapPx
         if (!displaySelectorVisible) {
             val compactMinimumPx = geometry.horizontalContentPaddingPx + statusWidthPx + actionWidthPx

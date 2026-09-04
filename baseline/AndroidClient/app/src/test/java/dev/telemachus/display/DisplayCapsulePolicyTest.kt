@@ -167,6 +167,7 @@ class ControlBarLayoutPolicyTest {
             columnActionSpacingPx = 8,
             statusMinimumWidthPx = 72,
             statusGapPx = 6,
+            transferProgressWidthPx = 96,
         )
 
     @Test
@@ -255,6 +256,7 @@ class ControlBarLayoutPolicyTest {
                 columnActionSpacingPx = 22,
                 statusMinimumWidthPx = 198,
                 statusGapPx = 17,
+                transferProgressWidthPx = 264,
             )
         val withClipboardInline = inlineMinimumWidth(density275Geometry, hostActionsVisible = true, clipboardVisible = true)
         val withClipboardStacked =
@@ -372,6 +374,18 @@ class ControlBarLayoutPolicyTest {
                 fileTransferVisible = true,
             )
         assertEquals(geometry.buttonSizePx + geometry.actionMarginPx * 2, withFileTransfer - withoutFileTransfer)
+        val withProgress =
+            compactMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+                transferProgressVisible = true,
+            )
+        assertEquals(
+            geometry.transferProgressWidthPx + geometry.actionMarginPx,
+            withProgress - withFileTransfer,
+        )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
             ControlBarLayoutPolicy.mode(
@@ -384,14 +398,27 @@ class ControlBarLayoutPolicyTest {
             ),
         )
         assertEquals(
-            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.Mode.COMPACT,
             ControlBarLayoutPolicy.mode(
-                withFileTransfer - 1,
+                withProgress,
                 displaySelectorVisible = false,
                 hostActionsVisible = true,
                 clipboardVisible = true,
                 geometry = geometry,
                 fileTransferVisible = true,
+                transferProgressVisible = true,
+            ),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(
+                withProgress - 1,
+                displaySelectorVisible = false,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
+                transferProgressVisible = true,
             ),
         )
     }
@@ -418,18 +445,31 @@ class ControlBarLayoutPolicyTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             statusWidth(geometry) +
-            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
+            geometry.horizontalActionsWidthPx(
+                hostActionsVisible,
+                clipboardVisible,
+                fileTransferVisible,
+                transferProgressVisible,
+            )
 
     private fun inlineMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
     ): Int =
-        compactMinimumWidth(geometry, hostActionsVisible, clipboardVisible, fileTransferVisible) +
+        compactMinimumWidth(
+            geometry,
+            hostActionsVisible,
+            clipboardVisible,
+            fileTransferVisible,
+            transferProgressVisible,
+        ) +
             geometry.selectorMinimumWidthPx
 
     private fun stackedMinimumWidth(
@@ -437,12 +477,18 @@ class ControlBarLayoutPolicyTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             maxOf(
                 geometry.statusMinimumWidthPx,
                 geometry.selectorMinimumWidthPx,
-                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible),
+                geometry.horizontalActionsWidthPx(
+                    hostActionsVisible,
+                    clipboardVisible,
+                    fileTransferVisible,
+                    transferProgressVisible,
+                ),
             )
 
     private fun statusWidth(geometry: ControlBarLayoutPolicy.Geometry): Int =
@@ -480,6 +526,16 @@ class ControlBarAccessibilityPolicyTest {
         assertTrue(
             ControlBarAccessibilityPolicy.SESSION_STARTED_AUTO_HIDE_MS >
                 ControlBarAccessibilityPolicy.STANDARD_AUTO_HIDE_MS,
+        )
+    }
+
+    @Test
+    fun `active transfer reveal stays visible until the transfer state changes`() {
+        assertNull(
+            ControlBarAccessibilityPolicy.autoHideDelayMs(
+                touchExplorationEnabled = false,
+                revealReason = ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER,
+            ),
         )
     }
 
