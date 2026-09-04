@@ -249,7 +249,9 @@ class MainActivity : AppCompatActivity() {
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
         Runnable {
-            if (ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)) {
+            if (activeOutgoingFileTransfer == null &&
+                ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)
+            ) {
                 hideControlBar()
             }
         }
@@ -428,7 +430,9 @@ class MainActivity : AppCompatActivity() {
         } else if (binding.controlBar.visibility == View.VISIBLE) {
             ControlBarAccessibilityPolicy.autoHideDelayMs(
                 touchExplorationEnabled = false,
-                revealReason = ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+                revealReason = currentControlBarRevealReason(
+                    ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+                ),
             )?.let { delayMs ->
                 controlBarHandler.postDelayed(controlBarHideRunnable, delayMs)
             }
@@ -2144,11 +2148,20 @@ class MainActivity : AppCompatActivity() {
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         ControlBarAccessibilityPolicy.autoHideDelayMs(
             touchExplorationEnabled = accessibilityManager.isTouchExplorationEnabled,
-            revealReason = revealReason,
+            revealReason = currentControlBarRevealReason(revealReason),
         )?.let { delayMs ->
             controlBarHandler.postDelayed(controlBarHideRunnable, delayMs)
         }
     }
+
+    private fun currentControlBarRevealReason(
+        requested: ControlBarAccessibilityPolicy.RevealReason,
+    ): ControlBarAccessibilityPolicy.RevealReason =
+        if (activeOutgoingFileTransfer != null) {
+            ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER
+        } else {
+            requested
+        }
 
     private fun hideControlBar() {
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
@@ -5970,6 +5983,15 @@ class MainActivity : AppCompatActivity() {
         binding.controlClipboardButton.isEnabled = false
         binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
+        binding.controlFileTransferButton.visibility = View.GONE
+        binding.controlFileTransferButton.isEnabled = false
+        binding.controlFileTransferButton.contentDescription = getString(R.string.control_file_transfer)
+        binding.controlFileTransferButton.setImageResource(R.drawable.ic_file_transfer)
+        binding.controlFileTransferButton.setColorFilter(ContextCompat.getColor(this, R.color.on_surface))
+        TooltipCompat.setTooltipText(binding.controlFileTransferButton, getText(R.string.control_file_transfer))
+        binding.controlFileTransferProgressText.visibility = View.GONE
+        binding.controlFileTransferProgressText.text = ""
+        binding.controlFileTransferProgressText.contentDescription = ""
         DisplayCapsuleViewBinder.bind(
             resources = resources,
             selector = binding.displayCapsuleGroup,
