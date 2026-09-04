@@ -1293,8 +1293,14 @@ create the manifest with the dedicated helper:
       --operator "operator name" \
       --annotator "annotator name" \
       --device-info latency-run/device-info.json \
+      --source-tree "$(git rev-parse HEAD^{tree})" \
+      --source-dirty-state clean \
       --host-artifact "host binary identity or hash" \
+      --host-artifact-sha256 "host binary sha256" \
+      --host-artifact-provenance "codesign and hash transcript path" \
       --client-artifact "APK identity or hash" \
+      --client-artifact-sha256 "APK sha256" \
+      --client-artifact-provenance "APK build/hash transcript path" \
       --stimulus "visible Mac-side stimulus" \
       --start-event-definition "first camera frame where the stimulus is visible" \
       --end-event-definition "first camera frame where the result is visible" \
@@ -1333,8 +1339,14 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --operator "operator name" \
   --annotator "annotator name" \
   --device-info latency-run/device-info.json \
+  --source-tree "$(git rev-parse HEAD^{tree})" \
+  --source-dirty-state clean \
   --host-artifact "host binary identity or hash" \
+  --host-artifact-sha256 "host binary sha256" \
+  --host-artifact-provenance "codesign and hash transcript path" \
   --client-artifact "APK identity or hash" \
+  --client-artifact-sha256 "APK sha256" \
+  --client-artifact-provenance "APK build/hash transcript path" \
   --stimulus "visible Mac-side stimulus" \
   --start-event-definition "first camera frame where the stimulus is visible" \
   --end-event-definition "first camera frame where the result is visible" \
@@ -1383,20 +1395,24 @@ make evidence-latency-gate \
 ```
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
-the run ID, transport, profile, sample file, evidence provenance, device
-identity, build identity, annotation method, and the profile-specific retained
-artifact: USB connection proof for `usb-glass-to-glass-sub50`, LAN
-network/stream preflight proof for `lan-glass-to-glass-sub80`, public Internet
-route proof for `internet-glass-to-glass-sub150`, or physical input actuation
-proof for `input-p95-sub50`. External-camera packages also bind the raw camera
-recording, camera mode, container, file size, frame count, and duration;
-synchronized-clock input packages bind the clock sources, skew, drift,
-timestamp methods, timestamp uncertainties, sub-5 ms total error budget, and a
-retained `synchronization_record` artifact. The checker exits `0` only when
-the profile
+the run ID, transport, profile, sample file, evidence provenance, complete
+device identity including SDK and build fingerprint, clean current-base
+commit/tree, measured Host/client artifact SHA-256 values, annotation method,
+and the profile-specific retained artifact: USB connection proof for
+`usb-glass-to-glass-sub50`, LAN network/stream preflight proof for
+`lan-glass-to-glass-sub80`, public Internet route proof for
+`internet-glass-to-glass-sub150`, or physical input actuation proof for
+`input-p95-sub50`. External-camera packages also bind the raw camera recording,
+camera mode, container, file size, frame count, duration, and manual frame-count
+samples from the same footage; direct millisecond rows are reserved for
+synchronized-clock input packages. Synchronized-clock input packages bind the
+clock sources, skew, drift, timestamp methods, timestamp uncertainties, non-zero
+physical touch acquisition uncertainty when using Android `MotionEvent`
+timestamps, sub-5 ms total error budget, and a retained
+`synchronization_record` artifact. The checker exits `0` only when the profile
 verdict is `pass` and provenance is complete; missing raw video, missing
-profile artifacts, mismatched metadata, or incomplete synchronization proof
-stays `insufficient`. The step-by-step method is in
+profile artifacts, dirty source provenance, mismatched metadata, or incomplete
+synchronization proof stays `insufficient`. The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
 
 Before spending device time on a full capture, record a fail-closed readiness
@@ -1416,15 +1432,19 @@ the input file. The target writes `latency-preflight.json` and
 gate attempt, which is an expected fail-closed outcome when external-camera or
 synchronized-clock artifacts are missing.
 
-When a preflight needs to mark `host_build_identity_recorded=true`, record the
+When a preflight needs to mark `current_base_provenance_recorded=true`, record a
+clean `git rev-parse HEAD`, `git rev-parse HEAD^{tree}`, and `git status
+--short` result. When it needs `host_build_identity_recorded=true`, record the
 Host identity with ordinary read-only checks such as `sysctl -n hw.model`,
 `sw_vers`, `shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen`,
 and `codesign -dv --verbose=4 /Applications/Vibe\ Screen.app`. The
 `baseline-macos-host-readiness` target can also produce a broader Host readiness
-report without opting in to login-item diagnostics. Host identity alone does not
-close any latency profile; USB/LAN claims still need the external-camera package,
-and input claims still need either external-camera evidence or synchronized-clock
-proof plus physical-input artifacts.
+report without opting in to login-item diagnostics. Record the Android client
+artifact hash before setting `client_build_identity_recorded=true`. Host or
+client identity alone does not close any latency profile; USB/LAN claims still
+need the external-camera package, and input claims still need either
+external-camera evidence or synchronized-clock proof plus physical-input
+artifacts.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:

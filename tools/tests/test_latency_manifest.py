@@ -22,6 +22,10 @@ from tools.tests.latency_test_helpers import minimal_mov
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.latency_manifest"
+TEST_COMMIT_SHA = "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71"
+TEST_TREE_SHA = "c1a2b3c4d5e6f7890abcdeffedcba09876543210"
+TEST_HOST_SHA256 = "a" * 64
+TEST_CLIENT_SHA256 = "b" * 64
 
 
 def _base_metadata() -> dict[str, object]:
@@ -48,12 +52,20 @@ def _base_metadata() -> dict[str, object]:
             "model": "P0110",
             "codename": "pacific",
             "os_version": "Android 16 / SDK 36",
+            "sdk": 36,
+            "build_fingerprint": "nubia/pacific/pacific:16/test-keys",
         },
         "host": {"model": "Mac16,8", "macos_version": "26.4.1"},
         "build": {
-            "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            "repository_revision": TEST_COMMIT_SHA,
+            "source_tree": TEST_TREE_SHA,
+            "source_dirty": False,
             "host_artifact": "Vibe Screen.app sha256 retained in commands.txt",
+            "host_artifact_sha256": TEST_HOST_SHA256,
+            "host_artifact_provenance": "codesign and sha256 retained in commands.txt",
             "client_artifact": "app-debug.apk sha256 retained in commands.txt",
+            "client_artifact_sha256": TEST_CLIENT_SHA256,
+            "client_artifact_provenance": "APK sha256 retained in commands.txt",
         },
         "measurement_setup": {
             "stimulus": "mac display flash visible to the camera",
@@ -467,11 +479,23 @@ class LatencyManifestCliTest(unittest.TestCase):
             "--macos-version",
             "26.4.1",
             "--repository-revision",
-            "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            TEST_COMMIT_SHA,
+            "--source-tree",
+            TEST_TREE_SHA,
+            "--source-dirty-state",
+            "clean",
             "--host-artifact",
             "Vibe Screen.app sha256 retained in commands.txt",
+            "--host-artifact-sha256",
+            TEST_HOST_SHA256,
+            "--host-artifact-provenance",
+            "codesign and sha256 retained in commands.txt",
             "--client-artifact",
             "app-debug.apk sha256 retained in commands.txt",
+            "--client-artifact-sha256",
+            TEST_CLIENT_SHA256,
+            "--client-artifact-provenance",
+            "APK sha256 retained in commands.txt",
             "--stimulus",
             "mac display flash visible to the camera",
             "--start-event-definition",
@@ -524,16 +548,32 @@ class LatencyManifestCliTest(unittest.TestCase):
             "pacific",
             "--device-os-version",
             "Android 16 / SDK 36",
+            "--device-sdk",
+            "36",
+            "--device-build-fingerprint",
+            "nubia/pacific/pacific:16/test-keys",
             "--host-model",
             "Mac16,8",
             "--macos-version",
             "26.4.1",
             "--repository-revision",
-            "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            TEST_COMMIT_SHA,
+            "--source-tree",
+            TEST_TREE_SHA,
+            "--source-dirty-state",
+            "clean",
             "--host-artifact",
             "Vibe Screen.app sha256 retained in commands.txt",
+            "--host-artifact-sha256",
+            TEST_HOST_SHA256,
+            "--host-artifact-provenance",
+            "codesign and sha256 retained in commands.txt",
             "--client-artifact",
             "app-debug.apk sha256 retained in commands.txt",
+            "--client-artifact-sha256",
+            TEST_CLIENT_SHA256,
+            "--client-artifact-provenance",
+            "APK sha256 retained in commands.txt",
             "--stimulus",
             "physical touch on Android screen",
             "--start-event-definition",
@@ -557,11 +597,11 @@ class LatencyManifestCliTest(unittest.TestCase):
             "--max-drift-ms",
             "0.8",
             "--input-timestamp-uncertainty-ms",
-            "0.0",
+            "0.4",
             "--result-timestamp-uncertainty-ms",
             "0.0",
             "--total-error-budget-ms",
-            "3.5",
+            "4.5",
             "--input-timestamp-method",
             "Android MotionEvent.eventTime captured at touch dispatch",
             "--result-timestamp-method",
@@ -591,6 +631,8 @@ class LatencyManifestCliTest(unittest.TestCase):
                             "model": "P0110",
                             "device": "pacific",
                             "android_release": "16",
+                            "sdk": "36",
+                            "build_fingerprint": "nubia/pacific/pacific:16/test-keys",
                         }
                     }
                 ),
@@ -612,6 +654,10 @@ class LatencyManifestCliTest(unittest.TestCase):
 
         self.assertEqual(manifest["device"]["manufacturer"], "nubia")
         self.assertEqual(manifest["device"]["codename"], "pacific")
+        self.assertEqual(manifest["device"]["sdk"], 36)
+        self.assertEqual(manifest["device"]["build_fingerprint"], "nubia/pacific/pacific:16/test-keys")
+        self.assertEqual(manifest["build"]["source_tree"], TEST_TREE_SHA)
+        self.assertIs(manifest["build"]["source_dirty"], False)
         self.assertEqual(report["verdict"], "pass")
 
     def test_cli_writes_schema_compatible_synchronized_clock_manifest(self) -> None:
@@ -674,6 +720,10 @@ class LatencyManifestCliTest(unittest.TestCase):
                 "pacific",
                 "--device-os-version",
                 "Android 16 / SDK 36",
+                "--device-sdk",
+                "36",
+                "--device-build-fingerprint",
+                "nubia/pacific/pacific:16/test-keys",
                 "--internet-route",
                 "forced-public-turn",
                 "--turn-provider",
@@ -740,6 +790,10 @@ class LatencyManifestCliTest(unittest.TestCase):
                 "pacific",
                 "--device-os-version",
                 "Android 16 / SDK 36",
+                "--device-sdk",
+                "36",
+                "--device-build-fingerprint",
+                "nubia/pacific/pacific:16/test-keys",
                 "--internet-route",
                 "forced-public-turn",
                 "--turn-provider",

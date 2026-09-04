@@ -6,6 +6,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DOCS_ROOT = REPOSITORY_ROOT / "docs"
 EXPECTED_LATENCY_SOURCE_COMMIT = "dd6978cb5e8e36b6aa15995361ed28ee54cd6b3e"
+EXPECTED_CAMERA_PREFLIGHT_SOURCE_COMMIT = "87e16d8bea4446c1ca449045678f1bafc7fd6cb2"
 EXPECTED_LATENCY_PROFILES = {
     "usb-glass-to-glass-sub50",
     "lan-glass-to-glass-sub80",
@@ -19,6 +20,7 @@ LATENCY_EVIDENCE_FILENAMES = (
     "latency-evidence.json",
 )
 BLOCKED_LATENCY_DIRS = (
+    "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-30-nubia-p0110-latency-camera-current-base-blocked",
     "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked",
     "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-27-nubia-p0110-latency-current-base-blocked",
 )
@@ -43,7 +45,7 @@ class ExternalLatencyCurrentBaseOwnerTest(unittest.TestCase):
         self.assertTrue(preflight_path.is_file(), preflight_path)
         document = json.loads(preflight_path.read_text(encoding="utf-8"))
         self.assertEqual(document["status"], "blocked")
-        self.assertEqual(document["repository_revision"], EXPECTED_LATENCY_SOURCE_COMMIT)
+        self.assertEqual(document["repository_revision"], EXPECTED_CAMERA_PREFLIGHT_SOURCE_COMMIT)
         self.assertEqual(
             {profile["profile"] for profile in document["gate_profiles"]},
             EXPECTED_LATENCY_PROFILES,
@@ -53,6 +55,23 @@ class ExternalLatencyCurrentBaseOwnerTest(unittest.TestCase):
             self.assertFalse(profile["can_attempt_formal_gate"])
             self.assertFalse(profile["can_close_performance_gate"])
             self.assertTrue(profile["missing_requirements"])
+
+    def test_retained_current_base_latency_preflights_remain_blocked(self) -> None:
+        expected_revisions = {
+            "2026-08-30-nubia-p0110-latency-camera-current-base-blocked": EXPECTED_CAMERA_PREFLIGHT_SOURCE_COMMIT,
+            "2026-08-28-nubia-p0110-latency-current-base-blocked": EXPECTED_LATENCY_SOURCE_COMMIT,
+        }
+        for directory in BLOCKED_LATENCY_DIRS:
+            with self.subTest(directory=directory):
+                preflight_path = REPOSITORY_ROOT / directory / "latency-preflight.json"
+                self.assertTrue(preflight_path.is_file(), preflight_path)
+                document = json.loads(preflight_path.read_text(encoding="utf-8"))
+                self.assertEqual(document["status"], "blocked")
+                expected_revision = expected_revisions.get(Path(directory).name)
+                if expected_revision is not None:
+                    self.assertEqual(document["repository_revision"], expected_revision)
+                for profile in document["gate_profiles"]:
+                    self.assertFalse(profile["can_close_performance_gate"])
 
     def test_reconnect_timing_blocked_summary_does_not_close_gate(self) -> None:
         summary_path = REPOSITORY_ROOT / RECONNECT_BLOCKED_DIRS[0] / "reconnect-timing-summary.json"

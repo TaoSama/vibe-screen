@@ -14,6 +14,12 @@ from tools.tests.latency_test_helpers import write_minimal_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+TEST_COMMIT_SHA = "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71"
+TEST_TREE_SHA = "c1a2b3c4d5e6f7890abcdeffedcba09876543210"
+TEST_HOST_SHA256 = "a" * 64
+TEST_CLIENT_SHA256 = "b" * 64
+
+
 def write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
@@ -100,6 +106,11 @@ def latency_manifest(route: str) -> dict:
             "source": "real-device-capture",
             "collection_context": "bench capture for the phase 3 release gate",
             "operator_assertion": "This package records retained direct device evidence.",
+            "current_base": {
+                "repository_revision": TEST_COMMIT_SHA,
+                "source_tree": TEST_TREE_SHA,
+                "dirty": False,
+            },
         },
         "camera": {
             "manufacturer": "Bench Camera Co",
@@ -122,7 +133,7 @@ def latency_manifest(route: str) -> dict:
             "file": "samples.csv",
             "format": "csv",
             "sha256": "",
-            "annotation_method": "direct-latency-ms",
+            "annotation_method": "manual-frame-count",
             "annotator": "bench annotator",
         },
         "gate_artifacts": {
@@ -137,12 +148,20 @@ def latency_manifest(route: str) -> dict:
             "model": "P0110",
             "codename": "pacific",
             "os_version": "Android 16 / SDK 36",
+            "sdk": 36,
+            "build_fingerprint": "nubia/pacific/pacific:16/test-keys",
         },
         "host": {"model": "Mac16,8", "macos_version": "26.4.1"},
         "build": {
-            "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            "repository_revision": TEST_COMMIT_SHA,
+            "source_tree": TEST_TREE_SHA,
+            "source_dirty": False,
             "host_artifact": "Vibe Screen.app sha256 retained in commands.txt",
+            "host_artifact_sha256": TEST_HOST_SHA256,
+            "host_artifact_provenance": "codesign and sha256 retained in commands.txt",
             "client_artifact": "app-debug.apk sha256 retained in commands.txt",
+            "client_artifact_sha256": TEST_CLIENT_SHA256,
+            "client_artifact_provenance": "APK sha256 retained in commands.txt",
         },
         "measurement_setup": {
             "stimulus": "mac display flash visible to the camera",
@@ -429,7 +448,12 @@ def write_latency_package(root: Path, route: str) -> None:
     samples = root / f"latency/{route}/samples.csv"
     route_record = root / f"latency/{route}/internet-public-route-record.txt"
     write_minimal_mov(raw_video)
-    touch(samples, "latency_ms\n90\n100\n110\n120\n130\n")
+    touch(
+        samples,
+        "start_frame,end_frame,camera_fps\n"
+        "100,124,240\n200,225,240\n300,326,240\n"
+        "400,427,240\n500,528,240\n",
+    )
     touch(route_record, "public Internet route proof\n")
     manifest = latency_manifest(route)
     manifest["recording"]["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()

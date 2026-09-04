@@ -37,11 +37,19 @@ PROFILE_REQUIREMENTS = {
     GATE_USB_GLASS_TO_GLASS_SUB50: (
         (
             "device_identity_recorded",
-            "record Android device identity, OS version, SDK, and build fingerprint",
+            "record Android manufacturer, model, codename, OS version, SDK, and build fingerprint",
+        ),
+        (
+            "current_base_provenance_recorded",
+            "record clean current-base repository commit and source tree used to build the measured artifacts",
         ),
         (
             "host_build_identity_recorded",
-            "record the measured Mac host identity and Host binary/build identity",
+            "record the measured Mac host identity plus Host binary SHA-256 and provenance",
+        ),
+        (
+            "client_build_identity_recorded",
+            "record the measured Android client artifact SHA-256 and provenance",
         ),
         (
             "external_camera_timebase_ready",
@@ -71,11 +79,19 @@ PROFILE_REQUIREMENTS = {
     GATE_LAN_GLASS_TO_GLASS_SUB80: (
         (
             "device_identity_recorded",
-            "record Android device identity, OS version, SDK, and build fingerprint",
+            "record Android manufacturer, model, codename, OS version, SDK, and build fingerprint",
+        ),
+        (
+            "current_base_provenance_recorded",
+            "record clean current-base repository commit and source tree used to build the measured artifacts",
         ),
         (
             "host_build_identity_recorded",
-            "record the measured Mac host identity and Host binary/build identity",
+            "record the measured Mac host identity plus Host binary SHA-256 and provenance",
+        ),
+        (
+            "client_build_identity_recorded",
+            "record the measured Android client artifact SHA-256 and provenance",
         ),
         (
             "external_camera_timebase_ready",
@@ -105,11 +121,19 @@ PROFILE_REQUIREMENTS = {
     GATE_INPUT_P95_SUB50: (
         (
             "device_identity_recorded",
-            "record Android device identity, OS version, SDK, and build fingerprint",
+            "record Android manufacturer, model, codename, OS version, SDK, and build fingerprint",
+        ),
+        (
+            "current_base_provenance_recorded",
+            "record clean current-base repository commit and source tree used to build the measured artifacts",
         ),
         (
             "host_build_identity_recorded",
-            "record the measured Mac host identity and Host binary/build identity",
+            "record the measured Mac host identity plus Host binary SHA-256 and provenance",
+        ),
+        (
+            "client_build_identity_recorded",
+            "record the measured Android client artifact SHA-256 and provenance",
         ),
         (
             "measurement_timebase_ready",

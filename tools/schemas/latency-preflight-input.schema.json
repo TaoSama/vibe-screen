@@ -70,7 +70,9 @@
       "additionalProperties": false,
       "properties": {
         "device_identity_recorded": {"type": "boolean"},
+        "current_base_provenance_recorded": {"type": "boolean"},
         "host_build_identity_recorded": {"type": "boolean"},
+        "client_build_identity_recorded": {"type": "boolean"},
         "external_camera_timebase_ready": {"type": "boolean"},
         "raw_camera_recording_retained": {"type": "boolean"},
         "sample_annotations_retained": {"type": "boolean"},
@@ -84,7 +86,9 @@
       "additionalProperties": false,
       "properties": {
         "device_identity_recorded": {"type": "boolean"},
+        "current_base_provenance_recorded": {"type": "boolean"},
         "host_build_identity_recorded": {"type": "boolean"},
+        "client_build_identity_recorded": {"type": "boolean"},
         "external_camera_timebase_ready": {"type": "boolean"},
         "raw_camera_recording_retained": {"type": "boolean"},
         "sample_annotations_retained": {"type": "boolean"},
@@ -98,7 +102,9 @@
       "additionalProperties": false,
       "properties": {
         "device_identity_recorded": {"type": "boolean"},
+        "current_base_provenance_recorded": {"type": "boolean"},
         "host_build_identity_recorded": {"type": "boolean"},
+        "client_build_identity_recorded": {"type": "boolean"},
         "measurement_timebase_ready": {"type": "boolean"},
         "sample_annotations_retained": {"type": "boolean"},
         "minimum_sample_count_ready": {"type": "boolean"},

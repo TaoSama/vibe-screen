@@ -36,11 +36,21 @@
     "evidence_provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "collection_context", "operator_assertion"],
+      "required": ["source", "collection_context", "operator_assertion", "current_base"],
       "properties": {
         "source": {"enum": ["real-device-capture", "synthetic-fixture"]},
         "collection_context": {"type": "string", "minLength": 1},
-        "operator_assertion": {"type": "string", "minLength": 1}
+        "operator_assertion": {"type": "string", "minLength": 1},
+        "current_base": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository_revision", "source_tree", "dirty"],
+          "properties": {
+            "repository_revision": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$"},
+            "source_tree": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$"},
+            "dirty": {"const": false}
+          }
+        }
       }
     },
     "camera": {
@@ -181,12 +191,14 @@
     "device": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["manufacturer", "model", "codename", "os_version"],
+      "required": ["manufacturer", "model", "codename", "os_version", "sdk", "build_fingerprint"],
       "properties": {
         "manufacturer": {"type": "string", "minLength": 1},
         "model": {"type": "string", "minLength": 1},
         "codename": {"type": "string", "minLength": 1},
-        "os_version": {"type": "string", "minLength": 1}
+        "os_version": {"type": "string", "minLength": 1},
+        "sdk": {"type": "integer", "minimum": 1},
+        "build_fingerprint": {"type": "string", "minLength": 1}
       }
     },
     "host": {
@@ -201,11 +213,27 @@
     "build": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository_revision", "host_artifact", "client_artifact"],
+      "required": [
+        "repository_revision",
+        "source_tree",
+        "source_dirty",
+        "host_artifact",
+        "host_artifact_sha256",
+        "host_artifact_provenance",
+        "client_artifact",
+        "client_artifact_sha256",
+        "client_artifact_provenance"
+      ],
       "properties": {
-        "repository_revision": {"type": "string", "minLength": 1},
+        "repository_revision": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$"},
+        "source_tree": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$"},
+        "source_dirty": {"const": false},
         "host_artifact": {"type": "string", "minLength": 1},
-        "client_artifact": {"type": "string", "minLength": 1}
+        "host_artifact_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "host_artifact_provenance": {"type": "string", "minLength": 1},
+        "client_artifact": {"type": "string", "minLength": 1},
+        "client_artifact_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "client_artifact_provenance": {"type": "string", "minLength": 1}
       }
     },
     "measurement_setup": {
@@ -345,6 +373,11 @@
             "required": ["max_frame_annotation_uncertainty_ms"],
             "properties": {
               "clock_domain": {"const": "single-external-camera-timebase"}
+            }
+          },
+          "samples": {
+            "properties": {
+              "annotation_method": {"const": "manual-frame-count"}
             }
           }
         }

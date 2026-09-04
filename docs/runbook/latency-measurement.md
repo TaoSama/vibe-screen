@@ -60,16 +60,16 @@ Store each run in an immutable directory with these files:
       usb-connection.txt
       commands.txt
 
-The sample file contains either direct latency_ms rows or frame deltas from
-the one camera timeline:
+External-camera sample files contain frame deltas from the one camera timeline:
 
     start_frame,end_frame,camera_fps
     100,111,240
     240,251,240
 
 The formal manifest uses tools/schemas/latency-evidence.schema.json and binds
-the raw recording, sample file, transport, gate profile, build, host, device,
-and annotation method. A minimal shape is:
+the raw recording, sample file, transport, gate profile, clean current-base
+source provenance, Host/client artifact identity, host, device, and annotation
+method. A minimal shape is:
 
     {
       "schema_version": "vibescreen.evidence/v1",
@@ -81,7 +81,12 @@ and annotation method. A minimal shape is:
       "evidence_provenance": {
         "source": "real-device-capture",
         "collection_context": "operator-collected latency evidence package",
-        "operator_assertion": "This package was collected from a real device run with retained artifacts."
+        "operator_assertion": "This package was collected from a real device run with retained artifacts.",
+        "current_base": {
+          "repository_revision": "1111111111111111111111111111111111111111",
+          "source_tree": "2222222222222222222222222222222222222222",
+          "dirty": false
+        }
       },
       "camera": {
         "manufacturer": "camera vendor",
@@ -94,7 +99,7 @@ and annotation method. A minimal shape is:
         "raw_video": "raw-camera.mov",
         "recorded_at": "2026-08-19T00:00:00Z",
         "operator": "operator name",
-        "sha256": "raw video sha256",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "container": "mov",
         "file_size_bytes": 12345678,
         "frame_count": 7200,
@@ -103,14 +108,14 @@ and annotation method. A minimal shape is:
       "samples": {
         "file": "samples.csv",
         "format": "csv",
-        "sha256": "sample annotations sha256",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "annotation_method": "manual-frame-count",
         "annotator": "annotator name"
       },
       "gate_artifacts": {
         "usb_connection": {
           "file": "usb-connection.txt",
-          "sha256": "USB connection artifact sha256",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
           "description": "ADB reverse/USB setup and active USB stream proof"
         }
       },
@@ -118,16 +123,24 @@ and annotation method. A minimal shape is:
         "manufacturer": "device manufacturer",
         "model": "device model",
         "codename": "device codename",
-        "os_version": "Android version"
+        "os_version": "Android version",
+        "sdk": 36,
+        "build_fingerprint": "Android build fingerprint"
       },
       "host": {
         "model": "Mac model",
         "macos_version": "macOS version"
       },
       "build": {
-        "repository_revision": "git revision",
-        "host_artifact": "host binary identity or hash",
-        "client_artifact": "APK identity or hash"
+        "repository_revision": "1111111111111111111111111111111111111111",
+        "source_tree": "2222222222222222222222222222222222222222",
+        "source_dirty": false,
+        "host_artifact": "host binary identity",
+        "host_artifact_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "host_artifact_provenance": "retained Host hash/signing transcript",
+        "client_artifact": "APK identity",
+        "client_artifact_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "client_artifact_provenance": "retained APK build/hash transcript"
       },
       "measurement_setup": {
         "stimulus": "visible stimulus used for this run",
@@ -149,6 +162,11 @@ External-camera manifests must also bind the retained camera file shape. The
 helper derives `recording.container`, `recording.file_size_bytes`, and
 `recording.sha256` from `--raw-video`; provide `--recording-frame-count`
 and `--recording-duration-ms` from the captured file metadata.
+The `--device-info` file must include the Android manufacturer, model,
+codename, OS version, SDK, and build fingerprint. If a run does not use a
+device-info file, provide the same values with `--device-manufacturer`,
+`--device-model`, `--device-codename`, `--device-os-version`, `--device-sdk`,
+and `--device-build-fingerprint`.
 
 The `gate_artifacts` object is profile-specific. Use `usb_connection` for
 `usb-glass-to-glass-sub50`, `lan_network_preflight` for
@@ -157,6 +175,9 @@ The `gate_artifacts` object is profile-specific. Use `usb_connection` for
 `synchronization_record` artifact containing the clock-alignment transcript,
 skew checks, drift check, and error-budget derivation. Each entry must point to
 a retained package-relative file with a matching SHA-256 digest.
+The `evidence_provenance.current_base` and `build` source fields must describe
+the same clean source state. `dirty` and `source_dirty` must both be `false`; a
+dirty worktree cannot close a latency gate.
 
 After collecting raw-camera.mov, samples.csv, and device-info.json, create the
 manifest with the dedicated helper instead of adapting the generic evidence
@@ -181,8 +202,15 @@ manifest tool:
       --operator "operator name" \
       --annotator "annotator name" \
       --device-info latency-run/device-info.json \
+      --repository-revision "$(git rev-parse HEAD)" \
+      --source-tree "$(git rev-parse HEAD^{tree})" \
+      --source-dirty-state clean \
       --host-artifact "host binary identity or hash" \
+      --host-artifact-sha256 "64-character Host artifact SHA-256" \
+      --host-artifact-provenance "retained Host hash/signing transcript" \
       --client-artifact "APK identity or hash" \
+      --client-artifact-sha256 "64-character APK SHA-256" \
+      --client-artifact-provenance "retained APK build/hash transcript" \
       --stimulus "visible Mac-side stimulus" \
       --start-event-definition "first camera frame where the stimulus is visible" \
       --end-event-definition "first camera frame where the result is visible" \
@@ -234,8 +262,15 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --operator "operator name" \
   --annotator "annotator name" \
   --device-info "$EVIDENCE_DIR/device-info.json" \
+  --repository-revision "$(git rev-parse HEAD)" \
+  --source-tree "$(git rev-parse HEAD^{tree})" \
+  --source-dirty-state clean \
   --host-artifact "host binary identity or hash" \
+  --host-artifact-sha256 "64-character Host artifact SHA-256" \
+  --host-artifact-provenance "retained Host hash/signing transcript" \
   --client-artifact "APK identity or hash" \
+  --client-artifact-sha256 "64-character APK SHA-256" \
+  --client-artifact-provenance "retained APK build/hash transcript" \
   --stimulus "visible Mac-side stimulus" \
   --start-event-definition "first camera frame where the stimulus is visible" \
   --end-event-definition "first camera frame where the Android result is visible" \
@@ -287,8 +322,15 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --operator "operator name" \
   --annotator "annotator name" \
   --device-info "$EVIDENCE_DIR/device-info.json" \
+  --repository-revision "$(git rev-parse HEAD)" \
+  --source-tree "$(git rev-parse HEAD^{tree})" \
+  --source-dirty-state clean \
   --host-artifact "host binary identity or hash" \
+  --host-artifact-sha256 "64-character Host artifact SHA-256" \
+  --host-artifact-provenance "retained Host hash/signing transcript" \
   --client-artifact "APK identity or hash" \
+  --client-artifact-sha256 "64-character APK SHA-256" \
+  --client-artifact-provenance "retained APK build/hash transcript" \
   --stimulus "visible Mac-side stimulus" \
   --start-event-definition "first camera frame where the stimulus is visible" \
   --end-event-definition "first camera frame where the Android result is visible" \
@@ -459,8 +501,15 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
   --annotation-method direct-latency-ms \
   --annotator "annotator name" \
   --device-info "$EVIDENCE_DIR/device-info.json" \
+  --repository-revision "$(git rev-parse HEAD)" \
+  --source-tree "$(git rev-parse HEAD^{tree})" \
+  --source-dirty-state clean \
   --host-artifact "host binary identity or hash" \
+  --host-artifact-sha256 "64-character Host artifact SHA-256" \
+  --host-artifact-provenance "retained Host hash/signing transcript" \
   --client-artifact "APK identity or hash" \
+  --client-artifact-sha256 "64-character APK SHA-256" \
+  --client-artifact-provenance "retained APK build/hash transcript" \
   --stimulus "physical input actuation" \
   --start-event-definition "physical input timestamp source" \
   --end-event-definition "visible Mac result timestamp source" \

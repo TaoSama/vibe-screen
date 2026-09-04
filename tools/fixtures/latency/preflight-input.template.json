@@ -6,7 +6,9 @@
       "profile": "usb-glass-to-glass-sub50",
       "checks": {
         "device_identity_recorded": false,
+        "current_base_provenance_recorded": false,
         "host_build_identity_recorded": false,
+        "client_build_identity_recorded": false,
         "external_camera_timebase_ready": false,
         "raw_camera_recording_retained": false,
         "sample_annotations_retained": false,
@@ -19,7 +21,9 @@
       "profile": "lan-glass-to-glass-sub80",
       "checks": {
         "device_identity_recorded": false,
+        "current_base_provenance_recorded": false,
         "host_build_identity_recorded": false,
+        "client_build_identity_recorded": false,
         "external_camera_timebase_ready": false,
         "raw_camera_recording_retained": false,
         "sample_annotations_retained": false,
@@ -32,7 +36,9 @@
       "profile": "input-p95-sub50",
       "checks": {
         "device_identity_recorded": false,
+        "current_base_provenance_recorded": false,
         "host_build_identity_recorded": false,
+        "client_build_identity_recorded": false,
         "measurement_timebase_ready": false,
         "sample_annotations_retained": false,
         "minimum_sample_count_ready": false,

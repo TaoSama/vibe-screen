@@ -15,9 +15,10 @@
 > and covered by offline gates, but real Android ClipboardManager <-> macOS
 > NSPasteboard USB/LAN E2E evidence remains open. A two-hour soak has run with a
 > stable stream, but the host resident-memory no-growth gate (tracked in
-> [the Host RSS investigation](docs/changes/2026-08-10-host-rss-growth/TECH.md))
-> and a native-pointer HID confirmation remain open. Do not treat roadmap items
-> below as shipped features.
+> [the Host RSS investigation](docs/changes/2026-08-10-host-rss-growth/TECH.md)),
+> telemetry and external-latency archive gate, and native-pointer HID
+> confirmation remain open. Do not treat roadmap items below as shipped
+> features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -341,8 +342,10 @@ by `make phase0-module-ownership-gate`, which now reports
 `can_close_phase0_module_ownership_extraction=true` on current main. This does
 not complete Phase 0 stable release because runtime/product evidence gates such
 as Host RSS, native pointer HID, controller runtime, clipboard, file-transfer
-E2E, WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained
-product evidence remain separate fail-closed requirements.
+E2E, WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC,
+`telemetry_and_latency_archive` with raw external-camera footage or sub-5 ms
+synchronized-clock physical-input proof, and retained product evidence remain
+separate fail-closed requirements.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
@@ -547,15 +550,17 @@ login/headless readiness. That record has `can_close_timing_gate=false`
 and does not close the three-second reconnect gate; see
 [the current-base blocked reconnect record](docs/changes/2026-08-21-phase1-reconnect-timing/evidence/2026-08-28-p0110-usb-reconnect-current-base-blocked/README.md).
 As of the 2026-08-30 current-base owner refresh, the latest retained evidence
-for external latency performance remains the 2026-08-28 Nubia P0110/pacific
-latency preflight; the toolchain has
-formal manifest/checker coverage for external-camera packages and
-synchronized-clock input packages,
-with profile-specific retained-artifact checks for USB, LAN, and physical-input
-claims. No raw camera package, annotated latency samples, or synchronized-clock
-proof from a real physical-input run is available in the repository. All three
-latency gates therefore remain open; see
-[the current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md)
+for external latency performance is the Nubia P0110/pacific latency-camera
+preflight. The toolchain has formal manifest/checker coverage for
+external-camera packages and synchronized-clock input packages, with
+profile-specific retained-artifact checks for USB, LAN, physical-input claims,
+complete device identity, measured Host/client artifact identity, and clean
+current-base source provenance. No raw high-frame-rate external-camera package,
+annotated latency samples, or synchronized-clock proof from a real physical-input
+run is available in the repository. All three latency gates therefore remain
+open; see
+[the latest camera blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-30-nubia-p0110-latency-camera-current-base-blocked/README.md),
+[the previous current-base blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md),
 and the [2026-08-30 fail-closed owner record](docs/changes/2026-08-30-external-latency-owner/README.md).
 
 ### Phase 2 — Tablet productization

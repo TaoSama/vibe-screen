@@ -19,6 +19,10 @@ from tools.tests.latency_test_helpers import minimal_mov
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.latency_evidence"
 FIXTURE_DIR = REPOSITORY_ROOT / "tools" / "fixtures" / "latency"
+TEST_COMMIT_SHA = "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71"
+TEST_TREE_SHA = "c1a2b3c4d5e6f7890abcdeffedcba09876543210"
+TEST_HOST_SHA256 = "a" * 64
+TEST_CLIENT_SHA256 = "b" * 64
 
 
 class LatencyEvidenceReportTest(unittest.TestCase):
@@ -28,6 +32,11 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "source": "real-device-capture",
             "collection_context": "bench capture in the current latency lab",
             "operator_assertion": "This package records a retained device capture run.",
+            "current_base": {
+                "repository_revision": TEST_COMMIT_SHA,
+                "source_tree": TEST_TREE_SHA,
+                "dirty": False,
+            },
         }
         replacements = {
             "Fixture": "Bench",
@@ -50,6 +59,22 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         for section in ("camera", "recording", "samples", "device", "host", "build", "measurement_setup", "gate_artifacts"):
             if section in manifest:
                 manifest[section] = scrub(manifest[section])
+        device = manifest.get("device")
+        if isinstance(device, dict):
+            device.update({"sdk": 36, "build_fingerprint": "nubia/pacific/pacific:16/test-keys"})
+        build = manifest.get("build")
+        if isinstance(build, dict):
+            build.update(
+                {
+                    "repository_revision": TEST_COMMIT_SHA,
+                    "source_tree": TEST_TREE_SHA,
+                    "source_dirty": False,
+                    "host_artifact_sha256": TEST_HOST_SHA256,
+                    "host_artifact_provenance": "codesign and sha256 retained in commands.txt",
+                    "client_artifact_sha256": TEST_CLIENT_SHA256,
+                    "client_artifact_provenance": "APK sha256 retained in commands.txt",
+                }
+            )
 
     def update_recording_metadata(self, root: Path, manifest: dict[str, object]) -> None:
         recording = manifest["recording"]
@@ -174,10 +199,16 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                 "description": "Public Internet route and active stream proof.",
             }
         }
-        self.replace_samples(root, manifest, "latency_ms\n90\n100\n110\n120\n130\n")
+        self.replace_samples(
+            root,
+            manifest,
+            "start_frame,end_frame,camera_fps\n"
+            "10,30,240\n110,135,240\n210,238,240\n"
+            "310,341,240\n410,444,240\n",
+        )
         samples = manifest["samples"]
         assert isinstance(samples, dict)
-        samples["annotation_method"] = "direct-latency-ms"
+        samples["annotation_method"] = "manual-frame-count"
         return manifest
 
     def test_committed_external_camera_fixture_is_insufficient(self) -> None:
@@ -258,6 +289,64 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertTrue(report["gate"]["can_close_performance_gate"])
         self.assertEqual(report["gate"]["sample_count"], 5)
         self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_real_capture_requires_complete_device_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            device = manifest["device"]
+            assert isinstance(device, dict)
+            del device["build_fingerprint"]
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn("manifest.device.build_fingerprint is required", report["gate"]["reasons"])
+        self.assertIn("device.build_fingerprint is required", report["gate"]["reasons"])
+
+    def test_real_capture_requires_clean_current_base_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            provenance = manifest["evidence_provenance"]
+            build = manifest["build"]
+            assert isinstance(provenance, dict)
+            assert isinstance(build, dict)
+            provenance["current_base"]["dirty"] = True
+            build["source_dirty"] = True
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn("evidence_provenance.current_base.dirty must be false", report["gate"]["reasons"])
+        self.assertIn("build.source_dirty must be false", report["gate"]["reasons"])
+
+    def test_real_capture_requires_artifact_digests_and_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            build = manifest["build"]
+            assert isinstance(build, dict)
+            del build["host_artifact_sha256"]
+            del build["client_artifact_provenance"]
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn("manifest.build.host_artifact_sha256 is required", report["gate"]["reasons"])
+        self.assertIn("manifest.build.client_artifact_provenance is required", report["gate"]["reasons"])
 
     def test_internet_latency_package_requires_public_route_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -468,6 +557,31 @@ class LatencyEvidenceReportTest(unittest.TestCase):
 
         self.assertEqual(report["verdict"], "insufficient")
         self.assertTrue(any("manifest.transport must be usb" in reason for reason in report["gate"]["reasons"]))
+
+    def test_external_camera_rejects_direct_latency_ms_annotation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            samples = manifest["samples"]
+            assert isinstance(samples, dict)
+            samples["annotation_method"] = "direct-latency-ms"
+            self.replace_samples(root, manifest, "latency_ms\n10\n11\n12\n13\n14\n")
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "external-camera measurement_method requires samples.annotation_method manual-frame-count",
+            report["gate"]["reasons"],
+        )
+        self.assertIn(
+            "manifest.samples.annotation_method must be manual-frame-count",
+            report["gate"]["reasons"],
+        )
 
     def test_modified_raw_camera_artifact_is_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -945,6 +1059,30 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             )
         )
 
+    def test_external_camera_sample_frames_must_be_monotonic(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            self.replace_samples(
+                root,
+                manifest,
+                "start_frame,end_frame,camera_fps\n"
+                "100,110,240\n105,115,240\n200,209,240\n"
+                "300,309,240\n400,409,240\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "sample 2: start_frame must not precede the previous sample end_frame",
+            report["gate"]["reasons"],
+        )
+
     def test_annotation_method_must_match_sample_shape(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1359,6 +1497,24 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_synchronized_clock_rejects_zero_uncertainty_for_software_touch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            manifest["synchronization"]["input_timestamp_uncertainty_ms"] = 0.0
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronization.input_timestamp_uncertainty_ms must include non-zero physical touch acquisition uncertainty when using Android MotionEvent timestamps",
+            report["gate"]["reasons"],
+        )
+
     def test_synchronized_clock_allows_budget_just_below_5ms(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1415,8 +1571,8 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     manifest = self.copy_synchronized_clock_package(root)
-                    manifest["synchronization"]["total_error_budget_ms"] = 3.0
-                    manifest["synchronization"][field] = 3.1
+                    manifest["synchronization"]["total_error_budget_ms"] = 4.0
+                    manifest["synchronization"][field] = 4.1
                     self.write_manifest(root, manifest)
 
                     report = build_latency_evidence_report(

@@ -71,6 +71,7 @@ SYNCHRONIZED_CLOCK_ARTIFACT_REQUIREMENT = (
 )
 
 SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
+COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 ANNOTATION_MANUAL_FRAME_COUNT = "manual-frame-count"
 ANNOTATION_DIRECT_LATENCY_MS = "direct-latency-ms"
 ANNOTATION_METHODS = (
@@ -102,9 +103,18 @@ REQUIRED_TEXT_FIELDS = {
         "result_timestamp_method",
     ),
     "samples": ("file", "format", "sha256", "annotation_method", "annotator"),
-    "device": ("manufacturer", "model", "codename", "os_version"),
+    "device": ("manufacturer", "model", "codename", "os_version", "build_fingerprint"),
     "host": ("model", "macos_version"),
-    "build": ("repository_revision", "host_artifact", "client_artifact"),
+    "build": (
+        "repository_revision",
+        "source_tree",
+        "host_artifact",
+        "host_artifact_sha256",
+        "host_artifact_provenance",
+        "client_artifact",
+        "client_artifact_sha256",
+        "client_artifact_provenance",
+    ),
     "measurement_setup": (
         "stimulus",
         "start_event_definition",
@@ -517,6 +527,32 @@ def _validate_evidence_provenance(manifest_path: Path, manifest: dict[str, Any])
         errors.append(
             "latency manifests under tools/fixtures/latency cannot close external latency gates"
         )
+
+    current_base = provenance.get("current_base")
+    if not isinstance(current_base, dict):
+        errors.append(
+            "evidence_provenance.current_base must record the current-base source revision, tree, and dirty state"
+        )
+    else:
+        revision = current_base.get("repository_revision")
+        if not isinstance(revision, str) or COMMIT_SHA_PATTERN.fullmatch(revision) is None:
+            errors.append(
+                "evidence_provenance.current_base.repository_revision must be a 40-character commit SHA"
+            )
+        source_tree = current_base.get("source_tree")
+        if not isinstance(source_tree, str) or COMMIT_SHA_PATTERN.fullmatch(source_tree) is None:
+            errors.append("evidence_provenance.current_base.source_tree must be a 40-character tree SHA")
+        if current_base.get("dirty") is not False:
+            errors.append("evidence_provenance.current_base.dirty must be false")
+        build = manifest.get("build") if isinstance(manifest.get("build"), dict) else {}
+        build_revision = build.get("repository_revision")
+        build_tree = build.get("source_tree")
+        if isinstance(revision, str) and isinstance(build_revision, str) and revision.lower() != build_revision.lower():
+            errors.append(
+                "evidence_provenance.current_base.repository_revision must match build.repository_revision"
+            )
+        if isinstance(source_tree, str) and isinstance(build_tree, str) and source_tree.lower() != build_tree.lower():
+            errors.append("evidence_provenance.current_base.source_tree must match build.source_tree")
     return errors
 
 
@@ -695,10 +731,31 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
         errors.append(
             "samples.annotation_method must be manual-frame-count or direct-latency-ms"
         )
+    elif is_external_camera and samples.get("annotation_method") != ANNOTATION_MANUAL_FRAME_COUNT:
+        errors.append(
+            "external-camera measurement_method requires samples.annotation_method manual-frame-count"
+        )
     elif is_synchronized_clock and samples.get("annotation_method") != ANNOTATION_DIRECT_LATENCY_MS:
         errors.append(
             "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms"
         )
+
+    device = manifest.get("device") if isinstance(manifest.get("device"), dict) else {}
+    _declared_integer(device.get("sdk"), "device.sdk", errors, minimum=1)
+
+    build = manifest.get("build") if isinstance(manifest.get("build"), dict) else {}
+    revision = build.get("repository_revision")
+    if not isinstance(revision, str) or COMMIT_SHA_PATTERN.fullmatch(revision) is None:
+        errors.append("build.repository_revision must be a 40-character commit SHA")
+    source_tree = build.get("source_tree")
+    if not isinstance(source_tree, str) or COMMIT_SHA_PATTERN.fullmatch(source_tree) is None:
+        errors.append("build.source_tree must be a 40-character tree SHA")
+    if build.get("source_dirty") is not False:
+        errors.append("build.source_dirty must be false")
+    for field in ("host_artifact_sha256", "client_artifact_sha256"):
+        digest = build.get(field)
+        if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
+            errors.append(f"build.{field} must be a 64-character hexadecimal SHA-256 digest")
 
     setup = manifest.get("measurement_setup") if isinstance(manifest.get("measurement_setup"), dict) else {}
     if is_external_camera:
@@ -757,6 +814,11 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
                         "synchronization error-budget components must sum to less than or equal to "
                         "synchronization.total_error_budget_ms"
                     )
+        input_method = str(sync.get("input_timestamp_method") or "").lower()
+        if "motionevent" in input_method and sync.get("input_timestamp_uncertainty_ms") == 0:
+            errors.append(
+                "synchronization.input_timestamp_uncertainty_ms must include non-zero physical touch acquisition uncertainty when using Android MotionEvent timestamps"
+            )
 
     return errors
 
@@ -987,6 +1049,7 @@ def _validate_sample_annotations(
         declared_frame_count = float(recording.get("frame_count"))
     except (TypeError, ValueError):
         declared_frame_count = math.nan
+    previous_end_frame = -math.inf
 
     for index, row in enumerate(rows, start=1):
         has_latency = row.get("latency_ms") not in (None, "")
@@ -1017,6 +1080,11 @@ def _validate_sample_annotations(
                 )
             if start_frame < 0 or end_frame < 0:
                 errors.append(f"sample {index}: frame indexes must not be negative")
+            if index > 1 and start_frame < previous_end_frame:
+                errors.append(
+                    f"sample {index}: start_frame must not precede the previous sample end_frame"
+                )
+            previous_end_frame = end_frame
         elif annotation_method == ANNOTATION_DIRECT_LATENCY_MS:
             if not has_latency or present_frame_fields:
                 errors.append(f"sample {index}: direct-latency-ms requires only latency_ms")
