@@ -1,0 +1,153 @@
+# current-rerun Android build/install/no-Host launch supplement
+date_utc=2026-09-04T14:04:23Z
+head=e4d7861b8af3ffa8d32fff99b022e92193acc071
+origin_main=e4d7861b8af3ffa8d32fff99b022e92193acc071
+device=nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
+
+$ ./gradlew --no-daemon assembleDebug
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.6/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:generateReleaseDependencyLicenses UP-TO-DATE
+> Task :app:generateReleaseSbom UP-TO-DATE
+> Task :app:syncOpenSourceNotices UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :transport:checkKotlinGradlePluginConfigurationErrors
+> Task :transport:compileKotlin UP-TO-DATE
+> Task :transport:compileJava NO-SOURCE
+> Task :transport:processResources NO-SOURCE
+> Task :transport:classes UP-TO-DATE
+> Task :transport:jar UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:dataBindingGenBaseClassesDebug UP-TO-DATE
+> Task :app:extractDebugProto UP-TO-DATE
+> Task :app:extractIncludeDebugProto UP-TO-DATE
+> Task :app:extractProto UP-TO-DATE
+> Task :app:generateDebugProto UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:mergeDebugStartupProfile UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:dexBuilderDebug UP-TO-DATE
+> Task :app:mergeProjectDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:packageDebug UP-TO-DATE
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug UP-TO-DATE
+
+BUILD SUCCESSFUL in 7s
+49 actionable tasks: 2 executed, 47 up-to-date
+[assembleDebug exit 0]
+
+$ adb -s <redacted-adb-serial> install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+Performing Streamed Install
+Success
+[install exit 0]
+
+$ adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+
+[reverse-list exit 0]
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN
+[lsof exit ignored after capturing absence/presence]
+
+$ ps ax -o pid=,comm=,args= | rg -i 'Vibe Screen|MacHost|Telemachus'
+[process probe exit ignored after capturing absence/presence]
+
+$ adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+[force-stop exit 0]
+
+$ adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect false
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+[start exit 0]
+
+$ adb -s <redacted-adb-serial> shell dumpsys window | rg mCurrentFocus/mFocusedApp
+99:      Window #4: WindowStateAnimator{4e1aa7d dev.telemachus.display/dev.telemachus.display.MainActivity}
+683:    numWindow=1 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=dev.telemachus.display
+690:  deepestLastOrientationSource=ActivityRecord{44006139 u0 dev.telemachus.display/.MainActivity t1035}
+694:  mCurrentFocus=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+695:  mFocusedApp=ActivityRecord{44006139 u0 dev.telemachus.display/.MainActivity t1035}
+788:      mPreferredTopFocusableRootTask=Task{e820718 #1035 type=standard A=10333:dev.telemachus.display}
+789:      mLastFocusedRootTask=Task{e820718 #1035 type=standard A=10333:dev.telemachus.display}
+791:      * Task{e820718 #1035 type=standard A=10333:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+793:        * ActivityRecord{44006139 u0 dev.telemachus.display/.MainActivity t1035}
+839:    mFocusedWindow=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+840:    mTopFullscreenOpaqueWindowState=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+841:    mSystemBarColorApps={ActivityRecord{44006139 u0 dev.telemachus.display/.MainActivity t1035}}
+842:    mNavBarColorWindowCandidate=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+843:    mNavBarBackgroundWindowCandidate=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+848:      Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+891:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_LANDSCAPE
+897:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_LANDSCAPE
+900:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_FULL_USER
+903:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_LANDSCAPE
+906:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_FULL_USER
+909:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_LANDSCAPE
+912:        source=ActivityRecord{117564810 u0 dev.telemachus.display/.MainActivity t975} SCREEN_ORIENTATION_FULL_USER
+948:      Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+971:        mControlTarget=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+980:        mControlTarget=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+988:        mPendingControlTarget=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+1017:        mControlTarget=Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+1231:  ActivityRecord{44006139 u0 dev.telemachus.display/.MainActivity t1035}
+11086:  Window #552 Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+11088:    mOwnerUid=10333 showForAllUsers=false package=dev.telemachus.display appop=NONE
+11100:    WindowStateAnimator{4e1aa7d dev.telemachus.display/dev.telemachus.display.MainActivity}:
+11187:  imeLayeringTarget in display# 0 Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+11188:  imeInputTarget in display# 0 Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+11189:  imeControlTarget in display# 0 Window{8ffa376 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+11208:    3 visible windows: [[Gesture Monitor] edge-swipe, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,70,2716)(1194,0,1264,2716)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, [Gesture Monitor] swipe-up, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1,1)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, 8ffa376 dev.telemachus.display/dev.telemachus.display.MainActivity, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1264,2800)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=android.os.BinderProxy@8a67611, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=true]
+11212:  Display #0: [[Gesture Monitor] edge-swipe, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,70,2716)(1194,0,1264,2716)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, [Gesture Monitor] swipe-up, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1,1)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=null, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=false, 8ffa376 dev.telemachus.display/dev.telemachus.display.MainActivity, frame=[Rect(0, 0 - 1264, 2800)], touchableRegion=SkRegion((0,0,1264,2800)), scaleFactor=1.0, transform=Matrix{[1.0, 0.0, -0.0][0.0, 1.0, -0.0][0.0, 0.0, 1.0]}, windowToken=android.os.BinderProxy@8a67611, displayId=0, isClone=false, contentSize=2800x1264, alpha=1.0, canOccludePresentation=true]
+
+$ adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-current-rerun-disconnected.xml
+UI hierchary dumped to: /sdcard/vibescreen-current-rerun-disconnected.xml
+$ adb -s <redacted-adb-serial> pull /sdcard/vibescreen-current-rerun-disconnected.xml docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/ui-dumps/ui-hierarchy-11-current-rerun-disconnected.xml
+/sdcard/vibescreen-current-rerun-disconnected.xml: 1 file pulled, 0 skipped. 2.3 MB/s (13434 bytes in 0.006s)
+$ adb -s <redacted-adb-serial> shell screencap -p /sdcard/vibescreen-current-rerun-disconnected.png
+$ adb -s <redacted-adb-serial> pull /sdcard/vibescreen-current-rerun-disconnected.png docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/screenshots/screen-11-current-rerun-disconnected.png
+/sdcard/vibescreen-current-rerun-disconnected.png: 1 file pulled, 0 skipped. 24.8 MB/s (190859 bytes in 0.007s)
+
+$ adb -s <redacted-adb-serial> shell input tap 632 1994
+$ adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-current-rerun-settings.xml
+UI hierchary dumped to: /sdcard/vibescreen-current-rerun-settings.xml
+$ adb -s <redacted-adb-serial> pull /sdcard/vibescreen-current-rerun-settings.xml docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/ui-dumps/ui-hierarchy-12-current-rerun-settings.xml
+/sdcard/vibescreen-current-rerun-settings.xml: 1 file pulled, 0 skipped. 0.5 MB/s (11192 bytes in 0.023s)
+$ adb -s <redacted-adb-serial> shell screencap -p /sdcard/vibescreen-current-rerun-settings.png
+$ adb -s <redacted-adb-serial> pull /sdcard/vibescreen-current-rerun-settings.png docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/screenshots/screen-12-current-rerun-settings.png
+/sdcard/vibescreen-current-rerun-settings.png: 1 file pulled, 0 skipped. 20.4 MB/s (270407 bytes in 0.013s)
+
+$ adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+

@@ -1,0 +1,16 @@
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
+Captured: 2026-09-04T13:55:43Z
+
+ro.product.manufacturer=nubia
+ro.product.model=P0110
+ro.product.device=pacific
+ro.product.name=pacific
+ro.build.version.release=16
+ro.build.version.sdk=36
+ro.build.fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+ro.build.version.incremental=20260306.003030
+ro.hardware=qcom
+ro.boot.hardware=qcom
+
+Physical size: 1264x2800
+Physical density: 560

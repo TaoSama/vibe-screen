@@ -359,3 +359,26 @@ the missing stable-signed/TCC-ready Host and missing TCP `54321` listener, the
 trusted-LAN preflight is blocked by missing device Wi-Fi/route plus Host
 signing, and no bidirectional `product-e2e.json` record exists. The P0110
 evidence must not be relabeled as Xiaomi 13/fuxi evidence.
+
+## 2026-09-04 Nubia P0110 no-Host UI/UX smoke current-base
+
+Evidence:
+[`../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/`](../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/README.md).
+
+Status remains open. This run starts from current origin/main at
+e4d7861b8af3ffa8d32fff99b022e92193acc071, records the connected device as
+nubia P0110 / pacific / Android 16 / SDK 36, and keeps the Android client in a
+no-Host state: no product tcp:54321 ADB reverse is present and the retained
+local TCP 54321 listener probes are empty.
+
+The disconnected connection-page XML and screenshots show no active clipboard
+action, no file-transfer action, no cancel-transfer action, and no Mac content
+available affordance before a compatible Host session negotiates capabilities.
+The retained settings-page XML shows the Clipboard & files section reporting
+Waiting for a compatible Mac session and explaining that clipboard/file controls
+appear only after Protocol v1 negotiates those capabilities with the Mac.
+
+This is positive fail-closed UI evidence only. It does not exercise Android
+ClipboardManager, macOS NSPasteboard, Protocol v1 clipboard packets, receiver
+approval, digest validation, USB/LAN product transport, or any Host/TCC path.
+The Android/macOS clipboard E2E gate remains open.
