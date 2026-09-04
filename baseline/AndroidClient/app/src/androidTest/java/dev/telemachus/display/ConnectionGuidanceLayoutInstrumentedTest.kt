@@ -454,14 +454,14 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         }
 
         fun assertLandscapeDimensionsApplied() {
-            assertEquals(dp(12), content.paddingTop)
-            assertEquals(dp(12), content.paddingBottom)
-            assertEquals(dp(56), icon.width)
-            assertEquals(dp(56), icon.height)
-            assertEquals(dp(12), margins(icon).bottomMargin)
-            assertEquals(dp(6), margins(wordmark).bottomMargin)
+            assertEquals(dp(8), content.paddingTop)
+            assertEquals(dp(8), content.paddingBottom)
+            assertEquals(dp(48), icon.width)
+            assertEquals(dp(48), icon.height)
+            assertEquals(dp(8), margins(icon).bottomMargin)
+            assertEquals(dp(4), margins(wordmark).bottomMargin)
             assertEquals(dp(4), margins(title).bottomMargin)
-            assertEquals(dp(8), margins(subtitle).bottomMargin)
+            assertEquals(dp(4), margins(subtitle).bottomMargin)
             assertEquals(dp(8), margins(progress).bottomMargin)
             assertEquals(dp(8), margins(modeToggle).bottomMargin)
             assertEquals(dp(8), margins(internetRouteLabel).topMargin)

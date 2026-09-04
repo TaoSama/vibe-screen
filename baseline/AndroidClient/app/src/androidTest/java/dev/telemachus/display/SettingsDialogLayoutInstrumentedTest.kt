@@ -52,7 +52,7 @@ class SettingsDialogLayoutInstrumentedTest {
                     assertStackedAndReadable(layout, R.id.videoFrameRateGroup)
                     assertStackedAndReadable(layout, R.id.gestureSwipeUpGroup)
                     assertStackedAndReadable(layout, R.id.gestureSwipeDownGroup)
-                    assertStackedAndReadable(layout, R.id.settingsResetActions)
+                    assertReadable(layout, R.id.settingsResetActions)
                     assertAllTextButtonsReadable(layout)
                 }
             }

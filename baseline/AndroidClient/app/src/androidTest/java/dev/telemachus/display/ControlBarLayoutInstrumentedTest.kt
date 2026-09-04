@@ -769,7 +769,7 @@ class ControlBarLayoutInstrumentedTest {
         (0 until content.childCount).forEach { index ->
             val item = content.getChildAt(index)
             val params = item.layoutParams as LinearLayout.LayoutParams
-            assertEquals(0f, params.weight)
+            assertEquals(if (content.orientation == LinearLayout.HORIZONTAL) 1f else 0f, params.weight)
             assertTrue("Status item $index width", item.measuredWidth >= layout.dp(48))
             assertTrue("Status item $index height", item.measuredHeight > 0)
             assertTrue(

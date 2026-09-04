@@ -1,0 +1,44 @@
+# no-Host UI/UX current-source assertions
+generated_at=2026-09-05T04:30:00+08:00
+
+## device identity
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
+Source: metadata/device-identity.txt
+
+manufacturer=nubia
+model=P0110
+device=pacific
+release=16
+sdk=36
+wm_size=Physical size: 1264x2800
+wm_density=Physical density: 560
+
+## no-Host / no product reverse boundary
+logs/adb-reverse-before.txt: PASS - only UsbFfs tcp:8908 tcp:8908
+logs/no-host-boundary.txt: PASS - local TCP 54321 probe empty; ADB reverse lacks tcp:54321
+
+## build and test gates
+logs/assemble-debug.txt: PASS - BUILD SUCCESSFUL
+logs/lint-debug.txt: PASS - BUILD SUCCESSFUL
+logs/focused-unit-tests.txt: PASS - BUILD SUCCESSFUL
+logs/focused-instrumentation-tests.txt: PASS - P0110 35/35 tests, 0 skipped, 0 failed
+
+## primary UI evidence
+ui-dumps/ui-01-disconnected.xml: PASS - contains Waiting for your Mac, CONNECT, DISPLAY SETTINGS
+ui-dumps/ui-03-usb-retry-error.xml: PASS - contains USB route unavailable and Mac server · Not ready
+ui-dumps/ui-12-settings-after-fix.xml: PASS - contains Clipboard &amp; files, Waiting for a compatible Mac session, Clipboard and file controls require Protocol v1.
+ui-dumps/ui-08-lan.xml: PASS - contains Connect wirelessly and SCAN QR CODE
+ui-dumps/ui-09-internet.xml: PASS - contains Internet preview, DIRECT, TURN, CONNECT PREVIEW
+ui-dumps/ui-10-landscape-fontscale-1_3.xml: PASS - landscape font_scale=1.3 disconnected page retained
+
+## disconnected transfer-control boundary
+ui-dumps/ui-01-disconnected.xml: PASS - no visible Clipboard, File transfer, Cancel file transfer, or Mac content available control
+ui-dumps/ui-03-usb-retry-error.xml: PASS - no visible Clipboard, File transfer, Cancel file transfer, or Mac content available control
+ui-dumps/ui-08-lan.xml: PASS - no visible Clipboard, File transfer, Cancel file transfer, or Mac content available control
+ui-dumps/ui-09-internet.xml: PASS - no visible Clipboard, File transfer, Cancel file transfer, or Mac content available control
+
+## privacy boundary
+Retained source evidence excludes unrelated system-home/private-app navigation captures and passes the privacy manifest in privacy-scan.json.
+
+## non-proof boundary
+This evidence is no-Host Android UI/UX smoke only. It does not prove Host-backed transport, Protocol v1 negotiation, stream decode, input injection, bidirectional clipboard, bidirectional file transfer, Internet traversal, or Xiaomi 13/fuxi behavior.
