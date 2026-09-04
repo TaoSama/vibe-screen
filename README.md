@@ -1090,9 +1090,13 @@ increase it.
   and `DeniedHosts` wins over `AllowedHosts`. macOS and iOS read typed managed
   configuration at their platform defaults, and Android declares, parses, and
   snapshots Android Enterprise app restrictions into each production
-  `StreamClient` Protocol v1 session. This is source/unit/self-test evidence
-  only; real Apple MDM profile delivery, iOS managed App Configuration
-  injection, and Android Enterprise app-restrictions delivery remain open gates.
+  `StreamClient` Protocol v1 session. The Android no-host JVM coverage also
+  verifies host fail-closed restoration for malformed managed statuses,
+  local-and-remote UI deny-wins for custom gestures and Host actions, managed
+  WakeHost cleanup, and dynamic Internet audio denial. This is
+  source/unit/self-test evidence only; real Apple MDM profile delivery, iOS
+  managed App Configuration injection, and Android Enterprise
+  app-restrictions delivery remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,

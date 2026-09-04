@@ -28,6 +28,7 @@ import dev.telemachus.display.transport.StreamTransportCandidate
 import dev.telemachus.display.transport.StreamTransportCandidateRejection
 import dev.telemachus.display.transport.StreamTransportCandidateRejectedException
 import dev.telemachus.display.transport.StreamTransportOwner
+import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.FileAccept
@@ -2269,8 +2270,16 @@ class StreamClient(
             )
         }
 
-        override fun onManagedPolicyReceived(status: ManagedPolicyStatus) {
+        override fun onManagedPolicyReceived(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            status: ManagedPolicyStatus,
+        ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
             fileTransferProductOwner.applyManagedPolicy(status)
+            if (Capability.CAPABILITY_WAKE_HOST !in session.negotiated) {
+                wakeHostProductOwner.cancelPendingForPolicyDeny(session, connectionGeneration)
+            }
             onManagedPolicyReceived?.invoke(status)
         }
 

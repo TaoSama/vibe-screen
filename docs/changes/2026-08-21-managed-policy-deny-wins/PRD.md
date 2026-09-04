@@ -1,7 +1,7 @@
 # Managed policy deny-wins
 
-Status: offline implementation and verification complete; real Apple MDM or
-local managed-configuration injection remains blocked
+Status: offline implementation and verification complete; real Apple MDM, iOS
+managed App Configuration, and Android Enterprise delivery remain blocked
 Owner: Phase 5 managed configuration
 Started: 2026-08-21
 
@@ -17,6 +17,9 @@ restriction results that travel with ManagedPolicyStatus.
 
 - Read Apple managed configuration from com.apple.configuration.managed on
   macOS and iOS.
+- Read Android managed configuration from
+  RestrictionsManager.applicationRestrictions, the Android Enterprise app
+  restrictions surface exposed to the app process.
 - Parse the supported product keys: ClipboardAllowed, FileTransferAllowed,
   AudioAllowed, WakeAllowed, CustomGesturesAllowed, HostActionsAllowed,
   MaximumFileBytes, AllowedHosts, and DeniedHosts.
@@ -48,8 +51,9 @@ restriction results that travel with ManagedPolicyStatus.
 ## Non-goals
 
 - Do not claim real Apple MDM profile or managed App Configuration acceptance.
+- Do not claim real Android Enterprise app-restrictions delivery acceptance.
 - Do not close README Phase 5 managed-configuration gates without real profile
-  injection evidence.
+  or enterprise-policy delivery evidence.
 - Do not add a device acceptance claim; no Android or iOS device command is part
   of this change record.
 - Do not expose vendor-specific MDM payloads over the protocol.
@@ -63,6 +67,7 @@ restriction results that travel with ManagedPolicyStatus.
 3. A peer with CAPABILITY_MANAGED_CONFIGURATION must send complete and
    consistent restriction results before the client proceeds to ordinary feature
    requests.
-4. Local parse errors on Apple managed configuration produce fail-closed policy.
+4. Local parse errors on Apple or Android managed configuration produce
+   fail-closed policy.
 5. Documentation records the offline verification and blocked real-MDM evidence
    boundary.

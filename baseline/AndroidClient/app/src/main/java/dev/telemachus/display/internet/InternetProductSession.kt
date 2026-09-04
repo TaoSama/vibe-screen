@@ -1986,6 +1986,7 @@ class InternetProductSession internal constructor(
         status: ManagedPolicyStatus,
     ) {
         var validationFailure: Throwable? = null
+        var shouldStopAudio = false
         val notifyStatus =
             synchronized(lock) {
                 if (!acceptsTransportCallbackLocked(owner) || !acceptedSession) return
@@ -2005,7 +2006,12 @@ class InternetProductSession internal constructor(
                     return@synchronized null
                 }
                 remoteManagedClipboardAllowed = effective.clipboardAllowed
+                val hadAudioState =
+                    audioPlaybackConfigured &&
+                        currentAudioConfiguration != null &&
+                        Capability.CAPABILITY_AUDIO in expectedNegotiatedCapabilities
                 expectedNegotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
+                shouldStopAudio = hadAudioState && Capability.CAPABILITY_AUDIO !in expectedNegotiatedCapabilities
                 if (!remoteManagedClipboardAllowed) clipboard?.reset()
                 // Apply managed policy to file transfer
                 fileTransferProductOwner.applyManagedPolicy(status)
@@ -2023,6 +2029,9 @@ class InternetProductSession internal constructor(
                 validationFailure?.let { failIfOwned(owner, it) }
                 return
             }
+        if (shouldStopAudio) {
+            stopAudioPlayback("managed_policy_audio_denied")?.let { failIfOwned(owner, it) }
+        }
         withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && acceptedSession }) {
                 callbacks.onManagedPolicyReceived(notifyStatus)
@@ -2611,7 +2620,12 @@ class InternetProductSession internal constructor(
         synchronized(lock) {
             val configuration = currentAudioConfiguration
             AudioRecordRoute(
-                streamId = configuration?.streamId ?: currentVideoConfiguration?.streamId ?: 0,
+                streamId =
+                    when {
+                        !managedPolicyResolver.effectivePolicy.audioAllowed -> 0
+                        configuration != null -> configuration.streamId
+                        else -> currentVideoConfiguration?.streamId ?: 0
+                    },
                 productPlayback =
                     audioPlaybackConfigured &&
                         configuration != null &&
@@ -2726,6 +2740,7 @@ class InternetProductSession internal constructor(
                 when (capability) {
                     Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
                     Capability.CAPABILITY_FILE_TRANSFER -> policy.effectiveFileTransferAllowed
+                    Capability.CAPABILITY_AUDIO -> policy.audioAllowed
                     else -> true
                 }
             }

@@ -15,7 +15,7 @@ internal class StreamProtocolSideEffectOwner(
     private val maximumPendingFileOffers: Int = DEFAULT_MAXIMUM_PENDING_FILE_OFFERS,
 ) {
     private var activeOwner: ProtocolOwner? = null
-    private val pendingWakeHostRequests = LinkedHashMap<ByteString, ProtocolOwner>()
+    private val pendingWakeHostRequests = LinkedHashMap<ByteString, PendingWakeHostRequest>()
     private val pendingFileOffers = LinkedHashMap<ByteString, ProtocolOwner>()
 
     init {
@@ -26,6 +26,12 @@ internal class StreamProtocolSideEffectOwner(
     data class ProtocolOwner(
         val session: ProtocolV1Session,
         val connectionGeneration: Long,
+    )
+
+    data class PendingWakeHostRequest(
+        val requestId: ByteString,
+        val owner: ProtocolOwner,
+        val correlationId: Long,
     )
 
     @Synchronized
@@ -103,11 +109,16 @@ internal class StreamProtocolSideEffectOwner(
         requestId: ByteString,
         session: ProtocolV1Session,
         connectionGeneration: Long,
+        correlationId: Long = 0L,
     ): Boolean {
         if (!isCurrent(session, connectionGeneration)) return false
-        if (pendingWakeHostRequests.contains(requestId)) return false
+        if (pendingWakeHostRequests.containsKey(requestId)) return false
         if (pendingWakeHostRequests.size >= maximumPendingWakeHostRequests) return false
-        pendingWakeHostRequests[requestId] = ProtocolOwner(session, connectionGeneration)
+        pendingWakeHostRequests[requestId] = PendingWakeHostRequest(
+            requestId = requestId,
+            owner = ProtocolOwner(session, connectionGeneration),
+            correlationId = correlationId,
+        )
         return true
     }
 
@@ -117,10 +128,35 @@ internal class StreamProtocolSideEffectOwner(
         session: ProtocolV1Session,
         connectionGeneration: Long,
     ): Boolean {
-        val owner = pendingWakeHostRequests[requestId] ?: return false
+        val owner = pendingWakeHostRequests[requestId]?.owner ?: return false
         if (owner.session !== session || owner.connectionGeneration != connectionGeneration) return false
         pendingWakeHostRequests.remove(requestId)
         return true
+    }
+
+    @Synchronized
+    fun hasWakeHostRequest(
+        requestId: ByteString,
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): Boolean {
+        val owner = pendingWakeHostRequests[requestId]?.owner ?: return false
+        return owner.session === session && owner.connectionGeneration == connectionGeneration
+    }
+
+    @Synchronized
+    fun cancelWakeHostRequests(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+    ): List<PendingWakeHostRequest> {
+        val requests = pendingWakeHostRequests
+            .values
+            .filter { request ->
+                request.owner.session === session && request.owner.connectionGeneration == connectionGeneration
+            }
+            .toList()
+        requests.forEach { request -> pendingWakeHostRequests.remove(request.requestId) }
+        return requests
     }
 
     @Synchronized

@@ -100,6 +100,7 @@ internal sealed interface StreamOutboundCommand {
         val rejectionReason: String,
         val correlationId: Long,
         val requiresTrackedReservation: Boolean = true,
+        val allowAfterWakeCapabilityRemoval: Boolean = false,
     ) : StreamOutboundCommand {
         private val claimed = AtomicBoolean(false)
 

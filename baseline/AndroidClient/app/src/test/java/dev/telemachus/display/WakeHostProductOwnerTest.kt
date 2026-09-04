@@ -310,6 +310,49 @@ class WakeHostProductOwnerTest {
     }
 
     @Test
+    fun `managed policy deny completes queued inbound request and suppresses stale executor work`() {
+        val session = wakeHostStreamingSession(managedConfiguration = true)
+        val sentPackets = mutableListOf<ByteArray>()
+        val queued = mutableListOf<Runnable>()
+        val harness = OwnerHarness(
+            session = session,
+            executor = Executor { queued += it },
+            packetSender = WakeHostPacketSender { sentPackets += it },
+        )
+        val requestId = ByteString.copyFromUtf8("policy-denied")
+        val generation = harness.connectionGeneration
+
+        harness.owner.dispatchRequest(session, generation, request(requestId), correlationId = 17L)
+        assertEquals(1, queued.size)
+
+        removeWakeCapabilityByManagedPolicy(session)
+        harness.owner.cancelPendingForPolicyDeny(session, generation)
+
+        val denial = harness.singleCompletion()
+        assertFalse(denial.requiresTrackedReservation)
+        assertTrue(denial.allowAfterWakeCapabilityRemoval)
+        assertEquals(requestId, denial.requestId)
+        assertFalse(denial.accepted)
+        assertEquals("managed_policy_denied", denial.rejectionReason)
+        assertEquals(17L, denial.correlationId)
+
+        val envelope = checkNotNull(harness.owner.complete(denial))
+        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, envelope.payloadCase)
+        assertEquals(requestId, envelope.wakeHostResult.requestId)
+        assertFalse(envelope.wakeHostResult.accepted)
+        assertEquals("managed_policy_denied", envelope.wakeHostResult.rejectionReason)
+        assertEquals(17L, envelope.correlationId)
+        assertNull(harness.owner.complete(denial))
+
+        harness.submissions.clear()
+        queued.single().run()
+
+        assertTrue(sentPackets.isEmpty())
+        assertTrue(harness.submissions.isEmpty())
+        assertTrue(harness.sessionOwner.trackWakeHostRequest(ByteString.copyFromUtf8("next"), session, generation))
+    }
+
+    @Test
     fun `stale capacity rejection completion is dropped even without reservation`() {
         val session = wakeHostStreamingSession()
         val queued = mutableListOf<Runnable>()
@@ -507,7 +550,7 @@ class WakeHostProductOwnerTest {
             correlationId = 7L,
         )
 
-    private fun wakeHostStreamingSession(): ProtocolV1Session =
+    private fun wakeHostStreamingSession(managedConfiguration: Boolean = false): ProtocolV1Session =
         ProtocolV1Session(
             deviceId = "android-test",
             deviceName = "Test Android",
@@ -517,12 +560,20 @@ class WakeHostProductOwnerTest {
             nowNs = { 1_000L },
         ).also { session ->
             session.clientHello()
-            session.receive(hostHello(2))
-            session.receive(sessionAccepted(3))
-            session.receive(displayList(4))
-            session.receive(startDisplay(5))
+            session.receive(hostHello(2, managedConfiguration))
+            session.receive(sessionAccepted(3, managedConfiguration))
+            var nextMessageId = 4L
+            if (managedConfiguration) {
+                session.receive(
+                    base(nextMessageId++)
+                        .setManagedPolicyStatus(managedWakeHostAllowedStatus())
+                        .build(),
+                )
+            }
+            session.receive(displayList(nextMessageId++))
+            session.receive(startDisplay(nextMessageId++))
             val requested =
-                session.receive(videoConfig(6))
+                session.receive(videoConfig(nextMessageId))
                     .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationRequested>()
                     .single()
             session.completeVideoConfiguration(
@@ -533,7 +584,20 @@ class WakeHostProductOwnerTest {
             )
         }
 
-    private fun hostHello(id: Long): Envelope =
+    private fun removeWakeCapabilityByManagedPolicy(session: ProtocolV1Session) {
+        session.receive(base(99).setManagedPolicyStatus(managedWakeHostAllowedStatus(wakeAllowed = false)).build())
+    }
+
+    private fun managedWakeHostAllowedStatus(wakeAllowed: Boolean = true) =
+        ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+            isManaged = true,
+            wakeAllowed = wakeAllowed,
+        ).toStatus()
+
+    private fun hostHello(
+        id: Long,
+        managedConfiguration: Boolean = false,
+    ): Envelope =
         Envelope.newBuilder()
             .setProtocolVersion(1)
             .setMessageId(id)
@@ -541,11 +605,14 @@ class WakeHostProductOwnerTest {
                 HostHello.newBuilder()
                     .setSelectedProtocol(1)
                     .setHostId("mac-host")
-                    .addAllCapabilities(WAKE_HOST_CAPABILITIES)
+                    .addAllCapabilities(wakeHostCapabilities(managedConfiguration))
                     .addAllCodecs(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264)),
             ).build()
 
-    private fun sessionAccepted(id: Long): Envelope =
+    private fun sessionAccepted(
+        id: Long,
+        managedConfiguration: Boolean = false,
+    ): Envelope =
         Envelope.newBuilder()
             .setProtocolVersion(1)
             .setMessageId(id)
@@ -554,7 +621,7 @@ class WakeHostProductOwnerTest {
                     .setSessionId(ByteString.copyFromUtf8("session"))
                     .setSessionEpoch(7)
                     .setHeartbeatIntervalMs(1_000)
-                    .addAllNegotiatedCapabilities(WAKE_HOST_CAPABILITIES),
+                    .addAllNegotiatedCapabilities(wakeHostCapabilities(managedConfiguration)),
             ).build()
 
     private fun displayList(id: Long): Envelope =
@@ -601,5 +668,12 @@ class WakeHostProductOwnerTest {
         val SECURE_ON_PASSWORD: ByteString = ByteString.copyFrom(byteArrayOf(6, 5, 4, 3, 2, 1))
         val WAKE_HOST_CAPABILITIES: List<Capability> =
             listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST)
+
+        fun wakeHostCapabilities(managedConfiguration: Boolean): List<Capability> =
+            if (managedConfiguration) {
+                WAKE_HOST_CAPABILITIES + Capability.CAPABILITY_MANAGED_CONFIGURATION
+            } else {
+                WAKE_HOST_CAPABILITIES
+            }
     }
 }

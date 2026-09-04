@@ -139,6 +139,35 @@ class StreamProtocolSideEffectOwnerTest {
     }
 
     @Test
+    fun `cancelling wake requests releases only matching session and generation`() {
+        val currentSession = session()
+        val otherSession = session()
+        val owner = StreamProtocolSideEffectOwner(
+            isConnected = { true },
+            acceptsConnectionGeneration = { it == 1L },
+            maximumPendingWakeHostRequests = 3,
+        )
+        val firstRequest = ByteString.copyFromUtf8("first")
+        val secondRequest = ByteString.copyFromUtf8("second")
+
+        owner.activate(currentSession, 1L)
+        assertTrue(owner.trackWakeHostRequest(firstRequest, currentSession, 1L, correlationId = 10L))
+        assertTrue(owner.trackWakeHostRequest(secondRequest, currentSession, 1L, correlationId = 20L))
+
+        assertTrue(owner.cancelWakeHostRequests(otherSession, 1L).isEmpty())
+        assertTrue(owner.cancelWakeHostRequests(currentSession, 2L).isEmpty())
+        assertTrue(owner.hasWakeHostRequest(firstRequest, currentSession, 1L))
+        assertTrue(owner.hasWakeHostRequest(secondRequest, currentSession, 1L))
+
+        val cancelled = owner.cancelWakeHostRequests(currentSession, 1L)
+
+        assertEquals(listOf(firstRequest, secondRequest), cancelled.map { it.requestId })
+        assertEquals(listOf(10L, 20L), cancelled.map { it.correlationId })
+        assertFalse(owner.hasWakeHostRequest(firstRequest, currentSession, 1L))
+        assertFalse(owner.hasWakeHostRequest(secondRequest, currentSession, 1L))
+    }
+
+    @Test
     fun `file offer decisions are claimed only by current protocol owner`() {
         val session = session()
         var connected = true

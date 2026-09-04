@@ -645,6 +645,25 @@ class InternetManagedPolicyTest {
     }
 
     @Test
+    fun managedStatusWithUnsetFieldsRestoresHostFailClosed() {
+        val policy = InternetManagedPolicy.fromStatus(
+            ManagedPolicyStatus.newBuilder().setManaged(true).build(),
+        )
+
+        assertTrue(policy.isManaged)
+        assertFalse(policy.clipboardAllowed)
+        assertFalse(policy.effectiveFileTransferAllowed)
+        assertFalse(policy.audioAllowed)
+        assertFalse(policy.wakeAllowed)
+        assertFalse(policy.customGesturesAllowed)
+        assertFalse(policy.hostActionsAllowed)
+        assertEquals(0L, policy.maximumFileBytes)
+        assertTrue(policy.allowedHosts.isEmpty())
+        assertTrue(policy.allowedHostsRestricted)
+        assertFalse(policy.allowsHost("any-host"))
+    }
+
+    @Test
     fun hasCompleteRestrictionResultsRejectsIncompleteResults() {
         val status = InternetManagedPolicy.UNMANAGED.copy(
             isManaged = true,

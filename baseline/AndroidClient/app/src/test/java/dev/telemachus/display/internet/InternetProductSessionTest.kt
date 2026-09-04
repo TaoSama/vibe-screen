@@ -2155,6 +2155,41 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun managedPolicyAudioDenyStopsPlaybackAndRemovesCapability() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val playback = ProductFakeAudioPlayback()
+        val session = session(peer, monitor, callbacks, codec = audioCodec, audioPlayback = playback)
+        activateWithVideo(session, peer, monitor, audio = true, managedConfiguration = true)
+        val config = audioConfig()
+        peer.receive(controlEnvelope(4).setAudioConfig(config).build())
+        val packet = audioPacket(config)
+        peer.audio(packet)
+        assertEquals(1, playback.submitted.size)
+
+        peer.receive(
+            controlEnvelope(5)
+                .setManagedPolicyStatus(managedPolicyStatus(audioAllowed = false))
+                .build(),
+        )
+        assertEquals(listOf("managed_policy_audio_denied"), playback.stops)
+
+        peer.audio(packet)
+
+        assertEquals(1, playback.submitted.size)
+        assertTrue(callbacks.audio.isEmpty())
+
+        peer.receive(controlEnvelope(6).setAudioConfig(audioConfig(configEpoch = 2)).build())
+
+        assertEquals(listOf("managed_policy_audio_denied", "session_failure"), playback.stops)
+        assertEquals(1, playback.submitted.size)
+        assertTrue(callbacks.audio.isEmpty())
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals("Audio configuration arrived without a negotiated audio session", callbacks.failures.single().message)
+    }
+
+    @Test
     fun audioConfigurationWithoutNegotiatedAudioFailsClosed() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
@@ -2327,6 +2362,21 @@ class InternetProductSessionTest {
 
         assertArrayEquals(byteArrayOf(0x02), callbacks.audio.single())
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
+    fun audioRecordWithoutNegotiatedAudioUsesRawCallbackOnlyAfterVideoConfiguration() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        peer.audio(byteArrayOf(0x03))
+
+        assertArrayEquals(byteArrayOf(0x03), callbacks.audio.single())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
     }
 
     @Test
@@ -3799,6 +3849,7 @@ class InternetProductSessionTest {
     private fun managedPolicyStatus(
         clipboardAllowed: Boolean = true,
         fileTransferAllowed: Boolean = true,
+        audioAllowed: Boolean = true,
         maximumFileBytes: Long = FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
         allowedHosts: Set<String> = setOf("host-1"),
     ): ManagedPolicyStatus =
@@ -3806,6 +3857,7 @@ class InternetProductSessionTest {
             isManaged = true,
             clipboardAllowed = clipboardAllowed,
             fileTransferAllowed = fileTransferAllowed,
+            audioAllowed = audioAllowed,
             maximumFileBytes = maximumFileBytes,
             allowedHosts = allowedHosts,
             allowedHostsRestricted = allowedHosts.isNotEmpty(),

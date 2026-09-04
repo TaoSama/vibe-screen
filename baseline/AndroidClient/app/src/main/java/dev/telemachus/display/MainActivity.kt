@@ -54,6 +54,7 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.databinding.ActivityMainBinding
 import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.protocol.MotionSnapshot
+import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.TouchSampleMapper
 import dev.telemachus.display.protocol.FileTransferPolicy
@@ -75,6 +76,7 @@ import dev.telemachus.display.internet.ProductControllerEvent
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductStylusEvent
 import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 import dev.telemachus.display.internet.ProductTouchEvent
 import dev.telemachus.display.internet.ProductVideoCodec
@@ -272,6 +274,8 @@ class MainActivity : AppCompatActivity() {
     private val customGesturePendingTouchEvents = mutableListOf<TouchForwardingPayload>()
     private var managedCustomGesturesAllowed = true
     private var managedHostActionsAllowed = true
+    private var localCustomGesturesAllowed = true
+    private var localHostActionsAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
@@ -4101,8 +4105,6 @@ class MainActivity : AppCompatActivity() {
         mainSessionDisplayLifecycle = null
         streamControllerSessionState.resetForNewSession()
         resetControllerHotplugTracking()
-        managedCustomGesturesAllowed = true
-        managedHostActionsAllowed = true
         resetCustomGestureTouchState()
         rejectPendingIncomingFileOffer()
         discardPendingOutgoingFileTransfer()
@@ -4111,6 +4113,13 @@ class MainActivity : AppCompatActivity() {
         streamClient = client
         activeSessionGeneration = generation
         return generation
+    }
+
+    private fun applyLocalManagedPolicySnapshot(policy: ProtocolV1Session.ManagedPolicy) {
+        localCustomGesturesAllowed = policy.customGesturesAllowed
+        localHostActionsAllowed = policy.hostActionsAllowed
+        managedCustomGesturesAllowed = localCustomGesturesAllowed
+        managedHostActionsAllowed = localHostActionsAllowed
     }
 
     private fun isCurrentSession(
@@ -4717,8 +4726,14 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@managedPolicy
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                managedCustomGesturesAllowed = !status.managed || status.customGesturesAllowed
-                managedHostActionsAllowed = !status.managed || status.hostActionsAllowed
+                val availability =
+                    ManagedPolicyUiAvailabilityPolicy.combine(
+                        localCustomGesturesAllowed = localCustomGesturesAllowed,
+                        localHostActionsAllowed = localHostActionsAllowed,
+                        remoteStatus = status,
+                    )
+                managedCustomGesturesAllowed = availability.customGesturesAllowed
+                managedHostActionsAllowed = availability.hostActionsAllowed
                 val binding = currentSessionBinding()
                 val negotiated = callbackClient.negotiatedCapabilities()
                 val hostActionsNegotiated =
@@ -5031,6 +5046,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val audioPlayback = ProtocolInternetAudioPlayback()
+        val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()
+        applyLocalManagedPolicySnapshot(localManagedPolicy)
         val codec =
             ProtobufProtocolV1ProductCodec(
                 localDeviceId = internetDeviceId,
@@ -5039,9 +5056,7 @@ class MainActivity : AppCompatActivity() {
                     CodecCapabilities.advertisedStreamCodecs
                         .mapNotNullTo(linkedSetOf(), StreamCodec::toProductVideoCodecOrNull),
                 advertiseController = true,
-                localManagedPolicy = InternetManagedPolicy.fromProtocolPolicy(
-                    ManagedConfigurationProvider(applicationContext).loadPolicy(),
-                ),
+                localManagedPolicy = InternetManagedPolicy.fromProtocolPolicy(localManagedPolicy),
                 advertiseAudio = audioPlayback.canAdvertiseAudio,
             )
         val callbacks =
@@ -5095,6 +5110,28 @@ class MainActivity : AppCompatActivity() {
                             System.nanoTime(),
                             frame.keyframe,
                             frame.sessionEpoch,
+                        )
+                    }
+                }
+
+                override fun onManagedPolicyReceived(status: ManagedPolicyStatus) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        val availability =
+                            ManagedPolicyUiAvailabilityPolicy.combine(
+                                localCustomGesturesAllowed = localCustomGesturesAllowed,
+                                localHostActionsAllowed = localHostActionsAllowed,
+                                remoteStatus = status,
+                            )
+                        managedCustomGesturesAllowed = availability.customGesturesAllowed
+                        managedHostActionsAllowed = availability.hostActionsAllowed
+                        refreshFileTransferControl()
+                        refreshTransferReadinessInSettings()
+                        mainDiag(
+                            "internet managed policy updated: customGestures=" +
+                                availability.customGesturesAllowed +
+                                " hostActions=" + availability.hostActionsAllowed,
                         )
                     }
                 }
@@ -5797,13 +5834,16 @@ class MainActivity : AppCompatActivity() {
         }
         if (!productSessionCoordinator.beginConnectionAttempt()) return
         pendingTerminalGuidance = null
+        val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()
         val callbackClient = StreamClient(
             host,
             port,
             applicationContext,
             advertiseController = true,
             wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf()),
+            managedPolicyProvider = { localManagedPolicy },
         )
+        applyLocalManagedPolicySnapshot(localManagedPolicy)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) { delayMs: Long ->
@@ -5967,8 +6007,16 @@ class MainActivity : AppCompatActivity() {
         if (prefs.connectionMode == ConnectionMode.USB) {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
-        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
+        val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()
+        val callbackClient = StreamClient(
+            host,
+            port,
+            applicationContext,
+            advertiseController = true,
+            managedPolicyProvider = { localManagedPolicy },
+        )
         val guidanceContext = ConnectionGuidanceContext.adb(port, currentUsbTransportSnapshot().adbTransport)
+        applyLocalManagedPolicySnapshot(localManagedPolicy)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) { delayMs: Long ->
@@ -6040,6 +6088,8 @@ class MainActivity : AppCompatActivity() {
         isConnected = false
         revealOnlyTouchGestureActive = false
         resetCustomGestureTouchState()
+        localCustomGesturesAllowed = true
+        localHostActionsAllowed = true
         managedCustomGesturesAllowed = true
         managedHostActionsAllowed = true
         streamStylusGestureRouter.reset()
