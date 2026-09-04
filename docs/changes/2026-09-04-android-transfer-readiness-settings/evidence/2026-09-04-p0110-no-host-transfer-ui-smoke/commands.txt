@@ -1,0 +1,46 @@
+# Commands
+
+Run from repository root. The real USB serial was redacted to REDACTED_P0110_USB_SERIAL.
+
+    git fetch origin main --prune
+    git checkout -B p0110-no-host-transfer-ui-smoke origin/main
+    git rev-parse HEAD
+    sed -n '"'"'1,220p'"'"' AGENTS.md
+    sed -n '"'"'1,220p'"'"' README.md
+    sed -n '"'"'1,220p'"'"' docs/index.md
+    gh pr view 551 --json number,title,mergeCommit,headRefName,baseRefName,url,body,files
+    gh pr view 552 --json number,title,mergeCommit,headRefName,baseRefName,url,body,files
+    gh pr view 553 --json number,title,mergeCommit,headRefName,baseRefName,url,body,files
+    adb -s REDACTED_P0110_USB_SERIAL devices -l
+    adb -s REDACTED_P0110_USB_SERIAL reverse --list
+    lsof -nP -iTCP:54321 -sTCP:LISTEN
+    ps aux | rg -i '"'"'Vibe Screen|MacHost|Telemachus'"'"' | rg -v '"'"'rg -i'"'"'
+    cd baseline/AndroidClient && ./gradlew --no-daemon :app:assembleDebug
+    adb -s REDACTED_P0110_USB_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+    adb -s REDACTED_P0110_USB_SERIAL shell am force-stop dev.telemachus.display
+    adb -s REDACTED_P0110_USB_SERIAL shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect true
+    adb -s REDACTED_P0110_USB_SERIAL exec-out screencap -p > screenshots/screen-01-usb-retry-card.png
+    adb -s REDACTED_P0110_USB_SERIAL shell uiautomator dump /sdcard/vibescreen-ui-01.xml
+    adb -s REDACTED_P0110_USB_SERIAL shell am force-stop dev.telemachus.display
+    adb -s REDACTED_P0110_USB_SERIAL shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect false
+    adb -s REDACTED_P0110_USB_SERIAL exec-out screencap -p > screenshots/screen-02-manual-disconnected.png
+    adb -s REDACTED_P0110_USB_SERIAL shell uiautomator dump /sdcard/vibescreen-ui-02.xml
+    adb -s REDACTED_P0110_USB_SERIAL exec-out cat /sdcard/vibescreen-ui-02.xml > ui-dumps/ui-hierarchy-02-manual-disconnected.xml
+    adb -s REDACTED_P0110_USB_SERIAL shell input tap 640 2000
+    adb -s REDACTED_P0110_USB_SERIAL exec-out screencap -p > screenshots/screen-03-settings-transfer-readiness.png
+    adb -s REDACTED_P0110_USB_SERIAL shell uiautomator dump /sdcard/vibescreen-ui-03.xml
+    adb -s REDACTED_P0110_USB_SERIAL exec-out cat /sdcard/vibescreen-ui-03.xml > ui-dumps/ui-hierarchy-03-settings.xml
+    adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display
+    adb -s REDACTED_P0110_USB_SERIAL logcat -d --pid=<app-pid>
+    adb -s REDACTED_P0110_USB_SERIAL exec-out run-as dev.telemachus.display sh -c '"'"'cat files/diag.log.old 2>/dev/null; cat files/diag.log 2>/dev/null'"'"'
+    adb -s REDACTED_P0110_USB_SERIAL reverse --list
+    lsof -nP -iTCP:54321 -sTCP:LISTEN
+    ps aux | rg -i '"'"'Vibe Screen|MacHost|Telemachus'"'"' | rg -v '"'"'rg -i'"'"'
+    adb -s REDACTED_P0110_USB_SERIAL shell dumpsys window | rg '"'"'mCurrentFocus=|mFocusedApp='"'"'
+    rg -n '"'"'controlClipboardButton|controlFileTransferButton|controlBar|ACTION_OPEN_DOCUMENT|DocumentsUI|com.android.documentsui'"'"' ui-dumps/ui-hierarchy-02-manual-disconnected.xml ui-dumps/ui-hierarchy-03-settings.xml
+
+The first retry-card UIAutomator dump returned ERROR: could not get idle state
+while the countdown/progress UI was animating, so the retained proof for that
+state is the screenshot plus the failed dump log.
+
+No adb reverse add, remove, or remove-all command was run.

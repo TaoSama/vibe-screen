@@ -1,0 +1,31 @@
+{
+  "artifacts_note": "SHA256SUMS enumerates the retained artifact files.",
+  "date": "2026-09-04",
+  "device": {
+    "android_release": "16",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "recorded_as_fuxi": false,
+    "sdk": 36,
+    "serial": "REDACTED_P0110_USB_SERIAL"
+  },
+  "host_started": false,
+  "host_listener_54321_observed": false,
+  "macos_tcc_exercised": false,
+  "no_host_ui_smoke_passed": true,
+  "pre_existing_adb_reverse_entries": [
+    "UsbFfs tcp:54321 tcp:54321",
+    "UsbFfs tcp:8908 tcp:8908"
+  ],
+  "reverse_mutation_performed": false,
+  "scope": "android_no_host_transfer_ui_smoke",
+  "source_base": "origin/main",
+  "source_base_commit": "ef443351c6c812fcf55173ff33bd8ec1b09f7b60",
+  "verification": {
+    "baseline_android_check": "pass",
+    "checksum_verification": "pass",
+    "privacy_scan": "pass"
+  },
+  "worktree": "codex-clean-worktree"
+}

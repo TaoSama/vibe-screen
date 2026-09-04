@@ -23,6 +23,10 @@ Evidence:
 
 - evidence/no-host-p0110-smoke/ records a no-Host Android UI smoke on Nubia
   P0110 / pacific / Android 16 / SDK 36.
+- evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/ records a current
+  origin/main no-Host Android UI smoke covering the USB retry card, Settings
+  transfer-readiness copy, and absence of clipboard/file-transfer controls
+  without a capability-negotiated session.
 - The smoke did not start the macOS Host. It recorded pre-existing adb reverse
   entries before the run, and the captured command list contains no reverse
   mutation command.
@@ -37,6 +41,7 @@ Verification:
 - make baseline-android-check
 - git diff --check
 - shasum -a 256 -c evidence/no-host-p0110-smoke/SHA256SUMS
+- shasum -a 256 -c evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/SHA256SUMS
 
 Not proven by this change or evidence:
 
