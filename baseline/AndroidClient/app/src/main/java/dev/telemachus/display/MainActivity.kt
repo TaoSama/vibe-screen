@@ -272,7 +272,9 @@ class MainActivity : AppCompatActivity() {
     private var managedHostActionsAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
+    private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -2397,7 +2399,7 @@ class MainActivity : AppCompatActivity() {
         val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
             val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-            val sent =
+            val outgoing =
                 runCatching {
                     val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
                     val registered = withContext(Dispatchers.Main) {
@@ -2408,21 +2410,29 @@ class MainActivity : AppCompatActivity() {
                             false
                         }
                     }
-                    registered && session.offerFile(file, mimeType)
-            }
+                    if (registered) session.offerFile(file, mimeType) else null
+                }
             withContext(Dispatchers.Main) {
                 if (!session.isCurrent()) return@withContext
-                val sentValue =
-                    sent.getOrElse { failure ->
+                val outgoingValue =
+                    outgoing.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                         discardPendingOutgoingFileTransfer()
                         showDedupedToast(R.string.file_transfer_pick_failed)
                         return@withContext
                     }
-                showDedupedToast(
-                    if (sentValue) R.string.file_transfer_sent_to_mac else R.string.file_transfer_send_failed,
-                )
-                if (!sentValue) discardPendingOutgoingFileTransfer()
+                if (outgoingValue != null) {
+                    beginOutgoingFileTransferState(
+                        transferId = outgoingValue.transferId,
+                        displayName = safeOutgoingFileName(outgoingValue.fileName),
+                        byteLength = outgoingValue.byteLength,
+                        cancel = session.cancelOutgoingFile,
+                    )
+                    showDedupedToast(R.string.file_transfer_sent_to_mac)
+                } else {
+                    discardPendingOutgoingFileTransfer()
+                    showDedupedToast(R.string.file_transfer_send_failed)
+                }
             }
         }
     }
@@ -2479,10 +2489,18 @@ class MainActivity : AppCompatActivity() {
         val isCurrentAndAllowed: () -> Boolean,
         val negotiatedMaxFileBytes: Long,
         val stageOutgoingFile: (File) -> Boolean,
-        val offerFile: (File, String) -> Boolean,
+        val offerFile: (File, String) -> OutgoingFileTransferHandle?,
+        val cancelOutgoingFile: (ByteString) -> Boolean,
     )
 
     private data class ActiveIncomingFileTransfer(
+        val transferId: ByteString,
+        val displayName: String,
+        val byteLength: Long,
+        val cancel: (ByteString) -> Boolean,
+    )
+
+    private data class ActiveOutgoingFileTransfer(
         val transferId: ByteString,
         val displayName: String,
         val byteLength: Long,
@@ -2673,6 +2691,79 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun beginOutgoingFileTransferState(
+        transferId: ByteString,
+        displayName: String,
+        byteLength: Long,
+        cancel: (ByteString) -> Boolean,
+    ) {
+        finishOutgoingFileTransferState(activeOutgoingFileTransfer?.transferId)
+        activeOutgoingFileTransfer = ActiveOutgoingFileTransfer(transferId, displayName, byteLength, cancel)
+        showOutgoingFileProgressDialog(0L)
+    }
+
+    private fun updateOutgoingFileTransferProgress(
+        transferId: ByteString,
+        acknowledgedBytes: Long,
+        totalBytes: Long,
+    ) {
+        val active = activeOutgoingFileTransfer ?: return
+        if (active.transferId != transferId) return
+        val boundedBytes = acknowledgedBytes.coerceAtMost(active.byteLength.coerceAtMost(totalBytes))
+        updateOutgoingFileProgressMessage(boundedBytes)
+    }
+
+    private fun finishOutgoingFileTransferState(transferId: ByteString?) {
+        if (transferId == null || activeOutgoingFileTransfer?.transferId == transferId) {
+            activeOutgoingFileTransfer = null
+            pendingOutgoingFileDialog?.dismiss()
+            pendingOutgoingFileDialog = null
+        }
+    }
+
+    private fun showOutgoingFileProgressDialog(acknowledgedBytes: Long) {
+        val active = activeOutgoingFileTransfer ?: return
+        val dialog =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.file_transfer_sending_title)
+                .setMessage(outgoingFileProgressMessage(active, acknowledgedBytes))
+                .setNegativeButton(R.string.file_transfer_cancel) { _, _ ->
+                    cancelOutgoingFileTransferFromDialog(active.transferId)
+                }
+                .setOnCancelListener { cancelOutgoingFileTransferFromDialog(active.transferId) }
+        pendingOutgoingFileDialog = showImmersiveDialog(dialog)
+    }
+
+    private fun updateOutgoingFileProgressMessage(acknowledgedBytes: Long) {
+        val active = activeOutgoingFileTransfer ?: return
+        val dialog = pendingOutgoingFileDialog ?: return
+        dialog.setMessage(outgoingFileProgressMessage(active, acknowledgedBytes))
+    }
+
+    private fun outgoingFileProgressMessage(
+        active: ActiveOutgoingFileTransfer,
+        acknowledgedBytes: Long,
+    ): String =
+        getString(
+            R.string.file_transfer_sending_message,
+            active.displayName,
+            readableByteCount(acknowledgedBytes),
+            readableByteCount(active.byteLength),
+        )
+
+    private fun cancelOutgoingFileTransferFromDialog(transferId: ByteString) {
+        val active = activeOutgoingFileTransfer ?: return
+        if (active.transferId != transferId) return
+        activeOutgoingFileTransfer = null
+        pendingOutgoingFileDialog?.dismiss()
+        pendingOutgoingFileDialog = null
+        val cancelled = active.cancel(transferId)
+        discardPendingOutgoingFileTransfer()
+        if (!cancelled) {
+            showDedupedToast(R.string.file_transfer_failed_cancelled)
+        }
+    }
+
     private fun activeFileTransferSession(): ActiveFileTransferSession? =
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             activeInternetFileTransferSession()
@@ -2703,7 +2794,14 @@ class MainActivity : AppCompatActivity() {
                 if (!staged) file.deleteRecursivelyBestEffort()
                 staged
             },
-            offerFile = client::offerFile,
+            offerFile = client::offerFileWithHandle,
+            cancelOutgoingFile = { transferId ->
+                if (isCurrentSession(client, generation) && client.canTransferFiles) {
+                    client.cancelOutgoingFileTransfer(transferId)
+                } else {
+                    false
+                }
+            },
         )
     }
 
@@ -2732,7 +2830,17 @@ class MainActivity : AppCompatActivity() {
                     false
                 }
             },
-            offerFile = session::offerFile,
+            offerFile = session::offerFileWithHandle,
+            cancelOutgoingFile = { transferId ->
+                if (generation == productSessionCoordinator.currentInternetGeneration() &&
+                    internetSession === session &&
+                    session.canTransferFiles
+                ) {
+                    session.cancelOutgoingFileTransfer(transferId)
+                } else {
+                    false
+                }
+            },
         )
     }
 
@@ -2862,6 +2970,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun discardPendingOutgoingFileTransfer() {
+        finishOutgoingFileTransferState(null)
         (productSessionCoordinator.takePendingOutgoingFileTransfer() as? File)?.deleteRecursivelyBestEffort()
         pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()
         pendingInternetOutgoingFileTransfer = null
@@ -4606,6 +4715,20 @@ class MainActivity : AppCompatActivity() {
                 onIncomingFileCompleted(completed)
             }
         }
+        callbackClient.onOutgoingFileProgress = outgoingProgress@{ transferId, acknowledgedBytes, totalBytes ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@outgoingProgress
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                updateOutgoingFileTransferProgress(transferId, acknowledgedBytes, totalBytes)
+            }
+        }
+        callbackClient.onOutgoingFileFinished = outgoingFinished@{ transferId ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@outgoingFinished
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                finishOutgoingFileTransferState(transferId)
+            }
+        }
         callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileResult
             runOnUiThread {
@@ -4860,6 +4983,26 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
                         finishIncomingFileTransferState(transferId)
+                    }
+                }
+
+                override fun onOutgoingFileProgress(
+                    transferId: ByteString,
+                    acknowledgedBytes: Long,
+                    totalBytes: Long,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        updateOutgoingFileTransferProgress(transferId, acknowledgedBytes, totalBytes)
+                    }
+                }
+
+                override fun onOutgoingFileFinished(transferId: ByteString) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        finishOutgoingFileTransferState(transferId)
                     }
                 }
 

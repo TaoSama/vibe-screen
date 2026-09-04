@@ -59,6 +59,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -3343,6 +3344,76 @@ class StreamClientProtocolV1IntegrationTest {
                 assertTrue(client.offerFile(source, "text/plain"))
                 assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
                 assertTrue(acceptedResult.get())
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                source.delete()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clientOutgoingFileOfferCanBeCancelledByUserDuringStreaming() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "cancel-outgoing-client-file".toByteArray(Charsets.UTF_8)
+            val source = File.createTempFile("vibescreen-cancel-outgoing", ".txt")
+            source.writeBytes(content)
+            val connected = CountDownLatch(1)
+            val firstChunkSeen = CountDownLatch(1)
+            val cancelled = CountDownLatch(1)
+            val resultSeen = CountDownLatch(1)
+            val cancelTransferId = AtomicReference<ByteString>()
+            val result = AtomicReference<Pair<Boolean, String>>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        connected.countDown()
+                        val offerEnvelope = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_OFFER, offerEnvelope.payloadCase)
+                        val offer = offerEnvelope.fileOffer
+                        cancelTransferId.set(offer.transferId)
+                        write(peer, fileAccept(6, offer.transferId, accepted = true, maximumChunkBytes = 8))
+
+                        val firstFrame = ProtocolV1Framing.read(peer.getInputStream())
+                        assertEquals(ProtocolChannel.BULK, firstFrame.channel)
+                        val firstChunk = ProtocolV1Framing.decodeFileChunk(firstFrame.payload)
+                        assertEquals(offer.transferId, firstChunk.header.transferId)
+                        assertEquals(0L, firstChunk.header.offset)
+                        firstChunkSeen.countDown()
+
+                        val cancel = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancel.payloadCase)
+                        assertEquals(offer.transferId, cancel.fileTransferCancel.transferId)
+                        assertEquals("user_cancelled", cancel.fileTransferCancel.reasonCode)
+                        cancelled.countDown()
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onConnectionStatus = { connectedStatus -> if (connectedStatus) connected.countDown() }
+            client.onFileTransferResult = { accepted, reason ->
+                result.set(accepted to reason)
+                resultSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(connected.await(8, TimeUnit.SECONDS))
+                assertNotNull(client.offerFileWithHandle(source, "text/plain"))
+                assertTrue(firstChunkSeen.await(8, TimeUnit.SECONDS))
+                assertTrue(client.cancelOutgoingFileTransfer(checkNotNull(cancelTransferId.get())))
+                assertTrue(cancelled.await(8, TimeUnit.SECONDS))
+                assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                assertEquals(false to "user_cancelled", result.get())
                 withTimeout(8_000) { serverJob.await() }
             } finally {
                 source.delete()

@@ -1806,7 +1806,58 @@ class InternetProductSessionTest {
             peer.receive(controlEnvelope(7).setFileTransferProgress(fileProgress(offer.transferId, 5)).build())
             peer.receive(controlEnvelope(8).setFileTransferComplete(fileComplete(offer.transferId, sha256(payload))).build())
 
+            assertEquals(
+                listOf(
+                    Triple(offer.transferId, 0L, payload.size.toLong()),
+                    Triple(offer.transferId, 2L, payload.size.toLong()),
+                    Triple(offer.transferId, 4L, payload.size.toLong()),
+                    Triple(offer.transferId, 5L, payload.size.toLong()),
+                ),
+                callbacks.outgoingProgress,
+            )
+            assertEquals(listOf(offer.transferId), callbacks.outgoingFinished)
             assertEquals(true to "", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun outgoingInternetFileTransferCanBeCancelledByUser() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x51, 0x52, 0x53, 0x54)
+        val file = java.io.File.createTempFile("vibe-internet-outgoing-cancel", ".bin")
+        file.writeBytes(payload)
+
+        try {
+            val handle = requireNotNull(session.offerFileWithHandle(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+            assertEquals(offer.transferId, handle.transferId)
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(2),
+                    ).build(),
+            )
+            assertFileChunk(peer.bulk.single(), offer.transferId, offset = 0, payload = payload.copyOfRange(0, 2), final = false)
+
+            assertTrue(session.cancelOutgoingFileTransfer(handle.transferId, "user_cancelled"))
+
+            val cancel = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL }.fileTransferCancel
+            assertEquals(handle.transferId, cancel.transferId)
+            assertEquals("user_cancelled", cancel.reasonCode)
+            assertEquals(listOf(Triple(handle.transferId, 0L, payload.size.toLong())), callbacks.outgoingProgress)
+            assertEquals(listOf(handle.transferId), callbacks.outgoingFinished)
+            assertEquals(false to "user_cancelled", callbacks.fileResults.single())
             assertEquals(InternetProductSessionState.ACTIVE, session.state)
         } finally {
             file.delete()
@@ -3865,6 +3916,8 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     val bulk = mutableListOf<ByteArray>()
     val fileOffers = java.util.concurrent.CopyOnWriteArrayList<FileOffer>()
     val incomingFiles = java.util.concurrent.CopyOnWriteArrayList<CompletedIncomingFile>()
+    val outgoingProgress = java.util.concurrent.CopyOnWriteArrayList<Triple<ByteString, Long, Long>>()
+    val outgoingFinished = java.util.concurrent.CopyOnWriteArrayList<ByteString>()
     val fileResults = java.util.concurrent.CopyOnWriteArrayList<Pair<Boolean, String>>()
     val configurations = mutableListOf<ProductVideoConfiguration>()
     val appliedConfigurations = mutableListOf<ProductVideoConfiguration>()
@@ -3909,6 +3962,10 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     override fun onManagedPolicyReceived(status: ManagedPolicyStatus) { managedPolicies += status }
     override fun onFileOffer(offer: FileOffer) { fileOffers += offer }
     override fun onIncomingFileCompleted(completed: CompletedIncomingFile) { incomingFiles += completed }
+    override fun onOutgoingFileProgress(transferId: ByteString, acknowledgedBytes: Long, totalBytes: Long) {
+        outgoingProgress += Triple(transferId, acknowledgedBytes, totalBytes)
+    }
+    override fun onOutgoingFileFinished(transferId: ByteString) { outgoingFinished += transferId }
     override fun onFileTransferResult(accepted: Boolean, reason: String) { fileResults += accepted to reason }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }

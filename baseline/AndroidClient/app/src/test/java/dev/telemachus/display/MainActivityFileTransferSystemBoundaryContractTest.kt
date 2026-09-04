@@ -40,6 +40,59 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
     }
 
+    @Test
+    fun outgoingFileTransferExposesProgressAndUserCancelThroughProductState() {
+        val source = mainActivitySource()
+        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val begin = extractMethod(source, "private fun beginOutgoingFileTransferState")
+        val progress = extractMethod(source, "private fun updateOutgoingFileTransferProgress")
+        val finish = extractMethod(source, "private fun finishOutgoingFileTransferState")
+        val cancel = extractMethod(source, "private fun cancelOutgoingFileTransferFromDialog")
+        val discard = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
+        val callback = extractCallback(source, "callbackClient.onOutgoingFileProgress = outgoingProgress@")
+        val finishedCallback = extractCallback(source, "callbackClient.onOutgoingFileFinished = outgoingFinished@")
+        val internetProgress = extractCallback(source, "override fun onOutgoingFileProgress(")
+        val internetFinished = extractCallback(source, "override fun onOutgoingFileFinished(transferId: ByteString)")
+
+        assertTrue(
+            "Starting an outgoing offer should register active sending state from the returned transfer handle",
+            handlePicker.contains("val outgoingValue =") &&
+                handlePicker.contains("beginOutgoingFileTransferState(") &&
+                handlePicker.contains("transferId = outgoingValue.transferId"),
+        )
+        assertTrue(
+            "Active send state should retain transfer id, display name, byte length, and cancel command",
+            begin.contains("ActiveOutgoingFileTransfer(transferId, displayName, byteLength, cancel)"),
+        )
+        assertTrue(
+            "Outgoing progress callback should update the active send dialog only on the current stream session",
+            callback.contains("updateOutgoingFileTransferProgress(transferId, acknowledgedBytes, totalBytes)"),
+        )
+        assertTrue(
+            "Outgoing Internet progress callback should share the same active send dialog",
+            internetProgress.contains("updateOutgoingFileTransferProgress(transferId, acknowledgedBytes, totalBytes)"),
+        )
+        assertTrue(
+            "Outgoing progress updates must be transfer-id scoped",
+            progress.contains("if (active.transferId != transferId) return"),
+        )
+        assertTrue(
+            "User cancellation must call the active outgoing transfer cancellation boundary",
+            cancel.contains("active.cancel(transferId)"),
+        )
+        assertTrue(
+            "Outgoing completion should clear only the matching active send state",
+            finishedCallback.contains("finishOutgoingFileTransferState(transferId)") &&
+                internetFinished.contains("finishOutgoingFileTransferState(transferId)") &&
+                finish.contains("activeOutgoingFileTransfer?.transferId == transferId"),
+        )
+        assertTrue(
+            "Generic outgoing cleanup should dismiss active send state and delete staged files",
+            discard.contains("finishOutgoingFileTransferState(null)") &&
+                discard.contains("takePendingOutgoingFileTransfer()"),
+        )
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {

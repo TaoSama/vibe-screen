@@ -42,6 +42,8 @@ internal class FileTransferProductOwner(
     @Volatile var onIncomingFileProgress: ((transferId: ByteString, receivedBytes: Long) -> Unit)? = null
     @Volatile var onIncomingFileCancelled: ((transferId: ByteString, reasonCode: String) -> Unit)? = null
     @Volatile var onIncomingFileCompleted: ((CompletedIncomingFile) -> Unit)? = null
+    @Volatile var onOutgoingFileProgress: ((transferId: ByteString, acknowledgedBytes: Long, totalBytes: Long) -> Unit)? = null
+    @Volatile var onOutgoingFileFinished: ((transferId: ByteString) -> Unit)? = null
     @Volatile var onFileTransferResult: ((accepted: Boolean, reason: String) -> Unit)? = null
 
     fun activateSession() {
@@ -297,8 +299,14 @@ internal class FileTransferProductOwner(
         transferToCancel?.cancel()
     }
 
-    fun cancelOutgoingTransfer(transferId: ByteString) {
-        synchronized(lock) { outgoingFileTransfers.remove(transferId) }?.cancel()
+    fun cancelOutgoingTransfer(
+        transferId: ByteString,
+        reasonCode: String = "user_cancelled",
+    ): TransferResult? {
+        val transfer = synchronized(lock) { outgoingFileTransfers.remove(transferId) } ?: return null
+        transfer.cancel()
+        notifyOutgoingFileFinished(transferId)
+        return TransferResult(accepted = false, reason = reasonCode)
     }
 
     fun cancelIncomingTransfer(transferId: ByteString): Boolean {
@@ -321,6 +329,7 @@ internal class FileTransferProductOwner(
         val transfer = synchronized(lock) { outgoingFileTransfers.remove(transferId) }
         transfer ?: return OutgoingUpdate()
         transfer.cancel()
+        notifyOutgoingFileFinished(transferId)
         return OutgoingUpdate(
             cancelTransferId = transferId,
             cancelReasonCode = reasonCode,
@@ -344,6 +353,7 @@ internal class FileTransferProductOwner(
             return staleReason?.let { reason -> TransferResult(accepted = false, reason = reason) }
         }
         transferToCancel.cancel()
+        notifyOutgoingFileFinished(transferId)
         return TransferResult(accepted = false, reason = reasonCode)
     }
 
@@ -360,11 +370,13 @@ internal class FileTransferProductOwner(
         if (response.accepted) {
             if (transfer == null) return OutgoingUpdate()
             transfer.applyAcceptedMaximumChunkBytes(response.maximumChunkBytes)
+            notifyOutgoingFileProgress(response.transferId, 0L, transfer.offer.byteLength)
             return nextOutgoingChunk(response.transferId, transfer, sessionEpoch)
         }
         val transferToCancel = synchronized(lock) { outgoingFileTransfers.remove(response.transferId) }
             ?: return OutgoingUpdate()
         transferToCancel.cancel()
+        notifyOutgoingFileFinished(response.transferId)
         return OutgoingUpdate(result = TransferResult(accepted = false, reason = response.rejectionReason))
     }
 
@@ -375,6 +387,11 @@ internal class FileTransferProductOwner(
         val transfer = synchronized(lock) { outgoingFileTransfers[progress.transferId] } ?: return OutgoingUpdate()
         val rejectionReason = transfer.acknowledgeOffset(progress.receivedBytes)
         return if (rejectionReason == null) {
+            notifyOutgoingFileProgress(
+                transferId = progress.transferId,
+                acknowledgedBytes = progress.receivedBytes.coerceAtMost(transfer.offer.byteLength),
+                totalBytes = transfer.offer.byteLength,
+            )
             nextOutgoingChunk(progress.transferId, transfer, sessionEpoch)
         } else {
             val transferToCancel = synchronized(lock) {
@@ -385,6 +402,7 @@ internal class FileTransferProductOwner(
                 }
             } ?: return OutgoingUpdate()
             transferToCancel.cancel()
+            notifyOutgoingFileFinished(progress.transferId)
             OutgoingUpdate(
                 cancelTransferId = progress.transferId,
                 cancelReasonCode = rejectionReason,
@@ -402,6 +420,7 @@ internal class FileTransferProductOwner(
         }
         val cancelledIncoming = manager?.cancel(cancellation.transferId) == true
         outgoing?.cancel()
+        if (outgoing != null) notifyOutgoingFileFinished(cancellation.transferId)
         return if (cancelledIncoming || outgoing != null) {
             TransferResult(accepted = false, reason = cancellation.reasonCode)
         } else {
@@ -413,6 +432,7 @@ internal class FileTransferProductOwner(
         val transfer = synchronized(lock) { outgoingFileTransfers.remove(result.transferId) }
         transfer ?: return OutgoingUpdate()
         transfer.cancel()
+        notifyOutgoingFileFinished(result.transferId)
         val reason = when {
             !result.accepted -> result.rejectionReason
             !transfer.hasCompletedAcknowledgement() -> "incomplete_file"
@@ -437,6 +457,14 @@ internal class FileTransferProductOwner(
 
     fun notifyIncomingFileCancelled(transferId: ByteString, reasonCode: String) {
         onIncomingFileCancelled?.invoke(transferId, reasonCode)
+    }
+
+    fun notifyOutgoingFileProgress(transferId: ByteString, acknowledgedBytes: Long, totalBytes: Long) {
+        onOutgoingFileProgress?.invoke(transferId, acknowledgedBytes, totalBytes)
+    }
+
+    fun notifyOutgoingFileFinished(transferId: ByteString) {
+        onOutgoingFileFinished?.invoke(transferId)
     }
 
     fun notifyFileTransferResult(result: TransferResult) {
@@ -469,7 +497,9 @@ internal class FileTransferProductOwner(
                 OutgoingUpdate(chunk = chunk)
             }
         } catch (failure: FileTransferException) {
-            synchronized(lock) { outgoingFileTransfers.remove(transferId) }?.cancel()
+            val removed = synchronized(lock) { outgoingFileTransfers.remove(transferId) }
+            removed?.cancel()
+            if (removed != null) notifyOutgoingFileFinished(transferId)
             OutgoingUpdate(
                 cancelTransferId = transferId,
                 cancelReasonCode = failure.reasonCode,
@@ -515,6 +545,7 @@ internal class FileTransferProductOwner(
                 }
             }
         }
+        outgoing.forEach { transfer -> notifyOutgoingFileFinished(transfer.offer.transferId) }
         results.forEach(::notifyFileTransferResult)
     }
 

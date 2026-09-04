@@ -8,6 +8,7 @@ import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.ClipboardContentData
 import dev.telemachus.display.ClipboardOfferData
 import dev.telemachus.display.FileTransferProductOwner
+import dev.telemachus.display.OutgoingFileTransferHandle
 import dev.telemachus.display.PendingControllerInputDisposition
 import dev.telemachus.display.SessionInputIdSequence
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
@@ -186,6 +187,10 @@ internal interface InternetProductSessionCallbacks {
     fun onIncomingFileCancelled(transferId: ByteString, reasonCode: String) = Unit
 
     fun onIncomingFileCompleted(completed: CompletedIncomingFile) = Unit
+
+    fun onOutgoingFileProgress(transferId: ByteString, acknowledgedBytes: Long, totalBytes: Long) = Unit
+
+    fun onOutgoingFileFinished(transferId: ByteString) = Unit
 
     fun onFileTransferResult(accepted: Boolean, reason: String) = Unit
 
@@ -377,6 +382,8 @@ class InternetProductSession internal constructor(
             onIncomingFileProgress = callbacks::onIncomingFileProgress
             onIncomingFileCancelled = callbacks::onIncomingFileCancelled
             onIncomingFileCompleted = callbacks::onIncomingFileCompleted
+            onOutgoingFileProgress = callbacks::onOutgoingFileProgress
+            onOutgoingFileFinished = callbacks::onOutgoingFileFinished
             onFileTransferResult = callbacks::onFileTransferResult
         }
     private val advancedChannelGate =
@@ -635,7 +642,13 @@ class InternetProductSession internal constructor(
     val negotiatedMaxFileBytes: Long
         get() = synchronized(lock) { negotiatedFilePolicy.maximumFileBytes }
 
-    fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean {
+    fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean =
+        offerFileWithHandle(file, mimeType) != null
+
+    internal fun offerFileWithHandle(
+        file: File,
+        mimeType: String = "application/octet-stream",
+    ): OutgoingFileTransferHandle? {
         val prepared =
             when (
                 val result = fileTransferProductOwner.prepareOutgoingFile(
@@ -649,7 +662,7 @@ class InternetProductSession internal constructor(
                     fileTransferProductOwner.notifyFileTransferResult(
                         FileTransferProductOwner.TransferResult(accepted = false, reason = result.reasonCode),
                     )
-                    return false
+                    return null
                 }
             }
         val offer =
@@ -659,7 +672,7 @@ class InternetProductSession internal constructor(
                     fileTransferProductOwner.notifyFileTransferResult(
                         FileTransferProductOwner.TransferResult(accepted = false, reason = start.reasonCode),
                     )
-                    return false
+                    return null
                 }
                 is FileTransferProductOwner.StartOutgoingResult.Stale -> {
                     start.reasonCode?.let { reason ->
@@ -667,7 +680,7 @@ class InternetProductSession internal constructor(
                             FileTransferProductOwner.TransferResult(accepted = false, reason = reason),
                         )
                     }
-                    return false
+                    return null
                 }
             }
         val sent =
@@ -681,7 +694,15 @@ class InternetProductSession internal constructor(
             fileTransferProductOwner.rejectOutgoingTransfer(offer.transferId, prepared, "outbound_backpressure")
                 ?.let(fileTransferProductOwner::notifyFileTransferResult)
         }
-        return sent
+        return if (sent) {
+            OutgoingFileTransferHandle(
+                transferId = offer.transferId,
+                fileName = offer.fileName,
+                byteLength = offer.byteLength,
+            )
+        } else {
+            null
+        }
     }
 
     fun respondToFileOffer(
@@ -726,6 +747,21 @@ class InternetProductSession internal constructor(
             fileTransferProductOwner.notifyFileTransferResult(
                 FileTransferProductOwner.TransferResult(accepted = false, reason = reasonCode),
             )
+        }
+        return sent
+    }
+
+    fun cancelOutgoingFileTransfer(
+        transferId: ByteString,
+        reasonCode: String = "user_cancelled",
+    ): Boolean {
+        clearOutgoingFileTransferDeadline(transferId)
+        val result = fileTransferProductOwner.cancelOutgoingTransfer(transferId, reasonCode) ?: return false
+        val sent = sendApplicationControl {
+            codec.encodeFileCancel(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, transferId, reasonCode)
+        }
+        if (sent) {
+            fileTransferProductOwner.notifyFileTransferResult(result)
         }
         return sent
     }
