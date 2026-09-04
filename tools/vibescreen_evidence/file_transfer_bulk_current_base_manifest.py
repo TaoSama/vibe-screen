@@ -117,22 +117,47 @@ def _child_gate_summary(
         "can_close": False,
         "requirement": defaults["requirement"],
         "blockers": [f"missing child gate report for {defaults['source_gate']}"],
-        "not_proven": [],
+        "not_proven": [defaults["requirement"]],
     }
     if path is None or not path.is_file():
         return summary
 
     report = _load_json(path)
+    report_kind = report.get("kind")
     verdict = report.get("verdict", report.get("result", "blocked"))
+    verdict_text = verdict if isinstance(verdict, str) else "blocked"
+    gate_closed = report.get("gate_closed") is True
+    required_flag = str(defaults["required_flag"])
+    required_flag_closed = report.get(required_flag) is True
+    can_close = (
+        report_kind == defaults["kind"]
+        and verdict_text == "pass"
+        and gate_closed
+        and required_flag_closed
+    )
+    blockers = _string_list(report.get("blockers")) or _string_list(report.get("reasons"))
+    if report_kind != defaults["kind"]:
+        blockers.append(
+            f"child gate report kind mismatch: expected {defaults['kind']}, got {report_kind!r}"
+        )
+    if verdict_text != "pass":
+        blockers.append(f"child gate report verdict is not pass: {verdict_text}")
+    if not gate_closed:
+        blockers.append("child gate report did not set gate_closed=true")
+    if not required_flag_closed:
+        blockers.append(f"child gate report did not set {required_flag}=true")
+    not_proven = _string_list(report.get("not_proven"))
+    if not can_close and not not_proven:
+        not_proven = [defaults["requirement"]]
     summary.update(
         {
             "present": True,
-            "kind": report.get("kind"),
-            "verdict": verdict if isinstance(verdict, str) else "blocked",
-            "gate_closed": report.get("gate_closed") is True,
-            "can_close": report.get(str(defaults["required_flag"])) is True,
-            "blockers": _string_list(report.get("blockers")) or _string_list(report.get("reasons")),
-            "not_proven": _string_list(report.get("not_proven")),
+            "kind": report_kind,
+            "verdict": verdict_text,
+            "gate_closed": gate_closed,
+            "can_close": can_close,
+            "blockers": blockers,
+            "not_proven": [] if can_close else not_proven,
         }
     )
     return summary

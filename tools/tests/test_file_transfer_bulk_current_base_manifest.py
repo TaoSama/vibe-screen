@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from vibescreen_evidence import SCHEMA_VERSION
+from vibescreen_evidence.manifest import ManifestError
 from vibescreen_evidence.file_transfer_bulk_current_base_manifest import (
     ANDROID_CHILD_ID,
     SOURCE_DOCS,
@@ -125,6 +126,68 @@ class FileTransferBulkCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertTrue(manifest["child_gates"][ANDROID_CHILD_ID]["can_close"])
         self.assertTrue(manifest["child_gates"][WEBRTC_CHILD_ID]["can_close"])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_wrong_child_gate_kind_cannot_close_even_with_pass_flag(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            android = root / "clipboard-gate-misfiled-as-file-transfer.json"
+            write_json(
+                android,
+                {
+                    "kind": "android_macos_clipboard_e2e_gate",
+                    "verdict": "pass",
+                    "gate_closed": True,
+                    "can_close_file_transfer_android_smoke_gate": True,
+                    "blockers": [],
+                    "not_proven": [],
+                },
+            )
+
+            manifest = build_manifest(command=[], repo=root, android_gate=android)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertTrue(child["present"])
+        self.assertFalse(child["can_close"])
+        self.assertIn("kind mismatch", " ".join(child["blockers"]))
+        self.assertIn("Real Android USB", child["not_proven"][0])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_missing_child_gate_records_requirement_as_not_proven(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            manifest = build_manifest(command=[], repo=root)
+
+        self.assertIn("Real Android USB", manifest["child_gates"][ANDROID_CHILD_ID]["not_proven"][0])
+        self.assertIn("Real macOS and Android", manifest["child_gates"][WEBRTC_CHILD_ID]["not_proven"][0])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_corrupted_child_gate_json_raises_manifest_error(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            bad_json = root / "file-transfer-android-smoke-gate.json"
+            bad_json.write_text("{not valid json", encoding="utf-8")
+
+            with self.assertRaises(ManifestError):
+                build_manifest(command=[], repo=root, android_gate=bad_json)
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_non_dict_child_gate_json_raises_manifest_error(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            array_json = root / "webrtc-bulk-product-flow-gate.json"
+            array_json.write_text("[]", encoding="utf-8")
+
+            with self.assertRaises(ManifestError):
+                build_manifest(command=[], repo=root, webrtc_gate=array_json)
 
     @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
     def test_manifest_matches_schema_required_top_level_fields(self, repository_state) -> None:

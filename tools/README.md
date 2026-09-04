@@ -82,7 +82,8 @@ The target writes `file-transfer-bulk-current-base-manifest.json` and
 blocked placeholder. The aggregate exits successfully for a default blocked
 summary unless `FILE_TRANSFER_BULK_CURRENT_BASE_REQUIRE_PASS=1` is set. It never
 claims the separate clipboard gate and never treats USB/LAN evidence as public
-Internet WebRTC bulk proof.
+Internet WebRTC bulk proof. Wrong-kind child gate JSON, missing required pass
+flags, or contradictory child verdict fields remain blocked.
 
 ## Phase 0 stable-release aggregate gate
 

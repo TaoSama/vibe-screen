@@ -180,6 +180,10 @@ def _child_check(child: dict[str, Any], *, required_kind: str, required_flag: st
     return _check(passed, expected, evidence=evidence)
 
 
+def _child_identity_invalid(child: dict[str, Any], *, required_kind: str) -> bool:
+    return child.get("present") is True and child.get("kind") != required_kind
+
+
 def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
     manifest_path: Path | None = manifest if isinstance(manifest, Path) else None
     try:
@@ -202,6 +206,14 @@ def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
             required_flag="can_close_public_internet_bulk_product_flow_gate",
         )
 
+        invalid_child_identity = _child_identity_invalid(
+            _dict(child_gates.get(ANDROID_CHILD_ID)),
+            required_kind="android_macos_file_transfer_smoke",
+        ) or _child_identity_invalid(
+            _dict(child_gates.get(WEBRTC_CHILD_ID)),
+            required_kind="phase3_webrtc_bulk_product_flow_gate",
+        )
+
         android_passed = checks[f"child.{ANDROID_CHILD_ID}"]["passed"]
         webrtc_passed = checks[f"child.{WEBRTC_CHILD_ID}"]["passed"]
         required_context_passed = all(
@@ -222,6 +234,8 @@ def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
         ]
         if failed:
             verdict = FAIL
+        elif invalid_child_identity:
+            verdict = BLOCKED
         elif required_context_passed and android_passed and webrtc_passed:
             verdict = PASS
         elif required_context_passed and (android_passed or webrtc_passed):

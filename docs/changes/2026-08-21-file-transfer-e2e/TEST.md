@@ -86,6 +86,10 @@ The MacHost package sources compiled before the test target failed to build.
 
 ## Open gates
 
+- Phase 0 tracks the Android/macOS product E2E closure as
+  `file_transfer_android_product_e2e`, produced by
+  `make file-transfer-android-smoke` as `file-transfer-android-smoke-gate.json`.
+  That gate remains fail-closed until the retained product evidence below exists.
 - Android real-device UI file send/receive acceptance remains open.
 - Android user-selected save/export for completed incoming files remains open;
   automatic save to Downloads is implemented but user-selected destination is
@@ -111,18 +115,20 @@ The target writes `file-transfer-bulk-current-base-manifest.json` and
 the existing `file-transfer-android-smoke` and
 `phase3-webrtc-bulk-product-flow` child gate reports when they exist, or records
 blocked placeholders when they do not. It does not run ADB, start the Host, or
-inspect TCC/Keychain state.
+inspect TCC/Keychain state. Missing reports, wrong-kind child reports, and child
+reports that lack their required pass flag remain blocked.
 
-A pass requires both child gates to pass from retained product evidence. Nubia
-P0110 can contribute to the Android USB/LAN file-transfer child gate when that
-child report proves sender selection, explicit receiver approval, saved files,
-progress/cancel or backpressure behavior, disconnect cleanup, and matching
-SHA-256 on both endpoints. The same P0110 USB/LAN record cannot close the
-public-Internet WebRTC bulk child gate; that gate requires its own real public
-Internet product flow over `vibescreen.bulk.v1` with deployed remote TURN route,
-privacy scan, bounded-backlog evidence, and the release prerequisite checklist
-retained by the child gate. Clipboard remains a separate gate and is never
-claimed by this aggregate.
+A pass requires both child gates to pass from retained product evidence. The
+Phase 0 local file-transfer boundary is the Android USB/LAN child gate. Nubia
+P0110 can contribute to that child gate when the child report proves sender
+selection, explicit receiver approval, saved files, progress/cancel or
+backpressure behavior, disconnect cleanup, and matching SHA-256 on both
+endpoints. The public-Internet WebRTC bulk child gate belongs to the Phase 3
+boundary and requires its own real product flow over `vibescreen.bulk.v1` with
+deployed remote TURN route, privacy scan, bounded-backlog evidence, and the
+release prerequisite checklist retained by the child gate. The same P0110
+USB/LAN record cannot close the WebRTC child. Clipboard remains a separate gate
+and is never claimed by this aggregate.
 
 ## 2026-08-22 Nubia P0110 readiness rerun
 
@@ -149,6 +155,9 @@ approval, saved destination files, and matching SHA-256 on both sides.
 
 ## 2026-08-28 file-transfer Android smoke owner gate
 
+Evidence:
+[evidence/2026-08-28-nubia-p0110-file-transfer-android-smoke-blocked](evidence/2026-08-28-nubia-p0110-file-transfer-android-smoke-blocked/README.md).
+
 The repository now has a dedicated fail-closed gate for the Protocol v1
 Android/macOS single-file transfer smoke:
 
@@ -172,6 +181,12 @@ The `cancel_cleanup` block must similarly retain `cancel_request` and
 `cleanup_state` artifacts. Absolute paths, `..` escapes, symlink escapes outside
 the bundle, missing artifact files, offline fixtures, and synthetic logs cannot
 close the gate.
+
+The `android_file_transfer_smoke` subcheck names the Android control-bar UI
+instrumentation log only. A passing subcheck proves the visible file-transfer
+action and layout path, not real file transfer. The real product closure remains
+the `bidirectional_product_e2e` evidence: two directions, user approval, remote
+file writes, final SHA-256 equality, positive session epoch, and cancel cleanup.
 
 Current 2026-08-28 collection on clean `origin/main`-based branch
 `codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device
@@ -266,7 +281,8 @@ the broader module-ownership blocker.
 This refresh is limited to the Android USB/LAN Protocol v1 product-flow owner,
 session, and StreamClient socket boundaries. It does not modify or claim the
 separate public Internet/WebRTC bulk aggregate gate, schema, or evidence, and it
-does not claim a real Android/macOS product E2E pass.
+does not claim a real Android/macOS product E2E pass. This is repository JVM and
+static contract verification only; it did not create a device evidence bundle.
 
 Focused JVM coverage now pins the fail-closed product-flow contracts for receiver
 approval default denial, safe basename and digest validation before receiver UI
