@@ -1,0 +1,1 @@
+no output from: lsof -nP -iTCP:54321 -sTCP:LISTEN

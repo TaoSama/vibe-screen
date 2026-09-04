@@ -56,6 +56,17 @@
     <string name="rotation_180">180°</string>
     <string name="rotation_270">270°</string>
     <string name="input_capability_touch_only">Touch, long-press right click, drag, scroll, and pinch use the current host touch path. Keyboard shortcuts and native pointer buttons require a compatible negotiated host session.</string>
+    <string name="transfer_readiness_title">Clipboard &amp; files</string>
+    <string name="transfer_readiness_waiting_status">Waiting for a compatible Mac session</string>
+    <string name="transfer_readiness_waiting_summary">Clipboard and file controls appear after Protocol v1 negotiates those capabilities with the Mac.</string>
+    <string name="transfer_readiness_unavailable_status">Not available in this Mac session</string>
+    <string name="transfer_readiness_unavailable_summary">This connection has not exposed clipboard or file-transfer controls. Update both apps or reconnect with a compatible Protocol v1 Mac session.</string>
+    <string name="transfer_readiness_ready_status">Ready in this session</string>
+    <string name="transfer_readiness_ready_summary">Clipboard and file-transfer controls are available from the stream controls for this negotiated session.</string>
+    <string name="transfer_readiness_clipboard_only_status">Clipboard ready, files unavailable</string>
+    <string name="transfer_readiness_clipboard_only_summary">Clipboard control is available for this session. File transfer was not negotiated by the Mac.</string>
+    <string name="transfer_readiness_files_only_status">Files ready, clipboard unavailable</string>
+    <string name="transfer_readiness_files_only_summary">File transfer is available for this session. Clipboard control was not negotiated by the Mac.</string>
     <string name="video_section_title">Video</string>
     <string name="video_quality_label">Quality</string>
     <string name="video_quality_auto">Auto</string>

@@ -1,0 +1,13 @@
+ba3a24063b3d1f77ad519f314e8bdb45a320d991af5f55aa0ceb052c8180bc9c  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/commands.txt
+67ced1a68ef2a4702f1496f3959212596abf72948cdf36ac37af6b3ce895a079  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/device-info.txt
+781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/adb-install.txt
+6a219edd8104aa167c5b0f0e4e1c7c484add69b07cd7d03ae10da7ba8797618f  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/adb-reverse-before.txt
+ecaf18062c5a91b95850fd471a27f0a09832ef04f1bfe2ce38c7ee13bd5c7028  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/adb-start.txt
+0c9f5383b194567b831b74e267a2625813072f47acd256686412d201a21855fb  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/app-diag-redacted.log
+1aa34338fd3a4a3b38bbcc8e1b42fd046e7803c2901cea8dac5e7d451cc60bc6  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/host-port-54321-listeners.txt
+9b54434506198632adb475f794cf47d80e1ff00483d3195de3397dd561554b5d  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/window-focus.txt
+ee98a3a40b29c0b0fea8698afe73f8a11bf6a89a471752fdff3d1ac2c4ace69b  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/README.md
+a38e2c60dfd7aa295d1cffeeee78faf97d58c8f3e227b0ace8bc4bfdaedd5df4  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/screenshots/screen-01-initial-usb-disconnected.png
+e611c1ed735c6c2a04a480dc1db0753a32eb1efe21062f5c6329c4e14fdb75be  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/screenshots/screen-02-settings-transfer-readiness.png
+2dd39433a477a0f611f8277042da155f95bb167422b6948e54c882aff7e049d1  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/ui-dumps/ui-hierarchy-01-usb.xml
+c75a3b80b0fbf666684a87d7fd2a3acd75e0e4c2c8a35d4273a98862aa40a8c1  docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/ui-dumps/ui-hierarchy-02-settings.xml

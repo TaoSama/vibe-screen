@@ -445,6 +445,13 @@ class MainActivity : AppCompatActivity() {
         activeSettingsDialog?.let(::renderDeviceHealth)
     }
 
+    private fun refreshTransferReadinessInSettings() {
+        val dialog = activeSettingsDialog ?: return
+        val status = dialog.findViewById<TextView>(R.id.transferReadinessStatus) ?: return
+        val summary = dialog.findViewById<TextView>(R.id.transferReadinessSummary) ?: return
+        renderTransferReadiness(status, summary)
+    }
+
     private fun renderDeviceHealth(dialog: Dialog) {
         val snapshot = deviceHealthSnapshot
         val status = dialog.findViewById<TextView>(R.id.deviceHealthStatus) ?: return
@@ -2317,6 +2324,7 @@ class MainActivity : AppCompatActivity() {
         val state = productSessionCoordinator.renderState()
         binding.controlHostActionsButton.visibility = if (state.hostActionsVisible) View.VISIBLE else View.GONE
         binding.controlHostActionsButton.isEnabled = state.hostActionsEnabled
+        refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
 
@@ -2334,6 +2342,7 @@ class MainActivity : AppCompatActivity() {
         binding.controlClipboardButton.visibility = if (state.clipboardVisible) View.VISIBLE else View.GONE
         binding.controlClipboardButton.isEnabled = state.clipboardEnabled
         updateClipboardAccessibilityLabel(client, activeSessionGeneration)
+        refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
 
@@ -2366,6 +2375,7 @@ class MainActivity : AppCompatActivity() {
         val state = productSessionCoordinator.renderState()
         binding.controlFileTransferButton.visibility = if (state.fileTransferVisible || internetFileTransfer) View.VISIBLE else View.GONE
         binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled || internetFileTransfer
+        refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
 
@@ -3758,6 +3768,8 @@ class MainActivity : AppCompatActivity() {
                 ClientRotation.COUNTER_CLOCKWISE_90 to view.findViewById<MaterialButton>(R.id.rotation270),
             )
         val displayCapability = view.findViewById<TextView>(R.id.displayCapability)
+        val transferReadinessStatus = view.findViewById<TextView>(R.id.transferReadinessStatus)
+        val transferReadinessSummary = view.findViewById<TextView>(R.id.transferReadinessSummary)
 
         // Video tuning controls.
         val videoControlUnavailable = view.findViewById<TextView>(R.id.videoControlUnavailable)
@@ -3805,6 +3817,7 @@ class MainActivity : AppCompatActivity() {
                 R.string.display_selection_host_only
             },
         )
+        renderTransferReadiness(transferReadinessStatus, transferReadinessSummary)
 
         fun updateViewportButtons() {
             scaleFitButton.isChecked = prefs.videoScaleMode == VideoScaleMode.FIT
@@ -3916,6 +3929,25 @@ class MainActivity : AppCompatActivity() {
         resizeSettingsDialog(dialog)
     }
 
+    private fun renderTransferReadiness(
+        status: TextView,
+        summary: TextView,
+    ) {
+        val state = productSessionCoordinator.renderState()
+        val connected = state.connected || internetSession?.state == InternetProductSessionState.ACTIVE
+        val clipboardReady = state.clipboardEnabled
+        val fileTransferReady = state.fileTransferEnabled || internetSession?.canTransferFiles == true
+        val presentation =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = connected,
+                clipboardReady = clipboardReady,
+                fileTransferReady = fileTransferReady,
+            )
+        status.setText(presentation.statusResource)
+        status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
+        summary.setText(presentation.summaryResource)
+    }
+
     /** Refit the live settings dialog after an orientation or inset change. */
     private fun resizeSettingsDialog(dialog: Dialog) {
         dialog.window?.let { win ->
@@ -3988,7 +4020,9 @@ class MainActivity : AppCompatActivity() {
         binding: ClientSessionBinding,
     ): Boolean {
         if (!binding.capabilities.fileTransfer) discardPendingOutgoingFileTransfer()
-        return productSessionCoordinator.updateNegotiatedSession(client, generation, binding)
+        val updated = productSessionCoordinator.updateNegotiatedSession(client, generation, binding)
+        if (updated) refreshTransferReadinessInSettings()
+        return updated
     }
 
     private fun initializeDecoder(
@@ -4352,6 +4386,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 if (!connected) discardPendingOutgoingFileTransfer()
                 productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)
+                refreshTransferReadinessInSettings()
                 isConnected = connected
                 applyStreamingWindowState(connected = connected, foreground = isInForeground)
                 if (connected) {
@@ -5125,6 +5160,7 @@ class MainActivity : AppCompatActivity() {
             productSessionCoordinator.attachInternetSession(generation, created)
             internetNetworkMonitor = monitor
             internetSession = created
+            refreshTransferReadinessInSettings()
             binding.internetConnectButton.isEnabled = false
             binding.internetDisconnectButton.visibility = View.VISIBLE
             LiveRegionTextApplier.hide(binding.internetErrorText)
@@ -5341,6 +5377,7 @@ class MainActivity : AppCompatActivity() {
             internetStylusContactRouter.reset()
             setStreamingWindowState(false)
         }
+        refreshTransferReadinessInSettings()
     }
 
     private fun internetStateLabel(state: InternetProductSessionState): String =

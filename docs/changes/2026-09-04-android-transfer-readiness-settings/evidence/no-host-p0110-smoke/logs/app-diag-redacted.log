@@ -1,0 +1,4 @@
+[1788497628336] MA: device health battery=100 charging=true saver=false thermal=elevated
+[1788497628337] MA: lifecycle foreground connected=false
+[1788497628388] MA: surfaceCreated
+[1788497628389] MA: surfaceChanged: 1264x2800
