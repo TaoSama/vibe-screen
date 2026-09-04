@@ -49,32 +49,4 @@ class DecoderTelemetryAccumulatorTest {
         assertEquals(2, nextPeriod.decoderLatencySamples)
     }
 
-    @Test
-    fun staleSessionDoesNotConsumeCurrentDecoderTelemetry() {
-        var consumed = false
-        val staleSnapshot = currentSessionDecoderTelemetrySnapshot(
-            isCurrentSession = { false },
-            currentDecoderSnapshot = {
-                consumed = true
-                DecoderTelemetrySnapshot(5L, 7.0, 9.0, decoderLatencySamples = 3)
-            },
-        )
-
-        assertEquals(DecoderTelemetrySnapshot.empty, staleSnapshot)
-        assertEquals(false, consumed)
-
-        val currentSnapshot = currentSessionDecoderTelemetrySnapshot(
-            isCurrentSession = { true },
-            currentDecoderSnapshot = {
-                consumed = true
-                DecoderTelemetrySnapshot(5L, 7.0, 9.0, decoderLatencySamples = 3)
-            },
-        )
-
-        assertEquals(5L, currentSnapshot.droppedFrames)
-        assertEquals(7.0, currentSnapshot.decoderLatencyAvgMs ?: -1.0, 0.001)
-        assertEquals(9.0, currentSnapshot.decoderLatencyMaxMs ?: -1.0, 0.001)
-        assertEquals(3, currentSnapshot.decoderLatencySamples)
-        assertEquals(true, consumed)
-    }
 }

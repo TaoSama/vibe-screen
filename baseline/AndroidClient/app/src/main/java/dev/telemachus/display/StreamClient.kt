@@ -228,7 +228,7 @@ class StreamClient(
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
-    private var lastHeartbeatTelemetryNs = 0L
+    private val heartbeatTelemetryReporter = HeartbeatTelemetryReporter(HEARTBEAT_TELEMETRY_INTERVAL_NS)
     private val protocolActionDispatcher = StreamProtocolActionDispatcher(StreamProtocolActionSink())
 
     // Callback includes actual frame size (may differ from buffer.size due to pooling),
@@ -412,6 +412,7 @@ class StreamClient(
                     return@withContext
                 }
                 heartbeat.reset(System.nanoTime())
+                heartbeatTelemetryReporter.reset()
                 mediaFrameRouter.resetStream()
                 synchronized(keyframeRequestLock) {
                     lastKeyframeRequestNs = 0L
@@ -653,6 +654,7 @@ class StreamClient(
                             outboundScheduler.shutdownNow()
                             return@withContext
                         }
+                        heartbeatTelemetryReporter.reset()
                         streamCodecIsHevc = true
                         codecNegotiated = false
                         val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
@@ -1082,7 +1084,7 @@ class StreamClient(
                             }
                             continue
                         }
-                    recordHeartbeatReceived("legacy")
+                    recordHeartbeatReceived(HeartbeatTelemetrySource.LEGACY)
 
                     when (type.toInt()) {
                         MESSAGE_VIDEO_FRAME -> {
@@ -1274,7 +1276,7 @@ class StreamClient(
                     )
                 }
                 awaitProtocolReceive(completion)
-                recordHeartbeatReceived("control")
+                recordHeartbeatReceived(HeartbeatTelemetrySource.CONTROL)
             }
             ProtocolChannel.VIDEO -> {
                 val session = checkNotNull(protocolSessionOwner.currentSession)
@@ -1299,7 +1301,7 @@ class StreamClient(
                 when (val result = audioPlayer.submit(frame.payload)) {
                     is ProtocolAudioPacketResult.Accepted -> {
                         recordProtocolAudioPacket(result)
-                        recordHeartbeatReceived("audio")
+                        recordHeartbeatReceived(HeartbeatTelemetrySource.AUDIO)
                     }
                     is ProtocolAudioPacketResult.Rejected -> {
                         throw SessionProtocolException(
@@ -1358,7 +1360,7 @@ class StreamClient(
                     )
                 }
                 awaitProtocolReceive(completion)
-                recordHeartbeatReceived("bulk")
+                recordHeartbeatReceived(HeartbeatTelemetrySource.BULK)
             }
         }
     }
@@ -2968,18 +2970,18 @@ class StreamClient(
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
-    private fun recordHeartbeatReceived(source: String) {
+    private fun recordHeartbeatReceived(source: HeartbeatTelemetrySource) {
         val nowNs = System.nanoTime()
         heartbeat.recordInbound(nowNs)
-        if (lastHeartbeatTelemetryNs == 0L || nowNs - lastHeartbeatTelemetryNs >= HEARTBEAT_TELEMETRY_INTERVAL_NS) {
-            lastHeartbeatTelemetryNs = nowNs
+        heartbeatTelemetryReporter.record(
+            nowNs = nowNs,
+            sessionEpoch = protocolSessionOwner.connectionEpoch,
+            wireMode = wireMode.name.lowercase(),
+            source = source,
+        ) { event ->
             emitTelemetry(
                 "heartbeat_received",
-                mapOf(
-                    "session_epoch" to protocolSessionOwner.connectionEpoch,
-                    "wire_mode" to wireMode.name.lowercase(),
-                    "source" to source,
-                ),
+                event.fields(),
             )
         }
     }

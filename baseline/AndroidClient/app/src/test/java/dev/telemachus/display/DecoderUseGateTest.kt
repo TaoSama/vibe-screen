@@ -147,6 +147,23 @@ class DecoderUseGateTest {
     }
 
     @Test
+    fun withCurrentIfExecutesOnlyWhenAdmittedAndDecoderPresent() {
+        val decoder = Any()
+        val gate = DecoderUseGate<Any>()
+        var actionCalled = false
+
+        assertNull(gate.withCurrentIf(admit = { true }) { actionCalled = true; it })
+        assertFalse(actionCalled)
+
+        assertTrue(gate.installIf(decoder) { true })
+        assertNull(gate.withCurrentIf(admit = { false }) { actionCalled = true; it })
+        assertFalse(actionCalled)
+
+        assertSame(decoder, gate.withCurrentIf(admit = { true }) { actionCalled = true; it })
+        assertTrue(actionCalled)
+    }
+
+    @Test
     fun compareAndSetSuccessCallbackRunsWhileHoldingGateLockSoInstallCannotInterleave() {
         val decoder = Any()
         val replacement = Any()

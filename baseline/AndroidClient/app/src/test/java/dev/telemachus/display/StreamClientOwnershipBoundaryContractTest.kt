@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,17 +56,84 @@ class StreamClientOwnershipBoundaryContractTest {
         val streamClient = source(PRODUCTION_STREAM_CLIENT)
 
         assertTrue("StreamClient must keep structured heartbeat received telemetry", streamClient.contains("\"heartbeat_received\""))
-        assertTrue("StreamClient must record inbound heartbeats through the telemetry helper", streamClient.contains("private fun recordHeartbeatReceived("))
+        val heartbeatHelper = streamClient.substringAfter("private fun recordHeartbeatReceived(")
+        assertTrue(
+            "StreamClient must record inbound heartbeats through the telemetry helper",
+            heartbeatHelper.isNotBlank(),
+        )
         assertFalse(
             "StreamClient inbound paths must not bypass heartbeat received telemetry",
             streamClient.contains("heartbeat.recordInbound(System.nanoTime())"),
         )
-        listOf("legacy", "control", "audio", "bulk").forEach { source ->
-            assertTrue(
-                "StreamClient must classify heartbeat source `$source`",
-                streamClient.contains("recordHeartbeatReceived(\"$source\")"),
-            )
-        }
+        assertEquals(
+            "StreamClient must call the heartbeat watchdog only through recordHeartbeatReceived",
+            1,
+            streamClient.countOccurrences("heartbeat.recordInbound("),
+        )
+        assertFalse(
+            "StreamClient must route source classification through HeartbeatTelemetrySource values",
+            streamClient.contains("recordHeartbeatReceived(\""),
+        )
+        assertTrue(
+            "heartbeat helper must use HeartbeatTelemetryReporter for throttling and fields",
+            heartbeatHelper.contains("heartbeatTelemetryReporter.record("),
+        )
+        assertTrue(
+            "heartbeat helper must attach the active session epoch",
+            heartbeatHelper.contains("sessionEpoch = protocolSessionOwner.connectionEpoch"),
+        )
+        assertTrue(
+            "heartbeat helper must attach the current wire mode",
+            heartbeatHelper.contains("wireMode = wireMode.name.lowercase()"),
+        )
+        assertTrue(
+            "heartbeat helper must emit reporter-owned field maps",
+            heartbeatHelper.contains("event.fields()"),
+        )
+
+        assertScopedContains(
+            source = streamClient,
+            start = "pendingLegacyFirstByte?.also",
+            end = "when (type.toInt())",
+            expected = "recordHeartbeatReceived(HeartbeatTelemetrySource.LEGACY)",
+            message = "legacy inbound first-byte path must classify heartbeat source before dispatch",
+        )
+        assertScopedContains(
+            source = streamClient,
+            start = "ProtocolChannel.CONTROL ->",
+            end = "ProtocolChannel.VIDEO ->",
+            expected = "recordHeartbeatReceived(HeartbeatTelemetrySource.CONTROL)",
+            message = "control channel inbound branch must classify heartbeat source",
+        )
+        assertScopedContains(
+            source = streamClient,
+            start = "ProtocolChannel.AUDIO ->",
+            end = "ProtocolChannel.BULK ->",
+            expected = "recordHeartbeatReceived(HeartbeatTelemetrySource.AUDIO)",
+            message = "audio channel accepted-packet branch must classify heartbeat source",
+        )
+        assertScopedContains(
+            source = streamClient,
+            start = "ProtocolChannel.BULK ->",
+            end = "private fun currentInputSessionState",
+            expected = "recordHeartbeatReceived(HeartbeatTelemetrySource.BULK)",
+            message = "bulk channel inbound branch must classify heartbeat source",
+        )
+
+        assertScopedContains(
+            source = streamClient,
+            start = "suspend fun connect()",
+            end = "receiveData()",
+            expected = "heartbeatTelemetryReporter.reset()",
+            message = "USB connection startup must reset heartbeat telemetry before receiving data",
+        )
+        assertScopedContains(
+            source = streamClient,
+            start = "suspend fun connectWireless(",
+            end = "receiveData()",
+            expected = "heartbeatTelemetryReporter.reset()",
+            message = "LAN connection startup must reset heartbeat telemetry before receiving data",
+        )
     }
 
     @Test
@@ -221,6 +289,31 @@ class StreamClientOwnershipBoundaryContractTest {
         split(32.toChar(), 9.toChar(), 10.toChar(), 13.toChar())
             .filter(String::isNotEmpty)
             .joinToString(" ")
+
+    private fun String.countOccurrences(needle: String): Int {
+        var count = 0
+        var index = indexOf(needle)
+        while (index >= 0) {
+            count++
+            index = indexOf(needle, index + needle.length)
+        }
+        return count
+    }
+
+    private fun assertScopedContains(
+        source: String,
+        start: String,
+        end: String,
+        expected: String,
+        message: String,
+    ) {
+        val startIndex = source.indexOf(start)
+        assertTrue("Scope start not found for `$message`: `$start`", startIndex >= 0)
+        val endIndex = source.indexOf(end, startIndex + start.length)
+        assertTrue("Scope end not found for `$message`: `$end`", endIndex > startIndex)
+        val scopedSource = source.substring(startIndex, endIndex)
+        assertTrue(message, scopedSource.contains(expected))
+    }
 
     private data class BoundaryOwnerRule(
         val name: String,

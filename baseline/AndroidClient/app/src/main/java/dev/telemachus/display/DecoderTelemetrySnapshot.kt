@@ -55,11 +55,3 @@ internal class DecoderTelemetryAccumulator {
             snapshot
         }
 }
-
-internal fun currentSessionDecoderTelemetrySnapshot(
-    isCurrentSession: () -> Boolean,
-    currentDecoderSnapshot: () -> DecoderTelemetrySnapshot?,
-): DecoderTelemetrySnapshot {
-    if (!isCurrentSession()) return DecoderTelemetrySnapshot.empty
-    return currentDecoderSnapshot() ?: DecoderTelemetrySnapshot.empty
-}
