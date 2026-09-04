@@ -191,6 +191,68 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     }
 
     @Test
+    fun disconnectedSessionUiHidesFileTransferControlsFailClosed() {
+        val source = mainActivitySource()
+        val disconnectedUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+
+        assertTrue(
+            "Disconnect cleanup should clear staged outgoing file state before hiding controls",
+            disconnectedUi.contains("discardPendingOutgoingFileTransfer()"),
+        )
+        assertTrue(
+            "Disconnected UI must hide and disable the file-transfer action, not rely only on the parent bar",
+            disconnectedUi.contains("binding.controlFileTransferButton.visibility = View.GONE") &&
+                disconnectedUi.contains("binding.controlFileTransferButton.isEnabled = false"),
+        )
+        assertTrue(
+            "Disconnected UI must restore the neutral file-transfer accessibility label and tooltip",
+            disconnectedUi.contains("binding.controlFileTransferButton.contentDescription = getString(R.string.control_file_transfer)") &&
+                disconnectedUi.contains("TooltipCompat.setTooltipText(binding.controlFileTransferButton, getText(R.string.control_file_transfer))"),
+        )
+        assertTrue(
+            "Disconnected UI must restore the neutral file-transfer icon and color",
+            disconnectedUi.contains("binding.controlFileTransferButton.setImageResource(R.drawable.ic_file_transfer)") &&
+                disconnectedUi.contains("binding.controlFileTransferButton.setColorFilter(ContextCompat.getColor(this, R.color.on_surface))"),
+        )
+        assertTrue(
+            "Disconnected UI must clear progress text so a prior transfer cannot leak into a later disconnected screen",
+            disconnectedUi.contains("binding.controlFileTransferProgressText.visibility = View.GONE") &&
+                disconnectedUi.contains("binding.controlFileTransferProgressText.text = \"\"") &&
+                disconnectedUi.contains("binding.controlFileTransferProgressText.contentDescription = \"\""),
+        )
+    }
+
+    @Test
+    fun activeOutgoingTransferSuppressesControlBarAutoHide() {
+        val source = mainActivitySource()
+        val hideRunnable = extractProperty(source, "private val controlBarHideRunnable")
+        val reconcileTouchExplorationState = extractMethod(source, "private fun reconcileTouchExplorationState")
+        val revealControlBar = extractMethod(source, "private fun revealControlBar")
+        val currentRevealReason = extractMethod(source, "private fun currentControlBarRevealReason")
+
+        assertTrue(
+            "The delayed hide runnable must not hide progress/cancel UI while an outgoing transfer is active",
+            hideRunnable.contains("activeOutgoingFileTransfer == null") &&
+                assertBeforeValue(hideRunnable, "activeOutgoingFileTransfer == null", "hideControlBar()"),
+        )
+        assertTrue(
+            "Ordinary reveal calls during an outgoing transfer should be treated as ACTIVE_TRANSFER",
+            revealControlBar.contains("currentControlBarRevealReason(revealReason)"),
+        )
+        assertTrue(
+            "Touch-exploration changes should preserve the active-transfer no-autohide reason",
+            reconcileTouchExplorationState.contains("currentControlBarRevealReason(") &&
+                reconcileTouchExplorationState.contains("ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST"),
+        )
+        assertTrue(
+            "Active outgoing transfer is the single source that upgrades reveal reason to no-autohide",
+            currentRevealReason.contains("activeOutgoingFileTransfer != null") &&
+                currentRevealReason.contains("ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER") &&
+                currentRevealReason.contains("requested"),
+        )
+    }
+
+    @Test
     fun outgoingFileTransferCancelCopyHasDedicatedFailureMessage() {
         val strings = stringsSource()
 
@@ -233,6 +295,17 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         return extractBraceBlock(source, start, bodyStart, signature)
     }
 
+    private fun extractProperty(
+        source: String,
+        signature: String,
+    ): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) { "Property not found: $signature" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Property body not found: $signature" }
+        return extractBraceBlock(source, start, bodyStart, signature)
+    }
+
     private fun extractCallback(
         source: String,
         marker: String,
@@ -242,6 +315,16 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val bodyStart = source.indexOf('{', start)
         require(bodyStart >= 0) { "Callback body not found: $marker" }
         return extractBraceBlock(source, start, bodyStart, marker)
+    }
+
+    private fun assertBeforeValue(
+        source: String,
+        first: String,
+        second: String,
+    ): Boolean {
+        val firstIndex = source.indexOf(first)
+        val secondIndex = source.indexOf(second)
+        return firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex
     }
 
     private fun extractBraceBlock(
