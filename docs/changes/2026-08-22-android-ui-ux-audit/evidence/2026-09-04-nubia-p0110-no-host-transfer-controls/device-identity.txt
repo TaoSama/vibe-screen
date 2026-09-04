@@ -1,0 +1,8 @@
+$ adb -s <redacted-adb-serial> shell getprop ...
+nubia
+P0110
+pacific
+16
+36
+Physical size: 1264x2800
+Physical density: 560

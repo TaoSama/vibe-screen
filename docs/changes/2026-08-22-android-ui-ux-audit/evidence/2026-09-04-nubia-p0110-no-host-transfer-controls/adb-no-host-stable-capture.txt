@@ -1,0 +1,14 @@
+$ adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+
+$ adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+$ adb -s <redacted-adb-serial> shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect false
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity (has extras) }
+$ adb -s <redacted-adb-serial> shell dumpsys window | grep focus
+  mCurrentFocus=Window{3fd9625 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{202497154 u0 dev.telemachus.display/.MainActivity t1028}
+$ adb -s <redacted-adb-serial> shell uiautomator dump --compressed /sdcard/vibescreen-no-host-stable.xml
+UI hierchary dumped to: /sdcard/vibescreen-no-host-stable.xml
+$ adb -s <redacted-adb-serial> pull /sdcard/vibescreen-no-host-stable.xml
+/sdcard/vibescreen-no-host-stable.xml: 1 file pulled, 0 skipped. 2.4 MB/s (6818 bytes in 0.003s)
+$ adb -s <redacted-adb-serial> exec-out screencap -p > screen-no-host-stable.png
