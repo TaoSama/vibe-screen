@@ -1,0 +1,181 @@
+{
+  "blockers": [
+    "codesign identity 'Vibe Screen Dev' not found in the keychain. Import the Vibe Screen Host signing certificate with leaf SHA-1 '9AAE572BF6D764E3436A6109197D345B5A87998C' (or set $VIBE_SCREEN_SIGN_IDENTITY to that SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview build. Ad-hoc signing changes the designated requirement and cannot reuse macOS Screen Recording/Accessibility grants.",
+    "codesign resource seals in /Applications/Vibe Screen.app reference temporary files: Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp, Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp.cstemp. Refusing to continue because stale CodeResources entries can make strict verification fail and change macOS TCC identity matching.",
+    "Host listener is not observed on TCP port 54321",
+    "Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "login/headless readiness: Launch at Login is not verified enabled: unverified"
+  ],
+  "can_close_runtime_gates": false,
+  "can_start_controller_runtime_gate": false,
+  "can_start_hardware_keyboard_gate": false,
+  "can_start_headless_login_gate": false,
+  "can_start_host_rss_gate": false,
+  "can_start_native_hid_gate": false,
+  "can_start_stylus_gate": false,
+  "can_start_trusted_lan_gate": false,
+  "entitlements": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "error": null,
+    "keys": [],
+    "virtual_hid": false
+  },
+  "generated_at": "2026-09-04T17:20:11.784019+00:00",
+  "host": {
+    "app_path": "/Applications/Vibe Screen.app",
+    "authorities": [],
+    "binary_sha256": null,
+    "cdhash": null,
+    "certificate_sha1": null,
+    "current_source_commit": "ed3b336408c6d2c3aec9e382d037aafd536fb61a",
+    "current_source_dirty": true,
+    "current_source_tree": "c727c42bd702869c5e628b3ed1131549f3fe7ea9",
+    "designated_requirement": null,
+    "expected_certificate_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "identifier": null,
+    "identity": null,
+    "is_ad_hoc": null,
+    "source_commit": null,
+    "source_dirty": null,
+    "source_tree": null,
+    "team_identifier": null
+  },
+  "kind": "macos_host_shared_prerequisite_readiness",
+  "listener": {
+    "error": "listener not observed",
+    "observed": false,
+    "output": "",
+    "port": 54321
+  },
+  "listener_status": "blocked",
+  "login_headless": {
+    "blockers": [
+      "Launch at Login is not verified enabled: unverified"
+    ],
+    "display_inventory": {
+      "active_display_count": 2,
+      "display_count": 2,
+      "displays": [
+        {
+          "id": "1",
+          "logical": "1512 x 982 @ 120.00Hz",
+          "main": "1",
+          "name": "Color LCD",
+          "physical": "3024 x 1964",
+          "source": "system_profiler"
+        },
+        {
+          "id": "2",
+          "logical": "1920 x 1080 @ 60.00Hz",
+          "main": "0",
+          "name": "DELL U2723QE",
+          "physical": "3840 x 2160",
+          "source": "system_profiler"
+        }
+      ],
+      "error": null,
+      "readable": true
+    },
+    "does_not_prove": [
+      "macOS launched Vibe Screen after logout/login or reboot",
+      "a headless Mac mini exposes a capturable display after reboot",
+      "system_profiler display inventory proves ScreenCaptureKit can capture that display",
+      "USB or LAN streaming rendered on an Android client",
+      "unattended recovery succeeded or exhausted during a real listener/capture/display failure"
+    ],
+    "host_log": {
+      "error": null,
+      "path": "<user-host-log>",
+      "readable": true,
+      "startup_recovery_markers": []
+    },
+    "login_item": {
+      "detail": "Login item not probed by default; probe not run. Use an attended diagnostic session outside default readiness to inspect login-item state.",
+      "evidence": [],
+      "matched": false,
+      "sfltool_dumpbtm_was_run": false,
+      "state": "unverified"
+    },
+    "recommended_next_evidence": [
+      "capture a reboot or logout/login launch log without manually launching Vibe Screen",
+      "record the intended headless display setup and first successful capture after login",
+      "force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs"
+    ],
+    "startup_settings": {
+      "auto_start_streaming_on_launch": true,
+      "defaults_used": [],
+      "display_source": "selectedDisplay",
+      "domain": "dev.telemachus.display",
+      "error": null,
+      "has_completed_onboarding": true,
+      "readable": true,
+      "selected_display_id": 2,
+      "selected_display_uuid": "<redacted-display-uuid>",
+      "startup_mode": "usb",
+      "stored_keys": [
+        "Telemachus_adbDeviceSerial",
+        "Telemachus_autoStartStreamingOnLaunch",
+        "Telemachus_bitrate",
+        "Telemachus_connectionMode",
+        "Telemachus_dismissedPostUpdatePermissionHintFingerprint",
+        "Telemachus_displaySource",
+        "Telemachus_hasCompletedOnboarding",
+        "Telemachus_hasPosition_1446320657_60_0",
+        "Telemachus_hiDPI",
+        "Telemachus_internetHostDeviceID",
+        "Telemachus_lastKnownBinaryFingerprint",
+        "Telemachus_pendingPostUpdatePermissionHintFingerprint",
+        "Telemachus_positionX_1446320657_60_0",
+        "Telemachus_positionY_1446320657_60_0",
+        "Telemachus_quality",
+        "Telemachus_refreshRate",
+        "Telemachus_rotation",
+        "Telemachus_selectedDisplayID",
+        "Telemachus_selectedDisplayUUID",
+        "Telemachus_startupMode"
+      ]
+    },
+    "status": "blocked"
+  },
+  "login_headless_status": "blocked",
+  "permissions": {
+    "accessibility_granted": null,
+    "accessibility_identity_bound": null,
+    "database_path": "not inspected",
+    "error": "Host bundle signing was not inspected",
+    "microphone_granted": null,
+    "microphone_identity_bound": null,
+    "readable": false,
+    "rows": [],
+    "screen_recording_granted": null,
+    "screen_recording_identity_bound": null
+  },
+  "safety": {
+    "closes_runtime_gates": false,
+    "installs_or_replaces_host": false,
+    "modifies_android": false,
+    "modifies_keychain": false,
+    "modifies_tcc": false,
+    "note": "preflight/readiness are read-only: they inspect bundle metadata, codesign, source provenance, listener state, entitlements, defaults, logs, display inventory, and TCC database rows; they do not start the Host GUI, open System Settings, call permission-request APIs, reset TCC, mutate Keychain, install apps, or touch Android/ADB state.",
+    "opens_host_gui": false,
+    "opens_system_settings": false,
+    "read_only": true,
+    "requests_accessibility": false,
+    "requests_microphone": false,
+    "requests_screen_recording": false,
+    "starts_host": false
+  },
+  "schema_version": "vibescreen.host-readiness/v1",
+  "signing_tcc_status": "blocked",
+  "status": "blocked",
+  "tcc_identity_binding": {
+    "bundle_id": "dev.telemachus.display",
+    "drift_is_blocking": true,
+    "expected_signing_leaf_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    "install_path": "/Applications/Vibe Screen.app",
+    "note": "macOS TCC grants are identity-bound. Screen Recording, Accessibility, and Microphone authorization must match this exact installed app bundle identifier, canonical designated requirement/signing leaf, stable /Applications path, and source provenance. A rebuilt, re-signed, moved, or ad-hoc Host can be treated by macOS as a different app and must stay blocked until the read-only rows prove authorization for that exact identity.",
+    "requires_canonical_designated_requirement": true,
+    "requires_matching_source_provenance": true
+  },
+  "virtual_hid_status": "blocked"
+}

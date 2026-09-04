@@ -382,3 +382,37 @@ This is positive fail-closed UI evidence only. It does not exercise Android
 ClipboardManager, macOS NSPasteboard, Protocol v1 clipboard packets, receiver
 approval, digest validation, USB/LAN product transport, or any Host/TCC path.
 The Android/macOS clipboard E2E gate remains open.
+
+## 2026-09-05 Nubia P0110 Android clipboard baseline refresh
+
+Evidence:
+[evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked](evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/README.md).
+
+Status remains open. The run refreshed from `origin/main` at
+`6a318241e7465b51e5ae84c91e8f18cfb4deed2d` inside the
+`codex/android-clipboard-current-baseline` worktree and recorded the device as
+nubia P0110 / pacific / Android 16 / SDK 36. The run used only read-only
+`adb reverse --list` for reverse-state collection and did not configure
+`adb reverse tcp:54321 tcp:54321`.
+
+Android focused clipboard JVM tests passed, the evidence-tool unit suite passed,
+and the Android local `ClipboardManagerInstrumentedTest` passed on the handset
+with `OK (5 tests)`. The local smoke now covers ordinary foreground text,
+instrumentation-argument set/read behavior, a 256 KiB UTF-8 Unicode text round
+trip, and safe handling of non-text Intent `ClipData`. The 1 MiB protocol
+ceiling remains offline/protocol coverage; it is not claimed as Android system
+ClipboardManager device-smoke evidence because a local 1 MiB ClipboardManager
+write hit Android Binder transaction-size limits on this P0110.
+
+The gate parser was hardened so Android clipboard instrumentation logs must show
+at least one executed test. Logs containing only `BUILD SUCCESSFUL` or `OK (0
+tests)` now stay blocked. The generated `clipboard-e2e-gate.json` is still
+intentionally `blocked` and `gate_closed=false`: Host readiness is blocked, USB
+readiness is blocked because product `tcp:54321` reverse/foreground app/Host
+listener prerequisites are absent, trusted LAN is blocked because the device has
+no Wi-Fi association or route, and no bidirectional `product-e2e.json` record
+exists.
+
+No Android `ClipboardManager` -> macOS `NSPasteboard` or macOS `NSPasteboard` ->
+Android `ClipboardManager` product transfer was executed. The P0110 evidence
+must not be relabeled as Xiaomi 13/fuxi evidence.

@@ -1,0 +1,8 @@
+## codex/android-clipboard-current-baseline...origin/main
+ M README.md
+ M baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/ClipboardManagerInstrumentedTest.kt
+ M baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ProductSessionCoordinatorTest.kt
+ M docs/changes/2026-08-16-android-macos-clipboard/TEST.md
+ M tools/tests/test_clipboard_e2e_gate.py
+ M tools/vibescreen_evidence/clipboard_e2e_gate.py
+?? docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/

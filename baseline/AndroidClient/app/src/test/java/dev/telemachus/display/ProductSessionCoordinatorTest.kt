@@ -166,6 +166,74 @@ class ProductSessionCoordinatorTest {
     }
 
     @Test
+    fun `pending clipboard receive keeps the visible enabled control until user action`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+        val offer = clipboardOffer()
+
+        assertTrue(coordinator.stageClipboardOffer(client, generation, offer))
+
+        val pendingOfferState = coordinator.renderState()
+        assertTrue(pendingOfferState.clipboardVisible)
+        assertTrue(pendingOfferState.clipboardEnabled)
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+        assertTrue(
+            coordinator.clipboardOfferForRequest(client, generation)
+                ?.changeId
+                ?.contentEquals(offer.changeId) == true,
+        )
+    }
+
+    @Test
+    fun `pending direct clipboard content keeps the visible enabled control until approval`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+        val content = directClipboardContent()
+
+        assertTrue(coordinator.stageDirectClipboardContent(client, generation, content))
+
+        val pendingDirectContentState = coordinator.renderState()
+        assertTrue(pendingDirectContentState.clipboardVisible)
+        assertTrue(pendingDirectContentState.clipboardEnabled)
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+        assertTrue(
+            coordinator.directClipboardContentForConfirmation(client, generation)
+                ?.changeId
+                ?.contentEquals(content.changeId) == true,
+        )
+    }
+
+    @Test
+    fun `managed policy clipboard deny removes visible control and clears pending receive`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+        assertTrue(coordinator.stageClipboardOffer(client, generation, clipboardOffer()))
+        assertTrue(coordinator.renderState().clipboardVisible)
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = false))
+        coordinator.setRuntimeAvailability(client, generation, clipboard = false)
+
+        val deniedState = coordinator.renderState()
+        assertFalse(deniedState.clipboardVisible)
+        assertFalse(deniedState.clipboardEnabled)
+        assertFalse(coordinator.hasPendingClipboardReceive(client, generation))
+        assertNull(coordinator.clipboardOfferForRequest(client, generation))
+    }
+
+    @Test
     fun `partial runtime availability updates preserve omitted values`() {
         val coordinator = ProductSessionCoordinator<TestClient>()
         val client = TestClient("current")
@@ -665,6 +733,29 @@ class ProductSessionCoordinatorTest {
         listOf(
             StreamDisplayOption("built-in", "Built-in", 1920, 1080, isPrimary = true, isVirtual = false),
             StreamDisplayOption("studio", "Studio", 2560, 1440, isPrimary = false, isVirtual = false),
+        )
+
+    private fun clipboardOffer(
+        changeId: ByteArray = byteArrayOf(9, 10, 11),
+    ) =
+        PendingClipboardOffer(
+            changeId = changeId,
+            originDeviceId = "host",
+            mimeType = "text/plain",
+            byteLength = 4L,
+            sha256 = ByteArray(32),
+        )
+
+    private fun directClipboardContent(
+        changeId: ByteArray = byteArrayOf(12, 13, 14),
+    ) =
+        ClipboardContentData(
+            changeId = changeId,
+            originDeviceId = "host",
+            mimeType = "text/plain",
+            content = "text".toByteArray(),
+            sha256 = ByteArray(32),
+            pending = true,
         )
 
     private data class TestClient(

@@ -220,16 +220,35 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android ClipboardManager instrumentation log is missing"],
         )
     text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
+    executed_tests = _android_clipboard_test_count(text)
     junit_summary = re.search(r"Tests run:\s*\d+,\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)", text)
     has_junit_failures = bool(junit_summary and (int(junit_summary.group(1)) > 0 or int(junit_summary.group(2)) > 0))
     passed = (
-        ("OK (" in text or ("Finished " in text and " tests on " in text and "BUILD SUCCESSFUL" in text))
+        executed_tests > 0
+        and ("OK (" in text or ("Finished " in text and " tests on " in text and "BUILD SUCCESSFUL" in text))
         and "FAILURES!!!" not in text
         and "BUILD FAILED" not in text
         and not has_junit_failures
     )
-    reasons = [] if passed else ["Android ClipboardManager instrumentation log does not show an OK result"]
+    reasons = []
+    if executed_tests <= 0:
+        reasons.append("Android ClipboardManager instrumentation log does not show any executed tests")
+    if not passed:
+        reasons.append("Android ClipboardManager instrumentation log does not show an OK result")
     return _gate("android_clipboardmanager_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
+
+
+def _android_clipboard_test_count(text: str) -> int:
+    ok_match = re.search(r"OK \((\d+) tests?\)", text)
+    if ok_match:
+        return int(ok_match.group(1))
+    tests_run_match = re.search(r"Tests run:\s*(\d+)", text)
+    if tests_run_match:
+        return int(tests_run_match.group(1))
+    finished_match = re.search(r"Finished\s+(\d+)\s+tests?\s+on\s+", text)
+    if finished_match:
+        return int(finished_match.group(1))
+    return 0
 
 
 EXPECTED_DIRECTION_ENDPOINTS = {
