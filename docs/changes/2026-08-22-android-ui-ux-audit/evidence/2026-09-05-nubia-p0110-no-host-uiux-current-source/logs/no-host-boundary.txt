@@ -1,0 +1,10 @@
+$ adb -s <redacted-adb-serial> devices
+List of devices attached
+<redacted-adb-serial>	device
+
+
+$ adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN

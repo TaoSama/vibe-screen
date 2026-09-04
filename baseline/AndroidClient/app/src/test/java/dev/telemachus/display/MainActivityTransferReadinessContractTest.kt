@@ -136,7 +136,7 @@ class MainActivityTransferReadinessContractTest {
         assertBefore(layout, "@+id/transferReadinessSection", "@+id/viewportSection")
         assertTrue(strings.contains("transfer_readiness_waiting_status"))
         assertTrue(strings.contains("Waiting for a compatible Mac session"))
-        assertTrue(strings.contains("Protocol v1 negotiates those capabilities"))
+        assertTrue(strings.contains("Clipboard and file controls require Protocol v1"))
         assertFalse(
             "Readiness copy must not close the runtime E2E gate by calling the feature stable or accepted",
             Regex("transfer_readiness_[^>]+>(?:(?!</string>).)*(stable|accepted|E2E passed|verified end to end)", RegexOption.IGNORE_CASE)

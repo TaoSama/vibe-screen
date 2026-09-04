@@ -1,0 +1,35 @@
+# Commands
+
+Run from the repository root unless otherwise noted.
+
+```bash
+git status --short --branch
+git log --oneline --decorate -5
+git remote get-url origin
+
+adb -s <redacted-adb-serial> devices
+adb -s <redacted-adb-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+
+cd baseline/AndroidClient
+./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.MainActivityTransferReadinessContractTest \
+  --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest \
+  --tests dev.telemachus.display.ConnectionPanelLayoutPolicyTest \
+  --tests dev.telemachus.display.SettingsDialogLayoutPolicyTest \
+  --tests dev.telemachus.display.DisplayCapsulePolicyTest
+./gradlew --no-daemon connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest,dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest
+./gradlew --no-daemon assembleDebug
+./gradlew --no-daemon lintDebug
+
+cd ../..
+# Privacy scan used the project-local denylist from the audit task without
+# retaining the private/system-home literals in this evidence package.
+python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-no-host-uiux-current-source \
+  --output docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-no-host-uiux-current-source/privacy-scan.json
+cd docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-no-host-uiux-current-source
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+shasum -a 256 -c SHA256SUMS
+```
