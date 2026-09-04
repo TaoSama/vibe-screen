@@ -13,6 +13,7 @@ from . import SCHEMA_VERSION
 from .file_transfer_bulk_current_base_manifest import (
     AGGREGATE_OWNER,
     ANDROID_CHILD_ID,
+    CHILD_GATE_DEFAULTS,
     KIND as MANIFEST_KIND,
     READINESS_BASELINE_PR,
     REPOSITORY_FULL_NAME,
@@ -161,7 +162,10 @@ def _boundary_checks(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _child_check(child: dict[str, Any], *, required_kind: str, required_flag: str) -> dict[str, Any]:
+def _child_check(child: dict[str, Any], *, child_id: str) -> dict[str, Any]:
+    defaults = CHILD_GATE_DEFAULTS[child_id]
+    required_kind = defaults["kind"]
+    required_flag = defaults["required_flag"]
     expected = f"{required_kind} report has verdict=pass, gate_closed=true, and {required_flag}=true"
     evidence: list[str] = []
     path = child.get("path")
@@ -180,8 +184,30 @@ def _child_check(child: dict[str, Any], *, required_kind: str, required_flag: st
     return _check(passed, expected, evidence=evidence)
 
 
-def _child_identity_invalid(child: dict[str, Any], *, required_kind: str) -> bool:
-    return child.get("present") is True and child.get("kind") != required_kind
+def _child_identity_invalid(child: dict[str, Any], *, child_id: str) -> bool:
+    return child.get("present") is True and child.get("kind") != CHILD_GATE_DEFAULTS[child_id]["kind"]
+
+
+def _child_failed(child: dict[str, Any], *, child_id: str) -> bool:
+    return (
+        child.get("present") is True
+        and child.get("kind") == CHILD_GATE_DEFAULTS[child_id]["kind"]
+        and child.get("verdict") == FAIL
+    )
+
+
+def _child_pass_state_contradictory(child: dict[str, Any], *, child_id: str) -> bool:
+    return (
+        child.get("present") is True
+        and child.get("kind") == CHILD_GATE_DEFAULTS[child_id]["kind"]
+        and child.get("verdict") == PASS
+        and (
+            child.get("gate_closed") is not True
+            or child.get("can_close") is not True
+            or bool(_string_list(child.get("blockers")))
+            or bool(_string_list(child.get("not_proven")))
+        )
+    )
 
 
 def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
@@ -196,22 +222,16 @@ def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
         checks.update({f"metadata.{name}": value for name, value in _metadata_checks(manifest).items()})
         checks.update({f"boundary.{name}": value for name, value in _boundary_checks(manifest).items()})
         checks[f"child.{ANDROID_CHILD_ID}"] = _child_check(
-            _dict(child_gates.get(ANDROID_CHILD_ID)),
-            required_kind="android_macos_file_transfer_smoke",
-            required_flag="can_close_file_transfer_android_smoke_gate",
+            _dict(child_gates.get(ANDROID_CHILD_ID)), child_id=ANDROID_CHILD_ID
         )
         checks[f"child.{WEBRTC_CHILD_ID}"] = _child_check(
-            _dict(child_gates.get(WEBRTC_CHILD_ID)),
-            required_kind="phase3_webrtc_bulk_product_flow_gate",
-            required_flag="can_close_public_internet_bulk_product_flow_gate",
+            _dict(child_gates.get(WEBRTC_CHILD_ID)), child_id=WEBRTC_CHILD_ID
         )
 
         invalid_child_identity = _child_identity_invalid(
-            _dict(child_gates.get(ANDROID_CHILD_ID)),
-            required_kind="android_macos_file_transfer_smoke",
+            _dict(child_gates.get(ANDROID_CHILD_ID)), child_id=ANDROID_CHILD_ID
         ) or _child_identity_invalid(
-            _dict(child_gates.get(WEBRTC_CHILD_ID)),
-            required_kind="phase3_webrtc_bulk_product_flow_gate",
+            _dict(child_gates.get(WEBRTC_CHILD_ID)), child_id=WEBRTC_CHILD_ID
         )
 
         android_passed = checks[f"child.{ANDROID_CHILD_ID}"]["passed"]
@@ -222,9 +242,12 @@ def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
             if name.startswith("metadata.") or name.startswith("boundary.")
         )
         failed = any(
-            child_gates.get(child_id, {}).get("verdict") == FAIL
+            _child_failed(_dict(child_gates.get(child_id)), child_id=child_id)
             for child_id in (ANDROID_CHILD_ID, WEBRTC_CHILD_ID)
-            if isinstance(child_gates.get(child_id), dict)
+        )
+        contradictory_child_pass = any(
+            _child_pass_state_contradictory(_dict(child_gates.get(child_id)), child_id=child_id)
+            for child_id in (ANDROID_CHILD_ID, WEBRTC_CHILD_ID)
         )
 
         blockers = [
@@ -232,10 +255,10 @@ def derive_gate(manifest: dict[str, Any] | Path) -> dict[str, Any]:
             for name, check in checks.items()
             if not check["passed"] and check.get("blocking") is not False
         ]
-        if failed:
-            verdict = FAIL
-        elif invalid_child_identity:
+        if invalid_child_identity or contradictory_child_pass:
             verdict = BLOCKED
+        elif failed:
+            verdict = FAIL
         elif required_context_passed and android_passed and webrtc_passed:
             verdict = PASS
         elif required_context_passed and (android_passed or webrtc_passed):

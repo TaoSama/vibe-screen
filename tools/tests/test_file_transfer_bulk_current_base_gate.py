@@ -11,6 +11,7 @@ from unittest.mock import patch
 from vibescreen_evidence.file_transfer_bulk_current_base_gate import derive_gate
 from vibescreen_evidence.file_transfer_bulk_current_base_manifest import (
     ANDROID_CHILD_ID,
+    CHILD_GATE_DEFAULTS,
     SOURCE_DOCS,
     WEBRTC_CHILD_ID,
     build_manifest,
@@ -39,30 +40,23 @@ def make_manifest(root: Path, *, dirty: bool = False) -> dict[str, object]:
 def mark_child_pass(manifest: dict[str, object], child_id: str) -> None:
     child = manifest["child_gates"][child_id]
     assert isinstance(child, dict)
-    if child_id == ANDROID_CHILD_ID:
-        child.update(
-            {
-                "present": True,
-                "kind": "android_macos_file_transfer_smoke",
-                "verdict": "pass",
-                "gate_closed": True,
-                "can_close": True,
-                "path": "file-transfer-android-smoke-gate.json",
-                "blockers": [],
-            }
-        )
-    else:
-        child.update(
-            {
-                "present": True,
-                "kind": "phase3_webrtc_bulk_product_flow_gate",
-                "verdict": "pass",
-                "gate_closed": True,
-                "can_close": True,
-                "path": "webrtc-bulk-product-flow-gate.json",
-                "blockers": [],
-            }
-        )
+    child.update(child_summary(child_id, verdict="pass", can_close=True))
+
+
+def child_summary(child_id: str, *, verdict: str, can_close: bool = False, **overrides: object) -> dict[str, object]:
+    defaults = CHILD_GATE_DEFAULTS[child_id]
+    document: dict[str, object] = {
+        "present": True,
+        "kind": defaults["kind"],
+        "verdict": verdict,
+        "gate_closed": verdict == "pass",
+        "can_close": can_close,
+        "path": f"{defaults['source_gate']}-gate.json",
+        "blockers": [],
+        "not_proven": [],
+    }
+    document.update(overrides)
+    return document
 
 
 def write_manifest(root: Path, manifest: dict[str, object]) -> Path:
@@ -204,17 +198,16 @@ class FileTransferBulkCurrentBaseGateTests(unittest.TestCase):
             child = manifest["child_gates"][ANDROID_CHILD_ID]
             assert isinstance(child, dict)
             child.update(
-                {
-                    "present": True,
-                    "kind": "android_macos_clipboard_e2e_gate",
-                    "verdict": "pass",
-                    "gate_closed": True,
-                    "can_close": True,
-                    "blockers": [
+                child_summary(
+                    ANDROID_CHILD_ID,
+                    verdict="pass",
+                    can_close=True,
+                    kind="android_macos_clipboard_e2e_gate",
+                    blockers=[
                         "child gate report kind mismatch: expected android_macos_file_transfer_smoke, got 'android_macos_clipboard_e2e_gate'"
                     ],
-                    "not_proven": ["real Android USB/LAN file transfer product evidence"],
-                }
+                    not_proven=["real Android USB/LAN file transfer product evidence"],
+                )
             )
             mark_child_pass(manifest, WEBRTC_CHILD_ID)
 
@@ -227,14 +220,79 @@ class FileTransferBulkCurrentBaseGateTests(unittest.TestCase):
         self.assertFalse(android_check["passed"])
         self.assertIn("kind mismatch", " ".join(android_check["evidence"]))
 
+    def test_wrong_kind_failed_child_blocks_instead_of_failing_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = make_manifest(root)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+            assert isinstance(child, dict)
+            child.update(
+                child_summary(
+                    ANDROID_CHILD_ID,
+                    verdict="fail",
+                    kind="unrelated_gate_kind",
+                    blockers=["wrong gate failed elsewhere"],
+                )
+            )
+            mark_child_pass(manifest, WEBRTC_CHILD_ID)
+            report = derive_gate(manifest)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_current_base_aggregate"])
+        self.assertIn("blocked: child.android_usb_lan_file_transfer", report["blockers"])
+
+    def test_pass_child_with_blockers_blocks_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = make_manifest(root)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+            assert isinstance(child, dict)
+            child.update(
+                child_summary(
+                    ANDROID_CHILD_ID,
+                    verdict="pass",
+                    gate_closed=True,
+                    can_close=False,
+                    blockers=["child gate report is pass but still lists blockers"],
+                )
+            )
+            mark_child_pass(manifest, WEBRTC_CHILD_ID)
+            report = derive_gate(manifest)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_android_usb_lan_file_transfer"])
+        self.assertIn("pass but still lists blockers", " ".join(report["checks"][f"child.{ANDROID_CHILD_ID}"]["evidence"]))
+
+    def test_pass_child_with_not_proven_blocks_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = make_manifest(root)
+            child = manifest["child_gates"][WEBRTC_CHILD_ID]
+            assert isinstance(child, dict)
+            child.update(
+                child_summary(
+                    WEBRTC_CHILD_ID,
+                    verdict="pass",
+                    gate_closed=True,
+                    can_close=False,
+                    blockers=["child gate report is pass but still lists unproven requirements"],
+                    not_proven=["retained public Internet product evidence"],
+                )
+            )
+            mark_child_pass(manifest, ANDROID_CHILD_ID)
+            report = derive_gate(manifest)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_webrtc_bulk_product_flow"])
+        self.assertIn("unproven requirements", " ".join(report["checks"][f"child.{WEBRTC_CHILD_ID}"]["evidence"]))
+
     def test_failed_child_gate_makes_aggregate_fail(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             manifest = make_manifest(root)
             child = manifest["child_gates"][ANDROID_CHILD_ID]
             assert isinstance(child, dict)
-            child["present"] = True
-            child["verdict"] = "fail"
+            child.update(child_summary(ANDROID_CHILD_ID, verdict="fail"))
             report = derive_gate(manifest)
 
         self.assertEqual(report["verdict"], "fail")
@@ -246,8 +304,7 @@ class FileTransferBulkCurrentBaseGateTests(unittest.TestCase):
             manifest = make_manifest(root)
             child = manifest["child_gates"][WEBRTC_CHILD_ID]
             assert isinstance(child, dict)
-            child["present"] = True
-            child["verdict"] = "fail"
+            child.update(child_summary(WEBRTC_CHILD_ID, verdict="fail"))
             report = derive_gate(manifest)
 
         self.assertEqual(report["verdict"], "fail")
