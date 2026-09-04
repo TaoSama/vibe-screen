@@ -158,6 +158,13 @@ Host, run it first; the expected path is that existing Screen Recording,
 Accessibility, and Microphone TCC grants are reused without new approval.
 Protocol startup and preflight must not request Microphone implicitly, and audio
 capability stays blocked until the exact installed app identity is already authorized.
+`make baseline-macos-launch` is the only guarded launcher target; it first runs
+the static macOS permission-prompt contract and the same read-only preflight,
+then opens the installed `/Applications/Vibe Screen.app` only after those checks
+pass. Readiness and preflight targets must remain read-only and must not call
+the launcher, open System Settings, request Screen Recording, request
+Accessibility, request Microphone, modify TCC, modify Keychain, or change ADB
+reverse state.
 Only when the generated report proves those historical authorization rows are
 absent should a user explicitly open **System Settings -> Privacy & Security ->
 Screen & System Audio Recording**, **Accessibility**, and **Microphone**, grant

@@ -2950,7 +2950,7 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn("baseline-macos-xctest-preflight:", makefile)
         self.assertIn("baseline-macos-permission-prompt-contract:", makefile)
         self.assertIn("baseline-macos-host-cli-contract:", makefile)
-        self.assertIn("baseline-macos-launch:", makefile)
+        self.assertIn("baseline-macos-launch: baseline-macos-preflight-safety-contract", makefile)
         self.assertIn(
             "\tswift scripts/verify_macos_permission_prompt_contract.swift",
             makefile,

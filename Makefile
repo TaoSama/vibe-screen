@@ -592,7 +592,7 @@ baseline-macos-dev-install:
 baseline-macos-host-preflight: baseline-macos-preflight-safety-contract
 	python3 scripts/macos_dev_host.py preflight
 
-baseline-macos-launch:
+baseline-macos-launch: baseline-macos-preflight-safety-contract
 	python3 scripts/macos_dev_host.py launch
 
 baseline-macos-host-readiness: baseline-macos-preflight-safety-contract
