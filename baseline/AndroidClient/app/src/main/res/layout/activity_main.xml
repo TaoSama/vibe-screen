@@ -353,6 +353,18 @@
                     android:visibility="gone"
                     app:tint="@color/on_surface" />
 
+                <TextView
+                    android:id="@+id/controlFileTransferProgressText"
+                    android:layout_width="@dimen/control_bar_transfer_progress_width"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:ellipsize="middle"
+                    android:gravity="center_vertical"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextAppearance.MaterialComponents.Caption"
+                    android:textColor="@color/on_surface"
+                    android:visibility="gone" />
+
                 <ImageButton
                     android:id="@+id/controlSettingsButton"
                     android:layout_width="@dimen/control_bar_button_size"

@@ -208,6 +208,32 @@ class MainActivityControllerForwardingContractTest {
     }
 
     @Test
+    fun outgoingFileTransferControlShowsProgressAndCancelsActiveTransfer() {
+        val source = mainActivitySource()
+        val refreshControl = extractMethod(source, "private fun refreshFileTransferControl")
+        val clickHandler = extractMethod(source, "private fun handleFileTransferControlClick")
+        val updateProgress = extractMethod(source, "private fun updateOutgoingFileTransferProgress")
+        val beginState = extractMethod(source, "private fun beginOutgoingFileTransferState")
+        val streamProgressCallback = extractCallback(source, "callbackClient.onOutgoingFileProgress = outgoingProgress@{ transferId, acknowledgedBytes, totalBytes ->")
+        val streamFinishedCallback = extractCallback(source, "callbackClient.onOutgoingFileFinished = outgoingFinished@{ transferId ->")
+
+        assertContains(source, "binding.controlFileTransferButton.setOnClickListener")
+        assertContains(source, "handleFileTransferControlClick()")
+        assertContains(refreshControl, "val activeOutgoing = activeOutgoingFileTransfer")
+        assertContains(refreshControl, "R.string.control_file_transfer_cancel")
+        assertContains(refreshControl, "binding.controlFileTransferProgressText.visibility = if (activeOutgoing == null) View.GONE else View.VISIBLE")
+        assertContains(refreshControl, "binding.controlFileTransferProgressText.text = activeOutgoing?.let(::outgoingFileProgressLabel) ?: \"\"")
+        assertContains(clickHandler, "if (activeOutgoing == null)")
+        assertBefore(clickHandler, "if (activeOutgoing == null)", "cancelOutgoingFileTransferFromDialog(activeOutgoing.transferId)")
+        assertContains(beginState, "refreshFileTransferControl()")
+        assertContains(updateProgress, "activeOutgoingFileTransfer = active.copy(acknowledgedBytes = boundedBytes)")
+        assertContains(updateProgress, "refreshFileTransferControl()")
+        assertContains(streamProgressCallback, "updateOutgoingFileTransferProgress(transferId, acknowledgedBytes, totalBytes)")
+        assertContains(streamFinishedCallback, "finishOutgoingFileTransferState(transferId)")
+        assertContains(streamFinishedCallback, "refreshFileTransferControl()")
+    }
+
+    @Test
     fun pendingOutgoingFileIsDiscardedBeforeCoordinatorClearsFileTransferState() {
         val source = mainActivitySource()
 
