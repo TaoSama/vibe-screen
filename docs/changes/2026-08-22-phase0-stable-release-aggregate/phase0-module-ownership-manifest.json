@@ -162,11 +162,7 @@
       "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControlBarViews.kt",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientExperience.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt",
-        "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/ControlBarLayoutInstrumentedTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/FileTransferProductOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt",
@@ -176,8 +172,7 @@
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept",
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.internet.InternetProductSessionTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest",
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept --tests dev.telemachus.display.internet.InternetProductSessionTest",
         "make baseline-android-protocol-side-effect-owner"
       ],
       "blockers": [],

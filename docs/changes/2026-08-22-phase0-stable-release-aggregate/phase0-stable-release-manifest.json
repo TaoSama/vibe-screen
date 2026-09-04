@@ -254,13 +254,6 @@
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
         "docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/README.md",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControlBarViews.kt",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientExperience.kt",
-        "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/ControlBarLayoutInstrumentedTest.kt",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
-        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_manifest.py"
       ],
