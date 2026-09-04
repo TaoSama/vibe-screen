@@ -99,11 +99,24 @@ def _relative_path(path: Path, repo: Path) -> str:
         return str(path)
 
 
+def _resolved_child_report_path(path: Path | None, evidence_root: Path) -> tuple[Path | None, str | None]:
+    if path is None:
+        return None, None
+    root = evidence_root.resolve()
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(root)
+    except (OSError, RuntimeError, ValueError) as error:
+        return None, f"child gate report path escapes evidence root {root}: {path} ({error})"
+    return resolved, None
+
+
 def _child_gate_summary(
     *,
     child_id: str,
     path: Path | None,
     repo: Path,
+    evidence_root: Path,
 ) -> dict[str, Any]:
     defaults = CHILD_GATE_DEFAULTS[child_id]
     summary: dict[str, Any] = {
@@ -119,13 +132,19 @@ def _child_gate_summary(
         "blockers": [f"missing child gate report for {defaults['source_gate']}"],
         "not_proven": [defaults["requirement"]],
     }
-    if path is None or not path.is_file():
+    resolved_path, path_error = _resolved_child_report_path(path, evidence_root)
+    if path_error is not None:
+        summary["blockers"] = [path_error]
+        return summary
+    if resolved_path is None or not resolved_path.is_file():
         return summary
 
-    report = _load_json(path)
+    report = _load_json(resolved_path)
     report_kind = report.get("kind")
-    verdict = report.get("verdict", report.get("result", "blocked"))
-    verdict_text = verdict if isinstance(verdict, str) else "blocked"
+    verdict = report.get("verdict")
+    result = report.get("result")
+    verdict_text = verdict if isinstance(verdict, str) else result if isinstance(result, str) else "blocked"
+    verdict_result_mismatch = isinstance(verdict, str) and isinstance(result, str) and verdict != result
     gate_closed = report.get("gate_closed") is True
     required_flag = defaults["required_flag"]
     required_flag_closed = report.get(required_flag) is True
@@ -135,6 +154,8 @@ def _child_gate_summary(
         blockers.append(
             f"child gate report kind mismatch: expected {defaults['kind']}, got {report_kind!r}"
         )
+    if verdict_result_mismatch:
+        blockers.append(f"child gate report verdict/result mismatch: verdict={verdict!r}, result={result!r}")
     if verdict_text != "pass":
         blockers.append(f"child gate report verdict is not pass: {verdict_text}")
     if not gate_closed:
@@ -180,9 +201,11 @@ def build_manifest(
     repo: Path,
     android_gate: Path | None = None,
     webrtc_gate: Path | None = None,
+    evidence_root: Path | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
+    evidence_root = (evidence_root or repo).resolve()
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
@@ -207,8 +230,12 @@ def build_manifest(
             "aggregate_runs_external_collectors": False,
         },
         "child_gates": {
-            ANDROID_CHILD_ID: _child_gate_summary(child_id=ANDROID_CHILD_ID, path=android_gate, repo=repo),
-            WEBRTC_CHILD_ID: _child_gate_summary(child_id=WEBRTC_CHILD_ID, path=webrtc_gate, repo=repo),
+            ANDROID_CHILD_ID: _child_gate_summary(
+                child_id=ANDROID_CHILD_ID, path=android_gate, repo=repo, evidence_root=evidence_root
+            ),
+            WEBRTC_CHILD_ID: _child_gate_summary(
+                child_id=WEBRTC_CHILD_ID, path=webrtc_gate, repo=repo, evidence_root=evidence_root
+            ),
         },
         "limitations": list(DEFAULT_LIMITATIONS),
         "notes": notes,
@@ -251,6 +278,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo=args.repo,
             android_gate=args.file_transfer_android_smoke_gate,
             webrtc_gate=args.webrtc_bulk_product_flow_gate,
+            evidence_root=args.output.parent,
             notes=args.notes,
         )
         write_json(args.output, manifest)
