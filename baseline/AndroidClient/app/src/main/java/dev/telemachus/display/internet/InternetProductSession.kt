@@ -757,13 +757,11 @@ class InternetProductSession internal constructor(
     ): Boolean {
         clearOutgoingFileTransferDeadline(transferId)
         val result = fileTransferProductOwner.cancelOutgoingTransfer(transferId, reasonCode) ?: return false
-        val sent = sendApplicationControl {
+        sendApplicationControl {
             codec.encodeFileCancel(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, transferId, reasonCode)
         }
-        if (sent) {
-            fileTransferProductOwner.notifyFileTransferResult(result)
-        }
-        return sent
+        fileTransferProductOwner.notifyFileTransferResult(result)
+        return true
     }
 
     fun sendPing(sequence: Long): Boolean =
