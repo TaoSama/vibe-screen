@@ -18,9 +18,10 @@ The connected Android USB serial is redacted as REDACTED_P0110_USB_SERIAL.
 
     cd baseline/AndroidClient
     ./gradlew --no-daemon :app:assembleDebug
+    cd ../..
 
     adb -s REDACTED_P0110_USB_SERIAL shell pm clear dev.telemachus.display
-    adb -s REDACTED_P0110_USB_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+    adb -s REDACTED_P0110_USB_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
     adb -s REDACTED_P0110_USB_SERIAL shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect false
     adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display
     adb -s REDACTED_P0110_USB_SERIAL shell dumpsys window | grep -E "mCurrentFocus|mFocusedApp"

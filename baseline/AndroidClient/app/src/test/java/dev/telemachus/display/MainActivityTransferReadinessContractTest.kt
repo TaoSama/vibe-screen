@@ -11,6 +11,7 @@ class MainActivityTransferReadinessContractTest {
         val source = mainActivitySource()
         val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
         val renderTransferReadiness = extractMethod(source, "private fun renderTransferReadiness")
+        val refreshTransferReadiness = extractMethod(source, "private fun refreshTransferReadinessInSettings")
 
         assertTrue(
             "Settings should bind the transfer-readiness status view",
@@ -29,6 +30,22 @@ class MainActivityTransferReadinessContractTest {
             renderTransferReadiness.contains("productSessionCoordinator.renderState()"),
         )
         assertTrue(
+            "Open Settings refreshes should read the active dialog instead of keeping the opening snapshot",
+            refreshTransferReadiness.contains("activeSettingsDialog ?: return"),
+        )
+        assertTrue(
+            "Open Settings refreshes should rebind the status view",
+            refreshTransferReadiness.contains("R.id.transferReadinessStatus"),
+        )
+        assertTrue(
+            "Open Settings refreshes should rebind the summary view",
+            refreshTransferReadiness.contains("R.id.transferReadinessSummary"),
+        )
+        assertTrue(
+            "Open Settings refreshes should rerender through the same presentation path",
+            refreshTransferReadiness.contains("renderTransferReadiness(status, summary)"),
+        )
+        assertTrue(
             "Readiness should include active Internet file-transfer capability without claiming clipboard support",
             renderTransferReadiness.contains("internetSession?.canTransferFiles == true"),
         )
@@ -45,6 +62,64 @@ class MainActivityTransferReadinessContractTest {
             "Opening Settings must not launch the Android file picker",
             renderTransferReadiness.contains("ACTION_OPEN_DOCUMENT") ||
                 renderTransferReadiness.contains("startActivityForResult"),
+        )
+    }
+
+    @Test
+    fun openSettingsTransferReadinessRefreshesAfterTransferStateChanges() {
+        val source = mainActivitySource()
+        val refreshClipboardControl = extractMethod(source, "private fun refreshClipboardControl")
+        val refreshFileTransferControl = extractMethod(source, "private fun refreshFileTransferControl")
+        val applyNegotiatedSession = extractMethod(source, "private fun applyNegotiatedSession")
+        val updateInternetState = extractMethod(source, "private fun updateInternetState")
+
+        assertTrue(
+            "Clipboard runtime availability changes should refresh an already-open Settings dialog",
+            refreshClipboardControl.contains("clipboard = client.canSendClipboard") &&
+                refreshClipboardControl.contains("refreshTransferReadinessInSettings()"),
+        )
+        assertTrue(
+            "File-transfer runtime availability changes should refresh an already-open Settings dialog",
+            refreshFileTransferControl.contains("fileTransfer = client.canTransferFiles") &&
+                refreshFileTransferControl.contains("refreshTransferReadinessInSettings()"),
+        )
+        assertTrue(
+            "Negotiated-session capability changes should refresh an already-open Settings dialog",
+            applyNegotiatedSession.contains("productSessionCoordinator.updateNegotiatedSession") &&
+                applyNegotiatedSession.contains("if (updated) refreshTransferReadinessInSettings()"),
+        )
+        assertTrue(
+            "Managed-policy commits should refresh through negotiated-session and runtime-control paths",
+            source.contains("callbackClient.onManagedPolicyReceived = managedPolicy@") &&
+                source.contains("applyNegotiatedSession(") &&
+                source.contains("fileTransfer = callbackClient.canTransferFiles") &&
+                source.contains("refreshClipboardControl()"),
+        )
+        assertTrue(
+            "Connection status commits should refresh after the coordinator state changes",
+            source.contains(
+                "productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)" +
+                    "\n                refreshTransferReadinessInSettings()",
+            ),
+        )
+        assertTrue(
+            "Internet session state changes should refresh an already-open Settings dialog",
+            updateInternetState.contains("LiveRegionTextApplier.apply(") &&
+                updateInternetState.contains("refreshTransferReadinessInSettings()"),
+        )
+        assertTrue(
+            "Internet route changes should refresh through the shared Internet state renderer",
+            source.contains("override fun onRouteSelected(route: PeerRoute)") &&
+                source.contains("updateInternetState(sessionReference.get()?.state ?: InternetProductSessionState.CONNECTING)"),
+        )
+        assertTrue(
+            "Attaching an Internet session should refresh an already-open Settings dialog",
+            source.contains(
+                "productSessionCoordinator.attachInternetSession(generation, created)" +
+                    "\n            internetNetworkMonitor = monitor" +
+                    "\n            internetSession = created" +
+                    "\n            refreshTransferReadinessInSettings()",
+            ),
         )
     }
 

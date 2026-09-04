@@ -23,8 +23,9 @@ Evidence:
 
 - evidence/no-host-p0110-smoke/ records a no-Host Android UI smoke on Nubia
   P0110 / pacific / Android 16 / SDK 36.
-- The smoke did not start the macOS Host and did not create, remove, or modify
-  adb reverse entries.
+- The smoke did not start the macOS Host. It recorded pre-existing adb reverse
+  entries before the run, and the captured command list contains no reverse
+  mutation command.
 - The captured Settings screenshot and UI dump show Clipboard & files, Waiting
   for a compatible Mac session, and the Protocol v1 capability copy.
 

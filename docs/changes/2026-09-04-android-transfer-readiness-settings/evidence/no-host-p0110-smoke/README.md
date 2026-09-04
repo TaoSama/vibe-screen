@@ -11,9 +11,9 @@ Recording, Accessibility, TCC, signing, Keychain, or System Settings state was
 touched.
 
 Transport boundary: adb reverse --list already contained UsbFfs tcp:54321
-tcp:54321 and UsbFfs tcp:8908 tcp:8908 before this smoke run. This task did not
-create, remove, or modify those reverse entries. The local Mac had no listener
-on TCP port 54321 during the capture.
+tcp:54321 and UsbFfs tcp:8908 tcp:8908 before this smoke run. The captured
+command list contains no adb reverse add, remove, or remove-all command. The
+local Mac had no listener on TCP port 54321 during the capture.
 
 Build under test:
 
@@ -25,7 +25,8 @@ Evidence:
 
 - device-info.txt records the redacted P0110 identity, Android version, screen
   size, and density.
-- logs/adb-reverse-before.txt records the pre-existing reverse entries.
+- logs/adb-reverse-before.txt records the pre-run reverse entries observed
+  before the smoke.
 - logs/host-port-54321-listeners.txt records that lsof -nP -iTCP:54321
   -sTCP:LISTEN produced no output, proving no local Mac process was listening on
   TCP port 54321 when checked.
