@@ -38,7 +38,7 @@ class ActionableErrorDriftTest {
 
     @Test
     fun androidGuidanceContractsStayBoundToActualGuidanceOutput() {
-        val statesByCode = loadActionableErrorMatrix()
+        val statesByCode = loadActionableErrorGuidanceMatrix()
 
         EXPECTED_ANDROID_GUIDANCE_CONTRACT_CODES.forEach { code ->
             val state = requireNotNull(statesByCode[code]) { "Missing actionable contract $code" }
@@ -68,6 +68,20 @@ class ActionableErrorDriftTest {
                 val state = element.asJsonObject
                 val contract = state.getAsJsonObject("contract") ?: return@forEach
                 val code = contract.get("code")?.asString ?: return@forEach
+                put(code, state)
+            }
+        }
+    }
+
+    private fun loadActionableErrorGuidanceMatrix(): Map<String, JsonObject> {
+        val matrix = JsonParser.parseString(actionableErrorMatrixFile().readText()).asJsonObject
+        val states = matrix.getAsJsonArray("states")
+        return buildMap {
+            states.forEach { element ->
+                val state = element.asJsonObject
+                if (!state.has("android_guidance_contract")) return@forEach
+                val contract = state.getAsJsonObject("contract")
+                val code = contract?.get("code")?.asString ?: state.get("id")?.asString ?: return@forEach
                 put(code, state)
             }
         }
@@ -217,6 +231,7 @@ class ActionableErrorDriftTest {
 
         val EXPECTED_ANDROID_GUIDANCE_CONTRACT_CODES =
             setOf(
+                "android-usb-host-not-running",
                 "adb_reverse_missing",
                 "usb_disconnected",
                 "lan_route_unavailable",

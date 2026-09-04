@@ -116,6 +116,8 @@ internal object ConnectionGuidanceFactory {
                     message = text(R.string.connection_guidance_video_decoder_recovery_message),
                 )
 
+            SessionFailureKind.HOST_NOT_RUNNING -> hostNotRunning(context)
+
             SessionFailureKind.HEARTBEAT_TIMEOUT,
             SessionFailureKind.TRANSPORT_CLOSED,
             SessionFailureKind.WRITE_FAILED,

@@ -117,6 +117,19 @@ REQUIRED_ACTIONABLE_CONTRACTS = {
 REQUIRED_ACTIONABLE_CONTRACT_CODES = frozenset(REQUIRED_ACTIONABLE_CONTRACTS)
 REQUIRED_CONTRACT_FIELDS = ("code", "title", "body", "action")
 REQUIRED_ANDROID_GUIDANCE_CONTRACTS = {
+    "android-usb-host-not-running": {
+        "context": "usb",
+        "sample_failure": {
+            "source": "session_failure",
+            "kind": "HOST_NOT_RUNNING",
+            "message": "Mac connection closed before display configuration",
+        },
+        "kind": "HOST_NOT_RUNNING",
+        "status_resource": "connection_guidance_mac_unavailable_title",
+        "message_resource": "connection_guidance_usb_recovery_usb",
+        "message_prefix_resource": "connection_guidance_usb_open_mac_prefix",
+        "recovery_button_action": "connectButton.try_again",
+    },
     "adb_reverse_missing": {
         "context": "usb",
         "sample_failure": {
@@ -839,9 +852,10 @@ def _validate_state(
                         covered_contract_codes.add(raw_code)
 
     android_guidance_contract = state.get("android_guidance_contract")
-    if contract_code in REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES:
+    android_guidance_key = contract_code if contract_code is not None else state_id
+    if android_guidance_key in REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES:
         _validate_required_android_guidance_contract(
-            contract_code,
+            str(android_guidance_key),
             android_guidance_contract,
             f"{prefix}.android_guidance_contract",
             errors,
