@@ -3,16 +3,16 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "93d4450a5e583a54fe53616993cc9865c370c076",
+    "base_commit": "f669dc3521c97364533653016747bc1cb4f8d015",
     "base_ref": "origin/main",
-    "audit_date": "2026-09-03",
+    "audit_date": "2026-09-04",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
-    "queried_at": "2026-09-03",
+    "queried_at": "2026-09-04",
     "state": "open",
     "open_pr_numbers": []
   },
@@ -50,7 +50,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33836207037"
       ],
       "owner_prs": [],
       "blockers": []
@@ -63,7 +63,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33836207037"
       ],
       "owner_prs": [],
       "blockers": []
@@ -76,7 +76,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33166723901",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33836207037",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -90,7 +90,12 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "README.md",
+        "docs/testing.md",
+        "docs/runbook/macos-host.md",
         "docs/runbook/macos-host-compatibility.md",
+        "scripts/macos_dev_host.py",
+        "scripts/verify_macos_host_cli_contract.swift",
+        "scripts/verify_macos_permission_prompt_contract.swift",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-24-current-base-owner-blocked/macos-hardware-compatibility-gate.json",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/macos-hardware-compatibility-gate.json",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-27-macos-host-compatibility-readiness-blocked/README.md",
@@ -106,7 +111,8 @@
       "owner_prs": [],
       "blockers": [
         "The published current-base macos-hardware-compatibility-gate summaries for Mac16,8 readiness are blocked, not passing.",
-        "Stable signing/TCC proof, source-bound installed Host provenance, full macOS checks, packaged runtime launch, Protocol v1 stream, input smoke, and reconnect evidence are missing for that row.",
+        "Read-only Screen Recording, Accessibility, and Microphone TCC rows are not proven for a stable signed Host whose csreq matches the fixed signing requirement, bundle id, install path, and source provenance.",
+        "Full macOS checks, packaged runtime launch, Protocol v1 stream, input smoke, and reconnect evidence are missing for that row.",
         "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row passing evidence before support claims."
       ]
     },
@@ -134,11 +140,15 @@
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-27-nubia-p0110-latency-current-base-blocked/latency-preflight.json",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/README.md",
-        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/latency-preflight.json"
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/latency-preflight.json",
+        "docs/changes/2026-08-30-external-latency-owner/README.md",
+        "docs/changes/2026-08-30-external-latency-owner/evidence/2026-08-30-current-base-blocked/README.md",
+        "tools/vibescreen_evidence/latency_evidence.py",
+        "tools/vibescreen_evidence/latency_manifest.py"
       ],
       "owner_prs": [],
       "blockers": [
-        "The latest current-base latency preflight remains blocked readiness; no external-camera latency sample package or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
+        "The tightened current-base latency gate remains blocked readiness; no external-camera latency sample package, raw camera media, annotated sample set, or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },
     {
@@ -161,7 +171,7 @@
       "blockers": [
         "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
         "No current-source host_rss_gate pass exists.",
-        "The latest current-base readiness records are blocked before a stable-signed, TCC-ready, listener-observed current-source Host can be launched with native VIBE_SCREEN_TELEMETRY_PATH coverage and a USB/LAN stream window."
+        "The latest current-base readiness records are blocked before a stable-signed, read-only TCC-proven, listener-observed current-source Host can be launched with native VIBE_SCREEN_TELEMETRY_PATH coverage and a USB/LAN stream window."
       ]
     },
     {
@@ -208,11 +218,13 @@
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/clipboard-e2e-gate.json",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/clipboard-e2e-gate.json",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityClipboardSystemBoundaryContractTest.kt",
         "docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/clipboard-e2e-gate.json"
       ],
       "owner_prs": [],
       "blockers": [
-        "Host readiness is blocked on stable signing, installed Host source provenance, read-only TCC verification, Host listener availability, virtual HID entitlement, and login/headless readiness.",
+        "Host readiness is blocked on stable signing, installed Host source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, Host listener availability, virtual HID entitlement, and login/headless readiness.",
+        "Android now requires explicit overwrite confirmation before writing solicited or direct Mac clipboard content into ClipboardManager, but this is source/contract readiness rather than system-pasteboard product E2E.",
         "No retained bidirectional Android ClipboardManager -> macOS NSPasteboard and macOS NSPasteboard -> Android ClipboardManager product transfer evidence exists with exact system clipboard endpoints, explicit user action, Protocol v1 session ownership, verified session epoch, verified origin device ID, 16-byte change ID, SHA-256 digest, bounded byte length, final digest match, distinct markers, and final marker equality.",
         "Existing P0110 evidence proves only local Android ClipboardManager smoke and offline/protocol readiness; it must not be relabeled as Xiaomi 13/fuxi evidence."
       ]
@@ -227,12 +239,14 @@
         "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_manifest.py"
       ],
       "owner_prs": [],
       "blockers": [
-        "Host readiness is blocked on stable signing, source provenance, read-only TCC verification, virtual HID entitlement, and login/headless readiness.",
+        "Host readiness is blocked on stable signing, source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, virtual HID entitlement, and login/headless readiness.",
+        "Android now exposes incoming file-transfer progress and user cancellation in source and contract tests, but this is not a retained Host-backed bidirectional product transfer pass.",
         "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup.",
         "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass."
       ]
