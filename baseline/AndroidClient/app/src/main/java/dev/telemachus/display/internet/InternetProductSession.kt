@@ -181,6 +181,10 @@ internal interface InternetProductSessionCallbacks {
 
     fun onFileOffer(offer: FileOffer) = Unit
 
+    fun onIncomingFileProgress(transferId: ByteString, receivedBytes: Long) = Unit
+
+    fun onIncomingFileCancelled(transferId: ByteString, reasonCode: String) = Unit
+
     fun onIncomingFileCompleted(completed: CompletedIncomingFile) = Unit
 
     fun onFileTransferResult(accepted: Boolean, reason: String) = Unit
@@ -370,6 +374,8 @@ class InternetProductSession internal constructor(
             pendingOfferGate = InternetFileTransferPendingOfferGate(),
         ).apply {
             onFileOffer = callbacks::onFileOffer
+            onIncomingFileProgress = callbacks::onIncomingFileProgress
+            onIncomingFileCancelled = callbacks::onIncomingFileCancelled
             onIncomingFileCompleted = callbacks::onIncomingFileCompleted
             onFileTransferResult = callbacks::onFileTransferResult
         }
@@ -704,6 +710,24 @@ class InternetProductSession internal constructor(
         return sendApplicationControl {
             codec.encodeFileAccept(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, response)
         }
+    }
+
+    fun cancelIncomingFileTransfer(
+        transferId: ByteString,
+        reasonCode: String = "user_cancelled",
+    ): Boolean {
+        fileTransferProductOwner.releaseFileOfferDecision(transferId)
+        fileTransferProductOwner.cancelIncomingTransfer(transferId)
+        val sent = sendApplicationControl {
+            codec.encodeFileCancel(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, transferId, reasonCode)
+        }
+        if (sent) {
+            fileTransferProductOwner.notifyIncomingFileCancelled(transferId, reasonCode)
+            fileTransferProductOwner.notifyFileTransferResult(
+                FileTransferProductOwner.TransferResult(accepted = false, reason = reasonCode),
+            )
+        }
+        return sent
     }
 
     fun sendPing(sequence: Long): Boolean =
@@ -1057,7 +1081,13 @@ class InternetProductSession internal constructor(
             is ProductControlMessage.FileCancelReceived -> {
                 clearOutgoingFileTransferDeadline(message.cancellation.transferId)
                 fileTransferProductOwner.handleFileCancel(message.cancellation)
-                    ?.let(fileTransferProductOwner::notifyFileTransferResult)
+                    ?.let { result ->
+                        fileTransferProductOwner.notifyIncomingFileCancelled(
+                            message.cancellation.transferId,
+                            message.cancellation.reasonCode,
+                        )
+                        fileTransferProductOwner.notifyFileTransferResult(result)
+                    }
             }
             is ProductControlMessage.FileCompleteReceived -> {
                 clearOutgoingFileTransferDeadline(message.result.transferId)
@@ -1993,6 +2023,7 @@ class InternetProductSession internal constructor(
         when (result) {
             is FileTransferProductOwner.IncomingChunkResult.Accepted -> {
                 sendFileProgress(result.transferId, result.receivedBytes)
+                fileTransferProductOwner.notifyIncomingFileProgress(result.transferId, result.receivedBytes)
                 result.completed?.let { completed ->
                     sendFileComplete(completed.transferId, accepted = true, sha256 = completed.sha256, rejectionReason = "")
                     fileTransferProductOwner.notifyIncomingFileCompleted(completed)
@@ -2001,6 +2032,7 @@ class InternetProductSession internal constructor(
             is FileTransferProductOwner.IncomingChunkResult.Rejected -> {
                 result.receivedBytes?.let { received -> sendFileProgress(result.transferId, received) }
                 sendFileCancel(result.transferId, result.reasonCode)
+                fileTransferProductOwner.notifyIncomingFileCancelled(result.transferId, result.reasonCode)
                 if (result.failure != null && result.reasonCode == "io_failure") {
                     failIfOwned(owner, result.failure)
                 }

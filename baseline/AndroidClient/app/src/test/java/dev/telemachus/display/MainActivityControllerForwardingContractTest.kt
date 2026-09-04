@@ -148,7 +148,7 @@ class MainActivityControllerForwardingContractTest {
 
         assertContains(streamPromptOffer, "isCurrentSession(client, generation) &&")
         assertContains(streamPromptOffer, "client.canTransferFiles")
-        assertContains(source, "respond = { accepted, _ -> client.respondToFileOffer(offer, accepted = accepted) }")
+        assertContains(source, "respond = { accepted, reason -> client.respondToFileOffer(offer, accepted = accepted, rejectionReason = reason) }")
         assertContains(internetCallback, "session.canTransferFiles")
         assertContains(internetCallback, "respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) }")
         assertContains(promptOffer, "if (!isInForeground ||")

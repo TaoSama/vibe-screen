@@ -998,7 +998,7 @@ class MainActivityTerminalGuidanceContractTest {
         val source = mainActivitySource()
         val send = extractMethod(source, "private fun beginSendLocalClipboard")
         val receive = extractMethod(source, "private fun beginReceiveRemoteClipboard")
-        val directReceive = extractMethod(source, "private fun showDirectClipboardConfirmation")
+        val directReceive = extractMethod(source, "private fun showClipboardOverwriteConfirmation")
 
         assertTrue(send.contains("LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState)"))
         assertTrue(receive.contains("LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState)"))

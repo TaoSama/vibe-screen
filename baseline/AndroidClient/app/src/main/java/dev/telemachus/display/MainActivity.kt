@@ -270,6 +270,7 @@ class MainActivity : AppCompatActivity() {
     private var managedHostActionsAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -2441,6 +2442,13 @@ class MainActivity : AppCompatActivity() {
         val offerFile: (File, String) -> Boolean,
     )
 
+    private data class ActiveIncomingFileTransfer(
+        val transferId: ByteString,
+        val displayName: String,
+        val byteLength: Long,
+        val cancel: (ByteString) -> Boolean,
+    )
+
     private fun promptIncomingFileOffer(
         client: StreamClient,
         generation: Long,
@@ -2464,7 +2472,21 @@ class MainActivity : AppCompatActivity() {
                 },
                 finishDecision = { productSessionCoordinator.finishIncomingFileOffer(client, generation, offer) },
                 clearDecision = { productSessionCoordinator.clearIncomingFileOffer() },
-                respond = { accepted, _ -> client.respondToFileOffer(offer, accepted = accepted) },
+                beginTransfer = {
+                    beginIncomingFileTransferState(
+                        transferId = offer.transferId,
+                        displayName = safeIncomingDisplayName(offer.fileName),
+                        byteLength = offer.byteLength,
+                        cancel = { transferId ->
+                            if (isCurrentSession(client, generation) && client.canTransferFiles) {
+                                client.cancelIncomingFileTransfer(transferId)
+                            } else {
+                                false
+                            }
+                        },
+                    )
+                },
+                respond = { accepted, reason -> client.respondToFileOffer(offer, accepted = accepted, rejectionReason = reason) },
             )
         }
     }
@@ -2474,6 +2496,7 @@ class MainActivity : AppCompatActivity() {
         isCurrentAndAllowed: () -> Boolean,
         finishDecision: () -> Boolean,
         clearDecision: () -> Unit,
+        beginTransfer: () -> Unit,
         respond: (accepted: Boolean, reason: String) -> Boolean,
     ) {
         runOnUiThread {
@@ -2530,12 +2553,83 @@ class MainActivity : AppCompatActivity() {
                         decided = true
                         pendingIncomingFileDialog = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
-                        respond(true, "")
+                        if (respond(true, "")) {
+                            beginTransfer()
+                        } else {
+                            showDedupedToast(R.string.file_transfer_send_failed)
+                        }
                     }
                     .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
                     .setOnCancelListener { rejectDecision() }
             pendingIncomingFileDialog = showImmersiveDialog(dialog)
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
+        }
+    }
+
+    private fun beginIncomingFileTransferState(
+        transferId: ByteString,
+        displayName: String,
+        byteLength: Long,
+        cancel: (ByteString) -> Boolean,
+    ) {
+        activeIncomingFileTransfer = ActiveIncomingFileTransfer(transferId, displayName, byteLength, cancel)
+        showIncomingFileProgressDialog(0L)
+    }
+
+    private fun updateIncomingFileTransferProgress(
+        transferId: ByteString,
+        receivedBytes: Long,
+    ) {
+        val active = activeIncomingFileTransfer ?: return
+        if (active.transferId != transferId) return
+        updateIncomingFileProgressMessage(receivedBytes.coerceAtMost(active.byteLength))
+    }
+
+    private fun finishIncomingFileTransferState(transferId: ByteString) {
+        if (activeIncomingFileTransfer?.transferId == transferId) {
+            activeIncomingFileTransfer = null
+            pendingIncomingFileDialog?.dismiss()
+            pendingIncomingFileDialog = null
+        }
+    }
+
+    private fun showIncomingFileProgressDialog(receivedBytes: Long) {
+        val active = activeIncomingFileTransfer ?: return
+        val dialog =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.file_transfer_receiving_title)
+                .setMessage(incomingFileProgressMessage(active, receivedBytes))
+                .setNegativeButton(R.string.file_transfer_cancel) { _, _ ->
+                    cancelIncomingFileTransferFromDialog(active.transferId)
+                }
+                .setOnCancelListener { cancelIncomingFileTransferFromDialog(active.transferId) }
+        pendingIncomingFileDialog = showImmersiveDialog(dialog)
+    }
+
+    private fun updateIncomingFileProgressMessage(receivedBytes: Long) {
+        val active = activeIncomingFileTransfer ?: return
+        val dialog = pendingIncomingFileDialog ?: return
+        dialog.setMessage(incomingFileProgressMessage(active, receivedBytes))
+    }
+
+    private fun incomingFileProgressMessage(
+        active: ActiveIncomingFileTransfer,
+        receivedBytes: Long,
+    ): String =
+        getString(
+            R.string.file_transfer_receiving_message,
+            active.displayName,
+            readableByteCount(receivedBytes),
+            readableByteCount(active.byteLength),
+        )
+
+    private fun cancelIncomingFileTransferFromDialog(transferId: ByteString) {
+        val active = activeIncomingFileTransfer ?: return
+        if (active.transferId != transferId) return
+        activeIncomingFileTransfer = null
+        pendingIncomingFileDialog = null
+        if (!active.cancel(transferId)) {
+            showDedupedToast(R.string.file_transfer_failed_cancelled)
         }
     }
 
@@ -2893,6 +2987,28 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
         content: ClipboardContentData,
     ) {
+        showClipboardOverwriteConfirmation(
+            client = client,
+            generation = generation,
+            approvedContent = {
+                productSessionCoordinator.consumeDirectClipboardContent(
+                    client,
+                    generation,
+                    content.changeId,
+                )
+            },
+            discardContent = {
+                productSessionCoordinator.discardDirectClipboardContent(client, generation, content.changeId)
+            },
+        )
+    }
+
+    private fun showClipboardOverwriteConfirmation(
+        client: StreamClient,
+        generation: Long,
+        approvedContent: () -> ClipboardContentData?,
+        discardContent: () -> Unit,
+    ) {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_receive_confirm_title)
@@ -2904,17 +3020,13 @@ class MainActivity : AppCompatActivity() {
                     },
                 )
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
-                    val approved =
-                        productSessionCoordinator.consumeDirectClipboardContent(
-                            client,
-                            generation,
-                            content.changeId,
-                        )
+                    if (!isCurrentSession(client, generation) || !client.canSendClipboard) return@setPositiveButton
+                    val approved = approvedContent()
                     if (approved != null) writeRemoteClipboard(approved)
                     updateClipboardAccessibilityLabel(client, generation)
                 }
                 .setNegativeButton(R.string.cancel) { _, _ ->
-                    productSessionCoordinator.discardDirectClipboardContent(client, generation, content.changeId)
+                    discardContent()
                     updateClipboardAccessibilityLabel(client, generation)
                 },
         )
@@ -4411,7 +4523,12 @@ class MainActivity : AppCompatActivity() {
                         content,
                     )
                 if (approved != null) {
-                    writeRemoteClipboard(approved)
+                    showClipboardOverwriteConfirmation(
+                        client = callbackClient,
+                        generation = callbackGeneration,
+                        approvedContent = { approved },
+                        discardContent = {},
+                    )
                     refreshClipboardControl()
                 }
             }
@@ -4421,10 +4538,25 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileOffer
             promptIncomingFileOffer(callbackClient, callbackGeneration, offer)
         }
+        callbackClient.onIncomingFileProgress = fileProgress@{ transferId, receivedBytes ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileProgress
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                updateIncomingFileTransferProgress(transferId, receivedBytes)
+            }
+        }
+        callbackClient.onIncomingFileCancelled = fileCancelled@{ transferId, _ ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileCancelled
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                finishIncomingFileTransferState(transferId)
+            }
+        }
         callbackClient.onIncomingFileCompleted = incomingFile@{ completed ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@incomingFile
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                finishIncomingFileTransferState(completed.transferId)
                 onIncomingFileCompleted(completed)
             }
         }
@@ -4625,23 +4757,63 @@ class MainActivity : AppCompatActivity() {
                     val session = sessionReference.get() ?: return
                     val callbackGeneration = generation
                     promptIncomingFileOffer(
-        offer = offer,
-        isCurrentAndAllowed = {
-            callbackGeneration == productSessionCoordinator.currentInternetGeneration() &&
-                internetSession === session &&
-                session.canTransferFiles
-        },
-        finishDecision = { true },
-        clearDecision = {},
-        respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) },
-    )
+                        offer = offer,
+                        isCurrentAndAllowed = {
+                            callbackGeneration == productSessionCoordinator.currentInternetGeneration() &&
+                                internetSession === session &&
+                                session.canTransferFiles
+                        },
+                        finishDecision = { true },
+                        clearDecision = {},
+                        beginTransfer = {
+                            beginIncomingFileTransferState(
+                                transferId = offer.transferId,
+                                displayName = safeIncomingDisplayName(offer.fileName),
+                                byteLength = offer.byteLength,
+                                cancel = { transferId ->
+                                    if (callbackGeneration == productSessionCoordinator.currentInternetGeneration() &&
+                                        internetSession === session &&
+                                        session.canTransferFiles
+                                    ) {
+                                        session.cancelIncomingFileTransfer(transferId, "user_cancelled")
+                                    } else {
+                                        false
+                                    }
+                                },
+                            )
+                        },
+                        respond = { accepted, reason -> session.respondToFileOffer(offer, accepted, reason) },
+                    )
                 }
 
                 override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
                     if (!isCurrentInternetSession()) return
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
+                        finishIncomingFileTransferState(completed.transferId)
                         onIncomingFileCompleted(completed)
+                    }
+                }
+
+                override fun onIncomingFileProgress(
+                    transferId: ByteString,
+                    receivedBytes: Long,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        updateIncomingFileTransferProgress(transferId, receivedBytes)
+                    }
+                }
+
+                override fun onIncomingFileCancelled(
+                    transferId: ByteString,
+                    reasonCode: String,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        finishIncomingFileTransferState(transferId)
                     }
                 }
 

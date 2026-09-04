@@ -45,13 +45,18 @@ class MainActivityClipboardSystemBoundaryContractTest {
     }
 
     @Test
-    fun receiveFromMacWritesClipboardOnlyAfterApprovalStateConsumption() {
+    fun receiveFromMacWritesClipboardOnlyAfterApprovalStateConsumptionAndOverwriteConfirmation() {
         val directConfirmation = extractMethod(mainActivitySource(), "private fun showDirectClipboardConfirmation")
+        val overwriteConfirmation = extractMethod(mainActivitySource(), "private fun showClipboardOverwriteConfirmation")
         val receiveCallback = extractCallback(mainActivitySource(), "callbackClient.onClipboardContentReceived = clipboardContent@")
 
+        assertTrue(
+            "Direct content should route through the shared overwrite confirmation dialog",
+            directConfirmation.contains("showClipboardOverwriteConfirmation("),
+        )
         assertBefore(
-            directConfirmation,
-            "productSessionCoordinator.consumeDirectClipboardContent",
+            overwriteConfirmation,
+            "val approved = approvedContent()",
             "writeRemoteClipboard(approved)",
         )
         assertTrue(
@@ -61,7 +66,7 @@ class MainActivityClipboardSystemBoundaryContractTest {
         assertBefore(
             receiveCallback,
             "productSessionCoordinator.consumeSolicitedClipboardContent",
-            "writeRemoteClipboard(approved)",
+            "showClipboardOverwriteConfirmation(",
         )
         assertTrue(
             "Unsolicited direct content must be staged instead of immediately written",
