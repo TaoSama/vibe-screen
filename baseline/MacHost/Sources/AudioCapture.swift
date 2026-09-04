@@ -25,10 +25,10 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
 
     var canAdvertiseCapture: Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .denied, .restricted:
-            return false
-        case .authorized, .notDetermined:
+        case .authorized:
             return true
+        case .notDetermined, .denied, .restricted:
+            return false
         @unknown default:
             return false
         }
@@ -103,20 +103,7 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             return
-        case .notDetermined:
-            let semaphore = DispatchSemaphore(value: 0)
-            let result = MicrophoneAuthorizationResult()
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                result.complete(granted: granted)
-                semaphore.signal()
-            }
-            semaphore.wait()
-            guard result.isGranted else {
-                throw MacHostAudioError.captureStartFailed(
-                    "Microphone access is required for Mac audio capture. Enable it in System Settings > Privacy & Security > Microphone."
-                )
-            }
-        case .denied, .restricted:
+        case .notDetermined, .denied, .restricted:
             throw MacHostAudioError.captureStartFailed(
                 "Microphone access is required for Mac audio capture. Enable it in System Settings > Privacy & Security > Microphone."
             )
@@ -125,19 +112,6 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
                 "Microphone authorization status is unavailable."
             )
         }
-    }
-}
-
-private final class MicrophoneAuthorizationResult: @unchecked Sendable {
-    private let lock = NSLock()
-    private var granted = false
-
-    func complete(granted: Bool) {
-        lock.withAudioLock { self.granted = granted }
-    }
-
-    var isGranted: Bool {
-        lock.withAudioLock { granted }
     }
 }
 

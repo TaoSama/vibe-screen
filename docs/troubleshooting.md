@@ -33,7 +33,10 @@ adb -s DEVICE_SERIAL reverse tcp:54321 tcp:54321
 
 ## Host has no picture
 
-- Grant Screen Recording and restart the exact app/binary that will run.
+- Grant Screen Recording to the stable-signed `/Applications/Vibe Screen.app`
+  bundle and restart it through `make baseline-macos-launch` after
+  `make baseline-macos-host-preflight` passes. Do not repeatedly launch a
+  `.build/` binary or ad-hoc app while diagnosing permissions.
 - Inspect `~/Library/Logs/Telemachus/telemachus.log` for the selected capture
   method and errors.
 - If the private virtual-display API fails, select the current physical display
@@ -42,10 +45,24 @@ adb -s DEVICE_SERIAL reverse tcp:54321 tcp:54321
 
 ## Picture works but touch does not
 
-Grant Accessibility to the running host and restart it. Confirm the host log
-does not contain `Accessibility not granted - touch ignored`. Touch is sent only
-while the Android streaming surface is active; dismiss the settings dialog
-before testing.
+Grant Accessibility to the same stable-signed `/Applications/Vibe Screen.app`
+bundle and restart it through `make baseline-macos-launch` after the read-only
+preflight passes. Confirm the host log does not contain
+`Accessibility not granted - touch ignored`. Touch is sent only while the
+Android streaming surface is active; dismiss the settings dialog before testing.
+
+## TCC identity keeps changing
+
+macOS privacy grants are tied to the app identity that TCC sees: the bundle id
+`dev.telemachus.display`, the canonical designated requirement with signing
+leaf SHA-1 `9AAE572BF6D764E3436A6109197D345B5A87998C`, the stable install path
+`/Applications/Vibe Screen.app`, and the source provenance embedded in the
+bundle. A rebuilt ad-hoc app, a fresh same-named certificate with a different
+leaf, or a direct run from `.build/` can be treated as a different app and ask
+for Screen Recording or Accessibility again. Reinstall with
+`make baseline-macos-dev-install`, then use the read-only
+`make baseline-macos-host-preflight` report to identify which identity field
+drifted before requesting permissions again.
 
 ## Black ADB screenshot during streaming
 
@@ -79,4 +96,5 @@ negotiated; do not assume it occurred merely because the connection survived.
 Include operating-system versions, exact repository revision, device
 manufacturer/model/fingerprint, build command, host log, Android diagnostic
 log, and reproduction steps. Redact pairing tokens, Wi-Fi credentials, public
-IP addresses, and personal screen content.
+IP addresses, hardware identifiers such as ADB serials, `ro.serialno`, UDIDs,
+MAC addresses, and personal screen content.

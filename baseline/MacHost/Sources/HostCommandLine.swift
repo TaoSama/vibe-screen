@@ -22,6 +22,7 @@ enum HostCommandLine {
     enum LaunchMode: Equatable {
         case command(Command)
         case gui
+        case rejected
     }
 
     struct ParseResult: Equatable {
@@ -65,7 +66,7 @@ enum HostCommandLine {
         let flags = arguments.dropFirst()
         if let unknownFlag = flags.first(where: { isUnknownDoubleDashFlag($0) }) {
             return ParseResult(
-                launchMode: .gui,
+                launchMode: .rejected,
                 errorMessage: "Unknown Vibe Screen Host CLI flag: \(unknownFlag)"
             )
         }
@@ -73,7 +74,7 @@ enum HostCommandLine {
         let commands = flags.compactMap { commandFlags[String($0)] }
         if commands.count > 1 {
             return ParseResult(
-                launchMode: .gui,
+                launchMode: .rejected,
                 errorMessage: "Multiple Vibe Screen Host CLI commands are not supported."
             )
         }
@@ -86,7 +87,7 @@ enum HostCommandLine {
             case "invalid-target":
                 loopbackCommand = .iOSLoopback(expectsInvalidTarget: true)
             default:
-                return ParseResult(launchMode: .gui, errorMessage: "Unknown iOS loopback scenario.")
+                return ParseResult(launchMode: .rejected, errorMessage: "Unknown iOS loopback scenario.")
             }
         } else {
             loopbackCommand = nil
@@ -94,7 +95,7 @@ enum HostCommandLine {
 
         if !commands.isEmpty, loopbackCommand != nil {
             return ParseResult(
-                launchMode: .gui,
+                launchMode: .rejected,
                 errorMessage: "Vibe Screen Host CLI commands cannot be combined with iOS loopback mode."
             )
         }

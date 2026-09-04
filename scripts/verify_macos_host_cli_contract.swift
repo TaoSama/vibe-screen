@@ -130,6 +130,7 @@ func requireNoPermissionPromptTokens(_ source: String, context: String) throws {
 enum LaunchModeSwitchLabelKind {
     case command
     case gui
+    case rejected
     case defaultEquivalent
     case other
 }
@@ -480,6 +481,10 @@ func isGUIPattern(_ pattern: String) -> Bool {
     withoutWhitespace(basePattern(pattern)) == ".gui"
 }
 
+func isRejectedPattern(_ pattern: String) -> Bool {
+    withoutWhitespace(basePattern(pattern)) == ".rejected"
+}
+
 func labelKind(_ label: String, isDefault: Bool) -> LaunchModeSwitchLabelKind {
     if isDefault { return .defaultEquivalent }
     let patterns = casePatternItems(from: label)
@@ -487,6 +492,7 @@ func labelKind(_ label: String, isDefault: Bool) -> LaunchModeSwitchLabelKind {
     if patterns.contains(where: isCatchAllCommandPattern) { return .defaultEquivalent }
     if patterns.contains(where: isExplicitCommandPattern) { return .command }
     if patterns.contains(where: isGUIPattern) { return .gui }
+    if patterns.contains(where: isRejectedPattern) { return .rejected }
     return .other
 }
 
@@ -549,6 +555,31 @@ func bodyStartsWithExitCall(_ bodyLines: [String]) -> Bool {
     return index < characters.count && characters[index] == "("
 }
 
+func bodyStartsWithExitFailureCall(_ bodyLines: [String]) -> Bool {
+    let body = bodyLines.joined(separator: "\n")
+    let characters = maskedForSwiftTrivia(body)
+    var index = 0
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    guard matchesToken("exit", at: index, in: characters) else { return false }
+    index += "exit".count
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    guard index < characters.count, characters[index] == "(" else { return false }
+    index += 1
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    guard matchesToken("EXIT_FAILURE", at: index, in: characters) else { return false }
+    index += "EXIT_FAILURE".count
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    return index < characters.count && characters[index] == ")"
+}
+
 func bodyContainsBreak(_ bodyLines: [String]) -> Bool {
     let body = bodyLines.joined(separator: "\n")
     let characters = maskedForSwiftTrivia(body)
@@ -566,6 +597,7 @@ func verifyLaunchModeSwitchContract(source: String, context: String) throws {
 
     var foundCommandCase = false
     var foundGUICase = false
+    var foundRejectedCase = false
     for switchCase in cases {
         switch labelKind(switchCase.label, isDefault: switchCase.isDefault) {
         case .defaultEquivalent:
@@ -584,14 +616,25 @@ func verifyLaunchModeSwitchContract(source: String, context: String) throws {
             )
         case .gui:
             foundGUICase = true
+        case .rejected:
+            foundRejectedCase = true
+            try require(
+                bodyStartsWithExitFailureCall(switchCase.bodyLines),
+                "\(context) .rejected must immediately call exit(EXIT_FAILURE)"
+            )
+            try require(
+                !bodyContainsBreak(switchCase.bodyLines),
+                "\(context) .rejected must not use break"
+            )
         case .other:
             throw ContractError.violation(
-                "\(context) \(switchCase.label.trimmingCharacters(in: .whitespacesAndNewlines)) must be an explicit command or GUI case"
+                "\(context) \(switchCase.label.trimmingCharacters(in: .whitespacesAndNewlines)) must be an explicit command, rejected, or GUI case"
             )
         }
     }
 
     try require(foundCommandCase, "\(context) commandLine.launchMode switch must handle command cases explicitly")
+    try require(foundRejectedCase, "\(context) commandLine.launchMode switch must handle rejected parse results explicitly")
     try require(foundGUICase, "\(context) commandLine.launchMode switch must keep an explicit GUI case")
 }
 
@@ -624,6 +667,8 @@ func verifyLaunchModeSwitchFixtures() throws {
         exit(IOSClientLoopbackHost.run(expectsInvalidTarget: expectsInvalidTarget)
             ? EXIT_SUCCESS
             : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -635,6 +680,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         _ = HostSelfTest.run()
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -646,16 +693,32 @@ func verifyLaunchModeSwitchFixtures() throws {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
         break
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
     """#
     try requireStaticFixtureFails(commandBreak, context: "command break fixture")
 
+    let rejectedSuccess = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_SUCCESS)
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(rejectedSuccess, context: "rejected success fixture")
+
     let defaultBreak = #"""
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     default:
         break
     }
@@ -666,6 +729,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case _:
         break
     }
@@ -676,6 +741,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui, _:
         break
     }
@@ -686,6 +753,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case _ where true:
         break
     }
@@ -696,6 +765,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     @unknown default:
         break
     }
@@ -706,6 +777,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     @unknown   default:
         break
     }
@@ -716,6 +789,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     @unknown	default:
         break
     }
@@ -726,6 +801,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(_):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -744,6 +821,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui, let mode:
         break
     }
@@ -754,6 +833,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest), let mode:
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -764,6 +845,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.iOSLoopback(let expectsInvalidTarget)):
         _ = IOSClientLoopbackHost.run(expectsInvalidTarget: expectsInvalidTarget)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -776,6 +859,8 @@ func verifyLaunchModeSwitchFixtures() throws {
         // default: this comment must not be treated as a case label
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
         let s = "break inside string"
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -787,6 +872,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
         defaults.set(true, forKey: "flag")
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -797,6 +884,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui: let mode = true ? 1 : 2
         break
     }
@@ -808,6 +897,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     case .command(.hostSelfTest),
          .command(.transportSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -818,6 +909,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case	.command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -832,6 +925,8 @@ func verifyLaunchModeSwitchFixtures() throws {
         default:
         break
         """
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -843,6 +938,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
         let message = #"default: break"#
+    case .rejected:
+        exit(EXIT_FAILURE)
     case .gui:
         break
     }
@@ -853,6 +950,8 @@ func verifyLaunchModeSwitchFixtures() throws {
     switch commandLine.launchMode {
     case .command(.hostSelfTest):
         exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_FAILURE)
     }
     """#
     try requireStaticFixtureFails(missingGUICase, context: "missing GUI case fixture")
@@ -905,6 +1004,7 @@ func verifyParserBehavior() throws {
 
     let unknownSelfTest = parse(["Vibe Screen", "--self-test"])
     require(!unknownSelfTest.canLaunch, "--self-test must fail closed")
+    require(unknownSelfTest.launchMode == .rejected, "--self-test must not resolve to GUI mode")
     require(
         unknownSelfTest.errorMessage == "Unknown Vibe Screen Host CLI flag: --self-test",
         "--self-test must report the unknown flag"
@@ -912,6 +1012,7 @@ func verifyParserBehavior() throws {
 
     let bareDoubleDash = parse(["Vibe Screen", "--"])
     require(!bareDoubleDash.canLaunch, "bare -- must fail closed")
+    require(bareDoubleDash.launchMode == .rejected, "bare -- must not resolve to GUI mode")
     require(
         bareDoubleDash.errorMessage == "Unknown Vibe Screen Host CLI flag: --",
         "bare -- must report the unknown flag"
@@ -919,6 +1020,7 @@ func verifyParserBehavior() throws {
 
     let valuedCommand = parse(["Vibe Screen", "--host-self-test=foo"])
     require(!valuedCommand.canLaunch, "known command with value syntax must fail closed")
+    require(valuedCommand.launchMode == .rejected, "valued command typo must not resolve to GUI mode")
     require(
         valuedCommand.errorMessage == "Unknown Vibe Screen Host CLI flag: --host-self-test=foo",
         "known command with value syntax must report the unknown flag"
@@ -945,9 +1047,11 @@ func verifyParserBehavior() throws {
 
     let multipleCommands = parse(["Vibe Screen", "--host-self-test", "--issue-phase3-internet-lease"])
     require(!multipleCommands.canLaunch, "multiple CLI commands must fail closed")
+    require(multipleCommands.launchMode == .rejected, "multiple CLI commands must not resolve to GUI mode")
 
     let duplicateCommand = parse(["Vibe Screen", "--host-self-test", "--host-self-test"])
     require(!duplicateCommand.canLaunch, "duplicate CLI commands must fail closed")
+    require(duplicateCommand.launchMode == .rejected, "duplicate CLI commands must not resolve to GUI mode")
 
     let loopback = parse(
         ["Vibe Screen"],
@@ -964,18 +1068,21 @@ func verifyParserBehavior() throws {
         environment: ["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO": "other"]
     )
     require(!unknownLoopback.canLaunch, "unknown iOS loopback scenario must fail closed")
+    require(unknownLoopback.launchMode == .rejected, "unknown iOS loopback scenario must not resolve to GUI mode")
 
     let emptyLoopback = parse(
         ["Vibe Screen"],
         environment: ["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO": ""]
     )
     require(!emptyLoopback.canLaunch, "empty iOS loopback scenario must fail closed")
+    require(emptyLoopback.launchMode == .rejected, "empty iOS loopback scenario must not resolve to GUI mode")
 
     let loopbackConflict = parse(
         ["Vibe Screen", "--host-self-test"],
         environment: ["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO": "lifecycle"]
     )
     require(!loopbackConflict.canLaunch, "CLI command and iOS loopback environment must fail closed")
+    require(loopbackConflict.launchMode == .rejected, "CLI/loopback conflict must not resolve to GUI mode")
 
     print("PASS HostCommandLine behavior harness")
     """#

@@ -29,7 +29,9 @@ xcodebuild -version
 The default macOS readiness and test paths do not inspect Login Items with
 `sfltool`. Login-item state remains fail-closed as unverified unless an operator
 explicitly runs the manual diagnostic path with `scripts/macos_dev_host.py
-readiness --probe-login-item`.
+readiness --include-login-item-diagnostic`. Keep that option out of unattended
+automation and CI because `/usr/bin/sfltool dumpbtm` can display a macOS
+administrator prompt.
 
 ## macOS Host signing preflight
 
@@ -56,6 +58,11 @@ that fails any of those checks must be rebuilt instead of reused for TCC or
 device evidence. `make baseline-macos-launch` runs the same preflight first and
 only opens `/Applications/Vibe Screen.app`; direct launches from
 `.build/release-artifacts/` are not valid device-evidence setup.
+macOS TCC grants are bound to the bundle identity, signing requirement, stable
+path, and source provenance observed by the installed app. A moved, re-signed,
+ad-hoc, dirty-source, or stale-provenance Host can be treated as a different app
+and must remain blocked until read-only TCC rows prove authorization for that
+exact identity.
 
 If the configured identity is missing, the preflight blocks with
 `codesign identity 'Vibe Screen Dev' not found in the keychain`. Restore or
@@ -84,7 +91,8 @@ not enable that flag in default tests or CI.
 
 For every device run, record:
 
-- ADB endpoint, hardware serial, manufacturer, model, Android version, SDK,
+- ADB endpoint and hardware serial sanitized as `<device-serial>`,
+  manufacturer, model, Android version, SDK,
   build fingerprint, display size/density, battery, and boot state;
 - Mac Host model identifier, CPU architecture (`apple_silicon` or `intel`),
   CPU/chip name, macOS product version and build, Xcode/Swift versions, Host
@@ -443,10 +451,12 @@ Bluetooth mouse attached to the Android device under test; `adb shell input
 mouse ...` can exercise scroll, but it does not reliably deliver hover/move to
 the focused Android view and cannot close the native-pointer gate.
 
-Before running the gate, start the matching macOS Host, grant Accessibility,
-establish a Protocol v1 USB or trusted-LAN session, and keep the Android client
-foregrounded on the streaming view. Replace `<target app>` with the observed
-Mac application name before running the command:
+Before running the gate, start the matching stable-signed
+`/Applications/Vibe Screen.app` Host only after the read-only preflight proves
+Accessibility for that app bundle, establish a Protocol v1 USB or trusted-LAN
+session, and keep the Android client foregrounded on the streaming view.
+Replace `<target app>` with the observed Mac application name before running
+the command:
 
 ```bash
 make native-pointer-hid-acceptance \

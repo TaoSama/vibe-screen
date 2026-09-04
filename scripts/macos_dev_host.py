@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +55,21 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+TCC_IDENTITY_BINDING_NOTE = (
+    "macOS TCC grants are identity-bound. Screen Recording, Accessibility, "
+    "and Microphone authorization must match this exact installed app bundle "
+    "identifier, canonical designated requirement/signing leaf, stable "
+    "/Applications path, and source provenance. A rebuilt, re-signed, moved, "
+    "or ad-hoc Host can be treated by macOS as a different app and must stay "
+    "blocked until the read-only rows prove authorization for that exact identity."
+)
+READ_ONLY_PREFLIGHT_SAFETY_NOTE = (
+    "preflight/readiness are read-only: they inspect bundle metadata, codesign, "
+    "source provenance, listener state, entitlements, defaults, logs, display "
+    "inventory, and TCC database rows; they do not start the Host GUI, open "
+    "System Settings, call permission-request APIs, reset TCC, mutate Keychain, "
+    "install apps, or touch Android/ADB state."
+)
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item not probed by default; probe not run. Use an attended "
     "diagnostic session outside default readiness to inspect login-item state."
@@ -91,6 +107,9 @@ class TCCRow:
     auth_value: int | None
     auth_reason: int | None
     last_modified: int | None
+    csreq_sha256: str | None = None
+    csreq_requirement: str | None = None
+    csreq_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +128,10 @@ class PermissionStatus:
     def is_allowed(self, services: tuple[str, ...]) -> bool:
         row = self.latest_row(services)
         return row is not None and row.auth_value == ALLOWED_AUTH_VALUE
+
+    def has_matching_requirement(self, services: tuple[str, ...], requirement: str | None) -> bool:
+        row = self.latest_row(services)
+        return row is not None and tcc_row_requirement_matches(row, requirement)
 
     def allowed_state(self, services: tuple[str, ...]) -> bool | None:
         if not self.readable:
@@ -455,6 +478,55 @@ def redact_network_endpoints(value: str) -> str:
         return "<redacted-ipv4>" + (match.group(2) or "")
 
     return IPV4_ENDPOINT_RE.sub(replace, value)
+
+
+def normalize_requirement_text(requirement: str | None) -> str | None:
+    if requirement is None:
+        return None
+    normalized = " ".join(requirement.strip().split())
+    return normalized.lower() if normalized else None
+
+
+def csreq_binary_to_requirement(blob: bytes | memoryview | None) -> tuple[str | None, str | None]:
+    if blob is None:
+        return None, "missing TCC csreq"
+    payload = bytes(blob)
+    if not payload:
+        return None, "empty TCC csreq"
+    with tempfile.NamedTemporaryFile(prefix="vibe-screen-tcc-csreq-", suffix=".bin") as csreq_file:
+        csreq_file.write(payload)
+        csreq_file.flush()
+        exit_code, output = run_best_effort(
+            "/usr/bin/csreq",
+            "-r",
+            csreq_file.name,
+            "-t",
+            timeout_seconds=TCC_QUERY_TIMEOUT_SECONDS,
+        )
+    if exit_code != 0:
+        detail = redact_local_report_text(output.strip()) if output.strip() else "csreq returned no detail"
+        return None, f"cannot decode TCC csreq: {detail}"
+    normalized = normalize_requirement_text(output)
+    if normalized is None:
+        return None, "decoded TCC csreq was empty"
+    return normalized, None
+
+
+def tcc_row_requirement_matches(row: TCCRow, requirement: str | None) -> bool:
+    expected = normalize_requirement_text(requirement)
+    if expected is None or row.csreq_error is not None or row.csreq_requirement is None:
+        return False
+    if row.csreq_requirement == expected:
+        return True
+    try:
+        row_contract = package_macos.parse_designated_requirement_contract(row.csreq_requirement)
+        expected_contract = package_macos.parse_designated_requirement_contract(expected)
+    except ValueError:
+        return False
+    return (
+        row_contract.identifier == expected_contract.identifier
+        and row_contract.leaf_sha1 == expected_contract.leaf_sha1
+    )
 
 
 def parse_defaults_output(output: str) -> dict[str, str]:
@@ -1082,29 +1154,36 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
                 )
             auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
             last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
+            csreq = "csreq" if "csreq" in columns else "NULL AS csreq"
             services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE, MICROPHONE_SERVICE)
             placeholders = ",".join("?" for _ in services)
             cursor = connection.execute(
                 f"""
-                SELECT service, client, client_type, auth_value, {auth_reason}, {last_modified}
+                SELECT service, client, client_type, auth_value, {auth_reason}, {last_modified}, {csreq}
                 FROM access
                 WHERE client = ? AND client_type = 0 AND service IN ({placeholders})
                 ORDER BY service, last_modified
                 """,
                 (bundle_id, *services),
             )
-            rows = tuple(
-                TCCRow(
-                    service=str(row[0]),
-                    client=str(row[1]),
-                    client_type=int(row[2]),
-                    auth_value=None if row[3] is None else int(row[3]),
-                    auth_reason=None if row[4] is None else int(row[4]),
-                    last_modified=None if row[5] is None else int(row[5]),
+            rows: list[TCCRow] = []
+            for row in cursor.fetchall():
+                csreq_blob = None if row[6] is None else bytes(row[6])
+                requirement, csreq_error = csreq_binary_to_requirement(csreq_blob)
+                rows.append(
+                    TCCRow(
+                        service=str(row[0]),
+                        client=str(row[1]),
+                        client_type=int(row[2]),
+                        auth_value=None if row[3] is None else int(row[3]),
+                        auth_reason=None if row[4] is None else int(row[4]),
+                        last_modified=None if row[5] is None else int(row[5]),
+                        csreq_sha256=hashlib.sha256(csreq_blob).hexdigest() if csreq_blob else None,
+                        csreq_requirement=requirement,
+                        csreq_error=csreq_error,
+                    )
                 )
-                for row in cursor.fetchall()
-            )
-            return PermissionStatus(database_path=report_label, rows=rows, readable=True)
+            return PermissionStatus(database_path=report_label, rows=tuple(rows), readable=True)
         finally:
             connection.close()
     except sqlite3.Error as error:
@@ -1152,12 +1231,18 @@ def validate_preflight(
     elif permissions.error:
         errors.append(f"cannot fully verify TCC permissions read-only: {permissions.error}")
     else:
-        if not permissions.is_allowed(SCREEN_CAPTURE_SERVICES):
-            errors.append("Screen Recording is not authorized for the installed Host")
-        if not permissions.is_allowed(ACCESSIBILITY_SERVICES):
-            errors.append("Accessibility is not authorized for the installed Host")
-        if not permissions.is_allowed(MICROPHONE_SERVICES):
-            errors.append("Microphone is not authorized for the installed Host")
+        for label, services in (
+            ("Screen Recording", SCREEN_CAPTURE_SERVICES),
+            ("Accessibility", ACCESSIBILITY_SERVICES),
+            ("Microphone", MICROPHONE_SERVICES),
+        ):
+            row = permissions.latest_row(services)
+            if row is None or row.auth_value != ALLOWED_AUTH_VALUE:
+                errors.append(f"{label} is not authorized for the installed Host")
+                continue
+            if not tcc_row_requirement_matches(row, metadata.designated_requirement):
+                detail = row.csreq_error or "TCC csreq does not match installed Host designated requirement"
+                errors.append(f"{label} TCC authorization is not bound to the installed Host identity: {detail}")
     return errors
 
 
@@ -1254,7 +1339,15 @@ def value_or_missing(value: int | None) -> str:
 
 
 def format_permission_row(row: TCCRow) -> str:
-    return f"{row.service}|{row.client}|{row.client_type}|{value_or_missing(row.auth_value)}|{value_or_missing(row.auth_reason)}|{value_or_missing(row.last_modified)}"
+    csreq_hash = row.csreq_sha256 or "missing"
+    csreq_requirement = row.csreq_requirement or "missing"
+    csreq_error = row.csreq_error or "none"
+    return (
+        f"{row.service}|{row.client}|{row.client_type}|"
+        f"{value_or_missing(row.auth_value)}|{value_or_missing(row.auth_reason)}|"
+        f"{value_or_missing(row.last_modified)}|csreq_sha256={csreq_hash}|"
+        f"csreq_requirement={csreq_requirement}|csreq_error={csreq_error}"
+    )
 
 
 def permission_interpretation(permissions: PermissionStatus) -> str:
@@ -1340,7 +1433,7 @@ Verification: {verification}
 Read-only TCC capture
 ---------------------
 Database: {permissions.database_path}
-Field order: service|client|client_type|auth_value|auth_reason|last_modified
+Field order: service|client|client_type|auth_value|auth_reason|last_modified|csreq_sha256|csreq_requirement|csreq_error
 {rows}
 
 Interpretation: {permission_interpretation(permissions)}
@@ -1357,6 +1450,14 @@ Keychain and TCC handling
 This tool does not reset Keychain, import certificates, request passwords, update
 partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
+
+TCC identity binding
+--------------------
+{TCC_IDENTITY_BINDING_NOTE}
+
+Safety contract
+---------------
+{READ_ONLY_PREFLIGHT_SAFETY_NOTE}
 """
 
 
@@ -1386,6 +1487,10 @@ This blocked operation did not start the Host, run Android instrumentation,
 modify Keychain, edit privacy databases, clear Android app data, or change ADB state. This
 is a Host signing prerequisite, not an Android device-identity result.
 System permission path: {SYSTEM_SETTINGS_PATH}
+
+TCC identity binding
+--------------------
+{TCC_IDENTITY_BINDING_NOTE}
 """
 
 
@@ -1626,7 +1731,7 @@ def inspect_host_without_throwing(
     return HostInspection(metadata, source_identity, permissions, errors)
 
 
-def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
+def permission_record(permissions: PermissionStatus, host_requirement: str | None = None) -> dict[str, Any]:
     return {
         "database_path": str(permissions.database_path),
         "readable": permissions.readable,
@@ -1634,6 +1739,21 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
         "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
         "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
+        "screen_recording_identity_bound": (
+            permissions.has_matching_requirement(SCREEN_CAPTURE_SERVICES, host_requirement)
+            if permissions.readable
+            else None
+        ),
+        "accessibility_identity_bound": (
+            permissions.has_matching_requirement(ACCESSIBILITY_SERVICES, host_requirement)
+            if permissions.readable
+            else None
+        ),
+        "microphone_identity_bound": (
+            permissions.has_matching_requirement(MICROPHONE_SERVICES, host_requirement)
+            if permissions.readable
+            else None
+        ),
         "rows": [row.__dict__ for row in permissions.rows],
     }
 
@@ -1860,7 +1980,11 @@ def build_readiness_document(
         "can_close_runtime_gates": not blockers,
         "blockers": blockers,
         "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
-        "permissions": permission_record(inspection.permissions),
+        "permissions": permission_record(
+            inspection.permissions,
+            inspection.metadata.designated_requirement if inspection.metadata else None,
+        ),
+        "tcc_identity_binding": tcc_identity_binding_record(),
         "listener": {
             "port": listener.port,
             "observed": listener.observed,
@@ -1874,14 +1998,37 @@ def build_readiness_document(
             "error": entitlements.error,
         },
         "login_headless": login_headless_record(settings, login_item, displays, logs, login_blockers),
-        "safety": {
-            "read_only": True,
-            "starts_host": False,
-            "modifies_tcc": False,
-            "modifies_keychain": False,
-            "modifies_android": False,
-            "closes_runtime_gates": False,
-        },
+        "safety": read_only_preflight_safety_record(),
+    }
+
+
+def tcc_identity_binding_record() -> dict[str, Any]:
+    return {
+        "note": TCC_IDENTITY_BINDING_NOTE,
+        "bundle_id": EXPECTED_BUNDLE_ID,
+        "install_path": str(DEFAULT_INSTALL_PATH),
+        "expected_signing_leaf_sha1": EXPECTED_SIGNING_LEAF_SHA1,
+        "requires_canonical_designated_requirement": True,
+        "requires_matching_source_provenance": True,
+        "drift_is_blocking": True,
+    }
+
+
+def read_only_preflight_safety_record() -> dict[str, Any]:
+    return {
+        "read_only": True,
+        "starts_host": False,
+        "opens_host_gui": False,
+        "opens_system_settings": False,
+        "requests_screen_recording": False,
+        "requests_accessibility": False,
+        "requests_microphone": False,
+        "modifies_tcc": False,
+        "modifies_keychain": False,
+        "installs_or_replaces_host": False,
+        "modifies_android": False,
+        "closes_runtime_gates": False,
+        "note": READ_ONLY_PREFLIGHT_SAFETY_NOTE,
     }
 
 
@@ -2188,6 +2335,7 @@ def readiness_command(args: argparse.Namespace) -> int:
             "permissions": permission_record(
                 missing_permission_status("Host bundle was not inspected because readiness validation failed first")
             ),
+            "tcc_identity_binding": tcc_identity_binding_record(),
             "listener": {
                 "port": args.port,
                 "observed": False,
@@ -2201,14 +2349,7 @@ def readiness_command(args: argparse.Namespace) -> int:
                 "error": "entitlements not inspected",
             },
             "login_headless": uninspected_login_headless_record(errors),
-            "safety": {
-                "read_only": True,
-                "starts_host": False,
-                "modifies_tcc": False,
-                "modifies_keychain": False,
-                "modifies_android": False,
-                "closes_runtime_gates": False,
-            },
+            "safety": read_only_preflight_safety_record(),
         }
         write_json_report(args.json_output, document)
         print(f"Wrote {args.report}")

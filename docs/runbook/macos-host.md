@@ -47,7 +47,9 @@ directly.
 
 The current bundle identifier is `dev.telemachus.display`. Keep the app at the
 same path across upgrades so macOS has the best chance of retaining its privacy
-grants.
+grants. For evidence-grade runs, TCC reuse depends on the installed bundle id,
+canonical designated requirement/signing leaf, `/Applications/Vibe Screen.app`
+path, and embedded source provenance matching the current clean checkout.
 
 ## Local development Host identity
 
@@ -103,7 +105,7 @@ for `/usr/bin/codesign` on that machine instead of switching to ad-hoc signing.
 
 ## First-run permissions
 
-Vibe Screen requests two independent permissions:
+Vibe Screen requests three independent permissions:
 
 - **Screen & System Audio Recording** (called **Screen Recording** on older
   macOS): required for capture.
@@ -111,12 +113,18 @@ Vibe Screen requests two independent permissions:
   keyboard/native-pointer injection, and window migration/restoration. The
   legacy fallback session still does not carry keyboard or native-mouse
   messages.
+- **Microphone**: required by the shared Host preflight so Host audio capture is
+  never admitted through an implicit runtime prompt.
 
-Grant both in **System Settings → Privacy & Security**, then quit Vibe Screen.
-For device evidence, restart it with `make baseline-macos-launch` so the same
-source-bound preflight runs before launch. The app rechecks permission while it
-is running, but a relaunch is the most reliable path after a new grant. Never
-grant Accessibility to an untrusted build: it can synthesize system-wide input.
+Grant all three in **System Settings → Privacy & Security** for
+`/Applications/Vibe Screen.app`, then quit Vibe Screen. On a first-run machine,
+add that app bundle with the System Settings `+` control if it is not listed
+yet, or open the app only through an attended explicit setup flow and quit after
+macOS records the grants. For device evidence, restart it with
+`make baseline-macos-launch` so the same source-bound preflight runs before
+launch. The app rechecks permission while it is running, but a relaunch is the
+most reliable path after a new grant. Never grant Accessibility to an untrusted
+build: it can synthesize system-wide input.
 
 ## Host-backed device gate preflight
 
@@ -133,8 +141,8 @@ make baseline-macos-host-preflight
 ad-hoc signing identity whose designated requirement contains leaf certificate
 SHA-1 `9AAE572BF6D764E3436A6109197D345B5A87998C`, source commit/tree
 provenance embedded by `scripts/package_macos.py`, a clean current source tree,
-and read-only Screen Recording plus Accessibility rows in the user's and system
-TCC databases. The rebuild and reinstall step separately requires the configured
+and read-only Screen Recording, Accessibility, and Microphone rows in the user's
+and system TCC databases. The rebuild and reinstall step separately requires the configured
 signing identity to be present in the current Keychain and to resolve to that
 same pinned leaf. A missing or drifted `Vibe Screen Dev` identity means the Host
 cannot be rebuilt or reinstalled as the TCC-compatible stable signed binary.
@@ -146,12 +154,14 @@ prompt contract commit and pass
 `--allow-source-mismatch` flag is rejected and cannot authorize Host evidence.
 The preflight is read-only and must not open System Settings or request macOS
 privacy prompts. After restoring the exact historical leaf and reinstalling the
-Host, run it first; the expected path is that existing Screen Recording and
-Accessibility TCC grants are reused without new approval.
+Host, run it first; the expected path is that existing Screen Recording,
+Accessibility, and Microphone TCC grants are reused without new approval.
+Protocol startup and preflight must not request Microphone implicitly, and audio
+capability stays blocked until the exact installed app identity is already authorized.
 Only when the generated report proves those historical authorization rows are
 absent should a user explicitly open **System Settings -> Privacy & Security ->
-Screen & System Audio Recording** and **Accessibility**, grant the installed
-`/Applications/Vibe Screen.app`, quit Vibe Screen, restart it with
+Screen & System Audio Recording**, **Accessibility**, and **Microphone**, grant
+the installed `/Applications/Vibe Screen.app`, quit Vibe Screen, restart it with
 `make baseline-macos-launch`, then run the preflight again. A report produced
 without a stable installed Host identity, TCC
 authorization, or matching source provenance cannot close USB, LAN, Host RSS,
@@ -182,7 +192,7 @@ dump.
 
 `host-readiness.json` records the installed bundle path, signing identity,
 codesign provenance, embedded source commit/tree/dirty state, current checkout
-commit/tree/dirty state, read-only Screen Recording and Accessibility TCC rows,
+commit/tree/dirty state, read-only Screen Recording, Accessibility, and Microphone TCC rows,
 TCP listener observation for port `54321`, and whether the bundle carries the
 virtual HID entitlement needed by controller runtime acceptance. The command is
 read-only: it does not start Vibe Screen, import certificates, change Keychain
@@ -219,7 +229,7 @@ That runner wraps this Host preflight with the Android device identity, ADB
 reverse state, foreground app state, Host TCP listener, and stream telemetry
 checks. It writes `<evidence-dir>/real-device-gate.json` and reports
 `result=blocked` if the stable signing identity, Screen Recording, Accessibility,
-listener, or fresh structured stream telemetry is missing. It does not launch
+Microphone, listener, or fresh structured stream telemetry is missing. It does not launch
 the Host or modify macOS privacy state.
 
 ## USB quick start
