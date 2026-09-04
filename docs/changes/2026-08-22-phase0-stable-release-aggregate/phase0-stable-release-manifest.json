@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "7bf98a9b0be0bcd297ae7abd4c5088e65c30168e",
+    "base_commit": "e4d7861b8af3ffa8d32fff99b022e92193acc071",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Vibe Screen core team",
@@ -50,7 +50,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33861276967"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33879459753"
       ],
       "owner_prs": [],
       "blockers": []
@@ -63,7 +63,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33861276967"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33879459753"
       ],
       "owner_prs": [],
       "blockers": []
@@ -76,7 +76,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33861276967",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33879459753",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -249,10 +249,11 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/no-host-transfer-controls-summary.json",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
         "docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/README.md",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_manifest.py"
       ],
@@ -260,8 +261,10 @@
       "blockers": [
         "Host readiness is blocked on stable signing, source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, virtual HID entitlement, and login/headless readiness.",
         "Android now exposes incoming file-transfer progress and user cancellation in source and contract tests, but this is not a retained Host-backed bidirectional product transfer pass.",
-        "Android PR #551/#552/#553 add no-Host readiness, outgoing progress, and progress-state race hardening, but these are source/contract readiness rather than retained Host-backed bidirectional product transfer evidence.",
-        "PR #555 records P0110 no-Host transfer UI smoke only; it does not prove real Host readiness, stream establishment, Protocol v1 handshake with a real Host, or Android/macOS file bytes landing behavior.",
+        "Android PR #551/#552/#553 and PR #560/#561 add no-Host readiness, outgoing progress, control reachability, and progress-state race hardening, but these are source/contract readiness rather than retained Host-backed bidirectional product transfer evidence.",
+        "PR #555 and PR #562 record P0110 no-Host transfer UI smoke only; they do not prove real Host readiness, stream establishment, Protocol v1 handshake with a real Host, or Android/macOS file bytes landing behavior.",
+        "PR #563 keeps active outgoing transfer controls visible while sending and resets disconnected transfer controls with Android source-level contract coverage only.",
+        "PR #564 treats Internet outgoing file-transfer cancellation as locally successful after local owner cleanup and retains fail-closed session behavior when the reliable cancel frame is rejected, but this is Internet semantic offline coverage only.",
         "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup.",
         "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass."
       ]

@@ -3,7 +3,7 @@
   "kind": "phase0_module_ownership_current_base_manifest",
   "phase": "phase0",
   "source": {
-    "base_commit": "7bf98a9b0be0bcd297ae7abd4c5088e65c30168e",
+    "base_commit": "e4d7861b8af3ffa8d32fff99b022e92193acc071",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Phase 0 module ownership extraction owner"
@@ -162,15 +162,17 @@
       "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/FileTransferProductOwner.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/FileTransferProductOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/internet/InternetProductSessionTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/FileTransferSession.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/FileTransferSessionTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept",
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest.staleHostFileOfferDecisionAfterDisconnectSendsNoAccept --tests dev.telemachus.display.internet.InternetProductSessionTest",
         "make baseline-android-protocol-side-effect-owner"
       ],
       "blockers": [],
