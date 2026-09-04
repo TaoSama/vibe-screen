@@ -4,7 +4,7 @@
   "source_base": "origin/main",
   "source_base_commit": "3ab85697e17aef0e57549e1d47298c9eb831941d",
   "device": {
-    "serial": "EP0110PZ0B9110300B",
+    "serial": "REDACTED_P0110_USB_SERIAL",
     "manufacturer": "nubia",
     "model": "P0110",
     "codename": "pacific",
@@ -23,8 +23,12 @@
     "android-no-host-lan-tab.png",
     "android-no-host-internet-tab.png",
     "android-final-pid-logcat.log",
+    "app-pid-final.txt",
     "window-focus-final.txt",
     "window-focus-mode-toggle.txt",
-    "ui-hierarchy-final.xml"
+    "window-focus.txt",
+    "ui-hierarchy-final.xml",
+    "ui-hierarchy-lan.xml",
+    "ui-hierarchy-internet.xml"
   ]
 }

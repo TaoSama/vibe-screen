@@ -1,4 +1,4 @@
-serial=EP0110PZ0B9110300B
+serial=REDACTED_P0110_USB_SERIAL
 manufacturer=nubia
 model=P0110
 device=pacific

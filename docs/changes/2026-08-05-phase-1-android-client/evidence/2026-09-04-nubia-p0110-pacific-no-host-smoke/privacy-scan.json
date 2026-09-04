@@ -1,0 +1,217 @@
+{
+  "artifacts": [
+    {
+      "bytes": 3505,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "4a97e8cccc124decd7b8e4c3beab96fd32b1d084afb95b4d614559aa73622ff4"
+    },
+    {
+      "bytes": 118399,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-final-pid-logcat.log",
+      "result": "pass",
+      "sha256": "3274a4467cf28ae19eff87d375b0928c83e062090f73b270a0afe59e25bec039"
+    },
+    {
+      "bytes": 275042,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-no-host-final.png",
+      "result": "pass",
+      "sha256": "fa7152f90b36bd1c6f891872662870d2784e75b039348aa95054b707c08d2fa5"
+    },
+    {
+      "bytes": 274922,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-no-host-initial.png",
+      "result": "pass",
+      "sha256": "ef5ace7bf53a347e13de1d182d18df2d3aaabd5dca1efe1a95200c52dfe3a20d"
+    },
+    {
+      "bytes": 223750,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-no-host-internet-tab.png",
+      "result": "pass",
+      "sha256": "a326c828e36e4a3cf556346182f97e08bbb128fda272dfa2edf082ecc2731744"
+    },
+    {
+      "bytes": 233840,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-no-host-lan-tab.png",
+      "result": "pass",
+      "sha256": "88ae9597cc785a68b4b2d12778310f649182e8adf8bcba47c1715bf4d1a59662"
+    },
+    {
+      "bytes": 6,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "app-pid-final.txt",
+      "result": "pass",
+      "sha256": "6f64894266d488e11472f8bca4abe83e7336cdfbecbea78688888491c4f97795"
+    },
+    {
+      "bytes": 908,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-info.txt",
+      "result": "pass",
+      "sha256": "a2aa73395e8db8e94f997daface76da8b4cf91a54f77e76a0dab587a70d08243"
+    },
+    {
+      "bytes": 928,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata.json",
+      "result": "pass",
+      "sha256": "4b26ed467bbc4e8a1fb488408f462825ae3e1dd4abe0b83120ee6a255e944e9f"
+    },
+    {
+      "bytes": 12962,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ui-hierarchy-final.xml",
+      "result": "pass",
+      "sha256": "9c21d2237a900e3cd2c7fa6c5b9d9699c6edf0df60be0c465ecb5ff961dc5264"
+    },
+    {
+      "bytes": 15381,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ui-hierarchy-internet.xml",
+      "result": "pass",
+      "sha256": "2e1aa556dc6dbf220b4533adae9fb22c7459c187d766ca040b10b624860b9a12"
+    },
+    {
+      "bytes": 12962,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ui-hierarchy-lan.xml",
+      "result": "pass",
+      "sha256": "9c21d2237a900e3cd2c7fa6c5b9d9699c6edf0df60be0c465ecb5ff961dc5264"
+    },
+    {
+      "bytes": 178,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "window-focus-final.txt",
+      "result": "pass",
+      "sha256": "2d207c12a1b822a7203491028a9c50aec80936d81edee833a8c7e51b51b9028d"
+    },
+    {
+      "bytes": 178,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "window-focus-mode-toggle.txt",
+      "result": "pass",
+      "sha256": "2d207c12a1b822a7203491028a9c50aec80936d81edee833a8c7e51b51b9028d"
+    },
+    {
+      "bytes": 178,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "window-focus.txt",
+      "result": "pass",
+      "sha256": "de0f67aa55bbf7b5054b6972bdd44755e1266f75cf3d1583b6c323db4cdac973"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
