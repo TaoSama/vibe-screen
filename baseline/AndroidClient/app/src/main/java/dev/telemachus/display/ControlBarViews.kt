@@ -16,6 +16,7 @@ internal data class ControlBarViews(
     val hostAction: View,
     val clipboard: View,
     val fileTransfer: View,
+    val fileTransferProgress: TextView,
     val settings: View,
     val disconnect: View,
 )
@@ -95,6 +96,7 @@ internal object ControlBarLayoutApplier {
                 resources.getDimensionPixelSize(R.dimen.control_bar_column_button_margin),
             statusMinimumWidthPx = resources.getDimensionPixelSize(R.dimen.connection_status_min_width),
             statusGapPx = resources.getDimensionPixelSize(R.dimen.connection_status_gap),
+            transferProgressWidthPx = resources.getDimensionPixelSize(R.dimen.control_bar_transfer_progress_width),
         )
 
     fun apply(
@@ -110,6 +112,7 @@ internal object ControlBarLayoutApplier {
         val hostActionsVisible = views.hostAction.visibility == View.VISIBLE
         val clipboardVisible = views.clipboard.visibility == View.VISIBLE
         val fileTransferVisible = views.fileTransfer.visibility == View.VISIBLE
+        val transferProgressVisible = views.fileTransferProgress.visibility == View.VISIBLE
         val mode =
             ControlBarLayoutPolicy.mode(
                 availableWidthPx = availableWidthPx,
@@ -118,6 +121,7 @@ internal object ControlBarLayoutApplier {
                 clipboardVisible = clipboardVisible,
                 geometry = geometry,
                 fileTransferVisible = fileTransferVisible,
+                transferProgressVisible = transferProgressVisible,
         )
         val cardParams = views.card.layoutParams
         val statusParams = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
@@ -201,6 +205,18 @@ internal object ControlBarLayoutApplier {
             params.marginEnd = margins.endPx
             params.bottomMargin = margins.bottomPx
             view.layoutParams = params
+        }
+        (views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams).also { params ->
+            params.width = if (transferProgressVisible) geometry.transferProgressWidthPx else 0
+            params.marginStart = 0
+            params.topMargin = if (mode == ControlBarLayoutPolicy.Mode.COLUMN && transferProgressVisible) {
+                geometry.columnActionSpacingPx
+            } else {
+                0
+            }
+            params.marginEnd = if (mode == ControlBarLayoutPolicy.Mode.COLUMN) 0 else geometry.actionMarginPx
+            params.bottomMargin = 0
+            views.fileTransferProgress.layoutParams = params
         }
         return mode
     }

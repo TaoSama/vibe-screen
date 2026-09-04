@@ -148,6 +148,31 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
+    fun activeFileTransferProgressPreservesControlBarGeometryOnPhoneWidths() {
+        listOf(320, 360).forEach { widthDp ->
+            withLayout(widthDp = widthDp, fileTransferVisible = true, transferProgressVisible = true) { layout ->
+                val expectedMode =
+                    ControlBarLayoutPolicy.mode(
+                        availableWidthPx = layout.dp(widthDp),
+                        displaySelectorVisible = true,
+                        hostActionsVisible = true,
+                        clipboardVisible = true,
+                        geometry = ControlBarLayoutApplier.geometry(layout.context.resources),
+                        fileTransferVisible = true,
+                        transferProgressVisible = true,
+                    )
+                assertEquals(expectedMode, layout.mode)
+                assertEquals(View.VISIBLE, layout.views.fileTransferProgress.visibility)
+                assertEquals(
+                    layout.context.resources.getDimensionPixelSize(R.dimen.control_bar_transfer_progress_width),
+                    (layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams).width,
+                )
+                assertActionGeometry(layout)
+            }
+        }
+    }
+
+    @Test
     fun productionBinderClearsStaleDisplayStateWhenSelectionIsUnavailable() {
         withLayout(widthDp = 320) { layout ->
             assertEquals(View.VISIBLE, layout.views.displaySelector.visibility)
@@ -221,6 +246,14 @@ class ControlBarLayoutInstrumentedTest {
                 clipboardVisible = true,
                 fileTransferVisible = true,
             )
+        val withFileTransferProgressColumnWidth =
+            compactMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+                transferProgressVisible = true,
+            )
         val withFileTransferStackedWidth =
             stackedMinimumWidth(
                 geometry,
@@ -228,7 +261,16 @@ class ControlBarLayoutInstrumentedTest {
                 clipboardVisible = true,
                 fileTransferVisible = true,
             )
+        val withFileTransferProgressStackedWidth =
+            stackedMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+                transferProgressVisible = true,
+            )
         val withFileTransferInlineWidth = withFileTransferColumnWidth + geometry.selectorMinimumWidthPx
+        val withFileTransferProgressInlineWidth = withFileTransferProgressColumnWidth + geometry.selectorMinimumWidthPx
         assertModeAndShape(
             widthPx = withHostColumnWidth,
             selectorVisible = false,
@@ -301,6 +343,46 @@ class ControlBarLayoutInstrumentedTest {
             hostVisible = true,
             clipboardVisible = true,
             fileTransferVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferProgressColumnWidth,
+            selectorVisible = false,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            transferProgressVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.COMPACT,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferProgressInlineWidth,
+            selectorVisible = true,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            transferProgressVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.INLINE,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferProgressInlineWidth - 1,
+            selectorVisible = true,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            transferProgressVisible = true,
+            expectedMode = ControlBarLayoutPolicy.Mode.STACKED,
+            assertGeometry = false,
+        )
+        assertModeAndShape(
+            widthPx = withFileTransferProgressStackedWidth - 1,
+            selectorVisible = true,
+            hostVisible = true,
+            clipboardVisible = true,
+            fileTransferVisible = true,
+            transferProgressVisible = true,
             expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
             assertGeometry = false,
         )
@@ -495,6 +577,7 @@ class ControlBarLayoutInstrumentedTest {
         hostVisible: Boolean,
         clipboardVisible: Boolean = hostVisible,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
         expectedMode: ControlBarLayoutPolicy.Mode,
         assertGeometry: Boolean = true,
     ) {
@@ -504,9 +587,14 @@ class ControlBarLayoutInstrumentedTest {
             hostVisible = hostVisible,
             clipboardVisible = clipboardVisible,
             fileTransferVisible = fileTransferVisible,
+            transferProgressVisible = transferProgressVisible,
         ) { layout ->
             assertEquals(expectedMode, layout.mode)
             assertEquals(if (fileTransferVisible) View.VISIBLE else View.GONE, layout.views.fileTransfer.visibility)
+            assertEquals(
+                if (transferProgressVisible) View.VISIBLE else View.GONE,
+                layout.views.fileTransferProgress.visibility,
+            )
             if (fileTransferVisible) {
                 assertEquals(
                     layout.context.getString(R.string.control_file_transfer),
@@ -550,6 +638,12 @@ class ControlBarLayoutInstrumentedTest {
                         val fileTransferParams = layout.views.fileTransfer.layoutParams as LinearLayout.LayoutParams
                         assertEquals(geometry.columnActionSpacingPx, fileTransferParams.topMargin)
                     }
+                    if (transferProgressVisible) {
+                        val geometry = ControlBarLayoutApplier.geometry(layout.context.resources)
+                        val progressParams = layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams
+                        assertEquals(geometry.columnActionSpacingPx, progressParams.topMargin)
+                        assertEquals(0, progressParams.marginEnd)
+                    }
                 }
             }
             if (assertGeometry) {
@@ -563,12 +657,18 @@ class ControlBarLayoutInstrumentedTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             maxOf(
                 geometry.statusMinimumWidthPx,
                 geometry.selectorMinimumWidthPx,
-                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible),
+                geometry.horizontalActionsWidthPx(
+                    hostActionsVisible,
+                    clipboardVisible,
+                    fileTransferVisible,
+                    transferProgressVisible,
+                ),
             )
 
     private fun compactMinimumWidth(
@@ -576,11 +676,17 @@ class ControlBarLayoutInstrumentedTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             geometry.statusMinimumWidthPx +
             geometry.statusGapPx +
-            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
+            geometry.horizontalActionsWidthPx(
+                hostActionsVisible,
+                clipboardVisible,
+                fileTransferVisible,
+                transferProgressVisible,
+            )
 
     private fun assertAccessibleDisplayName(layout: MeasuredLayout) {
         assertEquals(FULL_DISPLAY_NAME, layout.label.text.toString())
@@ -621,13 +727,19 @@ class ControlBarLayoutInstrumentedTest {
                 layout.views.hostAction,
                 layout.views.clipboard,
                 layout.views.fileTransfer,
+                layout.views.fileTransferProgress,
                 layout.views.settings,
                 layout.views.disconnect,
             )
                 .filter { it.visibility == View.VISIBLE }
                 .map { control ->
-                    assertTrue("Control ${control.id} was narrower than 48dp", control.measuredWidth >= minimum)
-                    assertTrue("Control ${control.id} was shorter than 48dp", control.measuredHeight >= minimum)
+                    if (control === layout.views.fileTransferProgress) {
+                        assertTrue("Transfer progress text was not measured", control.measuredWidth > 0)
+                        assertTrue("Transfer progress text was taller than the action row", control.measuredHeight <= minimum)
+                    } else {
+                        assertTrue("Control ${control.id} was narrower than 48dp", control.measuredWidth >= minimum)
+                        assertTrue("Control ${control.id} was shorter than 48dp", control.measuredHeight >= minimum)
+                    }
                     descendantBounds(layout.root, control).also { bounds ->
                         assertTrue("Control ${control.id} escaped the control bar", cardBounds.contains(bounds))
                         assertTrue("Control ${control.id} escaped the safe window", safeBounds.contains(bounds))
@@ -675,6 +787,7 @@ class ControlBarLayoutInstrumentedTest {
         hostVisible: Boolean = true,
         clipboardVisible: Boolean = hostVisible,
         fileTransferVisible: Boolean = false,
+        transferProgressVisible: Boolean = false,
         applyLayout: Boolean = true,
         assertion: (MeasuredLayout) -> Unit,
     ) {
@@ -690,6 +803,7 @@ class ControlBarLayoutInstrumentedTest {
                 hostAction = root.findViewById(R.id.controlHostActionsButton),
                 clipboard = root.findViewById(R.id.controlClipboardButton),
                 fileTransfer = root.findViewById(R.id.controlFileTransferButton),
+                fileTransferProgress = root.findViewById(R.id.controlFileTransferProgressText),
                 settings = root.findViewById(R.id.controlSettingsButton),
                 disconnect = root.findViewById(R.id.controlDisconnectButton),
             )
@@ -706,6 +820,8 @@ class ControlBarLayoutInstrumentedTest {
         views.hostAction.visibility = if (hostVisible) View.VISIBLE else View.GONE
         views.clipboard.visibility = if (clipboardVisible) View.VISIBLE else View.GONE
         views.fileTransfer.visibility = if (fileTransferVisible) View.VISIBLE else View.GONE
+        views.fileTransferProgress.visibility = if (transferProgressVisible) View.VISIBLE else View.GONE
+        if (transferProgressVisible) views.fileTransferProgress.text = "sample.bin 45%"
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(
                 resources = themedContext.resources,

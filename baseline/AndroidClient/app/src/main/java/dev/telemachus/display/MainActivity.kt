@@ -272,7 +272,6 @@ class MainActivity : AppCompatActivity() {
     private var managedHostActionsAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
-    private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
@@ -2372,7 +2371,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshFileTransferControl() {
         val client = streamClient
         if (client != null) {
-            if (!client.canTransferFiles) discardPendingOutgoingFileTransfer()
+            if (!client.canTransferFiles) discardPendingOutgoingFileTransfer(refreshControl = false)
             productSessionCoordinator.setRuntimeAvailability(
                 client,
                 activeSessionGeneration,
@@ -2381,14 +2380,33 @@ class MainActivity : AppCompatActivity() {
         }
         val internetFileTransfer = prefs.connectionMode == ConnectionMode.INTERNET && internetSession?.canTransferFiles == true
         val state = productSessionCoordinator.renderState()
+        val fileTransferControlVisible = state.fileTransferVisible || internetFileTransfer
+        if (!fileTransferControlVisible && activeOutgoingFileTransfer != null) {
+            discardPendingOutgoingFileTransfer(refreshControl = false)
+        }
         val activeOutgoing = activeOutgoingFileTransfer
-        binding.controlFileTransferButton.visibility = if (state.fileTransferVisible || internetFileTransfer) View.VISIBLE else View.GONE
-        binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled || internetFileTransfer
+        val progressLabel = activeOutgoing?.let(::outgoingFileProgressLabel)
+        binding.controlFileTransferButton.visibility = if (fileTransferControlVisible) View.VISIBLE else View.GONE
+        binding.controlFileTransferButton.isEnabled =
+            (state.fileTransferEnabled || internetFileTransfer) && activeOutgoing?.cancelling != true
         binding.controlFileTransferButton.contentDescription =
-            getString(if (activeOutgoing == null) R.string.control_file_transfer else R.string.control_file_transfer_cancel)
+            if (progressLabel == null) {
+                getString(R.string.control_file_transfer)
+            } else if (activeOutgoing.cancelling) {
+                getString(R.string.control_file_transfer_cancelling_with_progress, progressLabel)
+            } else {
+                getString(R.string.control_file_transfer_cancel_with_progress, progressLabel)
+            }
+        binding.controlFileTransferButton.setImageResource(
+            if (activeOutgoing == null) R.drawable.ic_file_transfer else R.drawable.ic_cancel_transfer,
+        )
+        binding.controlFileTransferButton.setColorFilter(
+            ContextCompat.getColor(this, if (activeOutgoing == null) R.color.on_surface else R.color.danger),
+        )
         TooltipCompat.setTooltipText(binding.controlFileTransferButton, binding.controlFileTransferButton.contentDescription)
         binding.controlFileTransferProgressText.visibility = if (activeOutgoing == null) View.GONE else View.VISIBLE
-        binding.controlFileTransferProgressText.text = activeOutgoing?.let(::outgoingFileProgressLabel) ?: ""
+        binding.controlFileTransferProgressText.text = progressLabel ?: ""
+        binding.controlFileTransferProgressText.contentDescription = progressLabel ?: ""
         refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
@@ -2399,7 +2417,7 @@ class MainActivity : AppCompatActivity() {
             beginChooseFileForTransfer()
             return
         }
-        cancelOutgoingFileTransferFromDialog(activeOutgoing.transferId)
+        cancelOutgoingFileTransfer(activeOutgoing.transferId)
     }
 
     private fun beginChooseFileForTransfer() {
@@ -2450,7 +2468,7 @@ class MainActivity : AppCompatActivity() {
                 val outgoingValue =
                     outgoing.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
-                        discardPendingOutgoingFileTransfer()
+                        discardPendingOutgoingFileTransfer(refreshControl = true)
                         showDedupedToast(R.string.file_transfer_pick_failed)
                         return@withContext
                     }
@@ -2465,10 +2483,10 @@ class MainActivity : AppCompatActivity() {
                     if (started) {
                         showDedupedToast(R.string.file_transfer_sent_to_mac)
                     } else {
-                        discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false)
+                        discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)
                     }
                 } else {
-                    discardPendingOutgoingFileTransfer()
+                    discardPendingOutgoingFileTransfer(refreshControl = true)
                     showDedupedToast(R.string.file_transfer_send_failed)
                 }
             }
@@ -2544,6 +2562,7 @@ class MainActivity : AppCompatActivity() {
         val byteLength: Long,
         val cancel: (ByteString) -> Boolean,
         val acknowledgedBytes: Long = 0L,
+        val cancelling: Boolean = false,
     )
 
     private fun promptIncomingFileOffer(
@@ -2739,7 +2758,7 @@ class MainActivity : AppCompatActivity() {
         if (hasOutgoingFileTransferAlreadyFinished(transferId)) return false
         finishOutgoingFileTransferState(activeOutgoingFileTransfer?.transferId)
         activeOutgoingFileTransfer = ActiveOutgoingFileTransfer(transferId, displayName, byteLength, cancel)
-        showOutgoingFileProgressDialog(0L)
+        revealControlBar(ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER)
         refreshFileTransferControl()
         return true
     }
@@ -2751,18 +2770,18 @@ class MainActivity : AppCompatActivity() {
     ) {
         val active = activeOutgoingFileTransfer ?: return
         if (active.transferId != transferId) return
-        val boundedBytes = acknowledgedBytes.coerceAtMost(active.byteLength.coerceAtMost(totalBytes))
-        activeOutgoingFileTransfer = active.copy(acknowledgedBytes = boundedBytes)
-        updateOutgoingFileProgressMessage(boundedBytes)
-        refreshFileTransferControl()
+        val maximumBytes = active.byteLength.coerceAtMost(totalBytes).coerceAtLeast(0L)
+        val boundedBytes = acknowledgedBytes.coerceIn(0L, maximumBytes)
+        val previousLabel = outgoingFileProgressLabel(active)
+        val updated = active.copy(acknowledgedBytes = boundedBytes)
+        activeOutgoingFileTransfer = updated
+        if (outgoingFileProgressLabel(updated) != previousLabel) refreshFileTransferControl()
     }
 
     private fun finishOutgoingFileTransferState(transferId: ByteString?) {
         transferId?.let(::markOutgoingFileTransferFinished)
         if (transferId == null || activeOutgoingFileTransfer?.transferId == transferId) {
             activeOutgoingFileTransfer = null
-            pendingOutgoingFileDialog?.dismiss()
-            pendingOutgoingFileDialog = null
         }
     }
 
@@ -2777,53 +2796,25 @@ class MainActivity : AppCompatActivity() {
     private fun hasOutgoingFileTransferAlreadyFinished(transferId: ByteString): Boolean =
         recentlyFinishedOutgoingTransferIds.remove(transferId)
 
-    private fun showOutgoingFileProgressDialog(acknowledgedBytes: Long) {
-        val active = activeOutgoingFileTransfer ?: return
-        val dialog =
-            MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.file_transfer_sending_title)
-                .setMessage(outgoingFileProgressMessage(active, acknowledgedBytes))
-                .setNegativeButton(R.string.file_transfer_cancel) { _, _ ->
-                    cancelOutgoingFileTransferFromDialog(active.transferId)
-                }
-                .setOnCancelListener { cancelOutgoingFileTransferFromDialog(active.transferId) }
-        pendingOutgoingFileDialog = showImmersiveDialog(dialog)
-    }
-
-    private fun updateOutgoingFileProgressMessage(acknowledgedBytes: Long) {
-        val active = activeOutgoingFileTransfer ?: return
-        val dialog = pendingOutgoingFileDialog ?: return
-        dialog.setMessage(outgoingFileProgressMessage(active, acknowledgedBytes))
-    }
-
-    private fun outgoingFileProgressMessage(
-        active: ActiveOutgoingFileTransfer,
-        acknowledgedBytes: Long,
-    ): String =
-        getString(
-            R.string.file_transfer_sending_message,
-            active.displayName,
-            readableByteCount(acknowledgedBytes),
-            readableByteCount(active.byteLength),
-        )
-
     private fun outgoingFileProgressLabel(active: ActiveOutgoingFileTransfer): String {
         val totalBytes = active.byteLength.coerceAtLeast(0L)
         val acknowledgedBytes = active.acknowledgedBytes.coerceIn(0L, totalBytes)
-        val percent = if (totalBytes == 0L) 100 else ((acknowledgedBytes * 100L) / totalBytes).toInt()
+        val percent = if (totalBytes == 0L) 100 else ((acknowledgedBytes.toDouble() / totalBytes.toDouble()) * 100.0).toInt()
         return getString(R.string.file_transfer_progress_percent, active.displayName, percent)
     }
 
-    private fun cancelOutgoingFileTransferFromDialog(transferId: ByteString) {
+    private fun cancelOutgoingFileTransfer(transferId: ByteString) {
         val active = activeOutgoingFileTransfer ?: return
         if (active.transferId != transferId) return
-        activeOutgoingFileTransfer = null
-        pendingOutgoingFileDialog?.dismiss()
-        pendingOutgoingFileDialog = null
+        if (active.cancelling) return
         val cancelled = active.cancel(transferId)
-        discardPendingOutgoingFileTransfer()
-        refreshFileTransferControl()
-        if (!cancelled) {
+        if (cancelled) {
+            if (activeOutgoingFileTransfer?.transferId == transferId) {
+                activeOutgoingFileTransfer = active.copy(cancelling = true)
+            }
+            refreshFileTransferControl()
+        } else {
+            refreshFileTransferControl()
             showDedupedToast(R.string.file_transfer_cancel_failed)
         }
     }
@@ -3033,12 +3024,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers: Boolean = true) {
-        finishOutgoingFileTransferState(null)
+    private fun discardPendingOutgoingFileTransfer(
+        clearFinishedTransferMarkers: Boolean = true,
+        clearActiveTransfer: Boolean = true,
+        refreshControl: Boolean = false,
+    ) {
+        if (clearActiveTransfer) finishOutgoingFileTransferState(null)
         if (clearFinishedTransferMarkers) recentlyFinishedOutgoingTransferIds.clear()
         (productSessionCoordinator.takePendingOutgoingFileTransfer() as? File)?.deleteRecursivelyBestEffort()
         pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()
         pendingInternetOutgoingFileTransfer = null
+        if (refreshControl) refreshFileTransferControl()
     }
 
     private fun rejectPendingIncomingFileOffer() {
@@ -3344,6 +3340,7 @@ class MainActivity : AppCompatActivity() {
                     hostAction = binding.controlHostActionsButton,
                     clipboard = binding.controlClipboardButton,
                     fileTransfer = binding.controlFileTransferButton,
+                    fileTransferProgress = binding.controlFileTransferProgressText,
                     settings = binding.controlSettingsButton,
                     disconnect = binding.controlDisconnectButton,
                 ),
@@ -4825,15 +4822,21 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@outgoingFinished
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                val finishingActiveTransfer = activeOutgoingFileTransfer?.transferId == transferId
                 finishOutgoingFileTransferState(transferId)
+                if (finishingActiveTransfer) {
+                    discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, clearActiveTransfer = false)
+                }
                 refreshFileTransferControl()
+                revealControlBar()
             }
         }
         callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileResult
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false)
+                refreshFileTransferControl()
+                revealControlBar()
                 val message =
                     if (accepted) {
                         R.string.file_transfer_completed
@@ -5102,8 +5105,13 @@ class MainActivity : AppCompatActivity() {
                     if (!isCurrentInternetSession()) return
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
+                        val finishingActiveTransfer = activeOutgoingFileTransfer?.transferId == transferId
                         finishOutgoingFileTransferState(transferId)
+                        if (finishingActiveTransfer) {
+                            discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, clearActiveTransfer = false)
+                        }
                         refreshFileTransferControl()
+                        revealControlBar()
                     }
                 }
 
@@ -5114,7 +5122,8 @@ class MainActivity : AppCompatActivity() {
                     if (!isCurrentInternetSession()) return
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
-                        discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false)
+                        refreshFileTransferControl()
+                        revealControlBar()
                         mainDiag("internet onFileTransferResult: accepted=$accepted reason=$reason")
                         showDedupedToast(
                             if (accepted) {
