@@ -1160,6 +1160,18 @@ internal object UsbConnectActionPolicy {
         }
 }
 
+internal object ReconnectCountdownPresentationPolicy {
+    const val MIN_VISIBLE_SECONDS = 1
+
+    fun remainingSeconds(
+        nowMs: Long,
+        deadlineMs: Long,
+    ): Int =
+        (((deadlineMs - nowMs).coerceAtLeast(0L) + 999L) / 1_000L)
+            .toInt()
+            .coerceAtLeast(MIN_VISIBLE_SECONDS)
+}
+
 internal object UsbTransportDisplayPolicy {
     data class Snapshot(
         val developerModeEnabled: Boolean,

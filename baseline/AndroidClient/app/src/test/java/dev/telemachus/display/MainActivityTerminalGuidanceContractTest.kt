@@ -141,6 +141,10 @@ class MainActivityTerminalGuidanceContractTest {
             "Wireless retry consumer must schedule with the suggested delay",
             wirelessRetryConsumer.contains("scheduleWirelessReconnect(delayMs)"),
         )
+        assertTrue(
+            "USB retry eligibility must use the attempt's automatic flag so manual Try again remains one-shot",
+            usbConnect.contains("automaticRetryEnabled = automatic && automaticUsbConnect"),
+        )
     }
 
     @Test
@@ -850,6 +854,157 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(
             "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",
             connectionScroll.contains("android:fillViewport=\"true\""),
+        )
+    }
+
+    @Test
+    fun retryCountdownSurfacesImmediateRetryActions() {
+        val source = mainActivitySource()
+        val layout = mainActivityLayoutSource()
+        val updateHeader = extractMethod(source, "private fun updateDisconnectedHeader")
+        val scheduleUsb = extractMethod(source, "private fun scheduleAutomaticUsbConnect")
+        val scheduleWireless = extractMethod(source, "private fun scheduleWirelessReconnect")
+        val wirelessController = resourceSource("app/src/main/java/dev/telemachus/display/WirelessTabController.kt")
+        val compactHeader = updateHeader.replace(Regex("\\s+"), "")
+        val compactScheduleUsb = scheduleUsb.replace(Regex("\\s+"), "")
+        val compactScheduleWireless = scheduleWireless.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "USB pending retry must prefer the countdown header instead of overwriting it with generic waiting copy",
+            compactHeader.contains("if(pendingUsbReconnectDeadlineMs!=null&&automaticUsbConnect){") &&
+                compactHeader.contains("updateUsbReconnectCountdown()") &&
+                compactHeader.contains("return"),
+        )
+        assertTrue(
+            "USB automatic retry must keep a visible countdown and leave the primary action available as Retry now",
+            compactScheduleUsb.contains("pendingUsbReconnectDeadlineMs=SystemClock.uptimeMillis()+boundedDelayMs") &&
+                source.contains("binding.connectButton.setText(R.string.retry_now)") &&
+                source.contains("binding.connectButton.isEnabled = true"),
+        )
+        assertTrue(
+            "Checklist refreshes should keep diagnostics live without overwriting the USB retry countdown subtitle",
+            source.replace(Regex("\\s+"), "").contains(
+                "if(UsbTransportDisplayPolicy.shouldRefreshSubtitle(prefs.connectionMode)&&" +
+                    "pendingUsbReconnectDeadlineMs==null){updateUsbTransportSubtitle()}",
+            ),
+        )
+        assertTrue(
+            "Wireless automatic retry must refresh a visible countdown card instead of only posting a delayed runnable",
+            compactScheduleWireless.contains("pendingWirelessReconnectDeadlineMs=SystemClock.uptimeMillis()+delayMs") &&
+                compactScheduleWireless.contains("updateWirelessReconnectCountdown(entry)"),
+        )
+        assertTrue(
+            "Wireless retry card must expose a live countdown label and a Retry now action",
+            layout.contains("""android:id="@+id/wirelessReconnectCountdown""") &&
+                wirelessController.contains("R.string.reconnect_countdown_message") &&
+                wirelessController.contains("R.string.retry_now"),
+        )
+        assertTrue(
+            "When the scheduled retry fires, the Wireless action should become disabled with loading feedback",
+            source.contains("wirelessController.showAutomaticReconnectAttempting(entry.macName, entry.host, entry.port)") &&
+                wirelessController.contains("views.reconnectButton.isEnabled = false"),
+        )
+    }
+
+    @Test
+    fun retryCountdownCallbacksAreCancelledWithTheirRetryOwners() {
+        val source = mainActivitySource()
+        val cancelWireless = extractMethod(source, "private fun cancelWirelessReconnect")
+        val modeSwitchCleanup = extractMethod(source, "private fun cancelConnectionForModeSwitch")
+        val stop = extractMethod(source, "override fun onStop")
+        val destroy = extractMethod(source, "override fun onDestroy")
+        val disconnect = extractMethod(source, "private fun disconnect")
+        val showUsbWithoutAutomaticConnect = extractMethod(source, "private fun showUsbWithoutAutomaticConnect")
+        val clearUsbCountdown = extractMethod(source, "private fun clearPendingUsbReconnectCountdown")
+        val retryCoordinatorFactory = extractMethod(source, "private fun createSessionAutomaticRetryCoordinator")
+        val connected = extractMethod(source, "private fun setupStreamClientCallbacks")
+
+        assertTrue(
+            "Wireless retry cancellation must also remove countdown updates",
+            cancelWireless.contains("pendingWirelessReconnectDeadlineMs = null") &&
+                cancelWireless.contains("wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)"),
+        )
+        assertTrue(
+            "Mode-switch cleanup must cancel pending USB countdown state with the USB retry runnable",
+            modeSwitchCleanup.contains("clearPendingUsbReconnectCountdown()"),
+        )
+        assertTrue(
+            "USB countdown cleanup must clear the deadline and remove the UI tick callback together",
+            clearUsbCountdown.contains("pendingUsbReconnectDeadlineMs = null") &&
+                clearUsbCountdown.contains("autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)"),
+        )
+        assertTrue(
+            "Lifecycle backgrounding must pause both retry owners and their countdown callbacks",
+            stop.contains("clearPendingUsbReconnectCountdown()") &&
+                stop.contains("wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)") &&
+                stop.contains("wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)"),
+        )
+        assertTrue(
+            "Destroy cleanup must remove both countdown callbacks before the Activity is released",
+            destroy.contains("clearPendingUsbReconnectCountdown()") &&
+                destroy.contains("wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)"),
+        )
+        assertTrue(
+            "Explicit disconnect must cancel the visible USB countdown with the automatic retry callback",
+            disconnect.contains("autoConnectHandler.removeCallbacks(autoConnectRunnable)") &&
+                disconnect.contains("clearPendingUsbReconnectCountdown()"),
+        )
+        assertTrue(
+            "Showing USB without automatic connect must clear stale retry countdown state",
+            showUsbWithoutAutomaticConnect.contains("clearPendingUsbReconnectCountdown()"),
+        )
+        assertTrue(
+            "Terminal retry cleanup must remove both the scheduled USB retry and its visible countdown",
+            retryCoordinatorFactory.contains("autoConnectHandler.removeCallbacks(autoConnectRunnable)") &&
+                retryCoordinatorFactory.contains("clearPendingUsbReconnectCountdown()"),
+        )
+        assertTrue(
+            "A successful connection must clear both pending countdown owners before showing streaming controls",
+            connected.contains("pendingUsbReconnectDeadlineMs = null") &&
+                connected.contains("autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)") &&
+                connected.contains("wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)"),
+        )
+    }
+
+    @Test
+    fun retryCountdownTicksDoNotRefreshDisconnectedUiAfterBackgrounding() {
+        val source = mainActivitySource()
+        val updateUsb = extractMethod(source, "private fun updateUsbReconnectCountdown")
+        val updateWireless = extractMethod(source, "private fun updateWirelessReconnectCountdown")
+        val compactUsb = updateUsb.replace(Regex("\\s+"), "")
+        val compactWireless = updateWireless.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "USB retry countdown should not mutate the disconnected panel while Activity is stopped",
+            compactUsb.contains("||!isInForeground)returnfalse"),
+        )
+        assertTrue(
+            "Wireless retry countdown should not mutate the paired-idle card while Activity is stopped",
+            compactWireless.contains("isConnected||!isInForeground"),
+        )
+    }
+
+    @Test
+    fun usbRetryNowPreservesAutomaticRetrySemanticsOnlyForPendingAutomaticRetries() {
+        val setupUi = extractMethod(mainActivitySource(), "private fun setupUI")
+        val clickHandler = extractCallback(setupUi, "binding.connectButton.setOnClickListener {")
+        val compact = clickHandler.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Retry now should detect the visible automatic USB retry before clearing its deadline",
+            compact.contains("valretryingAutomaticUsbConnection=pendingUsbReconnectDeadlineMs!=null&&automaticUsbConnect"),
+        )
+        assertTrue(
+            "Pending automatic retry clicks must keep the retry coordinator eligible after the immediate attempt fails",
+            compact.contains("automaticUsbConnect=retryingAutomaticUsbConnection"),
+        )
+        assertTrue(
+            "The immediate connection attempt must receive the preserved automatic flag",
+            compact.contains("connect(host,port,automatic=retryingAutomaticUsbConnection)"),
+        )
+        assertFalse(
+            "A visible automatic Retry now click must not be flattened into a manual one-shot attempt",
+            compact.contains("automaticUsbConnect=false") || compact.contains("connect(host,port,automatic=false)"),
         )
     }
 

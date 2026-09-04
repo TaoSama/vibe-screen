@@ -31,16 +31,25 @@ class WirelessTabControllerContractTest {
     }
 
     @Test
-    fun scheduledReconnectShowsSpinnerAndStateTransitionsHideIdleAndTerminalPanels() {
+    fun scheduledReconnectShowsRetryCardAndStateTransitionsHideTerminalPanels() {
         val source = wirelessTabControllerSource()
         val transition = extractMethod(source, "private fun transition")
         val showAutomaticReconnect = extractMethod(source, "fun showAutomaticReconnect")
+        val showAttempting = extractMethod(source, "fun showAutomaticReconnectAttempting")
         val showConnectionGuidance = extractMethod(source, "internal fun showConnectionGuidance")
         val show = extractMethod(source, "fun show")
 
         assertTrue(
-            "Scheduled reconnect should enter the connecting panel so its spinner is visible",
-            showAutomaticReconnect.contains("showConnecting(") && showAutomaticReconnect.contains("R.string.reconnecting_to_mac"),
+            "Scheduled reconnect should stay in the paired-idle repair card with a visible countdown and immediate retry",
+            showAutomaticReconnect.contains("R.string.reconnect_countdown_message") &&
+                showAutomaticReconnect.contains("R.string.retry_now") &&
+                showAutomaticReconnect.contains("transition(State.PAIRED_IDLE)"),
+        )
+        assertTrue(
+            "When the retry is actively starting, the reconnect action should be disabled with loading feedback",
+            showAttempting.contains("R.string.reconnecting_short") &&
+                showAttempting.contains("R.string.reconnect_attempting_message") &&
+                showAttempting.contains("views.reconnectButton.isEnabled = false"),
         )
         assertTrue(
             "Terminal wireless guidance should use the repair panel instead of leaving the reconnect spinner visible",
@@ -51,7 +60,7 @@ class WirelessTabControllerContractTest {
             show.contains("transition(State.PAIRED_IDLE)"),
         )
         assertTrue(
-            "The transition helper must make the reconnect spinner panel mutually exclusive with paired idle and repair panels",
+            "The transition helper must make connecting, paired idle, and repair panels mutually exclusive",
             transition.contains("views.connecting.visibility = if (next == State.CONNECTING) View.VISIBLE else View.GONE") &&
                 transition.contains("views.pairedIdle.visibility = if (next == State.PAIRED_IDLE) View.VISIBLE else View.GONE") &&
                 transition.contains("views.repair.visibility = if (next == State.REPAIR_NEEDED) View.VISIBLE else View.GONE"),
