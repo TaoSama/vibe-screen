@@ -1,0 +1,71 @@
+git fetch origin main --prune
+git checkout -B codex/android-clipboard-current-baseline origin/main
+git rev-parse HEAD
+git rev-parse origin/main
+git branch --show-current
+git status --short --branch
+
+adb devices
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.manufacturer
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.model
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.device
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.version.release
+adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.version.sdk
+adb -s REDACTED_P0110_USB_SERIAL reverse --list
+
+cd baseline/AndroidClient
+./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.ProductSessionCoordinatorTest \
+  --tests dev.telemachus.display.ClipboardApprovalStateTest \
+  --tests dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardFailClosedTest \
+  --tests dev.telemachus.display.ManagedConfigurationProviderTest \
+  --tests dev.telemachus.display.internet.InternetClipboardTest
+./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+ANDROID_SERIAL=REDACTED_P0110_USB_SERIAL ./gradlew --no-daemon connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ClipboardManagerInstrumentedTest
+cd ../..
+
+adb -s REDACTED_P0110_USB_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s REDACTED_P0110_USB_SERIAL install -r -t baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s REDACTED_P0110_USB_SERIAL shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+
+python3 scripts/macos_dev_host.py readiness \
+  --source-root . \
+  --report docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/host-signing-and-permissions.txt \
+  --json-output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/host-readiness.json \
+  --port 54321
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --expected-manufacturer nubia \
+  --expected-model P0110 \
+  --expected-device pacific \
+  --expected-android-release 16 \
+  --expected-sdk 36 \
+  --host-preflight-report docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/usb-host-preflight.txt \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/usb-smoke-preflight.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.trusted_lan_preflight \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --repo . \
+  --host-port 54321 \
+  --host-preflight-command python3 scripts/macos_dev_host.py preflight \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/trusted-lan-preflight.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.clipboard_e2e_gate \
+  --host-readiness docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/host-readiness.json \
+  --usb-preflight docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/usb-smoke-preflight.json \
+  --trusted-lan-preflight docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/trusted-lan-preflight.json \
+  --android-clipboard-instrumentation-log docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/android-clipboard-instrumentation-adb.txt \
+  --product-e2e docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/missing-product-e2e.json \
+  --serial REDACTED_P0110_USB_SERIAL \
+  --serial-label REDACTED_P0110_USB_SERIAL \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/clipboard-e2e-gate.json
+PYTHONPATH=tools python3 -m unittest tools/tests/test_clipboard_e2e_gate.py -v
+python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked \
+  --output docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/privacy-scan.json
+cd docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS

@@ -1,0 +1,568 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4859,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "2351de18297dd93211ef9a76d0e9cc01256578141679ec249f80a53a02d317f5"
+    },
+    {
+      "bytes": 8,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-device.txt",
+      "result": "pass",
+      "sha256": "59d5aafdbbdf992eb312e0d630a84e561cce52f931706d98fd1c8f41c73b162a"
+    },
+    {
+      "bytes": 58,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-devices.txt",
+      "result": "pass",
+      "sha256": "6ec51e9c61de1984ba76b0462356e1bc6c99c24cd8374644ccf548975c8719d6"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-install-app.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 36,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-install-app.txt",
+      "result": "pass",
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-install-test.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 36,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-install-test.txt",
+      "result": "pass",
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    {
+      "bytes": 6,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-manufacturer.txt",
+      "result": "pass",
+      "sha256": "1c108043a5ccaf07707d683cba58dfdfdba0ceb2a5d80d13888f03f5a3072bbf"
+    },
+    {
+      "bytes": 6,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-model.txt",
+      "result": "pass",
+      "sha256": "7bc4237119c3ff7841b47b395d8bec249f5c187f39c868c44652d431b3888deb"
+    },
+    {
+      "bytes": 3,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-release.txt",
+      "result": "pass",
+      "sha256": "e6c21e8d260fe71882debdb339d2402a2ca7648529bc2303f48649bce0380017"
+    },
+    {
+      "bytes": 25,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-reverse-list.txt",
+      "result": "pass",
+      "sha256": "0df0cfc750b5fcf5f86013e0983c6088f728e1bc1cec3e9cd5db02beff8b3ba4"
+    },
+    {
+      "bytes": 3,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "adb-sdk.txt",
+      "result": "pass",
+      "sha256": "a4b2c5db15348c29451e18b8307e5ef81625ea638e807935f39ceaa8d9ac7758"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-apk-build.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 5150,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-apk-build.txt",
+      "result": "pass",
+      "sha256": "d9f756a3b4e6e2f51aa0815c547363282807f97126f4350fa0817ddbf7fd16af"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-clipboard-instrumentation-adb.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 90,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-clipboard-instrumentation-adb.txt",
+      "result": "pass",
+      "sha256": "4208b798d247387b80e505f639a626089a8e1d1a7f7d17b6e52418dccb8d4c0f"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-clipboard-instrumentation.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 5116,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-clipboard-instrumentation.txt",
+      "result": "pass",
+      "sha256": "38b22c2ac849042c18c2ae58699bba4cb1c06695f18113c1773bcf12a8461389"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-focused-jvm-tests.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 2546,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-focused-jvm-tests.txt",
+      "result": "pass",
+      "sha256": "5d9824a088bc1290291fbf8c22c7f24f54ff4cf9a0270852826055b5f9a231dd"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.exit",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 8190,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.json",
+      "result": "pass",
+      "sha256": "caa5643920239609b5ab48c36e645f18343e2a07d900622c846adb19ab67fd8e"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.stderr",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 7440,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.stdout",
+      "result": "pass",
+      "sha256": "693c472f0e3a9c664d1eb96d96d552fb6c347ed846a0a1a5b91c817348ab2c4f"
+    },
+    {
+      "bytes": 5091,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "48d0e55597f77b21150208f0a822519c281d728e533bd0e73e24af2c5e2e1317"
+    },
+    {
+      "bytes": 107,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-info.json",
+      "result": "pass",
+      "sha256": "4bd905a48c159b2bb02b35d9fdad96fd210d58cfdf945934fcf54cec5cab0722"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "evidence-tool-unittest.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 7958,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "evidence-tool-unittest.txt",
+      "result": "pass",
+      "sha256": "4217ae9d1a746279b50c48df4f482da3553b71cf83570f27ed3bfad79ab0e767"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-head.txt",
+      "result": "pass",
+      "sha256": "f73b8822b7136d1a20d17d145600af969131d842f25cb8b76a40b2824b2043b8"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-origin-main.txt",
+      "result": "pass",
+      "sha256": "f73b8822b7136d1a20d17d145600af969131d842f25cb8b76a40b2824b2043b8"
+    },
+    {
+      "bytes": 39,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-remote-origin.txt",
+      "result": "pass",
+      "sha256": "493320ee2fe177361e6967cf278a09b09c90a3ada4c0979baad2286370e4dd78"
+    },
+    {
+      "bytes": 552,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "git-status.txt",
+      "result": "pass",
+      "sha256": "b8605c05d7a1872a723d1ddaa732ee82ebdfe931444b85c02086ca1f2ec5b3bb"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness.exit",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 7742,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness.json",
+      "result": "pass",
+      "sha256": "9b24c798d8595da01042177cf0a941e092653140443823bd4061c21799a571e9"
+    },
+    {
+      "bytes": 1421,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "29e291c0a6f5a2e2294e05a80d511e6888721b84b99cec06a9db0577d073e6b0"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "privacy-scan.exit",
+      "result": "pass",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "trusted-lan-preflight.exit",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 13223,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "trusted-lan-preflight.json",
+      "result": "pass",
+      "sha256": "20f8afe8401883657f777123f25cba8ae3199d4ed9ff5f2ec29e9f1c156c7c53"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "trusted-lan-preflight.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1874,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-host-preflight.txt",
+      "result": "pass",
+      "sha256": "0599cb2618b2074895f1bb495e9f0ed7521978b44774521a9135f85ea8d1f372"
+    },
+    {
+      "bytes": 2,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-smoke-preflight.exit",
+      "result": "pass",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "bytes": 9044,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-smoke-preflight.json",
+      "result": "pass",
+      "sha256": "83be71c0a80e767d93ec257980168ce0f3edec0c90fc545d5c1ae65c3e98b9b7"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

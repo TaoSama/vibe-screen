@@ -1,0 +1,131 @@
+{
+  "blockers": [
+    "host_readiness: codesign identity 'Vibe Screen Dev' not found in the keychain. Import the Vibe Screen Host signing certificate with leaf SHA-1 '9AAE572BF6D764E3436A6109197D345B5A87998C' (or set $VIBE_SCREEN_SIGN_IDENTITY to that SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview build. Ad-hoc signing changes the designated requirement and cannot reuse macOS Screen Recording/Accessibility grants.",
+    "host_readiness: codesign resource seals in /Applications/Vibe Screen.app reference temporary files: Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp, Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp.cstemp. Refusing to continue because stale CodeResources entries can make strict verification fail and change macOS TCC identity matching.",
+    "host_readiness: Host listener is not observed on TCP port 54321",
+    "host_readiness: Host is missing com.apple.developer.hid.virtual.device entitlement",
+    "host_readiness: login/headless readiness: Launch at Login is not verified enabled: unverified",
+    "real_transport_ready: at least one real Protocol v1 USB or trusted-LAN path must be ready before clipboard E2E can pass",
+    "real_transport_ready: usb: ADB reverse tcp:54321 -> tcp:54321 is not configured for REDACTED_P0110_USB_SERIAL",
+    "real_transport_ready: usb: ADB command failed (1): adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display: no output",
+    "real_transport_ready: usb: Android package is not installed: dev.telemachus.display",
+    "real_transport_ready: usb: Android app is not foreground: dev.telemachus.display",
+    "real_transport_ready: usb: Mac Host is not listening on TCP 54321",
+    "real_transport_ready: usb: macOS Host stable-signing/TCC preflight failed: Host signing prerequisite",
+    "real_transport_ready: trusted_lan: android_wifi_association: Wi-Fi is not associated",
+    "real_transport_ready: trusted_lan: android_wlan_ipv4: wlan0 is down, has no carrier, or has no IPv4 address",
+    "real_transport_ready: trusted_lan: route_to_mac_lan: Android has no wlan0 route to any Mac LAN IPv4 candidate",
+    "real_transport_ready: trusted_lan: host_stable_signing: Host stable signing is blocked before trusted-LAN evidence can start",
+    "bidirectional_product_e2e: missing product E2E evidence: missing-product-e2e.json"
+  ],
+  "can_close_android_macos_clipboard_e2e_gate": false,
+  "checks": [
+    {
+      "evidence": [],
+      "identity": {
+        "android_release": "16",
+        "codename": "pacific",
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "sdk": 36
+      },
+      "name": "device_identity",
+      "reasons": [],
+      "status": "pass"
+    },
+    {
+      "evidence": [
+        "host-readiness.json"
+      ],
+      "name": "host_readiness",
+      "reasons": [
+        "codesign identity 'Vibe Screen Dev' not found in the keychain. Import the Vibe Screen Host signing certificate with leaf SHA-1 '9AAE572BF6D764E3436A6109197D345B5A87998C' (or set $VIBE_SCREEN_SIGN_IDENTITY to that SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview build. Ad-hoc signing changes the designated requirement and cannot reuse macOS Screen Recording/Accessibility grants.",
+        "codesign resource seals in /Applications/Vibe Screen.app reference temporary files: Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp, Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp.cstemp. Refusing to continue because stale CodeResources entries can make strict verification fail and change macOS TCC identity matching.",
+        "Host listener is not observed on TCP port 54321",
+        "Host is missing com.apple.developer.hid.virtual.device entitlement",
+        "login/headless readiness: Launch at Login is not verified enabled: unverified"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "usb-smoke-preflight.json"
+      ],
+      "name": "usb_preflight",
+      "reasons": [
+        "ADB reverse tcp:54321 -> tcp:54321 is not configured for REDACTED_P0110_USB_SERIAL",
+        "ADB command failed (1): adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display: no output",
+        "Android package is not installed: dev.telemachus.display",
+        "Android app is not foreground: dev.telemachus.display",
+        "Mac Host is not listening on TCP 54321",
+        "macOS Host stable-signing/TCC preflight failed: Host signing prerequisite"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "trusted-lan-preflight.json"
+      ],
+      "name": "trusted_lan_preflight",
+      "reasons": [
+        "android_wifi_association: Wi-Fi is not associated",
+        "android_wlan_ipv4: wlan0 is down, has no carrier, or has no IPv4 address",
+        "route_to_mac_lan: Android has no wlan0 route to any Mac LAN IPv4 candidate",
+        "host_stable_signing: Host stable signing is blocked before trusted-LAN evidence can start"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [],
+      "name": "real_transport_ready",
+      "reasons": [
+        "at least one real Protocol v1 USB or trusted-LAN path must be ready before clipboard E2E can pass",
+        "usb: ADB reverse tcp:54321 -> tcp:54321 is not configured for REDACTED_P0110_USB_SERIAL",
+        "usb: ADB command failed (1): adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display: no output",
+        "usb: Android package is not installed: dev.telemachus.display",
+        "usb: Android app is not foreground: dev.telemachus.display",
+        "usb: Mac Host is not listening on TCP 54321",
+        "usb: macOS Host stable-signing/TCC preflight failed: Host signing prerequisite",
+        "trusted_lan: android_wifi_association: Wi-Fi is not associated",
+        "trusted_lan: android_wlan_ipv4: wlan0 is down, has no carrier, or has no IPv4 address",
+        "trusted_lan: route_to_mac_lan: Android has no wlan0 route to any Mac LAN IPv4 candidate",
+        "trusted_lan: host_stable_signing: Host stable signing is blocked before trusted-LAN evidence can start"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "android-clipboard-instrumentation-adb.txt"
+      ],
+      "name": "android_clipboardmanager_smoke",
+      "reasons": [],
+      "status": "pass"
+    },
+    {
+      "evidence": [],
+      "name": "bidirectional_product_e2e",
+      "reasons": [
+        "missing product E2E evidence: missing-product-e2e.json"
+      ],
+      "status": "blocked"
+    }
+  ],
+  "gate_closed": false,
+  "interpretation": "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, a current Android system ClipboardManager smoke, and retained bidirectional product E2E evidence showing explicit user action, source system clipboard read, remote system clipboard write, Protocol v1 session ownership, verified session ID and session epoch, verified origin device ID, change ID, SHA-256 digest, text/plain MIME, strict UTF-8 validation, bounded byte length, receiver approval, overwrite confirmation, cancel/no-write behavior, failure/no-write behavior, deny-wins managed-policy blocking, absence of send/write failures, cleanup completion, exact source/destination system clipboard endpoints, distinct final marker matches, distinct change IDs, and distinct SHA-256 digests. Offline or synthetic coverage alone remains readiness evidence.",
+  "kind": "android_macos_clipboard_e2e_gate",
+  "not_proven": [
+    "Android ClipboardManager -> macOS NSPasteboard over Protocol v1 USB/LAN",
+    "macOS NSPasteboard -> Android ClipboardManager over Protocol v1 USB/LAN",
+    "trusted-LAN clipboard warning and secure-record product behavior"
+  ],
+  "result": "blocked",
+  "safety": {
+    "offline_tests_do_not_close_gate": true,
+    "public_output_sanitized": true,
+    "raw_serial_redacted": true,
+    "synthetic_evidence_do_not_close_gate": true
+  },
+  "schema_version": "vibescreen.evidence/v1",
+  "serial_label": "REDACTED_P0110_USB_SERIAL",
+  "verdict": "blocked"
+}

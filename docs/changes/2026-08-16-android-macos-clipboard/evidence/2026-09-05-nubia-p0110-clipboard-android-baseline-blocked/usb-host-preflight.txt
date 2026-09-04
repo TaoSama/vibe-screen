@@ -1,0 +1,29 @@
+Host signing prerequisite
+-------------------------
+Configured identity: Vibe Screen Dev
+Install path: /Applications/Vibe Screen.app
+
+Result
+------
+Status: FAIL
+Blocking issues:
+- Host signing prerequisite is not met: codesign identity 'Vibe Screen Dev' not found in the keychain. Import the Vibe Screen Host signing certificate with leaf SHA-1 '9AAE572BF6D764E3436A6109197D345B5A87998C' (or set $VIBE_SCREEN_SIGN_IDENTITY to that SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview build. Ad-hoc signing changes the designated requirement and cannot reuse macOS Screen Recording/Accessibility grants.
+
+Next action
+-----------
+Create or import the stable local codesigning identity, or set
+$VIBE_SCREEN_SIGN_IDENTITY to the pinned leaf SHA-1
+9AAE572BF6D764E3436A6109197D345B5A87998C, then rebuild and reinstall the Host before rerunning device evidence.
+Do not use ad-hoc signing for fixed-binary device reruns because it changes the
+designated requirement and invalidates macOS Screen Recording/Accessibility grants.
+
+Safety
+------
+This blocked operation did not start the Host, run Android instrumentation,
+modify Keychain, edit privacy databases, clear Android app data, or change ADB state. This
+is a Host signing prerequisite, not an Android device-identity result.
+System permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility
+
+TCC identity binding
+--------------------
+macOS TCC grants are identity-bound. Screen Recording, Accessibility, and Microphone authorization must match this exact installed app bundle identifier, canonical designated requirement/signing leaf, stable /Applications path, and source provenance. A rebuilt, re-signed, moved, or ad-hoc Host can be treated by macOS as a different app and must stay blocked until the read-only rows prove authorization for that exact identity.

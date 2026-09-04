@@ -1,0 +1,18 @@
+Host bundle
+-----------
+Path: /Applications/Vibe Screen.app
+Verification: not inspected
+
+Preflight result
+----------------
+Status: FAIL
+Blocking issues:
+- codesign identity 'Vibe Screen Dev' not found in the keychain. Import the Vibe Screen Host signing certificate with leaf SHA-1 '9AAE572BF6D764E3436A6109197D345B5A87998C' (or set $VIBE_SCREEN_SIGN_IDENTITY to that SHA-1), or pass '--sign-identity -' for an explicit ad-hoc preview build. Ad-hoc signing changes the designated requirement and cannot reuse macOS Screen Recording/Accessibility grants.
+- codesign resource seals in /Applications/Vibe Screen.app reference temporary files: Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp, Contents/Frameworks/WebRTC.framework/Versions/A/_CodeSignature/CodeResources:$/files2/WebRTC.cstemp.cstemp. Refusing to continue because stale CodeResources entries can make strict verification fail and change macOS TCC identity matching.
+System permission path: System Settings -> Privacy & Security -> Screen & System Audio Recording and Accessibility
+
+Keychain and TCC handling
+-------------------------
+This tool does not reset Keychain, import certificates, request passwords, update
+partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
+It only uses the configured codesign identity and reads privacy databases in read-only mode.

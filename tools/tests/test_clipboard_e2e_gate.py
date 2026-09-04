@@ -196,6 +196,46 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertIn("bidirectional_product_e2e: missing product E2E evidence: product-e2e.json", result["blockers"])
         self.assertTrue(result["safety"]["offline_tests_do_not_close_gate"])
 
+    def test_android_clipboard_log_must_execute_at_least_one_test(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text("OK (0 tests)\n", encoding="utf-8")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log does not show any executed tests",
+            result["blockers"],
+        )
+
+    def test_android_clipboard_log_rejects_build_success_without_test_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text("BUILD SUCCESSFUL in 1s\n", encoding="utf-8")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log does not show any executed tests",
+            result["blockers"],
+        )
+
     def test_preflight_blockers_propagate_without_closing_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
