@@ -17,6 +17,23 @@ MacHost 可执行自测。它不证明真实 Android `ClipboardManager`、真实
 
 ### Android clipboard 聚焦覆盖
 
+2026-09-03 UTC current-base 离线补强新增：
+
+- `ProtocolV1ClipboardTest.bidirectionalProductFlowContractKeepsMarkersChangeIdsAndDigestsDistinct`
+  覆盖同一 Protocol v1 session 内 Android -> Mac 与 Mac -> Android 标准产品流，
+  断言双向 marker、16 字节 change ID、SHA-256、`text/plain`、UTF-8 byte length、
+  origin device ID 和 session epoch 不混淆。
+- `ProtocolV1ClipboardTest.productFlowOverwriteCancelFailureAndDenyWinsStayFailClosed`
+  覆盖覆盖、取消/迟到正文、异常正文和 managed-policy deny-wins 的离线状态机边界；
+  这些仍是 JVM/协议证据，不是真实 Android `ClipboardManager` <-> macOS
+  `NSPasteboard` USB/LAN 产品 E2E 证据。
+
+新增
+[`fixtures/clipboard-product-flow-offline-contract.json`](fixtures/clipboard-product-flow-offline-contract.json)
+作为标准双向产品流证据结构的离线 fixture。该 fixture 明确标记
+`synthetic: true` 和 `offline_only: true`，只能用于 schema/诊断测试，不能关闭
+真实 clipboard E2E gate。
+
 命令：
 
 ```bash

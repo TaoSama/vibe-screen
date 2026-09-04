@@ -9,6 +9,16 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.clipboard_e2e_gate import derive_gate, main
 
 
+OFFLINE_CONTRACT_FIXTURE = (
+    Path(__file__).parents[2]
+    / "docs"
+    / "changes"
+    / "2026-08-16-android-macos-clipboard"
+    / "fixtures"
+    / "clipboard-product-flow-offline-contract.json"
+)
+
+
 def write_json(path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document), encoding="utf-8")
@@ -68,6 +78,11 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "byte_length": 28,
         "mime_type": "text/plain",
         "session_epoch": 1,
+        "final_marker": "android-to-macos-marker-123",
+        "overwrite_marker": "android-to-macos-overwrite-123",
+        "cancelled_marker": "android-to-macos-cancelled-123",
+        "failed_marker": "android-to-macos-failed-123",
+        "deny_marker": "android-to-macos-denied-123",
         "source_system_clipboard": "android_clipboardmanager",
         "destination_system_clipboard": "macos_nspasteboard",
         "protocol_v1_session": True,
@@ -84,6 +99,10 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "write_failure_absent": True,
         "cleanup_completed": True,
         "utf8_valid": True,
+        "overwrite_confirmed": True,
+        "cancel_does_not_write": True,
+        "failure_does_not_write": True,
+        "deny_wins_observed": True,
     }
     macos_to_android = {
         "transport": "usb",
@@ -94,6 +113,11 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "byte_length": 28,
         "mime_type": "text/plain",
         "session_epoch": 1,
+        "final_marker": "macos-to-android-marker-123",
+        "overwrite_marker": "macos-to-android-overwrite-123",
+        "cancelled_marker": "macos-to-android-cancelled-123",
+        "failed_marker": "macos-to-android-failed-123",
+        "deny_marker": "macos-to-android-denied-123",
         "source_system_clipboard": "macos_nspasteboard",
         "destination_system_clipboard": "android_clipboardmanager",
         "protocol_v1_session": True,
@@ -110,6 +134,10 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "write_failure_absent": True,
         "cleanup_completed": True,
         "utf8_valid": True,
+        "overwrite_confirmed": True,
+        "cancel_does_not_write": True,
+        "failure_does_not_write": True,
+        "deny_wins_observed": True,
     }
     document: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -469,6 +497,105 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_product_e2e_requires_overwrite_cancel_failure_and_deny_wins(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_to_macos["overwrite_confirmed"] = False
+            android_to_macos["cancel_does_not_write"] = False
+            android_to_macos["failure_does_not_write"] = False
+            android_to_macos["deny_wins_observed"] = False
+            macos_to_android["final_marker"] = "wrong-final-marker"
+            macos_to_android["overwrite_marker"] = macos_to_android["marker"]
+            macos_to_android.pop("cancelled_marker")
+            macos_to_android["failed_marker"] = macos_to_android["marker"]
+            macos_to_android["deny_marker"] = macos_to_android["marker"]
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.overwrite_confirmed must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.cancel_does_not_write must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.failure_does_not_write must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.deny_wins_observed must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.final_marker must equal marker after the destination system clipboard write",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.overwrite_marker must be distinct from marker",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.cancelled_marker must identify the cancelled transfer marker",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.failed_marker must be distinct from marker",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.deny_marker must be distinct from marker",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_all_marker_roles_to_be_unique(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["cancelled_marker"] = android_to_macos["overwrite_marker"]
+            android_to_macos["deny_marker"] = android_to_macos["failed_marker"]
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.cancelled_marker must be distinct from overwrite_marker",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.deny_marker must be distinct from failed_marker",
+            result["blockers"],
+        )
+
     def test_product_e2e_requires_no_send_or_write_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -701,6 +828,27 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: direction SHA-256 digests must be distinct so one payload cannot satisfy both directions",
+            result["blockers"],
+        )
+
+    def test_offline_product_flow_contract_fixture_is_complete_but_cannot_close_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(paths["product"], json.loads(OFFLINE_CONTRACT_FIXTURE.read_text(encoding="utf-8")))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertFalse(result["gate_closed"])
+        self.assertIn(
+            "bidirectional_product_e2e: synthetic or offline-only clipboard evidence cannot close this gate",
             result["blockers"],
         )
 
