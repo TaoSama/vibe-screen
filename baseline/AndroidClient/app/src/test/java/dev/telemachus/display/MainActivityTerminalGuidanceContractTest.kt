@@ -226,6 +226,22 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun automaticUsbChecklistUsesTerminalGuidanceStatusInsteadOfHardcodedChecking() {
+        val updateChecklist = extractMethod(mainActivitySource(), "private fun updateChecklist")
+        val automaticBranch = extractBlockAfterMarker(updateChecklist, "if (automaticUsbConnect || connectionAttemptInProgress)")
+        val compactBranch = automaticBranch.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Automatic USB checklist must stop showing Mac server as Checking after terminal guidance is visible",
+            compactBranch.contains("MacServerChecklistStatusPolicy.waitingStatus("),
+        )
+        assertFalse(
+            "Automatic USB checklist must not hard-code the Mac server row to Checking",
+            compactBranch.contains("R.string.mac_server,ChecklistStatus.CHECKING"),
+        )
+    }
+
+    @Test
     fun terminalGuidanceUsesModeSpecificInlineSurfaces() {
         val presenter = extractMethod(mainActivitySource(), "private fun showTerminalConnectionGuidance")
         val compact = presenter.replace(Regex("\\s+"), "")

@@ -1,0 +1,30 @@
+{
+  "date": "2026-09-04",
+  "scope": "android_no_host_ui_smoke",
+  "source_base": "origin/main",
+  "source_base_commit": "3ab85697e17aef0e57549e1d47298c9eb831941d",
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "recorded_as_fuxi": false
+  },
+  "host_started": false,
+  "adb_reverse_created": false,
+  "macos_tcc_exercised": false,
+  "host_e2e_verified": false,
+  "artifacts": [
+    "device-info.txt",
+    "android-no-host-initial.png",
+    "android-no-host-final.png",
+    "android-no-host-lan-tab.png",
+    "android-no-host-internet-tab.png",
+    "android-final-pid-logcat.log",
+    "window-focus-final.txt",
+    "window-focus-mode-toggle.txt",
+    "ui-hierarchy-final.xml"
+  ]
+}

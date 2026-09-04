@@ -14,3 +14,15 @@ internal object ChecklistProbeResultPolicy {
             !connectionAttemptInProgress &&
             !automaticUsbConnect
 }
+
+internal object MacServerChecklistStatusPolicy {
+    fun waitingStatus(
+        connectionGuidanceVisible: Boolean,
+        connectionAttemptInProgress: Boolean,
+    ): ChecklistStatus =
+        if (connectionGuidanceVisible && !connectionAttemptInProgress) {
+            ChecklistStatus.NOT_READY
+        } else {
+            ChecklistStatus.CHECKING
+        }
+}

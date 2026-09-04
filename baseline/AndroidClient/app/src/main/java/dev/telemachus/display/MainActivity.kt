@@ -6332,7 +6332,10 @@ class MainActivity : AppCompatActivity() {
                 binding.checkMacServer,
                 binding.textMacServer,
                 R.string.mac_server,
-                ChecklistStatus.CHECKING,
+                MacServerChecklistStatusPolicy.waitingStatus(
+                    connectionGuidanceVisible = binding.connectionErrorContainer.visibility == View.VISIBLE,
+                    connectionAttemptInProgress = connectionAttemptInProgress,
+                ),
             )
             updateMainStatus(false)
             return
@@ -6344,7 +6347,10 @@ class MainActivity : AppCompatActivity() {
             binding.checkMacServer,
             binding.textMacServer,
             R.string.mac_server,
-            ChecklistStatus.CHECKING,
+            MacServerChecklistStatusPolicy.waitingStatus(
+                connectionGuidanceVisible = binding.connectionErrorContainer.visibility == View.VISIBLE,
+                connectionAttemptInProgress = connectionAttemptInProgress,
+            ),
         )
         lifecycleScope.launch(Dispatchers.IO) {
             // Double-check connection state before socket test

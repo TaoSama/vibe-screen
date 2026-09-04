@@ -1,0 +1,6 @@
+--------- beginning of system
+09-04 09:21:50.071 I/ExtViewRootImplImpl(31918): setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=false
+--------- beginning of main
+09-04 09:21:52.731 V/VelocityTracker(31918): getVelocity axis =0, threshold=0.00, bingo=1
+09-04 09:21:52.731 V/VelocityTracker(31918): getVelocity axis =1, threshold=0.00, bingo=1
+09-04 09:22:00.042 I/emachus.display(31918): ProfileSaver: FullProfileSaver time 14.559ms new_methods=61
