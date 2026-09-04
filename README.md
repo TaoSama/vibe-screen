@@ -527,8 +527,12 @@ and
   owner record now binds the README-facing actionable-error states to a
   fail-closed real-device evidence gate and remains blocked for Screen
   Recording denial, Accessibility denial/limited state, ADB reverse missing,
-  USB disconnected, LAN route unavailable, TCP `54321` unavailable, and stale
-  epoch/session errors until each state has retained evidence.
+  USB disconnected, LAN route unavailable, TCP `54321` unavailable, stale
+  epoch/session errors, and the feature-specific Android Internet, codec,
+  managed-policy, peripheral, file-transfer, and clipboard error states until
+  each state has retained evidence. The latest no-Host P0110 owner record
+  confirms the disconnected USB surface shows actionable recovery copy, but it
+  is not Host-backed E2E evidence and does not close the Phase 1 gate.
 - Validate sustained operation on the active Android acceptance device. Xiaomi
   13/fuxi remains a named evidence source, while Nubia P0110/pacific and other
   qualifying Android devices may substitute for general Android
