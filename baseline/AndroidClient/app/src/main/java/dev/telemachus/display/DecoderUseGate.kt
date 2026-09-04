@@ -75,4 +75,14 @@ internal class DecoderUseGate<Decoder> {
             val decoder = current ?: return@synchronized null
             action(decoder)
         }
+
+    fun <Result> withCurrentIf(
+        admit: () -> Boolean,
+        action: (Decoder) -> Result,
+    ): Result? =
+        synchronized(lock) {
+            if (!admit()) return@synchronized null
+            val decoder = current ?: return@synchronized null
+            action(decoder)
+        }
 }

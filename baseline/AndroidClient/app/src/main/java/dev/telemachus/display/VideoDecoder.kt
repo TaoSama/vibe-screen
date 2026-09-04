@@ -51,6 +51,7 @@ class VideoDecoder(
     private var decoder: MediaCodec? = null
     private var decoderThread: HandlerThread? = null
     private var decoderHandler: Handler? = null
+    private val telemetryAccumulator = DecoderTelemetryAccumulator()
 
     private var frameCount = 0L
     private var droppedFrames = 0L
@@ -59,14 +60,6 @@ class VideoDecoder(
     private var inputFrameCount = 0L
     private var outputFrameCount = 0L
     private var firstOutputFrameSessionEpoch = 0L
-
-    // Decoder pipeline latency (input enqueue -> output buffer available),
-    // accumulated over ~60 frames then logged. High values indicate the codec
-    // is queuing frames internally (compose/present can't keep up downstream),
-    // which surfaces to the user as input lag on the captured display.
-    private var latencySumNs: Long = 0
-    private var latencySamples: Int = 0
-    private var latencyMaxNs: Long = 0
 
     private val frameTimes = ArrayDeque<Long>(120)
 
@@ -418,6 +411,7 @@ class VideoDecoder(
             result.dropped.forEach { dropped -> onFrameDecoded(this, dropped.data) }
             if (result.dropped.isNotEmpty()) {
                 droppedFrames += result.dropped.size
+                recordTelemetryDrop(result.dropped.size.toLong())
                 emitTelemetry(
                     "frame_dropped",
                     mapOf(
@@ -457,6 +451,7 @@ class VideoDecoder(
         val ageNs = System.nanoTime() - frame.timestampNs
         if (ageNs > MAX_RENDER_LATENCY_NS) {
             droppedFrames++
+            recordTelemetryDrop()
             onFrameDecoded(this, frame.data)
             availableInputBuffers.offer(index)
             emitTelemetry(
@@ -521,6 +516,7 @@ class VideoDecoder(
         requestRefresh: Boolean = waitForKeyframe,
     ) {
         droppedFrames++
+        recordTelemetryDrop()
         if (droppedFrames <= 3L || droppedFrames % 60L == 0L) {
             diagLog("Dropping frame ($reason, keyframe=$isKeyframe, dropped=$droppedFrames)")
         }
@@ -557,6 +553,7 @@ class VideoDecoder(
             val outputEpoch = queuedFrameEpochs.remove(info.presentationTimeUs) ?: 0L
             if (outputEpoch != currentSessionEpoch) {
                 droppedFrames++
+                recordTelemetryDrop()
                 codec.releaseOutputBuffer(index, false)
                 emitTelemetry(
                     "frame_dropped",
@@ -590,24 +587,21 @@ class VideoDecoder(
             val latencyNs = nowNs - info.presentationTimeUs * 1000L
             val hasValidLatency = latencyNs in 0..MAX_REASONABLE_LATENCY_NS
             if (hasValidLatency) {
-                latencySumNs += latencyNs
-                latencySamples++
-                if (latencyNs > latencyMaxNs) latencyMaxNs = latencyNs
+                recordDecoderLatency(latencyNs)
             }
 
             if (outputFrameCount % 60L == 0L) {
-                val avgMs = if (latencySamples > 0) latencySumNs / latencySamples / 1_000_000.0 else 0.0
-                val maxMs = latencyMaxNs / 1_000_000.0
+                val decoderTelemetry = telemetryAccumulator.peek()
+                val avgMs = decoderTelemetry.decoderLatencyAvgMs ?: 0.0
+                val maxMs = decoderTelemetry.decoderLatencyMaxMs ?: 0.0
                 val inBufs = availableInputBuffers.size
                 diagLog(
                     "Output #$outputFrameCount: decoder latency avg=" +
                         "${String.format(Locale.US, "%.1f", avgMs)}ms " +
-                        "max=${String.format(Locale.US, "%.1f", maxMs)}ms over $latencySamples samples, " +
+                        "max=${String.format(Locale.US, "%.1f", maxMs)}ms over " +
+                        "${decoderTelemetry.decoderLatencySamples} samples, " +
                         "input bufs avail=$inBufs, dropped=$droppedFrames",
                 )
-                latencySumNs = 0
-                latencySamples = 0
-                latencyMaxNs = 0
             }
 
             val shouldRender =
@@ -617,6 +611,7 @@ class VideoDecoder(
 
             if (!shouldRender) {
                 droppedFrames++
+                recordTelemetryDrop()
                 staleOutputDrops++
                 if (staleOutputDrops <= 3L || staleOutputDrops % 60L == 0L) {
                     diagLog(
@@ -681,6 +676,16 @@ class VideoDecoder(
             staleOutputDrops = 0
             lastStatsTime = now
         }
+    }
+
+    internal fun consumeTelemetrySnapshot(): DecoderTelemetrySnapshot = telemetryAccumulator.consume()
+
+    private fun recordDecoderLatency(latencyNs: Long) {
+        telemetryAccumulator.recordDecoderLatency(latencyNs)
+    }
+
+    private fun recordTelemetryDrop(count: Long = 1L) {
+        telemetryAccumulator.recordDroppedFrames(count)
     }
 
     fun release() {

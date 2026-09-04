@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -637,6 +638,67 @@ class DecoderPresentationOwnerTest {
                 executor.shutdownNow()
                 assertTrue(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
             }
+        }
+    }
+
+    @Test
+    fun conditionalDecoderSnapshotValidatesSessionWhileHoldingDecoderGate() {
+        val owner = owner()
+        val target = Any()
+        val renderTarget = owner.publishRenderTarget(target)
+        val firstDecoder = Any()
+        val replacementDecoder = Any()
+        val replacementAttempt = attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 55)
+        val publishStarted = CountDownLatch(1)
+        val publishResult = AtomicReference<Boolean?>()
+        val publishFailure = AtomicReference<Throwable?>()
+        val currentGeneration = AtomicLong(1L)
+        var snapshotConsumed = false
+        var publishThread: Thread? = null
+
+        assertTrue(
+            owner.publishLocalDecoder(
+                firstDecoder,
+                attempt(surfaceToken = target, surfaceGeneration = renderTarget.generation, configEpoch = 54),
+            ),
+        )
+        try {
+            val staleSnapshot = owner.currentDecoderSnapshotIf(
+                admit = {
+                    val thread =
+                        Thread {
+                            publishStarted.countDown()
+                            try {
+                                currentGeneration.set(2L)
+                                publishResult.set(owner.publishLocalDecoder(replacementDecoder, replacementAttempt))
+                            } catch (failure: Throwable) {
+                                publishFailure.set(failure)
+                            }
+                        }
+                    publishThread = thread
+                    thread.start()
+                    assertTrue(publishStarted.await(WAIT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+                    waitUntilBlockedByDecoderGate(
+                        thread = checkNotNull(publishThread),
+                        timeoutSeconds = WAIT_TIMEOUT_SECONDS,
+                        operation = "competing replacement publish",
+                    )
+                    currentGeneration.get() == 1L
+                },
+                snapshot = {
+                    snapshotConsumed = true
+                    "stale"
+                },
+            )
+
+            assertNull(staleSnapshot)
+            assertFalse(snapshotConsumed)
+            joinFinished(checkNotNull(publishThread))
+            publishFailure.get()?.let { throw AssertionError("Competing publish failed", it) }
+            assertEquals(true, publishResult.get())
+            assertSame(replacementDecoder, owner.currentDecoder())
+        } finally {
+            publishThread?.let(::joinFinished)
         }
     }
 

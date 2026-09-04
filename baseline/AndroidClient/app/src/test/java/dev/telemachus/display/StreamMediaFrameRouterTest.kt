@@ -99,6 +99,7 @@ class StreamMediaFrameRouterTest {
     fun protocolFrameDeliversAcceptedMediaAndEmitsStatsAfterInterval() {
         var nowMs = 0L
         val stats = mutableListOf<Pair<Double, Double>>()
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
         val delivered = mutableListOf<StreamMediaFrame>()
         val router = router(
             frameSink = { frame ->
@@ -106,6 +107,14 @@ class StreamMediaFrameRouterTest {
                 true
             },
             onStats = { fps, mbps -> stats += fps to mbps },
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+            decoderTelemetry = {
+                DecoderTelemetrySnapshot(
+                    droppedFrames = 3L,
+                    decoderLatencyAvgMs = 4.5,
+                    decoderLatencyMaxMs = 8.25,
+                )
+            },
             nowMs = { nowMs },
         )
         nowMs = 1_000L
@@ -122,6 +131,115 @@ class StreamMediaFrameRouterTest {
         assertEquals(1, stats.size)
         assertEquals(1.0, stats.single().first, 0.001)
         assertEquals(0.000032, stats.single().second, 0.000001)
+
+        val streamStats = telemetry.single { it.first == "stream_stats" }.second
+        assertEquals(6L, streamStats["session_epoch"])
+        assertEquals(1.0, streamStats["fps"] as Double, 0.001)
+        assertEquals(0.000032, streamStats["mbps"] as Double, 0.000001)
+        assertEquals(3L, streamStats["dropped_frames"])
+        assertEquals(4.5, streamStats["decoder_latency_avg_ms"] as Double, 0.001)
+        assertEquals(8.25, streamStats["decoder_latency_max_ms"] as Double, 0.001)
+    }
+
+    @Test
+    fun streamStatsRemainFailClosedWhenDecoderTelemetryIsUnavailable() {
+        var nowMs = 0L
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val router = router(
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+            nowMs = { nowMs },
+        )
+        nowMs = 1_000L
+
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = true),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+
+        val streamStats = telemetry.single { it.first == "stream_stats" }.second
+        assertEquals(0L, streamStats["dropped_frames"])
+        assertTrue(streamStats.containsKey("decoder_latency_avg_ms"))
+        assertTrue(streamStats.containsKey("decoder_latency_max_ms"))
+        assertEquals(null, streamStats["decoder_latency_avg_ms"])
+        assertEquals(null, streamStats["decoder_latency_max_ms"])
+    }
+
+    @Test
+    fun streamStatsPollDecoderTelemetryOncePerStatsInterval() {
+        var nowMs = 0L
+        var decoderPolls = 0
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val router = router(
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+            decoderTelemetry = {
+                decoderPolls++
+                DecoderTelemetrySnapshot(decoderPolls.toLong(), decoderPolls.toDouble(), decoderPolls.toDouble() + 10.0)
+            },
+            nowMs = { nowMs },
+        )
+
+        nowMs = 999L
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = true),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+        assertEquals(0, decoderPolls)
+
+        nowMs = 1_000L
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = false),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+
+        val streamStats = telemetry.single { it.first == "stream_stats" }.second
+        assertEquals(1, decoderPolls)
+        assertEquals(1L, streamStats["dropped_frames"])
+        assertEquals(1.0, streamStats["decoder_latency_avg_ms"] as Double, 0.001)
+        assertEquals(11.0, streamStats["decoder_latency_max_ms"] as Double, 0.001)
+    }
+
+    @Test
+    fun streamStatsConsumesDecoderTelemetryOnceThenAllowsNextPeriodToAccumulate() {
+        var nowMs = 0L
+        val accumulator = DecoderTelemetryAccumulator()
+        val telemetry = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val router = router(
+            emitTelemetry = { event, fields -> telemetry += event to fields },
+            decoderTelemetry = accumulator::consume,
+            nowMs = { nowMs },
+        )
+
+        accumulator.recordDecoderLatency(5_000_000L)
+        accumulator.recordDroppedFrames(2L)
+        accumulator.peek()
+        nowMs = 1_000L
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = true),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+
+        accumulator.recordDecoderLatency(7_000_000L)
+        accumulator.recordDecoderLatency(9_000_000L)
+        accumulator.recordDroppedFrames()
+        nowMs = 2_000L
+        router.receiveProtocolFrame(
+            payload = protocolPayload(configEpoch = 7, keyframe = false),
+            connectionEpoch = 6,
+            validateMedia = { ProtocolV1Session.MediaDisposition.ACCEPT },
+        )
+
+        val stats = telemetry.filter { it.first == "stream_stats" }.map { it.second }
+        assertEquals(2, stats.size)
+        assertEquals(2L, stats[0]["dropped_frames"])
+        assertEquals(5.0, stats[0]["decoder_latency_avg_ms"] as Double, 0.001)
+        assertEquals(5.0, stats[0]["decoder_latency_max_ms"] as Double, 0.001)
+        assertEquals(1L, stats[1]["dropped_frames"])
+        assertEquals(8.0, stats[1]["decoder_latency_avg_ms"] as Double, 0.001)
+        assertEquals(9.0, stats[1]["decoder_latency_max_ms"] as Double, 0.001)
     }
 
     @Test
@@ -276,6 +394,7 @@ class StreamMediaFrameRouterTest {
         onStats: (Double, Double) -> Unit = { _, _ -> },
         emitTelemetry: (String, Map<String, Any?>) -> Unit = { _, _ -> },
         diagLog: (String) -> Unit = {},
+        decoderTelemetry: () -> DecoderTelemetrySnapshot = { DecoderTelemetrySnapshot.empty },
         nowNs: () -> Long = { 0L },
         nowMs: () -> Long = { 0L },
     ) = StreamMediaFrameRouter(
@@ -284,6 +403,7 @@ class StreamMediaFrameRouterTest {
         onStats = onStats,
         emitTelemetry = emitTelemetry,
         diagLog = diagLog,
+        decoderTelemetry = decoderTelemetry,
         nowNs = nowNs,
         nowMs = nowMs,
     )

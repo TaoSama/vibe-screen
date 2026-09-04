@@ -120,6 +120,30 @@ class DecoderOwnershipBoundaryContractTest {
         assertTrue(coordinator.contains("lifecycleOwner.recordActiveStructuralFailure("))
     }
 
+    @Test
+    fun `main session stream stats consume decoder telemetry through presentation owner`() {
+        val activity = source(MAIN_ACTIVITY)
+        val presentationOwner = source(PRESENTATION_OWNER)
+        val decoder = source(VIDEO_DECODER)
+
+        assertTrue(activity.contains("callbackClient.decoderTelemetrySnapshot ="))
+        val decoderTelemetryBlock =
+            activity
+                .substringAfter("callbackClient.decoderTelemetrySnapshot =")
+                .substringBefore("callbackClient.onFrameReceived =")
+        assertTrue(decoderTelemetryBlock.contains("decoderPresentationOwner.currentDecoderSnapshotIf("))
+        assertTrue(decoderTelemetryBlock.contains("admit = { isCurrentSession(callbackClient, callbackGeneration) }"))
+        assertTrue(decoderTelemetryBlock.contains("isCurrentSession(callbackClient, callbackGeneration)"))
+        assertTrue(decoderTelemetryBlock.contains("snapshot = { decoder -> decoder.consumeTelemetrySnapshot() }"))
+        assertTrue(presentationOwner.contains("fun <Snapshot> currentDecoderSnapshot(snapshot: (Decoder) -> Snapshot): Snapshot?"))
+        assertTrue(presentationOwner.contains("fun <Snapshot> currentDecoderSnapshotIf("))
+        assertTrue(presentationOwner.contains("decoderUseGate.withCurrentIf(admit, snapshot)"))
+        assertTrue(decoder.contains("internal fun consumeTelemetrySnapshot(): DecoderTelemetrySnapshot"))
+        assertTrue(decoder.contains("private val telemetryAccumulator = DecoderTelemetryAccumulator()"))
+        assertTrue(decoder.contains("telemetryAccumulator.peek()"))
+        assertFalse(decoder.contains("captureDecoderTelemetrySnapshot(reset = true)"))
+    }
+
     private fun source(relativePath: String): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
