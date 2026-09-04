@@ -50,6 +50,11 @@ class MainActivityTransferReadinessContractTest {
             renderTransferReadiness.contains("internetSession?.canTransferFiles == true"),
         )
         assertTrue(
+            "Readiness should explain policy-disabled clipboard and file transfer separately from compatibility gaps",
+            renderTransferReadiness.contains("clipboardPolicyAllowed = managedClipboardAllowed") &&
+                renderTransferReadiness.contains("fileTransferPolicyAllowed = managedFileTransferAllowed"),
+        )
+        assertTrue(
             "Readiness should be presented by the pure policy",
             renderTransferReadiness.contains("TransferReadinessPresentationPolicy.presentation("),
         )
@@ -71,7 +76,11 @@ class MainActivityTransferReadinessContractTest {
         val refreshClipboardControl = extractMethod(source, "private fun refreshClipboardControl")
         val refreshFileTransferControl = extractMethod(source, "private fun refreshFileTransferControl")
         val applyNegotiatedSession = extractMethod(source, "private fun applyNegotiatedSession")
+        val connectionStatusCallback = extractCallback(source, "callbackClient.onConnectionStatus = connectionStatus@")
         val updateInternetState = extractMethod(source, "private fun updateInternetState")
+        val disconnectInternet = extractMethod(source, "private fun disconnectInternet")
+        val quarantineInternetSession = extractMethod(source, "private fun quarantineInternetSession")
+        val disconnectedSessionUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
 
         assertTrue(
             "Clipboard runtime availability changes should refresh an already-open Settings dialog",
@@ -97,15 +106,40 @@ class MainActivityTransferReadinessContractTest {
         )
         assertTrue(
             "Connection status commits should refresh after the coordinator state changes",
-            source.contains(
-                "productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)" +
-                    "\n                refreshTransferReadinessInSettings()",
+            assertBeforeValue(
+                connectionStatusCallback,
+                "productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)",
+                "refreshTransferReadinessInSettings()",
             ),
+        )
+        assertTrue(
+            "Disconnected status commits should refresh through the disconnected UI path after state cleanup",
+            connectionStatusCallback.contains("applyDisconnectedSessionUi()") &&
+                assertBeforeValue(
+                    disconnectedSessionUi,
+                    "productSessionCoordinator.clearDisconnectedUiState()",
+                    "refreshTransferReadinessInSettings()",
+                ),
         )
         assertTrue(
             "Internet session state changes should refresh an already-open Settings dialog",
             updateInternetState.contains("LiveRegionTextApplier.apply(") &&
                 updateInternetState.contains("refreshTransferReadinessInSettings()"),
+        )
+        assertTrue(
+            "Terminal Internet states should reset stale remote policy before repainting transfer readiness",
+            assertBeforeValue(updateInternetState, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()") &&
+                assertBeforeValue(updateInternetState, "productSessionCoordinator.setTransportConnected(false)", "refreshLocalManagedPolicySnapshot()"),
+        )
+        assertTrue(
+            "Manual Internet disconnect should reset stale remote policy before repainting transfer readiness",
+            assertBeforeValue(disconnectInternet, "productSessionCoordinator.setTransportConnected(false)", "refreshLocalManagedPolicySnapshot()") &&
+                assertBeforeValue(disconnectInternet, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()"),
+        )
+        assertTrue(
+            "Quarantined Internet disconnect should reset stale remote policy before repainting transfer readiness",
+            assertBeforeValue(quarantineInternetSession, "productSessionCoordinator.setTransportConnected(false)", "refreshLocalManagedPolicySnapshot()") &&
+                assertBeforeValue(quarantineInternetSession, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()"),
         )
         assertTrue(
             "Internet route changes should refresh through the shared Internet state renderer",
@@ -137,10 +171,60 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(strings.contains("transfer_readiness_waiting_status"))
         assertTrue(strings.contains("Waiting for a compatible Mac session"))
         assertTrue(strings.contains("Clipboard and file controls require Protocol v1"))
+        assertTrue(strings.contains("transfer_readiness_policy_blocked_status"))
+        assertTrue(strings.contains("disabled by this device or Mac session policy"))
         assertFalse(
             "Readiness copy must not close the runtime E2E gate by calling the feature stable or accepted",
             Regex("transfer_readiness_[^>]+>(?:(?!</string>).)*(stable|accepted|E2E passed|verified end to end)", RegexOption.IGNORE_CASE)
                 .containsMatchIn(strings),
+        )
+    }
+
+    @Test
+    fun localManagedPolicySnapshotFeedsNoHostTransferReadiness() {
+        val source = mainActivitySource()
+        val onCreate = extractMethod(source, "override fun onCreate")
+        val applyLocalPolicy = extractMethod(source, "private fun applyLocalManagedPolicySnapshot")
+        val refreshLocalPolicy = extractMethod(source, "private fun refreshLocalManagedPolicySnapshot")
+        val disconnect = extractMethod(source, "private fun applyDisconnectedSessionUi")
+        val streamManagedCallback = extractCallback(source, "callbackClient.onManagedPolicyReceived = managedPolicy@")
+        val internetManagedCallback = extractCallback(source, "override fun onManagedPolicyReceived(status: ManagedPolicyStatus)")
+
+        assertTrue(
+            "The Activity should load local managed restrictions before first disconnected Settings render",
+            onCreate.contains("refreshLocalManagedPolicySnapshot()") &&
+                assertBeforeValue(onCreate, "refreshLocalManagedPolicySnapshot()", "setupUI()"),
+        )
+        assertTrue(
+            "Local policy snapshots should retain clipboard and file-transfer denial state for no-host Settings",
+            applyLocalPolicy.contains("localClipboardAllowed = policy.clipboardAllowed") &&
+                applyLocalPolicy.contains("localFileTransferAllowed = policy.fileTransferAllowed") &&
+                applyLocalPolicy.contains("managedClipboardAllowed = localClipboardAllowed") &&
+                applyLocalPolicy.contains("managedFileTransferAllowed = localFileTransferAllowed"),
+        )
+        assertTrue(
+            "Refreshing the local snapshot should read Android managed configuration through the existing provider",
+            refreshLocalPolicy.contains("ManagedConfigurationProvider(applicationContext).loadPolicy()"),
+        )
+        assertTrue(
+            "Disconnect should return to the latest local policy snapshot instead of showing false allowed state",
+            disconnect.contains("refreshLocalManagedPolicySnapshot()") &&
+                !disconnect.contains("managedClipboardAllowed = true") &&
+                !disconnect.contains("managedFileTransferAllowed = true"),
+        )
+        assertTrue(
+            "Stream managed-policy updates should propagate clipboard and file-transfer availability into Settings",
+            streamManagedCallback.contains("localClipboardAllowed = localClipboardAllowed") &&
+                streamManagedCallback.contains("localFileTransferAllowed = localFileTransferAllowed") &&
+                streamManagedCallback.contains("managedClipboardAllowed = availability.clipboardAllowed") &&
+                streamManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed"),
+        )
+        assertTrue(
+            "Internet managed-policy updates should use the same Settings availability source",
+            internetManagedCallback.contains("localClipboardAllowed = localClipboardAllowed") &&
+                internetManagedCallback.contains("localFileTransferAllowed = localFileTransferAllowed") &&
+                internetManagedCallback.contains("managedClipboardAllowed = availability.clipboardAllowed") &&
+                internetManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed"),
         )
     }
 
@@ -192,6 +276,17 @@ class MainActivityTransferReadinessContractTest {
         error("Closing brace not found: $label")
     }
 
+    private fun extractCallback(
+        source: String,
+        startMarker: String,
+    ): String {
+        val start = source.indexOf(startMarker)
+        require(start >= 0) { "Callback not found: $startMarker" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Callback body not found: $startMarker" }
+        return extractBraceBlock(source, start, bodyStart, startMarker)
+    }
+
     private fun assertBefore(
         source: String,
         first: String,
@@ -202,6 +297,16 @@ class MainActivityTransferReadinessContractTest {
         assertTrue("Missing first marker: $first", firstIndex >= 0)
         assertTrue("Missing second marker: $second", secondIndex >= 0)
         assertTrue("Expected '$first' before '$second'", firstIndex < secondIndex)
+    }
+
+    private fun assertBeforeValue(
+        source: String,
+        first: String,
+        second: String,
+    ): Boolean {
+        val firstIndex = source.indexOf(first)
+        val secondIndex = source.indexOf(second)
+        return firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex
     }
 
     private companion object {

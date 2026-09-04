@@ -61,6 +61,12 @@
     <string name="transfer_readiness_waiting_summary">Clipboard and file controls require Protocol v1.</string>
     <string name="transfer_readiness_unavailable_status">Not available in this Mac session</string>
     <string name="transfer_readiness_unavailable_summary">This connection has not exposed clipboard or file-transfer controls. Update both apps or reconnect with a compatible Protocol v1 Mac session.</string>
+    <string name="transfer_readiness_policy_blocked_status">Blocked by policy</string>
+    <string name="transfer_readiness_policy_blocked_summary">Clipboard and file transfer are disabled by this device or Mac session policy.</string>
+    <string name="transfer_readiness_clipboard_policy_blocked_summary">File transfer is available for this session. Clipboard is disabled by this device or Mac session policy.</string>
+    <string name="transfer_readiness_clipboard_policy_waiting_summary">Clipboard is disabled by this device or Mac session policy. File transfer still requires a compatible Protocol v1 Mac session.</string>
+    <string name="transfer_readiness_file_policy_blocked_summary">Clipboard control is available for this session. File transfer is disabled by this device or Mac session policy.</string>
+    <string name="transfer_readiness_file_policy_waiting_summary">File transfer is disabled by this device or Mac session policy. Clipboard still requires a compatible Protocol v1 Mac session.</string>
     <string name="transfer_readiness_ready_status">Ready in this session</string>
     <string name="transfer_readiness_ready_summary">Clipboard and file-transfer controls are available from the stream controls for this negotiated session.</string>
     <string name="transfer_readiness_clipboard_only_status">Clipboard ready, files unavailable</string>

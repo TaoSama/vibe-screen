@@ -669,6 +669,7 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:accessibilityLiveRegion="polite"
+                    android:textIsSelectable="true"
                     android:textColor="@color/on_surface_secondary"
                     android:textSize="12sp"
                     android:lineSpacingExtra="2dp" />

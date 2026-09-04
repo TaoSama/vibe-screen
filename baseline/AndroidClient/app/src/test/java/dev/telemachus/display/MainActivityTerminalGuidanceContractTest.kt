@@ -851,6 +851,10 @@ class MainActivityTerminalGuidanceContractTest {
                 !errorMessage.contains("android:maxLines") &&
                 !errorMessage.contains("android:ellipsize"),
         )
+        assertTrue(
+            "USB recovery guidance contains ports and repair steps, so users should be able to copy it for diagnostics",
+            errorMessage.contains("android:textIsSelectable=\"true\""),
+        )
         assertFalse(
             "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",
             connectionScroll.contains("android:fillViewport=\"true\""),
