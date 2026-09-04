@@ -35,7 +35,9 @@ class LatencyPreflightReportTest(unittest.TestCase):
                     "profile": GATE_USB_GLASS_TO_GLASS_SUB50,
                     "checks": {
                         "device_identity_recorded": True,
+                        "current_base_provenance_recorded": True,
                         "host_build_identity_recorded": True,
+                        "client_build_identity_recorded": True,
                         "external_camera_timebase_ready": True,
                         "raw_camera_recording_retained": True,
                         "sample_annotations_retained": True,
@@ -75,7 +77,9 @@ class LatencyPreflightReportTest(unittest.TestCase):
                     "manifest": "tools/fixtures/latency/external-camera-valid/manifest.json",
                     "checks": {
                         "device_identity_recorded": True,
+                        "current_base_provenance_recorded": True,
                         "host_build_identity_recorded": True,
+                        "client_build_identity_recorded": True,
                         "external_camera_timebase_ready": True,
                         "raw_camera_recording_retained": True,
                         "sample_annotations_retained": True,
@@ -114,7 +118,9 @@ class LatencyPreflightReportTest(unittest.TestCase):
                     "manifest": "tools/fixtures/latency/lan-glass-to-glass-fail.csv",
                     "checks": {
                         "device_identity_recorded": True,
+                        "current_base_provenance_recorded": True,
                         "host_build_identity_recorded": True,
+                        "client_build_identity_recorded": True,
                         "external_camera_timebase_ready": True,
                         "raw_camera_recording_retained": True,
                         "sample_annotations_retained": True,

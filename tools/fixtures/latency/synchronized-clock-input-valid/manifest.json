@@ -8,7 +8,12 @@
   "evidence_provenance": {
     "source": "synthetic-fixture",
     "collection_context": "Repository latency checker fixture.",
-    "operator_assertion": "This package is synthetic and must not close a latency gate."
+    "operator_assertion": "This package is synthetic and must not close a latency gate.",
+    "current_base": {
+      "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+      "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+      "dirty": false
+    }
   },
   "synchronization": {
     "host_clock_source": "macOS system clock (CLOCK_REALTIME)",
@@ -17,9 +22,9 @@
     "before_skew_ms": 1.2,
     "after_skew_ms": 1.5,
     "max_drift_ms": 0.8,
-    "input_timestamp_uncertainty_ms": 0.0,
+    "input_timestamp_uncertainty_ms": 0.4,
     "result_timestamp_uncertainty_ms": 0.0,
-    "total_error_budget_ms": 3.5,
+    "total_error_budget_ms": 4.5,
     "input_timestamp_method": "Android MotionEvent.eventTime captured at touch dispatch",
     "result_timestamp_method": "macOS CGEvent timestamp captured at injection"
   },
@@ -34,16 +39,24 @@
     "manufacturer": "Fixture",
     "model": "Fixture Device",
     "codename": "fixture",
-    "os_version": "Android fixture"
+    "os_version": "Android fixture",
+    "sdk": 36,
+    "build_fingerprint": "fixture/device/fingerprint:16/test-keys"
   },
   "host": {
     "model": "Fixture Mac",
     "macos_version": "fixture"
   },
   "build": {
-    "repository_revision": "fixture-revision",
+    "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+    "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+    "source_dirty": false,
     "host_artifact": "fixture-host",
-    "client_artifact": "fixture-client"
+    "host_artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "host_artifact_provenance": "fixture host artifact provenance",
+    "client_artifact": "fixture-client",
+    "client_artifact_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "client_artifact_provenance": "fixture client artifact provenance"
   },
   "measurement_setup": {
     "stimulus": "physical touch on Android screen",

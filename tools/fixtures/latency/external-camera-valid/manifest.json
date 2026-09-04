@@ -8,7 +8,12 @@
   "evidence_provenance": {
     "source": "synthetic-fixture",
     "collection_context": "Repository latency checker fixture.",
-    "operator_assertion": "This package is synthetic and must not close a latency gate."
+    "operator_assertion": "This package is synthetic and must not close a latency gate.",
+    "current_base": {
+      "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+      "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+      "dirty": false
+    }
   },
   "camera": {
     "manufacturer": "Fixture Camera Co",
@@ -38,16 +43,24 @@
     "manufacturer": "Fixture",
     "model": "Fixture Device",
     "codename": "fixture",
-    "os_version": "Android fixture"
+    "os_version": "Android fixture",
+    "sdk": 36,
+    "build_fingerprint": "fixture/device/fingerprint:16/test-keys"
   },
   "host": {
     "model": "Fixture Mac",
     "macos_version": "fixture"
   },
   "build": {
-    "repository_revision": "fixture-revision",
+    "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+    "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+    "source_dirty": false,
     "host_artifact": "fixture-host",
-    "client_artifact": "fixture-client"
+    "host_artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "host_artifact_provenance": "fixture host artifact provenance",
+    "client_artifact": "fixture-client",
+    "client_artifact_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "client_artifact_provenance": "fixture client artifact provenance"
   },
   "measurement_setup": {
     "stimulus": "mac display flash visible to the camera",

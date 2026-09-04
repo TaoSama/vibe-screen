@@ -12,6 +12,8 @@ make baseline-android-test
 make baseline-android-check
 make baseline-android-apk
 make evidence-tools-test
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_external_latency_current_base
+make evidence-latency-preflight
 make phase0-stable-release-gate
 make evidence-device-info
 ```
@@ -38,7 +40,7 @@ sub-gates remain open.
 | Android integration | framing, session, and decoder lifecycle on emulator |
 | Device E2E | recorded Nubia P0110 evidence plus the Xiaomi 13 (fuxi) video, touch, keyboard, reconnect, and codec fallback gate; Xiaomi 13 streaming/input is now on device, host RSS no-growth soak still open |
 | Soak | 1080p60 USB with queue/RSS/latency series; a two-hour Xiaomi 13 run completed with a stable stream but an open host RSS no-growth gate |
-| Latency | external-camera raw samples and measurement notes |
+| Latency / `telemetry_and_latency_archive` | For USB/LAN glass-to-glass, a formal manifest with raw >=120 FPS external-camera footage, SHA-256-bound annotated frame samples, at least five valid samples, complete Android identity, measured Host/client artifact identity, clean current-base provenance, and the profile-specific USB or LAN stream artifact. For `input-p95-sub50`, either the same external-camera package or a synchronized-clock physical-input package with sub-5 ms total error budget, retained synchronization proof, real physical actuation, and visible Mac-side result. Internal telemetry, decoder timing, screenshots, screen recordings, or ADB-generated input remain diagnostic only |
 
 ## Current evidence (2026-08-04)
 
@@ -168,7 +170,9 @@ and HarmonyOS portable
 For that dated main commit, this closes the macOS XCTest execution gate. It
 does not prove Developer ID signing, notarization, private display integration,
 any new real-device behavior, iOS/HarmonyOS device behavior, latency, or soak
-stability.
+stability. The early tap/stream checks are event-path connectivity evidence
+only; without optical single-timebase samples or synchronized-clock physical
+input timestamps, they cannot close `input-p95-sub50`.
 
 The 202/202 figure above is anchored to that dated 2026-08-06 commit. Main has
 since advanced to `c639caa`, whose 2026-08-09 Phase 0 CI
@@ -457,7 +461,10 @@ Evidence is retained under
   [2026-08-28 host-rss fail-closed readiness blocked](../2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md)),
   native-pointer HID move/click with a physical mouse, controller runtime
   acceptance with a physical Android controller and entitled Host, and external
-  USB/LAN glass-to-glass plus input latency.
+  USB/LAN glass-to-glass plus input latency. The repository still has no real
+  >=120 FPS external-camera latency package and no sub-5 ms synchronized-clock
+  physical-input package, so `make evidence-latency-preflight` remains blocked
+  with exit `2` until those artifacts are retained.
 
 Private `CGVirtualDisplay` creation/capture and HiDPI, graceful mirror-mode
 fallback, keyboard/scroll input, and Protocol v1 real-device interoperability

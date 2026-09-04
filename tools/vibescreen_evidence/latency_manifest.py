@@ -131,6 +131,14 @@ def _repository_revision(repo: Path) -> str:
     return _run(["git", "rev-parse", "HEAD"], repo)
 
 
+def _repository_source_tree(repo: Path) -> str:
+    return _run(["git", "rev-parse", "HEAD^{tree}"], repo)
+
+
+def _repository_dirty(repo: Path) -> bool:
+    return bool(_run(["git", "status", "--short"], repo))
+
+
 def _host_model() -> str:
     try:
         return _run(["sysctl", "-n", "hw.model"])
@@ -160,6 +168,8 @@ def _load_device_info(path: Path) -> dict[str, Any]:
         "model": str(device.get("model") or ""),
         "codename": str(device.get("device") or device.get("codename") or ""),
         "os_version": str(device.get("android_release") or device.get("os_version") or ""),
+        "sdk": device.get("sdk"),
+        "build_fingerprint": str(device.get("build_fingerprint") or ""),
     }
 
 
@@ -296,7 +306,12 @@ def _positive_finite_number(value: float | None, field: str) -> float:
     return number
 
 
-def _positive_integer(value: int | None, field: str) -> int:
+def _positive_integer(value: int | str | None, field: str) -> int:
+    if isinstance(value, str):
+        value = value.strip()
+        if not value.isdecimal():
+            raise LatencyManifestError(f"{field} must be an integer")
+        value = int(value)
     if isinstance(value, bool) or not isinstance(value, int):
         raise LatencyManifestError(f"{field} must be an integer")
     if value <= 0:
@@ -367,6 +382,10 @@ def build_latency_manifest(
         raise LatencyManifestError(
             "glass-to-glass latency requires external-camera measurement"
         )
+    if measurement_method == METHOD_EXTERNAL_CAMERA and annotation_method != ANNOTATION_MANUAL_FRAME_COUNT:
+        raise LatencyManifestError(
+            "external-camera measurement_method requires samples.annotation_method manual-frame-count"
+        )
     if measurement_method == METHOD_SYNCHRONIZED_CLOCK and latency_kind != KIND_INPUT:
         raise LatencyManifestError("synchronized-clock measurement_method requires latency_kind input")
     if measurement_method == METHOD_SYNCHRONIZED_CLOCK and annotation_method != ANNOTATION_DIRECT_LATENCY_MS:
@@ -379,13 +398,21 @@ def build_latency_manifest(
         )
     if gate_artifact_description is None:
         raise LatencyManifestError("gate artifact description is required")
-    provenance = evidence_provenance or {
+    provenance = dict(evidence_provenance or {
         "source": REAL_DEVICE_CAPTURE_SOURCE,
         "collection_context": "operator-collected latency evidence package",
         "operator_assertion": (
             "This package was collected from a real device run with retained artifacts."
         ),
-    }
+    })
+    provenance.setdefault(
+        "current_base",
+        {
+            "repository_revision": build.get("repository_revision"),
+            "source_tree": build.get("source_tree"),
+            "dirty": build.get("source_dirty"),
+        },
+    )
     if provenance.get("source") not in EVIDENCE_PROVENANCE_SOURCES:
         raise LatencyManifestError(
             "evidence_provenance.source must be real-device-capture or synthetic-fixture"
@@ -412,6 +439,7 @@ def build_latency_manifest(
                 str(provenance["operator_assertion"]),
                 "evidence_provenance.operator_assertion",
             ),
+            "current_base": provenance["current_base"],
         },
         "samples": {
             "file": samples_relative,
@@ -533,12 +561,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device-model")
     parser.add_argument("--device-codename")
     parser.add_argument("--device-os-version")
+    parser.add_argument("--device-sdk", type=int)
+    parser.add_argument("--device-build-fingerprint")
     parser.add_argument("--host-model")
     parser.add_argument("--macos-version")
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--repository-revision")
+    parser.add_argument("--source-tree")
+    parser.add_argument(
+        "--source-dirty-state",
+        choices=("clean", "dirty"),
+        help="current-base repository dirty state; omitted state is collected from git status",
+    )
     parser.add_argument("--host-artifact", required=True)
+    parser.add_argument("--host-artifact-sha256", required=True)
+    parser.add_argument("--host-artifact-provenance", required=True)
     parser.add_argument("--client-artifact", required=True)
+    parser.add_argument("--client-artifact-sha256", required=True)
+    parser.add_argument("--client-artifact-provenance", required=True)
     parser.add_argument("--stimulus", required=True)
     parser.add_argument("--start-event-definition", required=True)
     parser.add_argument("--end-event-definition", required=True)
@@ -621,19 +661,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _device_from_args(args: argparse.Namespace) -> dict[str, str]:
+def _device_from_args(args: argparse.Namespace) -> dict[str, Any]:
     device = _load_device_info(args.device_info) if args.device_info else {}
     values = {
         "manufacturer": args.device_manufacturer or device.get("manufacturer", ""),
         "model": args.device_model or device.get("model", ""),
         "codename": args.device_codename or device.get("codename", ""),
         "os_version": args.device_os_version or device.get("os_version", ""),
+        "sdk": args.device_sdk if args.device_sdk is not None else device.get("sdk"),
+        "build_fingerprint": args.device_build_fingerprint or device.get("build_fingerprint", ""),
     }
-    return {field: _non_empty(value, f"device.{field}") for field, value in values.items()}
+    normalized = {
+        field: _non_empty(str(value), f"device.{field}")
+        for field, value in values.items()
+        if field != "sdk"
+    }
+    normalized["sdk"] = _positive_integer(values["sdk"], "device.sdk")
+    return normalized
 
 
 def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
     is_external_camera = args.measurement_method == METHOD_EXTERNAL_CAMERA
+    repository_revision = _non_empty(
+        args.repository_revision or _repository_revision(args.repo),
+        "build.repository_revision",
+    )
+    source_tree = _non_empty(
+        args.source_tree or _repository_source_tree(args.repo),
+        "build.source_tree",
+    )
+    source_dirty = (
+        args.source_dirty_state == "dirty"
+        if args.source_dirty_state is not None
+        else _repository_dirty(args.repo)
+    )
     host = {
         "model": _non_empty(args.host_model or _host_model(), "host.model"),
         "macos_version": _non_empty(
@@ -641,12 +702,19 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
         ),
     }
     build = {
-        "repository_revision": _non_empty(
-            args.repository_revision or _repository_revision(args.repo),
-            "build.repository_revision",
-        ),
+        "repository_revision": repository_revision,
+        "source_tree": source_tree,
+        "source_dirty": source_dirty,
         "host_artifact": _non_empty(args.host_artifact, "build.host_artifact"),
+        "host_artifact_sha256": _non_empty(args.host_artifact_sha256, "build.host_artifact_sha256"),
+        "host_artifact_provenance": _non_empty(
+            args.host_artifact_provenance, "build.host_artifact_provenance"
+        ),
         "client_artifact": _non_empty(args.client_artifact, "build.client_artifact"),
+        "client_artifact_sha256": _non_empty(args.client_artifact_sha256, "build.client_artifact_sha256"),
+        "client_artifact_provenance": _non_empty(
+            args.client_artifact_provenance, "build.client_artifact_provenance"
+        ),
     }
     measurement_setup: dict[str, Any] = {
         "stimulus": _non_empty(args.stimulus, "measurement_setup.stimulus"),
@@ -819,6 +887,11 @@ def manifest_from_args(args: argparse.Namespace) -> dict[str, Any]:
                 if args.evidence_source == SYNTHETIC_FIXTURE_SOURCE
                 else "This package was collected from a real device run with retained artifacts."
             ),
+            "current_base": {
+                "repository_revision": repository_revision,
+                "source_tree": source_tree,
+                "dirty": source_dirty,
+            },
         },
         measurement_method=args.measurement_method,
         recording_frame_count=recording_frame_count,

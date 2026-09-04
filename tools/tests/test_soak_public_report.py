@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from test_soak_report import write_inputs
+from tools.tests.test_soak_report import write_inputs
 from vibescreen_evidence.soak_report import (
     PUBLICATION_PROFILE,
     PUBLIC_DERIVATION_ERROR_MESSAGE,
