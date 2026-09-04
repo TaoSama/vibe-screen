@@ -45,18 +45,17 @@ The original `screen-03-settings-portrait`,
 `screen-07-settings-landscape-fontscale-1_3`, and
 `screen-09-settings-portrait-recaptured` artifacts were attempted captures
 only. Their XML shows the disconnected connection page, not the settings dialog,
-so they are excluded from the submitted checksum and are not used as settings
-evidence.
+so they are retained for audit continuity but are not used as settings evidence.
 
 The original LAN/Internet captures were superseded because they landed on the
 Android launcher instead of the Vibe Screen app. Their screenshots and XML/token
-artifacts are excluded from the submitted checksum; `screen-16` and
-`screen-17` are the valid LAN/Internet evidence.
+artifacts were removed from the submitted bundle; `screen-16` and `screen-17`
+are the valid LAN/Internet evidence.
 
 Intermediate duplicate captures such as `screen-11`, `screen-12`, and
-`screen-13` were used only while collecting the final run. They are excluded
-from the submitted checksum to avoid numbered-artifact ambiguity; `screen-14`
-through `screen-17` are the final indexed captures.
+`screen-13` were used only while collecting the final run. They are retained
+for audit continuity but are not primary claim artifacts; `screen-14` through
+`screen-17` are the final indexed captures.
 
 Broad process snapshots are not used to prove Host absence. The narrower
 retained boundary is the empty TCP `54321` listener probes plus the ADB reverse

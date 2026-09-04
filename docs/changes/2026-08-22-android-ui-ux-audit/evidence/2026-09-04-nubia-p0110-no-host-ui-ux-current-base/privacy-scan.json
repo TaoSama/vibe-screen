@@ -38,7 +38,7 @@
       "replacement": "<redacted-temp>"
     }
   ],
-  "excluded_artifacts_from_submitted_checksum": [
+  "removed_artifacts": [
     "screenshots/screen-04-no-host-lan-portrait.png",
     "screenshots/screen-05-no-host-internet-portrait.png",
     "ui-dumps/ui-hierarchy-04-no-host-lan-portrait.xml",
@@ -48,7 +48,9 @@
     "logs/uiautomator-04-no-host-lan-portrait.txt",
     "logs/uiautomator-05-no-host-internet-portrait.txt",
     "logs/pull-window-04-no-host-lan-portrait.txt",
-    "logs/pull-window-05-no-host-internet-portrait.txt",
+    "logs/pull-window-05-no-host-internet-portrait.txt"
+  ],
+  "retained_non_primary_artifacts": [
     "screenshots/screen-11-current-rerun-disconnected.png",
     "screenshots/screen-11-no-host-usb-portrait-recaptured.png",
     "screenshots/screen-12-current-rerun-settings.png",
@@ -63,7 +65,7 @@
   "notes": [
     "The original LAN/Internet first captures landed on the Android launcher and were superseded by final screen-16 and screen-17 captures inside the Vibe Screen app.",
     "The final screen-14 through screen-17 rerun artifacts were captured from the same redacted P0110 serial after building and installing the current origin/main debug APK with auto_connect=false.",
-    "Intermediate duplicate screen-11 through screen-13 captures are excluded from the submitted checksum to avoid numbered-artifact ambiguity.",
+    "Intermediate duplicate screen-11 through screen-13 captures are retained for audit continuity but are not primary claim artifacts.",
     "Broad process probes are not used for Host-readiness claims."
   ]
 }

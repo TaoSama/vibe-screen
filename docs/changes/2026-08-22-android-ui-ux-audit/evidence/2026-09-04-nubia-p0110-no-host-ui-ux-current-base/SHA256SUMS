@@ -1,5 +1,5 @@
 b20ba24130a622b7f02b67cff25fc5fc81d6687bc5af29823858e46854fd2061  ./adb-reverse-no-54321.txt
-4060c1f5e61901a90e37b8808cef2e72760bc85282a1bd6a9b1c6a2c44e0dfcd  ./assertions.txt
+84a40abee239502620dde6cb376b7f43523dbee93ef1f8df2534d1929825e146  ./assertions.txt
 b066b2c4e44257e23c031f6d08ba02f641fa45c01565388293d9f44510b5d18a  ./commands.txt
 39cf94783a30e4a06c9e586cc5eee1990d1f5e2c09fe0a2d6e60e3691837456b  ./device-info.txt
 b20ba24130a622b7f02b67cff25fc5fc81d6687bc5af29823858e46854fd2061  ./logs/adb-reverse-list-after.txt
@@ -50,8 +50,8 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/window-
 46d1d5e7bef76476b4c75c3e6e1ffe11c7fc3ab30c90fcaef4845b98c309951d  ./logs/window-focus-restored-portrait.txt
 0cb3b275bf2451a0f66f5004978628769528524d512cb517d2f771a04947f32a  ./logs/window-focus-usb-portrait.txt
 c1074aa9f4e4b198a2a23c911e8a4689549608041becdc14a82f2034224b5dfa  ./metadata.json
-4358dca486cfb772929ccc14dc31ff10f90bae8b50e45f7a38e0c196a4e9af4b  ./privacy-scan.json
-b6e7593c0bd854d9fe9235fa681488d6c2342d2abe5d9bf86fd8ad08c4229828  ./README.md
+d48cfff58db812301c622510c85f0562ea7fbd8871549b8df5fc95d3f3816dcb  ./privacy-scan.json
+966f4f13f685b2590862af232f481f7908de06fd0623e01ed2967b7849bbb1fc  ./README.md
 a38e2c60dfd7aa295d1cffeeee78faf97d58c8f3e227b0ace8bc4bfdaedd5df4  ./screenshots/screen-01-no-host-usb-portrait.png
 2ed56c224af07705244ad105b88b66edbafd219bb8b40a250056522ee80d928e  ./screenshots/screen-02-disconnected-controlbar-reveal-attempt.png
 2ed56c224af07705244ad105b88b66edbafd219bb8b40a250056522ee80d928e  ./screenshots/screen-03-settings-portrait.png

@@ -324,3 +324,26 @@ Result: passed locally on 2026-09-01 from branch
 `codex/android-file-transfer-product-flow`, then passed again after rebasing on
 current `origin/main` (`f1fde5fdb`). The full Android unit/lint/assemble
 regression reported `GRADLE_EXIT_CODE=0`.
+
+## 2026-09-04 Nubia P0110 no-Host UI/UX smoke current-base
+
+Evidence:
+[`../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/`](../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/README.md).
+
+Status remains open. The run refreshed from current origin/main at
+e4d7861b8af3ffa8d32fff99b022e92193acc071, installed the debug Android client
+on a Nubia P0110 / pacific / Android 16 / SDK 36, and launched the app without
+creating a product tcp:54321 ADB reverse or starting a macOS Host.
+
+The retained USB/LAN/Internet no-Host screenshots and UIAutomator dumps show the
+connection pages and settings entry points in the disconnected state. The
+settings dialog reports Clipboard & files as waiting for a compatible Mac
+session; the disconnected connection-page dumps do not expose file-transfer,
+cancel-transfer, clipboard, or Mac content available actions before Protocol v1
+capability negotiation.
+
+This evidence records only the Android no-Host UI fail-closed visibility check.
+It does not include file-offer/request/content packets, sender file selection,
+receiver approval, saved destination files, progress, cancel cleanup, final
+SHA-256 equality, positive session epoch, or USB/LAN product E2E. The real
+file-transfer product gate remains blocked.

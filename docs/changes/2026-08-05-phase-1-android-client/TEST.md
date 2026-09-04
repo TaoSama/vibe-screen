@@ -1113,3 +1113,26 @@ synthetic ADB pointer motion as physical HID evidence.
 Evidence:
 
 - [`evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/`](evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/)
+
+## 2026-09-04 Nubia P0110 no-Host UI/UX smoke current-base
+
+Evidence:
+[`../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/`](../2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/README.md).
+
+Status remains Android-client UI/UX evidence only. The run refreshed from
+current origin/main at e4d7861b8af3ffa8d32fff99b022e92193acc071, built and
+installed the debug Android client on a Nubia P0110 / pacific / Android 16 /
+SDK 36, and launched MainActivity with auto_connect=false while no product
+tcp:54321 ADB reverse or local Host listener was present.
+
+The retained screenshots and UIAutomator dumps cover the disconnected USB,
+LAN, and Internet pages, a disconnected USB retry/checklist state, a landscape
+font_scale=1.3 layout stress pass, restoration to portrait/default font, and
+the Display settings dialog in both normal font and font_scale=1.3. The settings
+page correctly reports Clipboard & files as Waiting for a compatible Mac session,
+with Protocol v1 capability negotiation required before clipboard or file
+controls appear.
+
+This does not claim a Host session, Protocol v1 negotiation, streaming/video
+decode, reconnect, clipboard/file-transfer product flow, TCC readiness, or
+Xiaomi 13/fuxi evidence. The device identity must remain Nubia P0110 / pacific.
