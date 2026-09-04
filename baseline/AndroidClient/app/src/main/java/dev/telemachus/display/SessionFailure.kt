@@ -17,6 +17,7 @@ internal enum class SessionFailureKind {
     HOST_PROTOCOL_ERROR,
     UNKNOWN_MESSAGE,
     CODEC_CONFIGURATION,
+    HOST_NOT_RUNNING,
     SERVER_SHUTDOWN,
     USER_REQUESTED,
 }
@@ -45,6 +46,9 @@ internal data class SessionFailure(
         fun codec(detail: String) =
             SessionFailure(SessionFailureKind.CODEC_CONFIGURATION, detail, retryable = true)
 
+        fun hostNotRunning(detail: String = HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL) =
+            SessionFailure(SessionFailureKind.HOST_NOT_RUNNING, detail, retryable = true)
+
         fun serverShutdown() =
             SessionFailure(
                 SessionFailureKind.SERVER_SHUTDOWN,
@@ -62,6 +66,11 @@ internal data class SessionFailure(
             )
     }
 }
+
+internal const val HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL =
+    "Mac connection closed before display configuration"
+internal const val HOST_NOT_RUNNING_PROTOCOL_PROBE_CLOSED_DETAIL =
+    "Protocol upgrade probe closed before a response"
 
 internal class SessionProtocolException(
     val failure: SessionFailure,

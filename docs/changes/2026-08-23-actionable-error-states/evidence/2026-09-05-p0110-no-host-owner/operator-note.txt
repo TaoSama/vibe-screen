@@ -1,0 +1,20 @@
+Run: 2026-09-05 P0110 no-host USB actionable-error owner record
+Device: nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>
+Source: codex/actionable-error-states-no-host-20260905 at ed3b336408c6d2c3aec9e382d037aafd536fb61a, based on origin/main
+
+Collection boundary:
+- The macOS Host GUI was not launched.
+- No swift Host command, TCC reset, Screen Recording prompt, Accessibility prompt, or adb reverse configuration was run.
+- The only ADB reverse observation was read-only. It showed no tcp:54321 mapping.
+- Android debug APK was built from the current source and installed on the recorded P0110 device.
+
+Observed no-host USB UI:
+- The app remained in USB mode and showed the retry countdown surface.
+- The inline repair panel title read "USB route unavailable".
+- The inline repair panel body read "The Android-to-Mac route is unavailable. Keep the USB data cable connected, accept the debugging prompt on this device, then run USB repair from the Mac app. If it still fails, confirm no other Mac app is using TCP 54321, restart Vibe Screen on the Mac, and retry."
+- The checklist showed Developer mode ready, USB debugging ready, USB data link ready, and Mac server not ready.
+
+Interpretation:
+- This is current-base P0110 evidence that the Android disconnected/no-host USB state presents actionable recovery copy without exposing raw adb commands.
+- It does not prove Android/macOS product E2E, macOS TCC denial behavior, physical USB disconnect handling, LAN recovery, stale epoch rejection, or a successful Host-side USB repair.
+- The README Phase 1 actionable-errors gate remains open.

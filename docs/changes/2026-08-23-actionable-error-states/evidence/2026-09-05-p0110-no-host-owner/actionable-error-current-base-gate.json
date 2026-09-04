@@ -1,0 +1,201 @@
+{
+  "blocked_state_ids": [
+    "accessibility_denied_or_limited",
+    "android-clipboard-policy-deny",
+    "android-codec-negotiation-failed",
+    "android-file-transfer-policy-deny",
+    "android-internet-webrtc-disconnected",
+    "android-managed-policy-deny",
+    "android-unsupported-peripheral-kind",
+    "host_screen_recording_denied",
+    "lan_route_unavailable",
+    "tcp_54321_unavailable",
+    "usb_disconnected"
+  ],
+  "can_close_readme_phase1_actionable_errors_gate": false,
+  "derivation_status": "complete",
+  "device_identity": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": "36"
+  },
+  "errors": [],
+  "insufficient_state_ids": [
+    "adb_reverse_missing",
+    "stale_epoch_or_session_errors"
+  ],
+  "interpretation": "A pass means every required Phase 1 actionable-error state has retained current-base real-device evidence from the exact Nubia P0110/pacific Android 16 device, with the ADB serial redacted from public reports, and can close the README actionable-errors gate. Blocked, insufficient, not-run, offline-only, or relabeled evidence cannot close that gate.",
+  "kind": "phase1_actionable_error_current_base_gate",
+  "reasons": [
+    "blocked: accessibility_denied_or_limited",
+    "blocked: android-clipboard-policy-deny",
+    "blocked: android-codec-negotiation-failed",
+    "blocked: android-file-transfer-policy-deny",
+    "blocked: android-internet-webrtc-disconnected",
+    "blocked: android-managed-policy-deny",
+    "blocked: android-unsupported-peripheral-kind",
+    "blocked: host_screen_recording_denied",
+    "blocked: lan_route_unavailable",
+    "blocked: tcp_54321_unavailable",
+    "blocked: usb_disconnected",
+    "insufficient: adb_reverse_missing",
+    "insufficient: stale_epoch_or_session_errors"
+  ],
+  "required_state_ids": [
+    "host_screen_recording_denied",
+    "accessibility_denied_or_limited",
+    "tcp_54321_unavailable",
+    "adb_reverse_missing",
+    "usb_disconnected",
+    "lan_route_unavailable",
+    "stale_epoch_or_session_errors",
+    "android-internet-webrtc-disconnected",
+    "android-codec-negotiation-failed",
+    "android-managed-policy-deny",
+    "android-unsupported-peripheral-kind",
+    "android-file-transfer-policy-deny",
+    "android-clipboard-policy-deny"
+  ],
+  "run_id": "2026-09-05-p0110-no-host-owner",
+  "schema_version": "vibescreen.evidence/v1",
+  "source": {
+    "collected_at_commit": "ed3b336408c6d2c3aec9e382d037aafd536fb61a",
+    "evaluated_at_commit": "ed3b336408c6d2c3aec9e382d037aafd536fb61a",
+    "manifest": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/actionable-error-current-base.json",
+    "repository_name": "TaoSama/vibe-screen"
+  },
+  "state_results": [
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This run intentionally did not launch the macOS Host or mutate Screen Recording/TCC state"
+      ],
+      "can_close_state": false,
+      "id": "host_screen_recording_denied",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This run intentionally did not launch the macOS Host or mutate Accessibility/TCC state"
+      ],
+      "can_close_state": false,
+      "id": "accessibility_denied_or_limited",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 4,
+      "blockers": [
+        "The Android screenshot proves no-host user guidance, but this run did not collect a Host-side listener or port-conflict proof"
+      ],
+      "can_close_state": false,
+      "id": "tcp_54321_unavailable",
+      "observed_on_device": true,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 4,
+      "blockers": [
+        "The run captured actionable Android recovery copy with no tcp:54321 reverse, but it did not exercise Host-side USB repair or a successful product reconnection"
+      ],
+      "can_close_state": false,
+      "id": "adb_reverse_missing",
+      "observed_on_device": true,
+      "status": "insufficient"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "A physical USB disconnect would drop the only ADB control channel, and no external capture was collected"
+      ],
+      "can_close_state": false,
+      "id": "usb_disconnected",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 3,
+      "blockers": [
+        "No trusted-LAN route/UI attempt was run during the no-host USB evidence collection"
+      ],
+      "can_close_state": false,
+      "id": "lan_route_unavailable",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [],
+      "can_close_state": false,
+      "id": "stale_epoch_or_session_errors",
+      "observed_on_device": false,
+      "status": "not_run"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "id": "android-internet-webrtc-disconnected",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "id": "android-codec-negotiation-failed",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "id": "android-managed-policy-deny",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "id": "android-unsupported-peripheral-kind",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "id": "android-file-transfer-policy-deny",
+      "observed_on_device": false,
+      "status": "blocked"
+    },
+    {
+      "artifact_count": 2,
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "id": "android-clipboard-policy-deny",
+      "observed_on_device": false,
+      "status": "blocked"
+    }
+  ],
+  "verdict": "blocked"
+}

@@ -10,6 +10,7 @@ class SessionFailureTest {
         assertTrue(SessionFailure.transport("eof").retryable)
         assertTrue(SessionFailure.heartbeat("timeout").retryable)
         assertTrue(SessionFailure.write("broken pipe").retryable)
+        assertTrue(SessionFailure.hostNotRunning().retryable)
     }
 
     @Test

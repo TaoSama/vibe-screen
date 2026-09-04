@@ -1,0 +1,15 @@
+ed3b336408c6d2c3aec9e382d037aafd536fb61a
+codex/actionable-error-states-no-host-20260905
+## codex/actionable-error-states-no-host-20260905...origin/main
+ M baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionGuidance.kt
+ M baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SessionFailure.kt
+ M baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt
+ M baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ActionableErrorDriftTest.kt
+ M baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt
+ M baseline/AndroidClient/app/src/test/java/dev/telemachus/display/SessionFailureTest.kt
+ M docs/changes/2026-08-23-actionable-error-states/actionable-error-states.json
+ M tools/tests/test_actionable_error_current_base.py
+ M tools/tests/test_actionable_error_states.py
+ M tools/vibescreen_evidence/actionable_error_current_base.py
+ M tools/vibescreen_evidence/actionable_error_states.py
+?? docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/

@@ -12,16 +12,29 @@
       "system_state": "USB client reaches a peer route, but the Mac app closes before display configuration or the Protocol v1 upgrade probe closes before a response.",
       "failed_layer": "USB transport / Mac listener",
       "source_classifier": "ConnectionGuidanceFactory.hostNotRunning from pre-display rejection or closed protocol probe",
-      "android_session_failure_kinds": [],
+      "android_session_failure_kinds": ["HOST_NOT_RUNNING"],
       "ui_surface": "USB inline connection guidance panel",
       "user_visible_copy": "connection_guidance_mac_unavailable_title plus connection_guidance_usb_open_mac_prefix and the active ADB recovery resource",
       "user_action": "Open Vibe Screen on the Mac, keep the chosen USB debugging transport authorized, use the Mac app's USB repair action if needed, then retry.",
+      "android_guidance_contract": {
+        "context": "usb",
+        "sample_failure": {
+          "source": "session_failure",
+          "kind": "HOST_NOT_RUNNING",
+          "message": "Mac connection closed before display configuration"
+        },
+        "kind": "HOST_NOT_RUNNING",
+        "status_resource": "connection_guidance_mac_unavailable_title",
+        "message_resource": "connection_guidance_usb_recovery_usb",
+        "message_prefix_resource": "connection_guidance_usb_open_mac_prefix",
+        "recovery_button_action": "connectButton.try_again"
+      },
       "retry_behavior": "bounded_auto_retry",
       "offline_evidence": [
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
         "docs/runbook/android-client.md#actionable-failure-checks"
       ],
-      "device_evidence_status": "device-covered",
+      "device_evidence_status": "open",
       "gate_status": "covered-offline",
       "readme_gate_closure": false
     },

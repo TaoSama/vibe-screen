@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import dev.telemachus.display.protocol.ProtocolUpgrade
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -383,6 +384,107 @@ class StreamClientCancellationTest {
         }
 
     @Test
+    fun legacyFallbackFreshSocketClosedBeforeDisplayReportsHostNotRunningFailure() =
+        runBlocking {
+            val failures = mutableListOf<SessionFailure>()
+            val first = LegacyProbeTimeoutSocket()
+            val second = ProtocolProbeClosedSocket()
+            val sockets = listOf(first, second).iterator()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = 54321,
+                    socketFactory = { sockets.next() },
+                ).apply {
+                    onSessionEnded = { failures += it }
+                }
+
+            try {
+                client.connect()
+                fail("Expected fresh legacy fallback socket close")
+            } catch (expected: SessionProtocolException) {
+                assertEquals(SessionFailureKind.HOST_NOT_RUNNING, expected.failure.kind)
+                assertEquals(HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL, expected.failure.detail)
+            }
+
+            assertEquals(SessionFailureKind.HOST_NOT_RUNNING, failures.single().kind)
+            assertEquals(HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL, failures.single().detail)
+        }
+
+    @Test
+    fun protocolProbeClosedBeforeResponseReportsHostNotRunningFailure() =
+        runBlocking {
+            val failures = mutableListOf<SessionFailure>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = 54321,
+                    socketFactory = { ProtocolProbeClosedSocket() },
+                ).apply {
+                    onSessionEnded = { failures += it }
+                }
+
+            try {
+                client.connect()
+                fail("Expected protocol probe close failure")
+            } catch (expected: SessionProtocolException) {
+                assertEquals(SessionFailureKind.HOST_NOT_RUNNING, expected.failure.kind)
+                assertEquals(HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL, expected.message)
+            }
+
+            assertEquals(SessionFailureKind.HOST_NOT_RUNNING, failures.single().kind)
+            assertEquals(HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL, failures.single().detail)
+        }
+
+    @Test
+    fun postConnectReadFailurePreservesRecordedTransportFailure() =
+        runBlocking {
+            val failures = mutableListOf<SessionFailure>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = 54321,
+                    socketFactory = { UsbV1ReadFailureSocket("display stream reset") },
+                ).apply {
+                    onSessionEnded = { failures += it }
+                }
+
+            try {
+                client.connect()
+                fail("Expected post-connect transport failure")
+            } catch (expected: SessionProtocolException) {
+                assertEquals(SessionFailureKind.TRANSPORT_CLOSED, expected.failure.kind)
+                assertEquals("display stream reset", expected.failure.detail)
+            }
+
+            assertEquals(SessionFailureKind.TRANSPORT_CLOSED, failures.single().kind)
+            assertEquals("display stream reset", failures.single().detail)
+        }
+
+    @Test
+    fun wirelessProtocolProbeClosedBeforeResponseReportsHostNotRunningFailure() =
+        runBlocking {
+            val failures = mutableListOf<SessionFailure>()
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = 54321,
+                    socketFactory = { WirelessProtocolProbeClosedSocket() },
+                ).apply {
+                    onSessionEnded = { failures += it }
+                }
+
+            client.connectWireless(
+                token = ByteArray(32),
+                deviceName = "test-device",
+                allowPlaintextLegacyFallback = true,
+            )
+
+            assertEquals(SessionFailureKind.HOST_NOT_RUNNING, failures.single().kind)
+            assertEquals(HOST_NOT_RUNNING_PROTOCOL_PROBE_CLOSED_DETAIL, failures.single().detail)
+        }
+
+    @Test
     fun disconnectCancelsPendingWirelessHandshake() =
         runBlocking {
             ServerSocket(0).use { server ->
@@ -731,6 +833,78 @@ class StreamClientCancellationTest {
             object : InputStream() {
                 override fun read(): Int {
                     throw java.net.SocketTimeoutException("protocol probe timed out")
+                }
+            }
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) = Unit
+
+        override fun getOutputStream(): OutputStream = output
+
+        override fun getInputStream(): InputStream = input
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private class ProtocolProbeClosedSocket : Socket() {
+        private val output = ByteArrayOutputStream()
+        private val input =
+            object : InputStream() {
+                override fun read(): Int = -1
+            }
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) = Unit
+
+        override fun getOutputStream(): OutputStream = output
+
+        override fun getInputStream(): InputStream = input
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private class UsbV1ReadFailureSocket(
+        private val failureMessage: String,
+    ) : Socket() {
+        private val output = ByteArrayOutputStream()
+        private val input =
+            object : InputStream() {
+                private val prefix =
+                    byteArrayOf(
+                        ProtocolUpgrade.OFFER.toByte(),
+                        ProtocolUpgrade.ACK_VERSION.toByte(),
+                    )
+                private var index = 0
+
+                override fun read(): Int {
+                    if (index < prefix.size) return prefix[index++].toInt() and 0xff
+                    throw IOException(failureMessage)
+                }
+            }
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) = Unit
+
+        override fun getOutputStream(): OutputStream = output
+
+        override fun getInputStream(): InputStream = input
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private class WirelessProtocolProbeClosedSocket : Socket() {
+        private val output = ByteArrayOutputStream()
+        private val input =
+            object : InputStream() {
+                private val handshake = byteArrayOf(0x53, 0x53, 0x57, 0x52, 0x00)
+                private var index = 0
+
+                override fun read(): Int {
+                    if (index < handshake.size) return handshake[index++].toInt() and 0xff
+                    return -1
                 }
             }
 

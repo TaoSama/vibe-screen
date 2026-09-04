@@ -91,6 +91,7 @@ VALID_ARTIFACT_KINDS = frozenset(
         "adb_reverse",
         "host_listener",
         "android_ui_dump",
+        "android_screenshot",
         "android_logcat",
         "android_private_diag",
         "lan_route_preflight",

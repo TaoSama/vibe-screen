@@ -24,7 +24,7 @@ EVIDENCE_DIR = (
     / "changes"
     / "2026-08-23-actionable-error-states"
     / "evidence"
-    / "2026-08-24-p0110-current-base-owner"
+    / "2026-09-05-p0110-no-host-owner"
 )
 MANIFEST_PATH = EVIDENCE_DIR / "actionable-error-current-base.json"
 MODULE = "vibescreen_evidence.actionable_error_current_base"
@@ -80,6 +80,7 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(set(report["required_state_ids"]), set(REQUIRED_STATE_IDS))
         self.assertIn("host_screen_recording_denied", report["blocked_state_ids"])
         self.assertIn("tcp_54321_unavailable", report["blocked_state_ids"])
+        self.assertIn("usb_disconnected", report["blocked_state_ids"])
         self.assertTrue(
             {
                 "android-internet-webrtc-disconnected",
@@ -121,6 +122,10 @@ class ActionableErrorCurrentBaseGateTests(unittest.TestCase):
         )
         self.assertNotIn(
             "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-24-p0110-current-base-owner/usb-host-not-listening.png",
+            paths,
+        )
+        self.assertIn(
+            "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/no-host-usb-screen.png",
             paths,
         )
 

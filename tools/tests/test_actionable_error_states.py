@@ -141,11 +141,15 @@ class ActionableErrorStateGateTests(unittest.TestCase):
         matrix = self.load_real_matrix()
         states = matrix["states"]
         assert isinstance(states, list)
-        contracts = {
-            state["contract"]["code"]: state
-            for state in states
-            if isinstance(state, dict) and isinstance(state.get("contract"), dict)
-        }
+        contracts = {}
+        for state in states:
+            if not isinstance(state, dict):
+                continue
+            contract = state.get("contract")
+            if isinstance(contract, dict):
+                contracts[contract["code"]] = state
+            elif "android_guidance_contract" in state:
+                contracts[state["id"]] = state
 
         self.assertEqual(
             set(REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES).difference(contracts),

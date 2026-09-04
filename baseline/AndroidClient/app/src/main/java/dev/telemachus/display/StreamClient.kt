@@ -425,9 +425,7 @@ class StreamClient(
                 )
                 receiveData()
                 if (!protocolSessionOwner.isReady && !protocolSessionOwner.stopRequested) {
-                    val failure = protocolSessionOwner.lastTerminationFailure
-                    if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
-                    throw IOException("Mac connection closed before display configuration")
+                    throw SessionProtocolException(startupFailureOrHostNotRunning())
                 }
             } catch (e: SessionProtocolException) {
                 Log.e(TAG, "Session protocol failure", e)
@@ -437,26 +435,40 @@ class StreamClient(
                 Log.e(TAG, "❌ Connection error", e)
                 val terminalFailure =
                     if (!protocolSessionOwner.isReady && initialSocketConnected && e.isInitialTransportFailure()) {
-                        SessionFailure.transport("Mac connection closed before display configuration")
+                        SessionFailure.hostNotRunning()
                     } else {
                         SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                     }
                 completeConnectionEndNow(terminalFailure)
                 if (!protocolSessionOwner.isReady && !protocolSessionOwner.stopRequested) {
-                    val failure = protocolSessionOwner.lastTerminationFailure
-                    if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     if (!initialSocketConnected && e.isInitialTransportFailure()) throw e
-                    throw IOException("Mac connection closed before display configuration", e)
+                    val failure = protocolSessionOwner.lastTerminationFailure
+                    if (failure != null) throw SessionProtocolException(failure)
+                    throw SessionProtocolException(SessionFailure.hostNotRunning())
                 }
             }
         }
+
+    private fun startupFailureOrHostNotRunning(
+        failure: SessionFailure? = protocolSessionOwner.lastTerminationFailure,
+    ): SessionFailure {
+        if (failure != null) return failure
+        return SessionFailure.hostNotRunning()
+    }
+
+    private fun classifyStartupTransportFailure(failure: SessionFailure): SessionFailure {
+        if (protocolSessionOwner.isReady || wireMode != WireMode.LEGACY) return failure
+        if (failure.kind != SessionFailureKind.TRANSPORT_CLOSED) return failure
+        return SessionFailure.hostNotRunning()
+    }
 
     private fun Throwable.isInitialTransportFailure(): Boolean =
         this is ConnectException ||
             this is NoRouteToHostException ||
             this is SocketTimeoutException ||
             this is UnknownHostException ||
-            message.orEmpty().contains("before display configuration")
+            message.orEmpty().contains("before display configuration") ||
+            message.orEmpty().contains(HOST_NOT_RUNNING_PROTOCOL_PROBE_CLOSED_DETAIL)
 
     sealed class WirelessConnectError(
         msg: String,
@@ -668,7 +680,13 @@ class StreamClient(
                         }
                         true
                     } catch (error: IOException) {
-                        completeConnectionEndNow(SessionFailure.write(error.message ?: "wireless session startup failed"))
+                        val failure =
+                            if (error.isInitialTransportFailure()) {
+                                SessionFailure.hostNotRunning(error.message ?: HOST_NOT_RUNNING_BEFORE_DISPLAY_CONFIGURATION_DETAIL)
+                            } else {
+                                SessionFailure.write(error.message ?: "wireless session startup failed")
+                            }
+                        completeConnectionEndNow(failure)
                         false
                     } catch (error: CancellationException) {
                         cancelWirelessStartup(error)
@@ -746,7 +764,7 @@ class StreamClient(
             if (firstByte == null) {
                 UpgradeProbeOutcome.TimedOut
             } else if (firstByte < 0) {
-                throw IOException("Protocol upgrade probe closed before a response")
+                throw IOException(HOST_NOT_RUNNING_PROTOCOL_PROBE_CLOSED_DETAIL)
             } else {
                 when (val result = ProtocolUpgrade.classify(firstByte, input)) {
                     ProtocolUpgrade.Result.V1 -> UpgradeProbeOutcome.V1Acknowledged
@@ -1199,9 +1217,11 @@ class StreamClient(
                 throw SessionProtocolException(checkNotNull(terminalFailure))
             } catch (e: IOException) {
                 terminalFailure =
-                    pendingInboundFailure.get()
-                        ?: pendingDecoderFailure.get()
-                        ?: SessionFailure.transport(e.message ?: e.javaClass.simpleName)
+                    classifyStartupTransportFailure(
+                        pendingInboundFailure.get()
+                            ?: pendingDecoderFailure.get()
+                            ?: SessionFailure.transport(e.message ?: e.javaClass.simpleName),
+                    )
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
                 if (protocolSessionOwner.isConnected) {

@@ -1,0 +1,493 @@
+{
+  "can_close_readme_phase1_actionable_errors_gate": false,
+  "created_at": "2026-09-05T00:20:00+08:00",
+  "device": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": "36"
+  },
+  "evidence_boundary": "Current-base P0110 no-host USB owner record. It captures Android disconnected-state recovery copy with no tcp:54321 reverse and no macOS Host launch, and intentionally cannot close Android/macOS product E2E or the README Phase 1 actionable-errors gate.",
+  "kind": "phase1_actionable_error_current_base",
+  "notes": [
+    "This manifest is a current-base owner record for Android no-host actionable error guidance, not a closing acceptance record.",
+    "The macOS Host GUI was not launched and no TCC or adb reverse mutation was performed.",
+    "The README Phase 1 actionable-errors gate remains open until every required state has retained current-base device evidence and the manifest explicitly claims closure."
+  ],
+  "repository": {
+    "baseline": "origin/main",
+    "branch": "codex/actionable-error-states-no-host-20260905",
+    "collected_at_commit": "ed3b336408c6d2c3aec9e382d037aafd536fb61a",
+    "evaluated_at_commit": "ed3b336408c6d2c3aec9e382d037aafd536fb61a",
+    "name": "TaoSama/vibe-screen",
+    "notes": [
+      "Worktree was rebased onto latest origin/main before collection was re-run.",
+      "Android debug APK was built from this source and installed on the recorded device.",
+      "The main repository dirty detached worktree was not modified."
+    ]
+  },
+  "run_id": "2026-09-05-p0110-no-host-owner",
+  "schema_version": "vibescreen.evidence/v1",
+  "states": [
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This run intentionally did not launch the macOS Host or mutate Screen Recording/TCC state"
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_blocked",
+      "closure_requirements": [
+        "Stable-signed Host run with Screen Recording denied or stale for the exact installed bundle",
+        "Retained Host readiness log or alert text naming the Screen Recording blocker",
+        "Android connection UI/log evidence showing the resulting user-facing recovery path without closing the stream gate"
+      ],
+      "id": "host_screen_recording_denied",
+      "notes": [
+        "No TCC mutation or permission prompt was attempted for this no-host Android owner record."
+      ],
+      "observed_on_device": false,
+      "owner": "macOS Host permission runbook and future TCC-denied Host log/device UI evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This run intentionally did not launch the macOS Host or mutate Accessibility/TCC state"
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_blocked",
+      "closure_requirements": [
+        "Stable-signed Host run with Accessibility denied, limited, or stale for the exact installed bundle",
+        "Retained Host readiness log or alert text naming the Accessibility blocker",
+        "Device-side evidence that streaming state and input/window actions remain correctly classified"
+      ],
+      "id": "accessibility_denied_or_limited",
+      "notes": [
+        "No Accessibility grant, reset, or prompt was attempted for this no-host Android owner record."
+      ],
+      "observed_on_device": false,
+      "owner": "macOS Host permission runbook and future Accessibility-denied Host log/device UI evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Read-only adb reverse --list output showing no tcp:54321 mapping before the no-host USB observation.",
+          "kind": "adb_reverse",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/adb-reverse-readonly.txt",
+          "sha256": "0df0cfc750b5fcf5f86013e0983c6088f728e1bc1cec3e9cd5db02beff8b3ba4"
+        },
+        {
+          "description": "P0110 screenshot of the USB no-host state showing USB route unavailable recovery copy and Mac server not ready.",
+          "kind": "android_screenshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/no-host-usb-screen.png",
+          "sha256": "766432cf974ee72a574720aaaefda6d215a6ef7a5a2279e068f329adab133e65"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "The Android screenshot proves no-host user guidance, but this run did not collect a Host-side listener or port-conflict proof"
+      ],
+      "can_close_state": false,
+      "classification": "no_host_product_path_observed_without_host_listener_proof",
+      "closure_requirements": [
+        "Retained Host-not-listening or port-conflict evidence paired with the exact Android user-facing error UI",
+        "Proof that bounded retry does not become a successful stream without a listener",
+        "A closing run must be collected on current source after the Host/UI surface under test is selected"
+      ],
+      "id": "tcp_54321_unavailable",
+      "notes": [
+        "No macOS Host process was launched or stopped; the screenshot is kept as Android no-host UI evidence only."
+      ],
+      "observed_on_device": true,
+      "owner": "Android USB connection guidance and Host listener readiness evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Redacted Nubia P0110 / pacific / Android 16 / SDK 36 identity captured through adb getprop.",
+          "kind": "device_identity",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/device-identity.txt",
+          "sha256": "8f536a0664f44fc330a68d9d6bcd47f3bdca73ecbdc559fc2d1b7ce60e739472"
+        },
+        {
+          "description": "Read-only adb reverse --list output showing no tcp:54321 mapping before the no-host USB observation.",
+          "kind": "adb_reverse",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/adb-reverse-readonly.txt",
+          "sha256": "0df0cfc750b5fcf5f86013e0983c6088f728e1bc1cec3e9cd5db02beff8b3ba4"
+        },
+        {
+          "description": "P0110 screenshot of the USB no-host state showing USB route unavailable recovery copy and Mac server not ready.",
+          "kind": "android_screenshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/no-host-usb-screen.png",
+          "sha256": "766432cf974ee72a574720aaaefda6d215a6ef7a5a2279e068f329adab133e65"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "The run captured actionable Android recovery copy with no tcp:54321 reverse, but it did not exercise Host-side USB repair or a successful product reconnection"
+      ],
+      "can_close_state": false,
+      "classification": "current_device_observed_no_host_usb_guidance",
+      "closure_requirements": [
+        "Controlled run that removes or omits tcp:54321 reverse mapping under a held device lease",
+        "Retained before/after adb reverse --list output and Android user-facing recovery surface",
+        "Proof that the Host recreates the reverse rule or presents a concrete manual recovery action"
+      ],
+      "id": "adb_reverse_missing",
+      "notes": [
+        "The retained screenshot shows USB route unavailable, TCP 54321, Mac app USB repair, restart Vibe Screen on the Mac, and Mac server not ready.",
+        "The collection did not configure adb reverse; the only reverse command was read-only adb reverse --list."
+      ],
+      "observed_on_device": true,
+      "owner": "Android USB transport and Host ADB reverse recovery evidence",
+      "status": "insufficient"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Redacted Nubia P0110 / pacific / Android 16 / SDK 36 identity captured through adb getprop.",
+          "kind": "device_identity",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/device-identity.txt",
+          "sha256": "8f536a0664f44fc330a68d9d6bcd47f3bdca73ecbdc559fc2d1b7ce60e739472"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "A physical USB disconnect would drop the only ADB control channel, and no external capture was collected"
+      ],
+      "can_close_state": false,
+      "classification": "unsafe_to_observe_with_adb_only",
+      "closure_requirements": [
+        "External camera or independent observer record of the Android USB-disconnected UI after cable removal",
+        "Host log showing USB disconnect classification and bounded recovery",
+        "Proof the ADB serial and device identity are restored after reconnect"
+      ],
+      "id": "usb_disconnected",
+      "notes": [
+        "No cable pull was performed for this current-base record."
+      ],
+      "observed_on_device": false,
+      "owner": "Android USB disconnected surface and Host transport recovery evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Redacted Nubia P0110 / pacific / Android 16 / SDK 36 identity captured through adb getprop.",
+          "kind": "device_identity",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/device-identity.txt",
+          "sha256": "8f536a0664f44fc330a68d9d6bcd47f3bdca73ecbdc559fc2d1b7ce60e739472"
+        },
+        {
+          "description": "Prior sanitized P0110 LAN-route boundary reused only to preserve fail-closed LAN status for this owner record.",
+          "kind": "lan_route_preflight",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-30-p0110-current-base-owner/lan-route-readonly-sanitized.txt",
+          "sha256": "e59d8ee7e0be7082fd5908f9a50bd73971abc8b8e8614525a8ea04f2a53fa3d0"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "No trusted-LAN route/UI attempt was run during the no-host USB evidence collection"
+      ],
+      "can_close_state": false,
+      "classification": "current_environment_blocked",
+      "closure_requirements": [
+        "Retained trusted-LAN preflight JSON or equivalent sanitized artifacts with no device Wi-Fi route",
+        "Android LAN user-facing recovery surface for the same attempt",
+        "Separate encrypted LAN stream/reconnect evidence before any reconnect acceptance claim"
+      ],
+      "id": "lan_route_unavailable",
+      "notes": [
+        "The prior sanitized LAN route boundary is referenced only to keep this state fail-closed."
+      ],
+      "observed_on_device": false,
+      "owner": "Trusted-LAN preflight and Android connection guidance evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [],
+      "can_close_state": false,
+      "classification": "no_protocol_v1_stream_or_epoch_fault",
+      "closure_requirements": [
+        "Protocol v1 stream with retained accepted epoch/session identity",
+        "Injected or naturally observed stale epoch/session message after disconnect, reconnect, or display renegotiation",
+        "Android and Host logs proving stale media/input/control delivery was rejected without rendering old frames or accepting old input"
+      ],
+      "id": "stale_epoch_or_session_errors",
+      "notes": [
+        "No Protocol v1 stream or stale epoch/session fault was available in this no-host run."
+      ],
+      "observed_on_device": false,
+      "owner": "Protocol v1 session/epoch rejection and Android stale-delivery UI/log evidence",
+      "status": "not_run"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "classification": "feature_specific_runtime_not_exercised_in_no_host_usb_run",
+      "closure_requirements": [
+        "Dedicated current-base Android device run that triggers this state through the product surface",
+        "Retained user-visible recovery copy and logs for the same attempt",
+        "Evidence boundary that does not use offline tests or unrelated no-host screenshots as product acceptance"
+      ],
+      "id": "android-internet-webrtc-disconnected",
+      "notes": [
+        "The offline matrix covers this state, but the current-base owner record keeps runtime acceptance open."
+      ],
+      "observed_on_device": false,
+      "owner": "Feature-specific Android actionable-error runtime evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "classification": "feature_specific_runtime_not_exercised_in_no_host_usb_run",
+      "closure_requirements": [
+        "Dedicated current-base Android device run that triggers this state through the product surface",
+        "Retained user-visible recovery copy and logs for the same attempt",
+        "Evidence boundary that does not use offline tests or unrelated no-host screenshots as product acceptance"
+      ],
+      "id": "android-codec-negotiation-failed",
+      "notes": [
+        "The offline matrix covers this state, but the current-base owner record keeps runtime acceptance open."
+      ],
+      "observed_on_device": false,
+      "owner": "Feature-specific Android actionable-error runtime evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "classification": "feature_specific_runtime_not_exercised_in_no_host_usb_run",
+      "closure_requirements": [
+        "Dedicated current-base Android device run that triggers this state through the product surface",
+        "Retained user-visible recovery copy and logs for the same attempt",
+        "Evidence boundary that does not use offline tests or unrelated no-host screenshots as product acceptance"
+      ],
+      "id": "android-managed-policy-deny",
+      "notes": [
+        "The offline matrix covers this state, but the current-base owner record keeps runtime acceptance open."
+      ],
+      "observed_on_device": false,
+      "owner": "Feature-specific Android actionable-error runtime evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "classification": "feature_specific_runtime_not_exercised_in_no_host_usb_run",
+      "closure_requirements": [
+        "Dedicated current-base Android device run that triggers this state through the product surface",
+        "Retained user-visible recovery copy and logs for the same attempt",
+        "Evidence boundary that does not use offline tests or unrelated no-host screenshots as product acceptance"
+      ],
+      "id": "android-unsupported-peripheral-kind",
+      "notes": [
+        "The offline matrix covers this state, but the current-base owner record keeps runtime acceptance open."
+      ],
+      "observed_on_device": false,
+      "owner": "Feature-specific Android actionable-error runtime evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "classification": "feature_specific_runtime_not_exercised_in_no_host_usb_run",
+      "closure_requirements": [
+        "Dedicated current-base Android device run that triggers this state through the product surface",
+        "Retained user-visible recovery copy and logs for the same attempt",
+        "Evidence boundary that does not use offline tests or unrelated no-host screenshots as product acceptance"
+      ],
+      "id": "android-file-transfer-policy-deny",
+      "notes": [
+        "The offline matrix covers this state, but the current-base owner record keeps runtime acceptance open."
+      ],
+      "observed_on_device": false,
+      "owner": "Feature-specific Android actionable-error runtime evidence",
+      "status": "blocked"
+    },
+    {
+      "artifacts": [
+        {
+          "description": "Feature worktree current-base repository snapshot for the 2026-09-05 no-host owner record.",
+          "kind": "repository_snapshot",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/repository-current-base.txt",
+          "sha256": "0d5b8ba8099dd6cb89bc018073b2eff1b79bd5249fcc4d95e918bc7b3b2b1c11"
+        },
+        {
+          "description": "Operator note binding the screenshot observation to the no-Host/no-TCC/no-adb-reverse-mutation collection boundary.",
+          "kind": "operator_note",
+          "path": "docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner/operator-note.txt",
+          "sha256": "388259854bd715f5667f04c30bcd8e5086e28818854d973653e7963ef13fee24"
+        }
+      ],
+      "blockers": [
+        "This no-host USB run did not exercise the feature-specific runtime state"
+      ],
+      "can_close_state": false,
+      "classification": "feature_specific_runtime_not_exercised_in_no_host_usb_run",
+      "closure_requirements": [
+        "Dedicated current-base Android device run that triggers this state through the product surface",
+        "Retained user-visible recovery copy and logs for the same attempt",
+        "Evidence boundary that does not use offline tests or unrelated no-host screenshots as product acceptance"
+      ],
+      "id": "android-clipboard-policy-deny",
+      "notes": [
+        "The offline matrix covers this state, but the current-base owner record keeps runtime acceptance open."
+      ],
+      "observed_on_device": false,
+      "owner": "Feature-specific Android actionable-error runtime evidence",
+      "status": "blocked"
+    }
+  ]
+}

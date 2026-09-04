@@ -240,6 +240,7 @@ class ConnectionGuidanceTest {
                 SessionFailure.heartbeat("heartbeat timeout") to ConnectionFailureKind.TIMEOUT,
                 SessionFailure.transport("pipe broken") to ConnectionFailureKind.UNKNOWN,
                 SessionFailure.write("write failed") to ConnectionFailureKind.UNKNOWN,
+                SessionFailure.hostNotRunning() to ConnectionFailureKind.HOST_NOT_RUNNING,
                 SessionFailure.serverShutdown() to ConnectionFailureKind.UNKNOWN,
                 SessionFailure.userRequested() to ConnectionFailureKind.UNKNOWN,
                 SessionFailure(SessionFailureKind.OUTBOUND_BACKPRESSURE, "queue full", retryable = true) to
@@ -583,6 +584,7 @@ class ConnectionGuidanceTest {
             SessionFailureKind.HEARTBEAT_TIMEOUT -> SessionFailure.heartbeat(detail)
             SessionFailureKind.WRITE_FAILED -> SessionFailure.write(detail)
             SessionFailureKind.CODEC_CONFIGURATION -> SessionFailure.codec(detail)
+            SessionFailureKind.HOST_NOT_RUNNING -> SessionFailure.hostNotRunning(detail)
             SessionFailureKind.SERVER_SHUTDOWN -> SessionFailure.serverShutdown()
             SessionFailureKind.USER_REQUESTED -> SessionFailure.userRequested()
             SessionFailureKind.OUTBOUND_BACKPRESSURE ->
