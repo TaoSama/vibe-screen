@@ -44,9 +44,10 @@ at `/Applications/Vibe Screen.app` with bundle id `dev.telemachus.display`, the
 pinned signing leaf SHA-1
 `9AAE572BF6D764E3436A6109197D345B5A87998C`, clean source provenance
 (`VibeScreenSourceDirty=false` with matching source commit/tree), Screen
-Recording and Accessibility permissions for that exact app identity, a Host
-listener on the transport under test, an active selected display stream, and
-Protocol v1 keyboard plus USB HID modifier-byte capability negotiation.
+Recording, Accessibility, and Microphone permissions for that exact app
+identity, a Host listener on the transport under test, an active selected
+display stream, and Protocol v1 keyboard plus USB HID modifier-byte capability
+negotiation.
 
 ## Readiness Bundle
 

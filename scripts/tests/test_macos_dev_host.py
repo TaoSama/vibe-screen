@@ -29,13 +29,65 @@ SOURCE_TREE = "b" * 40
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MACOS_DEV_HOST_SOURCE = REPOSITORY_ROOT / "scripts" / "macos_dev_host.py"
 MAKEFILE = REPOSITORY_ROOT / "Makefile"
+HOST_REQUIREMENT = (
+    'identifier "dev.telemachus.display" and certificate leaf = '
+    'H"9aae572bf6d764e3436a6109197d345b5a87998c"'
+)
+MISMATCHED_REQUIREMENT = (
+    'identifier "dev.telemachus.display" and certificate leaf = '
+    'H"0123456789abcdef0123456789abcdef01234567"'
+)
+REORDERED_HOST_REQUIREMENT = (
+    'certificate leaf = H"9AAE572BF6D764E3436A6109197D345B5A87998C" '
+    'and identifier dev.telemachus.display'
+)
+FIXTURE_CSREQ_SHA256 = "0" * 64
+HOST_CSREQ_BLOB = bytes.fromhex(
+    "fade0c0000000050000000010000000600000002000000166465762e74656c656d616368"
+    "75732e646973706c617900000000000400000000000000149aae572bf6d764e3436a610"
+    "9197d345b5a87998c"
+)
+MISMATCHED_CSREQ_BLOB = b"mismatched-test-csreq"
 
 
-def allowed_tcc_rows() -> tuple[macos_dev_host.TCCRow, ...]:
+def allowed_tcc_rows(requirement: str | None = HOST_REQUIREMENT) -> tuple[macos_dev_host.TCCRow, ...]:
+    normalized_requirement = macos_dev_host.normalize_requirement_text(requirement)
+    csreq_sha256 = FIXTURE_CSREQ_SHA256 if requirement is not None else None
+    csreq_error = None if requirement is not None else "missing TCC csreq"
     return (
-        macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
-        macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
-        macos_dev_host.TCCRow("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 3),
+        macos_dev_host.TCCRow(
+            "kTCCServiceScreenCapture",
+            "dev.telemachus.display",
+            0,
+            2,
+            4,
+            1,
+            csreq_sha256,
+            normalized_requirement,
+            csreq_error,
+        ),
+        macos_dev_host.TCCRow(
+            "kTCCServiceAccessibility",
+            "dev.telemachus.display",
+            0,
+            2,
+            4,
+            2,
+            csreq_sha256,
+            normalized_requirement,
+            csreq_error,
+        ),
+        macos_dev_host.TCCRow(
+            "kTCCServiceMicrophone",
+            "dev.telemachus.display",
+            0,
+            2,
+            4,
+            3,
+            csreq_sha256,
+            normalized_requirement,
+            csreq_error,
+        ),
     )
 
 
@@ -583,6 +635,53 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         )
 
         self.assertEqual(errors, [])
+
+    def test_validate_preflight_rejects_tcc_grant_for_mismatched_requirement(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(),
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(MISMATCHED_REQUIREMENT),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        joined = "\n".join(errors)
+        self.assertIn("Screen Recording TCC authorization is not bound", joined)
+        self.assertIn("Accessibility TCC authorization is not bound", joined)
+        self.assertIn("Microphone TCC authorization is not bound", joined)
+
+    def test_validate_preflight_accepts_semantically_matching_tcc_requirement(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(),
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(REORDERED_HOST_REQUIREMENT),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_validate_preflight_rejects_tcc_grant_without_csreq(self) -> None:
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(),
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(None),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        joined = "\n".join(errors)
+        self.assertIn("TCC authorization is not bound", joined)
+        self.assertIn("missing TCC csreq", joined)
 
     def test_validate_preflight_rejects_source_mismatch(self) -> None:
         errors = macos_dev_host.validate_preflight(
@@ -1978,6 +2077,42 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         ):
             self.assertFalse(document["safety"][key], key)
 
+    def test_readiness_document_reports_tcc_identity_binding_state(self) -> None:
+        inspection = macos_dev_host.HostInspection(
+            metadata=self.metadata(),
+            source_identity=macos_dev_host.package_macos.SourceIdentity(
+                commit="a" * 40,
+                tree="b" * 40,
+                dirty=False,
+            ),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(MISMATCHED_REQUIREMENT),
+            ),
+            errors=["Screen Recording TCC authorization is not bound"],
+        )
+
+        document = macos_dev_host.build_readiness_document(
+            inspection,
+            macos_dev_host.ListenerStatus(port=54321, observed=True, output="Vibe Screen LISTEN"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=True,
+                keys=(macos_dev_host.VIRTUAL_HID_ENTITLEMENT,),
+                raw_output="",
+            ),
+            *self.login_ready_inputs(),
+        )
+
+        self.assertEqual(document["status"], "blocked")
+        self.assertTrue(document["permissions"]["screen_recording_granted"])
+        self.assertTrue(document["permissions"]["accessibility_granted"])
+        self.assertTrue(document["permissions"]["microphone_granted"])
+        self.assertFalse(document["permissions"]["screen_recording_identity_bound"])
+        self.assertFalse(document["permissions"]["accessibility_identity_bound"])
+        self.assertFalse(document["permissions"]["microphone_identity_bound"])
+
     def test_readiness_document_default_skips_login_item_probe(self) -> None:
         inspection = macos_dev_host.HostInspection(
             metadata=self.metadata(),
@@ -3092,6 +3227,22 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
 
 
 class MacOSDevHostTCCTests(unittest.TestCase):
+    @staticmethod
+    def mock_csreq_decoder():
+        original = macos_dev_host.run_best_effort
+
+        def fake_run_best_effort(*args: str, timeout_seconds: int = 10) -> tuple[int, str]:
+            if len(args) == 4 and args[0] == "/usr/bin/csreq" and args[1] == "-r" and args[3] == "-t":
+                payload = Path(args[2]).read_bytes()
+                if payload == HOST_CSREQ_BLOB:
+                    return 0, HOST_REQUIREMENT
+                if payload == MISMATCHED_CSREQ_BLOB:
+                    return 0, MISMATCHED_REQUIREMENT
+                return 1, "invalid csreq"
+            return original(*args, timeout_seconds=timeout_seconds)
+
+        return mock.patch.object(macos_dev_host, "run_best_effort", side_effect=fake_run_best_effort)
+
     def test_run_best_effort_reports_missing_command_without_throwing(self) -> None:
         with mock.patch.object(
             macos_dev_host.subprocess,
@@ -3137,13 +3288,35 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                 ],
             )
 
-            status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
+            with self.mock_csreq_decoder():
+                status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
 
             self.assertTrue(status.readable)
             self.assertEqual(len(status.rows), 3)
             self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
             self.assertTrue(status.is_allowed((macos_dev_host.ACCESSIBILITY_SERVICE,)))
             self.assertTrue(status.is_allowed(macos_dev_host.MICROPHONE_SERVICES))
+            self.assertTrue(status.has_matching_requirement(macos_dev_host.SCREEN_CAPTURE_SERVICES, HOST_REQUIREMENT))
+            self.assertEqual(status.rows[0].csreq_requirement, macos_dev_host.normalize_requirement_text(HOST_REQUIREMENT))
+            self.assertEqual(status.rows[0].csreq_sha256, macos_dev_host.hashlib.sha256(HOST_CSREQ_BLOB).hexdigest())
+
+    def test_query_tcc_rows_retains_mismatched_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            database_path = root / PRIVACY_DB_FILENAME
+            self.write_tcc_database(
+                database_path,
+                [("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 10, MISMATCHED_CSREQ_BLOB)],
+            )
+
+            with self.mock_csreq_decoder():
+                status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
+
+        row = status.latest_row(macos_dev_host.SCREEN_CAPTURE_SERVICES)
+        self.assertIsNotNone(row)
+        self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
+        self.assertFalse(status.has_matching_requirement(macos_dev_host.SCREEN_CAPTURE_SERVICES, HOST_REQUIREMENT))
+        self.assertEqual(row.csreq_requirement, macos_dev_host.normalize_requirement_text(MISMATCHED_REQUIREMENT))
 
     def test_tcc_permission_state_uses_latest_row_per_service(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -3160,7 +3333,8 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                 ],
             )
 
-            status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
+            with self.mock_csreq_decoder():
+                status = macos_dev_host.query_tcc_rows("dev.telemachus.display", database_path)
 
         self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
         self.assertFalse(status.is_allowed(macos_dev_host.ACCESSIBILITY_SERVICES))
@@ -3174,6 +3348,8 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                 0,
                 4,
                 40,
+                macos_dev_host.hashlib.sha256(HOST_CSREQ_BLOB).hexdigest(),
+                macos_dev_host.normalize_requirement_text(HOST_REQUIREMENT),
             ),
         )
 
@@ -3602,7 +3778,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertNotIn("Accessibility is not authorized", joined_errors)
         self.assertNotIn("Microphone is not authorized", joined_errors)
 
-    def test_query_tcc_database_accepts_schema_without_optional_columns(self) -> None:
+    def test_query_tcc_database_fails_closed_without_csreq_column(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
             connection = sqlite3.connect(database_path)
@@ -3632,6 +3808,14 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertEqual(status.rows[0].auth_value, 2)
         self.assertIsNone(status.rows[0].auth_reason)
         self.assertIsNone(status.rows[0].last_modified)
+        self.assertEqual(status.rows[0].csreq_error, "missing TCC csreq")
+        self.assertFalse(status.has_matching_requirement(macos_dev_host.SCREEN_CAPTURE_SERVICES, HOST_REQUIREMENT))
+        errors = macos_dev_host.validate_preflight(
+            MacOSDevHostMetadataTests.metadata(),
+            status,
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+        )
+        self.assertIn("missing TCC csreq", "\n".join(errors))
 
     def test_query_tcc_database_times_out_instead_of_hanging(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -3758,7 +3942,10 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertIn("RuntimeError('simulated worker failure')", payload)
 
     @staticmethod
-    def write_tcc_database(path: Path, rows: list[tuple[str, str, int, int, int, int]]) -> None:
+    def write_tcc_database(
+        path: Path,
+        rows: list[tuple[str, str, int, int, int, int] | tuple[str, str, int, int, int, int, bytes | None]],
+    ) -> None:
         connection = sqlite3.connect(path)
         try:
             connection.execute(
@@ -3769,11 +3956,13 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                   client_type INTEGER,
                   auth_value INTEGER,
                   auth_reason INTEGER,
-                  last_modified INTEGER
+                  last_modified INTEGER,
+                  csreq BLOB
                 )
                 """
             )
-            connection.executemany("INSERT INTO access VALUES (?, ?, ?, ?, ?, ?)", rows)
+            normalized_rows = [row if len(row) == 7 else (*row, HOST_CSREQ_BLOB) for row in rows]
+            connection.executemany("INSERT INTO access VALUES (?, ?, ?, ?, ?, ?, ?)", normalized_rows)
             connection.commit()
         finally:
             connection.close()

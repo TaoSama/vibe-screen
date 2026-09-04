@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -106,6 +107,9 @@ class TCCRow:
     auth_value: int | None
     auth_reason: int | None
     last_modified: int | None
+    csreq_sha256: str | None = None
+    csreq_requirement: str | None = None
+    csreq_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +128,10 @@ class PermissionStatus:
     def is_allowed(self, services: tuple[str, ...]) -> bool:
         row = self.latest_row(services)
         return row is not None and row.auth_value == ALLOWED_AUTH_VALUE
+
+    def has_matching_requirement(self, services: tuple[str, ...], requirement: str | None) -> bool:
+        row = self.latest_row(services)
+        return row is not None and tcc_row_requirement_matches(row, requirement)
 
     def allowed_state(self, services: tuple[str, ...]) -> bool | None:
         if not self.readable:
@@ -470,6 +478,55 @@ def redact_network_endpoints(value: str) -> str:
         return "<redacted-ipv4>" + (match.group(2) or "")
 
     return IPV4_ENDPOINT_RE.sub(replace, value)
+
+
+def normalize_requirement_text(requirement: str | None) -> str | None:
+    if requirement is None:
+        return None
+    normalized = " ".join(requirement.strip().split())
+    return normalized.lower() if normalized else None
+
+
+def csreq_binary_to_requirement(blob: bytes | memoryview | None) -> tuple[str | None, str | None]:
+    if blob is None:
+        return None, "missing TCC csreq"
+    payload = bytes(blob)
+    if not payload:
+        return None, "empty TCC csreq"
+    with tempfile.NamedTemporaryFile(prefix="vibe-screen-tcc-csreq-", suffix=".bin") as csreq_file:
+        csreq_file.write(payload)
+        csreq_file.flush()
+        exit_code, output = run_best_effort(
+            "/usr/bin/csreq",
+            "-r",
+            csreq_file.name,
+            "-t",
+            timeout_seconds=TCC_QUERY_TIMEOUT_SECONDS,
+        )
+    if exit_code != 0:
+        detail = redact_local_report_text(output.strip()) if output.strip() else "csreq returned no detail"
+        return None, f"cannot decode TCC csreq: {detail}"
+    normalized = normalize_requirement_text(output)
+    if normalized is None:
+        return None, "decoded TCC csreq was empty"
+    return normalized, None
+
+
+def tcc_row_requirement_matches(row: TCCRow, requirement: str | None) -> bool:
+    expected = normalize_requirement_text(requirement)
+    if expected is None or row.csreq_error is not None or row.csreq_requirement is None:
+        return False
+    if row.csreq_requirement == expected:
+        return True
+    try:
+        row_contract = package_macos.parse_designated_requirement_contract(row.csreq_requirement)
+        expected_contract = package_macos.parse_designated_requirement_contract(expected)
+    except ValueError:
+        return False
+    return (
+        row_contract.identifier == expected_contract.identifier
+        and row_contract.leaf_sha1 == expected_contract.leaf_sha1
+    )
 
 
 def parse_defaults_output(output: str) -> dict[str, str]:
@@ -1097,29 +1154,36 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
                 )
             auth_reason = "auth_reason" if "auth_reason" in columns else "NULL AS auth_reason"
             last_modified = "last_modified" if "last_modified" in columns else "NULL AS last_modified"
+            csreq = "csreq" if "csreq" in columns else "NULL AS csreq"
             services = (*SCREEN_CAPTURE_SERVICES, ACCESSIBILITY_SERVICE, MICROPHONE_SERVICE)
             placeholders = ",".join("?" for _ in services)
             cursor = connection.execute(
                 f"""
-                SELECT service, client, client_type, auth_value, {auth_reason}, {last_modified}
+                SELECT service, client, client_type, auth_value, {auth_reason}, {last_modified}, {csreq}
                 FROM access
                 WHERE client = ? AND client_type = 0 AND service IN ({placeholders})
                 ORDER BY service, last_modified
                 """,
                 (bundle_id, *services),
             )
-            rows = tuple(
-                TCCRow(
-                    service=str(row[0]),
-                    client=str(row[1]),
-                    client_type=int(row[2]),
-                    auth_value=None if row[3] is None else int(row[3]),
-                    auth_reason=None if row[4] is None else int(row[4]),
-                    last_modified=None if row[5] is None else int(row[5]),
+            rows: list[TCCRow] = []
+            for row in cursor.fetchall():
+                csreq_blob = None if row[6] is None else bytes(row[6])
+                requirement, csreq_error = csreq_binary_to_requirement(csreq_blob)
+                rows.append(
+                    TCCRow(
+                        service=str(row[0]),
+                        client=str(row[1]),
+                        client_type=int(row[2]),
+                        auth_value=None if row[3] is None else int(row[3]),
+                        auth_reason=None if row[4] is None else int(row[4]),
+                        last_modified=None if row[5] is None else int(row[5]),
+                        csreq_sha256=hashlib.sha256(csreq_blob).hexdigest() if csreq_blob else None,
+                        csreq_requirement=requirement,
+                        csreq_error=csreq_error,
+                    )
                 )
-                for row in cursor.fetchall()
-            )
-            return PermissionStatus(database_path=report_label, rows=rows, readable=True)
+            return PermissionStatus(database_path=report_label, rows=tuple(rows), readable=True)
         finally:
             connection.close()
     except sqlite3.Error as error:
@@ -1167,12 +1231,18 @@ def validate_preflight(
     elif permissions.error:
         errors.append(f"cannot fully verify TCC permissions read-only: {permissions.error}")
     else:
-        if not permissions.is_allowed(SCREEN_CAPTURE_SERVICES):
-            errors.append("Screen Recording is not authorized for the installed Host")
-        if not permissions.is_allowed(ACCESSIBILITY_SERVICES):
-            errors.append("Accessibility is not authorized for the installed Host")
-        if not permissions.is_allowed(MICROPHONE_SERVICES):
-            errors.append("Microphone is not authorized for the installed Host")
+        for label, services in (
+            ("Screen Recording", SCREEN_CAPTURE_SERVICES),
+            ("Accessibility", ACCESSIBILITY_SERVICES),
+            ("Microphone", MICROPHONE_SERVICES),
+        ):
+            row = permissions.latest_row(services)
+            if row is None or row.auth_value != ALLOWED_AUTH_VALUE:
+                errors.append(f"{label} is not authorized for the installed Host")
+                continue
+            if not tcc_row_requirement_matches(row, metadata.designated_requirement):
+                detail = row.csreq_error or "TCC csreq does not match installed Host designated requirement"
+                errors.append(f"{label} TCC authorization is not bound to the installed Host identity: {detail}")
     return errors
 
 
@@ -1269,7 +1339,15 @@ def value_or_missing(value: int | None) -> str:
 
 
 def format_permission_row(row: TCCRow) -> str:
-    return f"{row.service}|{row.client}|{row.client_type}|{value_or_missing(row.auth_value)}|{value_or_missing(row.auth_reason)}|{value_or_missing(row.last_modified)}"
+    csreq_hash = row.csreq_sha256 or "missing"
+    csreq_requirement = row.csreq_requirement or "missing"
+    csreq_error = row.csreq_error or "none"
+    return (
+        f"{row.service}|{row.client}|{row.client_type}|"
+        f"{value_or_missing(row.auth_value)}|{value_or_missing(row.auth_reason)}|"
+        f"{value_or_missing(row.last_modified)}|csreq_sha256={csreq_hash}|"
+        f"csreq_requirement={csreq_requirement}|csreq_error={csreq_error}"
+    )
 
 
 def permission_interpretation(permissions: PermissionStatus) -> str:
@@ -1355,7 +1433,7 @@ Verification: {verification}
 Read-only TCC capture
 ---------------------
 Database: {permissions.database_path}
-Field order: service|client|client_type|auth_value|auth_reason|last_modified
+Field order: service|client|client_type|auth_value|auth_reason|last_modified|csreq_sha256|csreq_requirement|csreq_error
 {rows}
 
 Interpretation: {permission_interpretation(permissions)}
@@ -1653,7 +1731,7 @@ def inspect_host_without_throwing(
     return HostInspection(metadata, source_identity, permissions, errors)
 
 
-def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
+def permission_record(permissions: PermissionStatus, host_requirement: str | None = None) -> dict[str, Any]:
     return {
         "database_path": str(permissions.database_path),
         "readable": permissions.readable,
@@ -1661,6 +1739,21 @@ def permission_record(permissions: PermissionStatus) -> dict[str, Any]:
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
         "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
         "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
+        "screen_recording_identity_bound": (
+            permissions.has_matching_requirement(SCREEN_CAPTURE_SERVICES, host_requirement)
+            if permissions.readable
+            else None
+        ),
+        "accessibility_identity_bound": (
+            permissions.has_matching_requirement(ACCESSIBILITY_SERVICES, host_requirement)
+            if permissions.readable
+            else None
+        ),
+        "microphone_identity_bound": (
+            permissions.has_matching_requirement(MICROPHONE_SERVICES, host_requirement)
+            if permissions.readable
+            else None
+        ),
         "rows": [row.__dict__ for row in permissions.rows],
     }
 
@@ -1887,7 +1980,10 @@ def build_readiness_document(
         "can_close_runtime_gates": not blockers,
         "blockers": blockers,
         "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
-        "permissions": permission_record(inspection.permissions),
+        "permissions": permission_record(
+            inspection.permissions,
+            inspection.metadata.designated_requirement if inspection.metadata else None,
+        ),
         "tcc_identity_binding": tcc_identity_binding_record(),
         "listener": {
             "port": listener.port,

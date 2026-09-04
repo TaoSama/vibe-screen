@@ -555,6 +555,31 @@ func bodyStartsWithExitCall(_ bodyLines: [String]) -> Bool {
     return index < characters.count && characters[index] == "("
 }
 
+func bodyStartsWithExitFailureCall(_ bodyLines: [String]) -> Bool {
+    let body = bodyLines.joined(separator: "\n")
+    let characters = maskedForSwiftTrivia(body)
+    var index = 0
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    guard matchesToken("exit", at: index, in: characters) else { return false }
+    index += "exit".count
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    guard index < characters.count, characters[index] == "(" else { return false }
+    index += 1
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    guard matchesToken("EXIT_FAILURE", at: index, in: characters) else { return false }
+    index += "EXIT_FAILURE".count
+    while index < characters.count, isWhitespace(characters[index]) {
+        index += 1
+    }
+    return index < characters.count && characters[index] == ")"
+}
+
 func bodyContainsBreak(_ bodyLines: [String]) -> Bool {
     let body = bodyLines.joined(separator: "\n")
     let characters = maskedForSwiftTrivia(body)
@@ -594,8 +619,8 @@ func verifyLaunchModeSwitchContract(source: String, context: String) throws {
         case .rejected:
             foundRejectedCase = true
             try require(
-                bodyStartsWithExitCall(switchCase.bodyLines),
-                "\(context) .rejected must immediately call exit(...)"
+                bodyStartsWithExitFailureCall(switchCase.bodyLines),
+                "\(context) .rejected must immediately call exit(EXIT_FAILURE)"
             )
             try require(
                 !bodyContainsBreak(switchCase.bodyLines),
@@ -675,6 +700,18 @@ func verifyLaunchModeSwitchFixtures() throws {
     }
     """#
     try requireStaticFixtureFails(commandBreak, context: "command break fixture")
+
+    let rejectedSuccess = #"""
+    switch commandLine.launchMode {
+    case .command(.hostSelfTest):
+        exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+    case .rejected:
+        exit(EXIT_SUCCESS)
+    case .gui:
+        break
+    }
+    """#
+    try requireStaticFixtureFails(rejectedSuccess, context: "rejected success fixture")
 
     let defaultBreak = #"""
     switch commandLine.launchMode {

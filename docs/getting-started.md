@@ -131,8 +131,7 @@ On first authorization for a new machine or a missing TCC row:
 1. use **System Settings → Privacy & Security** to add and grant
    `/Applications/Vibe Screen.app` for Screen Recording;
 2. grant Accessibility to the same app bundle if touch control is required;
-3. grant Microphone to the same app bundle only when testing Host microphone
-   capture;
+3. grant Microphone to the same app bundle;
 4. quit Vibe Screen after macOS records the grants;
 5. rerun `make baseline-macos-host-preflight`, then use
    `make baseline-macos-launch` for the guarded launch path;
