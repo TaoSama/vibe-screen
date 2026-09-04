@@ -1114,6 +1114,9 @@ class MainActivity : AppCompatActivity() {
             handleTouch(view, event)
             true
         }
+        binding.inputViewport.setOnHoverListener { view, event ->
+            handleGenericMotion(view, event)
+        }
         binding.inputViewport.setOnGenericMotionListener { view, event ->
             handleGenericMotion(view, event)
         }
@@ -1198,37 +1201,41 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val point = mapInputPoint(view, event.x, event.y)
+        val nativePointerAction = NativeInputWire.pointerAction(event.actionMasked)
         val nativePointerInput =
-            when (event.actionMasked) {
-                MotionEvent.ACTION_HOVER_MOVE, MotionEvent.ACTION_MOVE ->
+            when (nativePointerAction) {
+                ClientPointerAction.MOVE,
+                ClientPointerAction.HOVER_ENTER,
+                ClientPointerAction.HOVER_EXIT,
+                ->
                     ClientPointerInput(
-                        ClientPointerAction.MOVE,
+                        nativePointerAction,
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
                     )
 
-                MotionEvent.ACTION_BUTTON_PRESS ->
+                ClientPointerAction.BUTTON_PRESS ->
                     ClientPointerInput(
-                        ClientPointerAction.BUTTON_PRESS,
-                        point.x,
-                        point.y,
-                        buttonState = event.buttonState,
-                        actionButton = event.actionButton,
-                    )
-
-                MotionEvent.ACTION_BUTTON_RELEASE ->
-                    ClientPointerInput(
-                        ClientPointerAction.BUTTON_RELEASE,
+                        nativePointerAction,
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
                         actionButton = event.actionButton,
                     )
 
-                MotionEvent.ACTION_SCROLL ->
+                ClientPointerAction.BUTTON_RELEASE ->
                     ClientPointerInput(
-                        ClientPointerAction.SCROLL,
+                        nativePointerAction,
+                        point.x,
+                        point.y,
+                        buttonState = event.buttonState,
+                        actionButton = event.actionButton,
+                    )
+
+                ClientPointerAction.SCROLL ->
+                    ClientPointerInput(
+                        nativePointerAction,
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
@@ -1236,7 +1243,7 @@ class MainActivity : AppCompatActivity() {
                         verticalScroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL),
                     )
 
-                else -> null
+                null -> null
             }
         if (nativePointerInput != null) {
             val sessionBinding = currentSessionBinding()
@@ -6291,7 +6298,8 @@ class MainActivity : AppCompatActivity() {
 
         override fun sendPointer(input: ClientPointerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
-            val buttonMask = NativeInputWire.buttonMask(input.buttonState)
+            val observedButtonMask = NativeInputWire.buttonMask(input.buttonState)
+            val buttonMask = NativeInputWire.outboundButtonMask(input.action, input.buttonState)
             val changedButtonMask = NativeInputWire.buttonMask(input.actionButton)
             val admitted =
                 when (input.action) {
@@ -6302,7 +6310,7 @@ class MainActivity : AppCompatActivity() {
                         )
 
                     else -> {
-                        val phase = NativeInputWire.pointerPhase(input.action, buttonMask, changedButtonMask) ?: return false
+                        val phase = NativeInputWire.pointerPhase(input.action, observedButtonMask, changedButtonMask) ?: return false
                         client.sendPointer(
                             phase = phase,
                             x = input.x,

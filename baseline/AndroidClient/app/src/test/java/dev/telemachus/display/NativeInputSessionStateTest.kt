@@ -42,6 +42,47 @@ class NativeInputSessionStateTest {
     }
 
     @Test
+    fun hoverPointerSamplesDoNotAccumulatePendingRelease() {
+        val state = NativeInputSessionState<TestClient>()
+        val client = TestClient("current")
+        state.admit(client, 9)
+
+        assertTrue(state.recordPointer(client, 9, x = 0.2f, y = 0.3f, buttonMask = 0))
+        assertTrue(state.recordPointer(client, 9, x = 0.8f, y = 0.9f, buttonMask = 0))
+
+        assertTrue(state.takeRelease(client, 9)?.isEmpty == true)
+    }
+
+    @Test
+    fun hoverExitClearsHeldPointerBeforeLaterReleaseSynthesis() {
+        val state = NativeInputSessionState<TestClient>()
+        val client = TestClient("current")
+        state.admit(client, 10)
+
+        assertTrue(state.recordPointer(client, 10, x = 0.4f, y = 0.5f, buttonMask = NativeInputWire.BUTTON_PRIMARY))
+        assertTrue(state.recordPointer(client, 10, x = 0.6f, y = 0.7f, buttonMask = 0))
+
+        assertTrue(state.takeRelease(client, 10)?.isEmpty == true)
+    }
+
+    @Test
+    fun unsupportedButtonTransitionsDoNotOverwriteTrackedSupportedPress() {
+        val state = NativeInputSessionState<TestClient>()
+        val client = TestClient("current")
+        state.admit(client, 11)
+
+        assertTrue(state.recordPointer(client, 11, x = 0.4f, y = 0.5f, buttonMask = NativeInputWire.BUTTON_PRIMARY))
+
+        assertEquals(
+            NativeInputReleasePlan(
+                pressedKeyUsages = emptyList(),
+                pointer = NativePointerSnapshot(0.4f, 0.5f),
+            ),
+            state.takeRelease(client, 11),
+        )
+    }
+
+    @Test
     fun `stale owner cannot mutate drain or discard replacement`() {
         val state = NativeInputSessionState<TestClient>()
         val reusedClient = TestClient("reused")

@@ -122,6 +122,21 @@ class MainActivityControllerForwardingContractTest {
     }
 
     @Test
+    fun nativePointerMotionUsesSharedWireActionMappingIncludingHoverBoundaries() {
+        val source = mainActivitySource()
+        val genericMotion = extractMethod(source, "private fun handleGenericMotion")
+        val sink = extractClass(source, "private inner class StreamClientInputSink")
+
+        assertContains(source, "binding.inputViewport.setOnHoverListener { view, event ->")
+        assertContains(genericMotion, "val nativePointerAction = NativeInputWire.pointerAction(event.actionMasked)")
+        assertContains(genericMotion, "ClientPointerAction.HOVER_EXIT")
+        assertBefore(genericMotion, "val nativePointerAction = NativeInputWire.pointerAction(event.actionMasked)", "ClientInputDispatch(sessionBinding).sendPointer")
+        assertContains(sink, "val observedButtonMask = NativeInputWire.buttonMask(input.buttonState)")
+        assertContains(sink, "val buttonMask = NativeInputWire.outboundButtonMask(input.action, input.buttonState)")
+        assertBefore(sink, "NativeInputWire.pointerPhase(input.action, observedButtonMask, changedButtonMask)", "buttonMask = buttonMask")
+    }
+
+    @Test
     fun touchEventsAreDroppedBeforeAnyTransportDispatchWhenBackgrounded() {
         val source = mainActivitySource()
         val touchHandler = extractMethod(source, "private fun handleTouch")

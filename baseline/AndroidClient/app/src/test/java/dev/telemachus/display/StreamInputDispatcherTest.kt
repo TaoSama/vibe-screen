@@ -213,6 +213,44 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun nativeHoverMoveUsesMoveBatchWithoutButtons() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true),
+            recorder = recorder,
+            firstInputId = 41,
+        )
+
+        assertTrue(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.25f, 0.75f, 0))
+
+        val submission = recorder.single()
+        assertEquals(OutboundCommandScheduler.Kind.MOVE, submission.kind)
+        val pointer = submission.protocolEnvelopes(streamingSession(Capability.CAPABILITY_POINTER)).single().pointerEvent
+        assertEquals(41L, pointer.inputId)
+        assertEquals(InputPhase.INPUT_PHASE_CHANGED, pointer.phase)
+        assertEquals(0, pointer.buttonMask)
+    }
+
+    @Test
+    fun nativeHoverExitUsesTerminalBatchWithoutButtons() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true),
+            recorder = recorder,
+            firstInputId = 42,
+        )
+
+        assertTrue(dispatcher.sendPointer(InputPhase.INPUT_PHASE_ENDED, 0.25f, 0.75f, 0))
+
+        val submission = recorder.single()
+        assertEquals(OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH, submission.kind)
+        val pointer = submission.protocolEnvelopes(streamingSession(Capability.CAPABILITY_POINTER)).single().pointerEvent
+        assertEquals(42L, pointer.inputId)
+        assertEquals(InputPhase.INPUT_PHASE_ENDED, pointer.phase)
+        assertEquals(0, pointer.buttonMask)
+    }
+
+    @Test
     fun controllerConnectWaitsForAckBeforeStateResync() {
         val recorder = RecordingSubmitter()
         val tracker = ControllerConnectionAckTracker()

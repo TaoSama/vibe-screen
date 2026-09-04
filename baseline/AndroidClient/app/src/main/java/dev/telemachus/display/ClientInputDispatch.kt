@@ -2,6 +2,8 @@ package dev.telemachus.display
 
 internal enum class ClientPointerAction {
     MOVE,
+    HOVER_ENTER,
+    HOVER_EXIT,
     BUTTON_PRESS,
     BUTTON_RELEASE,
     SCROLL,

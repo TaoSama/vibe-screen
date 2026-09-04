@@ -11,6 +11,8 @@ class ClientInputDispatchTest {
 
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.MOVE)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.HOVER_ENTER)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.HOVER_EXIT)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_PRESS)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
@@ -32,6 +34,8 @@ class ClientInputDispatchTest {
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = false)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.MOVE)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.HOVER_ENTER)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.HOVER_EXIT)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_PRESS)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
@@ -49,13 +53,27 @@ class ClientInputDispatchTest {
         dispatch.sendKey(key(pressed = true))
         dispatch.sendKey(key(pressed = false))
         dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_PRESS))
+        dispatch.sendPointer(pointer(ClientPointerAction.HOVER_ENTER))
+        dispatch.sendPointer(pointer(ClientPointerAction.MOVE))
+        dispatch.sendPointer(pointer(ClientPointerAction.HOVER_EXIT))
         dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE))
         dispatch.sendPointer(pointer(ClientPointerAction.SCROLL))
         dispatch.sendController(controller())
         dispatch.sendPeripheral(peripheral())
 
         assertEquals(
-            listOf("key-down", "key-up", "BUTTON_PRESS", "BUTTON_RELEASE", "SCROLL", "STRUCTURAL", "vendor-device"),
+            listOf(
+                "key-down",
+                "key-up",
+                "BUTTON_PRESS",
+                "HOVER_ENTER",
+                "MOVE",
+                "HOVER_EXIT",
+                "BUTTON_RELEASE",
+                "SCROLL",
+                "STRUCTURAL",
+                "vendor-device",
+            ),
             received,
         )
     }
