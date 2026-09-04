@@ -166,8 +166,10 @@ make file-transfer-bulk-current-base-gate \
 The aggregate consumes existing child gate reports only. The Android USB/LAN side
 is the `file-transfer-android-smoke` gate; the Internet side is
 `phase3-webrtc-bulk-product-flow`. Missing child reports produce blocked
-placeholders. The aggregate does not run ADB, start the macOS Host, or inspect
-TCC/Keychain state, so it is safe to run as an offline current-base summary.
+placeholders, and wrong-kind or incomplete child reports stay blocked even when
+they include pass-like fields. The aggregate does not run ADB, start the macOS
+Host, or inspect TCC/Keychain state, so it is safe to run as an offline
+current-base summary.
 
 USB/LAN file-transfer acceptance still requires a retained real-device package
 with device identity, signed/TCC-authorized Host readiness, Protocol v1

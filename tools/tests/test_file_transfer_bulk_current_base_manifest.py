@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from vibescreen_evidence import SCHEMA_VERSION
+from vibescreen_evidence.manifest import ManifestError
 from vibescreen_evidence.file_transfer_bulk_current_base_manifest import (
     ANDROID_CHILD_ID,
     SOURCE_DOCS,
@@ -40,6 +41,12 @@ def child_gate(kind: str, flag: str, *, verdict: str = "pass") -> dict[str, obje
         "blockers": [] if verdict == "pass" else ["still blocked"],
         "not_proven": [] if verdict == "pass" else ["product evidence"],
     }
+
+
+def pass_child_gate(kind: str, flag: str, **overrides: object) -> dict[str, object]:
+    document = child_gate(kind, flag, verdict="pass")
+    document.update(overrides)
+    return document
 
 
 class FileTransferBulkCurrentBaseManifestTests(unittest.TestCase):
@@ -99,32 +106,198 @@ class FileTransferBulkCurrentBaseManifestTests(unittest.TestCase):
             webrtc = root / "webrtc-bulk-product-flow-gate.json"
             write_json(
                 android,
-                {
-                    "kind": "android_macos_file_transfer_smoke",
-                    "verdict": "pass",
-                    "result": "pass",
-                    "gate_closed": True,
-                    "can_close_file_transfer_android_smoke_gate": True,
-                    "blockers": [],
-                    "not_proven": [],
-                },
+                pass_child_gate(
+                    "android_macos_file_transfer_smoke",
+                    "can_close_file_transfer_android_smoke_gate",
+                    result="pass",
+                ),
             )
             write_json(
                 webrtc,
-                {
-                    "kind": "phase3_webrtc_bulk_product_flow_gate",
-                    "verdict": "pass",
-                    "gate_closed": True,
-                    "can_close_public_internet_bulk_product_flow_gate": True,
-                    "blockers": [],
-                    "not_proven": [],
-                },
+                pass_child_gate(
+                    "phase3_webrtc_bulk_product_flow_gate",
+                    "can_close_public_internet_bulk_product_flow_gate",
+                ),
             )
 
             manifest = build_manifest(command=[], repo=root, android_gate=android, webrtc_gate=webrtc)
 
         self.assertTrue(manifest["child_gates"][ANDROID_CHILD_ID]["can_close"])
         self.assertTrue(manifest["child_gates"][WEBRTC_CHILD_ID]["can_close"])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_wrong_child_gate_kind_cannot_close_even_with_pass_flag(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            android = root / "clipboard-gate-misfiled-as-file-transfer.json"
+            write_json(
+                android,
+                pass_child_gate(
+                    "android_macos_clipboard_e2e_gate",
+                    "can_close_file_transfer_android_smoke_gate",
+                ),
+            )
+
+            manifest = build_manifest(command=[], repo=root, android_gate=android)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertTrue(child["present"])
+        self.assertFalse(child["can_close"])
+        self.assertIn("kind mismatch", " ".join(child["blockers"]))
+        self.assertIn("Real Android USB", child["not_proven"][0])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_pass_child_gate_with_blockers_cannot_close(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            android = root / "file-transfer-android-smoke-gate.json"
+            write_json(
+                android,
+                pass_child_gate(
+                    "android_macos_file_transfer_smoke",
+                    "can_close_file_transfer_android_smoke_gate",
+                    blockers=["contradictory blocker"],
+                ),
+            )
+
+            manifest = build_manifest(command=[], repo=root, android_gate=android)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertFalse(child["can_close"])
+        self.assertIn("contradictory blocker", child["blockers"])
+        self.assertIn("pass but still lists blockers", " ".join(child["blockers"]))
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_pass_child_gate_with_not_proven_cannot_close(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            webrtc = root / "webrtc-bulk-product-flow-gate.json"
+            write_json(
+                webrtc,
+                pass_child_gate(
+                    "phase3_webrtc_bulk_product_flow_gate",
+                    "can_close_public_internet_bulk_product_flow_gate",
+                    not_proven=["retained public Internet product evidence"],
+                ),
+            )
+
+            manifest = build_manifest(command=[], repo=root, webrtc_gate=webrtc)
+            child = manifest["child_gates"][WEBRTC_CHILD_ID]
+
+        self.assertFalse(child["can_close"])
+        self.assertIn("retained public Internet product evidence", child["not_proven"])
+        self.assertIn("pass but still lists unproven", " ".join(child["blockers"]))
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_verdict_result_mismatch_cannot_close_child_gate(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            android = root / "file-transfer-android-smoke-gate.json"
+            write_json(
+                android,
+                pass_child_gate(
+                    "android_macos_file_transfer_smoke",
+                    "can_close_file_transfer_android_smoke_gate",
+                    result="fail",
+                ),
+            )
+
+            manifest = build_manifest(command=[], repo=root, android_gate=android)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertFalse(child["can_close"])
+        self.assertIn("verdict/result mismatch", " ".join(child["blockers"]))
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_out_of_bound_child_gate_path_is_blocked_without_reading(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name) / "repo"
+            root.mkdir()
+            make_docs(root)
+            outside = Path(directory_name) / "outside-child-gate.json"
+            write_json(
+                outside,
+                pass_child_gate(
+                    "android_macos_file_transfer_smoke",
+                    "can_close_file_transfer_android_smoke_gate",
+                ),
+            )
+
+            manifest = build_manifest(command=[], repo=root, android_gate=outside)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertFalse(child["present"])
+        self.assertFalse(child["can_close"])
+        self.assertIn("escapes evidence root", " ".join(child["blockers"]))
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_symlink_child_gate_escape_is_blocked_without_reading(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name) / "repo"
+            root.mkdir()
+            make_docs(root)
+            outside = Path(directory_name) / "outside-child-gate.json"
+            write_json(
+                outside,
+                pass_child_gate(
+                    "phase3_webrtc_bulk_product_flow_gate",
+                    "can_close_public_internet_bulk_product_flow_gate",
+                ),
+            )
+            symlink = root / "webrtc-bulk-product-flow-gate.json"
+            symlink.symlink_to(outside)
+
+            manifest = build_manifest(command=[], repo=root, webrtc_gate=symlink)
+            child = manifest["child_gates"][WEBRTC_CHILD_ID]
+
+        self.assertFalse(child["present"])
+        self.assertFalse(child["can_close"])
+        self.assertIn("escapes evidence root", " ".join(child["blockers"]))
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_missing_child_gate_records_requirement_as_not_proven(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            manifest = build_manifest(command=[], repo=root)
+
+        self.assertIn("Real Android USB", manifest["child_gates"][ANDROID_CHILD_ID]["not_proven"][0])
+        self.assertIn("Real macOS and Android", manifest["child_gates"][WEBRTC_CHILD_ID]["not_proven"][0])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_corrupted_child_gate_json_raises_manifest_error(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            bad_json = root / "file-transfer-android-smoke-gate.json"
+            bad_json.write_text("{not valid json", encoding="utf-8")
+
+            with self.assertRaises(ManifestError):
+                build_manifest(command=[], repo=root, android_gate=bad_json)
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_non_dict_child_gate_json_raises_manifest_error(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            array_json = root / "webrtc-bulk-product-flow-gate.json"
+            array_json.write_text("[]", encoding="utf-8")
+
+            with self.assertRaises(ManifestError):
+                build_manifest(command=[], repo=root, webrtc_gate=array_json)
 
     @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
     def test_manifest_matches_schema_required_top_level_fields(self, repository_state) -> None:
@@ -164,6 +337,43 @@ class FileTransferBulkCurrentBaseManifestTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(manifest["command"], ["make", "gate"])
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_cli_rejects_child_gate_outside_output_evidence_root(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            repo = Path(directory_name) / "repo"
+            evidence = Path(directory_name) / "evidence"
+            repo.mkdir()
+            evidence.mkdir()
+            make_docs(repo)
+            outside = Path(directory_name) / "outside-child-gate.json"
+            write_json(
+                outside,
+                pass_child_gate(
+                    "android_macos_file_transfer_smoke",
+                    "can_close_file_transfer_android_smoke_gate",
+                ),
+            )
+            output = evidence / "manifest.json"
+
+            exit_code = main(
+                [
+                    "--repo",
+                    str(repo),
+                    "--output",
+                    str(output),
+                    "--file-transfer-android-smoke-gate",
+                    str(outside),
+                ]
+            )
+            manifest = json.loads(output.read_text(encoding="utf-8"))
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(child["present"])
+        self.assertFalse(child["can_close"])
+        self.assertIn("escapes evidence root", " ".join(child["blockers"]))
 
 
 if __name__ == "__main__":
