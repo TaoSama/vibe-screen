@@ -1,0 +1,13 @@
+PASS device identity matched nubia / P0110 / pacific / Android 16 / SDK 36 in logs/preflight-boundary.txt.
+PASS debug APK built from source revision 5b1b62c1248715e34d43a4d104235dd1cf7c057b with ./gradlew --no-daemon assembleDebug.
+PASS debug APK installed successfully on the selected P0110 device.
+PASS no adb reverse tcp:54321 entry was present before or after the smoke walk.
+PASS no local TCP 54321 listener was observed by lsof during boundary checks.
+PASS no macOS Host, Screen Recording, Accessibility, or TCC path was started or requested by this run.
+PASS USB no-Host retry/error page rendered without process crash: screen-08-after-restart.png shows USB route unavailable, retry control, and Mac server Not ready.
+PASS LAN no-Host page rendered without process crash: screen-09-lan-from-retry.png shows Connect wirelessly and Scan QR Code.
+PASS Internet no-Host page rendered without process crash: screen-10-internet-from-lan.png shows no pairing profile, DIRECT/TURN route policy, and disabled Connect Preview.
+PASS Display settings transfer readiness rendered without process crash: screen-12-settings-transfer-readiness.png and ui-12-settings-transfer-readiness.xml show Clipboard & files waiting for a compatible Mac session.
+PASS Landscape/font-scale stress rendered without process crash: screen-15-landscape-fontscale-1_3.png shows the USB retry/error page at font_scale=1.3 in landscape.
+INFO UIAutomator could not dump the animated USB retry page because the device never reached idle; screenshots and filtered logcat are retained for that dynamic state, and stable settings/Internet XML dumps are retained where available.
+NOT_PROVEN macOS Host readiness, Protocol v1 negotiation, video streaming, input forwarding, clipboard transfer, file-transfer bytes, LAN transport, Internet traversal, reconnect timing, or Xiaomi 13/fuxi behavior.

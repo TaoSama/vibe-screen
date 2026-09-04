@@ -1,0 +1,34 @@
+{
+  "schema_version": "vibescreen.evidence/android-no-host-uiux/v1",
+  "date": "2026-09-05",
+  "branch": "codex/android-no-host-p0110-evidence",
+  "source_revision": "5b1b62c1248715e34d43a4d104235dd1cf7c057b",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "product": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "serial_label": "<redacted-adb-serial>",
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys"
+  },
+  "android_app": {
+    "application_id": "dev.telemachus.display",
+    "activity": "dev.telemachus.display/.MainActivity",
+    "debug_apk": "baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
+    "apk_sha256": "0dd47606300d8b61a8300550e6fcd316ade1b52b87a19ce8dc2ffebe869374a6"
+  },
+  "host_boundary": {
+    "macos_host_started": false,
+    "macos_tcc_exercised": false,
+    "adb_reverse_tcp_54321_created": false,
+    "adb_reverse_tcp_54321_observed": false,
+    "local_tcp_54321_listener_observed": false
+  },
+  "result": {
+    "no_host_ui_smoke_passed": true,
+    "android_only_code_change_required": false,
+    "uiautomator_dynamic_retry_limitation_observed": true
+  }
+}

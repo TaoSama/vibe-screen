@@ -1,0 +1,4 @@
+$ tap visible Display Settings button from Internet screen
+$ focused activity after settings tap
+751:  mCurrentFocus=Window{8a1daaa u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+752:  mFocusedApp=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}

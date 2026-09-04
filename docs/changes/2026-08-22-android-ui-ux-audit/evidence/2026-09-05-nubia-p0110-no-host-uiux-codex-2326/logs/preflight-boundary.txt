@@ -1,0 +1,21 @@
+$ git rev-parse HEAD
+5b1b62c1248715e34d43a4d104235dd1cf7c057b
+$ git status --short --branch
+## codex/android-no-host-p0110-evidence
+?? docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-no-host-uiux-codex-2326/
+$ adb -s <redacted-adb-serial> devices -l
+List of devices attached
+<redacted-adb-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:30
+
+$ adb -s <redacted-adb-serial> shell getprop identity
+ro.product.manufacturer=nubia
+ro.product.model=P0110
+ro.product.device=pacific
+ro.product.name=pacific
+ro.build.version.release=16
+ro.build.version.sdk=36
+ro.build.fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+$ adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN

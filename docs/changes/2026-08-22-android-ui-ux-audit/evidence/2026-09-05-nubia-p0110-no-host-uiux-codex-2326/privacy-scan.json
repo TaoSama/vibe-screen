@@ -1,0 +1,347 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4132,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "2966376add70c68abc32be03b402cb26257d62604fd64f7ecb017109545137c0"
+    },
+    {
+      "bytes": 1860,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "assertions.txt",
+      "result": "pass",
+      "sha256": "6f609cf7ae1df01185925461c794735d887cbf02ad7cc5603bea628fd1f841b8"
+    },
+    {
+      "bytes": 3187,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "d77cecf9a9ce5c249b69afc8735a04ae92e65ab6df409074b605d0a41e552f52"
+    },
+    {
+      "bytes": 36,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/adb-install.txt",
+      "result": "pass",
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    {
+      "bytes": 2985,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/assemble-debug.txt",
+      "result": "pass",
+      "sha256": "e1b5c33eb9489cc59221491d4366461957c23d96139aacab5d68ca440f98b349"
+    },
+    {
+      "bytes": 367,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/final-boundary.txt",
+      "result": "pass",
+      "sha256": "31514be6e4b5c7867335bd673b2ec5a9a4585f8ef76cad3e93fc105a3227bf90"
+    },
+    {
+      "bytes": 4546,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/front-activity-after-restart.txt",
+      "result": "pass",
+      "sha256": "de5f488d089b37790cb67aec2e35cbf9a47933ae883b1b6befcbf4affffbc1ff"
+    },
+    {
+      "bytes": 265,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/internet-capture-command.txt",
+      "result": "pass",
+      "sha256": "199826ad03a52c07613054ed6fdae8d24d5c58b65a35a220ceb6678b5e09cd05"
+    },
+    {
+      "bytes": 257,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/lan-capture-command.txt",
+      "result": "pass",
+      "sha256": "3abbbfc8e80cdef5380b1101c9aa3e59bedf6a826d3e604ab6c36fec7fd54c7f"
+    },
+    {
+      "bytes": 1431492,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/logcat-vibescreen-filtered.txt",
+      "result": "pass",
+      "sha256": "c4a1ef906d34bcec5c5ccb9a0bbf0305c44e3477130e1243c9e556287287b6fb"
+    },
+    {
+      "bytes": 838,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/preflight-boundary.txt",
+      "result": "pass",
+      "sha256": "cc7a425c5aa8ac5a275176c022b199ef42c71af2cf7fc492a1166a361ebb5498"
+    },
+    {
+      "bytes": 285,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/settings-capture-command-2.txt",
+      "result": "pass",
+      "sha256": "79f4b203828ff4cd82130633e8bcf0b987536eea19c455372bd7fab4a54f5adc"
+    },
+    {
+      "bytes": 1560,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/tokens-12-settings-transfer-readiness.txt",
+      "result": "pass",
+      "sha256": "1891148477099a17e19ee72c9614f7e0de3881ec56c8d4149437f2009a45654e"
+    },
+    {
+      "bytes": 2483,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/tokens-13-internet-after-settings.txt",
+      "result": "pass",
+      "sha256": "570f4c8ff4e9cc0ff7cd4e37c09c825b035c2d6acceec7e9ab595029a9957c61"
+    },
+    {
+      "bytes": 56,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/uiautomator-12-settings-transfer-readiness.txt",
+      "result": "pass",
+      "sha256": "0a40ac686651cc81ddb398ad7ef909b0c5d54787379b9861c172cbc52ca11e38"
+    },
+    {
+      "bytes": 56,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/uiautomator-13-internet-after-settings.txt",
+      "result": "pass",
+      "sha256": "4f052b3a492a97a466bc546deac12576e6bdca688163005a7213927c55b5b2af"
+    },
+    {
+      "bytes": 131,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata/apk-sha256.txt",
+      "result": "pass",
+      "sha256": "50188feb394a784d9103a91efb4c0004d32be212d5a7c9a341e4a34652243182"
+    },
+    {
+      "bytes": 1235,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata.json",
+      "result": "pass",
+      "sha256": "48307ec4ce378dcf0fd0767fbebdbbf1d393ecc5c5bd174b557a34dfe439d725"
+    },
+    {
+      "bytes": 250707,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "screenshots/screen-08-after-restart.png",
+      "result": "pass",
+      "sha256": "766432cf974ee72a574720aaaefda6d215a6ef7a5a2279e068f329adab133e65"
+    },
+    {
+      "bytes": 233840,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "screenshots/screen-09-lan-from-retry.png",
+      "result": "pass",
+      "sha256": "88ae9597cc785a68b4b2d12778310f649182e8adf8bcba47c1715bf4d1a59662"
+    },
+    {
+      "bytes": 229732,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "screenshots/screen-10-internet-from-lan.png",
+      "result": "pass",
+      "sha256": "66cebe8f1025f8993330d2a44f4f75a1c7da96948dac5a701a8dc30331fec9e6"
+    },
+    {
+      "bytes": 272279,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "screenshots/screen-12-settings-transfer-readiness.png",
+      "result": "pass",
+      "sha256": "ff7c418aaa7c9066fce406b9b97d5ccf6540c1fae91b19456b7439f5062b03e9"
+    },
+    {
+      "bytes": 221518,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "screenshots/screen-15-landscape-fontscale-1_3.png",
+      "result": "pass",
+      "sha256": "07e6eb528249f2f744bb483aa65625ff3fc4cfca848d4c15125395f78da6bf72"
+    },
+    {
+      "bytes": 4352,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ui-dumps/ui-12-settings-transfer-readiness.xml",
+      "result": "pass",
+      "sha256": "3c31446fa002cfd1a37e8369582cf72938b58cbf45329f9f699d5b2c6cb813dc"
+    },
+    {
+      "bytes": 5845,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "ui-dumps/ui-13-internet-after-settings.xml",
+      "result": "pass",
+      "sha256": "af0d1857f640ce1c1090c9dc36822b1c5cdd66660b367f14579c3e4c23c47fce"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

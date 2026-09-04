@@ -1,0 +1,49 @@
+Stopping: dev.telemachus.display
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: dev.telemachus.display/.MainActivity
+TotalTime: 456
+WaitTime: 460
+Complete
+750:  mCurrentFocus=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+751:  mFocusedApp=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+3:  * Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+6:    topResumedActivity=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+7:    * Hist  #0: ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+8:      packageName=dev.telemachus.display processName=dev.telemachus.display
+10:      app=ProcessRecord{db50fc7 6983:dev.telemachus.display/u0a365 PRSmt{13b78b7 p:0 rp:6983 t:null sa:0 usps:2 sps:2 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}
+11:      Intent { flg=0x10000000 xflg=0x4 cmp=dev.telemachus.display/.MainActivity }
+12:      rootOfTask=true task=Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display}
+13:      taskAffinity=10365:dev.telemachus.display
+14:      mActivityComponent=dev.telemachus.display/.MainActivity
+15:      baseDir=/data/app/~~jl0mKHfwVGF5ua64RY_0CA==/dev.telemachus.display-dJ-kzAPnOGmHU3zhOCqzlg==/base.apk
+16:      dataDir=/data/user/0/dev.telemachus.display
+35:      windows=[Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}]
+169:    Resumed: ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+171:  ResumedActivity: ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+174:  topDisplayFocusedRootTask=Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display}
+179:  deepestLastOrientationSource=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+183:  mCurrentFocus=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+184:  mFocusedApp=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+277:      mPreferredTopFocusableRootTask=Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display}
+278:      mLastFocusedRootTask=Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display}
+280:      * Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+282:        * ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
+328:    mFocusedWindow=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+329:    mTopFullscreenOpaqueWindowState=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+330:    mSystemBarColorApps={ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}}
+331:    mNavBarColorWindowCandidate=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+332:    mNavBarBackgroundWindowCandidate=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+337:      Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+380:        source=ActivityRecord{187774549 u0 dev.telemachus.display/.MainActivity t1050} SCREEN_ORIENTATION_FULL_USER
+386:        source=ActivityRecord{89388191 u0 dev.telemachus.display/.MainActivity t1052} SCREEN_ORIENTATION_FULL_USER
+392:        source=ActivityRecord{62720890 u0 dev.telemachus.display/.MainActivity t1059} SCREEN_ORIENTATION_FULL_USER
+398:        source=ActivityRecord{137803030 u0 dev.telemachus.display/.MainActivity t1061} SCREEN_ORIENTATION_FULL_USER
+437:      Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}:
+470:        mControlTarget=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+489:        mControlTarget=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+498:        mControlTarget=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+506:        mPendingControlTarget=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+536:        (fullscreen) Task{ecea148 #1114 type=standard A=10365:dev.telemachus.display}
+538:  VisibleActivityProcess:[ ProcessRecord{db50fc7 6983:dev.telemachus.display/u0a365 PRSmt{13b78b7 p:0 rp:6983 t:null sa:0 usps:2 sps:2 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}]

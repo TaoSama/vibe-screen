@@ -1,0 +1,7 @@
+$ adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN
+$ adb -s <redacted-adb-serial> shell dumpsys window | rg mCurrentFocus
+754:  mCurrentFocus=Window{319c96e u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+755:  mFocusedApp=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}

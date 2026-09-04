@@ -1,0 +1,4 @@
+$ tap LAN segment from retry screen
+$ focused activity after LAN tap
+750:  mCurrentFocus=Window{508fad1 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+751:  mFocusedApp=ActivityRecord{252862443 u0 dev.telemachus.display/.MainActivity t1114}
