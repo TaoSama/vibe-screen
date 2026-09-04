@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +14,28 @@ class ChecklistProbeResultPolicyTest {
         assertFalse(shouldApply(connected = true))
         assertFalse(shouldApply(connectionAttemptInProgress = true))
         assertFalse(shouldApply(automaticUsbConnect = true))
+    }
+
+    @Test
+    fun macServerChecklistStopsShowingCheckingAfterTerminalUsbFailure() {
+        assertEquals(
+            ChecklistStatus.NOT_READY,
+            MacServerChecklistStatusPolicy.waitingStatus(
+                connectionGuidanceVisible = true,
+                connectionAttemptInProgress = false,
+            ),
+        )
+    }
+
+    @Test
+    fun macServerChecklistKeepsCheckingDuringActiveUsbAttempts() {
+        assertEquals(
+            ChecklistStatus.CHECKING,
+            MacServerChecklistStatusPolicy.waitingStatus(
+                connectionGuidanceVisible = true,
+                connectionAttemptInProgress = true,
+            ),
+        )
     }
 
     private fun shouldApply(
