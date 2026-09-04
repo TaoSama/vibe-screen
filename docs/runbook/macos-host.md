@@ -47,7 +47,9 @@ directly.
 
 The current bundle identifier is `dev.telemachus.display`. Keep the app at the
 same path across upgrades so macOS has the best chance of retaining its privacy
-grants.
+grants. For evidence-grade runs, TCC reuse depends on the installed bundle id,
+canonical designated requirement/signing leaf, `/Applications/Vibe Screen.app`
+path, and embedded source provenance matching the current clean checkout.
 
 ## Local development Host identity
 
@@ -112,11 +114,15 @@ Vibe Screen requests two independent permissions:
   legacy fallback session still does not carry keyboard or native-mouse
   messages.
 
-Grant both in **System Settings → Privacy & Security**, then quit Vibe Screen.
-For device evidence, restart it with `make baseline-macos-launch` so the same
-source-bound preflight runs before launch. The app rechecks permission while it
-is running, but a relaunch is the most reliable path after a new grant. Never
-grant Accessibility to an untrusted build: it can synthesize system-wide input.
+Grant both in **System Settings → Privacy & Security** for
+`/Applications/Vibe Screen.app`, then quit Vibe Screen. On a first-run machine,
+add that app bundle with the System Settings `+` control if it is not listed
+yet, or open the app only through an attended explicit setup flow and quit after
+macOS records the grants. For device evidence, restart it with
+`make baseline-macos-launch` so the same source-bound preflight runs before
+launch. The app rechecks permission while it is running, but a relaunch is the
+most reliable path after a new grant. Never grant Accessibility to an untrusted
+build: it can synthesize system-wide input.
 
 ## Host-backed device gate preflight
 
@@ -148,6 +154,9 @@ The preflight is read-only and must not open System Settings or request macOS
 privacy prompts. After restoring the exact historical leaf and reinstalling the
 Host, run it first; the expected path is that existing Screen Recording and
 Accessibility TCC grants are reused without new approval.
+Microphone permission is handled the same way for Host audio capture: protocol
+startup and preflight must not request it implicitly, and audio capability stays
+blocked until the exact installed app identity is already authorized.
 Only when the generated report proves those historical authorization rows are
 absent should a user explicitly open **System Settings -> Privacy & Security ->
 Screen & System Audio Recording** and **Accessibility**, grant the installed

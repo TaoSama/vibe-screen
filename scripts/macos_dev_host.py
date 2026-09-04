@@ -54,6 +54,21 @@ SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
     "and Accessibility"
 )
+TCC_IDENTITY_BINDING_NOTE = (
+    "macOS TCC grants are identity-bound. Screen Recording, Accessibility, "
+    "and Microphone authorization must match this exact installed app bundle "
+    "identifier, canonical designated requirement/signing leaf, stable "
+    "/Applications path, and source provenance. A rebuilt, re-signed, moved, "
+    "or ad-hoc Host can be treated by macOS as a different app and must stay "
+    "blocked until the read-only rows prove authorization for that exact identity."
+)
+READ_ONLY_PREFLIGHT_SAFETY_NOTE = (
+    "preflight/readiness are read-only: they inspect bundle metadata, codesign, "
+    "source provenance, listener state, entitlements, defaults, logs, display "
+    "inventory, and TCC database rows; they do not start the Host GUI, open "
+    "System Settings, call permission-request APIs, reset TCC, mutate Keychain, "
+    "install apps, or touch Android/ADB state."
+)
 LOGIN_ITEM_DIAGNOSTIC_OPT_IN_DETAIL = (
     "Login item not probed by default; probe not run. Use an attended "
     "diagnostic session outside default readiness to inspect login-item state."
@@ -1357,6 +1372,14 @@ Keychain and TCC handling
 This tool does not reset Keychain, import certificates, request passwords, update
 partition lists, modify macOS privacy databases, or request/override macOS privacy authorization.
 It only uses the configured codesign identity and reads privacy databases in read-only mode.
+
+TCC identity binding
+--------------------
+{TCC_IDENTITY_BINDING_NOTE}
+
+Safety contract
+---------------
+{READ_ONLY_PREFLIGHT_SAFETY_NOTE}
 """
 
 
@@ -1386,6 +1409,10 @@ This blocked operation did not start the Host, run Android instrumentation,
 modify Keychain, edit privacy databases, clear Android app data, or change ADB state. This
 is a Host signing prerequisite, not an Android device-identity result.
 System permission path: {SYSTEM_SETTINGS_PATH}
+
+TCC identity binding
+--------------------
+{TCC_IDENTITY_BINDING_NOTE}
 """
 
 
@@ -1861,6 +1888,7 @@ def build_readiness_document(
         "blockers": blockers,
         "host": signing_record(inspection.metadata, entitlements.app_path, inspection.source_identity),
         "permissions": permission_record(inspection.permissions),
+        "tcc_identity_binding": tcc_identity_binding_record(),
         "listener": {
             "port": listener.port,
             "observed": listener.observed,
@@ -1874,14 +1902,37 @@ def build_readiness_document(
             "error": entitlements.error,
         },
         "login_headless": login_headless_record(settings, login_item, displays, logs, login_blockers),
-        "safety": {
-            "read_only": True,
-            "starts_host": False,
-            "modifies_tcc": False,
-            "modifies_keychain": False,
-            "modifies_android": False,
-            "closes_runtime_gates": False,
-        },
+        "safety": read_only_preflight_safety_record(),
+    }
+
+
+def tcc_identity_binding_record() -> dict[str, Any]:
+    return {
+        "note": TCC_IDENTITY_BINDING_NOTE,
+        "bundle_id": EXPECTED_BUNDLE_ID,
+        "install_path": str(DEFAULT_INSTALL_PATH),
+        "expected_signing_leaf_sha1": EXPECTED_SIGNING_LEAF_SHA1,
+        "requires_canonical_designated_requirement": True,
+        "requires_matching_source_provenance": True,
+        "drift_is_blocking": True,
+    }
+
+
+def read_only_preflight_safety_record() -> dict[str, Any]:
+    return {
+        "read_only": True,
+        "starts_host": False,
+        "opens_host_gui": False,
+        "opens_system_settings": False,
+        "requests_screen_recording": False,
+        "requests_accessibility": False,
+        "requests_microphone": False,
+        "modifies_tcc": False,
+        "modifies_keychain": False,
+        "installs_or_replaces_host": False,
+        "modifies_android": False,
+        "closes_runtime_gates": False,
+        "note": READ_ONLY_PREFLIGHT_SAFETY_NOTE,
     }
 
 
@@ -2188,6 +2239,7 @@ def readiness_command(args: argparse.Namespace) -> int:
             "permissions": permission_record(
                 missing_permission_status("Host bundle was not inspected because readiness validation failed first")
             ),
+            "tcc_identity_binding": tcc_identity_binding_record(),
             "listener": {
                 "port": args.port,
                 "observed": False,
@@ -2201,14 +2253,7 @@ def readiness_command(args: argparse.Namespace) -> int:
                 "error": "entitlements not inspected",
             },
             "login_headless": uninspected_login_headless_record(errors),
-            "safety": {
-                "read_only": True,
-                "starts_host": False,
-                "modifies_tcc": False,
-                "modifies_keychain": False,
-                "modifies_android": False,
-                "closes_runtime_gates": False,
-            },
+            "safety": read_only_preflight_safety_record(),
         }
         write_json_report(args.json_output, document)
         print(f"Wrote {args.report}")

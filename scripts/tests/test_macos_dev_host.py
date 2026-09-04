@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import plistlib
 import queue
@@ -25,6 +26,9 @@ TEST_PRIVACY_DATABASE = Path("privacy.db")
 PRIVACY_DB_FILENAME = "privacy.sqlite"
 SOURCE_COMMIT = "a" * 40
 SOURCE_TREE = "b" * 40
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+MACOS_DEV_HOST_SOURCE = REPOSITORY_ROOT / "scripts" / "macos_dev_host.py"
+MAKEFILE = REPOSITORY_ROOT / "Makefile"
 
 
 def allowed_tcc_rows() -> tuple[macos_dev_host.TCCRow, ...]:
@@ -1958,17 +1962,21 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertEqual(document["login_headless_status"], "ready")
         self.assertIn("does_not_prove", document["login_headless"])
         self.assertEqual(document["blockers"], [])
-        self.assertEqual(
-            document["safety"],
-            {
-                "read_only": True,
-                "starts_host": False,
-                "modifies_tcc": False,
-                "modifies_keychain": False,
-                "modifies_android": False,
-                "closes_runtime_gates": False,
-            },
-        )
+        self.assertTrue(document["safety"]["read_only"])
+        for key in (
+            "starts_host",
+            "opens_host_gui",
+            "opens_system_settings",
+            "requests_screen_recording",
+            "requests_accessibility",
+            "requests_microphone",
+            "modifies_tcc",
+            "modifies_keychain",
+            "installs_or_replaces_host",
+            "modifies_android",
+            "closes_runtime_gates",
+        ):
+            self.assertFalse(document["safety"][key], key)
 
     def test_readiness_document_default_skips_login_item_probe(self) -> None:
         inspection = macos_dev_host.HostInspection(
@@ -2903,6 +2911,184 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
             self.assertFalse(document["is_full_xcode"])
             self.assertFalse(document["has_xctest"])
             self.assertIn("Full Xcode is required", "\n".join(document["blockers"]))
+
+
+class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
+    def test_readiness_document_exposes_tcc_identity_binding_and_no_prompt_safety(self) -> None:
+        document = macos_dev_host.build_readiness_document(
+            macos_dev_host.HostInspection(
+                metadata=None,
+                source_identity=None,
+                permissions=macos_dev_host.missing_permission_status("not inspected"),
+                errors=["blocked"],
+            ),
+            macos_dev_host.ListenerStatus(port=54321, observed=False, output="", error="listener not observed"),
+            macos_dev_host.EntitlementStatus(
+                app_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                virtual_hid=False,
+                keys=(),
+                raw_output="",
+                error="not inspected",
+            ),
+            settings=macos_dev_host.HostStartupSettings(
+                domain=macos_dev_host.EXPECTED_BUNDLE_ID,
+                readable=False,
+                auto_start_streaming_on_launch=True,
+                startup_mode="usb",
+                has_completed_onboarding=False,
+                display_source="currentMain",
+                selected_display_uuid=None,
+                selected_display_id=None,
+                stored_keys=(),
+                defaults_used=(),
+                error="not inspected",
+            ),
+            login_item=macos_dev_host.skipped_login_item_readiness(),
+            displays=macos_dev_host.HostDisplayReadiness(
+                readable=False,
+                display_count=0,
+                displays=(),
+                error="not inspected",
+            ),
+            logs=macos_dev_host.LogReadiness(
+                path="<user-host-log>",
+                readable=False,
+                markers=(),
+                error="not inspected",
+            ),
+        )
+
+        safety = document["safety"]
+        self.assertTrue(safety["read_only"])
+        for key in (
+            "starts_host",
+            "opens_host_gui",
+            "opens_system_settings",
+            "requests_screen_recording",
+            "requests_accessibility",
+            "requests_microphone",
+            "modifies_tcc",
+            "modifies_keychain",
+            "installs_or_replaces_host",
+            "modifies_android",
+            "closes_runtime_gates",
+        ):
+            self.assertFalse(safety[key], key)
+        self.assertIn("do not start the Host GUI", safety["note"])
+
+        binding = document["tcc_identity_binding"]
+        self.assertEqual(binding["bundle_id"], macos_dev_host.EXPECTED_BUNDLE_ID)
+        self.assertEqual(binding["install_path"], str(macos_dev_host.DEFAULT_INSTALL_PATH))
+        self.assertEqual(binding["expected_signing_leaf_sha1"], macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1)
+        self.assertTrue(binding["requires_canonical_designated_requirement"])
+        self.assertTrue(binding["requires_matching_source_provenance"])
+        self.assertTrue(binding["drift_is_blocking"])
+        self.assertIn("bundle identifier", binding["note"])
+        self.assertIn("source provenance", binding["note"])
+
+    def test_text_report_explains_read_only_tcc_identity_binding(self) -> None:
+        report = macos_dev_host.format_report(
+            None,
+            macos_dev_host.missing_permission_status("not inspected"),
+            ["blocked"],
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+        )
+
+        self.assertIn("TCC identity binding", report)
+        self.assertIn("bundle identifier", report)
+        self.assertIn("signing leaf", report)
+        self.assertIn("/Applications", report)
+        self.assertIn("Safety contract", report)
+        self.assertIn("do not start the Host GUI", report)
+        self.assertIn("permission-request APIs", report)
+
+    def test_preflight_and_readiness_paths_do_not_call_gui_or_permission_prompt_commands(self) -> None:
+        source = MACOS_DEV_HOST_SOURCE.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function_names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        risky = self._risky_calls_by_function(source, tree)
+
+        for function_name in (
+            "preflight_command",
+            "readiness_command",
+            "inspect_host_without_throwing",
+            "query_tcc_rows",
+            "query_tcc_database",
+            "_query_tcc_database_direct",
+            "inspect_listener",
+            "inspect_entitlements",
+            "read_startup_settings",
+            "read_display_readiness",
+            "summarize_host_log",
+        ):
+            with self.subTest(function=function_name):
+                self.assertIn(function_name, function_names)
+                self.assertEqual(risky.get(function_name, []), [])
+
+        self.assertEqual(risky.get("launch_command"), ["/usr/bin/open"])
+        self.assertEqual(risky.get("read_login_item_readiness"), ["/usr/bin/sfltool"])
+
+    def test_default_make_preflight_and_readiness_targets_run_safety_contract_first(self) -> None:
+        targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
+
+        self.assertIn("baseline-macos-preflight-safety-contract", targets)
+        self.assertIn(
+            "scripts.tests.test_macos_dev_host.MacOSDevHostPreflightSafetyContractTests",
+            targets["baseline-macos-preflight-safety-contract"],
+        )
+        for target in ("baseline-macos-host-preflight", "baseline-macos-host-readiness"):
+            with self.subTest(target=target):
+                header = targets[target].splitlines()[0]
+                self.assertIn("baseline-macos-preflight-safety-contract", header)
+                body = "\n".join(targets[target].splitlines()[1:])
+                self.assertNotIn("macos_dev_host.py launch", body)
+                self.assertNotIn("/usr/bin/open", body)
+                self.assertNotIn("tccutil", body)
+                self.assertNotIn("adb reverse", body)
+
+    def test_launch_target_is_not_part_of_read_only_preflight_targets(self) -> None:
+        targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
+
+        self.assertIn("macos_dev_host.py launch", targets["baseline-macos-launch"])
+        self.assertNotIn("baseline-macos-launch", targets["baseline-macos-host-preflight"])
+        self.assertNotIn("baseline-macos-launch", targets["baseline-macos-host-readiness"])
+
+    def _risky_calls_by_function(self, source: str, tree: ast.Module) -> dict[str, list[str]]:
+        risky_commands = {
+            "/usr/bin/open",
+            "open",
+            "tccutil",
+            "/usr/bin/tccutil",
+            "adb",
+            "AXIsProcessTrustedWithOptions",
+            "CGRequestScreenCaptureAccess",
+            "AVCaptureDevice.requestAccess",
+            "x-apple.systempreferences",
+            "/usr/bin/sfltool",
+        }
+        risky_by_function: dict[str, list[str]] = {}
+        for function in (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)):
+            hits: set[str] = set()
+            for value in (node for node in ast.walk(function) if isinstance(node, ast.Constant)):
+                if isinstance(value.value, str) and value.value in risky_commands:
+                    hits.add(value.value)
+            segment = ast.get_source_segment(source, function) or ""
+            if "swift run" in segment:
+                hits.add("swift run")
+            risky_by_function[function.name] = sorted(hits)
+        return risky_by_function
+
+    def _make_targets(self, makefile: str) -> dict[str, str]:
+        targets: dict[str, list[str]] = {}
+        current: str | None = None
+        for line in makefile.splitlines():
+            if line and not line.startswith(("\t", " ", "#")) and ":" in line and not line.startswith("."):
+                current = line.split(":", 1)[0].strip()
+                targets[current] = [line]
+                continue
+            if current is not None:
+                targets[current].append(line)
+        return {name: "\n".join(lines) for name, lines in targets.items()}
 
 
 class MacOSDevHostTCCTests(unittest.TestCase):

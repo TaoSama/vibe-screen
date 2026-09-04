@@ -106,7 +106,11 @@ adb -s "$ANDROID_SERIAL" reverse --list
 ```
 
 Install, preflight, and start the packaged host through the guarded entry
-points:
+points. The preflight and readiness targets are read-only checks: they inspect
+codesign/source provenance and existing TCC rows, but they do not request
+Screen Recording, Accessibility, or Microphone permission and they do not open
+System Settings. On a first-run machine they are expected to block until the
+installed app has been authorized explicitly.
 
 ```bash
 make baseline-macos-dev-install
@@ -118,13 +122,21 @@ Do not launch `.build/release-artifacts/Vibe Screen.app` directly for device
 evidence. The supported path installs and preflights the source-bound,
 stable-signed bundle at `/Applications/Vibe Screen.app` before launch so stale
 artifacts or drifted signing identities cannot silently reuse Host permissions.
+macOS treats privacy grants as bound to the installed bundle identity, signing
+requirement, and path, so authorize only `/Applications/Vibe Screen.app` with
+`CFBundleIdentifier=dev.telemachus.display` and the pinned stable signing leaf.
 
-On first launch:
+On first authorization for a new machine or a missing TCC row:
 
-1. grant Screen Recording in **System Settings → Privacy & Security**;
-2. grant Accessibility if touch control is required;
-3. restart the host after macOS requests it;
-4. select USB mode and start streaming.
+1. use **System Settings → Privacy & Security** to add and grant
+   `/Applications/Vibe Screen.app` for Screen Recording;
+2. grant Accessibility to the same app bundle if touch control is required;
+3. grant Microphone to the same app bundle only when testing Host microphone
+   capture;
+4. quit Vibe Screen after macOS records the grants;
+5. rerun `make baseline-macos-host-preflight`, then use
+   `make baseline-macos-launch` for the guarded launch path;
+6. select USB mode and start streaming.
 
 Then launch Android with automatic USB connection:
 

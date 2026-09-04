@@ -39,10 +39,14 @@ the readiness collector will acquire `/tmp/vibe-screen-device-android.lock` and
 release it after collection.
 
 The pass environment must include all of these: a named physical Android
-keyboard, installed Android client identity, a stable signed macOS Host build,
-Screen Recording and Accessibility permissions for that exact Host binary, a
-Host listener on the transport under test, an active selected display stream,
-and Protocol v1 keyboard plus USB HID modifier-byte capability negotiation.
+keyboard, installed Android client identity, a stable signed macOS Host bundle
+at `/Applications/Vibe Screen.app` with bundle id `dev.telemachus.display`, the
+pinned signing leaf SHA-1
+`9AAE572BF6D764E3436A6109197D345B5A87998C`, clean source provenance
+(`VibeScreenSourceDirty=false` with matching source commit/tree), Screen
+Recording and Accessibility permissions for that exact app identity, a Host
+listener on the transport under test, an active selected display stream, and
+Protocol v1 keyboard plus USB HID modifier-byte capability negotiation.
 
 ## Readiness Bundle
 

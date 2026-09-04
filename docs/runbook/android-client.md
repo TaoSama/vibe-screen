@@ -283,10 +283,13 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
 
 ## Input matrix
 
-Use a non-sensitive Mac test window and grant Accessibility to the exact host
-binary. Record Android diagnostic logs and the visible Mac result for each.
-Before running the opt-in touch-gesture acceptance driver, collect the
-read-only fixed-binary preflight and keep it with the evidence directory:
+Use a non-sensitive Mac test window and grant Accessibility to the stable-signed
+`/Applications/Vibe Screen.app` bundle with bundle id `dev.telemachus.display`.
+Record Android diagnostic logs and the visible Mac result for each. Before
+running the opt-in touch-gesture acceptance driver, collect the read-only
+fixed-binary preflight and keep it with the evidence directory; if the preflight
+reports missing TCC rows, stop and complete the explicit System Settings grant
+for that app bundle before continuing.
 
 ```bash
 make evidence-touch-rerun-preflight \

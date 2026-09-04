@@ -358,6 +358,11 @@ do {
         )
     }
 
+    try require(
+        sourcePaths(containing: "AVCaptureDevice.requestAccess", in: sources).isEmpty,
+        "microphone permission prompts must not be reachable from Host protocol, audio capture, preflight, or startup paths"
+    )
+
     let promptFreeFunctions = [
         "applicationDidFinishLaunching",
         "applicationDidBecomeActive",
@@ -377,6 +382,7 @@ do {
         "CGRequestScreenCaptureAccess",
         "AXIsProcessTrustedWithOptions",
         "kAXTrustedCheckOptionPrompt",
+        "AVCaptureDevice.requestAccess",
         "NSWorkspace.shared.open",
         "x-apple.systempreferences:",
         "requestScreenRecordingPermission()",

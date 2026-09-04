@@ -50,6 +50,8 @@ replace the current-base owner gate.
 2. Run `pnpm verify` and `make release`; verify the signed HAP and
    `dist/*/SHA256SUMS`. `pnpm verify` alone is not ArkTS/HAP evidence.
 3. Run `hdc list targets -v`; match the serial in Settings before installing.
+   Before saving command output to evidence, redact HarmonyOS/OpenHarmony HDC
+   target serials and other hardware identifiers.
 4. Install the signed HAP, launch it, and capture `hdc hilog` filtered to the
    VibeScreen domain. Verify permission copy and denial/retry behavior.
 5. Pair with a one-time QR credential using the completed cryptographic pairing

@@ -229,6 +229,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	baseline-macos-build \
 	baseline-macos-permission-prompt-contract \
 	baseline-macos-host-cli-contract \
+	baseline-macos-preflight-safety-contract \
 	baseline-macos-xctest-preflight \
 	baseline-macos-test \
 	baseline-macos-self-test \
@@ -563,6 +564,9 @@ baseline-macos-permission-prompt-contract:
 baseline-macos-host-cli-contract:
 	swift scripts/verify_macos_host_cli_contract.swift
 
+baseline-macos-preflight-safety-contract: baseline-macos-permission-prompt-contract baseline-macos-host-cli-contract
+	python3 -m unittest scripts.tests.test_macos_dev_host.MacOSDevHostPreflightSafetyContractTests
+
 baseline-macos-xctest-preflight:
 	python3 scripts/macos_dev_host.py xctest-preflight
 
@@ -585,13 +589,13 @@ baseline-macos-app:
 baseline-macos-dev-install:
 	python3 scripts/macos_dev_host.py install
 
-baseline-macos-host-preflight:
+baseline-macos-host-preflight: baseline-macos-preflight-safety-contract
 	python3 scripts/macos_dev_host.py preflight
 
 baseline-macos-launch:
 	python3 scripts/macos_dev_host.py launch
 
-baseline-macos-host-readiness:
+baseline-macos-host-readiness: baseline-macos-preflight-safety-contract
 	mkdir -p $(EVIDENCE_DIR)
 	python3 scripts/macos_dev_host.py readiness \
 		--report $(EVIDENCE_DIR)/host-signing-and-permissions.txt \

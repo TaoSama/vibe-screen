@@ -6,7 +6,7 @@ final class HostCommandLineTests: XCTestCase {
         let result = parse(["Vibe Screen", "--self-test"])
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Unknown Vibe Screen Host CLI flag: --self-test")
     }
 
@@ -14,7 +14,7 @@ final class HostCommandLineTests: XCTestCase {
         let result = parse(["Vibe Screen", "--"])
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Unknown Vibe Screen Host CLI flag: --")
     }
 
@@ -22,7 +22,7 @@ final class HostCommandLineTests: XCTestCase {
         let result = parse(["Vibe Screen", "--host-self-test=foo"])
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Unknown Vibe Screen Host CLI flag: --host-self-test=foo")
     }
 
@@ -66,7 +66,7 @@ final class HostCommandLineTests: XCTestCase {
         let result = parse(["Vibe Screen", "--host-self-test", "--issue-phase3-internet-lease"])
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Multiple Vibe Screen Host CLI commands are not supported.")
     }
 
@@ -74,7 +74,7 @@ final class HostCommandLineTests: XCTestCase {
         let result = parse(["Vibe Screen", "--host-self-test", "--host-self-test"])
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Multiple Vibe Screen Host CLI commands are not supported.")
     }
 
@@ -96,7 +96,7 @@ final class HostCommandLineTests: XCTestCase {
         )
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Unknown iOS loopback scenario.")
     }
 
@@ -107,7 +107,7 @@ final class HostCommandLineTests: XCTestCase {
         )
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(result.errorMessage, "Unknown iOS loopback scenario.")
     }
 
@@ -118,7 +118,7 @@ final class HostCommandLineTests: XCTestCase {
         )
 
         XCTAssertFalse(result.canLaunch)
-        XCTAssertEqual(result.launchMode, .gui)
+        XCTAssertEqual(result.launchMode, .rejected)
         XCTAssertEqual(
             result.errorMessage,
             "Vibe Screen Host CLI commands cannot be combined with iOS loopback mode."

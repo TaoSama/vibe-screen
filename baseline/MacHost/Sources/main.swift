@@ -40,6 +40,8 @@ case .command(.iOSLoopback(let expectsInvalidTarget)):
     exit(IOSClientLoopbackHost.run(expectsInvalidTarget: expectsInvalidTarget)
         ? EXIT_SUCCESS
         : EXIT_FAILURE)
+case .rejected:
+    exit(EXIT_FAILURE)
 case .gui:
     break
 }
