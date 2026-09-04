@@ -51,6 +51,24 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `stream client emits structured heartbeat received telemetry from inbound keepalives`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+
+        assertTrue("StreamClient must keep structured heartbeat received telemetry", streamClient.contains("\"heartbeat_received\""))
+        assertTrue("StreamClient must record inbound heartbeats through the telemetry helper", streamClient.contains("private fun recordHeartbeatReceived("))
+        assertFalse(
+            "StreamClient inbound paths must not bypass heartbeat received telemetry",
+            streamClient.contains("heartbeat.recordInbound(System.nanoTime())"),
+        )
+        listOf("legacy", "control", "audio", "bulk").forEach { source ->
+            assertTrue(
+                "StreamClient must classify heartbeat source `$source`",
+                streamClient.contains("recordHeartbeatReceived(\"$source\")"),
+            )
+        }
+    }
+
+    @Test
     fun `protocol batch notifies unavailable session before returning`() {
         val streamClient = source(PRODUCTION_STREAM_CLIENT)
         val outboundCommand = source(PRODUCTION_STREAM_OUTBOUND_COMMAND)

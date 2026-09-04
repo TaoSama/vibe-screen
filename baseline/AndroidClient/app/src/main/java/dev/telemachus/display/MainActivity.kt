@@ -4337,6 +4337,15 @@ class MainActivity : AppCompatActivity() {
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = displayLifecycle
 
+        callbackClient.decoderTelemetrySnapshot = {
+            currentSessionDecoderTelemetrySnapshot(
+                isCurrentSession = { isCurrentSession(callbackClient, callbackGeneration) },
+                currentDecoderSnapshot = {
+                    decoderPresentationOwner.currentDecoderSnapshot { decoder -> decoder.consumeTelemetrySnapshot() }
+                },
+            )
+        }
+
         callbackClient.onFrameReceived = frame@{
                 frameData,
                 frameSize,

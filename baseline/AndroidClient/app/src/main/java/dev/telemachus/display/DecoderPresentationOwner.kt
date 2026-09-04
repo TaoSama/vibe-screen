@@ -104,6 +104,9 @@ internal class DecoderPresentationOwner<Decoder : Any, InternetConfiguration : A
 
     fun currentDecoder(): Decoder? = decoderUseGate.current()
 
+    fun <Snapshot> currentDecoderSnapshot(snapshot: (Decoder) -> Snapshot): Snapshot? =
+        decoderUseGate.withCurrent(snapshot)
+
     fun currentRenderTarget(): Any? = currentRenderTargetRef.get()
 
     fun internetConfiguration(): InternetConfiguration? = internetVideoConfiguration.get()

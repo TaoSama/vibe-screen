@@ -21,6 +21,7 @@ internal class StreamMediaFrameRouter(
     private val emitTelemetry: (String, Map<String, Any?>) -> Unit,
     private val diagLog: (String) -> Unit,
     private val hasFrameSink: () -> Boolean = { true },
+    private val decoderTelemetry: () -> DecoderTelemetrySnapshot = { DecoderTelemetrySnapshot.empty },
     private val nowNs: () -> Long = System::nanoTime,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
@@ -248,17 +249,29 @@ internal class StreamMediaFrameRouter(
             onStats(fps, mbps)
             emitTelemetry(
                 "stream_stats",
-                mapOf(
-                    "session_epoch" to connectionEpoch,
-                    "fps" to fps,
-                    "mbps" to mbps,
-                ),
+                streamStatsFields(connectionEpoch, fps, mbps),
             )
 
             bytesReceived = 0
             framesReceived = 0
             lastStatsTime = now
         }
+    }
+
+    private fun streamStatsFields(
+        connectionEpoch: Long,
+        fps: Double,
+        mbps: Double,
+    ): Map<String, Any?> {
+        val decoder = decoderTelemetry()
+        return linkedMapOf(
+            "session_epoch" to connectionEpoch,
+            "fps" to fps,
+            "mbps" to mbps,
+            "dropped_frames" to decoder.droppedFrames,
+            "decoder_latency_avg_ms" to decoder.decoderLatencyAvgMs,
+            "decoder_latency_max_ms" to decoder.decoderLatencyMaxMs,
+        )
     }
 
     private fun checkKeyframeFreshness(
