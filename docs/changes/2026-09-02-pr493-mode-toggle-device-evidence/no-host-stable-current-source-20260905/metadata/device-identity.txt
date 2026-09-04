@@ -1,0 +1,13 @@
+Android device identity from independent read-only adb commands
+Scope: device identity only; no Host, GUI, product binary, adb reverse creation, adb reverse modification, or adb reverse deletion was used.
+
+{
+  "manufacturer": "nubia",
+  "model": "P0110",
+  "codename": "pacific",
+  "vendor_codename": "pacific",
+  "build_product": "qssi_64",
+  "android_release": "16",
+  "sdk": "36",
+  "adb_serial": "<redacted-adb-serial>"
+}

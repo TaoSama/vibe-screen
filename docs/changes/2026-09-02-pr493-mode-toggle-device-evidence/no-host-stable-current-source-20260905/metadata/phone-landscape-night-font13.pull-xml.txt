@@ -1,0 +1,9 @@
+mode=normal attempt=1
+returncode=0
+UI hierchary dumped to: /sdcard/vibe_pr493_current_1788539447533_phone-landscape-night-font13.xml
+
+pull_returncode=0
+
+/sdcard/vibe_pr493_current_1788539447533_phone-landscape-night-font13.xml: 1 file pulled, 0 skipped. 3.0 MB/s (12089 bytes in 0.004s)
+result=present
+xml_stable_state=true

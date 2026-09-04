@@ -1,0 +1,43 @@
+mode=normal attempt=1
+returncode=0
+UI hierchary dumped to: /sdcard/vibe_pr493_current_1788539393861_phone-landscape-day-font13.xml
+
+pull_returncode=0
+
+/sdcard/vibe_pr493_current_1788539393861_phone-landscape-day-font13.xml: 1 file pulled, 0 skipped. 5.3 MB/s (11748 bytes in 0.002s)
+result=unstable_or_semantic_error
+xml_stable_state=false
+xml_errors=missing XML text: Waiting for your Mac; missing XML text: USB debugging is ready; missing XML text: CONNECT; missing XML text: Looking for Vibe Screen on your Mac; missing XML text: DISPLAY SETTINGS; USB mode checked state mismatch: ['false']; LAN mode checked state mismatch: ['true']
+mode=normal attempt=2
+returncode=0
+UI hierchary dumped to: /sdcard/vibe_pr493_current_1788539393861_phone-landscape-day-font13.xml
+
+pull_returncode=0
+
+/sdcard/vibe_pr493_current_1788539393861_phone-landscape-day-font13.xml: 1 file pulled, 0 skipped. 2.6 MB/s (11748 bytes in 0.004s)
+result=unstable_or_semantic_error
+xml_stable_state=false
+xml_errors=missing XML text: Waiting for your Mac; missing XML text: USB debugging is ready; missing XML text: CONNECT; missing XML text: Looking for Vibe Screen on your Mac; missing XML text: DISPLAY SETTINGS; USB mode checked state mismatch: ['false']; LAN mode checked state mismatch: ['true']
+mode=normal attempt=3
+returncode=0
+UI hierchary dumped to: /sdcard/vibe_pr493_current_1788539393861_phone-landscape-day-font13.xml
+
+pull_returncode=0
+
+/sdcard/vibe_pr493_current_1788539393861_phone-landscape-day-font13.xml: 1 file pulled, 0 skipped. 5.2 MB/s (12280 bytes in 0.002s)
+result=unstable_or_semantic_error
+xml_stable_state=false
+xml_errors=missing XML text: Waiting for your Mac; missing XML text: USB debugging is ready; missing XML text: CONNECT; missing XML text: Looking for Vibe Screen on your Mac; missing XML text: DISPLAY SETTINGS; USB mode checked state mismatch: ['false']; Internet mode checked state mismatch: ['true']
+mode=compressed attempt=1
+returncode=0
+
+ERROR: could not get idle state.
+mode=compressed attempt=2
+returncode=0
+
+ERROR: could not get idle state.
+mode=compressed attempt=3
+returncode=0
+
+ERROR: could not get idle state.
+final_status=unavailable

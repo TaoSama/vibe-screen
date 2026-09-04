@@ -1,0 +1,14 @@
+progress_visible=false
+xml_stable_state=true
+mode_checks={"modeInternet": ["false"], "modeUSB": ["true"], "modeWireless": ["false"]}
+texts=
+VIBE SCREEN
+Waiting for your Mac
+USB debugging is ready on this device. Open Vibe Screen on your Mac, then tap Try again if it does not connect automatically.
+USB
+LAN
+Internet
+CONNECT
+Looking for Vibe Screen on your Mac
+Connection details
+DISPLAY SETTINGS

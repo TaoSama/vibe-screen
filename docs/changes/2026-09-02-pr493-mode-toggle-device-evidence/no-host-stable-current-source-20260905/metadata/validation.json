@@ -1,0 +1,160 @@
+{
+  "schema": "dev.vibescreen.pr493-no-host-stable-ui-matrix/v1",
+  "source_revision": "3c97f98f21e8bc2a58f44a0a1e586f78cb874e89",
+  "apk_sha256": "e7dc02b7655cd6548f838c07ce0402559c9777e2b27c631a0f6f8e0f3856b25f",
+  "android_test_apk_sha256": "1bd55c3ac59c2aa14537823d0110d63c7c972fe118e60611b2e4a79e12d81222",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "vendor_codename": "pacific",
+    "build_product": "qssi_64",
+    "android_release": "16",
+    "sdk": "36",
+    "adb_serial": "<redacted-adb-serial>"
+  },
+  "device_identity_evidence": "metadata/device-identity.txt",
+  "xml_evidence_scope": "current_source_no_host_bounded_6_stable_xml",
+  "host_scope": "Android-only no-host UI evidence; no macOS Host, TCC, Protocol v1 transport, streaming, latency, clipboard, or file-transfer E2E is claimed.",
+  "adb_reverse_product_port_absent_before": true,
+  "adb_reverse_product_port_absent_after": true,
+  "scenarios": [
+    {
+      "label": "phone-portrait-day-font1",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    },
+    {
+      "label": "phone-portrait-night-font1",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    },
+    {
+      "label": "phone-portrait-day-font13",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    },
+    {
+      "label": "phone-portrait-night-font13",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        1264,
+        2800
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    },
+    {
+      "label": "phone-landscape-day-font1",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": false,
+      "state_ok": false,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    },
+    {
+      "label": "phone-landscape-night-font1",
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    },
+    {
+      "label": "phone-landscape-day-font13",
+      "png_size": [
+        1264,
+        2800
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": false,
+      "state_ok": false,
+      "xml_status": "unavailable",
+      "xml_errors": [
+        "no stable semantic XML captured"
+      ],
+      "xml_stable_state": false
+    },
+    {
+      "label": "phone-landscape-night-font13",
+      "png_size": [
+        2800,
+        1264
+      ],
+      "expected_size": [
+        2800,
+        1264
+      ],
+      "png_ok": true,
+      "state_ok": true,
+      "xml_status": "present",
+      "xml_errors": [],
+      "xml_stable_state": true
+    }
+  ],
+  "restored": {
+    "font_scale_1_0": true,
+    "night_no": true,
+    "rotation_0": true,
+    "accelerometer_rotation_0": true,
+    "packages_stopped": true
+  }
+}

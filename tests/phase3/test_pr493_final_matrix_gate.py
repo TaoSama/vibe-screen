@@ -18,6 +18,26 @@ VALIDATION_PATH = (
     / "validation.json"
 )
 DEVICE_IDENTITY_PATH = VALIDATION_PATH.parent / "device-identity.txt"
+CURRENT_SOURCE_EVIDENCE_ROOT = EVIDENCE_ROOT / "no-host-stable-current-source-20260905"
+
+UNSTABLE_DISCONNECTED_XML = """<?xml version='1.0' encoding='UTF-8'?>
+<hierarchy>
+  <node resource-id="dev.telemachus.display:id/modeUSB" text="USB" checked="true" bounds="[1,1][10,10]" />
+  <node resource-id="dev.telemachus.display:id/modeWireless" text="LAN" checked="false" bounds="[11,1][20,10]" />
+  <node resource-id="dev.telemachus.display:id/modeInternet" text="Internet" checked="false" bounds="[21,1][30,10]" />
+  <node resource-id="dev.telemachus.display:id/connectionTitle" text="Waiting for your Mac" bounds="[1,20][30,30]" />
+  <node resource-id="dev.telemachus.display:id/connectionSubtitle" text="USB debugging is ready on this device. Open Vibe Screen on your Mac, then tap Try again if it does not connect automatically." bounds="[1,31][30,40]" />
+  <node resource-id="dev.telemachus.display:id/connectionProgress" text="" bounds="[1,41][10,50]" />
+  <node resource-id="dev.telemachus.display:id/connectButton" text="CONNECT" bounds="[1,51][30,60]" />
+  <node resource-id="dev.telemachus.display:id/statusText" text="Looking for Vibe Screen on your Mac" bounds="[1,61][30,70]" />
+  <node resource-id="dev.telemachus.display:id/connectionSettingsButton" text="DISPLAY SETTINGS" bounds="[1,71][30,80]" />
+</hierarchy>
+"""
+
+STABLE_DISCONNECTED_XML = UNSTABLE_DISCONNECTED_XML.replace(
+    'bounds="[1,41][10,50]"',
+    'bounds="[0,0][0,0]"',
+)
 
 spec = importlib.util.spec_from_file_location("pr493_collect_final_matrix", COLLECTOR_PATH)
 assert spec is not None
@@ -770,7 +790,7 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
                     errors,
                 )
 
-    def test_xml_stable_state_detects_progress_error_overlap(self) -> None:
+    def test_xml_stable_state_rejects_visible_progress(self) -> None:
         transient_xml = """<?xml version='1.0' encoding='UTF-8'?>
 <hierarchy>
   <node resource-id="dev.telemachus.display:id/connectionProgress" text="" bounds="[1,1][10,10]" />
@@ -785,12 +805,22 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
 """
         with tempfile.TemporaryDirectory() as tmp_dir:
             transient = Path(tmp_dir) / "transient.xml"
+            no_host_idle_transient = Path(tmp_dir) / "no-host-idle-transient.xml"
             stable_error = Path(tmp_dir) / "stable-error.xml"
             transient.write_text(transient_xml, encoding="utf-8")
+            no_host_idle_transient.write_text(UNSTABLE_DISCONNECTED_XML, encoding="utf-8")
             stable_error.write_text(stable_error_xml, encoding="utf-8")
 
             self.assertFalse(collector.is_xml_stable_state(transient))
+            self.assertFalse(collector.is_xml_stable_state(no_host_idle_transient))
             self.assertTrue(collector.is_xml_stable_state(stable_error))
+
+    def test_validate_scenario_xml_accepts_legacy_retry_and_no_host_idle_guidance(self) -> None:
+        legacy_xml = VALIDATION_PATH.parent / "phone-portrait-day-font1.xml"
+        no_host_xml = CURRENT_SOURCE_EVIDENCE_ROOT / "metadata" / "phone-portrait-day-font1.xml"
+
+        self.assertEqual(collector.validate_scenario_xml(legacy_xml), [])
+        self.assertEqual(collector.validate_scenario_xml(no_host_xml), [])
 
     def test_current_retained_portrait_xml_is_marked_non_stable(self) -> None:
         metadata = VALIDATION_PATH.parent
@@ -1004,6 +1034,66 @@ class PR493FinalMatrixGateTests(unittest.TestCase):
         self.assertIn("result=rejected", evidence)
         self.assertIn("xml_errors=missing USB", evidence)
         self.assertIn("result=present", evidence)
+
+    def test_capture_ui_xml_retries_when_semantic_xml_is_not_stable(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n", "xml": UNSTABLE_DISCONNECTED_XML},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n", "xml": STABLE_DISCONNECTED_XML},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (600, "600\n"),
+                (None, "stat: missing\n"),
+                (601, "601\n"),
+            ],
+            device_epochs=[600, 601],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir))
+            local_xml_exists = local_xml.exists()
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, "present")
+        self.assertEqual(errors, [])
+        self.assertTrue(local_xml_exists)
+        self.assertIn("result=unstable", evidence)
+        self.assertIn("xml_stable_state=false", evidence)
+        self.assertIn("result=present", evidence)
+        self.assertIn("xml_stable_state=true", evidence)
+
+    def test_capture_ui_xml_rejects_only_unstable_semantic_xml(self) -> None:
+        fake = FakeXmlDumpSession(
+            dump_results=[
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n", "xml": UNSTABLE_DISCONNECTED_XML},
+                {"stdout": "UI hierarchy dumped to /sdcard/scenario.xml\n", "xml": UNSTABLE_DISCONNECTED_XML},
+            ],
+            stat_results=[
+                (None, "stat: missing\n"),
+                (700, "700\n"),
+                (None, "stat: missing\n"),
+                (701, "701\n"),
+            ],
+            device_epochs=[700, 701],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status, errors, local_xml, evidence_path = capture_xml_with_fake(fake, Path(tmp_dir), attempts_per_mode=1)
+            evidence = evidence_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, "rejected")
+        self.assertEqual(
+            errors,
+            [
+                collector.XML_UNSTABLE_ERROR,
+                collector.XML_UNSTABLE_ERROR,
+            ],
+        )
+        self.assertFalse(local_xml.exists())
+        self.assertIn("result=unstable", evidence)
+        self.assertIn("final_status=rejected", evidence)
+        self.assertIn("fresh XML was captured but rejected; no later valid XML was accepted", evidence)
 
     def test_capture_ui_xml_returns_rejected_when_no_later_valid_xml_is_accepted(self) -> None:
         fake = FakeXmlDumpSession(
