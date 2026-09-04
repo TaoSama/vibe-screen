@@ -275,6 +275,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
+    private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
@@ -2421,9 +2422,9 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     if (registered) session.offerFile(file, mimeType) else null
-                }
+            }
             withContext(Dispatchers.Main) {
-                if (!session.isCurrent()) return@withContext
+                if (isFinishing || isDestroyed || !session.isCurrent()) return@withContext
                 val outgoingValue =
                     outgoing.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
@@ -2432,13 +2433,18 @@ class MainActivity : AppCompatActivity() {
                         return@withContext
                     }
                 if (outgoingValue != null) {
-                    beginOutgoingFileTransferState(
-                        transferId = outgoingValue.transferId,
-                        displayName = safeOutgoingFileName(outgoingValue.fileName),
-                        byteLength = outgoingValue.byteLength,
-                        cancel = session.cancelOutgoingFile,
-                    )
-                    showDedupedToast(R.string.file_transfer_sent_to_mac)
+                    val started =
+                        beginOutgoingFileTransferState(
+                            transferId = outgoingValue.transferId,
+                            displayName = safeOutgoingFileName(outgoingValue.fileName),
+                            byteLength = outgoingValue.byteLength,
+                            cancel = session.cancelOutgoingFile,
+                        )
+                    if (started) {
+                        showDedupedToast(R.string.file_transfer_sent_to_mac)
+                    } else {
+                        discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false)
+                    }
                 } else {
                     discardPendingOutgoingFileTransfer()
                     showDedupedToast(R.string.file_transfer_send_failed)
@@ -2706,10 +2712,12 @@ class MainActivity : AppCompatActivity() {
         displayName: String,
         byteLength: Long,
         cancel: (ByteString) -> Boolean,
-    ) {
+    ): Boolean {
+        if (hasOutgoingFileTransferAlreadyFinished(transferId)) return false
         finishOutgoingFileTransferState(activeOutgoingFileTransfer?.transferId)
         activeOutgoingFileTransfer = ActiveOutgoingFileTransfer(transferId, displayName, byteLength, cancel)
         showOutgoingFileProgressDialog(0L)
+        return true
     }
 
     private fun updateOutgoingFileTransferProgress(
@@ -2724,12 +2732,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun finishOutgoingFileTransferState(transferId: ByteString?) {
+        transferId?.let(::markOutgoingFileTransferFinished)
         if (transferId == null || activeOutgoingFileTransfer?.transferId == transferId) {
             activeOutgoingFileTransfer = null
             pendingOutgoingFileDialog?.dismiss()
             pendingOutgoingFileDialog = null
         }
     }
+
+    private fun markOutgoingFileTransferFinished(transferId: ByteString) {
+        recentlyFinishedOutgoingTransferIds.remove(transferId)
+        recentlyFinishedOutgoingTransferIds.addLast(transferId)
+        while (recentlyFinishedOutgoingTransferIds.size > RECENTLY_FINISHED_OUTGOING_TRANSFER_LIMIT) {
+            recentlyFinishedOutgoingTransferIds.removeFirst()
+        }
+    }
+
+    private fun hasOutgoingFileTransferAlreadyFinished(transferId: ByteString): Boolean =
+        recentlyFinishedOutgoingTransferIds.remove(transferId)
 
     private fun showOutgoingFileProgressDialog(acknowledgedBytes: Long) {
         val active = activeOutgoingFileTransfer ?: return
@@ -2770,7 +2790,7 @@ class MainActivity : AppCompatActivity() {
         val cancelled = active.cancel(transferId)
         discardPendingOutgoingFileTransfer()
         if (!cancelled) {
-            showDedupedToast(R.string.file_transfer_failed_cancelled)
+            showDedupedToast(R.string.file_transfer_cancel_failed)
         }
     }
 
@@ -2979,8 +2999,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun discardPendingOutgoingFileTransfer() {
+    private fun discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers: Boolean = true) {
         finishOutgoingFileTransferState(null)
+        if (clearFinishedTransferMarkers) recentlyFinishedOutgoingTransferIds.clear()
         (productSessionCoordinator.takePendingOutgoingFileTransfer() as? File)?.deleteRecursivelyBestEffort()
         pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()
         pendingInternetOutgoingFileTransfer = null
@@ -3210,7 +3231,9 @@ class MainActivity : AppCompatActivity() {
             "policy_denied" -> R.string.file_transfer_failed_policy_denied
             "user_denied" -> R.string.file_transfer_failed_user_denied
             "approval_timeout" -> R.string.file_transfer_offer_expired
-            "approval_cancelled" -> R.string.file_transfer_failed_cancelled
+            "approval_cancelled",
+            "user_cancelled",
+            -> R.string.file_transfer_failed_cancelled
             "file_too_large" -> R.string.file_transfer_failed_too_large
             "concurrent_limit",
             "temporary_space_limit",
@@ -4768,7 +4791,7 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileResult
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                discardPendingOutgoingFileTransfer()
+                discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false)
                 val message =
                     if (accepted) {
                         R.string.file_transfer_completed
@@ -5048,7 +5071,7 @@ class MainActivity : AppCompatActivity() {
                     if (!isCurrentInternetSession()) return
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
-                        discardPendingOutgoingFileTransfer()
+                        discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false)
                         mainDiag("internet onFileTransferResult: accepted=$accepted reason=$reason")
                         showDedupedToast(
                             if (accepted) {
@@ -6717,6 +6740,7 @@ class MainActivity : AppCompatActivity() {
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
+        private const val RECENTLY_FINISHED_OUTGOING_TRANSFER_LIMIT = 16
         private const val TOAST_DEDUP_WINDOW_MS = 1_500L
         private const val DISPLAY_MENU_SHOW_DELAY_MS = 120L
         private const val DISPLAY_MENU_SELECTION_GUARD_MS = 300L
