@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "e4d7861b8af3ffa8d32fff99b022e92193acc071",
+    "base_commit": "3c97f98f21e8bc2a58f44a0a1e586f78cb874e89",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Vibe Screen core team",
@@ -50,7 +50,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33879459753"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33891389089"
       ],
       "owner_prs": [],
       "blockers": []
@@ -63,7 +63,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33879459753"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33891389089"
       ],
       "owner_prs": [],
       "blockers": []
@@ -76,7 +76,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33879459753",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33891389089",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -125,7 +125,7 @@
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md",
-        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-<redacted-xiaomi-adb-serial>/README.md"
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-redacted/README.md"
       ],
       "owner_prs": [],
       "blockers": []
@@ -254,6 +254,10 @@
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
         "docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/README.md",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ProductSessionCoordinatorTest.kt",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_manifest.py"
       ],
@@ -265,6 +269,7 @@
         "PR #555 and PR #562 record P0110 no-Host transfer UI smoke only; they do not prove real Host readiness, stream establishment, Protocol v1 handshake with a real Host, or Android/macOS file bytes landing behavior.",
         "PR #563 keeps active outgoing transfer controls visible while sending and resets disconnected transfer controls with Android source-level contract coverage only.",
         "PR #564 treats Internet outgoing file-transfer cancellation as locally successful after local owner cleanup and retains fail-closed session behavior when the reliable cancel frame is rejected, but this is Internet semantic offline coverage only.",
+        "PR #567 shows accepted incoming file-transfer progress in the Android control bar, adds incoming cancellation cleanup, and keeps incoming/outgoing transfer workflows mutually exclusive with source-level contract coverage only.",
         "No retained bidirectional Android -> macOS and macOS -> Android product transfer evidence exists with file offer/request/content packets, explicit sender action, receiver approval, remote write, final SHA-256 equality, positive session epoch, and cancel cleanup.",
         "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass."
       ]
