@@ -249,7 +249,7 @@ class MainActivity : AppCompatActivity() {
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
         Runnable {
-            if (activeOutgoingFileTransfer == null &&
+            if (!hasActiveFileTransfer() &&
                 ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)
             ) {
                 hideControlBar()
@@ -2067,7 +2067,9 @@ class MainActivity : AppCompatActivity() {
         binding.connectionSecurityGroup.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
+        rejectPendingIncomingFileOffer()
         discardPendingOutgoingFileTransfer()
+        clearActiveIncomingFileTransfer()
         hideControlBar()
         updateDisconnectedHeader(prefs.connectionMode)
     }
@@ -2157,11 +2159,14 @@ class MainActivity : AppCompatActivity() {
     private fun currentControlBarRevealReason(
         requested: ControlBarAccessibilityPolicy.RevealReason,
     ): ControlBarAccessibilityPolicy.RevealReason =
-        if (activeOutgoingFileTransfer != null) {
+        if (hasActiveFileTransfer()) {
             ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER
         } else {
             requested
         }
+
+    private fun hasActiveFileTransfer(): Boolean =
+        activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null
 
     private fun hideControlBar() {
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
@@ -2384,7 +2389,11 @@ class MainActivity : AppCompatActivity() {
     private fun refreshFileTransferControl() {
         val client = streamClient
         if (client != null) {
-            if (!client.canTransferFiles) discardPendingOutgoingFileTransfer(refreshControl = false)
+            if (!client.canTransferFiles) {
+                rejectPendingIncomingFileOffer()
+                discardPendingOutgoingFileTransfer(refreshControl = false)
+                clearActiveIncomingFileTransfer(refreshControl = false)
+            }
             productSessionCoordinator.setRuntimeAvailability(
                 client,
                 activeSessionGeneration,
@@ -2392,32 +2401,43 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val internetFileTransfer = prefs.connectionMode == ConnectionMode.INTERNET && internetSession?.canTransferFiles == true
-        val state = productSessionCoordinator.renderState()
-        val fileTransferControlVisible = state.fileTransferVisible || internetFileTransfer
-        if (!fileTransferControlVisible && activeOutgoingFileTransfer != null) {
+        if (prefs.connectionMode == ConnectionMode.INTERNET && !internetFileTransfer) {
+            rejectPendingIncomingFileOffer()
             discardPendingOutgoingFileTransfer(refreshControl = false)
+            clearActiveIncomingFileTransfer(refreshControl = false)
         }
+        val state = productSessionCoordinator.renderState()
+        val transferAvailable = state.fileTransferVisible || internetFileTransfer
+        if (!transferAvailable) {
+            rejectPendingIncomingFileOffer()
+            discardPendingOutgoingFileTransfer(refreshControl = false)
+            clearActiveIncomingFileTransfer(refreshControl = false)
+        }
+        val activeIncoming = activeIncomingFileTransfer
         val activeOutgoing = activeOutgoingFileTransfer
-        val progressLabel = activeOutgoing?.let(::outgoingFileProgressLabel)
+        val activeTransferVisible = activeIncoming != null || activeOutgoing != null
+        val fileTransferControlVisible = transferAvailable || activeTransferVisible
+        val progressLabel = activeIncoming?.let(::incomingFileProgressLabel) ?: activeOutgoing?.let(::outgoingFileProgressLabel)
+        val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false
         binding.controlFileTransferButton.visibility = if (fileTransferControlVisible) View.VISIBLE else View.GONE
         binding.controlFileTransferButton.isEnabled =
-            (state.fileTransferEnabled || internetFileTransfer) && activeOutgoing?.cancelling != true
+            (state.fileTransferEnabled || internetFileTransfer || activeTransferVisible) && !cancelling
         binding.controlFileTransferButton.contentDescription =
             if (progressLabel == null) {
                 getString(R.string.control_file_transfer)
-            } else if (activeOutgoing.cancelling) {
+            } else if (cancelling) {
                 getString(R.string.control_file_transfer_cancelling_with_progress, progressLabel)
             } else {
                 getString(R.string.control_file_transfer_cancel_with_progress, progressLabel)
             }
         binding.controlFileTransferButton.setImageResource(
-            if (activeOutgoing == null) R.drawable.ic_file_transfer else R.drawable.ic_cancel_transfer,
+            if (!activeTransferVisible) R.drawable.ic_file_transfer else R.drawable.ic_cancel_transfer,
         )
         binding.controlFileTransferButton.setColorFilter(
-            ContextCompat.getColor(this, if (activeOutgoing == null) R.color.on_surface else R.color.danger),
+            ContextCompat.getColor(this, if (!activeTransferVisible) R.color.on_surface else R.color.danger),
         )
         TooltipCompat.setTooltipText(binding.controlFileTransferButton, binding.controlFileTransferButton.contentDescription)
-        binding.controlFileTransferProgressText.visibility = if (activeOutgoing == null) View.GONE else View.VISIBLE
+        binding.controlFileTransferProgressText.visibility = if (!activeTransferVisible) View.GONE else View.VISIBLE
         binding.controlFileTransferProgressText.text = progressLabel ?: ""
         binding.controlFileTransferProgressText.contentDescription = progressLabel ?: ""
         refreshTransferReadinessInSettings()
@@ -2425,6 +2445,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleFileTransferControlClick() {
+        val activeIncoming = activeIncomingFileTransfer
+        if (activeIncoming != null) {
+            cancelIncomingFileTransfer(activeIncoming.transferId)
+            return
+        }
         val activeOutgoing = activeOutgoingFileTransfer
         if (activeOutgoing == null) {
             beginChooseFileForTransfer()
@@ -2467,7 +2492,7 @@ class MainActivity : AppCompatActivity() {
                 runCatching {
                     val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
                     val registered = withContext(Dispatchers.Main) {
-                        if (session.isCurrentAndAllowed()) {
+                        if (session.isCurrentAndAllowed() && !hasActiveFileTransfer()) {
                             session.stageOutgoingFile(file)
                         } else {
                             file.deleteRecursivelyBestEffort()
@@ -2567,6 +2592,8 @@ class MainActivity : AppCompatActivity() {
         val displayName: String,
         val byteLength: Long,
         val cancel: (ByteString) -> Boolean,
+        val receivedBytes: Long = 0L,
+        val cancelling: Boolean = false,
     )
 
     private data class ActiveOutgoingFileTransfer(
@@ -2643,6 +2670,11 @@ class MainActivity : AppCompatActivity() {
                 clearDecision()
                 return@runOnUiThread
             }
+            if (hasActiveFileTransfer()) {
+                respond(false, "concurrent_limit")
+                clearDecision()
+                return@runOnUiThread
+            }
 
             var decided = false
             lateinit var timeout: Runnable
@@ -2678,11 +2710,19 @@ class MainActivity : AppCompatActivity() {
                     )
                     .setPositiveButton(R.string.file_transfer_accept) { _, _ ->
                         if (decided) return@setPositiveButton
+                        val rejectionReason =
+                            when {
+                                !isCurrentAndAllowed() -> "user_denied"
+                                hasActiveFileTransfer() -> "concurrent_limit"
+                                else -> null
+                            }
                         if (!finishDecision()) return@setPositiveButton
                         decided = true
                         pendingIncomingFileDialog = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
-                        if (respond(true, "")) {
+                        if (rejectionReason != null) {
+                            respond(false, rejectionReason)
+                        } else if (respond(true, "")) {
                             beginTransfer()
                         } else {
                             showDedupedToast(R.string.file_transfer_send_failed)
@@ -2702,7 +2742,8 @@ class MainActivity : AppCompatActivity() {
         cancel: (ByteString) -> Boolean,
     ) {
         activeIncomingFileTransfer = ActiveIncomingFileTransfer(transferId, displayName, byteLength, cancel)
-        showIncomingFileProgressDialog(0L)
+        revealControlBar(ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER)
+        refreshFileTransferControl()
     }
 
     private fun updateIncomingFileTransferProgress(
@@ -2711,55 +2752,46 @@ class MainActivity : AppCompatActivity() {
     ) {
         val active = activeIncomingFileTransfer ?: return
         if (active.transferId != transferId) return
-        updateIncomingFileProgressMessage(receivedBytes.coerceAtMost(active.byteLength))
+        val boundedBytes = receivedBytes.coerceIn(0L, active.byteLength.coerceAtLeast(0L))
+        val previousLabel = incomingFileProgressLabel(active)
+        val updated = active.copy(receivedBytes = boundedBytes)
+        activeIncomingFileTransfer = updated
+        if (incomingFileProgressLabel(updated) != previousLabel) refreshFileTransferControl()
     }
 
     private fun finishIncomingFileTransferState(transferId: ByteString) {
         if (activeIncomingFileTransfer?.transferId == transferId) {
-            activeIncomingFileTransfer = null
-            pendingIncomingFileDialog?.dismiss()
-            pendingIncomingFileDialog = null
+            clearActiveIncomingFileTransfer(refreshControl = true)
+            revealControlBar()
         }
     }
 
-    private fun showIncomingFileProgressDialog(receivedBytes: Long) {
-        val active = activeIncomingFileTransfer ?: return
-        val dialog =
-            MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.file_transfer_receiving_title)
-                .setMessage(incomingFileProgressMessage(active, receivedBytes))
-                .setNegativeButton(R.string.file_transfer_cancel) { _, _ ->
-                    cancelIncomingFileTransferFromDialog(active.transferId)
-                }
-                .setOnCancelListener { cancelIncomingFileTransferFromDialog(active.transferId) }
-        pendingIncomingFileDialog = showImmersiveDialog(dialog)
+    private fun incomingFileProgressLabel(active: ActiveIncomingFileTransfer): String {
+        val totalBytes = active.byteLength.coerceAtLeast(0L)
+        val receivedBytes = active.receivedBytes.coerceIn(0L, totalBytes)
+        val percent = if (totalBytes == 0L) 100 else ((receivedBytes.toDouble() / totalBytes.toDouble()) * 100.0).toInt()
+        return getString(R.string.file_transfer_progress_percent, active.displayName, percent)
     }
 
-    private fun updateIncomingFileProgressMessage(receivedBytes: Long) {
-        val active = activeIncomingFileTransfer ?: return
-        val dialog = pendingIncomingFileDialog ?: return
-        dialog.setMessage(incomingFileProgressMessage(active, receivedBytes))
-    }
-
-    private fun incomingFileProgressMessage(
-        active: ActiveIncomingFileTransfer,
-        receivedBytes: Long,
-    ): String =
-        getString(
-            R.string.file_transfer_receiving_message,
-            active.displayName,
-            readableByteCount(receivedBytes),
-            readableByteCount(active.byteLength),
-        )
-
-    private fun cancelIncomingFileTransferFromDialog(transferId: ByteString) {
+    private fun cancelIncomingFileTransfer(transferId: ByteString) {
         val active = activeIncomingFileTransfer ?: return
         if (active.transferId != transferId) return
-        activeIncomingFileTransfer = null
-        pendingIncomingFileDialog = null
-        if (!active.cancel(transferId)) {
-            showDedupedToast(R.string.file_transfer_failed_cancelled)
+        if (active.cancelling) return
+        val cancelled = active.cancel(transferId)
+        if (cancelled) {
+            if (activeIncomingFileTransfer?.transferId == transferId) {
+                activeIncomingFileTransfer = active.copy(cancelling = true)
+            }
+            refreshFileTransferControl()
+        } else {
+            refreshFileTransferControl()
+            showDedupedToast(R.string.file_transfer_cancel_failed)
         }
+    }
+
+    private fun clearActiveIncomingFileTransfer(refreshControl: Boolean = false) {
+        activeIncomingFileTransfer = null
+        if (refreshControl) refreshFileTransferControl()
     }
 
     private fun beginOutgoingFileTransferState(
@@ -2876,19 +2908,33 @@ class MainActivity : AppCompatActivity() {
     private fun activeInternetFileTransferSession(): ActiveFileTransferSession? {
         val session = internetSession ?: return null
         val generation = productSessionCoordinator.currentInternetGeneration()
-        if (generation <= 0L || session.state != InternetProductSessionState.ACTIVE || !session.canTransferFiles) return null
+        if (generation <= 0L ||
+            session.state != InternetProductSessionState.ACTIVE ||
+            !session.canTransferFiles ||
+            pendingIncomingFileDialog != null ||
+            pendingInternetOutgoingFileTransfer != null ||
+            hasActiveFileTransfer()
+        ) {
+            return null
+        }
         return ActiveFileTransferSession(
             isCurrent = { generation == productSessionCoordinator.currentInternetGeneration() && internetSession === session },
             isCurrentAndAllowed = {
                 generation == productSessionCoordinator.currentInternetGeneration() &&
                     internetSession === session &&
-                    session.canTransferFiles
+                    session.canTransferFiles &&
+                    pendingIncomingFileDialog == null &&
+                    pendingInternetOutgoingFileTransfer == null &&
+                    !hasActiveFileTransfer()
             },
             negotiatedMaxFileBytes = session.negotiatedMaxFileBytes,
             stageOutgoingFile = { file ->
                 if (generation == productSessionCoordinator.currentInternetGeneration() &&
                     internetSession === session &&
-                    session.canTransferFiles
+                    session.canTransferFiles &&
+                    pendingIncomingFileDialog == null &&
+                    pendingInternetOutgoingFileTransfer == null &&
+                    !hasActiveFileTransfer()
                 ) {
                     discardPendingOutgoingFileTransfer()
                     pendingInternetOutgoingFileTransfer = file
@@ -4065,6 +4111,7 @@ class MainActivity : AppCompatActivity() {
         managedHostActionsAllowed = true
         resetCustomGestureTouchState()
         discardPendingOutgoingFileTransfer()
+        clearActiveIncomingFileTransfer()
         val generation = productSessionCoordinator.activate(client)
         streamClient = client
         activeSessionGeneration = generation
@@ -4086,7 +4133,11 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
         binding: ClientSessionBinding,
     ): Boolean {
-        if (!binding.capabilities.fileTransfer) discardPendingOutgoingFileTransfer()
+        if (!binding.capabilities.fileTransfer) {
+            rejectPendingIncomingFileOffer()
+            discardPendingOutgoingFileTransfer()
+            clearActiveIncomingFileTransfer()
+        }
         val updated = productSessionCoordinator.updateNegotiatedSession(client, generation, binding)
         if (updated) refreshTransferReadinessInSettings()
         return updated
@@ -4458,7 +4509,11 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@connectionStatus
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                if (!connected) discardPendingOutgoingFileTransfer()
+                if (!connected) {
+                    rejectPendingIncomingFileOffer()
+                    discardPendingOutgoingFileTransfer()
+                    clearActiveIncomingFileTransfer()
+                }
                 productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)
                 refreshTransferReadinessInSettings()
                 isConnected = connected
@@ -4598,7 +4653,11 @@ class MainActivity : AppCompatActivity() {
                         callbackGeneration,
                         ClientSessionBinding(capabilities, sink),
                     )
-                    if (!callbackClient.canTransferFiles) discardPendingOutgoingFileTransfer()
+                    if (!callbackClient.canTransferFiles) {
+                        rejectPendingIncomingFileOffer()
+                        discardPendingOutgoingFileTransfer()
+                        clearActiveIncomingFileTransfer()
+                    }
                     productSessionCoordinator.setRuntimeAvailability(
                         callbackClient,
                         callbackGeneration,
@@ -4673,18 +4732,25 @@ class MainActivity : AppCompatActivity() {
                 val customGestures = hostActions && managedCustomGesturesAllowed
                 val clipboard =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated
+                val fileTransfer =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_FILE_TRANSFER in negotiated
                 val capabilities =
                     binding.capabilities.copy(
                         customGestures = customGestures,
                         hostActions = hostActions,
                         clipboard = clipboard,
+                        fileTransfer = fileTransfer,
                     )
                 applyNegotiatedSession(
                     callbackClient,
                     callbackGeneration,
                     ClientSessionBinding(capabilities, binding.inputSink),
                 )
-                if (!callbackClient.canTransferFiles) discardPendingOutgoingFileTransfer()
+                if (!callbackClient.canTransferFiles) {
+                    rejectPendingIncomingFileOffer()
+                    discardPendingOutgoingFileTransfer()
+                    clearActiveIncomingFileTransfer()
+                }
                 productSessionCoordinator.setRuntimeAvailability(
                     callbackClient,
                     callbackGeneration,
@@ -5040,6 +5106,10 @@ class MainActivity : AppCompatActivity() {
                 override fun onFileOffer(offer: dev.vibescreen.protocol.v1.FileOffer) {
                     if (!isCurrentInternetSession()) return
                     val session = sessionReference.get() ?: return
+                    if (pendingIncomingFileDialog != null || pendingInternetOutgoingFileTransfer != null || hasActiveFileTransfer()) {
+                        session.respondToFileOffer(offer, accepted = false, rejectionReason = "concurrent_limit")
+                        return
+                    }
                     val callbackGeneration = generation
                     promptIncomingFileOffer(
                         offer = offer,
@@ -5458,7 +5528,9 @@ class MainActivity : AppCompatActivity() {
         )
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
+            rejectPendingIncomingFileOffer()
             discardPendingOutgoingFileTransfer()
+            clearActiveIncomingFileTransfer()
             productSessionCoordinator.setTransportConnected(false)
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
@@ -5546,7 +5618,9 @@ class MainActivity : AppCompatActivity() {
         decoderPresentationOwner.clearInternetConfiguration()
         decoderPresentationOwner.clearDisplayGeometry()
         isConnected = false
+        rejectPendingIncomingFileOffer()
         discardPendingOutgoingFileTransfer()
+        clearActiveIncomingFileTransfer()
         productSessionCoordinator.setTransportConnected(false)
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
@@ -5588,7 +5662,9 @@ class MainActivity : AppCompatActivity() {
         decoderPresentationOwner.clearInternetConfiguration()
         decoderPresentationOwner.clearDisplayGeometry()
         isConnected = false
+        rejectPendingIncomingFileOffer()
         discardPendingOutgoingFileTransfer()
+        clearActiveIncomingFileTransfer()
         productSessionCoordinator.setTransportConnected(false)
         val quarantinedSession = requireNotNull(internetSession)
         check(
@@ -5868,6 +5944,7 @@ class MainActivity : AppCompatActivity() {
             client?.disconnect()
             if (client != null) {
                 discardPendingOutgoingFileTransfer()
+                clearActiveIncomingFileTransfer()
                 productSessionCoordinator.invalidate(client, generation)
             }
             if (streamClient === client) streamClient = null
@@ -5953,6 +6030,7 @@ class MainActivity : AppCompatActivity() {
             client?.disconnect()
             if (client != null) {
                 discardPendingOutgoingFileTransfer()
+                clearActiveIncomingFileTransfer()
                 productSessionCoordinator.invalidate(client, generation)
             }
             if (streamClient === client) streamClient = null
@@ -5973,7 +6051,9 @@ class MainActivity : AppCompatActivity() {
         streamStylusInputIds.clear()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
+        rejectPendingIncomingFileOffer()
         discardPendingOutgoingFileTransfer()
+        clearActiveIncomingFileTransfer()
         productSessionCoordinator.clearDisconnectedUiState()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
@@ -6775,6 +6855,7 @@ class MainActivity : AppCompatActivity() {
         rejectPendingIncomingFileOffer()
         fileTransferApprovalHandler.removeCallbacksAndMessages(null)
         discardPendingOutgoingFileTransfer()
+        clearActiveIncomingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
         runCatching(::discardPendingInternetPairing).onFailure { failure ->

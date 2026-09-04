@@ -368,8 +368,6 @@
     <string name="file_transfer_unknown_name">Unnamed file</string>
     <string name="file_transfer_size_bytes">%1$d B</string>
     <string name="file_transfer_offer_expired">File transfer request expired</string>
-    <string name="file_transfer_receiving_title">Receiving file</string>
-    <string name="file_transfer_receiving_message">Receiving %1$s: %2$s of %3$s verified.</string>
     <string name="file_transfer_progress_percent">%1$s %2$d%%</string>
     <string name="file_transfer_cancel">Cancel transfer</string>
     <string name="file_transfer_downloads_destination">Downloads</string>

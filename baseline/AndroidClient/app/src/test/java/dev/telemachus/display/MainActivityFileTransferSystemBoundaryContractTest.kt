@@ -8,9 +8,19 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     @Test
     fun incomingFileTransferExposesProgressAndUserCancelThroughProductState() {
         val source = mainActivitySource()
+        val strings = stringsSource()
         val begin = extractMethod(source, "private fun beginIncomingFileTransferState")
         val progress = extractMethod(source, "private fun updateIncomingFileTransferProgress")
-        val cancel = extractMethod(source, "private fun cancelIncomingFileTransferFromDialog")
+        val refreshControl = extractMethod(source, "private fun refreshFileTransferControl")
+        val clickHandler = extractMethod(source, "private fun handleFileTransferControlClick")
+        val cancel = extractMethod(source, "private fun cancelIncomingFileTransfer")
+        val finish = extractMethod(source, "private fun finishIncomingFileTransferState")
+        val cleanup = extractMethod(source, "private fun clearActiveIncomingFileTransfer")
+        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val promptOffer = extractMethod(
+            source,
+            "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer",
+        )
         val callback = extractCallback(source, "callbackClient.onIncomingFileProgress = fileProgress@")
         val cancelledCallback = extractCallback(source, "callbackClient.onIncomingFileCancelled = fileCancelled@")
 
@@ -23,20 +33,85 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             begin.contains("ActiveIncomingFileTransfer(transferId, displayName, byteLength, cancel)"),
         )
         assertTrue(
-            "Incoming progress callback should update the active receive dialog only on the current session",
+            "Accepted incoming transfers should use the non-modal control bar, not a blocking receive dialog",
+            begin.contains("revealControlBar(ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER)") &&
+                begin.contains("refreshFileTransferControl()") &&
+                !source.contains("showIncomingFileProgressDialog") &&
+                !source.contains("updateIncomingFileProgressMessage") &&
+                !source.contains("cancelIncomingFileTransferFromDialog") &&
+                !strings.contains("file_transfer_receiving_title") &&
+                !strings.contains("file_transfer_receiving_message"),
+        )
+        assertTrue(
+            "Incoming progress callback should update the active receive control only on the current session",
             callback.contains("updateIncomingFileTransferProgress(transferId, receivedBytes)"),
         )
         assertTrue(
             "Progress updates must be transfer-id scoped",
-            progress.contains("if (active.transferId != transferId) return"),
+            progress.contains("if (active.transferId != transferId) return") &&
+                progress.contains("val previousLabel = incomingFileProgressLabel(active)") &&
+                progress.contains("activeIncomingFileTransfer = updated") &&
+                progress.contains("if (incomingFileProgressLabel(updated) != previousLabel) refreshFileTransferControl()"),
+        )
+        assertTrue(
+            "The shared file-transfer button should cancel an active incoming receive before opening the picker",
+            clickHandler.contains("val activeIncoming = activeIncomingFileTransfer") &&
+                clickHandler.contains("cancelIncomingFileTransfer(activeIncoming.transferId)") &&
+                assertBeforeValue(clickHandler, "cancelIncomingFileTransfer(activeIncoming.transferId)", "beginChooseFileForTransfer()"),
+        )
+        assertTrue(
+            "The control bar should render incoming receive progress through the same text and cancel affordance as outgoing sends",
+            refreshControl.contains("val activeIncoming = activeIncomingFileTransfer") &&
+                refreshControl.contains("val transferAvailable = state.fileTransferVisible || internetFileTransfer") &&
+                refreshControl.contains("if (!transferAvailable)") &&
+                assertBeforeValue(refreshControl, "if (!transferAvailable)", "val activeIncoming = activeIncomingFileTransfer") &&
+                refreshControl.contains("val activeTransferVisible = activeIncoming != null || activeOutgoing != null") &&
+                refreshControl.contains("val fileTransferControlVisible = transferAvailable || activeTransferVisible") &&
+                refreshControl.contains("activeIncoming?.let(::incomingFileProgressLabel) ?: activeOutgoing?.let(::outgoingFileProgressLabel)") &&
+                refreshControl.contains("val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false") &&
+                refreshControl.contains("R.drawable.ic_cancel_transfer") &&
+                refreshControl.contains("binding.controlFileTransferProgressText.visibility = if (!activeTransferVisible) View.GONE else View.VISIBLE"),
+        )
+        assertTrue(
+            "Incoming/outgoing transfers should be mutually exclusive at both approval and staging boundaries",
+            promptOffer.contains("if (hasActiveFileTransfer())") &&
+                promptOffer.contains("respond(false, \"concurrent_limit\")") &&
+                promptOffer.contains("val rejectionReason =") &&
+                promptOffer.contains("hasActiveFileTransfer() -> \"concurrent_limit\"") &&
+                promptOffer.contains("if (rejectionReason != null)") &&
+                assertBeforeValue(promptOffer, "if (rejectionReason != null)", "respond(true, \"\")") &&
+                handlePicker.contains("session.isCurrentAndAllowed() && !hasActiveFileTransfer()"),
         )
         assertTrue(
             "User cancellation must call the active transfer cancellation boundary",
             cancel.contains("active.cancel(transferId)"),
         )
         assertTrue(
+            "User cancellation should keep incoming UI in cancelling state until a matching callback closes it",
+            cancel.contains("if (active.cancelling) return") &&
+                cancel.contains("activeIncomingFileTransfer = active.copy(cancelling = true)") &&
+                !cancel.contains("activeIncomingFileTransfer = null"),
+        )
+        assertTrue(
+            "If the incoming cancel command cannot be submitted, the UI should not claim it was cancelled",
+            cancel.contains("if (cancelled)") &&
+                cancel.contains("} else {") &&
+                cancel.contains("showDedupedToast(R.string.file_transfer_cancel_failed)"),
+        )
+        assertTrue(
             "Incoming cancellation should clear only the matching active receive state",
             cancelledCallback.contains("finishIncomingFileTransferState(transferId)"),
+        )
+        assertTrue(
+            "Incoming finish should clear receive state and restart control bar auto-hide through the shared cleanup path",
+            finish.contains("activeIncomingFileTransfer?.transferId == transferId") &&
+                finish.contains("clearActiveIncomingFileTransfer(refreshControl = true)") &&
+                finish.contains("revealControlBar()"),
+        )
+        assertTrue(
+            "Shared incoming cleanup should clear the active receive state and refresh only when requested",
+            cleanup.contains("activeIncomingFileTransfer = null") &&
+                cleanup.contains("if (refreshControl) refreshFileTransferControl()"),
         )
     }
 
@@ -101,10 +176,10 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             "The control bar should show progress text and expose cancellation state to accessibility",
             refreshControl.contains("R.string.control_file_transfer_cancel_with_progress") &&
                 refreshControl.contains("R.string.control_file_transfer_cancelling_with_progress") &&
-                refreshControl.contains("activeOutgoing?.cancelling != true") &&
+                refreshControl.contains("val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false") &&
                 refreshControl.contains("R.drawable.ic_cancel_transfer") &&
                 refreshControl.contains("R.color.danger") &&
-                refreshControl.contains("binding.controlFileTransferProgressText.visibility = if (activeOutgoing == null) View.GONE else View.VISIBLE") &&
+                refreshControl.contains("binding.controlFileTransferProgressText.visibility = if (!activeTransferVisible) View.GONE else View.VISIBLE") &&
                 refreshControl.contains("binding.controlFileTransferProgressText.contentDescription = progressLabel ?: \"\""),
         )
         assertTrue(
@@ -193,11 +268,28 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     @Test
     fun disconnectedSessionUiHidesFileTransferControlsFailClosed() {
         val source = mainActivitySource()
+        val showDisconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
         val disconnectedUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+        val connectionStatus = extractCallback(source, "callbackClient.onConnectionStatus = connectionStatus@")
+        val updateInternetState = extractMethod(source, "private fun updateInternetState")
+        val disconnectInternet = extractMethod(source, "private fun disconnectInternet")
+        val quarantineInternetSession = extractMethod(source, "private fun quarantineInternetSession")
 
         assertTrue(
-            "Disconnect cleanup should clear staged outgoing file state before hiding controls",
-            disconnectedUi.contains("discardPendingOutgoingFileTransfer()"),
+            "Disconnect cleanup should clear pending offers, active receives, and staged sends before hiding controls",
+            showDisconnected.contains("rejectPendingIncomingFileOffer()") &&
+                disconnectedUi.contains("rejectPendingIncomingFileOffer()") &&
+                disconnectedUi.contains("discardPendingOutgoingFileTransfer()") &&
+                disconnectedUi.contains("clearActiveIncomingFileTransfer()"),
+        )
+        assertTrue(
+            "Transport disconnect and Internet terminal states must also clear a still-pending incoming offer dialog",
+            connectionStatus.contains("if (!connected)") &&
+                connectionStatus.contains("rejectPendingIncomingFileOffer()") &&
+                updateInternetState.contains("InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED") &&
+                updateInternetState.contains("rejectPendingIncomingFileOffer()") &&
+                disconnectInternet.contains("rejectPendingIncomingFileOffer()") &&
+                quarantineInternetSession.contains("rejectPendingIncomingFileOffer()"),
         )
         assertTrue(
             "Disconnected UI must hide and disable the file-transfer action, not rely only on the parent bar",
@@ -223,20 +315,42 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     }
 
     @Test
-    fun activeOutgoingTransferSuppressesControlBarAutoHide() {
+    fun internetFileTransferBlocksOutgoingWhileIncomingOfferIsPending() {
+        val source = mainActivitySource()
+        val internetSession = extractMethod(source, "private fun activeInternetFileTransferSession")
+        val internetOffer = extractCallback(source, "override fun onFileOffer(offer: dev.vibescreen.protocol.v1.FileOffer)")
+
+        assertTrue(
+            "Internet outgoing selection should be unavailable while an incoming offer dialog is pending",
+            internetSession.contains("pendingIncomingFileDialog != null") &&
+                internetSession.contains("pendingIncomingFileDialog == null") &&
+                assertBeforeValue(internetSession, "pendingIncomingFileDialog != null", "return ActiveFileTransferSession") &&
+                assertBeforeValue(internetSession, "pendingIncomingFileDialog == null", "pendingInternetOutgoingFileTransfer = file"),
+        )
+        assertTrue(
+            "Internet should reject a second incoming offer while an offer dialog or transfer is already active",
+            internetOffer.contains("pendingIncomingFileDialog != null || pendingInternetOutgoingFileTransfer != null || hasActiveFileTransfer()") &&
+                internetOffer.contains("session.respondToFileOffer(offer, accepted = false, rejectionReason = \"concurrent_limit\")") &&
+                assertBeforeValue(internetOffer, "pendingIncomingFileDialog != null", "promptIncomingFileOffer("),
+        )
+    }
+
+    @Test
+    fun activeFileTransferSuppressesControlBarAutoHide() {
         val source = mainActivitySource()
         val hideRunnable = extractProperty(source, "private val controlBarHideRunnable")
         val reconcileTouchExplorationState = extractMethod(source, "private fun reconcileTouchExplorationState")
         val revealControlBar = extractMethod(source, "private fun revealControlBar")
         val currentRevealReason = extractMethod(source, "private fun currentControlBarRevealReason")
+        val hasActiveFileTransfer = extractMethod(source, "private fun hasActiveFileTransfer")
 
         assertTrue(
-            "The delayed hide runnable must not hide progress/cancel UI while an outgoing transfer is active",
-            hideRunnable.contains("activeOutgoingFileTransfer == null") &&
-                assertBeforeValue(hideRunnable, "activeOutgoingFileTransfer == null", "hideControlBar()"),
+            "The delayed hide runnable must not hide progress/cancel UI while any file transfer is active",
+            hideRunnable.contains("!hasActiveFileTransfer()") &&
+                assertBeforeValue(hideRunnable, "!hasActiveFileTransfer()", "hideControlBar()"),
         )
         assertTrue(
-            "Ordinary reveal calls during an outgoing transfer should be treated as ACTIVE_TRANSFER",
+            "Ordinary reveal calls during an active transfer should be treated as ACTIVE_TRANSFER",
             revealControlBar.contains("currentControlBarRevealReason(revealReason)"),
         )
         assertTrue(
@@ -245,10 +359,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 reconcileTouchExplorationState.contains("ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST"),
         )
         assertTrue(
-            "Active outgoing transfer is the single source that upgrades reveal reason to no-autohide",
-            currentRevealReason.contains("activeOutgoingFileTransfer != null") &&
+            "Active incoming or outgoing transfer is the single source that upgrades reveal reason to no-autohide",
+            currentRevealReason.contains("hasActiveFileTransfer()") &&
                 currentRevealReason.contains("ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER") &&
-                currentRevealReason.contains("requested"),
+                currentRevealReason.contains("requested") &&
+                hasActiveFileTransfer.contains("activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null"),
         )
     }
 

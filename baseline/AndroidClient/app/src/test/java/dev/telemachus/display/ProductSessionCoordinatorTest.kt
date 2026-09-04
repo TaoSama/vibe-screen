@@ -548,6 +548,31 @@ class ProductSessionCoordinatorTest {
     }
 
     @Test
+    fun `incoming and outgoing file transfer workflows are mutually exclusive`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = true)
+
+        val offerToken = Any()
+        assertTrue(coordinator.beginIncomingFileOffer(client, generation, offerToken))
+        assertFalse(coordinator.requestOutgoingFileTransfer(client, generation))
+        assertFalse(coordinator.stageOutgoingFileTransfer(client, generation, Any()))
+
+        assertTrue(coordinator.finishIncomingFileOffer(client, generation, offerToken))
+        assertTrue(coordinator.requestOutgoingFileTransfer(client, generation))
+
+        val fileToken = Any()
+        assertTrue(coordinator.stageOutgoingFileTransfer(client, generation, fileToken))
+        assertFalse(coordinator.beginIncomingFileOffer(client, generation, Any()))
+
+        assertEquals(fileToken, coordinator.takePendingOutgoingFileTransfer())
+        assertTrue(coordinator.beginIncomingFileOffer(client, generation, Any()))
+    }
+
+    @Test
     fun `file transfer workflow is cleared when file transfer capability is lost`() {
         val coordinator = ProductSessionCoordinator<TestClient>()
         val client = TestClient("current")
@@ -558,11 +583,17 @@ class ProductSessionCoordinatorTest {
 
         val fileToken = Any()
         assertTrue(coordinator.stageOutgoingFileTransfer(client, generation, fileToken))
-        assertTrue(coordinator.beginIncomingFileOffer(client, generation, Any()))
 
         coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = false))
 
         assertNull(coordinator.takePendingOutgoingFileTransfer())
+
+        coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = true))
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = true)
+        assertTrue(coordinator.beginIncomingFileOffer(client, generation, Any()))
+
+        coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = false))
+
         assertFalse(coordinator.acceptsIncomingFileOffer(client, generation, Any()))
     }
 
