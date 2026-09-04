@@ -344,14 +344,14 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
     fun requestOutgoingFileTransfer(
         client: ClientIdentity,
         generation: Long,
-    ): Boolean = fileTransferControlsEnabled(client, generation)
+    ): Boolean = fileTransferControlsEnabled(client, generation) && pendingIncomingFileOffer == null
 
     fun stageOutgoingFileTransfer(
         client: ClientIdentity,
         generation: Long,
         fileToken: Any,
     ): Boolean {
-        if (!fileTransferControlsEnabled(client, generation)) return false
+        if (!requestOutgoingFileTransfer(client, generation)) return false
         pendingOutgoingFileTransfer = PendingOutgoingFileTransfer(client, generation, fileToken)
         return true
     }
@@ -367,7 +367,12 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         generation: Long,
         offerToken: Any,
     ): Boolean {
-        if (!fileTransferControlsEnabled(client, generation) || pendingIncomingFileOffer != null) return false
+        if (!fileTransferControlsEnabled(client, generation) ||
+            pendingIncomingFileOffer != null ||
+            pendingOutgoingFileTransfer != null
+        ) {
+            return false
+        }
         pendingIncomingFileOffer = PendingIncomingFileOffer(client, generation, offerToken)
         return true
     }
