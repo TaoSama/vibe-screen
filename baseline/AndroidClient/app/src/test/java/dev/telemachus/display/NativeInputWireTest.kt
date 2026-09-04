@@ -20,6 +20,49 @@ class NativeInputWireTest {
     }
 
     @Test
+    fun buttonMaskFiltersUnsupportedTertiaryBackAndForwardButtons() {
+        assertEquals(0, NativeInputWire.buttonMask(MotionEvent.BUTTON_TERTIARY))
+        assertEquals(0, NativeInputWire.buttonMask(MotionEvent.BUTTON_BACK))
+        assertEquals(0, NativeInputWire.buttonMask(MotionEvent.BUTTON_FORWARD))
+        assertEquals(
+            NativeInputWire.BUTTON_PRIMARY,
+            NativeInputWire.buttonMask(MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_TERTIARY),
+        )
+        assertEquals(
+            NativeInputWire.BUTTON_SECONDARY,
+            NativeInputWire.buttonMask(MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_BACK or MotionEvent.BUTTON_FORWARD),
+        )
+    }
+
+    @Test
+    fun pointerActionMapsHoverBoundariesToExplicitNativePointerActions() {
+        assertEquals(ClientPointerAction.HOVER_ENTER, NativeInputWire.pointerAction(MotionEvent.ACTION_HOVER_ENTER))
+        assertEquals(ClientPointerAction.MOVE, NativeInputWire.pointerAction(MotionEvent.ACTION_HOVER_MOVE))
+        assertEquals(ClientPointerAction.HOVER_EXIT, NativeInputWire.pointerAction(MotionEvent.ACTION_HOVER_EXIT))
+        assertEquals(ClientPointerAction.MOVE, NativeInputWire.pointerAction(MotionEvent.ACTION_MOVE))
+        assertEquals(ClientPointerAction.BUTTON_PRESS, NativeInputWire.pointerAction(MotionEvent.ACTION_BUTTON_PRESS))
+        assertEquals(ClientPointerAction.BUTTON_RELEASE, NativeInputWire.pointerAction(MotionEvent.ACTION_BUTTON_RELEASE))
+        assertEquals(ClientPointerAction.SCROLL, NativeInputWire.pointerAction(MotionEvent.ACTION_SCROLL))
+        assertNull(NativeInputWire.pointerAction(MotionEvent.ACTION_CANCEL))
+    }
+
+    @Test
+    fun outboundButtonMaskClearsHoverBoundariesAndPreservesOrdinaryPointerButtons() {
+        val heldButtons = MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY
+
+        assertEquals(0, NativeInputWire.outboundButtonMask(ClientPointerAction.HOVER_ENTER, heldButtons))
+        assertEquals(0, NativeInputWire.outboundButtonMask(ClientPointerAction.HOVER_EXIT, heldButtons))
+        assertEquals(
+            NativeInputWire.BUTTON_PRIMARY or NativeInputWire.BUTTON_SECONDARY,
+            NativeInputWire.outboundButtonMask(ClientPointerAction.MOVE, heldButtons),
+        )
+        assertEquals(
+            NativeInputWire.BUTTON_PRIMARY,
+            NativeInputWire.outboundButtonMask(ClientPointerAction.BUTTON_PRESS, MotionEvent.BUTTON_PRIMARY),
+        )
+    }
+
+    @Test
     fun mouseLikeSourceNamesMatchPhysicalPointerGateSources() {
         assertEquals(listOf("MOUSE"), NativeInputWire.mouseLikeSourceNames(android.view.InputDevice.SOURCE_MOUSE))
         assertEquals(
@@ -86,6 +129,16 @@ class NativeInputWireTest {
     @Test
     fun pointerPhaseDropsUnsupportedButtonPresses() {
         assertEquals(InputPhase.INPUT_PHASE_CHANGED, NativeInputWire.pointerPhase(ClientPointerAction.MOVE, 0, 0))
+        assertEquals(InputPhase.INPUT_PHASE_CHANGED, NativeInputWire.pointerPhase(ClientPointerAction.HOVER_ENTER, 0, 0))
+        assertEquals(InputPhase.INPUT_PHASE_ENDED, NativeInputWire.pointerPhase(ClientPointerAction.HOVER_EXIT, 0, 0))
+        assertEquals(
+            InputPhase.INPUT_PHASE_CANCELLED,
+            NativeInputWire.pointerPhase(
+                ClientPointerAction.HOVER_EXIT,
+                NativeInputWire.BUTTON_PRIMARY,
+                0,
+            ),
+        )
         assertNull(NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, 0, 0))
         assertNull(NativeInputWire.pointerPhase(ClientPointerAction.SCROLL, NativeInputWire.BUTTON_PRIMARY, 0))
     }
@@ -108,6 +161,23 @@ class NativeInputWireTest {
                 changedButtonMask = 0,
             ),
         )
+    }
+
+    @Test
+    fun pointerPhaseDropsUnsupportedTertiaryBackAndForwardTransitions() {
+        listOf(MotionEvent.BUTTON_TERTIARY, MotionEvent.BUTTON_BACK, MotionEvent.BUTTON_FORWARD).forEach { button ->
+            val changedButtonMask = NativeInputWire.buttonMask(button)
+            assertEquals(0, changedButtonMask)
+            assertNull(NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, 0, changedButtonMask))
+            assertNull(NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_RELEASE, 0, changedButtonMask))
+            assertNull(
+                NativeInputWire.pointerPhase(
+                    ClientPointerAction.BUTTON_PRESS,
+                    NativeInputWire.BUTTON_PRIMARY,
+                    changedButtonMask,
+                ),
+            )
+        }
     }
 
     @Test

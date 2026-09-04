@@ -27,13 +27,49 @@ internal object NativeInputWire {
     const val MODIFIER_RIGHT_COMMAND = 1 shl 7
     const val MODIFIER_BYTE_MASK = 0xFF
 
-    /** Translates Android MotionEvent button state into wire button bits. */
+    /**
+     * Translates Android MotionEvent button state into wire button bits.
+     *
+     * Protocol v1 only admits primary and secondary pointer buttons. Android
+     * tertiary/back/forward transitions intentionally collapse to zero so they
+     * fail closed before reaching the Host reserved button-mask validation.
+     */
     fun buttonMask(androidButtonState: Int): Int {
         var mask = 0
         if (androidButtonState and MotionEvent.BUTTON_PRIMARY != 0) mask = mask or BUTTON_PRIMARY
         if (androidButtonState and MotionEvent.BUTTON_SECONDARY != 0) mask = mask or BUTTON_SECONDARY
         return mask
     }
+
+    fun outboundButtonMask(
+        action: ClientPointerAction,
+        androidButtonState: Int,
+    ): Int =
+        when (action) {
+            ClientPointerAction.HOVER_ENTER,
+            ClientPointerAction.HOVER_EXIT,
+            -> 0
+
+            ClientPointerAction.MOVE,
+            ClientPointerAction.BUTTON_PRESS,
+            ClientPointerAction.BUTTON_RELEASE,
+            ClientPointerAction.SCROLL,
+            -> buttonMask(androidButtonState)
+        }
+
+    fun pointerAction(actionMasked: Int): ClientPointerAction? =
+        when (actionMasked) {
+            MotionEvent.ACTION_HOVER_MOVE,
+            MotionEvent.ACTION_MOVE,
+            -> ClientPointerAction.MOVE
+
+            MotionEvent.ACTION_HOVER_ENTER -> ClientPointerAction.HOVER_ENTER
+            MotionEvent.ACTION_HOVER_EXIT -> ClientPointerAction.HOVER_EXIT
+            MotionEvent.ACTION_BUTTON_PRESS -> ClientPointerAction.BUTTON_PRESS
+            MotionEvent.ACTION_BUTTON_RELEASE -> ClientPointerAction.BUTTON_RELEASE
+            MotionEvent.ACTION_SCROLL -> ClientPointerAction.SCROLL
+            else -> null
+        }
 
     fun mouseLikeSourceNames(androidSource: Int): List<String> =
         buildList {
@@ -63,6 +99,9 @@ internal object NativeInputWire {
     ): InputPhase? =
         when (action) {
             ClientPointerAction.MOVE -> InputPhase.INPUT_PHASE_CHANGED
+            ClientPointerAction.HOVER_ENTER -> InputPhase.INPUT_PHASE_CHANGED
+            ClientPointerAction.HOVER_EXIT ->
+                if (wireButtonMask == 0) InputPhase.INPUT_PHASE_ENDED else InputPhase.INPUT_PHASE_CANCELLED
             ClientPointerAction.BUTTON_PRESS ->
                 if (changedButtonMask == 0) null else InputPhase.INPUT_PHASE_BEGAN
             ClientPointerAction.BUTTON_RELEASE ->
