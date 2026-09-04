@@ -1,14 +1,15 @@
 # Phase 0 stable-release aggregate owner
 
 Date: 2026-08-29
-Last refreshed: 2026-09-03 UTC / 2026-09-04 local
-Base: origin/main at 93d4450a5e583a54fe53616993cc9865c370c076
+Last refreshed: 2026-09-04 UTC / 2026-09-04 local
+Base: origin/main at f669dc3521c97364533653016747bc1cb4f8d015
 Status: open. This document does not close Phase 0 and does not change product
 status.
 Open PR input: `gh pr list --repo TaoSama/vibe-screen --state open --limit 200
 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url`
-returned no open PRs before this refresh PR was opened. PR #535 and PR #536 are
-merged, so there are no active external open PR owners at this refresh.
+returned no open PRs before this refresh PR was opened. PR #546, PR #547, and
+PR #548 are merged into this base, so there are no active external open PR
+owners at this refresh.
 
 ## Purpose
 
@@ -32,18 +33,18 @@ stable-release claim is allowed:
 | Gate | Current manifest status | Active owner PRs | Why it cannot close today |
 | --- | --- | --- | --- |
 | Upstream provenance and license pin | pass | none | Closed by the Phase 0 provenance record. |
-| Protocol v1 contract and CI gates | pass | none | PR #381 retained a successful Phase 0 checks run for the merge source; the later main push run at `1430c3cc18948b93b50b7054e992844f287b6fbc` was cancelled and is not counted as closing evidence. |
-| Android tests and debug APK clean build | pass | none | PR #381 retained a successful Phase 0 checks run with Android passing for the merge source; the later main push run at `1430c3cc18948b93b50b7054e992844f287b6fbc` was cancelled and is not counted as closing evidence. |
-| macOS release build and full-Xcode unit tests | pass | none | PR #381 retained a successful Phase 0 checks run with macOS passing for the merge source. Local 2026-08-28 full-Xcode readiness is blocked because this machine has Command Line Tools selected, so it is not a replacement XCTest pass. |
-| macOS Host hardware compatibility matrix | open | none | Published current-base `macos-hardware-compatibility-gate` summaries exist for Mac16,8 readiness, but they are `blocked` by missing stable signing/TCC proof, source-bound Host provenance, full macOS checks, packaged runtime launch, Protocol v1 stream, input, and reconnect evidence. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence. |
+| Protocol v1 contract and CI gates | pass | none | The current main Phase 0 checks run for `f669dc3521c97364533653016747bc1cb4f8d015` completed successfully; this remains CI/source evidence only. |
+| Android tests and debug APK clean build | pass | none | The current main Phase 0 checks run for `f669dc3521c97364533653016747bc1cb4f8d015` completed successfully, including the Android source checks. |
+| macOS release build and full-Xcode unit tests | pass | none | The current main Phase 0 checks run for `f669dc3521c97364533653016747bc1cb4f8d015` completed successfully. Local 2026-08-28 full-Xcode readiness is blocked because this machine has Command Line Tools selected, so it is not a replacement XCTest pass. |
+| macOS Host hardware compatibility matrix | open | none | Published current-base `macos-hardware-compatibility-gate` summaries exist for Mac16,8 readiness, and PR #546 tightened the read-only fail-closed Host permission/TCC identity preflight. The row is still `blocked` because no stable-signed, source-bound installed Host with authorized Screen Recording/Accessibility TCC, full macOS checks, packaged runtime launch, Protocol v1 stream, input, and reconnect evidence is recorded. Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence. |
 | Android USB stream, reconnect, stale epoch, and codec fallback | pass | none | Closed by retained historical real-device baseline evidence; current-base insufficient attempts remain boundary records and do not claim a fresh USB pass. |
-| Telemetry and external latency artifact archive | insufficient | none | Raw telemetry and the latest current-base latency preflight remain insufficient; no external-camera latency sample package or synchronized-clock physical-input proof is archived for this aggregate. Former tooling PR references are merged or stale baselines, not active open owners. |
-| Host RSS two-hour no-growth | blocked | none | The retained two-hour Xiaomi 13 run grew about 18.3 MB. The latest 2026-08-31 current-base readiness record proves fail-closed diagnostics only and is still blocked before a stable-signed, TCC-ready, listener-observed current-source Host can produce native telemetry and a current-source two-hour `host_rss_gate` pass. Former Host RSS/readiness PR references are merged or closed baseline records, not active open owners. |
+| Telemetry and external latency artifact archive | insufficient | none | Raw telemetry and the latest 2026-08-30 current-base latency-camera preflight remain insufficient; no raw external-camera latency sample package or synchronized-clock physical-input proof is archived for this aggregate. Former tooling PR references are merged or stale baselines, not active open owners. |
+| Host RSS two-hour no-growth | blocked | none | The retained two-hour Xiaomi 13 run grew about 18.3 MB. The latest 2026-08-31 current-base readiness record proves fail-closed diagnostics only and is still blocked before the PR #546 permission preflight can prove a stable-signed, TCC-ready, listener-observed current-source Host for native telemetry and a current-source two-hour `host_rss_gate` pass. Former Host RSS/readiness PR references are merged or closed baseline records, not active open owners. |
 | Native pointer HID mouse move/click acceptance | blocked | none | Latest current-base summaries remain blocked because no physical Android mouse/touchpad/trackball pass retains Android forwarding logs, Host pointer-injection logs, and visible Mac evidence from one run. Former native-pointer owner PR references are no longer active open owners. |
 | Controller runtime acceptance | blocked | none | Latest current-base readiness remains blocked: no physical controller, identity-signed Host with approved virtual HID entitlement, Mac-side response, and neutral disconnect release are recorded in one pass bundle. Former controller owner PR references are no longer active open owners. |
-| Android/macOS clipboard product E2E | blocked | none | Local P0110 `ClipboardManager` smoke and offline/protocol checks pass, but Host readiness is blocked and no retained bidirectional Android `ClipboardManager` <-> macOS `NSPasteboard` product transfer evidence exists with exact endpoints, explicit user action, Protocol v1 session ownership, verified session epoch/origin, 16-byte change IDs, SHA-256 equality, bounded byte length, and distinct final markers. |
-| Android/macOS file-transfer product E2E | blocked | none | Android control-bar instrumentation, focused JVM tests, and protocol fixtures pass, but Host readiness is blocked and no retained bidirectional product transfer evidence proves file offer/request/content packets, receiver approval, remote write, SHA-256 equality, session epoch, and cancel cleanup. |
-| Phase 0 module ownership extraction | pass | none | The current-base module ownership manifest now closes the required Android TCP transport, `StreamClient`, protocol/session, file-transfer, WakeHost, decoder, renderer, and UI/product-session boundaries with focused source and offline contract evidence. WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence remain separate fail-closed runtime gates. |
+| Android/macOS clipboard product E2E | blocked | none | Local P0110 `ClipboardManager` smoke and offline/protocol checks pass, and PR #547 added Android-side solicited/direct overwrite approval coverage. Host readiness is still blocked and no retained bidirectional Android `ClipboardManager` <-> macOS `NSPasteboard` product transfer evidence exists with exact endpoints, explicit user action, Protocol v1 session ownership, verified session epoch/origin, 16-byte change IDs, SHA-256 equality, bounded byte length, and distinct final markers. |
+| Android/macOS file-transfer product E2E | blocked | none | Android control-bar instrumentation, focused JVM tests, protocol fixtures, and PR #547 incoming receive progress/cancel coverage pass, but Host readiness is blocked and no retained bidirectional product transfer evidence proves file offer/request/content packets, receiver approval, remote write, SHA-256 equality, session epoch, and cancel cleanup. |
+| Phase 0 module ownership extraction | pass | none | The current-base module ownership manifest now closes the required Android TCP transport, `StreamClient`, protocol/session, file-transfer, WakeHost, decoder, renderer, and UI/product-session boundaries with focused source and offline contract evidence. PR #547/#548 added Android transfer-approval and no-Host retry-card UX coverage, but WakeHost real sleeping-Mac, router/NIC WOL, Host signing/TCC, and retained product evidence remain separate fail-closed runtime gates. |
 
 Trusted LAN current-worktree stream/reconnect, login-item/headless reboot, and
 Developer ID notarized distribution remain important release-readiness items,
@@ -102,8 +103,8 @@ make phase0-stable-release-gate \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
-The 2026-09-03 UTC manifest refresh binds the aggregate source guard to
-`93d4450a5e583a54fe53616993cc9865c370c076`, records the current open-PR
+The 2026-09-04 UTC manifest refresh binds the aggregate source guard to
+`f669dc3521c97364533653016747bc1cb4f8d015`, records the current open-PR
 snapshot as empty, keeps all required gate `owner_prs` lists empty, and keeps
 the Android/macOS clipboard and file-transfer product E2E gates as required
 Phase 0 gates that are blocked. The last retained summary bundle remains under
