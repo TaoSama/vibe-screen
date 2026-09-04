@@ -42,6 +42,10 @@ def bulk_artifact() -> dict[str, object]:
         "remote_file_written": True,
         "final_sha256_match": True,
         "session_epoch_verified": True,
+        "chunk_offsets_ordered": True,
+        "chunk_payload_sha256_verified": True,
+        "progress_offsets_monotonic": True,
+        "final_chunk_observed": True,
         "transport": "webrtc_datachannel",
         "channel": "vibescreen.bulk.v1",
         "route": "relay",
@@ -67,6 +71,16 @@ def bulk_artifact() -> dict[str, object]:
         "no_plaintext_fallback": True,
         "no_synthetic_peer": True,
         "disallowed_markers": [],
+        "coturn_lease_validation": {
+            "turn_credential_lease_observed": True,
+            "allocation_lease_observed": True,
+            "authority_session_binding_verified": True,
+            "device_binding_verified": True,
+            "lease_expiry_checked": True,
+            "revoked_lease_rejected": True,
+            "allocation_reconciliation_observed": True,
+            "coturn_username_bound_to_device": True,
+        },
         "file_transfer": {
             "directions": {
                 "android_to_macos": dict(direction),
@@ -77,6 +91,8 @@ def bulk_artifact() -> dict[str, object]:
                 "receiver_backpressure_observed": True,
                 "oversized_payload_rejected": True,
                 "stale_owner_rejected": True,
+                "transfer_timeout_cancel_observed": True,
+                "timeout_frees_transfer_slot_observed": True,
                 "cancel_cleanup_observed": True,
                 "disconnect_cleanup_observed": True,
             },
@@ -145,6 +161,7 @@ class Phase3WebrtcBulkProductFlowTests(unittest.TestCase):
         self.assertFalse(result["can_close_public_internet_bulk_product_flow_gate"])
         self.assertFalse(result["gate_can_close_phase3_release"])
         self.assertIn("blocked: public_relay_webrtc_route", result["blockers"])
+        self.assertIn("blocked: coturn_lease_validation", result["blockers"])
         self.assertIn("blocked: release_prerequisite.relay_production_prerequisites", result["blockers"])
 
     def test_complete_manifest_passes_child_gate_only(self) -> None:
@@ -222,6 +239,51 @@ class Phase3WebrtcBulkProductFlowTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         gate = result["checks"]["bulk_file_transfer_product_flow"]
         self.assertTrue(any("receiver_approved" in item for item in gate["evidence"]))
+
+    def test_bulk_direction_requires_ordered_chunks_and_chunk_sha256(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            direction = manifest["core_gates"]["bulk_file_transfer_product_flow"]["evidence"][0]["file_transfer"]["directions"]["android_to_macos"]
+            direction["chunk_offsets_ordered"] = False
+            direction["chunk_payload_sha256_verified"] = False
+
+            result = derive_gate(manifest, current_commit="a" * 40, tree_clean=True, evidence_root=root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = result["checks"]["bulk_file_transfer_product_flow"]
+        self.assertTrue(any("chunk_offsets_ordered" in item for item in gate["evidence"]))
+        self.assertTrue(any("chunk_payload_sha256_verified" in item for item in gate["evidence"]))
+
+    def test_bulk_cleanup_requires_transfer_timeout_and_slot_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            cleanup = manifest["core_gates"]["bulk_backpressure_and_cleanup"]["evidence"][0]["file_transfer"]["cleanup"]
+            cleanup["transfer_timeout_cancel_observed"] = False
+            cleanup["timeout_frees_transfer_slot_observed"] = False
+
+            result = derive_gate(manifest, current_commit="a" * 40, tree_clean=True, evidence_root=root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = result["checks"]["bulk_backpressure_and_cleanup"]
+        self.assertTrue(any("transfer_timeout_cancel_observed" in item for item in gate["evidence"]))
+        self.assertTrue(any("timeout_frees_transfer_slot_observed" in item for item in gate["evidence"]))
+
+    def test_coturn_lease_validation_requires_authority_bound_remote_turn_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = complete_manifest(root)
+            record = manifest["core_gates"]["coturn_lease_validation"]["evidence"][0]
+            record["coturn_lease_validation"]["lease_expiry_checked"] = False
+            record["coturn_lease_validation"]["allocation_reconciliation_observed"] = False
+
+            result = derive_gate(manifest, current_commit="a" * 40, tree_clean=True, evidence_root=root)
+
+        self.assertEqual(result["verdict"], "blocked")
+        gate = result["checks"]["coturn_lease_validation"]
+        self.assertTrue(any("lease_expiry_checked" in item for item in gate["evidence"]))
+        self.assertTrue(any("allocation_reconciliation_observed" in item for item in gate["evidence"]))
 
     def test_child_gate_cannot_claim_phase3_release(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
