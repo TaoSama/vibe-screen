@@ -276,6 +276,10 @@ class MainActivity : AppCompatActivity() {
     private var managedHostActionsAllowed = true
     private var localCustomGesturesAllowed = true
     private var localHostActionsAllowed = true
+    private var managedClipboardAllowed = true
+    private var managedFileTransferAllowed = true
+    private var localClipboardAllowed = true
+    private var localFileTransferAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
@@ -329,6 +333,7 @@ class MainActivity : AppCompatActivity() {
 
         DiagLog.init(applicationContext)
         prefs = PreferencesManager(this)
+        refreshLocalManagedPolicySnapshot()
         deviceHealthMonitor =
             AndroidDeviceHealthMonitor(
                 context = this,
@@ -4053,6 +4058,8 @@ class MainActivity : AppCompatActivity() {
                 connected = connected,
                 clipboardReady = clipboardReady,
                 fileTransferReady = fileTransferReady,
+                clipboardPolicyAllowed = managedClipboardAllowed,
+                fileTransferPolicyAllowed = managedFileTransferAllowed,
             )
         status.setText(presentation.statusResource)
         status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
@@ -4116,10 +4123,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyLocalManagedPolicySnapshot(policy: ProtocolV1Session.ManagedPolicy) {
+        localClipboardAllowed = policy.clipboardAllowed
+        localFileTransferAllowed = policy.fileTransferAllowed
         localCustomGesturesAllowed = policy.customGesturesAllowed
         localHostActionsAllowed = policy.hostActionsAllowed
+        managedClipboardAllowed = localClipboardAllowed
+        managedFileTransferAllowed = localFileTransferAllowed
         managedCustomGesturesAllowed = localCustomGesturesAllowed
         managedHostActionsAllowed = localHostActionsAllowed
+    }
+
+    private fun refreshLocalManagedPolicySnapshot() {
+        applyLocalManagedPolicySnapshot(ManagedConfigurationProvider(applicationContext).loadPolicy())
     }
 
     private fun isCurrentSession(
@@ -4519,10 +4534,10 @@ class MainActivity : AppCompatActivity() {
                     clearActiveIncomingFileTransfer()
                 }
                 productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)
-                refreshTransferReadinessInSettings()
                 isConnected = connected
                 applyStreamingWindowState(connected = connected, foreground = isInForeground)
                 if (connected) {
+                    refreshTransferReadinessInSettings()
                     nativeInputSessionState.admit(callbackClient, callbackGeneration)
                     if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
                     replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)
@@ -4730,8 +4745,12 @@ class MainActivity : AppCompatActivity() {
                     ManagedPolicyUiAvailabilityPolicy.combine(
                         localCustomGesturesAllowed = localCustomGesturesAllowed,
                         localHostActionsAllowed = localHostActionsAllowed,
+                        localClipboardAllowed = localClipboardAllowed,
+                        localFileTransferAllowed = localFileTransferAllowed,
                         remoteStatus = status,
                     )
+                managedClipboardAllowed = availability.clipboardAllowed
+                managedFileTransferAllowed = availability.fileTransferAllowed
                 managedCustomGesturesAllowed = availability.customGesturesAllowed
                 managedHostActionsAllowed = availability.hostActionsAllowed
                 val binding = currentSessionBinding()
@@ -5122,8 +5141,12 @@ class MainActivity : AppCompatActivity() {
                             ManagedPolicyUiAvailabilityPolicy.combine(
                                 localCustomGesturesAllowed = localCustomGesturesAllowed,
                                 localHostActionsAllowed = localHostActionsAllowed,
+                                localClipboardAllowed = localClipboardAllowed,
+                                localFileTransferAllowed = localFileTransferAllowed,
                                 remoteStatus = status,
                             )
+                        managedClipboardAllowed = availability.clipboardAllowed
+                        managedFileTransferAllowed = availability.fileTransferAllowed
                         managedCustomGesturesAllowed = availability.customGesturesAllowed
                         managedHostActionsAllowed = availability.hostActionsAllowed
                         refreshFileTransferControl()
@@ -5565,6 +5588,7 @@ class MainActivity : AppCompatActivity() {
             discardPendingOutgoingFileTransfer()
             clearActiveIncomingFileTransfer()
             productSessionCoordinator.setTransportConnected(false)
+            refreshLocalManagedPolicySnapshot()
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
             internetStylusContactRouter.reset()
@@ -5655,6 +5679,8 @@ class MainActivity : AppCompatActivity() {
         discardPendingOutgoingFileTransfer()
         clearActiveIncomingFileTransfer()
         productSessionCoordinator.setTransportConnected(false)
+        refreshLocalManagedPolicySnapshot()
+        refreshTransferReadinessInSettings()
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
@@ -5699,6 +5725,8 @@ class MainActivity : AppCompatActivity() {
         discardPendingOutgoingFileTransfer()
         clearActiveIncomingFileTransfer()
         productSessionCoordinator.setTransportConnected(false)
+        refreshLocalManagedPolicySnapshot()
+        refreshTransferReadinessInSettings()
         val quarantinedSession = requireNotNull(internetSession)
         check(
             QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
@@ -6088,10 +6116,6 @@ class MainActivity : AppCompatActivity() {
         isConnected = false
         revealOnlyTouchGestureActive = false
         resetCustomGestureTouchState()
-        localCustomGesturesAllowed = true
-        localHostActionsAllowed = true
-        managedCustomGesturesAllowed = true
-        managedHostActionsAllowed = true
         streamStylusGestureRouter.reset()
         streamStylusContactRouter.reset()
         streamStylusInputIds.clear()
@@ -6101,6 +6125,8 @@ class MainActivity : AppCompatActivity() {
         rejectPendingIncomingFileOffer()
         clearActiveIncomingFileTransfer()
         productSessionCoordinator.clearDisconnectedUiState()
+        refreshLocalManagedPolicySnapshot()
+        refreshTransferReadinessInSettings()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
         cancelClipboardRequestTimeout()

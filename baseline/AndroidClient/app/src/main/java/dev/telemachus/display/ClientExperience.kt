@@ -156,8 +156,40 @@ internal object TransferReadinessPresentationPolicy {
         connected: Boolean,
         clipboardReady: Boolean,
         fileTransferReady: Boolean,
+        clipboardPolicyAllowed: Boolean = true,
+        fileTransferPolicyAllowed: Boolean = true,
     ): Presentation =
         when {
+            !clipboardPolicyAllowed && !fileTransferPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !clipboardPolicyAllowed && fileTransferReady ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_files_only_status,
+                    summaryResource = R.string.transfer_readiness_clipboard_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !clipboardPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_clipboard_policy_waiting_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !fileTransferPolicyAllowed && clipboardReady ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_clipboard_only_status,
+                    summaryResource = R.string.transfer_readiness_file_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !fileTransferPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_file_policy_waiting_summary,
+                    statusColorResource = R.color.warning,
+                )
             !connected ->
                 Presentation(
                     statusResource = R.string.transfer_readiness_waiting_status,

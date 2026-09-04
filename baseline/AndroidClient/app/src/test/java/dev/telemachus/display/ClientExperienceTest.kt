@@ -186,6 +186,89 @@ class ClientExperienceTest {
     }
 
     @Test
+    fun `transfer readiness reports managed policy blocks before compatibility fallback`() {
+        val bothBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = false,
+                fileTransferPolicyAllowed = false,
+            )
+        val clipboardBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = true,
+                clipboardPolicyAllowed = false,
+                fileTransferPolicyAllowed = true,
+            )
+        val fileTransferBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = true,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = true,
+                fileTransferPolicyAllowed = false,
+            )
+        val clipboardBlockedBeforeFilesReady =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = false,
+                fileTransferPolicyAllowed = true,
+            )
+        val filesBlockedBeforeClipboardReady =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = true,
+                fileTransferPolicyAllowed = false,
+            )
+
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, bothBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_policy_blocked_summary, bothBlocked.summaryResource)
+        assertEquals(R.color.warning, bothBlocked.statusColorResource)
+        assertEquals(R.string.transfer_readiness_files_only_status, clipboardBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_clipboard_policy_blocked_summary, clipboardBlocked.summaryResource)
+        assertEquals(R.string.transfer_readiness_clipboard_only_status, fileTransferBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_file_policy_blocked_summary, fileTransferBlocked.summaryResource)
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, clipboardBlockedBeforeFilesReady.statusResource)
+        assertEquals(R.string.transfer_readiness_clipboard_policy_waiting_summary, clipboardBlockedBeforeFilesReady.summaryResource)
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, filesBlockedBeforeClipboardReady.statusResource)
+        assertEquals(R.string.transfer_readiness_file_policy_waiting_summary, filesBlockedBeforeClipboardReady.summaryResource)
+    }
+
+    @Test
+    fun `transfer readiness reports local managed policy blocks while disconnected`() {
+        val clipboardBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = false,
+                clipboardReady = false,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = false,
+                fileTransferPolicyAllowed = true,
+            )
+        val fileTransferBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = false,
+                clipboardReady = false,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = true,
+                fileTransferPolicyAllowed = false,
+            )
+
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, clipboardBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_clipboard_policy_waiting_summary, clipboardBlocked.summaryResource)
+        assertEquals(R.color.warning, clipboardBlocked.statusColorResource)
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, fileTransferBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_file_policy_waiting_summary, fileTransferBlocked.summaryResource)
+        assertEquals(R.color.warning, fileTransferBlocked.statusColorResource)
+    }
+
+    @Test
     fun `saved enum parsing falls back safely`() {
         assertEquals(VideoScaleMode.FIT, VideoScaleMode.fromName("unknown"))
         assertEquals(ClientRotation.FOLLOW_HOST, ClientRotation.fromName(null))
