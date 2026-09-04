@@ -1052,7 +1052,8 @@ increase it.
   session. File offers require explicit receiver approval and default to reject;
   both sides enforce safe basenames, deny-wins managed policy and resource
   limits, ordered chunks, per-chunk and final SHA-256, session-epoch checks,
-  progress-driven backpressure, and cancel/disconnect cleanup. This is offline
+  progress-driven backpressure, Android outbound progress visibility with
+  client-side cancellation, and cancel/disconnect cleanup. This is offline
   and self-test evidence only: the Android device smoke evidence covers the
   control-bar UI path, not real bidirectional file transfer; no Android
   real-device file-transfer acceptance, public-Internet run, or WebRTC bulk

@@ -2096,7 +2096,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.controlFileTransferButton.setOnClickListener {
             revealControlBar()
-            beginChooseFileForTransfer()
+            handleFileTransferControlClick()
         }
         // The whole capsule row is the dropdown-selector tap target so touch
         // users hit it reliably, not just the leading icon.
@@ -2381,10 +2381,25 @@ class MainActivity : AppCompatActivity() {
         }
         val internetFileTransfer = prefs.connectionMode == ConnectionMode.INTERNET && internetSession?.canTransferFiles == true
         val state = productSessionCoordinator.renderState()
+        val activeOutgoing = activeOutgoingFileTransfer
         binding.controlFileTransferButton.visibility = if (state.fileTransferVisible || internetFileTransfer) View.VISIBLE else View.GONE
         binding.controlFileTransferButton.isEnabled = state.fileTransferEnabled || internetFileTransfer
+        binding.controlFileTransferButton.contentDescription =
+            getString(if (activeOutgoing == null) R.string.control_file_transfer else R.string.control_file_transfer_cancel)
+        TooltipCompat.setTooltipText(binding.controlFileTransferButton, binding.controlFileTransferButton.contentDescription)
+        binding.controlFileTransferProgressText.visibility = if (activeOutgoing == null) View.GONE else View.VISIBLE
+        binding.controlFileTransferProgressText.text = activeOutgoing?.let(::outgoingFileProgressLabel) ?: ""
         refreshTransferReadinessInSettings()
         applyControlBarLayout()
+    }
+
+    private fun handleFileTransferControlClick() {
+        val activeOutgoing = activeOutgoingFileTransfer
+        if (activeOutgoing == null) {
+            beginChooseFileForTransfer()
+            return
+        }
+        cancelOutgoingFileTransferFromDialog(activeOutgoing.transferId)
     }
 
     private fun beginChooseFileForTransfer() {
@@ -2528,6 +2543,7 @@ class MainActivity : AppCompatActivity() {
         val displayName: String,
         val byteLength: Long,
         val cancel: (ByteString) -> Boolean,
+        val acknowledgedBytes: Long = 0L,
     )
 
     private fun promptIncomingFileOffer(
@@ -2724,6 +2740,7 @@ class MainActivity : AppCompatActivity() {
         finishOutgoingFileTransferState(activeOutgoingFileTransfer?.transferId)
         activeOutgoingFileTransfer = ActiveOutgoingFileTransfer(transferId, displayName, byteLength, cancel)
         showOutgoingFileProgressDialog(0L)
+        refreshFileTransferControl()
         return true
     }
 
@@ -2735,7 +2752,9 @@ class MainActivity : AppCompatActivity() {
         val active = activeOutgoingFileTransfer ?: return
         if (active.transferId != transferId) return
         val boundedBytes = acknowledgedBytes.coerceAtMost(active.byteLength.coerceAtMost(totalBytes))
+        activeOutgoingFileTransfer = active.copy(acknowledgedBytes = boundedBytes)
         updateOutgoingFileProgressMessage(boundedBytes)
+        refreshFileTransferControl()
     }
 
     private fun finishOutgoingFileTransferState(transferId: ByteString?) {
@@ -2788,6 +2807,13 @@ class MainActivity : AppCompatActivity() {
             readableByteCount(active.byteLength),
         )
 
+    private fun outgoingFileProgressLabel(active: ActiveOutgoingFileTransfer): String {
+        val totalBytes = active.byteLength.coerceAtLeast(0L)
+        val acknowledgedBytes = active.acknowledgedBytes.coerceIn(0L, totalBytes)
+        val percent = if (totalBytes == 0L) 100 else ((acknowledgedBytes * 100L) / totalBytes).toInt()
+        return getString(R.string.file_transfer_progress_percent, active.displayName, percent)
+    }
+
     private fun cancelOutgoingFileTransferFromDialog(transferId: ByteString) {
         val active = activeOutgoingFileTransfer ?: return
         if (active.transferId != transferId) return
@@ -2796,6 +2822,7 @@ class MainActivity : AppCompatActivity() {
         pendingOutgoingFileDialog = null
         val cancelled = active.cancel(transferId)
         discardPendingOutgoingFileTransfer()
+        refreshFileTransferControl()
         if (!cancelled) {
             showDedupedToast(R.string.file_transfer_cancel_failed)
         }
@@ -4799,6 +4826,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 finishOutgoingFileTransferState(transferId)
+                refreshFileTransferControl()
             }
         }
         callbackClient.onFileTransferResult = fileResult@{ accepted, reason ->
@@ -5075,6 +5103,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
                         finishOutgoingFileTransferState(transferId)
+                        refreshFileTransferControl()
                     }
                 }
 

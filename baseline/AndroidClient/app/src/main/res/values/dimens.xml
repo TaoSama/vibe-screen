@@ -43,6 +43,7 @@
     <dimen name="display_capsule_chevron_size">18dp</dimen>
     <dimen name="display_capsule_label_margin">6dp</dimen>
     <dimen name="display_capsule_corner_radius">12dp</dimen>
+    <dimen name="control_bar_transfer_progress_width">96dp</dimen>
 
     <!-- Gap between the header and actions columns when the connection panel
          splits into two columns in landscape; ignored in the stacked layout. -->
