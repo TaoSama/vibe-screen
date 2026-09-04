@@ -23,8 +23,13 @@
     <string name="disconnect">Disconnect</string>
     <string name="forget_this_mac">Forget this Mac</string>
     <string name="reconnect">Reconnect</string>
+    <string name="retry_now">Retry now</string>
     <string name="reconnecting_to_mac">Reconnecting to %1$s…</string>
-    <string name="reconnect_delay_format">%1$s:%2$d · retrying in %3$.1f s</string>
+    <string name="reconnect_countdown_title">Waiting to reconnect</string>
+    <string name="reconnect_countdown_message">Trying %1$s at %2$s:%3$d in %4$d s.</string>
+    <string name="reconnect_attempting_message">Trying %1$s at %2$s:%3$d now.</string>
+    <string name="usb_retry_wait_title">Waiting to retry</string>
+    <string name="usb_retry_wait_message">Trying USB again in %1$d s.</string>
     <string name="could_not_connect">Couldn’t connect</string>
     <string name="wireless_error_title_couldnt_reach_mac">Couldn’t reach Mac</string>
     <string name="wireless_error_network_cached">No response from %1$s at %2$s:%3$d. The Mac may have switched Wi-Fi networks, changed its port, or is not running. Open Vibe Screen on the Mac and scan the new QR to re-pair.</string>

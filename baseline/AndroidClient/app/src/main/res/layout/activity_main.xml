@@ -659,6 +659,7 @@
                     android:textColor="@color/on_surface_secondary"
                     android:textSize="12sp"
                     android:lineSpacingExtra="2dp" />
+
             </LinearLayout>
 
             <!-- Status Section -->
@@ -1049,6 +1050,7 @@
                     android:visibility="gone">
 
                     <TextView
+                        android:id="@+id/idleStatusLabel"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/disconnected_status"
@@ -1076,6 +1078,19 @@
                         android:textColor="@color/on_surface_faint"
                         android:textSize="12sp"
                         android:gravity="center"
+                        android:layout_marginBottom="16dp" />
+
+                    <TextView
+                        android:id="@+id/wirelessReconnectCountdown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textColor="@color/on_surface_subtle"
+                        android:textSize="13sp"
+                        android:gravity="center"
+                        android:lineSpacingExtra="2dp"
+                        android:accessibilityLiveRegion="polite"
+                        android:visibility="gone"
                         android:layout_marginBottom="16dp" />
 
                     <com.google.android.material.button.MaterialButton

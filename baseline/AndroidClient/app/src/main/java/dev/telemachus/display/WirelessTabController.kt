@@ -46,8 +46,10 @@ class WirelessTabController(
         val connectedMacIp: TextView,
         val connectingLabel: TextView,
         val connectingSubtitle: TextView,
+        val idleStatusLabel: TextView,
         val idleMacName: TextView,
         val idleMacIp: TextView,
+        val reconnectCountdown: TextView,
         val repairTitle: TextView,
         val repairMessage: TextView,
     )
@@ -101,6 +103,7 @@ class WirelessTabController(
             views.idleMacIp,
             activity.getString(R.string.host_port_format, entry.host, entry.port),
         )
+        showIdleReconnectState()
         transition(State.PAIRED_IDLE)
     }
 
@@ -134,6 +137,7 @@ class WirelessTabController(
                 views.idleMacIp,
                 activity.getString(R.string.host_port_format, entry.host, entry.port),
             )
+            showIdleReconnectState()
             transition(State.PAIRED_IDLE)
         } else if (cameraPerm.isPermanentlyDenied()) {
             transition(State.PERM_DENIED)
@@ -232,13 +236,42 @@ class WirelessTabController(
         macName: String,
         host: String,
         port: Int,
-        delayMs: Long,
+        remainingSeconds: Int,
     ) {
-        val delaySeconds = delayMs / 1_000.0
-        showConnecting(
-            activity.getString(R.string.reconnecting_to_mac, macName),
-            activity.getString(R.string.reconnect_delay_format, host, port, delaySeconds),
+        LiveRegionTextApplier.apply(views.idleStatusLabel, activity.getString(R.string.reconnect_countdown_title))
+        LiveRegionTextApplier.apply(views.idleMacName, macName)
+        LiveRegionTextApplier.apply(
+            views.idleMacIp,
+            activity.getString(R.string.host_port_format, host, port),
         )
+        LiveRegionTextApplier.show(
+            views.reconnectCountdown,
+            activity.getString(R.string.reconnect_countdown_message, macName, host, port, remainingSeconds),
+        )
+        views.reconnectButton.text = activity.getString(R.string.retry_now)
+        views.reconnectButton.isEnabled = true
+        transition(State.PAIRED_IDLE)
+    }
+
+    fun showAutomaticReconnectAttempting(
+        macName: String,
+        host: String,
+        port: Int,
+    ) {
+        LiveRegionTextApplier.apply(views.idleStatusLabel, activity.getString(R.string.reconnecting_short))
+        LiveRegionTextApplier.show(
+            views.reconnectCountdown,
+            activity.getString(R.string.reconnect_attempting_message, macName, host, port),
+        )
+        views.reconnectButton.text = activity.getString(R.string.connecting)
+        views.reconnectButton.isEnabled = false
+    }
+
+    private fun showIdleReconnectState() {
+        LiveRegionTextApplier.apply(views.idleStatusLabel, activity.getString(R.string.disconnected_status))
+        LiveRegionTextApplier.hide(views.reconnectCountdown)
+        views.reconnectButton.text = activity.getString(R.string.reconnect)
+        views.reconnectButton.isEnabled = true
     }
 
     fun onCameraPermissionResult(granted: Boolean) {

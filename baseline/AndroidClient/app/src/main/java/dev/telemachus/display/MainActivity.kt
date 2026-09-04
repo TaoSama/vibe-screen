@@ -234,6 +234,8 @@ class MainActivity : AppCompatActivity() {
     private val wirelessReconnectHandler = Handler(Looper.getMainLooper())
     private var wirelessAutoReconnectEnabled = false
     private var pendingAutomaticReconnectDelayMs: Long? = null
+    private var pendingUsbReconnectDeadlineMs: Long? = null
+    private var pendingWirelessReconnectDeadlineMs: Long? = null
     private var pendingTerminalGuidance: ConnectionGuidance? = null
     private var isReconnecting = false
     private var hasConnectedThisRun = false
@@ -274,12 +276,15 @@ class MainActivity : AppCompatActivity() {
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
+            clearPendingUsbReconnectCountdown()
             if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
                 connect("127.0.0.1", currentUsbPort(), automatic = true)
             }
         }
     private val wirelessReconnectRunnable =
         Runnable {
+            pendingWirelessReconnectDeadlineMs = null
+            wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
             val entry = pairedHostStorage.load()
             if (entry == null ||
                 !wirelessAutoReconnectEnabled ||
@@ -291,7 +296,24 @@ class MainActivity : AppCompatActivity() {
                 return@Runnable
             }
             val deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_LENGTH)
+            wirelessController.showAutomaticReconnectAttempting(entry.macName, entry.host, entry.port)
             connectWireless(entry.host, entry.port, entry.token, deviceName, entry.macName)
+        }
+    private val wirelessReconnectCountdownRunnable =
+        object : Runnable {
+            override fun run() {
+                if (updateWirelessReconnectCountdown()) {
+                    wirelessReconnectHandler.postDelayed(this, RECONNECT_COUNTDOWN_TICK_MS)
+                }
+            }
+        }
+    private val usbReconnectCountdownRunnable =
+        object : Runnable {
+            override fun run() {
+                if (updateUsbReconnectCountdown()) {
+                    autoConnectHandler.postDelayed(this, RECONNECT_COUNTDOWN_TICK_MS)
+                }
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -389,7 +411,9 @@ class MainActivity : AppCompatActivity() {
         rejectPendingIncomingFileOffer()
         applyStreamingWindowState(connected = isConnected, foreground = false)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        clearPendingUsbReconnectCountdown()
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+        wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
         mainDiag("lifecycle background connected=$isConnected; retries paused")
         super.onStop()
     }
@@ -572,6 +596,7 @@ class MainActivity : AppCompatActivity() {
         automaticUsbConnect = false
         isReconnecting = false
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        clearPendingUsbReconnectCountdown()
         prefs.connectionMode = ConnectionMode.USB
         suppressUsbModeAutomaticConnect = true
         try {
@@ -598,8 +623,12 @@ class MainActivity : AppCompatActivity() {
         val boundedDelayMs = delayMs.coerceIn(1L, ReconnectBackoff.MAXIMUM_DELAY_MS)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         autoConnectHandler.postDelayed(autoConnectRunnable, boundedDelayMs)
-        if (hasConnectedThisRun) {
+        if (hasAttemptedUsbConnection) {
             isReconnecting = true
+            pendingUsbReconnectDeadlineMs = SystemClock.uptimeMillis() + boundedDelayMs
+            autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)
+            updateUsbReconnectCountdown()
+            autoConnectHandler.postDelayed(usbReconnectCountdownRunnable, RECONNECT_COUNTDOWN_TICK_MS)
             if (prefs.connectionMode == ConnectionMode.USB) updateDisconnectedHeader(ConnectionMode.USB)
         }
     }
@@ -696,8 +725,10 @@ class MainActivity : AppCompatActivity() {
                         connectedMacIp = binding.connectedMacIp,
                         connectingLabel = binding.connectingLabel,
                         connectingSubtitle = binding.connectingSubtitle,
+                        idleStatusLabel = binding.idleStatusLabel,
                         idleMacName = binding.idleMacName,
                         idleMacIp = binding.idleMacIp,
+                        reconnectCountdown = binding.wirelessReconnectCountdown,
                         repairTitle = binding.repairTitle,
                         repairMessage = binding.repairMessage,
                     ),
@@ -708,6 +739,8 @@ class MainActivity : AppCompatActivity() {
                 onConnectRequested = { host, port, token, deviceName, macName ->
                     wirelessAutoReconnectEnabled = true
                     pendingAutomaticReconnectDelayMs = null
+                    pendingWirelessReconnectDeadlineMs = null
+                    wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
                     connectWireless(host, port, token, deviceName, macName)
                 },
@@ -1454,6 +1487,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         binding.connectButton.setOnClickListener {
+            val retryingAutomaticUsbConnection = pendingUsbReconnectDeadlineMs != null && automaticUsbConnect
+            automaticUsbConnect = retryingAutomaticUsbConnection
+            clearPendingUsbReconnectCountdown()
+            isReconnecting = false
+            autoConnectHandler.removeCallbacks(autoConnectRunnable)
             var host =
                 binding.hostInput.text
                     .toString()
@@ -1483,8 +1521,7 @@ class MainActivity : AppCompatActivity() {
             clearUsbConnectionGuidance()
             pendingTerminalGuidance = null
             updateStatus("Checking for your Mac…")
-            automaticUsbConnect = false
-            connect(host, port, automatic = false)
+            connect(host, port, automatic = retryingAutomaticUsbConnection)
         }
 
         binding.openSourceLicensesButton.setOnClickListener {
@@ -1646,6 +1683,9 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized || isConnected) return
         when (mode) {
             ConnectionMode.USB -> {
+                if (pendingUsbReconnectDeadlineMs != null && automaticUsbConnect) {
+                    if (updateUsbReconnectCountdown()) return
+                }
                 LiveRegionTextApplier.apply(
                     binding.connectionTitle,
                     getString(if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac),
@@ -4038,7 +4078,10 @@ class MainActivity : AppCompatActivity() {
                 isCurrentGeneration = { isCurrentSession(callbackClient, callbackGeneration) },
                 disableAutomaticUsbConnect = { automaticUsbConnect = false },
                 cancelWirelessReconnect = ::cancelWirelessReconnect,
-                removeAutomaticUsbRunnable = { autoConnectHandler.removeCallbacks(autoConnectRunnable) },
+                removeAutomaticUsbRunnable = {
+                    autoConnectHandler.removeCallbacks(autoConnectRunnable)
+                    clearPendingUsbReconnectCountdown()
+                },
             )
         return SessionAutomaticRetryCoordinator(
             postAutomaticRetry = postAutomaticRetry,
@@ -4208,10 +4251,13 @@ class MainActivity : AppCompatActivity() {
                     replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)
                     hasConnectedThisRun = true
                     isReconnecting = false
+                    pendingUsbReconnectDeadlineMs = null
                     unsupportedKeyboardNoticeShown = false
                     unsupportedNativePointerNoticeShown = false
                     pendingAutomaticReconnectDelayMs = null
+                    autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+                    wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
                     startPingTimer()
                     stopChecklistUpdates()
                     enableFullscreenMode()
@@ -5479,24 +5525,73 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val entry = pairedHostStorage.load() ?: return
-        wirelessController.showAutomaticReconnect(entry.macName, entry.host, entry.port, delayMs)
+        pendingWirelessReconnectDeadlineMs = SystemClock.uptimeMillis() + delayMs
+        updateWirelessReconnectCountdown(entry)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+        wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
         wirelessReconnectHandler.postDelayed(wirelessReconnectRunnable, delayMs)
+        wirelessReconnectHandler.postDelayed(wirelessReconnectCountdownRunnable, RECONNECT_COUNTDOWN_TICK_MS)
         isReconnecting = true
         mainDiag("Wireless reconnect scheduled in ${delayMs}ms")
+    }
+
+    private fun updateWirelessReconnectCountdown(entry: PairedHostStorage.Entry? = pairedHostStorage.load()): Boolean {
+        val deadlineMs = pendingWirelessReconnectDeadlineMs ?: return false
+        val currentEntry = entry ?: return false
+        if (!wirelessAutoReconnectEnabled ||
+            prefs.connectionMode != ConnectionMode.WIRELESS ||
+            isConnected ||
+            !isInForeground
+        ) {
+            return false
+        }
+        val remainingSeconds =
+            ReconnectCountdownPresentationPolicy.remainingSeconds(SystemClock.uptimeMillis(), deadlineMs)
+        wirelessController.showAutomaticReconnect(
+            currentEntry.macName,
+            currentEntry.host,
+            currentEntry.port,
+            remainingSeconds,
+        )
+        return SystemClock.uptimeMillis() < deadlineMs
+    }
+
+    private fun updateUsbReconnectCountdown(): Boolean {
+        val deadlineMs = pendingUsbReconnectDeadlineMs ?: return false
+        if (!automaticUsbConnect || prefs.connectionMode != ConnectionMode.USB || isConnected || !isInForeground) return false
+        val remainingSeconds =
+            ReconnectCountdownPresentationPolicy.remainingSeconds(SystemClock.uptimeMillis(), deadlineMs)
+        LiveRegionTextApplier.apply(binding.connectionTitle, getString(R.string.usb_retry_wait_title))
+        LiveRegionTextApplier.apply(
+            binding.connectionSubtitle,
+            getString(R.string.usb_retry_wait_message, remainingSeconds),
+        )
+        binding.connectionProgress.visibility = View.VISIBLE
+        binding.connectButton.setText(R.string.retry_now)
+        binding.connectButton.isEnabled = true
+        updateStatus(getString(R.string.looking_for_mac))
+        return SystemClock.uptimeMillis() < deadlineMs
+    }
+
+    private fun clearPendingUsbReconnectCountdown() {
+        pendingUsbReconnectDeadlineMs = null
+        autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)
     }
 
     private fun cancelWirelessReconnect() {
         wirelessAutoReconnectEnabled = false
         pendingAutomaticReconnectDelayMs = null
+        pendingWirelessReconnectDeadlineMs = null
         isReconnecting = false
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+        wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
     }
 
     private fun cancelConnectionForModeSwitch() {
         automaticUsbConnect = false
         hasAttemptedUsbConnection = false
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        clearPendingUsbReconnectCountdown()
         cancelWirelessReconnect()
         stopPingTimer()
         val client = streamClient
@@ -5556,7 +5651,7 @@ class MainActivity : AppCompatActivity() {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     productSessionCoordinator.endConnectionAttempt()
                     retryCoordinator.onConnectionFinally(
-                        automaticRetryEnabled = automaticUsbConnect,
+                        automaticRetryEnabled = automatic && automaticUsbConnect,
                         disconnected = !isConnected,
                     )
                     if (!isConnected && prefs.connectionMode == ConnectionMode.USB) {
@@ -5579,6 +5674,7 @@ class MainActivity : AppCompatActivity() {
         automaticUsbConnect = false
         cancelWirelessReconnect()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        clearPendingUsbReconnectCountdown()
         stopPingTimer()
         isReconnecting = false
         hasConnectedThisRun = false
@@ -6394,7 +6490,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        clearPendingUsbReconnectCountdown()
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+        wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
         cancelClipboardRequestTimeout()
         rejectPendingIncomingFileOffer()
         fileTransferApprovalHandler.removeCallbacksAndMessages(null)
@@ -6421,6 +6519,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_DEVICE_NAME_LENGTH = 64
         private const val WIRELESS_INITIAL_RETRY_DELAY_MS = 500L
         private const val WIRELESS_RECONNECT_MAXIMUM_DELAY_MS = 3_000L
+        private const val RECONNECT_COUNTDOWN_TICK_MS = 1_000L
         private const val UPSTREAM_NOTICE_ASSET = "NOTICE"
         private const val DEPENDENCY_LICENSES_ASSET = "ANDROID_RUNTIME_DEPENDENCY_LICENSES.md"
         private const val LEGACY_TOUCH_DOWN = 0
@@ -6489,7 +6588,9 @@ class MainActivity : AppCompatActivity() {
         // should be calm, and a second socket probe used to compete with the
         // real automatic connection loop.
         if (isConnected) return
-        if (UsbTransportDisplayPolicy.shouldRefreshSubtitle(prefs.connectionMode)) {
+        if (UsbTransportDisplayPolicy.shouldRefreshSubtitle(prefs.connectionMode) &&
+            pendingUsbReconnectDeadlineMs == null
+        ) {
             updateUsbTransportSubtitle()
         }
         if (!connectionDetailsVisible) return
