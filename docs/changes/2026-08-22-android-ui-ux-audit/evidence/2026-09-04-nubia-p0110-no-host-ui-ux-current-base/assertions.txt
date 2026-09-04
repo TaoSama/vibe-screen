@@ -1,0 +1,56 @@
+# no-Host UI/UX current-base assertions
+generated_at=2026-09-04T14:19:53Z
+
+## device identity
+Device: Nubia P0110 / pacific / Android 16 / SDK 36 / serial <redacted-adb-serial>
+Captured: 2026-09-04T13:55:43Z
+
+ro.product.manufacturer=nubia
+ro.product.model=P0110
+ro.product.device=pacific
+ro.product.name=pacific
+ro.build.version.release=16
+ro.build.version.sdk=36
+ro.build.fingerprint=nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+ro.build.version.incremental=20260306.003030
+ro.hardware=qcom
+
+## reverse product port 54321 absent
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/logs/adb-reverse-list-before.txt: PASS
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/logs/adb-reverse-list-after.txt: PASS
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/logs/adb-reverse-list-settings-recapture-after.txt: PASS
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/logs/adb-reverse-list-settings-recapture.txt: PASS
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/logs/final-no-host-smoke-14.txt: PASS
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-ui-ux-current-base/logs/final-no-host-smoke-15-settings-lan-internet.txt: PASS
+
+## connection pages captured from Vibe Screen foreground
+14-final-disconnected: PASS
+16-final-lan: PASS
+17-final-internet: PASS
+
+## no product transfer controls on disconnected connection pages
+14-final-disconnected: PASS
+16-final-lan: PASS
+17-final-internet: PASS
+02-disconnected-controlbar-reveal-attempt: PASS
+06-no-host-landscape-fontscale-1_3: PASS
+08-restored-portrait: PASS
+
+## normal settings readiness copy
+Display settings: PASS
+Clipboard &amp; files: PASS
+Waiting for a compatible Mac session: PASS
+Clipboard and file controls appear after Protocol v1 negotiates those capabilities with the Mac.: PASS
+15-final-settings: PASS
+
+## font-scale 1.3 settings readiness copy
+Display settings: PASS
+Clipboard &amp; files: PASS
+Waiting for a compatible Mac session: PASS
+Clipboard and file controls appear after Protocol v1 negotiates those capabilities with the Mac.: PASS
+
+## known non-proof artifacts
+screen-03-settings-portrait, screen-07-settings-landscape-fontscale-1_3, and screen-09-settings-portrait-recaptured were attempted captures but are not used as settings evidence.
+screen-04-no-host-lan-portrait and screen-05-no-host-internet-portrait were removed after privacy cleanup because they were launcher captures; final screen-16/screen-17 are the retained LAN/Internet evidence.
+screen-11, screen-12, and screen-13 intermediate duplicate captures were excluded from the submitted checksum to avoid numbered-artifact ambiguity; final screen-14 through screen-17 are the retained final captures.
+Broad process probes are not used to prove Host absence; host-port-54321-listeners-* and adb reverse listings carry that narrower boundary.

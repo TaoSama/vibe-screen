@@ -1,0 +1,49 @@
+date_utc=2026-09-04T14:18:00Z
+head=e4d7861b8af3ffa8d32fff99b022e92193acc071
+
+# Required visible tokens in final dumps
+final-disconnected: PASS present: VIBE SCREEN
+final-disconnected: PASS present: Waiting for your Mac
+final-disconnected: PASS present: USB
+final-disconnected: PASS present: LAN
+final-disconnected: PASS present: Internet
+final-disconnected: PASS present: CONNECT
+final-disconnected: PASS present: Looking for Vibe Screen on your Mac
+final-disconnected: PASS present: DISPLAY SETTINGS
+final-settings: PASS present: Display settings
+final-settings: PASS present: Clipboard &amp; files
+final-settings: PASS present: Waiting for a compatible Mac session
+final-settings: PASS present: Clipboard and file controls appear after Protocol v1 negotiates those capabilities with the Mac.
+final-lan: PASS present: Connect wirelessly
+final-lan: PASS present: trusted private networks
+final-lan: PASS present: SCAN QR CODE
+final-lan: PASS present: DISPLAY SETTINGS
+final-internet: PASS present: Internet preview
+final-internet: PASS present: No Internet pairing profile
+final-internet: PASS present: Route policy
+final-internet: PASS present: DIRECT
+final-internet: PASS present: TURN
+final-internet: PASS present: SCAN QR
+final-internet: PASS present: IMPORT
+final-internet: PASS present: CONNECT PREVIEW
+final-internet: PASS present: REVOKE MAC
+ui-hierarchy-14-final-disconnected.xml: PASS absent: controlClipboardButton
+ui-hierarchy-14-final-disconnected.xml: PASS absent: controlFileTransferButton
+ui-hierarchy-14-final-disconnected.xml: PASS absent: controlBar
+ui-hierarchy-14-final-disconnected.xml: PASS absent: Cancel file transfer
+ui-hierarchy-14-final-disconnected.xml: PASS absent: Mac content available
+ui-hierarchy-15-final-settings.xml: PASS absent: controlClipboardButton
+ui-hierarchy-15-final-settings.xml: PASS absent: controlFileTransferButton
+ui-hierarchy-15-final-settings.xml: PASS absent: controlBar
+ui-hierarchy-15-final-settings.xml: PASS absent: Cancel file transfer
+ui-hierarchy-15-final-settings.xml: PASS absent: Mac content available
+ui-hierarchy-16-final-lan.xml: PASS absent: controlClipboardButton
+ui-hierarchy-16-final-lan.xml: PASS absent: controlFileTransferButton
+ui-hierarchy-16-final-lan.xml: PASS absent: controlBar
+ui-hierarchy-16-final-lan.xml: PASS absent: Cancel file transfer
+ui-hierarchy-16-final-lan.xml: PASS absent: Mac content available
+ui-hierarchy-17-final-internet.xml: PASS absent: controlClipboardButton
+ui-hierarchy-17-final-internet.xml: PASS absent: controlFileTransferButton
+ui-hierarchy-17-final-internet.xml: PASS absent: controlBar
+ui-hierarchy-17-final-internet.xml: PASS absent: Cancel file transfer
+ui-hierarchy-17-final-internet.xml: PASS absent: Mac content available

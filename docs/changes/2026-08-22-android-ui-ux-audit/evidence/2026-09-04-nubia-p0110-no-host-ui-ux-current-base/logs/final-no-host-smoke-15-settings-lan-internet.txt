@@ -1,0 +1,49 @@
+date_utc=2026-09-04T14:12:07Z
+head=e4d7861b8af3ffa8d32fff99b022e92193acc071
+serial=<redacted-adb-serial>
+
+$ adb reverse --list before navigation
+UsbFfs tcp:8908 tcp:8908
+
+
+# capture settings via DISPLAY SETTINGS button
+$ adb shell input tap 632 1994
+
+$ adb shell dumpsys window focus settings
+  mCurrentFocus=Window{a27e878 u0 dev.telemachus.display/dev.telemachus.display.MainActivity}
+  mFocusedApp=ActivityRecord{194159670 u0 dev.telemachus.display/.MainActivity t1036}
+
+$ adb shell uiautomator dump settings
+UI hierchary dumped to: /sdcard/vibescreen-ui-15-final-settings.xml
+/sdcard/vibescreen-ui-15-final-settings.xml: 1 file pulled, 0 skipped. 4.9 MB/s (11192 bytes in 0.002s)
+
+$ adb shell screencap settings
+/sdcard/vibescreen-screen-15-final-settings.png: 1 file pulled, 0 skipped. 26.3 MB/s (270407 bytes in 0.010s)
+
+$ adb shell input keyevent BACK
+
+# capture LAN empty state
+$ adb shell input tap 632 1079
+
+$ adb shell uiautomator dump lan
+UI hierchary dumped to: /sdcard/vibescreen-ui-16-final-lan.xml
+/sdcard/vibescreen-ui-16-final-lan.xml: 1 file pulled, 0 skipped. 6.7 MB/s (13523 bytes in 0.002s)
+
+$ adb shell screencap lan
+/sdcard/vibescreen-screen-16-final-lan.png: 1 file pulled, 0 skipped. 11.1 MB/s (233840 bytes in 0.020s)
+
+# capture Internet empty state
+$ adb shell input tap 940 1079
+
+$ adb shell uiautomator dump internet
+UI hierchary dumped to: /sdcard/vibescreen-ui-17-final-internet.xml
+/sdcard/vibescreen-ui-17-final-internet.xml: 1 file pulled, 0 skipped. 5.9 MB/s (16044 bytes in 0.003s)
+
+$ adb shell screencap internet
+/sdcard/vibescreen-screen-17-final-internet.png: 1 file pulled, 0 skipped. 26.5 MB/s (223750 bytes in 0.008s)
+
+$ adb reverse --list after navigation
+UsbFfs tcp:8908 tcp:8908
+
+
+$ adb logcat -d -t 300 | grep dev.telemachus.display

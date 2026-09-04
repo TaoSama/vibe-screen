@@ -1,0 +1,69 @@
+{
+  "run_id": "2026-09-04-nubia-p0110-no-host-ui-ux-current-base",
+  "scanned_at_utc": "2026-09-04T14:19:53Z",
+  "status": "pass_after_redaction",
+  "checks": [
+    {
+      "pattern": "real P0110 ADB serial",
+      "query": "real_serial_pattern_redacted",
+      "matches_after_redaction": 0
+    },
+    {
+      "pattern": "local macOS home path",
+      "query": "home_path_pattern_redacted",
+      "matches_after_redaction": 0
+    },
+    {
+      "pattern": "local username",
+      "query": "username_pattern_redacted",
+      "matches_after_redaction": 0
+    },
+    {
+      "pattern": "temporary local path prefix",
+      "query": "temp_path_pattern_redacted",
+      "matches_after_redaction": 0
+    }
+  ],
+  "redactions": [
+    {
+      "kind": "adb_serial",
+      "replacement": "<redacted-adb-serial>"
+    },
+    {
+      "kind": "home_directory",
+      "replacement": "<redacted-home>"
+    },
+    {
+      "kind": "temporary_directory",
+      "replacement": "<redacted-temp>"
+    }
+  ],
+  "excluded_artifacts_from_submitted_checksum": [
+    "screenshots/screen-04-no-host-lan-portrait.png",
+    "screenshots/screen-05-no-host-internet-portrait.png",
+    "ui-dumps/ui-hierarchy-04-no-host-lan-portrait.xml",
+    "ui-dumps/ui-hierarchy-05-no-host-internet-portrait.xml",
+    "logs/ui-hierarchy-04-no-host-lan-portrait-tokens.txt",
+    "logs/ui-hierarchy-05-no-host-internet-portrait-tokens.txt",
+    "logs/uiautomator-04-no-host-lan-portrait.txt",
+    "logs/uiautomator-05-no-host-internet-portrait.txt",
+    "logs/pull-window-04-no-host-lan-portrait.txt",
+    "logs/pull-window-05-no-host-internet-portrait.txt",
+    "screenshots/screen-11-current-rerun-disconnected.png",
+    "screenshots/screen-11-no-host-usb-portrait-recaptured.png",
+    "screenshots/screen-12-current-rerun-settings.png",
+    "screenshots/screen-12-no-host-lan-portrait-recaptured.png",
+    "screenshots/screen-13-no-host-internet-portrait-recaptured.png",
+    "ui-dumps/ui-hierarchy-11-current-rerun-disconnected.xml",
+    "ui-dumps/ui-hierarchy-11-no-host-usb-portrait-recaptured.xml",
+    "ui-dumps/ui-hierarchy-12-current-rerun-settings.xml",
+    "ui-dumps/ui-hierarchy-12-no-host-lan-portrait-recaptured.xml",
+    "ui-dumps/ui-hierarchy-13-no-host-internet-portrait-recaptured.xml"
+  ],
+  "notes": [
+    "The original LAN/Internet first captures landed on the Android launcher and were superseded by final screen-16 and screen-17 captures inside the Vibe Screen app.",
+    "The final screen-14 through screen-17 rerun artifacts were captured from the same redacted P0110 serial after building and installing the current origin/main debug APK with auto_connect=false.",
+    "Intermediate duplicate screen-11 through screen-13 captures are excluded from the submitted checksum to avoid numbered-artifact ambiguity.",
+    "Broad process probes are not used for Host-readiness claims."
+  ]
+}

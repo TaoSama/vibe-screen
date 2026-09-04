@@ -1,0 +1,90 @@
+{
+  "run_id": "2026-09-04-nubia-p0110-no-host-ui-ux-current-base",
+  "date_utc": "2026-09-04",
+  "branch": "codex/p0110-no-host-ui-ux-smoke-20260904",
+  "source_revision": "e4d7861b8af3ffa8d32fff99b022e92193acc071",
+  "origin_main_revision": "e4d7861b8af3ffa8d32fff99b022e92193acc071",
+  "scope": "android-client-no-host-ui-ux-smoke",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_version": "16",
+    "sdk": 36,
+    "serial": "<redacted-adb-serial>",
+    "screen_size": "1264x2800",
+    "density": 560
+  },
+  "android_application": {
+    "package": "dev.telemachus.display",
+    "activity": "dev.telemachus.display/.MainActivity",
+    "debug_apk": "baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk"
+  },
+  "host_boundary": {
+    "host_launched_by_this_run": false,
+    "tcc_exercised": false,
+    "tcp_54321_listener_observed": false,
+    "adb_reverse_tcp_54321_observed": false,
+    "retained_reverse_value": "UsbFfs tcp:8908 tcp:8908"
+  },
+  "valid_artifacts": {
+    "usb_portrait_no_host": [
+      "screenshots/screen-14-final-disconnected.png",
+      "ui-dumps/ui-hierarchy-14-final-disconnected.xml"
+    ],
+    "lan_portrait_no_host": [
+      "screenshots/screen-16-final-lan.png",
+      "ui-dumps/ui-hierarchy-16-final-lan.xml"
+    ],
+    "internet_portrait_no_host": [
+      "screenshots/screen-17-final-internet.png",
+      "ui-dumps/ui-hierarchy-17-final-internet.xml"
+    ],
+    "usb_retry_diagnostics": [
+      "screenshots/screen-02-disconnected-controlbar-reveal-attempt.png",
+      "ui-dumps/ui-hierarchy-02-disconnected-controlbar-reveal-attempt.xml"
+    ],
+    "landscape_font_scale_1_3": [
+      "screenshots/screen-06-no-host-landscape-fontscale-1_3.png",
+      "ui-dumps/ui-hierarchy-06-no-host-landscape-fontscale-1_3.xml"
+    ],
+    "portrait_restored": [
+      "screenshots/screen-08-restored-portrait.png",
+      "ui-dumps/ui-hierarchy-08-restored-portrait.xml"
+    ],
+    "settings_normal_font": [
+      "screenshots/screen-15-final-settings.png",
+      "ui-dumps/ui-hierarchy-15-final-settings.xml"
+    ],
+    "settings_font_scale_1_3": [
+      "screenshots/screen-10-settings-portrait-fontscale-1_3-recaptured.png",
+      "ui-dumps/ui-hierarchy-10-settings-portrait-fontscale-1_3-recaptured.xml"
+    ]
+  },
+  "excluded_artifacts": {
+    "settings_misclicks": [
+      "screen-03-settings-portrait",
+      "screen-07-settings-landscape-fontscale-1_3",
+      "screen-09-settings-portrait-recaptured"
+    ],
+    "removed_launcher_captures": [
+      "screen-04-no-host-lan-portrait",
+      "screen-05-no-host-internet-portrait"
+    ],
+    "intermediate_duplicate_captures": [
+      "screen-11-current-rerun-disconnected",
+      "screen-11-no-host-usb-portrait-recaptured",
+      "screen-12-current-rerun-settings",
+      "screen-12-no-host-lan-portrait-recaptured",
+      "screen-13-no-host-internet-portrait-recaptured"
+    ]
+  },
+  "claims": {
+    "can_claim_android_no_host_ui_smoke": true,
+    "can_claim_clipboard_e2e": false,
+    "can_claim_file_transfer_e2e": false,
+    "can_claim_protocol_v1_session": false,
+    "can_claim_host_readiness": false,
+    "can_claim_xiaomi_fuxi_evidence": false
+  }
+}
