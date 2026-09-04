@@ -17,6 +17,11 @@ The seven README-facing contract rows are the offline error-model source for
 their code/title/body/action semantics; Android connection UI wiring can consume
 that model after the active connection-UI work lands, without using this gate as
 device or permission recovery evidence.
+The current required current-base owner gate also tracks the feature-specific
+Android Internet, codec, managed-policy, unsupported-peripheral, file-transfer,
+and clipboard error states. Older owner manifests stay valid as blocked records:
+missing newly required states are synthesized as blocked so history does not
+become malformed, but those gaps still cannot close the README Phase 1 gate.
 
 The source of truth is actionable-error-states.json. Keep it updated whenever
 Android SessionFailureKind cases, Host permission/startup/capture states, or
@@ -80,7 +85,7 @@ actionable-error states, including blocked records that intentionally cannot
 close the README gate:
 
     make actionable-error-current-base-owner-record \
-      EVIDENCE_DIR=docs/changes/2026-08-23-actionable-error-states/evidence/2026-08-27-p0110-current-base-owner
+      EVIDENCE_DIR=docs/changes/2026-08-23-actionable-error-states/evidence/2026-09-05-p0110-no-host-owner
 
 The input manifest is `actionable-error-current-base.json`; the generated
 report is `actionable-error-current-base-gate.json`. The gate is read-only and
@@ -88,9 +93,11 @@ validates all of the following:
 
 - the retained device identity is exactly Nubia P0110 / pacific / Android 16 /
   SDK 36 with the public ADB serial redacted as `<redacted-adb-serial>`;
-- every required README-facing state is present: Screen Recording denied,
+- every required current-base state is represented: Screen Recording denied,
   Accessibility denied/limited, TCP `54321` unavailable, ADB reverse missing,
-  USB disconnected, LAN route unavailable, and stale epoch/session errors;
+  USB disconnected, LAN route unavailable, stale epoch/session errors, and the
+  feature-specific Android Internet, codec, managed-policy, peripheral,
+  file-transfer, and clipboard error states;
 - every referenced local artifact exists inside the repository and matches its
   recorded SHA-256;
 - a blocked, insufficient, or not-run state cannot set `can_close_state=true`;
@@ -124,7 +131,19 @@ missing-route state, but it is not yet a distinct ADB-route-unavailable copy or
 closure for the README gate; the same run records that a local TCP `54321`
 listener was present, so TCP-unavailable was not safely reproduced on
 2026-08-30. Screen Recording/Accessibility denial, USB-disconnect capture, and
-stale epoch/session rejection remain blocked/not-run.
+stale epoch/session rejection remain blocked/not-run. Because this manifest
+predates the feature-specific Android UI rows, the current gate reports those
+later rows as blocked when it is evaluated for owner-record compatibility.
+
+The 2026-09-05 P0110 no-Host record is also intentionally `blocked`. It refreshes
+the owner surface for the disconnected USB/no-Host path, records exact P0110
+identity, shows no configured `tcp:54321` reverse route, and retains a screenshot
+where Android presents `USB route unavailable`, `TCP 54321`, `restart Vibe Screen
+on the Mac`, and `Mac server · Not ready` copy. That proves actionable copy for
+the no-Host disconnected USB surface, but it does not prove Host-side USB repair,
+successful Android/macOS product E2E recovery, macOS TCC denial behavior,
+physical USB-disconnect capture, LAN retry, stale epoch/session rejection, or
+the feature-specific Android error rows.
 
 ## Device evidence boundary
 
