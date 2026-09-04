@@ -1865,6 +1865,48 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun outgoingInternetFileCancelReportsLocalSuccessWhenControlSendFails() {
+        val peer =
+            ProductFakePeerEngine(
+                sendControlResult = { payload ->
+                    Envelope.parseFrom(payload).payloadCase != Envelope.PayloadCase.FILE_TRANSFER_CANCEL
+                },
+            )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x51, 0x52, 0x53, 0x54)
+        val file = java.io.File.createTempFile("vibe-internet-outgoing-cancel-send-fail", ".bin")
+        file.writeBytes(payload)
+
+        try {
+            val handle = requireNotNull(session.offerFileWithHandle(file, "application/octet-stream"))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(2),
+                    ).build(),
+            )
+
+            assertTrue(session.cancelOutgoingFileTransfer(handle.transferId, "user_cancelled"))
+
+            assertTrue(peer.controlEnvelopes().none { it.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_CANCEL })
+            assertEquals(listOf(handle.transferId), callbacks.outgoingFinished)
+            assertEquals(false to "user_cancelled", callbacks.fileResults.single())
+            assertEquals(InternetProductSessionState.FAILED, session.state)
+            assertEquals("Reliable control channel backlog rejected a state-changing message", callbacks.failures.single().message)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun outgoingInternetFileOfferTimeoutCancelsTransferAndFreesSlot() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
