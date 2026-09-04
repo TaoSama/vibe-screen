@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "b02c36420d1c7784c0e6153bfd908aef3bd41da5",
+    "base_commit": "7bf98a9b0be0bcd297ae7abd4c5088e65c30168e",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Vibe Screen core team",
@@ -14,7 +14,7 @@
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
     "queried_at": "2026-09-04",
     "state": "open",
-    "open_pr_numbers": [556]
+    "open_pr_numbers": []
   },
   "readme_guard": {
     "required_phrases": [
@@ -50,7 +50,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33848805775"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33861276967"
       ],
       "owner_prs": [],
       "blockers": []
@@ -63,7 +63,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33848805775"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33861276967"
       ],
       "owner_prs": [],
       "blockers": []
@@ -76,7 +76,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33848805775",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/33861276967",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -143,11 +143,16 @@
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-nubia-p0110-latency-current-base-blocked/latency-preflight.json",
         "docs/changes/2026-08-30-external-latency-owner/README.md",
         "docs/changes/2026-08-30-external-latency-owner/evidence/2026-08-30-current-base-blocked/README.md",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderTelemetrySnapshot.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/HeartbeatTelemetryReporter.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderTelemetryAccumulatorTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/HeartbeatTelemetryReporterTest.kt",
         "tools/vibescreen_evidence/latency_evidence.py",
         "tools/vibescreen_evidence/latency_manifest.py"
       ],
       "owner_prs": [],
       "blockers": [
+        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only.",
         "The tightened current-base latency gate remains blocked readiness; no external-camera latency sample package, raw camera media, annotated sample set, or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },
@@ -182,11 +187,18 @@
       "evidence_strength": "readiness",
       "evidence_paths": [
         "docs/testing.md",
-        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-27-p0110-native-pointer-hid-current-base-blocked-deviceid/native-pointer-hid-summary.json"
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/README.md",
+        "docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-31-p0110-native-pointer-hid-current-base-blocked/native-pointer-hid-summary.json",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/NativeInputWireTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/NativeInputSessionStateTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientInputDispatchTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt"
       ],
       "owner_prs": [],
       "blockers": [
         "No physical Android mouse, touchpad, or trackball was attached during a Protocol v1 run.",
+        "PR #558 adds Android native pointer hover enter/exit mapping and fail-closed unsupported-button filtering with focused JVM coverage, but this is source/unit readiness only.",
         "The latest current-base native-pointer HID summaries remain blocked and do not retain Android forwarding logs, Host pointer-injection logs, and visible Mac move/click result from the same observation window."
       ]
     },

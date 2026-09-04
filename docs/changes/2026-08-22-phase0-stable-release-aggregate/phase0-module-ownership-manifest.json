@@ -3,7 +3,7 @@
   "kind": "phase0_module_ownership_current_base_manifest",
   "phase": "phase0",
   "source": {
-    "base_commit": "b02c36420d1c7784c0e6153bfd908aef3bd41da5",
+    "base_commit": "7bf98a9b0be0bcd297ae7abd4c5088e65c30168e",
     "base_ref": "origin/main",
     "audit_date": "2026-09-04",
     "owner": "Phase 0 module ownership extraction owner"
@@ -80,15 +80,19 @@
       "title": "StreamClient input envelope routing owner",
       "required_for_phase0_stable": true,
       "status": "closed",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/NativeInputWireTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientInputDispatchTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.StreamInputBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamInputDispatcherTest --tests dev.telemachus.display.NativeInputWireTest --tests dev.telemachus.display.ClientInputDispatchTest --tests dev.telemachus.display.StreamInputBoundaryContractTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
       ],
       "blockers": [],
       "fail_closed_checklist": []
@@ -98,14 +102,16 @@
       "title": "StreamClient media-frame routing owner",
       "required_for_phase0_stable": true,
       "status": "closed",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/HeartbeatTelemetryReporter.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamMediaFrameRouter.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/HeartbeatTelemetryReporter.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamMediaFrameRouterTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/HeartbeatTelemetryReporterTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamMediaFrameRouterTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.StreamMediaFrameRouterTest --tests dev.telemachus.display.HeartbeatTelemetryReporterTest --tests dev.telemachus.display.StreamClientOwnershipBoundaryContractTest"
       ],
       "blockers": [],
       "fail_closed_checklist": []
@@ -198,15 +204,17 @@
       "title": "Android decoder ownership boundary",
       "required_for_phase0_stable": true,
       "status": "closed",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderTelemetrySnapshot.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderLifecycleOwner.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderPresentationOwner.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DecoderTelemetrySnapshot.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/VideoDecoder.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ActiveDecoderCallbackBinding.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/AndroidDecoderLifecycleOwnerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderPresentationOwnerTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderTelemetryAccumulatorTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ActiveDecoderCallbackBindingTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderStartupGateTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt",
@@ -214,7 +222,7 @@
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderOwnershipBoundaryContractTest.kt"
       ],
       "focused_tests": [
-        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderPresentationOwnerTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest --tests dev.telemachus.display.AndroidDecoderLifecycleOwnerTest --tests dev.telemachus.display.ActiveDecoderCallbackBindingTest --tests dev.telemachus.display.DecoderStartupGateTest --tests dev.telemachus.display.DecoderUseGateTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainSessionDisplayLifecycleTest --tests dev.telemachus.display.internet.InternetVideoDecoderLifecycleTest --tests dev.telemachus.display.DecoderOwnershipBoundaryContractTest",
+        "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DecoderPresentationOwnerTest --tests dev.telemachus.display.DecoderTelemetryAccumulatorTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest --tests dev.telemachus.display.AndroidDecoderLifecycleOwnerTest --tests dev.telemachus.display.ActiveDecoderCallbackBindingTest --tests dev.telemachus.display.DecoderStartupGateTest --tests dev.telemachus.display.DecoderUseGateTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.RendererOwnerTest --tests dev.telemachus.display.RendererOwnershipBoundaryContractTest --tests dev.telemachus.display.MainSessionDisplayLifecycleTest --tests dev.telemachus.display.internet.InternetVideoDecoderLifecycleTest --tests dev.telemachus.display.DecoderOwnershipBoundaryContractTest",
         "./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.AndroidDecoderConfigurationCoordinatorTest"
       ],
       "blockers": [],
