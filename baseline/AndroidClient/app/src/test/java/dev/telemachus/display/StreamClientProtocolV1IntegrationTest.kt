@@ -2436,6 +2436,54 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun hostFileOfferCanBeCancelledAfterReceiverApproval() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 53).toByte() })
+            val content = "cancel-me".toByteArray(Charsets.UTF_8)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 66,
+                                transferId = transferId,
+                                fileName = "cancel.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        val cancel = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, cancel.payloadCase)
+                        assertEquals(transferId, cancel.fileTransferCancel.transferId)
+                        assertEquals("user_cancelled", cancel.fileTransferCancel.reasonCode)
+                        write(peer, disconnect(67))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer ->
+                assertTrue(client.respondToFileOffer(offer, accepted = true))
+                assertTrue(client.cancelIncomingFileTransfer(offer.transferId))
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
     fun hostFileOfferDefaultsToReceiverDeniedWithoutApprovalCallback() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)

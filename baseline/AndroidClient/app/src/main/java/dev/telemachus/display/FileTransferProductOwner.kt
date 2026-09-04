@@ -39,6 +39,8 @@ internal class FileTransferProductOwner(
     private var remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
 
     @Volatile var onFileOffer: ((FileOffer) -> Unit)? = null
+    @Volatile var onIncomingFileProgress: ((transferId: ByteString, receivedBytes: Long) -> Unit)? = null
+    @Volatile var onIncomingFileCancelled: ((transferId: ByteString, reasonCode: String) -> Unit)? = null
     @Volatile var onIncomingFileCompleted: ((CompletedIncomingFile) -> Unit)? = null
     @Volatile var onFileTransferResult: ((accepted: Boolean, reason: String) -> Unit)? = null
 
@@ -427,6 +429,14 @@ internal class FileTransferProductOwner(
 
     fun notifyIncomingFileCompleted(completed: CompletedIncomingFile) {
         onIncomingFileCompleted?.invoke(completed)
+    }
+
+    fun notifyIncomingFileProgress(transferId: ByteString, receivedBytes: Long) {
+        onIncomingFileProgress?.invoke(transferId, receivedBytes)
+    }
+
+    fun notifyIncomingFileCancelled(transferId: ByteString, reasonCode: String) {
+        onIncomingFileCancelled?.invoke(transferId, reasonCode)
     }
 
     fun notifyFileTransferResult(result: TransferResult) {

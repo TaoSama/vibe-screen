@@ -66,6 +66,14 @@ internal sealed interface StreamOutboundCommand {
         val connectionGeneration: Long,
         val offer: FileOffer,
         val acceptedByUser: Boolean,
+        val rejectionReason: String,
+    ) : StreamOutboundCommand
+
+    data class ProtocolIncomingFileCancellation(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
+        val transferId: ByteString,
+        val reasonCode: String,
     ) : StreamOutboundCommand
 
     data class ProtocolSendBulk(

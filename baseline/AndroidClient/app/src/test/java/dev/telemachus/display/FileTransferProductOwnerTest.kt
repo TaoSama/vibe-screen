@@ -832,6 +832,22 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `incoming progress and cancellation notifications forward transfer identity and reason`() {
+        val owner = owner()
+        val transferId = ByteString.copyFromUtf8("incoming-callback")
+        val progress = mutableListOf<Pair<ByteString, Long>>()
+        val cancellations = mutableListOf<Pair<ByteString, String>>()
+        owner.onIncomingFileProgress = { id, receivedBytes -> progress += id to receivedBytes }
+        owner.onIncomingFileCancelled = { id, reasonCode -> cancellations += id to reasonCode }
+
+        owner.notifyIncomingFileProgress(transferId, 123L)
+        owner.notifyIncomingFileCancelled(transferId, "user_cancelled")
+
+        assertEquals(listOf(transferId to 123L), progress)
+        assertEquals(listOf(transferId to "user_cancelled"), cancellations)
+    }
+
+    @Test
     fun `cancel prepared outgoing releases unstarted transfer exactly once`() {
         val outgoing = FakeOutgoingTransferStore(id = 11, payload = "cancel-prepared".toByteArray())
         val owner = owner(outgoing = outgoing)

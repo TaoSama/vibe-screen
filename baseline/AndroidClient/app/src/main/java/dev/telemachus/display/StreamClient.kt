@@ -254,6 +254,16 @@ class StreamClient(
         set(value) {
             fileTransferProductOwner.onFileOffer = value
         }
+    internal var onIncomingFileProgress: ((transferId: ByteString, receivedBytes: Long) -> Unit)?
+        get() = fileTransferProductOwner.onIncomingFileProgress
+        set(value) {
+            fileTransferProductOwner.onIncomingFileProgress = value
+        }
+    internal var onIncomingFileCancelled: ((transferId: ByteString, reasonCode: String) -> Unit)?
+        get() = fileTransferProductOwner.onIncomingFileCancelled
+        set(value) {
+            fileTransferProductOwner.onIncomingFileCancelled = value
+        }
     internal var onIncomingFileCompleted: ((CompletedIncomingFile) -> Unit)?
         get() = fileTransferProductOwner.onIncomingFileCompleted
         set(value) {
@@ -1800,6 +1810,9 @@ class StreamClient(
             is StreamOutboundCommand.ProtocolFileOfferDecision ->
                 processProtocolFileOfferDecision(out, command)
 
+            is StreamOutboundCommand.ProtocolIncomingFileCancellation ->
+                processProtocolIncomingFileCancellation(out, command)
+
             is StreamOutboundCommand.ProtocolFileOfferSubmission ->
                 processProtocolFileOfferSubmission(out, command)
 
@@ -1912,6 +1925,7 @@ class StreamClient(
         when (result) {
             is FileTransferProductOwner.IncomingChunkResult.Accepted -> {
                 session.fileProgress(result.transferId, result.receivedBytes)?.let { writeProtocolEnvelope(out, it) }
+                fileTransferProductOwner.notifyIncomingFileProgress(result.transferId, result.receivedBytes)
                 result.completed?.let { completed ->
                     session.fileComplete(
                         transferId = completed.transferId,
@@ -1929,6 +1943,7 @@ class StreamClient(
                     session.fileProgress(result.transferId, received)?.let { writeProtocolEnvelope(out, it) }
                 }
                 session.fileCancel(result.transferId, result.reasonCode)?.let { writeProtocolEnvelope(out, it) }
+                fileTransferProductOwner.notifyIncomingFileCancelled(result.transferId, result.reasonCode)
                 out.flush()
                 result.failure?.let(command.completion::completeExceptionally)
                     ?: command.completion.complete(Unit)
@@ -1956,8 +1971,34 @@ class StreamClient(
             acceptedByUser = command.acceptedByUser,
             negotiatedPolicy = session.negotiatedFilePolicy,
             sessionEpoch = session.activeSessionEpoch,
-        )
+        ).let { decision ->
+            if (command.acceptedByUser || decision.accepted || command.rejectionReason == "user_denied") {
+                decision
+            } else {
+                decision.toBuilder().setRejectionReason(command.rejectionReason).build()
+            }
+        }
         session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
+        out.flush()
+    }
+
+    private fun processProtocolIncomingFileCancellation(
+        out: java.io.DataOutputStream,
+        command: StreamOutboundCommand.ProtocolIncomingFileCancellation,
+    ) {
+        val session = protocolSessionOwner.currentSession
+        if (session == null ||
+            session !== command.session ||
+            !retainsProtocolSessionForDrain(session, command.connectionGeneration)
+        ) {
+            return
+        }
+        fileTransferProductOwner.cancelIncomingTransfer(command.transferId)
+        session.fileCancel(command.transferId, command.reasonCode)?.let { writeProtocolEnvelope(out, it) }
+        fileTransferProductOwner.notifyIncomingFileCancelled(command.transferId, command.reasonCode)
+        fileTransferProductOwner.notifyFileTransferResult(
+            FileTransferProductOwner.TransferResult(accepted = false, reason = command.reasonCode),
+        )
         out.flush()
     }
 
@@ -2239,7 +2280,10 @@ class StreamClient(
         ) {
             if (!isCurrentProtocolSession(session, connectionGeneration)) return
             fileTransferProductOwner.handleFileCancel(cancellation)
-                ?.let(fileTransferProductOwner::notifyFileTransferResult)
+                ?.let { result ->
+                    fileTransferProductOwner.notifyIncomingFileCancelled(cancellation.transferId, cancellation.reasonCode)
+                    fileTransferProductOwner.notifyFileTransferResult(result)
+                }
         }
 
         override fun onFileCompleteReceived(
@@ -2599,7 +2643,11 @@ class StreamClient(
         return true
     }
 
-    fun respondToFileOffer(offer: FileOffer, accepted: Boolean): Boolean {
+    fun respondToFileOffer(
+        offer: FileOffer,
+        accepted: Boolean,
+        rejectionReason: String = "user_denied",
+    ): Boolean {
         val owner = fileTransferProductOwner.claimFileOfferDecision(offer) ?: return false
         val session = owner.ownerToken as? ProtocolV1Session
         if (session == null || wireMode != WireMode.V1 || !session.canTransferFiles) {
@@ -2613,6 +2661,7 @@ class StreamClient(
                 connectionGeneration = owner.connectionGeneration,
                 offer = offer,
                 acceptedByUser = accepted,
+                rejectionReason = rejectionReason,
             ),
             timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
         )
@@ -2622,6 +2671,32 @@ class StreamClient(
                 SessionFailure.protocol(
                     SessionFailureKind.OUTBOUND_BACKPRESSURE,
                     "File offer response queue unavailable: $submission",
+                ),
+            )
+            return false
+        }
+        return true
+    }
+
+    fun cancelIncomingFileTransfer(transferId: ByteString, reasonCode: String = "user_cancelled"): Boolean {
+        val session = protocolSessionOwner.currentSession ?: return false
+        val connectionGeneration = protocolSessionOwner.connectionGeneration
+        if (!protocolSessionOwner.isConnected || wireMode != WireMode.V1 || !session.canTransferFiles) return false
+        val submission = submitOutbound(
+            kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
+            command = StreamOutboundCommand.ProtocolIncomingFileCancellation(
+                session = session,
+                connectionGeneration = connectionGeneration,
+                transferId = transferId,
+                reasonCode = reasonCode,
+            ),
+            timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+        )
+        if (!isOutboundAdmitted(submission)) {
+            requestConnectionEnd(
+                SessionFailure.protocol(
+                    SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                    "Incoming file cancellation queue unavailable: $submission",
                 ),
             )
             return false
