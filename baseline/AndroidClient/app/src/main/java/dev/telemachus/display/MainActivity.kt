@@ -3758,6 +3758,8 @@ class MainActivity : AppCompatActivity() {
                 ClientRotation.COUNTER_CLOCKWISE_90 to view.findViewById<MaterialButton>(R.id.rotation270),
             )
         val displayCapability = view.findViewById<TextView>(R.id.displayCapability)
+        val transferReadinessStatus = view.findViewById<TextView>(R.id.transferReadinessStatus)
+        val transferReadinessSummary = view.findViewById<TextView>(R.id.transferReadinessSummary)
 
         // Video tuning controls.
         val videoControlUnavailable = view.findViewById<TextView>(R.id.videoControlUnavailable)
@@ -3804,6 +3806,10 @@ class MainActivity : AppCompatActivity() {
             } else {
                 R.string.display_selection_host_only
             },
+        )
+        renderTransferReadiness(
+            status = transferReadinessStatus,
+            summary = transferReadinessSummary,
         )
 
         fun updateViewportButtons() {
@@ -3914,6 +3920,25 @@ class MainActivity : AppCompatActivity() {
         activeSettingsDialog = dialog
         showImmersiveDialog(dialog)
         resizeSettingsDialog(dialog)
+    }
+
+    private fun renderTransferReadiness(
+        status: TextView,
+        summary: TextView,
+    ) {
+        val state = productSessionCoordinator.renderState()
+        val connected = state.connected || internetSession?.state == InternetProductSessionState.ACTIVE
+        val clipboardReady = state.clipboardEnabled
+        val fileTransferReady = state.fileTransferEnabled || internetSession?.canTransferFiles == true
+        val presentation =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = connected,
+                clipboardReady = clipboardReady,
+                fileTransferReady = fileTransferReady,
+            )
+        status.setText(presentation.statusResource)
+        status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
+        summary.setText(presentation.summaryResource)
     }
 
     /** Refit the live settings dialog after an orientation or inset change. */

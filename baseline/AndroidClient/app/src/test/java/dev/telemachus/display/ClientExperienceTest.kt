@@ -128,6 +128,64 @@ class ClientExperienceTest {
     }
 
     @Test
+    fun `transfer readiness stays waiting before a compatible Mac session`() {
+        val presentation =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = false,
+                clipboardReady = false,
+                fileTransferReady = false,
+            )
+
+        assertEquals(R.string.transfer_readiness_waiting_status, presentation.statusResource)
+        assertEquals(R.string.transfer_readiness_waiting_summary, presentation.summaryResource)
+        assertEquals(R.color.on_surface_muted, presentation.statusColorResource)
+    }
+
+    @Test
+    fun `transfer readiness reports unnegotiated controls without claiming support`() {
+        val presentation =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = false,
+            )
+
+        assertEquals(R.string.transfer_readiness_unavailable_status, presentation.statusResource)
+        assertEquals(R.string.transfer_readiness_unavailable_summary, presentation.summaryResource)
+        assertEquals(R.color.warning, presentation.statusColorResource)
+    }
+
+    @Test
+    fun `transfer readiness distinguishes partial and full negotiated controls`() {
+        val clipboardOnly =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = true,
+                fileTransferReady = false,
+            )
+        val filesOnly =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = true,
+            )
+        val ready =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = true,
+                fileTransferReady = true,
+            )
+
+        assertEquals(R.string.transfer_readiness_clipboard_only_status, clipboardOnly.statusResource)
+        assertEquals(R.color.warning, clipboardOnly.statusColorResource)
+        assertEquals(R.string.transfer_readiness_files_only_status, filesOnly.statusResource)
+        assertEquals(R.color.warning, filesOnly.statusColorResource)
+        assertEquals(R.string.transfer_readiness_ready_status, ready.statusResource)
+        assertEquals(R.string.transfer_readiness_ready_summary, ready.summaryResource)
+        assertEquals(R.color.accent, ready.statusColorResource)
+    }
+
+    @Test
     fun `saved enum parsing falls back safely`() {
         assertEquals(VideoScaleMode.FIT, VideoScaleMode.fromName("unknown"))
         assertEquals(ClientRotation.FOLLOW_HOST, ClientRotation.fromName(null))

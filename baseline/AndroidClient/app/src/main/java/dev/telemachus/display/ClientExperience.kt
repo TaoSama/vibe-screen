@@ -143,6 +143,52 @@ internal object LanClipboardProtectionMessagePolicy {
         }
 }
 
+internal object TransferReadinessPresentationPolicy {
+    data class Presentation(
+        val statusResource: Int,
+        val summaryResource: Int,
+        val statusColorResource: Int,
+    )
+
+    fun presentation(
+        connected: Boolean,
+        clipboardReady: Boolean,
+        fileTransferReady: Boolean,
+    ): Presentation =
+        when {
+            !connected ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_waiting_status,
+                    summaryResource = R.string.transfer_readiness_waiting_summary,
+                    statusColorResource = R.color.on_surface_muted,
+                )
+            clipboardReady && fileTransferReady ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_ready_status,
+                    summaryResource = R.string.transfer_readiness_ready_summary,
+                    statusColorResource = R.color.accent,
+                )
+            clipboardReady ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_clipboard_only_status,
+                    summaryResource = R.string.transfer_readiness_clipboard_only_summary,
+                    statusColorResource = R.color.warning,
+                )
+            fileTransferReady ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_files_only_status,
+                    summaryResource = R.string.transfer_readiness_files_only_summary,
+                    statusColorResource = R.color.warning,
+                )
+            else ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_unavailable_status,
+                    summaryResource = R.string.transfer_readiness_unavailable_summary,
+                    statusColorResource = R.color.warning,
+                )
+        }
+}
+
 /** Client-local viewport choices that do not require a wire-protocol change. */
 enum class VideoScaleMode {
     FIT,

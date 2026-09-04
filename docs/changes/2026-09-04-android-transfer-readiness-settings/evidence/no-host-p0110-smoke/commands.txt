@@ -1,0 +1,39 @@
+# Commands executed for Android transfer-readiness Settings no-Host smoke
+
+The connected Android USB serial is redacted as REDACTED_P0110_USB_SERIAL.
+
+    cd /Users/luwentao/.codex/worktrees/c26b/vibe-screen
+
+    adb -s REDACTED_P0110_USB_SERIAL get-state
+    adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.manufacturer
+    adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.model
+    adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.product.device
+    adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.version.release
+    adb -s REDACTED_P0110_USB_SERIAL shell getprop ro.build.version.sdk
+    adb -s REDACTED_P0110_USB_SERIAL shell wm size
+    adb -s REDACTED_P0110_USB_SERIAL shell wm density
+
+    adb -s REDACTED_P0110_USB_SERIAL reverse --list
+    lsof -nP -iTCP:54321 -sTCP:LISTEN
+
+    cd baseline/AndroidClient
+    ./gradlew --no-daemon :app:assembleDebug
+
+    adb -s REDACTED_P0110_USB_SERIAL shell pm clear dev.telemachus.display
+    adb -s REDACTED_P0110_USB_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+    adb -s REDACTED_P0110_USB_SERIAL shell am start -n dev.telemachus.display/.MainActivity --ez auto_connect false
+    adb -s REDACTED_P0110_USB_SERIAL shell pidof dev.telemachus.display
+    adb -s REDACTED_P0110_USB_SERIAL shell dumpsys window | grep -E "mCurrentFocus|mFocusedApp"
+
+    adb -s REDACTED_P0110_USB_SERIAL exec-out screencap -p > docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/screenshots/screen-01-initial-usb-disconnected.png
+    adb -s REDACTED_P0110_USB_SERIAL shell uiautomator dump /sdcard/window_dump.xml
+    adb -s REDACTED_P0110_USB_SERIAL exec-out cat /sdcard/window_dump.xml > docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/ui-dumps/ui-hierarchy-01-usb.xml
+
+    adb -s REDACTED_P0110_USB_SERIAL shell input tap 632 1994
+    adb -s REDACTED_P0110_USB_SERIAL exec-out screencap -p > docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/screenshots/screen-02-settings-transfer-readiness.png
+    adb -s REDACTED_P0110_USB_SERIAL shell uiautomator dump /sdcard/window_dump.xml
+    adb -s REDACTED_P0110_USB_SERIAL exec-out cat /sdcard/window_dump.xml > docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/ui-dumps/ui-hierarchy-02-settings.xml
+
+    adb -s REDACTED_P0110_USB_SERIAL exec-out run-as dev.telemachus.display cat files/diag-log.jsonl > docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/logs/app-diag-redacted.log
+
+    find docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/no-host-p0110-smoke/SHA256SUMS
