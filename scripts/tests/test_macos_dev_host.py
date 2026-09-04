@@ -3163,7 +3163,7 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
         self.assertEqual(risky.get("launch_command"), ["/usr/bin/open"])
         self.assertEqual(risky.get("read_login_item_readiness"), ["/usr/bin/sfltool"])
 
-    def test_default_make_preflight_and_readiness_targets_run_safety_contract_first(self) -> None:
+    def test_default_make_preflight_readiness_and_launch_targets_run_safety_contract_first(self) -> None:
         targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
 
         self.assertIn("baseline-macos-preflight-safety-contract", targets)
@@ -3171,12 +3171,17 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
             "scripts.tests.test_macos_dev_host.MacOSDevHostPreflightSafetyContractTests",
             targets["baseline-macos-preflight-safety-contract"],
         )
-        for target in ("baseline-macos-host-preflight", "baseline-macos-host-readiness"):
+        for target in (
+            "baseline-macos-host-preflight",
+            "baseline-macos-host-readiness",
+            "baseline-macos-launch",
+        ):
             with self.subTest(target=target):
                 header = targets[target].splitlines()[0]
                 self.assertIn("baseline-macos-preflight-safety-contract", header)
                 body = "\n".join(targets[target].splitlines()[1:])
-                self.assertNotIn("macos_dev_host.py launch", body)
+                if target != "baseline-macos-launch":
+                    self.assertNotIn("macos_dev_host.py launch", body)
                 self.assertNotIn("/usr/bin/open", body)
                 self.assertNotIn("tccutil", body)
                 self.assertNotIn("adb reverse", body)
