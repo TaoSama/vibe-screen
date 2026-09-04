@@ -1,0 +1,9 @@
+{
+  "checked_categories": [
+    "raw_usb_serial",
+    "local_absolute_user_path",
+    "local_username"
+  ],
+  "result": "pass",
+  "serial_redacted_as": "REDACTED_P0110_USB_SERIAL"
+}

@@ -1,0 +1,8 @@
+Manufacturer: nubia
+Model: P0110
+Codename: pacific
+Android release: 16
+Android SDK: 36
+Physical size: 1264x2800
+Physical density: 560
+Serial: REDACTED_P0110_USB_SERIAL

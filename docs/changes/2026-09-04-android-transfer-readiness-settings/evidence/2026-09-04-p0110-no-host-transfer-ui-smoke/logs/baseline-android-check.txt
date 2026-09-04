@@ -1,0 +1,113 @@
+cd baseline/AndroidClient && ./gradlew :transport:check --configuration-cache --configuration-cache-problems=fail
+Calculating task graph as no cached configuration is available for tasks: :transport:check
+> Task :transport:checkKotlinGradlePluginConfigurationErrors
+> Task :transport:compileKotlin UP-TO-DATE
+> Task :transport:compileJava NO-SOURCE
+> Task :transport:processResources NO-SOURCE
+> Task :transport:classes UP-TO-DATE
+> Task :transport:compileTestKotlin UP-TO-DATE
+> Task :transport:compileTestJava NO-SOURCE
+> Task :transport:processTestResources NO-SOURCE
+> Task :transport:testClasses UP-TO-DATE
+> Task :transport:test UP-TO-DATE
+> Task :transport:testTransportBoundaryVerifier
+> Task :transport:verifyTransportModuleBoundary
+> Task :transport:check
+
+2 problems were found storing the configuration cache.
+- Task `:transport:testTransportBoundaryVerifier` of type `org.gradle.api.DefaultTask`: cannot serialize Gradle script object references as these are not supported with the configuration cache.
+  See https://docs.gradle.org/8.6/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
+- Task `:transport:verifyTransportModuleBoundary` of type `org.gradle.api.DefaultTask`: cannot serialize Gradle script object references as these are not supported with the configuration cache.
+  See https://docs.gradle.org/8.6/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
+
+See the complete report at file://<redacted-local-path>/vibe-screen/baseline/AndroidClient/build/reports/configuration-cache/cjfdkidjxlpxk7xj1wycwkws5/83a38h01tzr4tsfbsq4jrs6sa/configuration-cache-report.html
+
+BUILD SUCCESSFUL in 452ms
+6 actionable tasks: 3 executed, 3 up-to-date
+Configuration cache entry discarded with 2 problems.
+cd baseline/AndroidClient && ./gradlew testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+> Task :transport:checkKotlinGradlePluginConfigurationErrors
+> Task :transport:compileKotlin UP-TO-DATE
+> Task :transport:compileJava NO-SOURCE
+> Task :transport:processResources NO-SOURCE
+> Task :transport:classes UP-TO-DATE
+> Task :transport:jar UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateReleaseDependencyLicenses UP-TO-DATE
+> Task :app:generateReleaseSbom UP-TO-DATE
+> Task :app:syncOpenSourceNotices UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:dataBindingGenBaseClassesDebug UP-TO-DATE
+> Task :app:extractDebugProto UP-TO-DATE
+> Task :app:extractIncludeDebugProto UP-TO-DATE
+> Task :app:extractProto UP-TO-DATE
+> Task :app:generateDebugProto UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:extractIncludeDebugUnitTestProto UP-TO-DATE
+> Task :app:extractTestDebugProto UP-TO-DATE
+> Task :app:extractTestProto UP-TO-DATE
+> Task :app:generateDebugUnitTestProto NO-SOURCE
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app:generateDebugAndroidTestLintModel UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:generateDebugLintReportModel UP-TO-DATE
+> Task :app:generateDebugUnitTestLintModel UP-TO-DATE
+> Task :app:lintAnalyzeDebug UP-TO-DATE
+> Task :app:lintAnalyzeDebugAndroidTest UP-TO-DATE
+> Task :app:lintAnalyzeDebugUnitTest UP-TO-DATE
+> Task :app:lintReportDebug UP-TO-DATE
+> Task :app:lintDebug
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:mergeDebugStartupProfile UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:dexBuilderDebug UP-TO-DATE
+> Task :app:mergeProjectDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:packageDebug UP-TO-DATE
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug UP-TO-DATE
+> Task :app:auditReleaseDependencies
+
+BUILD SUCCESSFUL in 707ms
+69 actionable tasks: 4 executed, 65 up-to-date

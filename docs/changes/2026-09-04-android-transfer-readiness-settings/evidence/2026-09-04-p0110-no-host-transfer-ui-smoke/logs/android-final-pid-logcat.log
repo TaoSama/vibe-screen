@@ -1,0 +1,232 @@
+--------- beginning of main
+09-04 14:30:17.047 12126 12126 I AppStartup: use preforked topapp ui process: 12126
+09-04 14:30:17.047 12126 12126 D zygote64: setSvpTask pid 12126 tid 12126 pri 2 packageName dev.telemachus.display fg 1 startType 1
+09-04 14:30:17.051 12126 12126 D zygote64: setSvpFgState tid 12126 fg 1
+--------- beginning of kernel
+09-04 14:29:33.844 12126 12126 E KERNEL  : [1790041.515644] T12126] [06:30:16](2)[12126|usap64]rs_warning:index=40, it is out of range.
+09-04 14:30:17.056 12126 12126 E libprocessgroup: createProcessGroupForceMemcg
+09-04 14:30:17.058 12126 12126 D Zygote  : createProcessGroup:uid=10333, pid=12126, memcg_path:
+09-04 14:30:17.065 12126 12126 I emachus.display: Late-enabling -Xcheck:jni
+09-04 14:30:17.085 12126 12126 E emachus.display: Unknown bits set in runtime_flags: 0x8000000
+09-04 14:30:17.085 12126 12126 I emachus.display: Using CollectorTypeCMC GC.
+09-04 14:30:17.092 12126 12126 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+--------- beginning of system
+09-04 14:30:17.093 12126 12126 I SysMonitorFwBridge: sISysMonitorFwFactory = android.app.SysMonitorFwFactoryImpl@24e6edd
+09-04 14:30:17.098 12126 12126 W libc    : Access denied finding property "ro.debuggable"
+09-04 14:30:17.095 12126 12126 W re-initialized>: type=1400 audit(0.0:316711): avc:  denied  { read } for  name="u:object_r:userdebug_or_eng_prop:s0" dev="tmpfs" ino=458 scontext=u:r:untrusted_app:s0:c77,c257,c512,c768 tcontext=u:object_r:userdebug_or_eng_prop:s0 tclass=file permissive=0 app=dev.telemachus.display
+09-04 14:30:17.103 12126 12126 I SysFwBridge: sInstance: = android.app.SysFwFactoryImpl@186299e
+09-04 14:30:17.103 12126 12126 D QuickFirstFrame: feature enable:true use vulkan: true
+09-04 14:30:17.104 12126 12126 D nativeloader: Load libresprobe_jni.so using system ns (caller=/system/framework/sysmonitor-framework.jar): ok
+09-04 14:30:17.114 12126 12126 D ARTLockMonitor: dev.telemachus.display: isSystemApp=false
+09-04 14:30:17.114 12126 12126 W emachus.display: Attempt to set the sensitive thread twice. Tid:12126
+09-04 14:30:17.115 12126 12126 D CompatChangeReporter: Compat change id reported: 242716250; UID 10333; state: ENABLED
+09-04 14:30:17.115 12126 12126 D ExtTypefaceImpl: setCurPackageName() dev.telemachus.display mInTestProcess false
+09-04 14:30:17.216 12126 12126 D nativeloader: Configuring clns-9 for other apk /data/app/~~NwCafykmPfvuZkH-QGl6mQ==/dev.telemachus.display-5Q4kORbwymFaScvz1U-7wg==/base.apk. target_sdk_version=34, uses_libraries=, library_path=/data/app/~~NwCafykmPfvuZkH-QGl6mQ==/dev.telemachus.display-5Q4kORbwymFaScvz1U-7wg==/lib/arm64:/data/app/~~NwCafykmPfvuZkH-QGl6mQ==/dev.telemachus.display-5Q4kORbwymFaScvz1U-7wg==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/dev.telemachus.display
+09-04 14:30:17.219 12126 12126 I emachus.display: AssetManager2(0xb400007c725b2e78) locale list changing from [] to [zh-CN]
+09-04 14:30:17.220 12126 12126 I Perf    : Connecting to perf service.
+09-04 14:30:17.221 12126 12126 V GraphicsEnvironment: Currently set values for:
+09-04 14:30:17.221 12126 12126 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+09-04 14:30:17.222 12126 12126 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+09-04 14:30:17.222 12126 12126 V GraphicsEnvironment: dev.telemachus.display is not listed in per-application setting
+09-04 14:30:17.222 12126 12126 V GraphicsEnvironment: ANGLE allowlist from config:
+09-04 14:30:17.222 12126 12126 V GraphicsEnvironment: dev.telemachus.display is not listed in ANGLE allowlist or settings, returning default
+09-04 14:30:17.222 12126 12126 V GraphicsEnvironment: App is not on the allowlist for updatable production driver.
+09-04 14:30:17.227 12126 12126 D PreAnimation: PreAnimation feature enabled:true
+09-04 14:30:17.227 12126 12126 D AcceleratedPreRendering: acc pre rendering:false
+09-04 14:30:17.227 12126 30468 I BoostFramework: sScrollOptProp = true, sScrollOptEnable = false
+09-04 14:30:17.234 12126 12126 E ashmem  : Pinning is deprecated since Android Q. Please use trim or other methods.
+09-04 14:30:17.234 12126 12126 I ObricActivityThreadImpl: init deep capture disabled
+09-04 14:30:17.234 12126 12126 D ActivityMetrics: notifyActivityStartEvent: isBegin=true currentTime=1788503417234 activityName=dev.telemachus.display.MainActivity
+09-04 14:30:17.231 12126 12126 W emachus.display: type=1400 audit(0.0:316712): avc:  denied  { write } for  name="async_svp_pid" dev="proc" ino=4026534322 scontext=u:r:untrusted_app:s0:c77,c257,c512,c768 tcontext=u:object_r:proc_byted_binder:s0 tclass=file permissive=0 app=dev.telemachus.display
+09-04 14:30:17.231 12126 12126 W emachus.display: type=1400 audit(0.0:316713): avc:  denied  { write } for  name="async_svp_pid" dev="proc" ino=4026534322 scontext=u:r:untrusted_app:s0:c77,c257,c512,c768 tcontext=u:object_r:proc_byted_binder:s0 tclass=file permissive=0 app=dev.telemachus.display
+09-04 14:30:17.235 12126 12126 D emachus.display: setSvpAsyncBinderSource pid -1, tid -1 mode 1 pri 2 packageName NULL
+09-04 14:30:17.235 12126 12126 E emachus.display: proc async_svp_pid open failed: Permission denied
+09-04 14:30:17.235 12126 12126 D emachus.display: setSvpAsyncBinderSource pid -1, tid -1 mode 0 pri 2 packageName NULL
+09-04 14:30:17.235 12126 12126 E emachus.display: proc async_svp_pid open failed: Permission denied
+09-04 14:30:17.235 12126 12126 D QuickFirstFrame: force enable HardwareAccelerated:true vulkan: true forcepost: false
+09-04 14:30:17.236 12126 30473 D HWUI    : RenderMonitor init!
+09-04 14:30:17.236 12126 30473 D HWUI    : RenderMonitor init flag:93
+09-04 14:30:17.236 12126 12126 I emachus.display: AssetManager2(0xb400007c725aa818) locale list changing from [] to [zh-CN]
+09-04 14:30:17.237 12126 30473 D HWUI    : RenderMonitor init completed!
+09-04 14:30:17.238 12126 30473 I DisplayManager: Choreographer implicitly registered for the refresh rate.
+09-04 14:30:17.239 12126 30473 D vulkan  : searching for layers in '/data/app/~~NwCafykmPfvuZkH-QGl6mQ==/dev.telemachus.display-5Q4kORbwymFaScvz1U-7wg==/lib/arm64'
+09-04 14:30:17.239 12126 30473 D vulkan  : searching for layers in '/data/app/~~NwCafykmPfvuZkH-QGl6mQ==/dev.telemachus.display-5Q4kORbwymFaScvz1U-7wg==/base.apk!/lib/arm64-v8a'
+09-04 14:30:17.239 12126 30473 D vulkan  : GXEnable vulkanLayerGXEnable false
+09-04 14:30:17.251 12126 30473 I AdrenoVK-0: ===== BEGIN DUMP OF OVERRIDDEN SETTINGS =====
+09-04 14:30:17.251 12126 30473 I AdrenoVK-0: ===== END DUMP OF OVERRIDDEN SETTINGS =====
+09-04 14:30:17.252 12126 12126 D AppCompatDelegate: Checking for metadata for AppLocalesMetadataHolderService : Service not found
+09-04 14:30:17.252 12126 12126 I emachus.display: AssetManager2(0xb400007c725b02b8) locale list changing from [] to [zh-CN]
+09-04 14:30:17.255 12126 12126 D ActivityMetrics: notifyPerformStartEvent: isBegin=true currentTime=1788503417255 activityName=dev.telemachus.display.MainActivity
+09-04 14:30:17.256 12126 12126 E SYS_DEFAULT_LOG: class android.app.ISysMonitorFwFactory$12|IRecoverActions|setCurActivity|SYS_DEFAULT_FUN_CONTENT
+09-04 14:30:17.259 12126 12126 E SYS_DEFAULT_LOG: class android.app.ISysMonitorFwFactory$12|IRecoverActions|setCurActivity|SYS_DEFAULT_FUN_CONTENT
+09-04 14:30:17.259 12126 12126 D WindowOnBackDispatcher: App: dev.telemachus.display requestsPredictiveBack=false
+09-04 14:30:17.260 12126 30473 D qdgralloc: Fetching IMapper5 from QtiMapper5
+09-04 14:30:17.264 12126 30473 I SnapAlloc: Graphics lib is available
+09-04 14:30:17.273 12126 30473 I Adreno-UNKNOWN: Using previously loaded IMapper library.
+09-04 14:30:17.274 12126 12126 I emachus.display: hiddenapi: Accessing hidden method Landroid/view/View;->computeFitSystemWindows(Landroid/graphics/Rect;Landroid/graphics/Rect;)Z (runtime_flags=0, domain=platform, api=unsupported) from Landroidx/appcompat/widget/ViewUtils; (domain=app) using reflection: allowed
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: QUALCOMM build          : a9f03f92bd, I813b23877d
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Build Date              : 11/21/25
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Shader Compiler Version : E031.47.18.21
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Local Branch            :
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Remote Branch           : refs/tags/AU_LINUX_ANDROID_LA.VENDOR.15.4.0.11.00.00.1088.811
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Remote Branch           : NONE
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Reconstruct Branch      : NOTHING
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Build Config            : S P 18.0.0 AArch64
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Driver Path             : /vendor/lib64/hw/vulkan.adreno.so
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Driver Version          : 0800.25.2
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: PFP                     : 0x01500077
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: ME                      : 0x01500014
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Application Name    : android framework
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Application Version : 0x00000000
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Engine Name         : android framework
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Engine Version      : 0x00000000
+09-04 14:30:17.280 12126 30473 I AdrenoVK-0: Api Version         : 0x00401000
+09-04 14:30:17.287 12126 30473 I emachus.display: ###init ObricBlurBgManager###
+09-04 14:30:17.316 12126 12126 D InputMethodManager: IMM#invaldateInput()
+09-04 14:30:17.316 12126 12126 D InputMethodManager: IMM#invaldateInput()
+09-04 14:30:17.317 12126 12126 D InputMethodManager: IMM#invaldateInput()
+09-04 14:30:17.317 12126 12126 D InputMethodManager: restartInput()
+09-04 14:30:17.322 12126 12126 D InputMethodManager: IMM#invaldateInput()
+09-04 14:30:17.322 12126 12126 D InputMethodManager: IMM#invaldateInput()
+09-04 14:30:17.323 12126 12126 D InputMethodManager: IMM#invaldateInput()
+09-04 14:30:17.359 12126 12126 D DesktopModeFlags: Toggle override initialized to: OVERRIDE_UNSET
+09-04 14:30:17.361 12126 12126 I emachus.display: hiddenapi: Accessing hidden method Landroid/view/ViewGroup;->makeOptionalFitsSystemWindows()V (runtime_flags=0, domain=platform, api=unsupported) from Landroidx/appcompat/widget/ViewUtils; (domain=app) using reflection: allowed
+09-04 14:30:17.375 12126 12126 D ActivityMetrics: notifyPerformStartEvent: isBegin=false currentTime=1788503417375 activityName=dev.telemachus.display.MainActivity
+09-04 14:30:17.375 12126 12126 D ActivityMetrics: notifyActivityStartEvent: isBegin=false currentTime=1788503417375 activityName=dev.telemachus.display.MainActivity
+09-04 14:30:17.378 12126 12126 D MA      : device health battery=100 charging=true saver=false thermal=nominal
+09-04 14:30:17.378 12126 12126 D MA      : lifecycle foreground connected=false
+09-04 14:30:17.379 12126 12126 D ActivityMetrics: notifyActivityResumeEvent: isBegin=true currentTime=1788503417379 activity=dev.telemachus.display.MainActivity@c329cba
+09-04 14:30:17.379 12126 12126 D ActivityMetrics: notifyPerformResumeEvent: isBegin=true currentTime=1788503417379 activityName=dev.telemachus.display.MainActivity
+09-04 14:30:17.379 12126 12126 E SYS_DEFAULT_LOG: class android.app.ISysMonitorFwFactory$12|IRecoverActions|setCurActivity|SYS_DEFAULT_FUN_CONTENT
+09-04 14:30:17.379 12126 12126 D ActivityMetrics: notifyPerformResumeEvent: isBegin=false currentTime=1788503417379 activityName=dev.telemachus.display.MainActivity
+09-04 14:30:17.382 12126 12126 I ExtViewRootImplImpl: onInit : 1264, 2800
+09-04 14:30:17.384 12126 12126 D InsetsController: Setting requestedVisibleTypes to -12 (was -9)
+09-04 14:30:17.386 12126 12126 D OnBackInvokedDispatcher: ViewRootImpl.registerBackCallbackOnWindow. Dispatcher:android.window.WindowOnBackInvokedDispatcher@c99fcdd Package:dev.telemachus.display IWindow:android.view.ViewRootImpl$W@88a3052 Session:android.view.IWindowSession$Stub$Proxy@efbbf23
+09-04 14:30:17.386 12126 12126 D InputTransport: TouchAcceleration enable: 1 launcherApp: 0, gain: 1
+09-04 14:30:17.388 12126 12126 D ActivityMetrics: notifyActivityResumeEvent: isBegin=false currentTime=1788503417388 activity=dev.telemachus.display.MainActivity@c329cba
+09-04 14:30:17.389 12126 12126 V OnBackInvokedDispatcher: Proxy setActual android.window.WindowOnBackInvokedDispatcher@c99fcdd. Current null
+09-04 14:30:17.389 12126 12126 V OnBackInvokedDispatcher: Proxy transferring 0 callbacks to android.window.WindowOnBackInvokedDispatcher@c99fcdd
+09-04 14:30:17.400 12126 12126 D WindowOnBackDispatcher: App: dev.telemachus.display requestsPredictiveBack=false
+09-04 14:30:17.400 12126 12126 D WindowOnBackDispatcher: App: dev.telemachus.display requestsPredictiveBack=false
+09-04 14:30:17.414 12126 12126 I ExtViewRootImplImpl: onConfigurationChanged : 1264, 2800
+09-04 14:30:17.415 12126 12126 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=true
+09-04 14:30:17.415 12126 12126 I ExtThreadedRendererImpl: setup: mScale=0.0, mSurfaceWidth=1264, mSurfaceHeight=2800, mInsetLeft=0, insetTop=0
+09-04 14:30:17.416 12126 30473 I HWUI    : ReliableSurface::setSurfaceScaleInfo, overlayWidth=0, overlayHeight=0 scale 0.000000 mScaled 0
+09-04 14:30:17.420 12126 12126 W MButtonToggleGroup: Child order wasn't updated
+09-04 14:30:17.420 12126 12126 W MButtonToggleGroup: Child order wasn't updated
+09-04 14:30:17.420 12126 12126 W MButtonToggleGroup: Child order wasn't updated
+09-04 14:30:17.424 12126 12126 D MA      : surfaceCreated
+09-04 14:30:17.425 12126 12126 D MA      : surfaceChanged: 1264x2800
+09-04 14:30:17.426 12126 12126 D ActivityMetrics: notifyWaitRenderThread: isBegin=true currentTime=1788503417426 obj=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.426 12126 12126 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@c329cba target VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.426 12126 12126 D ActivityMetrics: traverse:    vri=android.view.ViewRootImpl@a7f7740   hint!!
+09-04 14:30:17.427 12126 12126 D ActivityMetrics: notifyWaitRenderThread: isBegin=false currentTime=1788503417427 obj=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.427 12126 12126 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@c329cba target VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.427 12126 12126 D ActivityMetrics: traverse:    vri=android.view.ViewRootImpl@a7f7740   hint!!
+09-04 14:30:17.427 12126 12126 D ActivityMetrics: notifyWaitRenderThread! target:dev.telemachus.display.MainActivity@c329cba activityName:dev.telemachus.display.MainActivity VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.438 12126 12126 D ActivityMetrics: notifyWaitRenderThread: isBegin=true currentTime=1788503417438 obj=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.438 12126 12126 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@c329cba target VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.438 12126 12126 D ActivityMetrics: traverse:    vri=android.view.ViewRootImpl@a7f7740   hint!!
+09-04 14:30:17.446 12126 30473 I AdrenoUtils: <ReadGpuID:366>: Reading chip ID through GSL
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: notifyWaitRenderThread: isBegin=false currentTime=1788503417459 obj=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@c329cba target VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: traverse:    vri=android.view.ViewRootImpl@a7f7740   hint!!
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: notifyWaitRenderThread! target:dev.telemachus.display.MainActivity@c329cba activityName:dev.telemachus.display.MainActivity VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: notifyFirstFrameEvent: isBegin=false currentTime=1788503417459 obj=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@c329cba target VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: traverse:    vri=android.view.ViewRootImpl@a7f7740   hint!!
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: finishFirstDraw! target:dev.telemachus.display.MainActivity@c329cba activityName:dev.telemachus.display.MainActivity VRI=android.view.ViewRootImpl@a7f7740
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   pid:12126
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   threadId:2
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   packageName:dev.telemachus.display
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   processName:dev.telemachus.display
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   processTimeCosts:4
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:BIND_APPLICATION   ts:1788503417114 1788503417234 cost:120
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:MAKE_APPLICATION   ts:1788503417223 1788503417224 cost:1
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:DO_FRAME   ts:1788503417388 0 cost:-1788503417388
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:THREAD_MAIN   ts:1788503417094 1788503417103 cost:9
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   finishDrawActivity:dev.telemachus.display.MainActivity
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   activityTimeCosts:1
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   activityName:dev.telemachus.display.MainActivity actionSize:7
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:WAIT_RENDER_THREAD_2   ts:1788503417438 1788503417459 cost:21
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:ACTIVITY_RESUME   ts:1788503417379 1788503417388 cost:9
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:PERFORM_CREATE   ts:1788503417255 1788503417375 cost:120
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:FINISH_FRAME   ts:0 1788503417459 cost:1788503417459
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:ACTIVITY_START   ts:1788503417234 1788503417375 cost:141
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:WAIT_RENDER_THREAD_1   ts:1788503417426 1788503417427 cost:1
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---      action:PERFORM_RESUME   ts:1788503417379 1788503417379 cost:0
+09-04 14:30:17.459 12126 12126 D ActivityMetrics: ---   reportedResprobeJson:null
+09-04 14:30:17.461 12126 12126 E libprocessgroup: set_timerslack_ns write failed: Operation not permitted
+09-04 14:30:17.462 12126 12126 D ExtViewRootImplImpl: check if no provision active:false
+09-04 14:30:17.465 12126 12126 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=true(from 1.0 to 1.0), byServer=true, isHwui=true, isHwuiChanged=false
+09-04 14:30:17.467 12126 30497 D PreAnimation: PreAnimation feature enabled:true
+09-04 14:30:17.467 12126 30497 D AcceleratedPreRendering: acc pre rendering:false
+09-04 14:30:17.467 12126 30497 D InsetsController: onAnimationStart
+09-04 14:30:17.467 12126 30497 D InsetsController: Default animation setInsetsAndAlpha fraction: 0.0
+09-04 14:30:17.468 12126 30497 D PreAnimation: PreAnimation feature enabled:true
+09-04 14:30:17.469 12126 30497 D AcceleratedPreRendering: acc pre rendering:false
+09-04 14:30:17.469 12126 12126 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=false
+09-04 14:30:17.469 12126 12126 I ExtThreadedRendererImpl: setup: mScale=1.0, mSurfaceWidth=1264, mSurfaceHeight=2800, mInsetLeft=0, insetTop=0
+09-04 14:30:17.469 12126 30473 I HWUI    : ReliableSurface::setSurfaceScaleInfo, overlayWidth=0, overlayHeight=0 scale 0.000000 mScaled 0
+09-04 14:30:17.472 12126 30497 D InsetsController: Default animation setInsetsAndAlpha fraction: 1.0
+09-04 14:30:17.472 12126 30497 D InsetsController: onAnimationEnd
+09-04 14:30:17.479 12126 30497 W InteractionJankMonitor: Initializing without READ_DEVICE_CONFIG permission. enabled=true, interval=1, missedFrameThreshold=3, frameTimeThreshold=64, package=dev.telemachus.display
+09-04 14:30:17.483 12126 12126 D VRITracker: focusEnter -> dev.telemachus.display/dev.telemachus.display.MainActivity
+09-04 14:30:17.490 12126 12126 V ImeFocusController: onWindowFocus: com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800}[MainActivity] softInputMode=STATE_UNSPECIFIED|ADJUST_PAN|IS_FORWARD_NAVIGATION
+09-04 14:30:17.490 12126 12126 D InputMethodManager: onViewFocusChangedInternal, view=com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@88a3052,displayId=0,temporaryDetach=false,hasImeFocus=true
+09-04 14:30:17.490 12126 12126 V InputMethodManager: Restarting due to mRestartOnNextWindowFocus as true
+09-04 14:30:17.490 12126 12126 V InputMethodManager: checkFocus: view=null next=com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800}[MainActivity] force=true package=<none>
+09-04 14:30:17.490 12126 12126 D AiWritingController: onImeServerViewChange view: com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800}[MainActivity] mRequestAiPanelStartView: null
+09-04 14:30:17.490 12126 12126 V InputMethodManager: Starting input: view=com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@88a3052,displayId=0,temporaryDetach=false,hasImeFocus=true reason=WINDOW_FOCUS_GAIN
+09-04 14:30:17.490 12126 12126 V InputMethodManager: Starting input: editorInfo=android.view.inputmethod.EditorInfo@de58dd2 ic=null
+09-04 14:30:17.490 12126 12126 D AiWritingController: onAdjustEditorInfo mRequestAiPanelStartView : null editorView: com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity] requestShowAiPanel: false editableByAi: false editable: false aiWriting: false restartAiWriting: false
+09-04 14:30:17.490 12126 12126 V InputMethodManager: START INPUT: view=com.android.internal.policy.DecorView{1f8002d V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@88a3052,displayId=0,temporaryDetach=false,hasImeFocus=true ic=null editorInfo=android.view.inputmethod.EditorInfo@de58dd2 startInputFlags=VIEW_HAS_FOCUS|INITIAL_CONNECTION imeRequestedVisible=false
+09-04 14:30:17.494 12126 12126 D InsetsController: hide(ime(), fromIme=false)
+09-04 14:30:17.495 12126 12126 I ImeTracker: dev.telemachus.display:cb9bf252: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+09-04 14:30:17.495 12126 12126 I InputMethodManager: handleMessage: MSG_SET_ACTIVE true, was false
+09-04 14:30:17.495 12126 12126 V InputMethodManager: Starting input: Bind result=InputBindResult{result=SUCCESS_WAITING_IME_SESSION method=null id=com.bytedance.android.doubaoime/.ImeService sequence=1710 result=1 isInputMethodSuppressingSpellChecker=false}
+09-04 14:30:17.496 12126 12126 I InputMethodManager: handleMessage: MSG_BIND 1710,com.bytedance.android.doubaoime/.ImeService
+09-04 14:30:17.497 12126 12126 V InputMethodManager: Starting input: view=com.android.internal.policy.DecorView{1f8002d V.E...... R....... 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@88a3052,displayId=0,temporaryDetach=false,hasImeFocus=true reason=BOUND_TO_IMMS
+09-04 14:30:17.497 12126 12126 V InputMethodManager: Starting input: editorInfo=android.view.inputmethod.EditorInfo@72ea1f7 ic=null
+09-04 14:30:17.497 12126 12126 D AiWritingController: onAdjustEditorInfo mRequestAiPanelStartView : null editorView: com.android.internal.policy.DecorView{1f8002d V.E...... R....... 0,0-1264,2800 aid=0}[MainActivity] requestShowAiPanel: false editableByAi: false editable: false aiWriting: false restartAiWriting: false
+09-04 14:30:17.497 12126 12126 V InputMethodManager: Starting input: finished by someone else. view=com.android.internal.policy.DecorView{1f8002d V.E...... R....... 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@88a3052,displayId=0,temporaryDetach=false,hasImeFocus=true servedView=com.android.internal.policy.DecorView{1f8002d V.E...... R....... 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@88a3052,displayId=0,temporaryDetach=false,hasImeFocus=true mServedConnecting=false
+09-04 14:30:17.572 12126 30436 I emachus.display: Compiler allocated 5040KB to compile void android.view.ViewRootImpl.performTraversals()
+09-04 14:30:22.460 12126 30693 D ProfileInstaller: Installing profile for dev.telemachus.display
+09-04 14:30:27.507 12126 12126 W FinalizerDaemon: type=1400 audit(0.0:316717): avc:  denied  { getopt } for  path="/dev/socket/usap_pool_primary" scontext=u:r:untrusted_app:s0:c77,c257,c512,c768 tcontext=u:r:zygote:s0 tclass=unix_stream_socket permissive=0 app=dev.telemachus.display
+09-04 14:30:32.335 12126 12126 V ExtRegistry: createExtWith: class android.media.AudioManagerExt --> class android.media.AudioManagerExtImpl
+09-04 14:30:32.345 12126 12126 W ScrollbarCustomConfig: config is: true; duration is: 200; beforefade is: 2000
+09-04 14:30:32.349 12126 12126 W HWUI    : Image decoding logging dropped!
+09-04 14:30:32.350 12126 12126 W HWUI    : Image decoding logging dropped!
+09-04 14:30:32.351 12126 12126 W HWUI    : Image decoding logging dropped!
+09-04 14:30:32.385 12126 12126 D WindowOnBackDispatcher: App: dev.telemachus.display requestsPredictiveBack=false
+09-04 14:30:32.385 12126 12126 I ExtViewRootImplImpl: onInit : 1264, 2800
+09-04 14:30:32.408 12126 12126 D OnBackInvokedDispatcher: ViewRootImpl.registerBackCallbackOnWindow. Dispatcher:android.window.WindowOnBackInvokedDispatcher@479c3dd Package:dev.telemachus.display IWindow:android.view.ViewRootImpl$W@b73eb52 Session:android.view.IWindowSession$Stub$Proxy@efbbf23
+09-04 14:30:32.408 12126 12126 D InputTransport: TouchAcceleration enable: 1 launcherApp: 0, gain: 1
+09-04 14:30:32.411 12126 12126 D InsetsController: Setting requestedVisibleTypes to -12 (was -9)
+09-04 14:30:32.412 12126 12126 V OnBackInvokedDispatcher: Proxy setActual android.window.WindowOnBackInvokedDispatcher@479c3dd. Current null
+09-04 14:30:32.413 12126 12126 V OnBackInvokedDispatcher: Proxy transferring 0 callbacks to android.window.WindowOnBackInvokedDispatcher@479c3dd
+09-04 14:30:32.414 12126 12126 D WindowOnBackDispatcher: App: dev.telemachus.display requestsPredictiveBack=false
+09-04 14:30:32.414 12126 12126 D WindowOnBackDispatcher: App: dev.telemachus.display requestsPredictiveBack=false
+09-04 14:30:32.429 12126 12126 I ExtViewRootImplImpl: onConfigurationChanged : 1264, 2800
+09-04 14:30:32.430 12126 12126 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=true(from 1.0 to 1.0), byServer=false, isHwui=true, isHwuiChanged=true
+09-04 14:30:32.430 12126 12126 I ExtThreadedRendererImpl: setup: mScale=1.0, mSurfaceWidth=1320, mSurfaceHeight=2437, mInsetLeft=112, insetTop=112
+09-04 14:30:32.430 12126 30473 I HWUI    : ReliableSurface::setSurfaceScaleInfo, overlayWidth=0, overlayHeight=0 scale 0.000000 mScaled 0
+09-04 14:30:32.430 12126 31028 D emachus.display: setSvpTask pid 0 tid 31028 pri 8 packageName NULL fg 0 startType 0
+09-04 14:30:32.440 12126 12126 W BaseSlider: Floating point value used for stepSize(0.05). Using floats can have rounding errors which may result in incorrect values. Instead, consider using integers with a custom LabelFormatter to display the value correctly.
+09-04 14:30:32.440 12126 12126 W BaseSlider: Floating point value used for valueFrom(0.2). Using floats can have rounding errors which may result in incorrect values. Instead, consider using integers with a custom LabelFormatter to display the value correctly.
+09-04 14:30:32.522 12126 12126 D ExtViewRootImplImpl: check if no provision active:false
+09-04 14:30:32.555 12126 12126 D VRITracker: focusLeave <- dev.telemachus.display/dev.telemachus.display.MainActivity, stayDuration: 15072
+09-04 14:30:32.570 12126 12126 D VRITracker: focusEnter -> dev.telemachus.display/dev.telemachus.display.MainActivity
+09-04 14:30:32.583 12126 12126 V ImeFocusController: onWindowFocus: com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213}[MainActivity] softInputMode=STATE_UNSPECIFIED|ADJUST_PAN
+09-04 14:30:32.583 12126 12126 D InputMethodManager: onViewFocusChangedInternal, view=com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@b73eb52,displayId=0,temporaryDetach=false,hasImeFocus=true
+09-04 14:30:32.583 12126 12126 V InputMethodManager: checkFocus: view=com.android.internal.policy.DecorView{1f8002d V.E...... R....... 0,0-1264,2800 aid=0}[MainActivity] next=com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213}[MainActivity] force=false package=dev.telemachus.display
+09-04 14:30:32.583 12126 12126 D AiWritingController: onImeServerViewChange view: com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213}[MainActivity] mRequestAiPanelStartView: null
+09-04 14:30:32.583 12126 12126 V InputMethodManager: Starting input: view=com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@b73eb52,displayId=0,temporaryDetach=false,hasImeFocus=true reason=WINDOW_FOCUS_GAIN
+09-04 14:30:32.583 12126 12126 V InputMethodManager: Starting input: editorInfo=android.view.inputmethod.EditorInfo@767ae1b ic=null
+09-04 14:30:32.583 12126 12126 D AiWritingController: onAdjustEditorInfo mRequestAiPanelStartView : null editorView: com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213 aid=1073741827}[MainActivity] requestShowAiPanel: false editableByAi: false editable: false aiWriting: false restartAiWriting: false
+09-04 14:30:32.583 12126 12126 V InputMethodManager: START INPUT: view=com.android.internal.policy.DecorView{4d592aa V.ED..... R......D 0,0-1096,2213 aid=1073741827}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@b73eb52,displayId=0,temporaryDetach=false,hasImeFocus=true ic=null editorInfo=android.view.inputmethod.EditorInfo@767ae1b startInputFlags=VIEW_HAS_FOCUS|INITIAL_CONNECTION imeRequestedVisible=false
+09-04 14:30:32.594 12126 12126 D InsetsController: hide(ime(), fromIme=false)
+09-04 14:30:32.594 12126 12126 I ImeTracker: dev.telemachus.display:1992efd3: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+09-04 14:30:32.594 12126 12126 V InputMethodManager: Starting input: Bind result=InputBindResult{result=SUCCESS_WITH_IME_SESSION method=com.android.internal.inputmethod.IInputMethodSession$Stub$Proxy@9ff4618 id=com.bytedance.android.doubaoime/.ImeService sequence=1711 result=0 isInputMethodSuppressingSpellChecker=false}
+09-04 14:30:40.402 12126 12126 W Choreographer: Frame time is 0.019571 ms in the future!  Check that graphics HAL is generating vsync timestamps using the correct timebase.
+09-04 14:31:02.111 12126 30467 I emachus.display: ProfileSaver: FullProfileSaver time 19.612ms new_methods=0
