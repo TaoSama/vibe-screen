@@ -44,6 +44,10 @@ ANDROID_RELIABILITY_PATH = (
 ANDROID_MAIN_ACTIVITY_PATH = (
     REPOSITORY_ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt"
 )
+ANDROID_DECODER_CONFIGURATION_COORDINATOR_PATH = (
+    REPOSITORY_ROOT
+    / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinator.kt"
+)
 IOS_VIDEO_CONFIG_VALIDATOR_PATH = (
     REPOSITORY_ROOT / "apps/ios/Sources/VibeScreenCore/VideoConfigValidator.swift"
 )
@@ -61,6 +65,10 @@ MAC_INTERNET_CODEC_TESTS_PATH = (
 ANDROID_DECODER_SELECTION_TESTS_PATH = (
     REPOSITORY_ROOT
     / "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt"
+)
+ANDROID_DECODER_CONFIGURATION_TESTS_PATH = (
+    REPOSITORY_ROOT
+    / "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/AndroidDecoderConfigurationCoordinatorTest.kt"
 )
 ANDROID_INTERNET_SESSION_TESTS_PATH = (
     REPOSITORY_ROOT
@@ -133,6 +141,10 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         codec_capabilities = ANDROID_CODEC_CAPABILITIES_PATH.read_text(encoding="utf-8")
         reliability = ANDROID_RELIABILITY_PATH.read_text(encoding="utf-8")
         main_activity = ANDROID_MAIN_ACTIVITY_PATH.read_text(encoding="utf-8")
+        decoder_configuration_coordinator = ANDROID_DECODER_CONFIGURATION_COORDINATOR_PATH.read_text(
+            encoding="utf-8",
+        )
+        decoder_configuration_tests = ANDROID_DECODER_CONFIGURATION_TESTS_PATH.read_text(encoding="utf-8")
 
         self.assertIn("Diagnostic-only until AV1 frame admission is explicitly enabled", codec_capabilities)
         self.assertIn("av1FrameAdmissionEnabled = false", codec_capabilities)
@@ -143,6 +155,10 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("StreamCodec.AV1 -> null", codec_capabilities)
         self.assertIn('ProductVideoCodec.AV1 -> "av1_decoder_unavailable"', main_activity)
         self.assertIn("unsupportedCodecReason = unsupportedCodecReason", main_activity)
+        self.assertIn("request.unsupportedCodecReason?.let { reason ->", decoder_configuration_coordinator)
+        self.assertIn("completion(AndroidDecoderConfigurationResult.Failed(reason))", decoder_configuration_coordinator)
+        self.assertIn("internetUnsupportedCodecFailsBeforeDecoderCreation", decoder_configuration_tests)
+        self.assertIn('unsupportedCodecReason = "av1_decoder_unavailable"', decoder_configuration_tests)
         self.assertRegex(reliability, r"hasUsableAv1Decoder:[^=]+=[^)]*false")
         self.assertNotRegex(reliability, r"listOf\([^)]*StreamCodec\.AV1")
 
