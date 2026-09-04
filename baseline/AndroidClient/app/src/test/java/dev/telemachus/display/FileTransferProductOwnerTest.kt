@@ -627,6 +627,10 @@ class FileTransferProductOwnerTest {
     @Test
     fun `outgoing chunks advance only after peer progress acknowledgement`() {
         val owner = owner()
+        val progress = mutableListOf<Triple<ByteString, Long, Long>>()
+        owner.onOutgoingFileProgress = { transferId, acknowledgedBytes, totalBytes ->
+            progress += Triple(transferId, acknowledgedBytes, totalBytes)
+        }
         owner.activateSession()
         val source = File(stagingDirectory(), "progress.txt").also { it.writeText("progress") }
         val prepared = owner.prepareOutgoingFile(
@@ -649,6 +653,7 @@ class FileTransferProductOwnerTest {
         assertEquals(0L, requireNotNull(first.chunk).header.offset)
         assertEquals(4, first.chunk.payload.size)
         assertFalse(first.chunk.header.final)
+        assertEquals(listOf(Triple(transferId, 0L, 8L)), progress)
 
         val second = owner.handleFileProgress(
             FileTransferProgress.newBuilder()
@@ -661,6 +666,33 @@ class FileTransferProductOwnerTest {
         assertEquals(4, second.chunk.payload.size)
         assertTrue(second.chunk.header.final)
         assertEquals(12L, second.chunk.header.sessionEpoch)
+        assertEquals(listOf(Triple(transferId, 0L, 8L), Triple(transferId, 4L, 8L)), progress)
+    }
+
+    @Test
+    fun `outgoing cancellation notifies finished state and transfer result`() {
+        val outgoing = FakeOutgoingTransferStore(id = 108, payload = "cancel-outgoing".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        val finished = mutableListOf<ByteString>()
+        owner.onOutgoingFileFinished = { transferId -> finished += transferId }
+        owner.activateSession()
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "cancel-outgoing.txt").also { it.writeText("cancel-outgoing") },
+            "text/plain",
+            FileTransferPolicy(),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        val result = owner.cancelOutgoingTransfer(transferId, "user_cancelled")
+        val duplicate = owner.cancelOutgoingTransfer(transferId, "user_cancelled")
+
+        assertEquals(FileTransferProductOwner.TransferResult(false, "user_cancelled"), result)
+        assertNull(duplicate)
+        assertEquals(listOf(transferId), finished)
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(0, owner.activeOutgoingTransferCount())
     }
 
     @Test

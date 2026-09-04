@@ -177,14 +177,19 @@ class MainActivityControllerForwardingContractTest {
         val discardPending = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
 
         assertContains(handlePicker, "session.stageOutgoingFile(file)")
-        assertContains(handlePicker, "registered && session.offerFile(file, mimeType)")
+        assertContains(handlePicker, "if (registered) session.offerFile(file, mimeType) else null")
+        assertContains(handlePicker, "beginOutgoingFileTransferState(")
         assertContains(streamSession, "val staged = productSessionCoordinator.stageOutgoingFileTransfer(client, generation, file)")
         assertContains(streamSession, "if (!staged) file.deleteRecursivelyBestEffort()")
+        assertContains(streamSession, "offerFile = client::offerFileWithHandle")
+        assertContains(streamSession, "client.cancelOutgoingFileTransfer(transferId)")
         assertContains(internetSession, "pendingInternetOutgoingFileTransfer = file")
+        assertContains(internetSession, "offerFile = session::offerFileWithHandle")
+        assertContains(internetSession, "session.cancelOutgoingFileTransfer(transferId)")
         assertContains(discardPending, "pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()")
         assertContains(discardPending, "pendingInternetOutgoingFileTransfer = null")
         assertBefore(streamSession, "val staged = productSessionCoordinator.stageOutgoingFileTransfer", "if (!staged) file.deleteRecursivelyBestEffort()")
-        assertBefore(handlePicker, "session.stageOutgoingFile(file)", "registered && session.offerFile")
+        assertBefore(handlePicker, "session.stageOutgoingFile(file)", "if (registered) session.offerFile")
     }
 
     @Test

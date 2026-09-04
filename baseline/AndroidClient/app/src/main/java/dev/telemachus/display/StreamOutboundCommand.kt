@@ -76,6 +76,13 @@ internal sealed interface StreamOutboundCommand {
         val reasonCode: String,
     ) : StreamOutboundCommand
 
+    data class ProtocolOutgoingFileCancellation(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
+        val transferId: ByteString,
+        val reasonCode: String,
+    ) : StreamOutboundCommand
+
     data class ProtocolSendBulk(
         val chunk: FileChunk,
     ) : StreamOutboundCommand
