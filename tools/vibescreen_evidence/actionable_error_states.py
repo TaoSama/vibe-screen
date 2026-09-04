@@ -116,6 +116,116 @@ REQUIRED_ACTIONABLE_CONTRACTS = {
 }
 REQUIRED_ACTIONABLE_CONTRACT_CODES = frozenset(REQUIRED_ACTIONABLE_CONTRACTS)
 REQUIRED_CONTRACT_FIELDS = ("code", "title", "body", "action")
+REQUIRED_ANDROID_GUIDANCE_CONTRACTS = {
+    "adb_reverse_missing": {
+        "context": "usb",
+        "sample_failure": {
+            "source": "throwable",
+            "type": "ConnectException",
+            "message": "ECONNREFUSED",
+        },
+        "kind": "USB_ROUTE_UNAVAILABLE",
+        "status_resource": "connection_guidance_adb_route_unavailable_title",
+        "message_resource": "connection_guidance_usb_recovery_usb",
+        "message_prefix_resource": "connection_guidance_usb_route_unavailable_prefix",
+        "recovery_button_action": "connectButton.try_again",
+    },
+    "usb_disconnected": {
+        "context": "usb",
+        "sample_failure": {
+            "source": "throwable",
+            "type": "NoRouteToHostException",
+            "message": "ENETUNREACH",
+        },
+        "kind": "NETWORK_UNREACHABLE",
+        "status_resource": "connection_guidance_adb_route_unavailable_title",
+        "message_resource": "connection_guidance_usb_recovery_usb",
+        "message_prefix_resource": "connection_guidance_usb_route_unavailable_prefix",
+        "recovery_button_action": "connectButton.try_again",
+    },
+    "lan_route_unavailable": {
+        "context": "lan",
+        "sample_failure": {
+            "source": "throwable",
+            "type": "NoRouteToHostException",
+            "message": "ENETUNREACH",
+        },
+        "kind": "NETWORK_UNREACHABLE",
+        "status_resource": "connection_guidance_lan_route_unavailable_title",
+        "message_resource": "connection_guidance_lan_network_unavailable_message",
+        "recovery_button_action": "wirelessReconnectButton.reconnect",
+    },
+    "stale_epoch_or_session_errors": {
+        "context": "internet",
+        "sample_failure": {
+            "source": "session_failure",
+            "kind": "INVALID_MEDIA_PAYLOAD",
+            "message": "stale_session_epoch",
+        },
+        "kind": "STALE_SESSION",
+        "status_resource": "connection_guidance_stale_session_title",
+        "message_resource": "connection_guidance_stale_session_message",
+        "recovery_button_action": "internetConnectButton.fresh_session_retry",
+    },
+}
+REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES = frozenset(REQUIRED_ANDROID_GUIDANCE_CONTRACTS)
+VALID_ANDROID_GUIDANCE_CONTEXTS = frozenset(("usb", "lan", "internet"))
+VALID_ANDROID_GUIDANCE_KINDS = frozenset(
+    (
+        "HOST_NOT_RUNNING",
+        "USB_ROUTE_UNAVAILABLE",
+        "NETWORK_UNREACHABLE",
+        "TIMEOUT",
+        "INCOMPATIBLE_SESSION",
+        "STALE_SESSION",
+        "INPUT_OVERLOADED",
+        "UNKNOWN",
+    )
+)
+VALID_ANDROID_GUIDANCE_SAMPLE_SOURCES = frozenset(("throwable", "session_failure"))
+VALID_ANDROID_GUIDANCE_THROWABLE_TYPES = frozenset(
+    ("ConnectException", "NoRouteToHostException", "SocketTimeoutException", "IOException")
+)
+VALID_ANDROID_GUIDANCE_RECOVERY_ACTIONS = frozenset(
+    (
+        "connectButton.try_again",
+        "wirelessReconnectButton.reconnect",
+        "internetConnectButton.fresh_session_retry",
+    )
+)
+REQUIRED_HOST_CLI_CONTRACTS = {
+    "host_screen_recording_denied": {
+        "pre_gui_fail_closed": True,
+        "exit_code": "EXIT_FAILURE",
+        "stderr_error_messages": [
+            "Unknown Vibe Screen Host CLI flag: --self-test",
+            "Multiple Vibe Screen Host CLI commands are not supported.",
+            "Unknown iOS loopback scenario.",
+        ],
+        "no_permission_prompt_on_parse_failure": True,
+    },
+    "accessibility_denied_or_limited": {
+        "pre_gui_fail_closed": True,
+        "exit_code": "EXIT_FAILURE",
+        "stderr_error_messages": [
+            "Unknown Vibe Screen Host CLI flag: --self-test",
+            "Multiple Vibe Screen Host CLI commands are not supported.",
+            "Unknown iOS loopback scenario.",
+        ],
+        "no_permission_prompt_on_parse_failure": True,
+    },
+    "tcp_54321_unavailable": {
+        "pre_gui_fail_closed": True,
+        "exit_code": "EXIT_FAILURE",
+        "stderr_error_messages": [
+            "Unknown Vibe Screen Host CLI flag: --self-test",
+            "Multiple Vibe Screen Host CLI commands are not supported.",
+            "Unknown iOS loopback scenario.",
+        ],
+        "no_permission_prompt_on_parse_failure": True,
+    },
+}
+REQUIRED_HOST_CLI_CONTRACT_CODES = frozenset(REQUIRED_HOST_CLI_CONTRACTS)
 REQUIRED_ACTIONABLE_STATE_ID_SEQUENCE = (
     "android-internet-webrtc-disconnected",
     "android-codec-negotiation-failed",
@@ -442,6 +552,142 @@ def _validate_top_level(matrix: dict[str, Any], errors: list[str]) -> None:
         )
 
 
+def _validate_dict_matches(
+    value: Any,
+    expected: dict[str, Any],
+    prefix: str,
+    errors: list[str],
+) -> bool:
+    if not isinstance(value, dict):
+        errors.append(f"{prefix}: must be an object")
+        return False
+    is_valid = True
+    for key, expected_value in expected.items():
+        if key not in value:
+            errors.append(f"{prefix}.{key}: is required")
+            is_valid = False
+            continue
+        actual_value = value[key]
+        if isinstance(expected_value, dict):
+            is_valid = _validate_dict_matches(
+                actual_value, expected_value, f"{prefix}.{key}", errors
+            ) and is_valid
+        elif actual_value != expected_value:
+            errors.append(f"{prefix}.{key}: must match the stable value")
+            is_valid = False
+    return is_valid
+
+
+def _validate_android_guidance_contract_shape(
+    value: Any,
+    prefix: str,
+    errors: list[str],
+) -> None:
+    if not isinstance(value, dict):
+        errors.append(f"{prefix}: must be an object when present")
+        return
+    for field in (
+        "context",
+        "sample_failure",
+        "kind",
+        "status_resource",
+        "message_resource",
+        "recovery_button_action",
+    ):
+        if field not in value:
+            errors.append(f"{prefix}.{field}: is required")
+    if value.get("context") not in VALID_ANDROID_GUIDANCE_CONTEXTS:
+        errors.append(
+            f"{prefix}.context: must be one of "
+            f"{', '.join(sorted(VALID_ANDROID_GUIDANCE_CONTEXTS))}"
+        )
+    if value.get("kind") not in VALID_ANDROID_GUIDANCE_KINDS:
+        errors.append(
+            f"{prefix}.kind: must be one of "
+            f"{', '.join(sorted(VALID_ANDROID_GUIDANCE_KINDS))}"
+        )
+    for field in ("status_resource", "message_resource", "message_prefix_resource"):
+        if field in value and not _non_empty_string(value.get(field)):
+            errors.append(f"{prefix}.{field}: must be a non-empty string")
+    if value.get("recovery_button_action") not in VALID_ANDROID_GUIDANCE_RECOVERY_ACTIONS:
+        errors.append(
+            f"{prefix}.recovery_button_action: must be one of "
+            f"{', '.join(sorted(VALID_ANDROID_GUIDANCE_RECOVERY_ACTIONS))}"
+        )
+
+    sample = value.get("sample_failure")
+    if not isinstance(sample, dict):
+        errors.append(f"{prefix}.sample_failure: must be an object")
+        return
+    if sample.get("source") not in VALID_ANDROID_GUIDANCE_SAMPLE_SOURCES:
+        errors.append(
+            f"{prefix}.sample_failure.source: must be one of "
+            f"{', '.join(sorted(VALID_ANDROID_GUIDANCE_SAMPLE_SOURCES))}"
+        )
+    if not _non_empty_string(sample.get("message")):
+        errors.append(f"{prefix}.sample_failure.message: must be a non-empty string")
+    if sample.get("source") == "throwable":
+        if sample.get("type") not in VALID_ANDROID_GUIDANCE_THROWABLE_TYPES:
+            errors.append(
+                f"{prefix}.sample_failure.type: must be one of "
+                f"{', '.join(sorted(VALID_ANDROID_GUIDANCE_THROWABLE_TYPES))}"
+            )
+    elif sample.get("source") == "session_failure":
+        if not _non_empty_string(sample.get("kind")):
+            errors.append(f"{prefix}.sample_failure.kind: must be a non-empty string")
+
+
+def _validate_required_android_guidance_contract(
+    contract_code: str,
+    value: Any,
+    prefix: str,
+    errors: list[str],
+) -> bool:
+    expected = REQUIRED_ANDROID_GUIDANCE_CONTRACTS[contract_code]
+    if value is None:
+        errors.append(
+            f"{prefix}: required Android guidance contract {contract_code} is missing"
+        )
+        return False
+    _validate_android_guidance_contract_shape(value, prefix, errors)
+    return _validate_dict_matches(value, expected, prefix, errors)
+
+
+def _validate_host_cli_contract_shape(
+    value: Any,
+    prefix: str,
+    errors: list[str],
+) -> None:
+    if not isinstance(value, dict):
+        errors.append(f"{prefix}: must be an object when present")
+        return
+    if value.get("pre_gui_fail_closed") is not True:
+        errors.append(f"{prefix}.pre_gui_fail_closed: must be true")
+    if value.get("exit_code") != "EXIT_FAILURE":
+        errors.append(f"{prefix}.exit_code: must be EXIT_FAILURE")
+    if value.get("no_permission_prompt_on_parse_failure") is not True:
+        errors.append(f"{prefix}.no_permission_prompt_on_parse_failure: must be true")
+    messages = value.get("stderr_error_messages")
+    if not isinstance(messages, list) or not all(
+        isinstance(item, str) and item.strip() for item in messages
+    ):
+        errors.append(f"{prefix}.stderr_error_messages: must be a list of non-empty strings")
+
+
+def _validate_required_host_cli_contract(
+    contract_code: str,
+    value: Any,
+    prefix: str,
+    errors: list[str],
+) -> bool:
+    expected = REQUIRED_HOST_CLI_CONTRACTS[contract_code]
+    if value is None:
+        errors.append(f"{prefix}: required Host CLI contract {contract_code} is missing")
+        return False
+    _validate_host_cli_contract_shape(value, prefix, errors)
+    return _validate_dict_matches(value, expected, prefix, errors)
+
+
 def _validate_state(
     state: dict[str, Any],
     index: int,
@@ -527,6 +773,7 @@ def _validate_state(
         errors.append(f"{prefix}.user_visible_copy: must not be a bare localizedDescription")
 
     contract = state.get("contract")
+    contract_code: str | None = None
     if contract is not None:
         if not isinstance(contract, dict):
             errors.append(f"{prefix}.contract: must be an object when present")
@@ -537,6 +784,7 @@ def _validate_state(
             code = contract.get("code")
             if _non_empty_string(code):
                 raw_code = str(code)
+                contract_code = raw_code
                 normalized_code = raw_code.strip()
                 if raw_code != normalized_code:
                     errors.append(
@@ -589,6 +837,36 @@ def _validate_state(
                         and not is_duplicate_contract_code
                     ):
                         covered_contract_codes.add(raw_code)
+
+    android_guidance_contract = state.get("android_guidance_contract")
+    if contract_code in REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES:
+        _validate_required_android_guidance_contract(
+            contract_code,
+            android_guidance_contract,
+            f"{prefix}.android_guidance_contract",
+            errors,
+        )
+    elif android_guidance_contract is not None:
+        _validate_android_guidance_contract_shape(
+            android_guidance_contract,
+            f"{prefix}.android_guidance_contract",
+            errors,
+        )
+
+    host_cli_contract = state.get("host_cli_contract")
+    if contract_code in REQUIRED_HOST_CLI_CONTRACT_CODES:
+        _validate_required_host_cli_contract(
+            contract_code,
+            host_cli_contract,
+            f"{prefix}.host_cli_contract",
+            errors,
+        )
+    elif host_cli_contract is not None:
+        _validate_host_cli_contract_shape(
+            host_cli_contract,
+            f"{prefix}.host_cli_contract",
+            errors,
+        )
 
     is_required_actionable_state = (
         isinstance(state_id, str) and state_id in REQUIRED_ACTIONABLE_STATE_IDS

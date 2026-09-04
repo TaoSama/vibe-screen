@@ -84,6 +84,26 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun networkUnreachableFailuresUseModeSpecificRouteTitles() {
+        val cases =
+            listOf(
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB) to
+                    R.string.connection_guidance_adb_route_unavailable_title,
+                ConnectionGuidanceContext.trustedLan(54321) to
+                    R.string.connection_guidance_lan_route_unavailable_title,
+                ConnectionGuidanceContext.internet() to
+                    R.string.connection_guidance_internet_route_unavailable_title,
+            )
+
+        cases.forEach { (context, expectedTitleResource) ->
+            val guidance = ConnectionGuidanceFactory.from(NoRouteToHostException("ENETUNREACH"), context)
+
+            assertEquals(context.mode.name, ConnectionFailureKind.NETWORK_UNREACHABLE, guidance.kind)
+            assertEquals(context.mode.name, expectedTitleResource, guidance.status.resourceId)
+        }
+    }
+
+    @Test
     fun lanErrorsProvideExecutableTrustedNetworkRecoveryWithoutAdb() {
         val expectedMessageByFailure =
             listOf(
@@ -136,6 +156,34 @@ class ConnectionGuidanceTest {
         assertEquals(R.string.connection_guidance_mac_incompatible_title, guidanceByMode.first().status.resourceId)
         assertEquals(R.string.connection_guidance_mac_incompatible_message, guidanceByMode.first().message.resourceId)
         assertNoRawArg(guidanceByMode.first(), "99")
+    }
+
+    @Test
+    fun staleEpochProtocolFailuresUseFreshSessionGuidance() {
+        val details =
+            listOf(
+                "stale_session_epoch",
+                "stale_config_epoch",
+                "stale session",
+                "stale epoch",
+            )
+
+        details.forEach { detail ->
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    SessionFailure.protocol(SessionFailureKind.INVALID_MEDIA_PAYLOAD, detail),
+                    ConnectionGuidanceContext.internet(),
+                )
+
+            assertEquals(detail, ConnectionFailureKind.STALE_SESSION, guidance.kind)
+            assertEquals(detail, R.string.connection_guidance_stale_session_title, guidance.status.resourceId)
+            assertEquals(detail, R.string.connection_guidance_stale_session_message, guidance.message.resourceId)
+            assertFalse(
+                "stale epoch failures must not tell users the app versions are incompatible",
+                guidance.status.resourceId == R.string.connection_guidance_mac_incompatible_title,
+            )
+            assertNoRawArg(guidance, detail)
+        }
     }
 
     @Test
@@ -222,6 +270,14 @@ class ConnectionGuidanceTest {
         val codec =
             ConnectionGuidanceFactory.from(SessionFailure.codec("decoder error"), ConnectionGuidanceContext.internet())
         assertEquals(R.string.connection_guidance_video_decoder_recovery_title, codec.status.resourceId)
+
+        val stale =
+            ConnectionGuidanceFactory.from(
+                SessionFailure.protocol(SessionFailureKind.INVALID_MEDIA_PAYLOAD, "stale_session_epoch"),
+                ConnectionGuidanceContext.internet(),
+            )
+        assertEquals(ConnectionFailureKind.STALE_SESSION, stale.kind)
+        assertEquals(R.string.connection_guidance_stale_session_title, stale.status.resourceId)
     }
 
     @Test
@@ -390,6 +446,7 @@ class ConnectionGuidanceTest {
             )
 
         assertEquals(ConnectionFailureKind.NETWORK_UNREACHABLE, guidance.kind)
+        assertEquals(R.string.connection_guidance_lan_route_unavailable_title, guidance.status.resourceId)
         assertEquals(R.string.connection_guidance_lan_network_unavailable_message, guidance.message.resourceId)
         assertNoAdbReferences(guidance)
     }

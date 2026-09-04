@@ -11,8 +11,10 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.actionable_error_states import (
     ActionableErrorStateError,
     KIND,
+    REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES,
     REQUIRED_ACTIONABLE_CONTRACT_CODES,
     REQUIRED_ACTIONABLE_STATE_IDS,
+    REQUIRED_HOST_CLI_CONTRACT_CODES,
     _markdown_anchor_base,
     parse_session_failure_kinds,
     evaluate,
@@ -134,6 +136,59 @@ class ActionableErrorStateGateTests(unittest.TestCase):
             for field in ("title", "body", "action"):
                 self.assertIsInstance(contract[field], str, code)
                 self.assertGreater(len(contract[field].strip()), 12, f"{code}.{field}")
+
+    def test_real_matrix_required_android_guidance_contracts_are_bound(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        contracts = {
+            state["contract"]["code"]: state
+            for state in states
+            if isinstance(state, dict) and isinstance(state.get("contract"), dict)
+        }
+
+        self.assertEqual(
+            set(REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES).difference(contracts),
+            set(),
+        )
+        for code in REQUIRED_ANDROID_GUIDANCE_CONTRACT_CODES:
+            guidance = contracts[code].get("android_guidance_contract")
+            self.assertIsInstance(guidance, dict, code)
+            assert isinstance(guidance, dict)
+            self.assertIn(guidance["context"], {"usb", "lan", "internet"}, code)
+            self.assertIsInstance(guidance["sample_failure"], dict, code)
+            self.assertGreater(len(guidance["kind"]), 3, code)
+            self.assertTrue(guidance["status_resource"].startswith("connection_guidance_"), code)
+            self.assertTrue(guidance["message_resource"].startswith("connection_guidance_"), code)
+            self.assertGreater(len(guidance["recovery_button_action"]), 8, code)
+
+    def test_real_matrix_required_host_cli_contracts_are_fail_closed(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        contracts = {
+            state["contract"]["code"]: state
+            for state in states
+            if isinstance(state, dict) and isinstance(state.get("contract"), dict)
+        }
+
+        self.assertEqual(set(REQUIRED_HOST_CLI_CONTRACT_CODES).difference(contracts), set())
+        for code in REQUIRED_HOST_CLI_CONTRACT_CODES:
+            cli_contract = contracts[code].get("host_cli_contract")
+            self.assertIsInstance(cli_contract, dict, code)
+            assert isinstance(cli_contract, dict)
+            self.assertIs(cli_contract["pre_gui_fail_closed"], True, code)
+            self.assertEqual(cli_contract["exit_code"], "EXIT_FAILURE", code)
+            self.assertIs(cli_contract["no_permission_prompt_on_parse_failure"], True, code)
+            self.assertEqual(
+                cli_contract["stderr_error_messages"],
+                [
+                    "Unknown Vibe Screen Host CLI flag: --self-test",
+                    "Multiple Vibe Screen Host CLI commands are not supported.",
+                    "Unknown iOS loopback scenario.",
+                ],
+                code,
+            )
 
     def test_real_matrix_required_actionable_states_cover_requested_rows(self) -> None:
         matrix = self.load_real_matrix()
@@ -397,6 +452,113 @@ class ActionableErrorStateGateTests(unittest.TestCase):
             "states["
             + str(changed_index)
             + "].offline_evidence: required contract usb_disconnected must cite local offline evidence",
+            report["errors"],
+        )
+
+    def test_rejects_missing_required_android_guidance_contract(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "adb_reverse_missing":
+                state.pop("android_guidance_contract")
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            f"states[{changed_index}].android_guidance_contract: "
+            "required Android guidance contract adb_reverse_missing is missing",
+            report["errors"],
+        )
+
+    def test_rejects_required_android_guidance_contract_kind_drift(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "adb_reverse_missing":
+                state["android_guidance_contract"]["kind"] = "HOST_NOT_RUNNING"
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            f"states[{changed_index}].android_guidance_contract.kind: must match the stable value",
+            report["errors"],
+        )
+
+    def test_rejects_required_android_guidance_contract_missing_status_resource(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "adb_reverse_missing":
+                state["android_guidance_contract"].pop("status_resource")
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            f"states[{changed_index}].android_guidance_contract.status_resource: is required",
+            report["errors"],
+        )
+
+    def test_rejects_missing_required_host_cli_contract(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "tcp_54321_unavailable":
+                state.pop("host_cli_contract")
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            f"states[{changed_index}].host_cli_contract: "
+            "required Host CLI contract tcp_54321_unavailable is missing",
+            report["errors"],
+        )
+
+    def test_rejects_host_cli_contract_that_is_not_pre_gui_fail_closed(self) -> None:
+        matrix = self.load_real_matrix()
+        states = matrix["states"]
+        assert isinstance(states, list)
+        changed_index = None
+        for index, state in enumerate(states):
+            if isinstance(state, dict) and state.get("contract", {}).get("code") == "tcp_54321_unavailable":
+                state["host_cli_contract"]["pre_gui_fail_closed"] = False
+                changed_index = index
+                break
+        self.assertIsNotNone(changed_index)
+
+        report = evaluate(matrix, repository_root=REPOSITORY_ROOT)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertIn(
+            f"states[{changed_index}].host_cli_contract.pre_gui_fail_closed: must be true",
+            report["errors"],
+        )
+        self.assertIn(
+            f"states[{changed_index}].host_cli_contract.pre_gui_fail_closed: "
+            "must match the stable value",
             report["errors"],
         )
 

@@ -262,6 +262,8 @@
     <string name="connection_guidance_full_message">%1$s. %2$s</string>
     <string name="connection_guidance_mac_incompatible_title">Mac app is incompatible</string>
     <string name="connection_guidance_mac_incompatible_message">Update Vibe Screen on both devices, then reconnect.</string>
+    <string name="connection_guidance_stale_session_title">Stale session epoch</string>
+    <string name="connection_guidance_stale_session_message">Reconnect for a fresh session epoch. If this repeats, update Vibe Screen on both devices and collect logs before treating the device as recovered.</string>
     <string name="connection_guidance_input_overloaded_title">Input stream overloaded</string>
     <string name="connection_guidance_input_overloaded_message">Reconnect, then reduce simultaneous touch or peripheral input.</string>
     <string name="connection_guidance_video_decoder_recovery_title">Video decoder recovery</string>
@@ -271,6 +273,8 @@
     <string name="connection_guidance_user_disconnected_message">Disconnected by user</string>
     <string name="connection_guidance_mac_unavailable_title">Mac app unavailable</string>
     <string name="connection_guidance_adb_route_unavailable_title">USB route unavailable</string>
+    <string name="connection_guidance_lan_route_unavailable_title">LAN route unavailable</string>
+    <string name="connection_guidance_internet_route_unavailable_title">Internet route unavailable</string>
     <string name="connection_guidance_network_unavailable_title">Network unavailable</string>
     <string name="connection_guidance_timeout_title">Connection timed out</string>
     <string name="connection_guidance_failed_title">Connection failed</string>

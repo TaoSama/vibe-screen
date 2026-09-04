@@ -15,6 +15,7 @@ internal enum class ConnectionFailureKind {
     NETWORK_UNREACHABLE,
     TIMEOUT,
     INCOMPATIBLE_SESSION,
+    STALE_SESSION,
     INPUT_OVERLOADED,
     UNKNOWN,
 }
@@ -91,11 +92,15 @@ internal object ConnectionGuidanceFactory {
             SessionFailureKind.HOST_PROTOCOL_ERROR,
             SessionFailureKind.UNKNOWN_MESSAGE,
             ->
-                ConnectionGuidance(
-                    kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
-                    status = text(R.string.connection_guidance_mac_incompatible_title),
-                    message = text(R.string.connection_guidance_mac_incompatible_message),
-                )
+                if (failure.detail.isStaleEpochOrSession()) {
+                    staleSession()
+                } else {
+                    ConnectionGuidance(
+                        kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
+                        status = text(R.string.connection_guidance_mac_incompatible_title),
+                        message = text(R.string.connection_guidance_mac_incompatible_message),
+                    )
+                }
 
             SessionFailureKind.OUTBOUND_BACKPRESSURE ->
                 ConnectionGuidance(
@@ -184,10 +189,10 @@ internal object ConnectionGuidanceFactory {
         ConnectionGuidance(
             kind = ConnectionFailureKind.NETWORK_UNREACHABLE,
             status =
-                if (context.mode == ConnectionMode.USB) {
-                    text(R.string.connection_guidance_adb_route_unavailable_title)
-                } else {
-                    text(R.string.connection_guidance_network_unavailable_title)
+                when (context.mode) {
+                    ConnectionMode.USB -> text(R.string.connection_guidance_adb_route_unavailable_title)
+                    ConnectionMode.WIRELESS -> text(R.string.connection_guidance_lan_route_unavailable_title)
+                    ConnectionMode.INTERNET -> text(R.string.connection_guidance_internet_route_unavailable_title)
                 },
             message =
                 when (context.mode) {
@@ -205,6 +210,13 @@ internal object ConnectionGuidanceFactory {
             kind = ConnectionFailureKind.USB_ROUTE_UNAVAILABLE,
             status = text(R.string.connection_guidance_adb_route_unavailable_title),
             message = adbRecovery(context, text(R.string.connection_guidance_usb_route_unavailable_prefix)),
+        )
+
+    private fun staleSession(): ConnectionGuidance =
+        ConnectionGuidance(
+            kind = ConnectionFailureKind.STALE_SESSION,
+            status = text(R.string.connection_guidance_stale_session_title),
+            message = text(R.string.connection_guidance_stale_session_message),
         )
 
     private fun timeout(context: ConnectionGuidanceContext): ConnectionGuidance =
@@ -258,6 +270,14 @@ internal object ConnectionGuidanceFactory {
         any { it is ConnectException } ||
             containMessage("ECONNREFUSED") ||
             containMessage("Connection refused")
+
+    private fun String.isStaleEpochOrSession(): Boolean =
+        contains("stale_session", ignoreCase = true) ||
+            contains("stale session", ignoreCase = true) ||
+            contains("stale_session_epoch", ignoreCase = true) ||
+            contains("stale_config_epoch", ignoreCase = true) ||
+            contains("stale config", ignoreCase = true) ||
+            contains("stale epoch", ignoreCase = true)
 
     private fun adbRecovery(
         context: ConnectionGuidanceContext,
