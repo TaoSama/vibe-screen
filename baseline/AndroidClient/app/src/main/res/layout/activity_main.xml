@@ -641,41 +641,6 @@
                 app:backgroundTint="@color/primary_button_background"
                 android:layout_marginBottom="14dp" />
 
-            <LinearLayout
-                android:id="@+id/connectionErrorContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="8dp"
-                android:background="@drawable/connection_error_bg"
-                android:layout_marginBottom="12dp"
-                android:accessibilityLiveRegion="polite"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/connectionErrorTitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/connection_issue"
-                    android:accessibilityLiveRegion="polite"
-                    android:textColor="@color/warning"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/connectionErrorMessage"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text=""
-                    android:accessibilityLiveRegion="polite"
-                    android:textIsSelectable="true"
-                    android:textColor="@color/on_surface_secondary"
-                    android:textSize="12sp"
-                    android:lineSpacingExtra="2dp" />
-
-            </LinearLayout>
-
             <!-- Status Section -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -825,6 +790,42 @@
                         android:textColor="@color/on_surface_subtle"
                         android:textSize="12sp" />
                 </LinearLayout>
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/connectionErrorContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="8dp"
+                android:background="@drawable/connection_error_bg"
+                android:layout_marginBottom="12dp"
+                android:accessibilityLiveRegion="polite"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/connectionErrorTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/connection_issue"
+                    android:accessibilityLiveRegion="polite"
+                    android:textColor="@color/warning"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/connectionErrorMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:accessibilityLiveRegion="polite"
+                    android:importantForAccessibility="no"
+                    android:textIsSelectable="true"
+                    android:textColor="@color/on_surface_secondary"
+                    android:textSize="12sp"
+                    android:lineSpacingExtra="2dp" />
 
             </LinearLayout>
 

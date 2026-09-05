@@ -568,7 +568,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
         return (0 until group.childCount).flatMap { index ->
             val child = group.getChildAt(index)
             val childName = viewName(child)
-            val self = if (child.isClickable) listOf(childName) else emptyList()
+            val self = if (child.isClickable && child.isImportantForAccessibility) listOf(childName) else emptyList()
             self + clickableDescendantNames(child)
         }
     }
