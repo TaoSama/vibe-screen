@@ -404,6 +404,23 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
+    fun disconnectedActivityDoesNotOverrideSystemLandscapeConfiguration() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+
+                val landscapeConfiguration =
+                    Configuration(activity.resources.configuration).apply {
+                        orientation = Configuration.ORIENTATION_LANDSCAPE
+                    }
+                activity.onConfigurationChanged(landscapeConfiguration)
+
+                assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+            }
+        }
+    }
+
+    @Test
     fun p0110UsbErrorCopyKeepsChecklistReachableWithLargeText() {
         val context = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
         withProductionLayout(context) { root ->
