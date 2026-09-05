@@ -263,12 +263,11 @@ class InternetPairingDialogLayoutInstrumentedTest {
             scroll.scrollTo(0, 0)
             assertTrue("import input top is visible initially", input.top >= scroll.scrollY)
             assertTrue("import input top starts inside the viewport", input.top < scroll.scrollY + visibleHeight)
-            val targetScroll = (input.bottom - visibleHeight).coerceAtLeast(0)
+            val targetScroll = (input.bottom - scroll.height + scroll.paddingBottom).coerceAtLeast(0)
             scroll.scrollTo(0, targetScroll)
-            val visibleBottom = scroll.scrollY + visibleHeight
+            val visibleBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
             val reachedBottom = input.bottom <= visibleBottom
-            val scrolledTowardBottom = targetScroll == 0 || scroll.scrollY > 0
-            assertTrue("import input bottom can scroll into viewport or toward the final input lines", reachedBottom || scrolledTowardBottom)
+            assertTrue("import input bottom can scroll into viewport", reachedBottom)
         }
     }
 
