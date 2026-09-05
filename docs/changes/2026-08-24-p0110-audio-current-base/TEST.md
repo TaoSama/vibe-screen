@@ -1,10 +1,10 @@
 # P0110 Android audio current-base owner
 
-Status: current-base Android owner recorded; real USB/LAN audio playback blocked
-Date: 2026-09-01
-Previous record: 2026-08-30
-Source branch: `codex/audio-pcm-product-flow`
-Base commit: `origin/main` at 2026-09-01 branch creation
+Status: Android local playback-adapter smoke added; real USB/LAN audio playback blocked
+Date: 2026-09-06
+Previous record: 2026-09-01
+Source branch: `android-audio-track-smoke`
+Base commit: `origin/main` at `f97ea7d6ad2bba93720332f31609e691cb648088`
 
 ## Scope
 
@@ -27,6 +27,16 @@ headers, Android `AudioTrack` submission order, and cleanup expectations for
 disconnect/error paths. This is offline contract evidence only; it does not
 prove Microphone/TCC readiness, macOS Host startup, LAN secure-record delivery,
 or real Android speaker playback.
+
+The 2026-09-06 follow-up adds a P0110 no-Host instrumentation smoke at
+[`../../../baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/audio/ProtocolPcmAudioPlayerInstrumentedTest.kt`](../../../baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/audio/ProtocolPcmAudioPlayerInstrumentedTest.kt).
+It directly constructs `ProtocolPcmAudioPlayer(AndroidAudioTrackOutputFactory())`,
+configures PCM S16LE 48 kHz stereo, submits one silent 480-frame packet at
+sequence `0`, verifies one accepted write, and closes the player. This proves
+Android local playback-adapter availability on the P0110 only. It does not
+launch a Host, negotiate `CAPABILITY_AUDIO`, accept a Host-sent `AudioConfig`,
+carry channel `3` packets over USB/LAN, prove audible output, or close the real
+audio playback gate.
 
 ## PR audit
 
@@ -58,14 +68,29 @@ The machine-checkable summary is
 [`android-audio-playback-summary.json`](evidence/2026-08-30-p0110-audio-current-base-refresh/android-audio-playback-summary.json):
 `verdict=blocked` and `can_close_android_audio_playback_gate=false`.
 
+## Android-local no-Host playback-adapter smoke
+
+Latest evidence directory:
+[`evidence/2026-09-06-p0110-audio-android-track-no-host-smoke`](evidence/2026-09-06-p0110-audio-android-track-no-host-smoke/README.md).
+
+The retained device identity is `nubia P0110 / pacific / Android 16 / SDK 36`;
+public artifacts use `REDACTED_P0110_USB_SERIAL` instead of the real device
+serial. The smoke installs/runs only the Android test APK and keeps the macOS
+Host out of scope. It does not create or remove `adb reverse tcp:54321`, does
+not start Vibe Screen/MacHost/Telemachus GUI, and does not touch macOS TCC,
+Keychain, Screen Recording, Accessibility, or System Settings.
+
 ## Automated checks
 
-The first rows are the 2026-09-01 offline contract refresh. The remaining
+The first rows are the 2026-09-06 Android-local playback-adapter smoke. The
+next rows are the 2026-09-01 offline contract refresh. The remaining
 2026-08-30, 2026-08-29, and 2026-08-28 rows are retained as historical context
 for the earlier blocked owner record.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest` | PASS | Ran on nubia P0110 / pacific / Android 16 / SDK 36 with `Finished 1 tests on P0110 - 16`. The retained logcat marker is `android_audio_track_smoke=start_write_close packets=1 bytes=1920`, proving local `AndroidAudioTrackOutputFactory` plus `ProtocolPcmAudioPlayer` start/write/close with synthetic PCM only. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" --tests "dev.telemachus.display.audio.ProtocolPcmAudioStreamTest"` | PASS | Focused JVM audio tests passed as the protocol/fake-output companion to the P0110 no-Host smoke. |
 | `make protocol` | PASS | Buf format/lint/build/breaking and 45 Python protocol/security/shared-model tests passed. |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" --tests "dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.usbLanPcmFixtureNegotiatesWritesAndCleansUpOnDisconnect" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.rejectedAudioReconfigurationStopsExistingPlayback" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.malformedAudioPacketAfterAcceptedConfigFailsSessionAndReleasesOutput"` | PASS | Focused Android JVM contract covers the shared USB/LAN PCM fixture, format fields, `AudioConfigResult` bytes, packet parsing, jitter ordering, `AudioTrack` payload submission, disconnect cleanup, config-reject cleanup, and malformed-packet error cleanup. |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug` | PASS | Full Android local gate passed on rerun. An earlier run hit one transient non-audio `StreamClientCancellationTest.readySessionRejectsMalformedDisplayWithoutReconnectLoop` `SocketException`; that test passed when rerun directly before the full gate passed. |

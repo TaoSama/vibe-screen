@@ -43,6 +43,10 @@ The retained blocked/readiness record is
 [`evidence/2026-08-21-audio-real-device-blocked/README.md`](evidence/2026-08-21-audio-real-device-blocked/README.md).
 The current P0110 owner record is tracked separately under
 [`../2026-08-24-p0110-audio-current-base/TEST.md`](../2026-08-24-p0110-audio-current-base/TEST.md).
+That owner record now includes a 2026-09-06 P0110 no-Host instrumentation smoke
+for Android `AudioTrack` adapter start/write/close with synthetic PCM; this is
+Android-local evidence only and does not replace the required Host-negotiated
+USB/LAN playback artifacts.
 Use `make android-audio-playback-owner-record EVIDENCE_DIR=<run-dir>` to
 preserve blocked or insufficient current-base evidence, and use
 `make android-audio-playback-gate EVIDENCE_DIR=<run-dir>` only for a formal
