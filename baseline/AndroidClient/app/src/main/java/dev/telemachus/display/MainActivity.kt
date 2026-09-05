@@ -210,6 +210,7 @@ class MainActivity : AppCompatActivity() {
     private var overlayDx = 0f
     private var overlayDy = 0f
     private var activeSettingsDialog: Dialog? = null
+    private var controlBarPolicySurface = ManagedPolicyControlSurface()
 
     // Latest non-interactive edge insets (system bars + display cutout) unioned
     // across the whole window. Floating chrome is kept inside the safe region
@@ -2360,6 +2361,13 @@ class MainActivity : AppCompatActivity() {
         val client = streamClient
         if (client != null) {
             productSessionCoordinator.onHostActionsAvailable(client, activeSessionGeneration, actions)
+            controlBarPolicySurface = controlBarPolicySurface.mergeWithCurrentHostActions(
+                ManagedPolicyControlSurface.from(
+                    client.managedPolicyControlSurfaceCapabilities(),
+                    actions,
+                    hostActionsPolicyAllowed = managedHostActionsAllowed,
+                ),
+            )
             productSessionCoordinator.setRuntimeAvailability(
                 client,
                 activeSessionGeneration,
@@ -2367,8 +2375,17 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val state = productSessionCoordinator.renderState()
-        binding.controlHostActionsButton.visibility = if (state.hostActionsVisible) View.VISIBLE else View.GONE
-        binding.controlHostActionsButton.isEnabled = state.hostActionsEnabled
+        val hostActionsPresentation =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = controlBarPolicySurface.hostActions,
+                runtimeEnabled = state.hostActionsEnabled,
+                policyAllowed = managedHostActionsAllowed,
+                defaultLabelResource = R.string.control_host_actions,
+                policyDeniedLabelResource = R.string.control_host_actions_policy_disabled,
+            )
+        binding.controlHostActionsButton.visibility = if (hostActionsPresentation.visible) View.VISIBLE else View.GONE
+        binding.controlHostActionsButton.isEnabled = hostActionsPresentation.enabled
+        applyControlButtonLabel(binding.controlHostActionsButton, hostActionsPresentation.labelResource)
         refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
@@ -2384,8 +2401,17 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val state = productSessionCoordinator.renderState()
-        binding.controlClipboardButton.visibility = if (state.clipboardVisible) View.VISIBLE else View.GONE
-        binding.controlClipboardButton.isEnabled = state.clipboardEnabled
+        val clipboardPresentation =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = controlBarPolicySurface.clipboard,
+                runtimeEnabled = state.clipboardEnabled,
+                policyAllowed = managedClipboardAllowed,
+                defaultLabelResource = R.string.control_clipboard,
+                policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
+            )
+        binding.controlClipboardButton.visibility = if (clipboardPresentation.visible) View.VISIBLE else View.GONE
+        binding.controlClipboardButton.isEnabled = clipboardPresentation.enabled
+        applyControlButtonLabel(binding.controlClipboardButton, clipboardPresentation.labelResource)
         updateClipboardAccessibilityLabel(client, activeSessionGeneration)
         refreshClipboardStatusText(client, activeSessionGeneration)
         refreshTransferReadinessInSettings()
@@ -2398,6 +2424,10 @@ class MainActivity : AppCompatActivity() {
     ) {
         val pending =
             client != null && productSessionCoordinator.hasPendingClipboardReceive(client, generation)
+        if (!managedClipboardAllowed) {
+            applyControlButtonLabel(binding.controlClipboardButton, R.string.control_clipboard_policy_disabled)
+            return
+        }
         binding.controlClipboardButton.contentDescription =
             getString(if (pending) R.string.control_clipboard_pending else R.string.control_clipboard)
         TooltipCompat.setTooltipText(
@@ -2434,13 +2464,26 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val internetFileTransfer = prefs.connectionMode == ConnectionMode.INTERNET && internetSession?.canTransferFiles == true
+        val internetFileTransferSurface = controlBarPolicySurface.fileTransfer || internetFileTransfer
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            controlBarPolicySurface =
+                controlBarPolicySurface.copy(fileTransfer = internetFileTransfer || (!managedFileTransferAllowed && internetFileTransferSurface))
+        }
         if (prefs.connectionMode == ConnectionMode.INTERNET && !internetFileTransfer) {
             rejectPendingIncomingFileOffer()
             discardPendingOutgoingFileTransfer(refreshControl = false)
             clearActiveIncomingFileTransfer(refreshControl = false)
         }
         val state = productSessionCoordinator.renderState()
-        val transferAvailable = state.fileTransferVisible || internetFileTransfer
+        val fileTransferPresentation =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = controlBarPolicySurface.fileTransfer,
+                runtimeEnabled = state.fileTransferEnabled || internetFileTransfer,
+                policyAllowed = managedFileTransferAllowed,
+                defaultLabelResource = R.string.control_file_transfer,
+                policyDeniedLabelResource = R.string.control_file_transfer_policy_disabled,
+            )
+        val transferAvailable = fileTransferPresentation.visible
         if (!transferAvailable) {
             rejectPendingIncomingFileOffer()
             discardPendingOutgoingFileTransfer(refreshControl = false)
@@ -2454,10 +2497,10 @@ class MainActivity : AppCompatActivity() {
         val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false
         binding.controlFileTransferButton.visibility = if (fileTransferControlVisible) View.VISIBLE else View.GONE
         binding.controlFileTransferButton.isEnabled =
-            (state.fileTransferEnabled || internetFileTransfer || activeTransferVisible) && !cancelling
+            (fileTransferPresentation.enabled || activeTransferVisible) && !cancelling
         binding.controlFileTransferButton.contentDescription =
             if (progressLabel == null) {
-                getString(R.string.control_file_transfer)
+                getString(fileTransferPresentation.labelResource)
             } else if (cancelling) {
                 getString(R.string.control_file_transfer_cancelling_with_progress, progressLabel)
             } else {
@@ -2479,6 +2522,15 @@ class MainActivity : AppCompatActivity() {
         }
         refreshTransferReadinessInSettings()
         applyControlBarLayout()
+    }
+
+    private fun applyControlButtonLabel(
+        button: View,
+        @StringRes labelResource: Int,
+    ) {
+        val label = getText(labelResource)
+        button.contentDescription = label
+        TooltipCompat.setTooltipText(button, label)
     }
 
     private fun handleFileTransferControlClick() {
@@ -3868,6 +3920,12 @@ class MainActivity : AppCompatActivity() {
 
         applyChoice(swipeUpGroup, swipeUpButtons, prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions))
         applyChoice(swipeDownGroup, swipeDownButtons, prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions))
+        unavailableNote.setText(
+            GestureShortcutAvailabilityPresentationPolicy.unavailableMessage(
+                customGesturesPolicyAllowed = managedCustomGesturesAllowed,
+                hostActionsPolicyAllowed = managedHostActionsAllowed,
+            ),
+        )
         SettingsUnavailableControlsAccessibilityApplier.apply(
             available = available,
             unavailableNote = unavailableNote,
@@ -4175,6 +4233,7 @@ class MainActivity : AppCompatActivity() {
         streamControllerSessionState.resetForNewSession()
         resetControllerHotplugTracking()
         resetCustomGestureTouchState()
+        controlBarPolicySurface = ManagedPolicyControlSurface()
         rejectPendingIncomingFileOffer()
         discardPendingOutgoingFileTransfer()
         clearActiveIncomingFileTransfer()
@@ -4719,6 +4778,13 @@ class MainActivity : AppCompatActivity() {
                 val peripheralInputFramework =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiated
                 if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard || fileTransfer || peripheralInputFramework) {
+                    controlBarPolicySurface = controlBarPolicySurface.mergeWithCurrentHostActions(
+                        ManagedPolicyControlSurface.from(
+                            callbackClient.managedPolicyControlSurfaceCapabilities(),
+                            availableHostActions,
+                            hostActionsPolicyAllowed = managedHostActionsAllowed,
+                        ),
+                    )
                     val managedHostActions = hostActions && managedHostActionsAllowed
                     val customGestures = managedHostActions && managedCustomGesturesAllowed
                     val capabilities =
@@ -5095,6 +5161,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         if (!productSessionCoordinator.beginConnectionAttempt()) return
+        controlBarPolicySurface = ManagedPolicyControlSurface()
         internetRoute = null
         resetInternetInputStateForNewSession()
         val generation = productSessionCoordinator.beginInternetSession(lease.authoritativeSessionEpoch)
@@ -5759,6 +5826,7 @@ class MainActivity : AppCompatActivity() {
         discardPendingOutgoingFileTransfer()
         clearActiveIncomingFileTransfer()
         productSessionCoordinator.setTransportConnected(false)
+        controlBarPolicySurface = ManagedPolicyControlSurface()
         refreshLocalManagedPolicySnapshot()
         refreshTransferReadinessInSettings()
         runBestEffort(
@@ -6205,6 +6273,7 @@ class MainActivity : AppCompatActivity() {
         rejectPendingIncomingFileOffer()
         clearActiveIncomingFileTransfer()
         productSessionCoordinator.clearDisconnectedUiState()
+        controlBarPolicySurface = ManagedPolicyControlSurface()
         refreshLocalManagedPolicySnapshot()
         refreshTransferReadinessInSettings()
         binding.controlHostActionsButton.visibility = View.GONE

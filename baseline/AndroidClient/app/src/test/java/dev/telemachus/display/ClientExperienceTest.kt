@@ -333,6 +333,144 @@ class ClientExperienceTest {
     }
 
     @Test
+    fun `control buttons stay explainable when managed policy denies a negotiated surface`() {
+        val denied =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = true,
+                runtimeEnabled = true,
+                policyAllowed = false,
+                defaultLabelResource = R.string.control_clipboard,
+                policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
+            )
+        val runtimeUnavailable =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = true,
+                runtimeEnabled = false,
+                policyAllowed = true,
+                defaultLabelResource = R.string.control_clipboard,
+                policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
+            )
+        val unsupported =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = false,
+                runtimeEnabled = false,
+                policyAllowed = false,
+                defaultLabelResource = R.string.control_clipboard,
+                policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
+            )
+        val unsupportedButAllowed =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = false,
+                runtimeEnabled = false,
+                policyAllowed = true,
+                defaultLabelResource = R.string.control_clipboard,
+                policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
+            )
+
+        assertTrue(denied.visible)
+        assertFalse(denied.enabled)
+        assertEquals(R.string.control_clipboard_policy_disabled, denied.labelResource)
+        assertTrue(runtimeUnavailable.visible)
+        assertFalse(runtimeUnavailable.enabled)
+        assertEquals(R.string.control_clipboard, runtimeUnavailable.labelResource)
+        assertFalse(unsupported.visible)
+        assertFalse(unsupported.enabled)
+        assertEquals(R.string.control_clipboard, unsupported.labelResource)
+        assertFalse(unsupportedButAllowed.visible)
+        assertFalse(unsupportedButAllowed.enabled)
+        assertEquals(R.string.control_clipboard, unsupportedButAllowed.labelResource)
+    }
+
+    @Test
+    fun `control policy surface preserves discovered controls across later policy denials`() {
+        val discoveredClipboard =
+            ManagedPolicyControlSurface.from(
+                capabilities = setOf(dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD),
+                hostActions = emptyList(),
+            )
+        val discoveredHostActions =
+            ManagedPolicyControlSurface.from(
+                capabilities = setOf(dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS),
+                hostActions = listOf(HostActionOption(HostActionMenuPolicy.ACTION_MOVE_WINDOW, "", false)),
+            )
+        val unsupportedHostActions =
+            ManagedPolicyControlSurface.from(
+                capabilities = setOf(dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS),
+                hostActions = listOf(HostActionOption("unknown", "Unknown", false)),
+            )
+
+        val surface = discoveredClipboard.merge(discoveredHostActions).merge(unsupportedHostActions)
+
+        assertTrue(surface.clipboard)
+        assertTrue(surface.hostActions)
+        assertFalse(surface.fileTransfer)
+    }
+
+    @Test
+    fun `control policy surface refreshes host action catalog without losing other discovered controls`() {
+        val discovered =
+            ManagedPolicyControlSurface.from(
+                capabilities =
+                    setOf(
+                        dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS,
+                        dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD,
+                    ),
+                hostActions = listOf(HostActionOption(HostActionMenuPolicy.ACTION_MOVE_WINDOW, "Move", false)),
+            )
+        val catalogCleared =
+            ManagedPolicyControlSurface.from(
+                capabilities = setOf(dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS),
+                hostActions = emptyList(),
+            )
+        val policyDeniedCatalog =
+            ManagedPolicyControlSurface.from(
+                capabilities = setOf(dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS),
+                hostActions = emptyList(),
+                hostActionsPolicyAllowed = false,
+            )
+
+        val clearedSurface = discovered.mergeWithCurrentHostActions(catalogCleared)
+        val policyDeniedSurface = discovered.mergeWithCurrentHostActions(policyDeniedCatalog)
+
+        assertFalse(clearedSurface.hostActions)
+        assertTrue(clearedSurface.clipboard)
+        assertTrue(policyDeniedSurface.hostActions)
+        assertTrue(policyDeniedSurface.clipboard)
+    }
+
+    @Test
+    fun `gesture shortcut unavailable copy distinguishes policy denial from capability gaps`() {
+        assertEquals(
+            R.string.gesture_shortcuts_unavailable,
+            GestureShortcutAvailabilityPresentationPolicy.unavailableMessage(
+                customGesturesPolicyAllowed = true,
+                hostActionsPolicyAllowed = true,
+            ),
+        )
+        assertEquals(
+            R.string.gesture_shortcuts_policy_disabled,
+            GestureShortcutAvailabilityPresentationPolicy.unavailableMessage(
+                customGesturesPolicyAllowed = false,
+                hostActionsPolicyAllowed = true,
+            ),
+        )
+        assertEquals(
+            R.string.gesture_shortcuts_policy_disabled,
+            GestureShortcutAvailabilityPresentationPolicy.unavailableMessage(
+                customGesturesPolicyAllowed = true,
+                hostActionsPolicyAllowed = false,
+            ),
+        )
+        assertEquals(
+            R.string.gesture_shortcuts_policy_disabled,
+            GestureShortcutAvailabilityPresentationPolicy.unavailableMessage(
+                customGesturesPolicyAllowed = false,
+                hostActionsPolicyAllowed = false,
+            ),
+        )
+    }
+
+    @Test
     fun `saved enum parsing falls back safely`() {
         assertEquals(VideoScaleMode.FIT, VideoScaleMode.fromName("unknown"))
         assertEquals(ClientRotation.FOLLOW_HOST, ClientRotation.fromName(null))

@@ -1371,6 +1371,7 @@ class ProtocolV1SessionTest {
         assertTrue(available.actions.isEmpty())
         assertTrue(session.hostActions.isEmpty())
         assertFalse(Capability.CAPABILITY_HOST_ACTIONS in session.negotiated)
+        assertTrue(Capability.CAPABILITY_HOST_ACTIONS in session.policyControlSurface)
         assertFalse(session.canInvokeHostActions)
         assertNull(session.invokeHostAction("move-window", ByteString.copyFrom(byteArrayOf(1))))
         assertTrue(session.receive(hostActionResult(10, invocationId, accepted = true)).isEmpty())
