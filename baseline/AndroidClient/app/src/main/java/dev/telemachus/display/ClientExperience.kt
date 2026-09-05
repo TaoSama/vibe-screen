@@ -271,6 +271,38 @@ internal object TransferReadinessPresentationPolicy {
         }
 }
 
+internal object ManagedPolicyControlAvailabilityPolicy {
+    data class Presentation(
+        val visible: Boolean,
+        val enabled: Boolean,
+        val labelResource: Int,
+    )
+
+    fun presentation(
+        capabilityAvailable: Boolean,
+        runtimeEnabled: Boolean,
+        policyAllowed: Boolean,
+        defaultLabelResource: Int,
+        policyDeniedLabelResource: Int,
+    ): Presentation {
+        val policyDenied = capabilityAvailable && !policyAllowed
+        return Presentation(
+            visible = capabilityAvailable,
+            enabled = capabilityAvailable && runtimeEnabled && policyAllowed,
+            labelResource = if (policyDenied) policyDeniedLabelResource else defaultLabelResource,
+        )
+    }
+}
+
+internal object GestureShortcutAvailabilityPresentationPolicy {
+    fun unavailableMessage(customGesturesPolicyAllowed: Boolean, hostActionsPolicyAllowed: Boolean): Int =
+        if (customGesturesPolicyAllowed && hostActionsPolicyAllowed) {
+            R.string.gesture_shortcuts_unavailable
+        } else {
+            R.string.gesture_shortcuts_policy_disabled
+        }
+}
+
 /** Client-local viewport choices that do not require a wire-protocol change. */
 enum class VideoScaleMode {
     FIT,
@@ -568,6 +600,41 @@ data class ClientSessionCapabilities(
                 clipboard = false,
                 fileTransfer = false,
                 peripheralInputFramework = false,
+            )
+    }
+}
+
+internal data class ManagedPolicyControlSurface(
+    val hostActions: Boolean = false,
+    val clipboard: Boolean = false,
+    val fileTransfer: Boolean = false,
+) {
+    fun merge(other: ManagedPolicyControlSurface): ManagedPolicyControlSurface =
+        ManagedPolicyControlSurface(
+            hostActions = hostActions || other.hostActions,
+            clipboard = clipboard || other.clipboard,
+            fileTransfer = fileTransfer || other.fileTransfer,
+        )
+
+    fun mergeWithCurrentHostActions(other: ManagedPolicyControlSurface): ManagedPolicyControlSurface =
+        ManagedPolicyControlSurface(
+            hostActions = other.hostActions,
+            clipboard = clipboard || other.clipboard,
+            fileTransfer = fileTransfer || other.fileTransfer,
+        )
+
+    companion object {
+        fun from(
+            capabilities: Set<dev.vibescreen.protocol.v1.Capability>,
+            hostActions: List<HostActionOption>,
+            hostActionsPolicyAllowed: Boolean = true,
+        ): ManagedPolicyControlSurface =
+            ManagedPolicyControlSurface(
+                hostActions =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in capabilities &&
+                        (!hostActionsPolicyAllowed || HostActionMenuPolicy.supportedActions(hostActions).isNotEmpty()),
+                clipboard = dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in capabilities,
+                fileTransfer = dev.vibescreen.protocol.v1.Capability.CAPABILITY_FILE_TRANSFER in capabilities,
             )
     }
 }
