@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -215,6 +216,47 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun narrowPortraitKeepsUsbRetryDiagnosticsReadableAtMaxFontScale() {
+        withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
+            layout.showModeContent(R.id.usbModeContent)
+            layout.usbErrorContainer.visibility = View.VISIBLE
+            layout.checklistContainer.visibility = View.VISIBLE
+            val guidance =
+                ConnectionGuidanceFactory.from(
+                    java.io.IOException("unexpected USB transport failure"),
+                    ConnectionGuidanceContext.adb(54321, AdbTransportKind.UNAVAILABLE),
+                )
+            layout.usbErrorTitle.text = ConnectionGuidanceTextFormatter.format(layout.context.resources, guidance.status)
+            layout.usbErrorMessage.text = ConnectionGuidanceTextFormatter.format(layout.context.resources, guidance.message)
+            layout.usbErrorContainer.contentDescription =
+                layout.context.getString(
+                    R.string.connection_guidance_full_message,
+                    layout.usbErrorTitle.text,
+                    layout.usbErrorMessage.text,
+                )
+
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertRetryActionVisibleOnFirstScreen()
+            layout.assertMinimumTouchTarget(layout.connectButton)
+            layout.assertTextRenderedWithoutEllipsis(layout.usbErrorTitle)
+            layout.assertTextRenderedWithoutEllipsis(layout.usbErrorMessage)
+            layout.assertFullyReachableByScroll(layout.usbErrorContainer)
+            layout.assertFullyReachableByScroll(layout.usbErrorMessage)
+            layout.assertFullyReachableByScroll(layout.checklistContainer)
+            layout.assertNoOverlap(layout.connectButton, layout.usbErrorContainer)
+            layout.assertNoOverlap(layout.usbErrorTitle, layout.usbErrorMessage)
+            layout.assertLargeFontDiagnosticsSpacing()
+            layout.assertGroupedDiagnosticsAccessibility()
+        }
+    }
+
+    @Test
     fun defaultFontKeepsInternetProfileActionsSideBySide() {
         withLayout(widthDp = 361, heightDp = 800) { layout ->
             layout.showModeContent(R.id.internetModeContent)
@@ -336,6 +378,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
         val usbErrorContainer = root.findViewById<View>(R.id.connectionErrorContainer)
+        val usbErrorTitle = root.findViewById<TextView>(R.id.connectionErrorTitle)
         val usbErrorMessage = root.findViewById<TextView>(R.id.connectionErrorMessage)
         val checklistContainer = root.findViewById<View>(R.id.checklistContainer)
         val connectButton = root.findViewById<View>(R.id.connectButton)
@@ -493,6 +536,39 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             } else {
                 assertTrue(header.bottom <= actions.top)
             }
+        }
+
+        fun assertNoOverlap(
+            first: View,
+            second: View,
+        ) {
+            assertFalse(
+                first.resources.getResourceEntryName(first.id) + " must not overlap " +
+                    second.resources.getResourceEntryName(second.id),
+                Rect.intersects(boundsInContent(first), boundsInContent(second)),
+            )
+        }
+
+        fun assertGroupedDiagnosticsAccessibility() {
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, usbErrorContainer.accessibilityLiveRegion)
+            assertTrue(ViewCompat.isScreenReaderFocusable(usbErrorContainer))
+            assertEquals(
+                context.getString(
+                    R.string.connection_guidance_full_message,
+                    usbErrorTitle.text,
+                    usbErrorMessage.text,
+                ),
+                usbErrorContainer.contentDescription.toString(),
+            )
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, usbErrorTitle.importantForAccessibility)
+        }
+
+        fun assertLargeFontDiagnosticsSpacing() {
+            assertEquals(dp(12), usbErrorContainer.paddingStart)
+            assertEquals(dp(12), usbErrorContainer.paddingTop)
+            assertEquals(dp(12), usbErrorContainer.paddingEnd)
+            assertEquals(dp(12), usbErrorContainer.paddingBottom)
+            assertEquals(dp(8), margins(usbErrorTitle).bottomMargin)
         }
 
         fun assertLandscapeDimensionsApplied() {

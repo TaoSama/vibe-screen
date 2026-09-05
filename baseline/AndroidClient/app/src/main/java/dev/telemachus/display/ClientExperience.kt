@@ -1279,6 +1279,35 @@ internal object InternetProfileActionsLayoutPolicy {
     }
 }
 
+/**
+ * Keeps the USB diagnostic card breathable at accessibility text scales while
+ * preserving its full, selectable recovery copy.
+ */
+internal object ConnectionDiagnosticsLayoutPolicy {
+    data class Layout(
+        val paddingPx: Int,
+        val titleMarginBottomPx: Int,
+    )
+
+    const val LARGE_FONT_SCALE_THRESHOLD = ConnectionModeToggleLayoutPolicy.STACKED_FONT_SCALE_THRESHOLD
+
+    fun resolve(
+        fontScale: Float,
+        defaultPaddingPx: Int = 0,
+        largeFontPaddingPx: Int = defaultPaddingPx,
+        defaultTitleMarginBottomPx: Int = 0,
+        largeFontTitleMarginBottomPx: Int = defaultTitleMarginBottomPx,
+    ): Layout {
+        val largeFont = fontScale >= LARGE_FONT_SCALE_THRESHOLD
+        return Layout(
+            paddingPx = (if (largeFont) largeFontPaddingPx else defaultPaddingPx).coerceAtLeast(0),
+            titleMarginBottomPx =
+                (if (largeFont) largeFontTitleMarginBottomPx else defaultTitleMarginBottomPx)
+                    .coerceAtLeast(0),
+        )
+    }
+}
+
 internal object UsbConnectActionPolicy {
     enum class Action {
         CONNECT,

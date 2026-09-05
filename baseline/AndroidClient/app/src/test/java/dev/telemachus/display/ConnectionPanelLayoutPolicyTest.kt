@@ -156,4 +156,49 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(0, layout.importMarginStartPx)
         assertEquals(0, layout.importMarginTopPx)
     }
+
+    @Test
+    fun `diagnostic card keeps compact padding at default font scale`() {
+        val layout =
+            ConnectionDiagnosticsLayoutPolicy.resolve(
+                fontScale = 1.0f,
+                defaultPaddingPx = 8,
+                largeFontPaddingPx = 12,
+                defaultTitleMarginBottomPx = 4,
+                largeFontTitleMarginBottomPx = 8,
+            )
+
+        assertEquals(8, layout.paddingPx)
+        assertEquals(4, layout.titleMarginBottomPx)
+    }
+
+    @Test
+    fun `diagnostic card adds breathing room at large font scale`() {
+        val layout =
+            ConnectionDiagnosticsLayoutPolicy.resolve(
+                fontScale = 2.0f,
+                defaultPaddingPx = 8,
+                largeFontPaddingPx = 12,
+                defaultTitleMarginBottomPx = 4,
+                largeFontTitleMarginBottomPx = 8,
+            )
+
+        assertEquals(12, layout.paddingPx)
+        assertEquals(8, layout.titleMarginBottomPx)
+    }
+
+    @Test
+    fun `diagnostic card clamps negative dimensions`() {
+        val layout =
+            ConnectionDiagnosticsLayoutPolicy.resolve(
+                fontScale = 2.0f,
+                defaultPaddingPx = -8,
+                largeFontPaddingPx = -12,
+                defaultTitleMarginBottomPx = -4,
+                largeFontTitleMarginBottomPx = -8,
+            )
+
+        assertEquals(0, layout.paddingPx)
+        assertEquals(0, layout.titleMarginBottomPx)
+    }
 }

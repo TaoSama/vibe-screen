@@ -301,10 +301,14 @@ class MainActivityTerminalGuidanceContractTest {
             "USB validation guidance must load its message from strings.xml",
             setupUi.contains("ConnectionGuidanceText(R.string.host_address_required)"),
         )
-        assertUsesLiveRegion(inlineGuidance, "connectionErrorTitle", "showUsbConnectionGuidance")
+        assertFalse(
+            "USB guidance should let the grouped diagnostic container announce the full status once",
+            inlineGuidance.contains("LiveRegionTextApplier.apply(binding.connectionErrorTitle"),
+        )
         assertUsesLiveRegionShow(inlineGuidance, "connectionErrorMessage", "showUsbConnectionGuidance")
         assertTrue(inlineGuidance.contains("guidanceStatus(guidance)"))
         assertTrue(inlineGuidance.contains("guidanceMessage(guidance)"))
+        assertTrue(inlineGuidance.contains("binding.connectionErrorContainer.contentDescription = guidanceFullMessage(guidance)"))
         assertTrue(
             "Inline USB guidance should expand details so the failed checklist item is visible",
             inlineGuidance.contains("setConnectionDetailsVisible(true)"),
@@ -909,9 +913,9 @@ class MainActivityTerminalGuidanceContractTest {
             "USB recovery guidance contains ports and repair steps, so users should be able to copy it for diagnostics",
             errorMessage.contains("android:textIsSelectable=\"true\""),
         )
-        assertTrue(
-            "Selectable diagnostic text should not split the grouped screen-reader status",
-            errorMessage.contains("android:importantForAccessibility=\"no\""),
+        assertFalse(
+            "Selectable diagnostic text should rely on the grouped container rather than an explicit child accessibility override",
+            errorMessage.contains("android:importantForAccessibility"),
         )
         assertFalse(
             "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",
