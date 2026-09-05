@@ -84,8 +84,18 @@ class ConnectionStateAccessibilityInstrumentedTest {
             )
 
             assertTrue(ViewCompat.isAccessibilityHeading(root.findViewById(R.id.connectionTitle)))
+            val connectionErrorContainer = root.findViewById<View>(R.id.connectionErrorContainer)
+            assertTrue(ViewCompat.isScreenReaderFocusable(connectionErrorContainer))
+            assertEquals(
+                listOf("connectionErrorMessage"),
+                clickableDescendantNames(connectionErrorContainer),
+            )
+            assertEquals(
+                "Selectable diagnostic text keeps copy handles without owning the grouped status announcement",
+                View.ACCESSIBILITY_LIVE_REGION_NONE,
+                root.findViewById<View>(R.id.connectionErrorTitle).accessibilityLiveRegion,
+            )
             listOf(
-                R.id.connectionErrorContainer,
                 R.id.wirelessConnecting,
                 R.id.internetProfileSummary,
                 R.id.internetStateText,

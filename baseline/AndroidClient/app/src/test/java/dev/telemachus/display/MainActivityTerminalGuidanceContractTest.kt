@@ -913,9 +913,9 @@ class MainActivityTerminalGuidanceContractTest {
             "USB recovery guidance contains ports and repair steps, so users should be able to copy it for diagnostics",
             errorMessage.contains("android:textIsSelectable=\"true\""),
         )
-        assertTrue(
-            "Selectable diagnostic text should not split the grouped screen-reader status",
-            errorMessage.contains("android:importantForAccessibility=\"no\""),
+        assertFalse(
+            "Selectable diagnostic text should rely on the grouped container rather than an explicit child accessibility override",
+            errorMessage.contains("android:importantForAccessibility"),
         )
         assertFalse(
             "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",

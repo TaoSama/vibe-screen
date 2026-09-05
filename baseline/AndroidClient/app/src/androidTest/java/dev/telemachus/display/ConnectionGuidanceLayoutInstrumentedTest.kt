@@ -561,7 +561,6 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 usbErrorContainer.contentDescription.toString(),
             )
             assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, usbErrorTitle.importantForAccessibility)
-            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, usbErrorMessage.importantForAccessibility)
         }
 
         fun assertLargeFontDiagnosticsSpacing() {
