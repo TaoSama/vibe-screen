@@ -1,0 +1,5 @@
+repository=TaoSama/vibe-screen
+branch=codex/p0110-no-host-layout-evidence-20260906
+commit=4c8403def698ae33658af65e2db09e00bae0534d
+origin_main=4c8403def698ae33658af65e2db09e00bae0534d
+date_utc=2026-09-05T18:21:20Z

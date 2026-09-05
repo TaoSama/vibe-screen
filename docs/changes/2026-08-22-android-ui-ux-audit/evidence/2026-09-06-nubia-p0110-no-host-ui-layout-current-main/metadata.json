@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-09-06-nubia-p0110-no-host-ui-layout-current-main",
+  "date": "2026-09-06",
+  "repository": "TaoSama/vibe-screen",
+  "branch": "codex/p0110-no-host-layout-evidence-20260906",
+  "commit": "4c8403def698ae33658af65e2db09e00bae0534d",
+  "origin_main": "4c8403def698ae33658af65e2db09e00bae0534d",
+  "scope": "android-client-no-host-ui-layout-instrumentation",
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "physical_size": "1264x2800",
+    "physical_density": 560
+  },
+  "commands": [
+    "./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest",
+    "ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest,dev.telemachus.display.SettingsDialogLayoutInstrumentedTest"
+  ],
+  "result": {
+    "build": "passed",
+    "connected_debug_android_test": "passed",
+    "tests": 43,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "no_host_boundaries": {
+    "mac_host_launched": false,
+    "vibe_screen_gui_launched": false,
+    "swift_run_used": false,
+    "tcc_or_system_settings_changed": false,
+    "adb_reverse_created": false,
+    "tcp_54321_present_after_tests": false,
+    "pre_existing_unrelated_reverse": "UsbFfs tcp:8908 tcp:8908"
+  },
+  "retained_artifacts": [
+    "README.md",
+    "metadata.json",
+    "source-provenance.txt",
+    "device-identity.txt",
+    "adb-devices-after-tests.txt",
+    "adb-reverse-list-after-tests.txt",
+    "gradle-assemble-debug-androidtest.log",
+    "connected-layout-instrumentation.log",
+    "test-results.log",
+    "android-test-results/TEST-P0110 - 16-_app-.xml",
+    "android-test-report/index.html"
+  ]
+}
