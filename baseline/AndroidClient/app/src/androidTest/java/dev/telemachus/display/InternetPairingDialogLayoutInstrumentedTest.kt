@@ -146,7 +146,9 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val parent = FrameLayout(context)
             val root = inflate(context, parent, R.layout.dialog_internet_pairing_completion) as ScrollView
             parent.addView(root)
-            assertion(PairingMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp)))
+            PairingMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
+                .also(PairingMeasuredLayout::assertAcceptanceHint)
+                .let(assertion)
         }
     }
 
@@ -161,7 +163,9 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val parent = FrameLayout(context)
             val root = inflate(context, parent, R.layout.dialog_internet_profile_import) as ScrollView
             parent.addView(root)
-            assertion(ImportMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp)))
+            ImportMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
+                .also(ImportMeasuredLayout::assertImportHint)
+                .let(assertion)
         }
     }
 
@@ -308,6 +312,13 @@ class InternetPairingDialogLayoutInstrumentedTest {
             assertTrue("acceptance field top is visible after scroll", acceptance.top >= scroll.scrollY)
             assertTrue("acceptance field bottom is visible after scroll", acceptance.bottom <= visibleBottom)
         }
+
+        fun assertAcceptanceHint() {
+            assertEquals(
+                context.getString(R.string.internet_pairing_acceptance_hint),
+                acceptance.hint.toString(),
+            )
+        }
     }
 
     private class ImportMeasuredLayout(
@@ -335,6 +346,13 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val visibleBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
             val reachedBottom = input.bottom <= visibleBottom
             assertTrue("import input bottom can scroll into viewport", reachedBottom)
+        }
+
+        fun assertImportHint() {
+            assertEquals(
+                context.getString(R.string.internet_import_hint),
+                input.hint.toString(),
+            )
         }
     }
 

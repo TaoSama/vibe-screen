@@ -1,0 +1,11 @@
+d46c4076465dd78befd8de4e42ca87ea1c35c23c32bf445dda5a6afa69f3ded3  ./logs/adb-devices.txt
+df6405f8bb4976d56f726ddd59dce28a104ec69004f43244adb91bf59a2f16fb  ./logs/android-offline-verification.txt
+6a0a85fe63a1023c5586235b43f7217cdc829dd10e01fc973262ee9bad868070  ./logs/focused-instrumentation-tests.txt
+7cf3ad4728849e817de3555366eb8c15081933ebe97d1ec8f11d08c8de872cb9  ./logs/focused-jvm-contract-test.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/git-diff-check.txt
+99195efa6c2f2c515d018171e55a8940e0d0f085d8cdd4fccc77a3f14db8e5d7  ./logs/gradle-install.txt
+98402211a764f8984d2528b8121e302a327c05c4c919b1f5e68262e0e2fa06cb  ./logs/no-host-boundary.txt
+08ffd6377fd0e628bc1fc2577f5b9266cad8bd6738d8807b78fc237b616ad645  ./logs/pm-instrumentation.txt
+3a03a3d193d7c0326bb3fe013d2a926926a594b8957527bb80faeb145eacfce9  ./logs/source-state.txt
+8524c6bdda539e615fd67defb108527fc046774b2ba59f0177f7c62e05ff5c17  ./metadata/device-identity.txt
+3d44288fee7bf81ab35d246130d5937f94ad0d579398860abdf3e9d0f9d160c8  ./README.md
