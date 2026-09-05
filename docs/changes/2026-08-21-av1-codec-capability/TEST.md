@@ -45,6 +45,10 @@ The covered contract is:
   diagnostic state, but Android does not offer AV1 in product sessions and
   default USB/LAN/Internet offers remain HEVC/H.264 only; a received AV1
   Internet VideoConfig is rejected as av1_decoder_unavailable.
+- Android no-Host instrumentation now records the real device AV1 decoder probe
+  and asserts that decoder discovery is not product admission:
+  `av1StreamAdmissionAvailable` remains false and AV1 stays out of advertised
+  USB/LAN product candidates.
 - iOS validates CODEC_AV1 as a known protocol enum but rejects AV1 unless an
   explicit local decode capability is present, and the current VideoToolbox
   decoder implementation still throws unsupportedCodec(.av1).
@@ -113,6 +117,24 @@ The retained blocked evidence records are
 [`evidence/2026-08-21-av1-offline-blocked/README.md`](evidence/2026-08-21-av1-offline-blocked/README.md)
 and
 [`evidence/2026-08-27-av1-current-base-blocked/README.md`](evidence/2026-08-27-av1-current-base-blocked/README.md).
+
+## 2026-09-06 Nubia P0110 no-Host instrumentation smoke
+
+Current-source Android instrumentation ran on Nubia P0110 / pacific / Android
+16 / SDK 36 without starting the macOS Host or configuring `adb reverse`. The
+focused run executed `CodecAdmissionInstrumentedTest` and
+`ManagedConfigurationProviderInstrumentedTest` through
+`:app:connectedDebugAndroidTest`. Logcat recorded AV1 decoder probes
+`c2.qti.av1.decoder`, `c2.qti.av1.decoder.low_latency`,
+`c2.qti.av1.decoder.secure`, `c2.android.av1-dav1d.decoder`, and
+`c2.android.av1.decoder`, with `usableAv1=true` and `admission=false`.
+
+This is device-profile and fail-closed admission evidence only. It does not prove
+Vibe Screen AV1 negotiation, MediaCodec AV1 configuration, first decoded output
+frame, sustained AV1 playback, reconnect behavior, or any macOS Host AV1 encoder
+path, and it does not change the README AV1 gate status. The retained summary is
+under
+[`evidence/2026-09-06-p0110-no-host-av1-admission-instrumentation/README.md`](evidence/2026-09-06-p0110-no-host-av1-admission-instrumentation/README.md).
 
 ## 2026-08-29 Nubia P0110 current-base refresh
 

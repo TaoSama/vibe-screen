@@ -29,6 +29,16 @@ AV1_P0110_CURRENT_BASE_REFRESH_PATH = (
     / "docs/changes/2026-08-21-av1-codec-capability/evidence"
     / "2026-08-29-nubia-p0110-av1-current-base-refresh/README.md"
 )
+AV1_P0110_NO_HOST_ADMISSION_EVIDENCE_PATH = (
+    REPOSITORY_ROOT
+    / "docs/changes/2026-08-21-av1-codec-capability/evidence"
+    / "2026-09-06-p0110-no-host-av1-admission-instrumentation/README.md"
+)
+AV1_P0110_NO_HOST_ADMISSION_LOGCAT_PATH = (
+    REPOSITORY_ROOT
+    / "docs/changes/2026-08-21-av1-codec-capability/evidence"
+    / "2026-09-06-p0110-no-host-av1-admission-instrumentation/logcat-summary.txt"
+)
 PROTOCOL_COMMON_PROTO_PATH = (
     REPOSITORY_ROOT / "contracts/proto/vibescreen/protocol/v1/common.proto"
 )
@@ -65,6 +75,10 @@ MAC_INTERNET_CODEC_TESTS_PATH = (
 ANDROID_DECODER_SELECTION_TESTS_PATH = (
     REPOSITORY_ROOT
     / "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderSelectionTest.kt"
+)
+ANDROID_CODEC_ADMISSION_INSTRUMENTED_TESTS_PATH = (
+    REPOSITORY_ROOT
+    / "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/CodecAdmissionInstrumentedTest.kt"
 )
 ANDROID_DECODER_CONFIGURATION_TESTS_PATH = (
     REPOSITORY_ROOT
@@ -183,6 +197,9 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         protocol_session_tests = MAC_PROTOCOL_SESSION_TESTS_PATH.read_text(encoding="utf-8")
         internet_codec_tests = MAC_INTERNET_CODEC_TESTS_PATH.read_text(encoding="utf-8")
         android_decoder_tests = ANDROID_DECODER_SELECTION_TESTS_PATH.read_text(encoding="utf-8")
+        android_codec_admission_instrumented_tests = ANDROID_CODEC_ADMISSION_INSTRUMENTED_TESTS_PATH.read_text(
+            encoding="utf-8",
+        )
         android_internet_tests = ANDROID_INTERNET_SESSION_TESTS_PATH.read_text(encoding="utf-8")
         ios_media_gate_self_test = IOS_MEDIA_GATE_SELF_TEST_PATH.read_text(encoding="utf-8")
         ios_video_config_validator_tests = IOS_VIDEO_CONFIG_VALIDATOR_TESTS_PATH.read_text(encoding="utf-8")
@@ -195,6 +212,11 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("testInternetProductVideoConfigurationRejectsAV1UntilEncoderExists", internet_codec_tests)
         self.assertIn("av1ProbeDoesNotEnterAdvertisedCandidatesBeforeAdmissionIsEnabled", android_decoder_tests)
         self.assertIn("softwareAv1DecodersAreNotUsableForRealtimeAdmission", android_decoder_tests)
+        self.assertIn("av1DecoderProbeIsDiagnosticAndDoesNotOpenProductAdmission", android_codec_admission_instrumented_tests)
+        self.assertIn("AndroidDecoderCatalog.probe", android_codec_admission_instrumented_tests)
+        self.assertIn("runtimeSnapshot.av1StreamAdmissionAvailable", android_codec_admission_instrumented_tests)
+        self.assertIn("CodecFallbackPolicy.candidates(runtimeSnapshot).contains(StreamCodec.AV1)", android_codec_admission_instrumented_tests)
+        self.assertIn("StreamCodecAdmissionSupport.hasFrameAdmissionImplementation(StreamCodec.AV1)", android_codec_admission_instrumented_tests)
         self.assertIn("av1VideoConfigurationRejectionIsReportedBeforeMediaActivation", android_internet_tests)
         self.assertIn("testAV1ProtocolKnownButRequiresRuntimeDecodeAdmission", ios_video_config_validator_tests)
         self.assertIn("testDecodeImplementationSupportKeepsCurrentProtocolCodecsAtHevcAndH264", ios_video_config_validator_tests)
@@ -209,8 +231,11 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         current_evidence = AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH.read_text(encoding="utf-8")
         p0110_capability_evidence = AV1_P0110_CAPABILITY_EVIDENCE_PATH.read_text(encoding="utf-8")
         p0110_current_base_refresh = AV1_P0110_CURRENT_BASE_REFRESH_PATH.read_text(encoding="utf-8")
+        p0110_no_host_admission = AV1_P0110_NO_HOST_ADMISSION_EVIDENCE_PATH.read_text(encoding="utf-8")
+        p0110_no_host_logcat = AV1_P0110_NO_HOST_ADMISSION_LOGCAT_PATH.read_text(encoding="utf-8")
         normalized_p0110_capability_evidence = " ".join(p0110_capability_evidence.split())
         normalized_p0110_current_base_refresh = " ".join(p0110_current_base_refresh.split())
+        normalized_p0110_no_host_admission = " ".join(p0110_no_host_admission.split())
 
         self.assertIn("current-base closure owner", gate)
         self.assertIn("tools/tests/test_av1_current_base_gate.py", gate)
@@ -272,6 +297,14 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
         self.assertIn("`StreamCodec`, encoder mapping, frame packaging", p0110_current_base_refresh)
         self.assertIn("Host advertisement", p0110_current_base_refresh)
         self.assertIn("must not be cited as AV1 Host/device real-stream acceptance", p0110_current_base_refresh)
+        self.assertIn("2026-09-06 Nubia P0110 no-Host instrumentation smoke", gate)
+        self.assertIn("usableAv1=true", p0110_no_host_admission)
+        self.assertIn("admission=false", p0110_no_host_admission)
+        self.assertIn("AV1 is absent from `CodecFallbackPolicy.candidates(runtimeSnapshot)`", normalized_p0110_no_host_admission)
+        self.assertIn("does not prove Vibe Screen AV1 negotiation", normalized_p0110_no_host_admission)
+        self.assertIn("no `adb reverse`", p0110_no_host_admission)
+        self.assertIn("<redacted-device-serial>", p0110_no_host_admission)
+        self.assertIn("usableAv1=true admission=false", p0110_no_host_logcat)
 
     def test_public_av1_gate_materials_do_not_expose_sensitive_local_values(self) -> None:
         public_paths = [
@@ -281,6 +314,8 @@ class AV1CurrentBaseGateTests(unittest.TestCase):
             AV1_CURRENT_BASE_BLOCKED_EVIDENCE_PATH,
             AV1_P0110_CAPABILITY_EVIDENCE_PATH,
             AV1_P0110_CURRENT_BASE_REFRESH_PATH,
+            AV1_P0110_NO_HOST_ADMISSION_EVIDENCE_PATH,
+            AV1_P0110_NO_HOST_ADMISSION_LOGCAT_PATH,
             PROTOCOL_COMMON_PROTO_PATH,
             Path(__file__),
         ]

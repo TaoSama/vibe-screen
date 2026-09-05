@@ -1104,10 +1104,13 @@ increase it.
   local-and-remote UI deny-wins for custom gestures and Host actions, managed
   WakeHost cleanup, dynamic Internet audio denial, no outgoing clipboard
   messages after remote clipboard denial, and local `MaximumFileBytes` limits
-  for USB/LAN file-transfer negotiation without a Host managed-policy status.
-  This is source/unit/self-test evidence only; real Apple MDM profile delivery,
-  iOS managed App Configuration injection, Android Enterprise app-restrictions
-  delivery, and USB/LAN product enforcement remain open gates.
+  for USB/LAN file-transfer negotiation without a Host managed-policy status. A
+  Nubia P0110/pacific no-Host instrumentation smoke on current source now also
+  covers the real Android `RestrictionsManager.applicationRestrictions` empty
+  path, proving an unmanaged device returns `UNMANAGED` without MDM privileges or
+  system restriction changes. Real Apple MDM profile delivery, iOS managed App
+  Configuration injection, Android Enterprise app-restrictions delivery with
+  non-empty payloads, and USB/LAN product enforcement remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
@@ -1188,6 +1191,14 @@ performance validation. When running against the connected P0110, use
 device as Nubia P0110/pacific Android evidence. Do not relabel one device as another: device-specific
 evidence and hardware-gated claims, such as native HID, stylus, thermal, panel,
 or SoC decode behavior, remain scoped to the exact device that produced them.
+The 2026-09-06 P0110/pacific no-Host instrumentation smoke adds device-policy
+and codec-admission evidence only: the real Android
+`RestrictionsManager.applicationRestrictions` empty path returns `UNMANAGED`,
+and the real AV1 decoder probe can observe Qualcomm/Android AV1 decoders while
+`av1StreamAdmissionAvailable` stays false and AV1 remains absent from product
+offers. This does not prove non-empty Android Enterprise restrictions delivery,
+USB/LAN managed-policy enforcement, MediaCodec AV1 frame decode, or Host/device
+AV1 streaming.
 For Phase 3 Android Internet replacement evidence, only a fresh current-source
 P0110 run may use that substitute path; historical synthetic-media records do not
 close current Android Internet decoding or release gates.

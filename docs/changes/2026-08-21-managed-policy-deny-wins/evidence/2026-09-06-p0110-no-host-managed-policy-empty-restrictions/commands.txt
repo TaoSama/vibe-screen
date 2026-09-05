@@ -1,0 +1,8 @@
+adb -s <redacted-device-serial> devices -l
+adb -s <redacted-device-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-device-serial> shell getprop ro.product.model
+adb -s <redacted-device-serial> shell getprop ro.product.device
+adb -s <redacted-device-serial> shell getprop ro.build.version.release
+adb -s <redacted-device-serial> shell getprop ro.build.version.sdk
+cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.ManagedConfigurationProviderTest --tests dev.telemachus.display.DecoderSelectionTest --tests dev.telemachus.display.ReliabilityPrimitivesTest
+cd baseline/AndroidClient && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ManagedConfigurationProviderInstrumentedTest,dev.telemachus.display.CodecAdmissionInstrumentedTest

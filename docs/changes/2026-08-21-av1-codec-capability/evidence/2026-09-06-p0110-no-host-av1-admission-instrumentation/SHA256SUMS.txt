@@ -1,0 +1,3 @@
+665fd333aca474bf5d5f40cd75aba0fb5de38f0e229e74edd50a84c7f6dfa34a  docs/changes/2026-08-21-av1-codec-capability/evidence/2026-09-06-p0110-no-host-av1-admission-instrumentation/README.md
+20c642d0984bae3d59779fb748fa177fba863603734a04d907411947b0f5dfe2  docs/changes/2026-08-21-av1-codec-capability/evidence/2026-09-06-p0110-no-host-av1-admission-instrumentation/commands.txt
+8166df9cd4b2b3ccd3dcf1332612096c987ae49480b1f42b6ab0870304feb196  docs/changes/2026-08-21-av1-codec-capability/evidence/2026-09-06-p0110-no-host-av1-admission-instrumentation/logcat-summary.txt

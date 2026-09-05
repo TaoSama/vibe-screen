@@ -76,6 +76,17 @@ Host: macOS local development environment
   tools.tests.test_file_transfer_bulk_current_base_manifest -v:
   Ran 80 tests, OK.
 
+2026-09-06 Android no-host device-policy smoke on current `origin/main`:
+
+- cd baseline/AndroidClient && ./gradlew --no-daemon :app:connectedDebugAndroidTest
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ManagedConfigurationProviderInstrumentedTest,dev.telemachus.display.CodecAdmissionInstrumentedTest:
+  BUILD SUCCESSFUL in 16s; 2 tests ran on Nubia P0110 / pacific / Android 16 /
+  SDK 36. The managed-policy test used a real Android `Context` and
+  `RestrictionsManager.applicationRestrictions`, asserted the Bundle was empty,
+  and verified `ManagedConfigurationProvider(context).loadPolicy()` returned
+  `UNMANAGED`. No MDM permission, system restriction mutation, Host startup, or
+  `adb reverse` was used.
+
 The iOS generated-protocol verifier was also run after regenerating the Swift
 bindings. Before the regenerated files were staged, it correctly reported the
 tracked binding diff as not current; after staging those generated files for the
@@ -94,6 +105,9 @@ PR, rerunning it passed with macOS and iOS Protocol v1 bindings current.
   creation, keeps local CustomGesturesAllowed and HostActionsAllowed in the UI
   deny-wins path, and preserves host fail-closed behavior when a managed status
   is restored with incomplete restriction_results.
+- A current-source no-Host instrumentation smoke covers the real Android
+  `Context`/`RestrictionsManager.applicationRestrictions` empty path and keeps
+  that unmanaged state mapped to `UNMANAGED`.
 - Managed peers must send a complete nine-entry restriction_results set.
 - Missing, duplicate, empty-explanation, or mismatched restriction results are
   rejected before the session proceeds.
@@ -133,13 +147,14 @@ local record.
 
 ## Evidence boundary
 
-No device command was run for this record. In particular, no command was run
-against any connected Android device identifier and no result here is Android
-device evidence.
+The 2026-09-05 records are JVM/source-only and ran no device command. The
+2026-09-06 Android smoke is device evidence only for the unmanaged empty
+`RestrictionsManager.applicationRestrictions` path on Nubia P0110 / pacific /
+Android 16 / SDK 36.
 
 No real Apple MDM profile, iOS managed App Configuration injection, or Android
-Enterprise app-restrictions delivery was available in this workspace. The
-repository therefore does not claim that a profile-delivered
+Enterprise app-restrictions delivery with a non-empty payload was available in
+this workspace. The repository therefore does not claim that a profile-delivered
 com.apple.configuration.managed payload has been accepted by macOS or iOS, or
 that an enterprise-delivered Android restrictions Bundle has reached the app on
 a device. The blocked evidence is recorded under
