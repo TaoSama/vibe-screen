@@ -7,6 +7,11 @@ import org.junit.Test
 
 class ProtocolPcmAudioPlaybackTest {
     @Test
+    fun noConfigurationDiagnosticMatchesProductProtocolCode() {
+        assertEquals("no_audio_configuration", AUDIO_PACKET_NO_CONFIGURATION_CODE)
+    }
+
+    @Test
     fun configureStartsOutputAndStopClosesIt() {
         val factory = FakePcmAudioOutputFactory()
         val player = ProtocolPcmAudioPlayer(factory)

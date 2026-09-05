@@ -140,6 +140,8 @@ internal sealed interface AudioPacketRejectReason {
     data class ProtocolRejected(val reason: AudioRejectReason) : AudioPacketRejectReason
 }
 
+internal const val AUDIO_PACKET_NO_CONFIGURATION_CODE = "no_audio_configuration"
+
 internal interface PcmAudioOutputFactory {
     fun create(format: PcmAudioStreamFormat): PcmAudioOutput
 }
