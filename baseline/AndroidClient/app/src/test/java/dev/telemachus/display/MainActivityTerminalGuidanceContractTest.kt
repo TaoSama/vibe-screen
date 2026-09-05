@@ -301,10 +301,14 @@ class MainActivityTerminalGuidanceContractTest {
             "USB validation guidance must load its message from strings.xml",
             setupUi.contains("ConnectionGuidanceText(R.string.host_address_required)"),
         )
-        assertUsesLiveRegion(inlineGuidance, "connectionErrorTitle", "showUsbConnectionGuidance")
+        assertFalse(
+            "USB guidance should let the grouped diagnostic container announce the full status once",
+            inlineGuidance.contains("LiveRegionTextApplier.apply(binding.connectionErrorTitle"),
+        )
         assertUsesLiveRegionShow(inlineGuidance, "connectionErrorMessage", "showUsbConnectionGuidance")
         assertTrue(inlineGuidance.contains("guidanceStatus(guidance)"))
         assertTrue(inlineGuidance.contains("guidanceMessage(guidance)"))
+        assertTrue(inlineGuidance.contains("binding.connectionErrorContainer.contentDescription = guidanceFullMessage(guidance)"))
         assertTrue(
             "Inline USB guidance should expand details so the failed checklist item is visible",
             inlineGuidance.contains("setConnectionDetailsVisible(true)"),

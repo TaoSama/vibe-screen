@@ -798,7 +798,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="8dp"
+                android:importantForAccessibility="yes"
+                android:padding="@dimen/connection_diagnostics_padding"
                 android:background="@drawable/connection_error_bg"
                 android:layout_marginBottom="12dp"
                 android:accessibilityLiveRegion="polite"
@@ -809,11 +810,11 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/connection_issue"
-                    android:accessibilityLiveRegion="polite"
+                    android:importantForAccessibility="no"
                     android:textColor="@color/warning"
                     android:textSize="13sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="4dp" />
+                    android:layout_marginBottom="@dimen/connection_diagnostics_title_margin_bottom" />
 
                 <TextView
                     android:id="@+id/connectionErrorMessage"

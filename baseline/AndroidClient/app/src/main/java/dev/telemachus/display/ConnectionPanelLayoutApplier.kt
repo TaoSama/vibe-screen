@@ -55,6 +55,22 @@ internal object ConnectionPanelLayoutApplier {
                     gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
                 ),
         )
+        applyDiagnosticsLayout(
+            views = views,
+            layout =
+                ConnectionDiagnosticsLayoutPolicy.resolve(
+                    fontScale = resources.configuration.fontScale,
+                    defaultPaddingPx = resources.getDimensionPixelSize(R.dimen.connection_diagnostics_padding),
+                    largeFontPaddingPx =
+                        resources.getDimensionPixelSize(R.dimen.connection_diagnostics_large_font_padding),
+                    defaultTitleMarginBottomPx =
+                        resources.getDimensionPixelSize(R.dimen.connection_diagnostics_title_margin_bottom),
+                    largeFontTitleMarginBottomPx =
+                        resources.getDimensionPixelSize(
+                            R.dimen.connection_diagnostics_large_font_title_margin_bottom,
+                        ),
+                ),
+        )
         applySubtitleDisclosure(
             resources = resources,
             subtitle = views.subtitle,
@@ -269,6 +285,22 @@ internal object ConnectionPanelLayoutApplier {
         val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         update(params)
         view.layoutParams = params
+    }
+
+    private fun applyDiagnosticsLayout(
+        views: Views,
+        layout: ConnectionDiagnosticsLayoutPolicy.Layout,
+    ) {
+        val container = requiredView(views.actions, R.id.connectionErrorContainer)
+        container.setPaddingRelative(
+            layout.paddingPx,
+            layout.paddingPx,
+            layout.paddingPx,
+            layout.paddingPx,
+        )
+        updateLayout(requiredView(container, R.id.connectionErrorTitle)) { params ->
+            params.bottomMargin = layout.titleMarginBottomPx
+        }
     }
 
     private fun applyColumn(
