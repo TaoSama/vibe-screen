@@ -161,6 +161,7 @@ class ControlBarLayoutPolicyTest {
         ControlBarLayoutPolicy.Geometry(
             horizontalContentPaddingPx = 12,
             selectorMinimumWidthPx = 88,
+            maxWidthPx = 520,
             buttonSizePx = 48,
             actionMarginPx = 4,
             disconnectSeparationPx = 12,
@@ -250,6 +251,7 @@ class ControlBarLayoutPolicyTest {
             ControlBarLayoutPolicy.Geometry(
                 horizontalContentPaddingPx = 34,
                 selectorMinimumWidthPx = 242,
+                maxWidthPx = 1430,
                 buttonSizePx = 132,
                 actionMarginPx = 11,
                 disconnectSeparationPx = 33,
@@ -383,7 +385,7 @@ class ControlBarLayoutPolicyTest {
                 transferProgressVisible = true,
             )
         assertEquals(
-            geometry.transferProgressWidthPx + geometry.actionMarginPx,
+            0,
             withProgress - withFileTransfer,
         )
         assertEquals(
@@ -412,13 +414,29 @@ class ControlBarLayoutPolicyTest {
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
             ControlBarLayoutPolicy.mode(
-                withProgress - 1,
+                withFileTransfer - 1,
                 displaySelectorVisible = false,
                 hostActionsVisible = true,
                 clipboardVisible = true,
                 geometry = geometry,
                 fileTransferVisible = true,
                 transferProgressVisible = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `mode selection respects the constrained control bar max width`() {
+        val inlineMinimum = inlineMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = false)
+        val narrowMaxGeometry = geometry.copy(maxWidthPx = inlineMinimum - 1)
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(
+                availableWidthPx = inlineMinimum + 40,
+                displaySelectorVisible = true,
+                hostActionsVisible = true,
+                clipboardVisible = false,
+                geometry = narrowMaxGeometry,
             ),
         )
     }
@@ -445,6 +463,7 @@ class ControlBarLayoutPolicyTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        @Suppress("UNUSED_PARAMETER")
         transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
@@ -477,6 +496,7 @@ class ControlBarLayoutPolicyTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        @Suppress("UNUSED_PARAMETER")
         transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +

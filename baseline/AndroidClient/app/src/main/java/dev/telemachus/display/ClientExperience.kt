@@ -683,6 +683,7 @@ internal object ControlBarLayoutPolicy {
     data class Geometry(
         val horizontalContentPaddingPx: Int,
         val selectorMinimumWidthPx: Int,
+        val maxWidthPx: Int,
         val buttonSizePx: Int,
         val actionMarginPx: Int,
         val disconnectSeparationPx: Int,
@@ -694,6 +695,7 @@ internal object ControlBarLayoutPolicy {
         init {
             require(horizontalContentPaddingPx >= 0)
             require(selectorMinimumWidthPx > 0)
+            require(maxWidthPx > 0)
             require(buttonSizePx > 0)
             require(actionMarginPx >= 0)
             require(disconnectSeparationPx >= 0)
@@ -707,6 +709,9 @@ internal object ControlBarLayoutPolicy {
             hostActionsVisible: Boolean,
             clipboardVisible: Boolean,
             fileTransferVisible: Boolean = false,
+            // Transfer progress owns its own status row, so it must not inflate
+            // the button-row width that drives mode selection.
+            @Suppress("UNUSED_PARAMETER")
             transferProgressVisible: Boolean = false,
         ): Int {
             val settingsWidth = buttonSizePx + actionMarginPx * 2
@@ -714,8 +719,7 @@ internal object ControlBarLayoutPolicy {
             val hostWidth = if (hostActionsVisible) buttonSizePx + actionMarginPx * 2 else 0
             val clipboardWidth = if (clipboardVisible) buttonSizePx + actionMarginPx * 2 else 0
             val fileTransferWidth = if (fileTransferVisible) buttonSizePx + actionMarginPx * 2 else 0
-            val transferProgressWidth = if (transferProgressVisible) transferProgressWidthPx + actionMarginPx else 0
-            return hostWidth + clipboardWidth + fileTransferWidth + transferProgressWidth + settingsWidth + disconnectWidth
+            return hostWidth + clipboardWidth + fileTransferWidth + settingsWidth + disconnectWidth
         }
     }
 
@@ -735,6 +739,7 @@ internal object ControlBarLayoutPolicy {
         fileTransferVisible: Boolean = false,
         transferProgressVisible: Boolean = false,
     ): Mode {
+        val effectiveAvailableWidthPx = availableWidthPx.coerceAtMost(geometry.maxWidthPx)
         val actionWidthPx =
             geometry.horizontalActionsWidthPx(
                 hostActionsVisible,
@@ -745,7 +750,7 @@ internal object ControlBarLayoutPolicy {
         val statusWidthPx = geometry.statusMinimumWidthPx + geometry.statusGapPx
         if (!displaySelectorVisible) {
             val compactMinimumPx = geometry.horizontalContentPaddingPx + statusWidthPx + actionWidthPx
-            return if (availableWidthPx >= compactMinimumPx) Mode.COMPACT else Mode.COLUMN
+            return if (effectiveAvailableWidthPx >= compactMinimumPx) Mode.COMPACT else Mode.COLUMN
         }
         val inlineMinimumPx =
             geometry.horizontalContentPaddingPx +
@@ -756,8 +761,8 @@ internal object ControlBarLayoutPolicy {
             geometry.horizontalContentPaddingPx +
                 maxOf(geometry.statusMinimumWidthPx, geometry.selectorMinimumWidthPx, actionWidthPx)
         return when {
-            availableWidthPx >= inlineMinimumPx -> Mode.INLINE
-            availableWidthPx >= stackedMinimumPx -> Mode.STACKED
+            effectiveAvailableWidthPx >= inlineMinimumPx -> Mode.INLINE
+            effectiveAvailableWidthPx >= stackedMinimumPx -> Mode.STACKED
             else -> Mode.COLUMN
         }
     }

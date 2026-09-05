@@ -13,6 +13,7 @@ internal data class ControlBarViews(
     val connectionStatus: View,
     val displaySelector: View,
     val actions: LinearLayout,
+    val actionButtons: LinearLayout,
     val hostAction: View,
     val clipboard: View,
     val fileTransfer: View,
@@ -88,6 +89,7 @@ internal object ControlBarLayoutApplier {
             horizontalContentPaddingPx =
                 resources.getDimensionPixelSize(R.dimen.control_bar_content_padding) * 2,
             selectorMinimumWidthPx = resources.getDimensionPixelSize(R.dimen.display_capsule_min_width),
+            maxWidthPx = resources.getDimensionPixelSize(R.dimen.control_bar_max_width),
             buttonSizePx = resources.getDimensionPixelSize(R.dimen.control_bar_button_size),
             actionMarginPx = resources.getDimensionPixelSize(R.dimen.control_bar_button_margin),
             disconnectSeparationPx =
@@ -127,6 +129,7 @@ internal object ControlBarLayoutApplier {
         val statusParams = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
         val selectorParams = views.displaySelector.layoutParams as LinearLayout.LayoutParams
         val actionsParams = views.actions.layoutParams as LinearLayout.LayoutParams
+        val actionButtonsParams = views.actionButtons.layoutParams as LinearLayout.LayoutParams
         views.connectionStatus.minimumWidth = geometry.statusMinimumWidthPx
         views.displaySelector.minimumWidth = geometry.selectorMinimumWidthPx
         when (mode) {
@@ -138,7 +141,9 @@ internal object ControlBarLayoutApplier {
                 selectorParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
                 selectorParams.weight = 0f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                views.actions.orientation = LinearLayout.HORIZONTAL
+                views.actions.orientation = LinearLayout.VERTICAL
+                actionButtonsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                views.actionButtons.orientation = LinearLayout.HORIZONTAL
             }
             ControlBarLayoutPolicy.Mode.INLINE -> {
                 cardParams.width = 0
@@ -148,7 +153,9 @@ internal object ControlBarLayoutApplier {
                 selectorParams.width = 0
                 selectorParams.weight = 1f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                views.actions.orientation = LinearLayout.HORIZONTAL
+                views.actions.orientation = LinearLayout.VERTICAL
+                actionButtonsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                views.actionButtons.orientation = LinearLayout.HORIZONTAL
             }
             ControlBarLayoutPolicy.Mode.STACKED -> {
                 cardParams.width = 0
@@ -158,7 +165,9 @@ internal object ControlBarLayoutApplier {
                 selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 selectorParams.weight = 0f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                views.actions.orientation = LinearLayout.HORIZONTAL
+                views.actions.orientation = LinearLayout.VERTICAL
+                actionButtonsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                views.actionButtons.orientation = LinearLayout.HORIZONTAL
             }
             ControlBarLayoutPolicy.Mode.COLUMN -> {
                 cardParams.width = 0
@@ -169,12 +178,22 @@ internal object ControlBarLayoutApplier {
                 selectorParams.weight = 0f
                 actionsParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 views.actions.orientation = LinearLayout.VERTICAL
+                actionButtonsParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                views.actionButtons.orientation = LinearLayout.VERTICAL
             }
         }
         views.card.layoutParams = cardParams
         views.connectionStatus.layoutParams = statusParams
         views.displaySelector.layoutParams = selectorParams
         views.actions.layoutParams = actionsParams
+        views.actionButtons.layoutParams = actionButtonsParams
+        (views.actionButtons.layoutParams as LinearLayout.LayoutParams).also { params ->
+            params.marginStart = 0
+            params.topMargin = if (transferProgressVisible) geometry.columnActionSpacingPx else 0
+            params.marginEnd = 0
+            params.bottomMargin = 0
+            views.actionButtons.layoutParams = params
+        }
         val statusMargins = ControlBarLayoutPolicy.statusMargins(mode, geometry)
         (views.connectionStatus.layoutParams as LinearLayout.LayoutParams).also { params ->
             params.marginStart = statusMargins.startPx
@@ -211,15 +230,20 @@ internal object ControlBarLayoutApplier {
                 when {
                     !transferProgressVisible -> 0
                     mode == ControlBarLayoutPolicy.Mode.COLUMN -> ViewGroup.LayoutParams.MATCH_PARENT
-                    else -> geometry.transferProgressWidthPx
+                    else -> {
+                        geometry
+                            .horizontalActionsWidthPx(
+                                hostActionsVisible,
+                                clipboardVisible,
+                                fileTransferVisible,
+                                transferProgressVisible = false,
+                            )
+                            .coerceAtLeast(geometry.transferProgressWidthPx)
+                    }
                 }
             params.marginStart = 0
-            params.topMargin = if (mode == ControlBarLayoutPolicy.Mode.COLUMN && transferProgressVisible) {
-                geometry.columnActionSpacingPx
-            } else {
-                0
-            }
-            params.marginEnd = if (mode == ControlBarLayoutPolicy.Mode.COLUMN) 0 else geometry.actionMarginPx
+            params.topMargin = 0
+            params.marginEnd = 0
             params.bottomMargin = 0
             views.fileTransferProgress.layoutParams = params
         }

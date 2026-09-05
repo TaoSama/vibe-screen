@@ -19,7 +19,7 @@
     <dimen name="control_bar_margin_top">20dp</dimen>
     <!-- Cap the bar on wide displays; match constraints let it shrink to the
          current safe window width while preserving fixed action targets. -->
-    <dimen name="control_bar_max_width">352dp</dimen>
+    <dimen name="control_bar_max_width">520dp</dimen>
     <dimen name="control_bar_corner_radius">18dp</dimen>
     <dimen name="control_bar_content_padding">6dp</dimen>
     <dimen name="control_bar_button_size">48dp</dimen>
