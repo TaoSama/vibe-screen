@@ -59,11 +59,27 @@ class MainActivityTransferReadinessContractTest {
             renderTransferReadiness.contains("TransferReadinessPresentationPolicy.presentation("),
         )
         assertTrue(
-            "Readiness live-region updates should announce both status and the explanatory summary",
-            renderTransferReadiness.contains("status.contentDescription =") &&
+            "Readiness live-region updates should keep one aggregated announcement source",
+            renderTransferReadiness.contains("val statusText = getString(presentation.statusResource)") &&
+                renderTransferReadiness.contains("val summaryText = getString(presentation.summaryResource)") &&
+                renderTransferReadiness.contains("val accessibilityText =") &&
+                renderTransferReadiness.contains("val previousAccessibilityText = status.contentDescription?.toString()") &&
+                renderTransferReadiness.contains("status.contentDescription = accessibilityText") &&
+                renderTransferReadiness.contains("LiveRegionTextApplier.apply(status, statusText)") &&
+                renderTransferReadiness.contains("LiveRegionTextApplier.apply(summary, summaryText)") &&
                 renderTransferReadiness.contains("R.string.transfer_readiness_accessibility") &&
-                renderTransferReadiness.contains("getString(presentation.statusResource)") &&
-                renderTransferReadiness.contains("getString(presentation.summaryResource)"),
+                renderTransferReadiness.contains("statusText") &&
+                renderTransferReadiness.contains("summaryText"),
+        )
+        assertTrue(
+            "Summary-only readiness changes should still announce full context through the single live region",
+            renderTransferReadiness.contains("if (!statusChanged && previousAccessibilityText != accessibilityText && status.isShown)") &&
+                renderTransferReadiness.contains("status.announceForAccessibility(accessibilityText)"),
+        )
+        assertFalse(
+            "Readiness rendering should not bypass live-region updates with direct TextView text writes",
+            renderTransferReadiness.contains("status.setText(presentation.statusResource)") ||
+                renderTransferReadiness.contains("summary.setText(presentation.summaryResource)"),
         )
         assertFalse(
             "Opening Settings must not read Android ClipboardManager",
@@ -174,7 +190,12 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(layout.contains("@+id/transferReadinessSummary"))
         assertTrue(layout.contains("@string/transfer_readiness_title"))
         val status = extractXmlElement(layout, "android:id=\"@+id/transferReadinessStatus\"")
+        val summary = extractXmlElement(layout, "android:id=\"@+id/transferReadinessSummary\"")
         assertTrue(status.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertFalse(
+            "Summary should not be a second live region because status already announces the full section",
+            summary.contains("android:accessibilityLiveRegion"),
+        )
         assertBefore(layout, "@+id/deviceHealthSection", "@+id/transferReadinessSection")
         assertBefore(layout, "@+id/transferReadinessSection", "@+id/viewportSection")
         assertTrue(strings.contains("transfer_readiness_waiting_status"))
