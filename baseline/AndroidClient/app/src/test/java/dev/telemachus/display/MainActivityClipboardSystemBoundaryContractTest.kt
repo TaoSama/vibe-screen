@@ -128,6 +128,55 @@ class MainActivityClipboardSystemBoundaryContractTest {
         )
     }
 
+    @Test
+    fun pendingClipboardReceiveOwnsVisibleStatusUntilUserAction() {
+        val source = mainActivitySource()
+        val refreshClipboard = extractMethod(source, "private fun refreshClipboardControl")
+        val refreshClipboardStatus = extractMethod(source, "private fun refreshClipboardStatusText")
+        val refreshFileTransfer = extractMethod(source, "private fun refreshFileTransferControl")
+        val overwriteConfirmation = extractMethod(source, "private fun showClipboardOverwriteConfirmation")
+        val timeout = extractMethod(source, "private fun scheduleClipboardRequestTimeout")
+        val disconnectedUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+
+        assertTrue(
+            "Refreshing clipboard controls should reconcile the shared visible status row",
+            refreshClipboard.contains("refreshClipboardStatusText(client, activeSessionGeneration)"),
+        )
+        assertTrue(
+            "Pending clipboard state should use a short visible row and a full accessibility instruction",
+            refreshClipboardStatus.contains("activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null") &&
+                refreshClipboardStatus.contains("productSessionCoordinator.hasPendingClipboardReceive(client, generation)") &&
+                refreshClipboardStatus.contains("R.string.clipboard_pending_status") &&
+                refreshClipboardStatus.contains("R.string.clipboard_pending_from_mac") &&
+                refreshClipboardStatus.contains("binding.controlFileTransferProgressText.visibility = if (pending) View.VISIBLE else View.GONE"),
+        )
+        assertTrue(
+            "Active file-transfer progress must retain precedence over clipboard status text",
+            refreshFileTransfer.contains("if (activeTransferVisible)") &&
+                refreshFileTransfer.contains("binding.controlFileTransferProgressText.text = progressLabel ?: \"\"") &&
+                refreshFileTransfer.contains("refreshClipboardStatusText(client, activeSessionGeneration)"),
+        )
+        assertTrue(
+            "Clipboard approve/cancel paths must clear the pending status row through full control refresh",
+            overwriteConfirmation.contains("if (approved != null) writeRemoteClipboard(approved)") &&
+                overwriteConfirmation.contains("refreshClipboardControl()") &&
+                !overwriteConfirmation.contains("updateClipboardAccessibilityLabel(client, generation)"),
+        )
+        assertTrue(
+            "Clipboard request timeout should clear approval state, refresh the row, and show a dedicated timeout toast",
+            timeout.contains("CLIPBOARD_REQUEST_TIMEOUT_MS") &&
+                timeout.contains("productSessionCoordinator.cancelClipboardOfferApproval(client, generation, exactChangeId)") &&
+                timeout.contains("refreshClipboardControl()") &&
+                timeout.contains("R.string.clipboard_request_timed_out"),
+        )
+        assertTrue(
+            "Disconnected UI must hide the shared transfer/clipboard status row so pending clipboard text cannot leak",
+            disconnectedUi.contains("binding.controlFileTransferProgressText.visibility = View.GONE") &&
+                disconnectedUi.contains("binding.controlFileTransferProgressText.text = \"\"") &&
+                disconnectedUi.contains("binding.controlFileTransferProgressText.contentDescription = \"\""),
+        )
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {

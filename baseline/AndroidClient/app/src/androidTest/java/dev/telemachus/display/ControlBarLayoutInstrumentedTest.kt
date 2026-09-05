@@ -261,6 +261,33 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
+    fun pendingClipboardStatusUsesSharedRowWithoutShrinkingControls() {
+        val context = configurationContext(screenWidthDp = 320, screenHeightDp = 600, fontScale = 2.0f)
+        val statusText = context.getString(R.string.clipboard_pending_status)
+        val accessibilityText = context.getString(R.string.clipboard_pending_from_mac)
+
+        withLayout(
+            context = context,
+            widthDp = 320,
+            clipboardVisible = true,
+            transferProgressVisible = true,
+            transferProgressText = statusText,
+            transferProgressAccessibilityText = accessibilityText,
+        ) { layout ->
+            assertEquals(View.VISIBLE, layout.views.fileTransferProgress.visibility)
+            assertEquals(statusText, layout.views.fileTransferProgress.text.toString())
+            assertEquals(accessibilityText, layout.views.fileTransferProgress.contentDescription.toString())
+            assertEquals(TextUtils.TruncateAt.MIDDLE, layout.views.fileTransferProgress.ellipsize)
+            assertEquals(1, layout.views.fileTransferProgress.maxLines)
+            assertTrue(
+                "Clipboard status row should not be narrower than the action buttons",
+                layout.views.fileTransferProgress.measuredWidth >= layout.views.actionButtons.measuredWidth - 1,
+            )
+            assertActionGeometry(layout)
+        }
+    }
+
+    @Test
     fun productionBinderClearsStaleDisplayStateWhenSelectionIsUnavailable() {
         withLayout(widthDp = 320) { layout ->
             assertEquals(View.VISIBLE, layout.views.displaySelector.visibility)
@@ -895,6 +922,7 @@ class ControlBarLayoutInstrumentedTest {
         fileTransferVisible: Boolean = false,
         transferProgressVisible: Boolean = false,
         transferProgressText: String = "sample.bin 45%",
+        transferProgressAccessibilityText: String = transferProgressText,
         applyLayout: Boolean = true,
         assertion: (MeasuredLayout) -> Unit,
     ) {
@@ -931,7 +959,7 @@ class ControlBarLayoutInstrumentedTest {
         views.fileTransferProgress.visibility = if (transferProgressVisible) View.VISIBLE else View.GONE
         if (transferProgressVisible) {
             views.fileTransferProgress.text = transferProgressText
-            views.fileTransferProgress.contentDescription = transferProgressText
+            views.fileTransferProgress.contentDescription = transferProgressAccessibilityText
         }
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(

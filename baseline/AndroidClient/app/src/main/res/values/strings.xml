@@ -207,6 +207,7 @@
     <!-- Toast shown when the Mac has no clipboard content available to fetch. -->
     <string name="clipboard_mac_unavailable">No clipboard content available from the Mac.</string>
     <!-- Toast shown when a Mac clipboard offer arrives and is pending explicit approval. -->
+    <string name="clipboard_pending_status">Mac clipboard available</string>
     <string name="clipboard_pending_from_mac">Mac clipboard available. Tap Get from Mac to copy it.</string>
     <string name="clipboard_pending_confirmation">Mac clipboard content needs your approval.</string>
     <string name="clipboard_receive_confirm_title">Copy from Mac?</string>

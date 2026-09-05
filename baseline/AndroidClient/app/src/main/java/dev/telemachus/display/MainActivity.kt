@@ -2387,6 +2387,7 @@ class MainActivity : AppCompatActivity() {
         binding.controlClipboardButton.visibility = if (state.clipboardVisible) View.VISIBLE else View.GONE
         binding.controlClipboardButton.isEnabled = state.clipboardEnabled
         updateClipboardAccessibilityLabel(client, activeSessionGeneration)
+        refreshClipboardStatusText(client, activeSessionGeneration)
         refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
@@ -2403,6 +2404,18 @@ class MainActivity : AppCompatActivity() {
             binding.controlClipboardButton,
             binding.controlClipboardButton.contentDescription,
         )
+    }
+
+    private fun refreshClipboardStatusText(
+        client: StreamClient?,
+        generation: Long,
+    ) {
+        if (activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null) return
+        val pending = client != null && productSessionCoordinator.hasPendingClipboardReceive(client, generation)
+        binding.controlFileTransferProgressText.visibility = if (pending) View.VISIBLE else View.GONE
+        binding.controlFileTransferProgressText.text = if (pending) getString(R.string.clipboard_pending_status) else ""
+        binding.controlFileTransferProgressText.contentDescription =
+            if (pending) getString(R.string.clipboard_pending_from_mac) else ""
     }
 
     /** File transfer is absent from legacy and unnegotiated sessions. */
@@ -2457,9 +2470,13 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getColor(this, if (!activeTransferVisible) R.color.on_surface else R.color.danger),
         )
         TooltipCompat.setTooltipText(binding.controlFileTransferButton, binding.controlFileTransferButton.contentDescription)
-        binding.controlFileTransferProgressText.visibility = if (!activeTransferVisible) View.GONE else View.VISIBLE
-        binding.controlFileTransferProgressText.text = progressLabel ?: ""
-        binding.controlFileTransferProgressText.contentDescription = progressLabel ?: ""
+        if (activeTransferVisible) {
+            binding.controlFileTransferProgressText.visibility = View.VISIBLE
+            binding.controlFileTransferProgressText.text = progressLabel ?: ""
+            binding.controlFileTransferProgressText.contentDescription = progressLabel ?: ""
+        } else {
+            refreshClipboardStatusText(client, activeSessionGeneration)
+        }
         refreshTransferReadinessInSettings()
         applyControlBarLayout()
     }
@@ -3306,11 +3323,11 @@ class MainActivity : AppCompatActivity() {
                     if (!isCurrentSession(client, generation) || !client.canSendClipboard) return@setPositiveButton
                     val approved = approvedContent()
                     if (approved != null) writeRemoteClipboard(approved)
-                    updateClipboardAccessibilityLabel(client, generation)
+                    refreshClipboardControl()
                 }
                 .setNegativeButton(R.string.cancel) { _, _ ->
                     discardContent()
-                    updateClipboardAccessibilityLabel(client, generation)
+                    refreshClipboardControl()
                 },
         )
     }
