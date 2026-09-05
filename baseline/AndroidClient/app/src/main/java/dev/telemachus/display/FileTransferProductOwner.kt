@@ -566,6 +566,7 @@ internal class FileTransferProductOwner(
             offer.transferId.isEmpty -> "invalid_transfer_id"
             !IncomingFileTransferManager.isSafeFileName(offer.fileName) -> "invalid_file_name"
             offer.sha256.size() != SHA256_BYTES -> "invalid_digest"
+            offer.byteLength < 0L -> "invalid_byte_length"
             offer.byteLength > effectivePolicy.maximumFileBytes -> "file_too_large"
             else -> null
         }
