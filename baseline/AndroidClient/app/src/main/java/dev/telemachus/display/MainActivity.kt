@@ -4067,6 +4067,12 @@ class MainActivity : AppCompatActivity() {
         status.setText(presentation.statusResource)
         status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
         summary.setText(presentation.summaryResource)
+        status.contentDescription =
+            getString(
+                R.string.transfer_readiness_accessibility,
+                getString(presentation.statusResource),
+                getString(presentation.summaryResource),
+            )
     }
 
     /** Refit the live settings dialog after an orientation or inset change. */

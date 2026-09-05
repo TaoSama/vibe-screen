@@ -58,6 +58,13 @@ class MainActivityTransferReadinessContractTest {
             "Readiness should be presented by the pure policy",
             renderTransferReadiness.contains("TransferReadinessPresentationPolicy.presentation("),
         )
+        assertTrue(
+            "Readiness live-region updates should announce both status and the explanatory summary",
+            renderTransferReadiness.contains("status.contentDescription =") &&
+                renderTransferReadiness.contains("R.string.transfer_readiness_accessibility") &&
+                renderTransferReadiness.contains("getString(presentation.statusResource)") &&
+                renderTransferReadiness.contains("getString(presentation.summaryResource)"),
+        )
         assertFalse(
             "Opening Settings must not read Android ClipboardManager",
             renderTransferReadiness.contains("ClipboardManager") ||
@@ -166,11 +173,15 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(layout.contains("@+id/transferReadinessStatus"))
         assertTrue(layout.contains("@+id/transferReadinessSummary"))
         assertTrue(layout.contains("@string/transfer_readiness_title"))
+        val status = extractXmlElement(layout, "android:id=\"@+id/transferReadinessStatus\"")
+        assertTrue(status.contains("android:accessibilityLiveRegion=\"polite\""))
         assertBefore(layout, "@+id/deviceHealthSection", "@+id/transferReadinessSection")
         assertBefore(layout, "@+id/transferReadinessSection", "@+id/viewportSection")
         assertTrue(strings.contains("transfer_readiness_waiting_status"))
         assertTrue(strings.contains("Waiting for a compatible Mac session"))
         assertTrue(strings.contains("Clipboard and file controls require Protocol v1"))
+        assertTrue(strings.contains("transfer_readiness_accessibility"))
+        assertTrue(strings.contains("Clipboard &amp; files. %1\$s. %2\$s"))
         assertTrue(strings.contains("transfer_readiness_policy_blocked_status"))
         assertTrue(strings.contains("disabled by this device or Mac session policy"))
         assertFalse(
@@ -307,6 +318,29 @@ class MainActivityTransferReadinessContractTest {
         val firstIndex = source.indexOf(first)
         val secondIndex = source.indexOf(second)
         return firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex
+    }
+
+    private fun extractXmlElement(
+        source: String,
+        idAttribute: String,
+    ): String {
+        val idIndex = source.indexOf(idAttribute)
+        require(idIndex >= 0) { "XML element not found: $idAttribute" }
+        val openStart = source.lastIndexOf('<', idIndex)
+        require(openStart >= 0) { "XML element start not found: $idAttribute" }
+        val elementName =
+            source.substring(openStart + 1)
+                .takeWhile { !it.isWhitespace() && it != '>' }
+        val selfClosingEnd = source.indexOf("/>", idIndex)
+        val closeMarker = "</$elementName>"
+        val closeEnd = source.indexOf(closeMarker, idIndex)
+        val openTagEnd = source.indexOf('>', idIndex)
+        require(openTagEnd >= 0) { "XML element open tag end not found: $idAttribute" }
+        if (selfClosingEnd >= 0 && selfClosingEnd <= openTagEnd) {
+            return source.substring(openStart, selfClosingEnd + 2)
+        }
+        require(closeEnd >= 0) { "XML element end not found: $idAttribute" }
+        return source.substring(openStart, closeEnd + closeMarker.length)
     }
 
     private companion object {
