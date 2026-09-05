@@ -282,6 +282,37 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun intentionalTerminalSessionGuidanceIncludesRecoveryAction() {
+        val strings = stringsXml()
+
+        val macEnded = strings.stringResource("connection_guidance_mac_ended_session_message")
+        assertTrue(macEnded, macEnded.isActionableRecoveryCopy())
+        assertFalse(macEnded, macEnded.equals("Mac ended the session", ignoreCase = true))
+
+        val userDisconnected = strings.stringResource("connection_guidance_user_disconnected_message")
+        assertTrue(userDisconnected, userDisconnected.isActionableRecoveryCopy())
+        assertFalse(userDisconnected, userDisconnected.equals("Disconnected by user", ignoreCase = true))
+    }
+
+    @Test
+    fun overloadedAndDecoderGuidanceAvoidNarrowRecoveryClaims() {
+        val strings = stringsXml()
+
+        val overloaded = strings.stringResource("connection_guidance_input_overloaded_message")
+        assertTrue(overloaded, overloaded.isActionableRecoveryCopy())
+        assertTrue(overloaded, overloaded.contains("input", ignoreCase = true))
+        assertFalse(overloaded, overloaded.contains("touch or peripheral input", ignoreCase = true))
+        assertFalse(overloaded, overloaded.contains("current transfer", ignoreCase = true))
+
+        val decoder = strings.stringResource("connection_guidance_video_decoder_recovery_message")
+        assertTrue(decoder, decoder.isActionableRecoveryCopy())
+        assertTrue(decoder, decoder.contains("same negotiated codec", ignoreCase = true))
+        assertTrue(decoder, decoder.contains("H.264", ignoreCase = true))
+        assertFalse(decoder, decoder.contains("retries with a compatible codec", ignoreCase = true))
+        assertFalse(decoder, decoder.contains("choose a supported", ignoreCase = true))
+    }
+
+    @Test
     fun everySessionFailureKindHasActionableGuidanceWithoutRawDetails() {
         val rawDetail = "private-host.internal:65432 invalid_media_header host stacktrace"
         val contexts =
@@ -627,6 +658,11 @@ class ConnectionGuidanceTest {
         }
         error("String resource not found: $name")
     }
+
+    private fun String.isActionableRecoveryCopy(): Boolean =
+        listOf("reconnect", "retry", "update", "start", "open", "pair", "wait").any { action ->
+            contains(action, ignoreCase = true)
+        }
 
     private companion object {
         data class TransportFailureCase(
