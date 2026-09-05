@@ -4064,15 +4064,22 @@ class MainActivity : AppCompatActivity() {
                 clipboardPolicyAllowed = managedClipboardAllowed,
                 fileTransferPolicyAllowed = managedFileTransferAllowed,
             )
-        status.setText(presentation.statusResource)
-        status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
-        summary.setText(presentation.summaryResource)
-        status.contentDescription =
+        val statusText = getString(presentation.statusResource)
+        val summaryText = getString(presentation.summaryResource)
+        val accessibilityText =
             getString(
                 R.string.transfer_readiness_accessibility,
-                getString(presentation.statusResource),
-                getString(presentation.summaryResource),
+                statusText,
+                summaryText,
             )
+        val previousAccessibilityText = status.contentDescription?.toString()
+        status.contentDescription = accessibilityText
+        val statusChanged = LiveRegionTextApplier.apply(status, statusText)
+        status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
+        LiveRegionTextApplier.apply(summary, summaryText)
+        if (!statusChanged && previousAccessibilityText != accessibilityText && status.isShown) {
+            status.announceForAccessibility(accessibilityText)
+        }
     }
 
     /** Refit the live settings dialog after an orientation or inset change. */

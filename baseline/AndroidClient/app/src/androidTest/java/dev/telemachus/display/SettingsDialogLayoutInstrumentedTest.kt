@@ -183,6 +183,17 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun transferReadinessUsesSinglePoliteLiveRegion() {
+        withLayout(screenWidthDp = 360) { layout ->
+            val status = layout.root.findViewById<View>(R.id.transferReadinessStatus)
+            val summary = layout.root.findViewById<View>(R.id.transferReadinessSummary)
+
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, status.accessibilityLiveRegion)
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, summary.accessibilityLiveRegion)
+        }
+    }
+
+    @Test
     fun capturesSustainedUseStatusEvidenceImages() {
         listOf("portrait" to (600 to 960), "landscape" to (960 to 600)).forEach { (name, dimensions) ->
             val (widthDp, heightDp) = dimensions
