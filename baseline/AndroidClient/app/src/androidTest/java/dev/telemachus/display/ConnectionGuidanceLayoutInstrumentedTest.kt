@@ -195,6 +195,45 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun narrowPortraitKeepsInternetProfileActionsReadableAtLargeFontScale() {
+        withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            listOf(layout.internetScanProfileButton, layout.internetImportProfileButton).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+        }
+    }
+
+    @Test
+    fun defaultFontKeepsInternetProfileActionsSideBySide() {
+        withLayout(widthDp = 361, heightDp = 800) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            listOf(layout.internetScanProfileButton, layout.internetImportProfileButton).forEach { button ->
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+        }
+    }
+
+    @Test
     fun narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale() {
         withLayout(widthDp = 361, heightDp = 800) { layout ->
             layout.measureAndLayout()
@@ -304,6 +343,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val usbModeButton = root.findViewById<TextView>(R.id.modeUSB)
         val wirelessModeButton = root.findViewById<TextView>(R.id.modeWireless)
         val internetModeButton = root.findViewById<TextView>(R.id.modeInternet)
+        val internetProfileActions = root.findViewById<LinearLayout>(R.id.internetProfileActions)
+        val internetScanProfileButton = root.findViewById<TextView>(R.id.internetScanProfileButton)
+        val internetImportProfileButton = root.findViewById<TextView>(R.id.internetImportProfileButton)
         private val scrollView = root.findViewById<NestedScrollView>(R.id.connectionScroll)
         private val icon = root.findViewById<View>(R.id.connectionIcon)
         private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
@@ -469,6 +511,26 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(dp(4), margins(internetConnect).topMargin)
         }
 
+        fun assertInternetProfileActionsStacked(expectedGapDp: Int) {
+            assertEquals(LinearLayout.VERTICAL, internetProfileActions.orientation)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, internetScanProfileButton.layoutParams.width)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, internetImportProfileButton.layoutParams.width)
+            assertEquals(0f, linearMargins(internetScanProfileButton).weight, 0f)
+            assertEquals(0f, linearMargins(internetImportProfileButton).weight, 0f)
+            assertEquals(0, linearMargins(internetImportProfileButton).marginStart)
+            assertEquals(dp(expectedGapDp), linearMargins(internetImportProfileButton).topMargin)
+        }
+
+        fun assertInternetProfileActionsHorizontal(expectedGapDp: Int) {
+            assertEquals(LinearLayout.HORIZONTAL, internetProfileActions.orientation)
+            assertEquals(0, internetScanProfileButton.layoutParams.width)
+            assertEquals(0, internetImportProfileButton.layoutParams.width)
+            assertEquals(1f, linearMargins(internetScanProfileButton).weight, 0f)
+            assertEquals(1f, linearMargins(internetImportProfileButton).weight, 0f)
+            assertEquals(dp(expectedGapDp), linearMargins(internetImportProfileButton).marginStart)
+            assertEquals(0, linearMargins(internetImportProfileButton).topMargin)
+        }
+
         fun assertPortraitDimensionsInflated() {
             assertEquals(dp(32), content.paddingTop)
             assertEquals(dp(28), content.paddingBottom)
@@ -522,6 +584,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
 
         private fun margins(view: View): ViewGroup.MarginLayoutParams =
             view.layoutParams as ViewGroup.MarginLayoutParams
+
+        private fun linearMargins(view: View): LinearLayout.LayoutParams =
+            view.layoutParams as LinearLayout.LayoutParams
 
         private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
     }

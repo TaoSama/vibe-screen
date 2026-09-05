@@ -1302,6 +1302,7 @@
                 </com.google.android.material.button.MaterialButtonToggleGroup>
 
                 <LinearLayout
+                    android:id="@+id/internetProfileActions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
@@ -1310,28 +1311,54 @@
                         android:id="@+id/internetScanProfileButton"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:maxLines="1"
+                        android:ellipsize="none"
+                        android:gravity="center"
+                        android:letterSpacing="0"
+                        android:maxLines="2"
+                        android:minHeight="48dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="0dp"
+                        android:paddingRight="0dp"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
+                        android:singleLine="false"
                         android:text="@string/internet_scan_profile"
+                        android:textAllCaps="false"
                         android:textColor="@color/internet_action_text"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:textAllCaps="false" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/internetImportProfileButton"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:layout_weight="1"
-                        android:maxLines="1"
+                        android:ellipsize="none"
+                        android:gravity="center"
+                        android:letterSpacing="0"
+                        android:maxLines="2"
+                        android:minHeight="48dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="0dp"
+                        android:paddingRight="0dp"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
+                        android:singleLine="false"
                         android:text="@string/internet_import_profile"
+                        android:textAllCaps="false"
                         android:textColor="@color/internet_action_text"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:textAllCaps="false" />
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton

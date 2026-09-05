@@ -1233,6 +1233,52 @@ internal object ConnectionModeToggleLayoutPolicy {
         }
 }
 
+/**
+ * Gives Internet profile import/scan actions enough readable width when the
+ * disconnected panel is already in the single-column large-text layout.
+ */
+internal object InternetProfileActionsLayoutPolicy {
+    enum class Orientation {
+        VERTICAL,
+        HORIZONTAL,
+    }
+
+    data class Layout(
+        val orientation: Orientation,
+        val buttonWidthMatchParent: Boolean,
+        val buttonWeight: Float,
+        val importMarginStartPx: Int,
+        val importMarginTopPx: Int,
+    )
+
+    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionModeToggleLayoutPolicy.STACKED_FONT_SCALE_THRESHOLD
+
+    fun resolve(
+        stackedContent: Boolean,
+        fontScale: Float,
+        gapPx: Int,
+    ): Layout {
+        val resolvedGapPx = gapPx.coerceAtLeast(0)
+        return if (stackedContent && fontScale >= STACKED_FONT_SCALE_THRESHOLD) {
+            Layout(
+                orientation = Orientation.VERTICAL,
+                buttonWidthMatchParent = true,
+                buttonWeight = 0f,
+                importMarginStartPx = 0,
+                importMarginTopPx = resolvedGapPx,
+            )
+        } else {
+            Layout(
+                orientation = Orientation.HORIZONTAL,
+                buttonWidthMatchParent = false,
+                buttonWeight = 1f,
+                importMarginStartPx = resolvedGapPx,
+                importMarginTopPx = 0,
+            )
+        }
+    }
+}
+
 internal object UsbConnectActionPolicy {
     enum class Action {
         CONNECT,
