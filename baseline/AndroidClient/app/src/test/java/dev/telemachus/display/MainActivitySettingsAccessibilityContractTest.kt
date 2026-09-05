@@ -10,6 +10,7 @@ class MainActivitySettingsAccessibilityContractTest {
     fun unavailableVideoAndGestureControlsUseSharedAccessibilityApplier() {
         val source = mainActivitySource()
         val layout = settingsLayoutSource()
+        val strings = stringsSource()
         val videoControls = extractMethod(source, "private fun setupVideoControls")
         val gestureControls = extractMethod(source, "private fun setupGestureShortcutControls")
         val applier = settingsUnavailableControlsAccessibilityApplierSource()
@@ -23,6 +24,14 @@ class MainActivitySettingsAccessibilityContractTest {
             "Gesture controls should route unavailable semantics through the shared Settings applier",
             gestureControls.contains("SettingsUnavailableControlsAccessibilityApplier.apply(") &&
                 gestureControls.contains("unavailableContent = gestureStaticContent + listOf(swipeUpGroup, swipeDownGroup)"),
+        )
+        assertTrue(
+            "Gesture unavailable copy should explain managed-policy denial instead of only compatibility gaps",
+            gestureControls.contains("GestureShortcutAvailabilityPresentationPolicy.unavailableMessage(") &&
+                gestureControls.contains("customGesturesPolicyAllowed = managedCustomGesturesAllowed") &&
+                gestureControls.contains("hostActionsPolicyAllowed = managedHostActionsAllowed") &&
+                strings.contains("gesture_shortcuts_policy_disabled") &&
+                strings.contains("Gesture shortcuts are disabled by this device or Mac session policy"),
         )
         assertTrue(
             "Video unavailable state should hide labels, values, and controls from accessibility traversal",
@@ -77,9 +86,85 @@ class MainActivitySettingsAccessibilityContractTest {
         }
     }
 
+    @Test
+    fun controlBarManagedPolicyDenialKeepsDisabledControlsExplainable() {
+        val source = mainActivitySource()
+        val strings = stringsSource()
+        val populateHostActions = extractMethod(source, "private fun populateHostActions")
+        val refreshClipboardControl = extractMethod(source, "private fun refreshClipboardControl")
+        val updateClipboardLabel = extractMethod(source, "private fun updateClipboardAccessibilityLabel")
+        val refreshFileTransferControl = extractMethod(source, "private fun refreshFileTransferControl")
+        val applyControlButtonLabel = extractMethod(source, "private fun applyControlButtonLabel")
+        val activateSession = extractMethod(source, "private fun activateSession")
+        val connectInternet = extractMethod(source, "private fun connectInternet")
+        val disconnectInternet = extractMethod(source, "private fun disconnectInternet")
+        val applyDisconnectedSessionUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+        val displayCallback = extractCallback(source, "callbackClient.onDisplaysAvailable = displays@")
+
+        assertTrue(
+            "Host actions should use the managed-policy presentation instead of disappearing without explanation",
+            populateHostActions.contains("ManagedPolicyControlAvailabilityPolicy.presentation(") &&
+                populateHostActions.contains("capabilityAvailable = controlBarPolicySurface.hostActions") &&
+                populateHostActions.contains("policyAllowed = managedHostActionsAllowed") &&
+                populateHostActions.contains("R.string.control_host_actions_policy_disabled") &&
+                populateHostActions.contains("applyControlButtonLabel(binding.controlHostActionsButton, hostActionsPresentation.labelResource)"),
+        )
+        assertTrue(
+            "Clipboard policy denial should keep one disabled button with policy-specific a11y text",
+            refreshClipboardControl.contains("ManagedPolicyControlAvailabilityPolicy.presentation(") &&
+                refreshClipboardControl.contains("capabilityAvailable = controlBarPolicySurface.clipboard") &&
+                refreshClipboardControl.contains("policyAllowed = managedClipboardAllowed") &&
+                refreshClipboardControl.contains("R.string.control_clipboard_policy_disabled") &&
+                updateClipboardLabel.contains("if (!managedClipboardAllowed)") &&
+                updateClipboardLabel.contains("applyControlButtonLabel(binding.controlClipboardButton, R.string.control_clipboard_policy_disabled)"),
+        )
+        assertTrue(
+            "File-transfer policy denial should keep one disabled button with policy-specific a11y text",
+            refreshFileTransferControl.contains("ManagedPolicyControlAvailabilityPolicy.presentation(") &&
+                refreshFileTransferControl.contains("capabilityAvailable =") &&
+                refreshFileTransferControl.contains("controlBarPolicySurface.fileTransfer || internetFileTransfer") &&
+                refreshFileTransferControl.contains("policyAllowed = managedFileTransferAllowed") &&
+                refreshFileTransferControl.contains("R.string.control_file_transfer_policy_disabled") &&
+                refreshFileTransferControl.contains("getString(fileTransferPresentation.labelResource)") &&
+                refreshFileTransferControl.contains("TooltipCompat.setTooltipText(binding.controlFileTransferButton, binding.controlFileTransferButton.contentDescription)"),
+        )
+        assertTrue(
+            "Shared control-label helper should update both screen-reader text and long-press tooltip",
+            applyControlButtonLabel.contains("button.contentDescription = label") &&
+                applyControlButtonLabel.contains("TooltipCompat.setTooltipText(button, label)"),
+        )
+        assertTrue(
+            "Control policy surface should reset on a new local session and preserve discovered controls for later policy updates",
+            activateSession.contains("controlBarPolicySurface = ManagedPolicyControlSurface()") &&
+                connectInternet.contains("controlBarPolicySurface = ManagedPolicyControlSurface()") &&
+                disconnectInternet.contains("controlBarPolicySurface = ManagedPolicyControlSurface()") &&
+                applyDisconnectedSessionUi.contains("controlBarPolicySurface = ManagedPolicyControlSurface()") &&
+                refreshFileTransferControl.contains("val internetFileTransferSurface = controlBarPolicySurface.fileTransfer || internetFileTransfer") &&
+                refreshFileTransferControl.contains("controlBarPolicySurface.copy(fileTransfer = internetFileTransfer || (!managedFileTransferAllowed && internetFileTransferSurface))") &&
+                populateHostActions.contains("controlBarPolicySurface = controlBarPolicySurface.mergeWithCurrentHostActions(") &&
+                displayCallback.contains("controlBarPolicySurface = controlBarPolicySurface.mergeWithCurrentHostActions(") &&
+                populateHostActions.contains("hostActionsPolicyAllowed = managedHostActionsAllowed") &&
+                displayCallback.contains("hostActionsPolicyAllowed = managedHostActionsAllowed") &&
+                displayCallback.contains("callbackClient.managedPolicyControlSurfaceCapabilities()") &&
+                displayCallback.contains("availableHostActions") &&
+                populateHostActions.contains("client.managedPolicyControlSurfaceCapabilities()") &&
+                populateHostActions.contains("actions"),
+        )
+        listOf(
+            "control_host_actions_policy_disabled" to "Window actions disabled by policy",
+            "control_clipboard_policy_disabled" to "Clipboard disabled by policy",
+            "control_file_transfer_policy_disabled" to "File transfer disabled by policy",
+        ).forEach { (name, copy) ->
+            assertTrue(strings.contains(name))
+            assertTrue(strings.contains(copy))
+        }
+    }
+
     private fun mainActivitySource(): String = sourceFile(MAIN_ACTIVITY_PATHS).readText()
 
     private fun settingsLayoutSource(): String = sourceFile(SETTINGS_LAYOUT_PATHS).readText()
+
+    private fun stringsSource(): String = sourceFile(STRINGS_PATHS).readText()
 
     private fun settingsUnavailableControlsAccessibilityApplierSource(): String =
         sourceFile(SETTINGS_UNAVAILABLE_CONTROLS_ACCESSIBILITY_APPLIER_PATHS).readText()
@@ -117,6 +202,11 @@ class MainActivitySettingsAccessibilityContractTest {
         error("Closing brace not found: $signature")
     }
 
+    private fun extractCallback(
+        source: String,
+        signature: String,
+    ): String = extractMethod(source, signature)
+
     private fun extractXmlElement(
         source: String,
         idAttribute: String,
@@ -140,6 +230,11 @@ class MainActivitySettingsAccessibilityContractTest {
             listOf(
                 "app/src/main/res/layout/dialog_settings.xml",
                 "baseline/AndroidClient/app/src/main/res/layout/dialog_settings.xml",
+            )
+        val STRINGS_PATHS =
+            listOf(
+                "app/src/main/res/values/strings.xml",
+                "baseline/AndroidClient/app/src/main/res/values/strings.xml",
             )
         val SETTINGS_UNAVAILABLE_CONTROLS_ACCESSIBILITY_APPLIER_PATHS =
             listOf(

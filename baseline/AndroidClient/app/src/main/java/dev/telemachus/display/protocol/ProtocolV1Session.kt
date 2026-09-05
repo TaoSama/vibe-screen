@@ -679,6 +679,11 @@ internal class ProtocolV1Session(
         @Synchronized
         get() = negotiatedCapabilities
 
+    /** Capabilities agreed before effective managed-policy filtering; UI only uses this for disabled explanations. */
+    val policyControlSurface: Set<Capability>
+        @Synchronized
+        get() = baseNegotiatedCapabilities
+
     /** Host displays discovered during negotiation, empty until the list arrives. */
     val displays: List<DisplayOption>
         @Synchronized
