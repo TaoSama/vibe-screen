@@ -344,7 +344,10 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
     fun requestOutgoingFileTransfer(
         client: ClientIdentity,
         generation: Long,
-    ): Boolean = fileTransferControlsEnabled(client, generation) && pendingIncomingFileOffer == null
+    ): Boolean =
+        fileTransferControlsEnabled(client, generation) &&
+            pendingIncomingFileOffer == null &&
+            pendingOutgoingFileTransfer == null
 
     fun stageOutgoingFileTransfer(
         client: ClientIdentity,

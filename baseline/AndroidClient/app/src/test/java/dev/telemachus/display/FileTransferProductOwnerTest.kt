@@ -864,6 +864,43 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `incoming chunks after peer cancel fail closed without reactivating transfer`() {
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(store = store)
+        owner.activateSession()
+        val payload = "late-after-cancel".toByteArray()
+        val offer = offer(id = 99, payload = payload)
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+
+        val cancel = owner.handleFileCancel(
+            FileTransferCancel.newBuilder()
+                .setTransferId(offer.transferId)
+                .setReasonCode("host_cancelled")
+                .build(),
+        )
+        val lateChunk = owner.receiveIncomingChunk(
+            chunk(offer, payload = payload, final = true),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+
+        assertEquals(FileTransferProductOwner.TransferResult(false, "host_cancelled"), cancel)
+        assertTrue(lateChunk is FileTransferProductOwner.IncomingChunkResult.Rejected)
+        lateChunk as FileTransferProductOwner.IncomingChunkResult.Rejected
+        assertEquals("unknown_transfer", lateChunk.reasonCode)
+        assertEquals(offer.transferId, lateChunk.transferId)
+        assertEquals(listOf(offer.transferId), store.cancelledTransfers)
+        assertEquals(0, owner.activeIncomingTransferCount())
+    }
+
+    @Test
     fun `incoming progress and cancellation notifications forward transfer identity and reason`() {
         val owner = owner()
         val transferId = ByteString.copyFromUtf8("incoming-callback")
