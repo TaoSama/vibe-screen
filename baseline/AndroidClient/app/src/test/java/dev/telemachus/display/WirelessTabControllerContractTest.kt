@@ -12,6 +12,8 @@ class WirelessTabControllerContractTest {
         val bind = extractMethod(source, "fun bind")
         val onScanResult = extractMethod(source, "fun onScanResult")
         val onConnectError = extractMethod(source, "fun onConnectError")
+        val showConnectionGuidance = extractMethod(source, "internal fun showConnectionGuidance")
+        val showRepairMessage = extractMethod(source, "private fun showRepairMessage")
 
         assertFalse(onConnectError.contains("⚠"))
         assertFalse(onConnectError.contains("Couldn't"))
@@ -28,6 +30,13 @@ class WirelessTabControllerContractTest {
         assertTrue(onConnectError.contains("R.string.wireless_error_token_rejected_uncached"))
         assertTrue(onConnectError.contains("R.string.wireless_error_title_connection_error"))
         assertTrue(onConnectError.contains("R.string.wireless_error_protocol_message"))
+        assertTrue(onConnectError.contains("showRepairMessage("))
+        assertTrue(showConnectionGuidance.contains("showRepairMessage("))
+        assertTrue(showRepairMessage.contains("LiveRegionTextApplier.apply(views.repairTitle, title)"))
+        assertTrue(showRepairMessage.contains("LiveRegionTextApplier.apply(views.repairMessage, message)"))
+        assertTrue(showRepairMessage.contains("views.repairMessage.contentDescription"))
+        assertTrue(showRepairMessage.contains("R.string.connection_guidance_full_message"))
+        assertFalse(showRepairMessage.contains("= \"\$title. \$message\""))
     }
 
     @Test

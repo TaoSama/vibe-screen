@@ -161,41 +161,40 @@ class WirelessTabController(
         val cached = storage.load()
         when (error) {
             is StreamClient.WirelessConnectError.NetworkUnreachable -> {
-                LiveRegionTextApplier.apply(views.repairTitle, activity.getString(R.string.wireless_error_title_couldnt_reach_mac))
-                LiveRegionTextApplier.apply(
-                    views.repairMessage,
-                    if (cached != null) {
-                        activity.getString(
-                            R.string.wireless_error_network_cached,
-                            cached.macName,
-                            cached.host,
-                            cached.port,
-                        )
-                    } else {
-                        activity.getString(R.string.wireless_error_network_uncached)
-                    },
+                showRepairMessage(
+                    title = activity.getString(R.string.wireless_error_title_couldnt_reach_mac),
+                    message =
+                        if (cached != null) {
+                            activity.getString(
+                                R.string.wireless_error_network_cached,
+                                cached.macName,
+                                cached.host,
+                                cached.port,
+                            )
+                        } else {
+                            activity.getString(R.string.wireless_error_network_uncached)
+                        },
                 )
                 transition(State.REPAIR_NEEDED)
             }
 
             is StreamClient.WirelessConnectError.TokenRejected -> {
-                LiveRegionTextApplier.apply(views.repairTitle, activity.getString(R.string.wireless_error_title_repair_required))
-                LiveRegionTextApplier.apply(
-                    views.repairMessage,
-                    if (cached != null) {
-                        activity.getString(R.string.wireless_error_token_rejected_cached, cached.macName)
-                    } else {
-                        activity.getString(R.string.wireless_error_token_rejected_uncached)
-                    },
+                showRepairMessage(
+                    title = activity.getString(R.string.wireless_error_title_repair_required),
+                    message =
+                        if (cached != null) {
+                            activity.getString(R.string.wireless_error_token_rejected_cached, cached.macName)
+                        } else {
+                            activity.getString(R.string.wireless_error_token_rejected_uncached)
+                        },
                 )
                 transition(State.REPAIR_NEEDED)
             }
 
             is StreamClient.WirelessConnectError.ProtocolError -> {
-                LiveRegionTextApplier.apply(views.repairTitle, activity.getString(R.string.wireless_error_title_connection_error))
-                LiveRegionTextApplier.apply(
-                    views.repairMessage,
-                    activity.getString(R.string.wireless_error_protocol_message),
+                showRepairMessage(
+                    title = activity.getString(R.string.wireless_error_title_connection_error),
+                    message = activity.getString(R.string.wireless_error_protocol_message),
                 )
                 transition(State.REPAIR_NEEDED)
             }
@@ -203,15 +202,25 @@ class WirelessTabController(
     }
 
     internal fun showConnectionGuidance(guidance: ConnectionGuidance) {
-        LiveRegionTextApplier.apply(
-            views.repairTitle,
-            ConnectionGuidanceTextFormatter.format(activity.resources, guidance.status),
-        )
-        LiveRegionTextApplier.apply(
-            views.repairMessage,
-            ConnectionGuidanceTextFormatter.format(activity.resources, guidance.message),
+        showRepairMessage(
+            title = ConnectionGuidanceTextFormatter.format(activity.resources, guidance.status),
+            message = ConnectionGuidanceTextFormatter.format(activity.resources, guidance.message),
         )
         transition(State.REPAIR_NEEDED)
+    }
+
+    private fun showRepairMessage(
+        title: CharSequence,
+        message: CharSequence,
+    ) {
+        LiveRegionTextApplier.apply(views.repairTitle, title)
+        LiveRegionTextApplier.apply(views.repairMessage, message)
+        views.repairMessage.contentDescription =
+            activity.getString(
+                R.string.connection_guidance_full_message,
+                title.toString(),
+                message.toString(),
+            )
     }
 
     private fun showConnecting(

@@ -1160,6 +1160,7 @@
                         android:text="@string/scan_fresh_qr"
                         android:textColor="@color/on_surface_subtle"
                         android:textSize="13sp"
+                        android:accessibilityLiveRegion="polite"
                         android:gravity="center"
                         android:layout_marginBottom="16dp" />
 
