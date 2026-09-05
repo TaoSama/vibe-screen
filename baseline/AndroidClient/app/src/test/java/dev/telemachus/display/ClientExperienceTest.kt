@@ -269,6 +269,70 @@ class ClientExperienceTest {
     }
 
     @Test
+    fun `transfer readiness reports wake and fixed host policy blocks while disconnected`() {
+        val fixedHostBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = false,
+                clipboardReady = false,
+                fileTransferReady = false,
+                clipboardPolicyAllowed = false,
+                fileTransferPolicyAllowed = false,
+                wakeHostPolicyAllowed = false,
+                fixedHostPolicyAllowed = false,
+            )
+        val wakeBlocked =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = false,
+                clipboardReady = false,
+                fileTransferReady = false,
+                wakeHostPolicyAllowed = false,
+            )
+
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, fixedHostBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_fixed_host_policy_blocked_summary, fixedHostBlocked.summaryResource)
+        assertEquals(R.color.warning, fixedHostBlocked.statusColorResource)
+        assertEquals(R.string.transfer_readiness_policy_blocked_status, wakeBlocked.statusResource)
+        assertEquals(R.string.transfer_readiness_wake_policy_blocked_summary, wakeBlocked.summaryResource)
+        assertEquals(R.color.warning, wakeBlocked.statusColorResource)
+    }
+
+    @Test
+    fun `transfer readiness keeps negotiated transfer state ahead of wake and fixed host policy hints`() {
+        val ready =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = true,
+                fileTransferReady = true,
+                wakeHostPolicyAllowed = false,
+                fixedHostPolicyAllowed = false,
+            )
+        val clipboardOnly =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = true,
+                fileTransferReady = false,
+                wakeHostPolicyAllowed = false,
+                fixedHostPolicyAllowed = false,
+            )
+        val filesOnly =
+            TransferReadinessPresentationPolicy.presentation(
+                connected = true,
+                clipboardReady = false,
+                fileTransferReady = true,
+                wakeHostPolicyAllowed = false,
+                fixedHostPolicyAllowed = false,
+            )
+
+        assertEquals(R.string.transfer_readiness_ready_status, ready.statusResource)
+        assertEquals(R.string.transfer_readiness_ready_summary, ready.summaryResource)
+        assertEquals(R.color.accent, ready.statusColorResource)
+        assertEquals(R.string.transfer_readiness_clipboard_only_status, clipboardOnly.statusResource)
+        assertEquals(R.string.transfer_readiness_clipboard_only_summary, clipboardOnly.summaryResource)
+        assertEquals(R.string.transfer_readiness_files_only_status, filesOnly.statusResource)
+        assertEquals(R.string.transfer_readiness_files_only_summary, filesOnly.summaryResource)
+    }
+
+    @Test
     fun `saved enum parsing falls back safely`() {
         assertEquals(VideoScaleMode.FIT, VideoScaleMode.fromName("unknown"))
         assertEquals(ClientRotation.FOLLOW_HOST, ClientRotation.fromName(null))

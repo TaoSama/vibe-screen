@@ -158,8 +158,17 @@ internal object TransferReadinessPresentationPolicy {
         fileTransferReady: Boolean,
         clipboardPolicyAllowed: Boolean = true,
         fileTransferPolicyAllowed: Boolean = true,
+        wakeHostPolicyAllowed: Boolean = true,
+        fixedHostPolicyAllowed: Boolean = true,
     ): Presentation =
         when {
+            !connected ->
+                disconnectedPresentation(
+                    clipboardPolicyAllowed = clipboardPolicyAllowed,
+                    fileTransferPolicyAllowed = fileTransferPolicyAllowed,
+                    wakeHostPolicyAllowed = wakeHostPolicyAllowed,
+                    fixedHostPolicyAllowed = fixedHostPolicyAllowed,
+                )
             !clipboardPolicyAllowed && !fileTransferPolicyAllowed ->
                 Presentation(
                     statusResource = R.string.transfer_readiness_policy_blocked_status,
@@ -190,12 +199,6 @@ internal object TransferReadinessPresentationPolicy {
                     summaryResource = R.string.transfer_readiness_file_policy_waiting_summary,
                     statusColorResource = R.color.warning,
                 )
-            !connected ->
-                Presentation(
-                    statusResource = R.string.transfer_readiness_waiting_status,
-                    summaryResource = R.string.transfer_readiness_waiting_summary,
-                    statusColorResource = R.color.on_surface_muted,
-                )
             clipboardReady && fileTransferReady ->
                 Presentation(
                     statusResource = R.string.transfer_readiness_ready_status,
@@ -219,6 +222,51 @@ internal object TransferReadinessPresentationPolicy {
                     statusResource = R.string.transfer_readiness_unavailable_status,
                     summaryResource = R.string.transfer_readiness_unavailable_summary,
                     statusColorResource = R.color.warning,
+                )
+        }
+
+    private fun disconnectedPresentation(
+        clipboardPolicyAllowed: Boolean,
+        fileTransferPolicyAllowed: Boolean,
+        wakeHostPolicyAllowed: Boolean,
+        fixedHostPolicyAllowed: Boolean,
+    ): Presentation =
+        when {
+            !fixedHostPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_fixed_host_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !wakeHostPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_wake_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !clipboardPolicyAllowed && !fileTransferPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !clipboardPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_clipboard_policy_waiting_summary,
+                    statusColorResource = R.color.warning,
+                )
+            !fileTransferPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_policy_blocked_status,
+                    summaryResource = R.string.transfer_readiness_file_policy_waiting_summary,
+                    statusColorResource = R.color.warning,
+                )
+            else ->
+                Presentation(
+                    statusResource = R.string.transfer_readiness_waiting_status,
+                    summaryResource = R.string.transfer_readiness_waiting_summary,
+                    statusColorResource = R.color.on_surface_muted,
                 )
         }
 }

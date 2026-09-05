@@ -278,8 +278,12 @@ class MainActivity : AppCompatActivity() {
     private var localHostActionsAllowed = true
     private var managedClipboardAllowed = true
     private var managedFileTransferAllowed = true
+    private var managedWakeHostAllowed = true
+    private var managedFixedHostAllowed = true
     private var localClipboardAllowed = true
     private var localFileTransferAllowed = true
+    private var localWakeHostAllowed = true
+    private var localFixedHostAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
@@ -4082,6 +4086,8 @@ class MainActivity : AppCompatActivity() {
                 fileTransferReady = fileTransferReady,
                 clipboardPolicyAllowed = managedClipboardAllowed,
                 fileTransferPolicyAllowed = managedFileTransferAllowed,
+                wakeHostPolicyAllowed = managedWakeHostAllowed,
+                fixedHostPolicyAllowed = managedFixedHostAllowed,
             )
         val statusText = getString(presentation.statusResource)
         val summaryText = getString(presentation.summaryResource)
@@ -4160,13 +4166,23 @@ class MainActivity : AppCompatActivity() {
     private fun applyLocalManagedPolicySnapshot(policy: ProtocolV1Session.ManagedPolicy) {
         localClipboardAllowed = policy.clipboardAllowed
         localFileTransferAllowed = policy.fileTransferAllowed
+        localWakeHostAllowed = policy.wakeAllowed
+        localFixedHostAllowed = fixedHostPolicyAllowsNoHost(policy)
         localCustomGesturesAllowed = policy.customGesturesAllowed
         localHostActionsAllowed = policy.hostActionsAllowed
         managedClipboardAllowed = localClipboardAllowed
         managedFileTransferAllowed = localFileTransferAllowed
+        managedWakeHostAllowed = localWakeHostAllowed
+        managedFixedHostAllowed = localFixedHostAllowed
         managedCustomGesturesAllowed = localCustomGesturesAllowed
         managedHostActionsAllowed = localHostActionsAllowed
     }
+
+    private fun fixedHostPolicyAllowsNoHost(policy: ProtocolV1Session.ManagedPolicy): Boolean =
+        ManagedPolicyUiAvailabilityPolicy.fixedHostPolicyAllowsNoHost(
+            allowedHostsRestricted = policy.allowedHostsRestricted,
+            deniedHosts = policy.deniedHosts,
+        )
 
     private fun refreshLocalManagedPolicySnapshot() {
         applyLocalManagedPolicySnapshot(ManagedConfigurationProvider(applicationContext).loadPolicy())
@@ -4782,10 +4798,14 @@ class MainActivity : AppCompatActivity() {
                         localHostActionsAllowed = localHostActionsAllowed,
                         localClipboardAllowed = localClipboardAllowed,
                         localFileTransferAllowed = localFileTransferAllowed,
+                        localWakeHostAllowed = localWakeHostAllowed,
+                        localFixedHostAllowed = localFixedHostAllowed,
                         remoteStatus = status,
                     )
                 managedClipboardAllowed = availability.clipboardAllowed
                 managedFileTransferAllowed = availability.fileTransferAllowed
+                managedWakeHostAllowed = availability.wakeHostAllowed
+                managedFixedHostAllowed = availability.fixedHostAllowed
                 managedCustomGesturesAllowed = availability.customGesturesAllowed
                 managedHostActionsAllowed = availability.hostActionsAllowed
                 val binding = currentSessionBinding()
@@ -5178,10 +5198,14 @@ class MainActivity : AppCompatActivity() {
                                 localHostActionsAllowed = localHostActionsAllowed,
                                 localClipboardAllowed = localClipboardAllowed,
                                 localFileTransferAllowed = localFileTransferAllowed,
+                                localWakeHostAllowed = localWakeHostAllowed,
+                                localFixedHostAllowed = localFixedHostAllowed,
                                 remoteStatus = status,
                             )
                         managedClipboardAllowed = availability.clipboardAllowed
                         managedFileTransferAllowed = availability.fileTransferAllowed
+                        managedWakeHostAllowed = availability.wakeHostAllowed
+                        managedFixedHostAllowed = availability.fixedHostAllowed
                         managedCustomGesturesAllowed = availability.customGesturesAllowed
                         managedHostActionsAllowed = availability.hostActionsAllowed
                         refreshFileTransferControl()
