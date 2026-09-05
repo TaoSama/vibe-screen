@@ -59,6 +59,7 @@
     <string name="transfer_readiness_title">Clipboard &amp; files</string>
     <string name="transfer_readiness_waiting_status">Waiting for a compatible Mac session</string>
     <string name="transfer_readiness_waiting_summary">Clipboard and file controls require Protocol v1.</string>
+    <string name="transfer_readiness_accessibility">Clipboard &amp; files. %1$s. %2$s</string>
     <string name="transfer_readiness_unavailable_status">Not available in this Mac session</string>
     <string name="transfer_readiness_unavailable_summary">This connection has not exposed clipboard or file-transfer controls. Update both apps or reconnect with a compatible Protocol v1 Mac session.</string>
     <string name="transfer_readiness_policy_blocked_status">Blocked by policy</string>
