@@ -268,6 +268,110 @@ class FileTransferSessionTest {
     }
 
     @Test
+    fun incomingManagerRejectsOfferExceedingConcurrentTransferLimit() {
+        val directory = temporaryDirectory()
+        val manager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(maximumConcurrentTransfers = 1),
+            directory = directory,
+        ) { true }
+        val first = offer(payload = "first".toByteArray())
+        val second = offer(payload = "second".toByteArray())
+            .toBuilder()
+            .setTransferId(ByteString.copyFrom(byteArrayOf(9, 8, 7, 6)))
+            .build()
+        manager.accept(first, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(maximumConcurrentTransfers = 1), sessionEpoch = 7)
+
+        assertFileTransferFailure("concurrent_limit") {
+            manager.accept(second, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(maximumConcurrentTransfers = 1), sessionEpoch = 7)
+        }
+
+        assertEquals(1, manager.activeTransferCount())
+        assertEquals(1, directory.listFiles()?.size)
+    }
+
+    @Test
+    fun incomingManagerRejectsOfferExceedingTemporarySpaceLimit() {
+        val oversizedDirectory = temporaryDirectory()
+        val oversizedManager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(maximumFileBytes = 10, maximumTotalTemporaryBytes = 4),
+            directory = oversizedDirectory,
+        ) { true }
+
+        assertFileTransferFailure("temporary_space_limit") {
+            oversizedManager.accept(
+                offer(payload = "hello".toByteArray()),
+                remotePolicy = RemoteManagedPolicy.UNMANAGED,
+                negotiatedPolicy = FileTransferPolicy(maximumFileBytes = 10, maximumTotalTemporaryBytes = 4),
+                sessionEpoch = 7,
+            )
+        }
+        assertEquals(0, oversizedManager.activeTransferCount())
+        assertTrue(oversizedDirectory.listFiles()?.isEmpty() == true)
+
+        val cumulativeDirectory = temporaryDirectory()
+        val cumulativeManager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(maximumConcurrentTransfers = 2, maximumFileBytes = 10, maximumTotalTemporaryBytes = 8),
+            directory = cumulativeDirectory,
+        ) { true }
+        val first = offer(payload = "first".toByteArray())
+        val second = offer(payload = "more".toByteArray())
+            .toBuilder()
+            .setTransferId(ByteString.copyFrom(byteArrayOf(9, 8, 7, 6)))
+            .build()
+        cumulativeManager.accept(
+            first,
+            remotePolicy = RemoteManagedPolicy.UNMANAGED,
+            negotiatedPolicy = FileTransferPolicy(maximumConcurrentTransfers = 2, maximumFileBytes = 10, maximumTotalTemporaryBytes = 8),
+            sessionEpoch = 7,
+        )
+
+        assertFileTransferFailure("temporary_space_limit") {
+            cumulativeManager.accept(
+                second,
+                remotePolicy = RemoteManagedPolicy.UNMANAGED,
+                negotiatedPolicy = FileTransferPolicy(maximumConcurrentTransfers = 2, maximumFileBytes = 10, maximumTotalTemporaryBytes = 8),
+                sessionEpoch = 7,
+            )
+        }
+        assertEquals(1, cumulativeManager.activeTransferCount())
+        assertEquals(1, cumulativeDirectory.listFiles()?.size)
+    }
+
+    @Test
+    fun incomingManagerAppendRejectsUnknownTransfer() {
+        val directory = temporaryDirectory()
+        val manager = IncomingFileTransferManager(FileTransferPolicy(), directory) { true }
+        val offer = offer(payload = "hello".toByteArray())
+
+        assertFileTransferFailure("unknown_transfer") {
+            manager.append(chunk(offer, offset = 0, payload = "hello".toByteArray(), final = true), sessionEpoch = 7)
+        }
+
+        assertEquals(0, manager.activeTransferCount())
+        assertTrue(directory.listFiles()?.isEmpty() == true)
+    }
+
+    @Test
+    fun incomingManagerFinishRejectsIncompleteFileOrUnknownTransfer() {
+        val directory = temporaryDirectory()
+        val manager = IncomingFileTransferManager(FileTransferPolicy(maximumChunkBytes = 4), directory) { true }
+        val offer = offer(payload = "hello".toByteArray())
+
+        assertFileTransferFailure("unknown_transfer") { manager.finish(offer.transferId) }
+
+        manager.accept(offer, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(maximumChunkBytes = 4), sessionEpoch = 7)
+        assertEquals(2L, manager.append(chunk(offer, offset = 0, payload = "he".toByteArray(), final = false), 7))
+
+        assertFileTransferFailure("incomplete_file") { manager.finish(offer.transferId) }
+
+        assertEquals(1, manager.activeTransferCount())
+        assertEquals(5L, manager.append(chunk(offer, offset = 2, payload = "llo".toByteArray(), final = true), 7))
+        val completed = manager.finish(offer.transferId)
+        assertEquals("hello.txt", completed.fileName)
+        assertArrayEquals("hello".toByteArray(), completed.stagingFile.readBytes())
+    }
+
+    @Test
     fun incomingManagerRejectsEmptyFileWhenRemoteManagedMaximumIsZeroBeforeApproval() {
         var approvalCalls = 0
         val manager = IncomingFileTransferManager(

@@ -579,6 +579,53 @@ class ProductSessionCoordinatorTest {
     }
 
     @Test
+    fun `late clipboard timeout cannot revive approval after runtime or capability loss`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        val runtimeLossChangeId = ByteArray(16) { 2 }
+        val capabilityLossChangeId = ByteArray(16) { 3 }
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+
+        assertTrue(coordinator.stageClipboardOffer(client, generation, clipboardOffer(runtimeLossChangeId)))
+        assertTrue(coordinator.approveClipboardOffer(client, generation, runtimeLossChangeId))
+        assertFalse(coordinator.hasPendingClipboardReceive(client, generation))
+
+        coordinator.setRuntimeAvailability(client, generation, clipboard = false)
+
+        assertFalse(coordinator.cancelClipboardOfferApproval(client, generation, runtimeLossChangeId))
+        assertFalse(coordinator.hasPendingClipboardReceive(client, generation))
+        assertNull(coordinator.clipboardOfferForRequest(client, generation))
+        assertNull(
+            coordinator.consumeSolicitedClipboardContent(
+                client,
+                generation,
+                solicitedClipboardContent(runtimeLossChangeId),
+            ),
+        )
+
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+        assertTrue(coordinator.stageClipboardOffer(client, generation, clipboardOffer(capabilityLossChangeId)))
+        assertTrue(coordinator.approveClipboardOffer(client, generation, capabilityLossChangeId))
+        assertFalse(coordinator.hasPendingClipboardReceive(client, generation))
+
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = false))
+
+        assertFalse(coordinator.cancelClipboardOfferApproval(client, generation, capabilityLossChangeId))
+        assertFalse(coordinator.hasPendingClipboardReceive(client, generation))
+        assertNull(coordinator.clipboardOfferForRequest(client, generation))
+        assertNull(
+            coordinator.consumeSolicitedClipboardContent(
+                client,
+                generation,
+                solicitedClipboardContent(capabilityLossChangeId),
+            ),
+        )
+    }
+
+    @Test
     fun `outgoing file transfer staging requires negotiated file transfer`() {
         val coordinator = ProductSessionCoordinator<TestClient>()
         val client = TestClient("current")
@@ -595,6 +642,24 @@ class ProductSessionCoordinatorTest {
         assertTrue(coordinator.stageOutgoingFileTransfer(client, generation, fileToken))
         assertEquals(fileToken, coordinator.takePendingOutgoingFileTransfer())
         assertNull(coordinator.takePendingOutgoingFileTransfer())
+    }
+
+    @Test
+    fun `outgoing file transfer staging rejects duplicates until previous token is consumed`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = true)
+        val firstFileToken = Any()
+
+        assertTrue(coordinator.stageOutgoingFileTransfer(client, generation, firstFileToken))
+
+        assertFalse(coordinator.requestOutgoingFileTransfer(client, generation))
+        assertFalse(coordinator.stageOutgoingFileTransfer(client, generation, Any()))
+        assertEquals(firstFileToken, coordinator.takePendingOutgoingFileTransfer())
+        assertTrue(coordinator.requestOutgoingFileTransfer(client, generation))
     }
 
     @Test
@@ -756,6 +821,16 @@ class ProductSessionCoordinatorTest {
             content = "text".toByteArray(),
             sha256 = ByteArray(32),
             pending = true,
+        )
+
+    private fun solicitedClipboardContent(changeId: ByteArray) =
+        ClipboardContentData(
+            changeId = changeId,
+            originDeviceId = "host",
+            mimeType = "text/plain",
+            content = "text".toByteArray(),
+            sha256 = ByteArray(32),
+            pending = false,
         )
 
     private data class TestClient(
