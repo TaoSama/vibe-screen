@@ -65,6 +65,45 @@ class ControllerDeviceHotplugCoordinatorTest {
     }
 
     @Test
+    fun removedDeviceSubmitsNeutralReleaseBeforeDisconnectingActiveController() {
+        val coordinator = ControllerDeviceHotplugCoordinator()
+        val state = ControllerSessionState()
+        val sent = mutableListOf<ControllerDispatch>()
+
+        coordinator.synchronizeAvailableControllers(
+            availableDevices = listOf(ControllerDeviceSnapshot(1, "controller-a")),
+            sessionState = state,
+            submit = sent::add,
+        )
+        state.applyKey(ControllerKeyChange.Button("controller-a", pressed = true, ControllerButton.A))
+        state.applyMotion(
+            ControllerMotionSnapshot(
+                "controller-a",
+                listOf(ControllerAxes(leftX = 0.75, rightTrigger = 0.5)),
+            ),
+        )
+        sent.clear()
+
+        val removed = coordinator.synchronizeAvailableControllers(
+            availableDevices = emptyList(),
+            sessionState = state,
+            submit = sent::add,
+        )
+
+        assertEquals(
+            ControllerHotplugSyncResult(connected = 0, disconnected = 1, resynchronized = false, limitReached = 0),
+            removed,
+        )
+        assertFalse(state.isActive("controller-a"))
+        val released = sent.single().samples.filter { it.controllerId == "controller-a" }
+        assertEquals(listOf(ControllerEventKind.STATE, ControllerEventKind.DISCONNECTED), released.map { it.kind })
+        assertEquals(0, released[0].buttonMask)
+        assertEquals(ControllerAxes.NEUTRAL, released[0].axes)
+        assertEquals(0, released[1].buttonMask)
+        assertEquals(ControllerAxes.NEUTRAL, released[1].axes)
+    }
+
+    @Test
     fun changedDeviceIdForSameControllerDoesNotEmitDisconnect() {
         val coordinator = ControllerDeviceHotplugCoordinator()
         val state = ControllerSessionState()
