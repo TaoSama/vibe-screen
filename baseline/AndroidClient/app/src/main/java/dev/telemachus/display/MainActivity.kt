@@ -3688,6 +3688,7 @@ class MainActivity : AppCompatActivity() {
         frameRateGroup: MaterialButtonToggleGroup,
         frameRateButtons: Map<Int, MaterialButton>,
         bitrateSlider: Slider,
+        videoStaticContent: List<View>,
         bitrateValue: TextView,
     ) {
         fun renderBitrate(mbps: Int) {
@@ -3706,7 +3707,11 @@ class MainActivity : AppCompatActivity() {
         bitrateSlider.value = initialBitrate.toFloat()
         renderBitrate(initialBitrate)
 
-        unavailableNote.visibility = if (available) View.GONE else View.VISIBLE
+        SettingsUnavailableControlsAccessibilityApplier.apply(
+            available = available,
+            unavailableNote = unavailableNote,
+            unavailableContent = videoStaticContent + listOf(qualityGroup, frameRateGroup, bitrateSlider, bitrateValue),
+        )
         qualityGroup.isEnabled = available
         frameRateGroup.isEnabled = available
         qualityButtons.values.forEach { it.isEnabled = available }
@@ -3816,6 +3821,7 @@ class MainActivity : AppCompatActivity() {
         swipeUpButtons: Map<GestureHostActionChoice, MaterialButton>,
         swipeDownGroup: MaterialButtonToggleGroup,
         swipeDownButtons: Map<GestureHostActionChoice, MaterialButton>,
+        gestureStaticContent: List<View>,
     ) {
         val available = gestureShortcutsAvailable()
 
@@ -3837,7 +3843,11 @@ class MainActivity : AppCompatActivity() {
 
         applyChoice(swipeUpGroup, swipeUpButtons, prefs.gestureSwipeUpAction.effectiveForHostActions(availableHostActions))
         applyChoice(swipeDownGroup, swipeDownButtons, prefs.gestureSwipeDownAction.effectiveForHostActions(availableHostActions))
-        unavailableNote.visibility = if (available) View.GONE else View.VISIBLE
+        SettingsUnavailableControlsAccessibilityApplier.apply(
+            available = available,
+            unavailableNote = unavailableNote,
+            unavailableContent = gestureStaticContent + listOf(swipeUpGroup, swipeDownGroup),
+        )
         listOf(swipeUpGroup, swipeDownGroup).forEach { group -> group.isEnabled = available }
         listOf(swipeUpButtons, swipeDownButtons).forEach { buttons ->
             buttons.forEach { (choice, button) ->
@@ -3893,19 +3903,25 @@ class MainActivity : AppCompatActivity() {
 
         // Video tuning controls.
         val videoControlUnavailable = view.findViewById<TextView>(R.id.videoControlUnavailable)
+        val videoQualityLabel = view.findViewById<TextView>(R.id.videoQualityLabel)
         val videoQualityGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.videoQualityGroup)
         val videoQualityAuto = view.findViewById<MaterialButton>(R.id.videoQualityAuto)
         val videoQualitySmooth = view.findViewById<MaterialButton>(R.id.videoQualitySmooth)
         val videoQualityBalanced = view.findViewById<MaterialButton>(R.id.videoQualityBalanced)
         val videoQualitySharp = view.findViewById<MaterialButton>(R.id.videoQualitySharp)
         val videoFrameRateGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.videoFrameRateGroup)
+        val videoFrameRateLabel = view.findViewById<TextView>(R.id.videoFrameRateLabel)
         val videoFps30 = view.findViewById<MaterialButton>(R.id.videoFps30)
         val videoFps60 = view.findViewById<MaterialButton>(R.id.videoFps60)
         val videoFps120 = view.findViewById<MaterialButton>(R.id.videoFps120)
         val videoBitrateSlider = view.findViewById<Slider>(R.id.videoBitrateSlider)
+        val videoBitrateLabel = view.findViewById<TextView>(R.id.videoBitrateLabel)
         val videoBitrateValue = view.findViewById<TextView>(R.id.videoBitrateValue)
         val gestureShortcutUnavailable = view.findViewById<TextView>(R.id.gestureShortcutUnavailable)
+        val gestureShortcutsDescription = view.findViewById<TextView>(R.id.gestureShortcutsDescription)
+        val gestureSwipeUpLabel = view.findViewById<TextView>(R.id.gestureSwipeUpLabel)
         val gestureSwipeUpGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.gestureSwipeUpGroup)
+        val gestureSwipeDownLabel = view.findViewById<TextView>(R.id.gestureSwipeDownLabel)
         val gestureSwipeDownGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.gestureSwipeDownGroup)
         val gestureSwipeUpButtons =
             mapOf(
@@ -3951,6 +3967,7 @@ class MainActivity : AppCompatActivity() {
             swipeUpButtons = gestureSwipeUpButtons,
             swipeDownGroup = gestureSwipeDownGroup,
             swipeDownButtons = gestureSwipeDownButtons,
+            gestureStaticContent = listOf(gestureShortcutsDescription, gestureSwipeUpLabel, gestureSwipeDownLabel),
         )
 
         // Setup listeners
@@ -4011,6 +4028,7 @@ class MainActivity : AppCompatActivity() {
                     120 to videoFps120,
                 ),
             bitrateSlider = videoBitrateSlider,
+            videoStaticContent = listOf(videoQualityLabel, videoFrameRateLabel, videoBitrateLabel),
             bitrateValue = videoBitrateValue,
         )
 

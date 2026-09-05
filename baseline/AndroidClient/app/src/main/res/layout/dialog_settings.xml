@@ -316,6 +316,7 @@
                 android:layout_marginBottom="12dp" />
 
             <TextView
+                android:id="@+id/videoQualityLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/video_quality_label"
@@ -388,6 +389,7 @@
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <TextView
+                android:id="@+id/videoFrameRateLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/video_frame_rate_label"
@@ -442,6 +444,7 @@
                 android:baselineAligned="false">
 
                 <TextView
+                    android:id="@+id/videoBitrateLabel"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -476,6 +479,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
+                android:background="?attr/selectableItemBackground"
                 android:text="@string/video_control_unavailable"
                 android:textColor="@color/on_surface_muted"
                 android:textSize="13sp"
@@ -501,6 +505,7 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/gestureShortcutsDescription"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
@@ -510,6 +515,7 @@
                 android:textSize="13sp" />
 
             <TextView
+                android:id="@+id/gestureSwipeUpLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/gesture_swipe_up_label"
@@ -556,6 +562,7 @@
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <TextView
+                android:id="@+id/gestureSwipeDownLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/gesture_swipe_down_label"
@@ -607,6 +614,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
+                android:background="?attr/selectableItemBackground"
                 android:text="@string/gesture_shortcuts_unavailable"
                 android:textColor="@color/on_surface_muted"
                 android:textSize="13sp"
