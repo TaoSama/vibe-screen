@@ -109,7 +109,8 @@ class ControlBarLayoutInstrumentedTest {
                     },
                     layout.views.content.orientation,
                 )
-                assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+                assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+                assertEquals(LinearLayout.HORIZONTAL, layout.views.actionButtons.orientation)
                 if (expectedMode == ControlBarLayoutPolicy.Mode.INLINE) {
                     assertEquals(0, layout.selectorParams.width)
                     assertEquals(1f, layout.selectorParams.weight)
@@ -168,9 +169,31 @@ class ControlBarLayoutInstrumentedTest {
                     if (expectedMode == ControlBarLayoutPolicy.Mode.COLUMN) {
                         ViewGroup.LayoutParams.MATCH_PARENT
                     } else {
-                        layout.context.resources.getDimensionPixelSize(R.dimen.control_bar_transfer_progress_width)
+                        ControlBarLayoutApplier
+                            .geometry(layout.context.resources)
+                            .horizontalActionsWidthPx(
+                                hostActionsVisible = true,
+                                clipboardVisible = true,
+                                fileTransferVisible = true,
+                            )
                     }
                 assertEquals(expectedProgressWidth, progressParams.width)
+                assertEquals(0, progressParams.marginEnd)
+                assertEquals(0, progressParams.topMargin)
+                assertEquals(0, layout.actionButtonsParams.topMargin)
+                assertEquals(
+                    "Active progress should be a status row above the buttons",
+                    LinearLayout.VERTICAL,
+                    layout.views.actions.orientation,
+                )
+                assertEquals(
+                    if (expectedMode == ControlBarLayoutPolicy.Mode.COLUMN) {
+                        LinearLayout.VERTICAL
+                    } else {
+                        LinearLayout.HORIZONTAL
+                    },
+                    layout.views.actionButtons.orientation,
+                )
                 assertActionGeometry(layout)
             }
         }
@@ -198,8 +221,11 @@ class ControlBarLayoutInstrumentedTest {
         ) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COLUMN, layout.mode)
             assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.actionsParams.width)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.actionButtonsParams.width)
+            assertEquals(LinearLayout.VERTICAL, layout.views.actionButtons.orientation)
             val progressParams = layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams
             assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progressParams.width)
+            assertEquals(0, progressParams.topMargin)
             assertEquals(TextUtils.TruncateAt.MIDDLE, layout.views.fileTransferProgress.ellipsize)
             assertEquals(1, layout.views.fileTransferProgress.maxLines)
             assertTrue(
@@ -207,6 +233,30 @@ class ControlBarLayoutInstrumentedTest {
                 layout.views.fileTransferProgress.measuredWidth >= layout.views.actions.measuredWidth - 1,
             )
             assertActionGeometry(layout)
+        }
+    }
+
+    @Test
+    fun splitWindowProgressKeepsFullAccessibilityLabelAndButtonTargetsAtLargeFontScale() {
+        val progressText = "archive-with-a-deliberately-long-middle-section-for-multiwindow.zip 87%"
+        listOf(320, 360).forEach { widthDp ->
+            val context = configurationContext(screenWidthDp = widthDp, screenHeightDp = 600, fontScale = 2.0f)
+            withLayout(
+                context = context,
+                widthDp = widthDp,
+                fileTransferVisible = true,
+                transferProgressVisible = true,
+                transferProgressText = progressText,
+            ) { layout ->
+                assertEquals(progressText, layout.views.fileTransferProgress.contentDescription.toString())
+                assertEquals(TextUtils.TruncateAt.MIDDLE, layout.views.fileTransferProgress.ellipsize)
+                assertEquals(1, layout.views.fileTransferProgress.maxLines)
+                assertTrue(
+                    "Progress row should not be narrower than the cancel/action row",
+                    layout.views.fileTransferProgress.measuredWidth >= layout.views.actionButtons.measuredWidth - 1,
+                )
+                assertActionGeometry(layout)
+            }
         }
     }
 
@@ -517,7 +567,8 @@ class ControlBarLayoutInstrumentedTest {
 
             assertEquals(ControlBarLayoutPolicy.Mode.INLINE, mode)
             assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
-            assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+            assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+            assertEquals(LinearLayout.HORIZONTAL, layout.views.actionButtons.orientation)
             assertTrue(
                 "Display selector should have 600dp width-class room for the active display name",
                 layout.views.displaySelector.measuredWidth >= layout.dp(180),
@@ -536,6 +587,10 @@ class ControlBarLayoutInstrumentedTest {
         val geometry = ControlBarLayoutApplier.geometry(context.resources)
         assertEquals(34, geometry.horizontalContentPaddingPx)
         assertEquals(242, geometry.selectorMinimumWidthPx)
+        assertEquals(
+            context.resources.getDimensionPixelSize(R.dimen.control_bar_max_width),
+            geometry.maxWidthPx,
+        )
         assertEquals(132, geometry.buttonSizePx)
         assertEquals(11, geometry.actionMarginPx)
         assertEquals(33, geometry.disconnectSeparationPx)
@@ -615,6 +670,7 @@ class ControlBarLayoutInstrumentedTest {
         hostVisible: Boolean,
         clipboardVisible: Boolean = hostVisible,
         fileTransferVisible: Boolean = false,
+        @Suppress("UNUSED_PARAMETER")
         transferProgressVisible: Boolean = false,
         expectedMode: ControlBarLayoutPolicy.Mode,
         assertGeometry: Boolean = true,
@@ -644,12 +700,14 @@ class ControlBarLayoutInstrumentedTest {
                 ControlBarLayoutPolicy.Mode.COMPACT -> {
                     assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, layout.cardParams.width)
                     assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
-                    assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.HORIZONTAL, layout.views.actionButtons.orientation)
                 }
                 ControlBarLayoutPolicy.Mode.INLINE -> {
                     assertEquals(0, layout.cardParams.width)
                     assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
-                    assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.HORIZONTAL, layout.views.actionButtons.orientation)
                     assertEquals(
                         ControlBarLayoutApplier.geometry(layout.context.resources).statusMinimumWidthPx,
                         layout.statusParams.width,
@@ -661,7 +719,8 @@ class ControlBarLayoutInstrumentedTest {
                 ControlBarLayoutPolicy.Mode.STACKED -> {
                     assertEquals(0, layout.cardParams.width)
                     assertEquals(LinearLayout.VERTICAL, layout.views.content.orientation)
-                    assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.HORIZONTAL, layout.views.actionButtons.orientation)
                     assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.selectorParams.width)
                     assertEquals(0f, layout.selectorParams.weight)
                 }
@@ -669,7 +728,9 @@ class ControlBarLayoutInstrumentedTest {
                     assertEquals(0, layout.cardParams.width)
                     assertEquals(LinearLayout.VERTICAL, layout.views.content.orientation)
                     assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+                    assertEquals(LinearLayout.VERTICAL, layout.views.actionButtons.orientation)
                     assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.actionsParams.width)
+                    assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.actionButtonsParams.width)
                     assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.selectorParams.width)
                     assertEquals(0f, layout.selectorParams.weight)
                     if (fileTransferVisible) {
@@ -681,8 +742,12 @@ class ControlBarLayoutInstrumentedTest {
                         val geometry = ControlBarLayoutApplier.geometry(layout.context.resources)
                         val progressParams = layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams
                         assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progressParams.width)
-                        assertEquals(geometry.columnActionSpacingPx, progressParams.topMargin)
+                        assertEquals(0, progressParams.topMargin)
                         assertEquals(0, progressParams.marginEnd)
+                        assertEquals(
+                            geometry.columnActionSpacingPx,
+                            layout.actionButtonsParams.topMargin,
+                        )
                     }
                 }
             }
@@ -697,6 +762,7 @@ class ControlBarLayoutInstrumentedTest {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         fileTransferVisible: Boolean = false,
+        @Suppress("UNUSED_PARAMETER")
         transferProgressVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
@@ -845,6 +911,7 @@ class ControlBarLayoutInstrumentedTest {
                 clipboard = root.findViewById(R.id.controlClipboardButton),
                 fileTransfer = root.findViewById(R.id.controlFileTransferButton),
                 fileTransferProgress = root.findViewById(R.id.controlFileTransferProgressText),
+                actionButtons = root.findViewById(R.id.controlActionButtonsRow),
                 settings = root.findViewById(R.id.controlSettingsButton),
                 disconnect = root.findViewById(R.id.controlDisconnectButton),
             )
@@ -862,7 +929,10 @@ class ControlBarLayoutInstrumentedTest {
         views.clipboard.visibility = if (clipboardVisible) View.VISIBLE else View.GONE
         views.fileTransfer.visibility = if (fileTransferVisible) View.VISIBLE else View.GONE
         views.fileTransferProgress.visibility = if (transferProgressVisible) View.VISIBLE else View.GONE
-        if (transferProgressVisible) views.fileTransferProgress.text = transferProgressText
+        if (transferProgressVisible) {
+            views.fileTransferProgress.text = transferProgressText
+            views.fileTransferProgress.contentDescription = transferProgressText
+        }
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(
                 resources = themedContext.resources,
@@ -957,6 +1027,8 @@ class ControlBarLayoutInstrumentedTest {
             get() = views.displaySelector.layoutParams as LinearLayout.LayoutParams
         val actionsParams: LinearLayout.LayoutParams
             get() = views.actions.layoutParams as LinearLayout.LayoutParams
+        val actionButtonsParams: LinearLayout.LayoutParams
+            get() = views.actionButtons.layoutParams as LinearLayout.LayoutParams
         val statusParams: LinearLayout.LayoutParams
             get() = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
 

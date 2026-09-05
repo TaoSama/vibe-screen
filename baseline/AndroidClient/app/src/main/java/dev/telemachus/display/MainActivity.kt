@@ -3410,6 +3410,7 @@ class MainActivity : AppCompatActivity() {
                     connectionStatus = binding.connectionSecurityGroup,
                     displaySelector = binding.displayCapsuleGroup,
                     actions = binding.controlActionsGroup,
+                    actionButtons = binding.controlActionButtonsRow,
                     hostAction = binding.controlHostActionsButton,
                     clipboard = binding.controlClipboardButton,
                     fileTransfer = binding.controlFileTransferButton,

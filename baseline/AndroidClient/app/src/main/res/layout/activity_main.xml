@@ -300,64 +300,14 @@
                 android:id="@+id/controlActionsGroup"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
+                android:orientation="vertical"
                 android:gravity="center">
-
-                <!-- Window actions collapse unless host actions are negotiated and the
-                     host advertises at least one action, so unsupported sessions
-                     expose no dead tap area. -->
-                <ImageButton
-                    android:id="@+id/controlHostActionsButton"
-                    android:layout_width="@dimen/control_bar_button_size"
-                    android:layout_height="@dimen/control_bar_button_size"
-                    android:layout_marginStart="@dimen/control_bar_button_margin"
-                    android:layout_marginEnd="@dimen/control_bar_button_margin"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/control_host_actions"
-                    android:src="@drawable/ic_window_actions"
-                    android:scaleType="centerInside"
-                    android:padding="12dp"
-                    android:visibility="gone"
-                    app:tint="@color/on_surface" />
-
-                <!-- Clipboard collapses unless the host negotiated clipboard
-                     support, so unsupported sessions expose no dead tap area. -->
-                <ImageButton
-                    android:id="@+id/controlClipboardButton"
-                    android:layout_width="@dimen/control_bar_button_size"
-                    android:layout_height="@dimen/control_bar_button_size"
-                    android:layout_marginStart="@dimen/control_bar_button_margin"
-                    android:layout_marginEnd="@dimen/control_bar_button_margin"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/control_clipboard"
-                    android:src="@drawable/ic_clipboard"
-                    android:scaleType="centerInside"
-                    android:padding="12dp"
-                    android:visibility="gone"
-                    app:tint="@color/on_surface" />
-
-                <!-- File transfer collapses unless Protocol v1 negotiated the
-                     file-transfer capability, so unsupported sessions expose no
-                     dead tap area. -->
-                <ImageButton
-                    android:id="@+id/controlFileTransferButton"
-                    android:layout_width="@dimen/control_bar_button_size"
-                    android:layout_height="@dimen/control_bar_button_size"
-                    android:layout_marginStart="@dimen/control_bar_button_margin"
-                    android:layout_marginEnd="@dimen/control_bar_button_margin"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/control_file_transfer"
-                    android:src="@drawable/ic_file_transfer"
-                    android:scaleType="centerInside"
-                    android:padding="12dp"
-                    android:visibility="gone"
-                    app:tint="@color/on_surface" />
 
                 <TextView
                     android:id="@+id/controlFileTransferProgressText"
                     android:layout_width="@dimen/control_bar_transfer_progress_width"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:minHeight="@dimen/display_capsule_min_height"
                     android:accessibilityLiveRegion="polite"
                     android:ellipsize="middle"
                     android:gravity="center_vertical"
@@ -366,30 +316,88 @@
                     android:textColor="@color/on_surface"
                     android:visibility="gone" />
 
-                <ImageButton
-                    android:id="@+id/controlSettingsButton"
-                    android:layout_width="@dimen/control_bar_button_size"
-                    android:layout_height="@dimen/control_bar_button_size"
-                    android:layout_marginStart="@dimen/control_bar_button_margin"
-                    android:layout_marginEnd="@dimen/control_bar_button_margin"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/control_settings"
-                    android:src="@drawable/ic_settings"
-                    android:scaleType="centerInside"
-                    android:padding="12dp"
-                    app:tint="@color/on_surface" />
+                <LinearLayout
+                    android:id="@+id/controlActionButtonsRow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center">
 
-                <ImageButton
-                    android:id="@+id/controlDisconnectButton"
-                    android:layout_width="@dimen/control_bar_button_size"
-                    android:layout_height="@dimen/control_bar_button_size"
-                    android:layout_marginStart="@dimen/control_bar_disconnect_margin_start"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/control_disconnect"
-                    android:src="@drawable/ic_disconnect"
-                    android:scaleType="centerInside"
-                    android:padding="12dp"
-                    app:tint="@color/danger" />
+                    <!-- Window actions collapse unless host actions are negotiated and the
+                         host advertises at least one action, so unsupported sessions
+                         expose no dead tap area. -->
+                    <ImageButton
+                        android:id="@+id/controlHostActionsButton"
+                        android:layout_width="@dimen/control_bar_button_size"
+                        android:layout_height="@dimen/control_bar_button_size"
+                        android:layout_marginStart="@dimen/control_bar_button_margin"
+                        android:layout_marginEnd="@dimen/control_bar_button_margin"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/control_host_actions"
+                        android:src="@drawable/ic_window_actions"
+                        android:scaleType="centerInside"
+                        android:padding="12dp"
+                        android:visibility="gone"
+                        app:tint="@color/on_surface" />
+
+                    <!-- Clipboard collapses unless the host negotiated clipboard
+                         support, so unsupported sessions expose no dead tap area. -->
+                    <ImageButton
+                        android:id="@+id/controlClipboardButton"
+                        android:layout_width="@dimen/control_bar_button_size"
+                        android:layout_height="@dimen/control_bar_button_size"
+                        android:layout_marginStart="@dimen/control_bar_button_margin"
+                        android:layout_marginEnd="@dimen/control_bar_button_margin"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/control_clipboard"
+                        android:src="@drawable/ic_clipboard"
+                        android:scaleType="centerInside"
+                        android:padding="12dp"
+                        android:visibility="gone"
+                        app:tint="@color/on_surface" />
+
+                    <!-- File transfer collapses unless Protocol v1 negotiated the
+                         file-transfer capability, so unsupported sessions expose no
+                         dead tap area. -->
+                    <ImageButton
+                        android:id="@+id/controlFileTransferButton"
+                        android:layout_width="@dimen/control_bar_button_size"
+                        android:layout_height="@dimen/control_bar_button_size"
+                        android:layout_marginStart="@dimen/control_bar_button_margin"
+                        android:layout_marginEnd="@dimen/control_bar_button_margin"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/control_file_transfer"
+                        android:src="@drawable/ic_file_transfer"
+                        android:scaleType="centerInside"
+                        android:padding="12dp"
+                        android:visibility="gone"
+                        app:tint="@color/on_surface" />
+
+                    <ImageButton
+                        android:id="@+id/controlSettingsButton"
+                        android:layout_width="@dimen/control_bar_button_size"
+                        android:layout_height="@dimen/control_bar_button_size"
+                        android:layout_marginStart="@dimen/control_bar_button_margin"
+                        android:layout_marginEnd="@dimen/control_bar_button_margin"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/control_settings"
+                        android:src="@drawable/ic_settings"
+                        android:scaleType="centerInside"
+                        android:padding="12dp"
+                        app:tint="@color/on_surface" />
+
+                    <ImageButton
+                        android:id="@+id/controlDisconnectButton"
+                        android:layout_width="@dimen/control_bar_button_size"
+                        android:layout_height="@dimen/control_bar_button_size"
+                        android:layout_marginStart="@dimen/control_bar_disconnect_margin_start"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/control_disconnect"
+                        android:src="@drawable/ic_disconnect"
+                        android:scaleType="centerInside"
+                        android:padding="12dp"
+                        app:tint="@color/danger" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </androidx.cardview.widget.CardView>
