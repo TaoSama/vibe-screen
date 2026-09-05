@@ -11,6 +11,7 @@ import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -48,6 +49,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 R.id.wirelessConnected,
                 R.id.wirelessPairedIdle,
                 R.id.wirelessTokenMismatch,
+                R.id.repairMessage,
                 R.id.wirelessPermDenied,
             ).forEach { id ->
                 assertEquals(
@@ -119,6 +121,71 @@ class ConnectionStateAccessibilityInstrumentedTest {
                     View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
                     button.importantForAccessibility,
                 )
+            }
+        }
+    }
+
+    @Test
+    fun wirelessRepairGuidanceExposesFullScreenReaderStatus() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { activity ->
+                val controller =
+                    WirelessTabController(
+                        activity = activity,
+                        views =
+                            WirelessTabController.Views(
+                                connecting = activity.findViewById(R.id.wirelessConnecting),
+                                firstTime = activity.findViewById(R.id.wirelessFirstTime),
+                                connected = activity.findViewById(R.id.wirelessConnected),
+                                pairedIdle = activity.findViewById(R.id.wirelessPairedIdle),
+                                repair = activity.findViewById(R.id.wirelessTokenMismatch),
+                                permDenied = activity.findViewById(R.id.wirelessPermDenied),
+                                scanButton = activity.findViewById<Button>(R.id.wirelessScanButton),
+                                rescanButton = activity.findViewById<Button>(R.id.wirelessRescanButton),
+                                disconnectButton = activity.findViewById<Button>(R.id.wirelessDisconnectButton),
+                                forgetButton = activity.findViewById<Button>(R.id.wirelessForgetButton),
+                                reconnectButton = activity.findViewById<Button>(R.id.wirelessReconnectButton),
+                                idleForgetButton = activity.findViewById<Button>(R.id.wirelessIdleForgetButton),
+                                openSettingsButton = activity.findViewById<Button>(R.id.wirelessOpenSettingsButton),
+                                connectedMacName = activity.findViewById(R.id.connectedMacName),
+                                connectedMacIp = activity.findViewById(R.id.connectedMacIp),
+                                connectingLabel = activity.findViewById(R.id.connectingLabel),
+                                connectingSubtitle = activity.findViewById(R.id.connectingSubtitle),
+                                idleStatusLabel = activity.findViewById(R.id.idleStatusLabel),
+                                idleMacName = activity.findViewById(R.id.idleMacName),
+                                idleMacIp = activity.findViewById(R.id.idleMacIp),
+                                reconnectCountdown = activity.findViewById(R.id.wirelessReconnectCountdown),
+                                repairTitle = activity.findViewById(R.id.repairTitle),
+                                repairMessage = activity.findViewById(R.id.repairMessage),
+                            ),
+                        storage = PairedHostStorage(activity),
+                        cameraPerm = CameraPermissionManager(activity),
+                        isTrustedLanAcknowledged = { true },
+                        acknowledgeTrustedLan = {},
+                        onConnectRequested = { _, _, _, _, _ -> },
+                    )
+                val guidance =
+                    ConnectionGuidanceFactory.from(
+                        java.net.ConnectException("ECONNREFUSED"),
+                        ConnectionGuidanceContext.trustedLan(54321),
+                    )
+
+                controller.showConnectionGuidance(guidance)
+
+                val title = activity.findViewById<TextView>(R.id.repairTitle)
+                val message = activity.findViewById<TextView>(R.id.repairMessage)
+                val expectedTitle = ConnectionGuidanceTextFormatter.format(activity.resources, guidance.status)
+                val expectedMessage = ConnectionGuidanceTextFormatter.format(activity.resources, guidance.message)
+                assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.wirelessTokenMismatch).visibility)
+                assertEquals(expectedTitle, title.text.toString())
+                assertEquals(expectedMessage, message.text.toString())
+                assertEquals(
+                    activity.getString(R.string.connection_guidance_full_message, expectedTitle, expectedMessage),
+                    message.contentDescription,
+                )
+                assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, message.accessibilityLiveRegion)
+                assertTrue(activity.findViewById<Button>(R.id.wirelessRescanButton).isClickable)
             }
         }
     }
