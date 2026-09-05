@@ -167,7 +167,7 @@ internal object ControlBarLayoutApplier {
                 statusParams.weight = 0f
                 selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 selectorParams.weight = 0f
-                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                actionsParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 views.actions.orientation = LinearLayout.VERTICAL
             }
         }
@@ -207,7 +207,12 @@ internal object ControlBarLayoutApplier {
             view.layoutParams = params
         }
         (views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams).also { params ->
-            params.width = if (transferProgressVisible) geometry.transferProgressWidthPx else 0
+            params.width =
+                when {
+                    !transferProgressVisible -> 0
+                    mode == ControlBarLayoutPolicy.Mode.COLUMN -> ViewGroup.LayoutParams.MATCH_PARENT
+                    else -> geometry.transferProgressWidthPx
+                }
             params.marginStart = 0
             params.topMargin = if (mode == ControlBarLayoutPolicy.Mode.COLUMN && transferProgressVisible) {
                 geometry.columnActionSpacingPx
