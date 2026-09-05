@@ -1932,6 +1932,7 @@ class MainActivity : AppCompatActivity() {
                     android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                 isSaveEnabled = false
+                setHorizontallyScrolling(false)
             }
         val dialog =
             MaterialAlertDialogBuilder(this)
@@ -1944,6 +1945,8 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.internet_pairing_complete_action, null)
                 .create()
         dialog.setOnShowListener {
+            @Suppress("DEPRECATION")
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
                     val parsed = InternetPairingAcceptance.parse(acceptance.text.toString())

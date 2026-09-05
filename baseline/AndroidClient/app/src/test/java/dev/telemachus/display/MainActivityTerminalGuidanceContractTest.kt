@@ -1371,6 +1371,9 @@ class MainActivityTerminalGuidanceContractTest {
         val source = mainActivitySource()
         val pairingDialog = extractMethod(source, "private fun showInternetPairingCompletionDialog")
         val layout = resourceSource("app/src/main/res/layout/dialog_internet_pairing_completion.xml")
+        val scroll = extractXmlElement(layout, """android:id="@+id/internetPairingDialogScroll""")
+        val requestLabel = extractXmlElement(layout, """android:id="@+id/internetPairingRequestLabel""")
+        val acceptanceLabel = extractXmlElement(layout, """android:id="@+id/internetPairingAcceptanceLabel""")
         val acceptanceInput = extractXmlElement(layout, """android:id="@+id/internetPairingAcceptanceInput""")
         val compactPairingDialog = pairingDialog.replace(Regex("\\s+"), "")
 
@@ -1387,6 +1390,28 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "The static pairing layout must expose the acceptance input hint before runtime setup",
             acceptanceInput.contains("""android:hint="@string/internet_pairing_acceptance_hint""""),
+        )
+        assertTrue(pairingDialog.contains("WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE"))
+        assertTrue(scroll.contains("""android:fillViewport="true"""))
+        assertTrue(scroll.contains("""android:paddingStart="8dp"""))
+        assertTrue(scroll.contains("""android:paddingEnd="8dp"""))
+        assertTrue(requestLabel.contains("""android:accessibilityHeading="true"""))
+        assertTrue(requestLabel.contains("""android:labelFor="@id/internetPairingRequestText"""))
+        assertTrue(requestLabel.contains("""android:textSize="10sp"""))
+        assertTrue(acceptanceLabel.contains("""android:accessibilityHeading="true"""))
+        assertTrue(acceptanceLabel.contains("""android:labelFor="@id/internetPairingAcceptanceInput"""))
+        assertTrue(acceptanceLabel.contains("""android:textSize="10sp"""))
+        assertTrue(acceptanceInput.contains("""android:minHeight="128dp"""))
+        assertTrue(acceptanceInput.contains("""android:minLines="4"""))
+        assertTrue(acceptanceInput.contains("""android:textSize="10sp"""))
+        assertFalse("Pairing input should not create nested vertical scrolling inside the dialog ScrollView", acceptanceInput.contains("android:maxLines="))
+        assertFalse("Pairing input should leave vertical scrolling to the parent ScrollView", acceptanceInput.contains("""android:scrollbars="vertical"""))
+        assertTrue(pairingDialog.contains("EditorInfo.IME_FLAG_NO_EXTRACT_UI"))
+        assertTrue(pairingDialog.contains("EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING"))
+        assertTrue(
+            "The acceptance input should explicitly disable horizontal scrolling at runtime",
+            pairingDialog.indexOf("R.id.internetPairingAcceptanceInput") <
+                pairingDialog.lastIndexOf("setHorizontallyScrolling(false)"),
         )
     }
 
