@@ -933,6 +933,27 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun keyEventsRequireStreamingNegotiatedKeyboardAndPositiveInputId() {
+        val beforeStreaming = sessionThroughDisplayStart()
+        assertThrows(IllegalStateException::class.java) {
+            beforeStreaming.key(inputId = 1, usbHidUsage = 0x04, pressed = true, modifierMask = 0)
+        }
+
+        val touchOnly = streamingSession()
+        assertThrows(IllegalStateException::class.java) {
+            touchOnly.key(inputId = 1, usbHidUsage = 0x04, pressed = true, modifierMask = 0)
+        }
+
+        val keyboard = nativeInputStreamingSession()
+        assertThrows(IllegalArgumentException::class.java) {
+            keyboard.key(inputId = 0, usbHidUsage = 0x04, pressed = true, modifierMask = 0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            keyboard.key(inputId = -1, usbHidUsage = 0x04, pressed = true, modifierMask = 0)
+        }
+    }
+
+    @Test
     fun sessionRejectionPreservesReasonAndRetryability() {
         val session = session().also { it.clientHello() }
         session.receive(hostHello(2))

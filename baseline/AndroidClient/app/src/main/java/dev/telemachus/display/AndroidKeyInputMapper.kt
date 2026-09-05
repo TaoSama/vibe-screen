@@ -26,15 +26,16 @@ internal object AndroidKeyInputMapper {
     ): ClientKeyInput? {
         val usage = keyCode.toUsbHidUsage() ?: return null
         if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return null
+        val normalizedMetaState = normalizedModifierState(metaState)
         return ClientKeyInput(
             usbHidUsage = usage,
             pressed = action == KeyEvent.ACTION_DOWN,
             modifiers =
                 buildSet {
-                    if (metaState and KeyEvent.META_SHIFT_ON != 0) add(ClientKeyModifier.SHIFT)
-                    if (metaState and KeyEvent.META_CTRL_ON != 0) add(ClientKeyModifier.CONTROL)
-                    if (metaState and KeyEvent.META_ALT_ON != 0) add(ClientKeyModifier.ALT)
-                    if (metaState and KeyEvent.META_META_ON != 0) add(ClientKeyModifier.META)
+                    if (normalizedMetaState and KeyEvent.META_SHIFT_ON != 0) add(ClientKeyModifier.SHIFT)
+                    if (normalizedMetaState and KeyEvent.META_CTRL_ON != 0) add(ClientKeyModifier.CONTROL)
+                    if (normalizedMetaState and KeyEvent.META_ALT_ON != 0) add(ClientKeyModifier.ALT)
+                    if (normalizedMetaState and KeyEvent.META_META_ON != 0) add(ClientKeyModifier.META)
                 },
             repeatCount = repeatCount.coerceAtLeast(0),
         )
@@ -70,6 +71,23 @@ internal object AndroidKeyInputMapper {
             KeyEvent.KEYCODE_DPAD_UP -> 0x52
             else -> null
         }
+
+    private fun normalizedModifierState(metaState: Int): Int {
+        var normalized = metaState
+        if (metaState and (KeyEvent.META_SHIFT_LEFT_ON or KeyEvent.META_SHIFT_RIGHT_ON) != 0) {
+            normalized = normalized or KeyEvent.META_SHIFT_ON
+        }
+        if (metaState and (KeyEvent.META_CTRL_LEFT_ON or KeyEvent.META_CTRL_RIGHT_ON) != 0) {
+            normalized = normalized or KeyEvent.META_CTRL_ON
+        }
+        if (metaState and (KeyEvent.META_ALT_LEFT_ON or KeyEvent.META_ALT_RIGHT_ON) != 0) {
+            normalized = normalized or KeyEvent.META_ALT_ON
+        }
+        if (metaState and (KeyEvent.META_META_LEFT_ON or KeyEvent.META_META_RIGHT_ON) != 0) {
+            normalized = normalized or KeyEvent.META_META_ON
+        }
+        return normalized
+    }
 
     private const val HID_A = 0x04
     private const val HID_1 = 0x1E

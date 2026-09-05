@@ -72,6 +72,78 @@ class MainActivityControllerForwardingContractTest {
     }
 
     @Test
+    fun keyboardMapperRejectsUnsupportedKeysBeforeSessionDispatch() {
+        val source = mainActivitySource()
+        val dispatchKeyEvent = extractMethod(source, "override fun dispatchKeyEvent")
+
+        assertContains(dispatchKeyEvent, "AndroidKeyInputMapper.map(")
+        assertContains(dispatchKeyEvent, "keyCode = event.keyCode")
+        assertContains(dispatchKeyEvent, "action = event.action")
+        assertContains(dispatchKeyEvent, "metaState = event.metaState")
+        assertContains(dispatchKeyEvent, "repeatCount = event.repeatCount")
+        assertContains(dispatchKeyEvent, ") ?: return super.dispatchKeyEvent(event)")
+        assertBefore(dispatchKeyEvent, ") ?: return super.dispatchKeyEvent(event)", "ClientInputDispatch(currentSessionBinding()).sendKey(clientEvent)")
+        assertBefore(dispatchKeyEvent, ") ?: return super.dispatchKeyEvent(event)", "keyboard input blocked by touch-only host")
+    }
+
+    @Test
+    fun keyboardEventsRespectForegroundSystemAndConnectionGatesBeforeDispatch() {
+        val source = mainActivitySource()
+        val dispatchKeyEvent = extractMethod(source, "override fun dispatchKeyEvent")
+        val sink = extractClass(source, "private inner class StreamClientInputSink")
+
+        assertContains(dispatchKeyEvent, "if (!isInForeground || event.isSystemKey()) return super.dispatchKeyEvent(event)")
+        assertContains(dispatchKeyEvent, "if (!isConnected) return super.dispatchKeyEvent(event)")
+        assertBefore(dispatchKeyEvent, "if (!isInForeground", "AndroidKeyInputMapper.map(")
+        assertBefore(dispatchKeyEvent, "if (!isConnected) return super.dispatchKeyEvent(event)", "AndroidKeyInputMapper.map(")
+        assertContains(sink, "override fun sendKey(input: ClientKeyInput): Boolean")
+        assertContains(sink, "val admitted =")
+        assertContains(sink, "client.sendKey(")
+        assertContains(sink, "usbHidUsage = input.usbHidUsage")
+        assertContains(sink, "pressed = input.pressed")
+        assertContains(sink, "modifierMask = NativeInputWire.modifierMask(input.modifiers)")
+        assertContains(sink, "if (admitted)")
+        assertContains(sink, "nativeInputSessionState.recordKey(")
+        assertContains(sink, "return admitted")
+        assertBefore(sink, "val admitted =", "if (admitted)")
+    }
+
+    @Test
+    fun keyboardDispatchConsumesRejectedAndUnsupportedNativeInputResults() {
+        val source = mainActivitySource()
+        val dispatchKeyEvent = extractMethod(source, "override fun dispatchKeyEvent")
+
+        assertContains(dispatchKeyEvent, "ClientInputDispatch(currentSessionBinding()).sendKey(clientEvent)")
+        assertContains(dispatchKeyEvent, "ClientInputDispatchResult.SENT -> return true")
+        assertContains(dispatchKeyEvent, "ClientInputDispatchResult.REJECTED ->")
+        assertContains(dispatchKeyEvent, "negotiated keyboard sink rejected HID")
+        assertContains(dispatchKeyEvent, "return true")
+        assertContains(dispatchKeyEvent, "ClientInputDispatchResult.UNSUPPORTED -> Unit")
+        assertContains(dispatchKeyEvent, "if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)")
+        assertContains(dispatchKeyEvent, "keyboard input blocked by touch-only host")
+        assertContains(dispatchKeyEvent, "Toast")
+        assertContains(dispatchKeyEvent, "R.string.keyboard_requires_compatible_host")
+        assertContains(dispatchKeyEvent, "unsupportedKeyboardNoticeShown = true")
+        assertBefore(dispatchKeyEvent, "ClientInputDispatchResult.UNSUPPORTED -> Unit", "keyboard input blocked by touch-only host")
+    }
+
+    @Test
+    fun systemKeyFilterRemainsLimitedToAndroidGlobalKeys() {
+        val source = mainActivitySource()
+        val isSystemKey = extractMethod(source, "private fun KeyEvent.isSystemKey")
+
+        assertContains(isSystemKey, "keyCode == KeyEvent.KEYCODE_BACK")
+        assertContains(isSystemKey, "keyCode == KeyEvent.KEYCODE_VOLUME_UP")
+        assertContains(isSystemKey, "keyCode == KeyEvent.KEYCODE_VOLUME_DOWN")
+        assertContains(isSystemKey, "keyCode == KeyEvent.KEYCODE_VOLUME_MUTE")
+        assertContains(isSystemKey, "keyCode == KeyEvent.KEYCODE_POWER")
+        assertFalse(isSystemKey.contains("KEYCODE_CTRL"))
+        assertFalse(isSystemKey.contains("KEYCODE_SHIFT"))
+        assertFalse(isSystemKey.contains("KEYCODE_ALT"))
+        assertFalse(isSystemKey.contains("KEYCODE_META"))
+    }
+
+    @Test
     fun controllerMotionEventsEnterProductionDispatchBeforeStylusAndPointerFallbacks() {
         val source = mainActivitySource()
         val genericMotion = extractMethod(source, "private fun handleGenericMotion")
