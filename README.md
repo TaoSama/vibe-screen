@@ -525,12 +525,14 @@ and
   permission/startup/capture states; this is not a replacement for retained
   device evidence across the full state matrix. A current-base P0110/pacific
   owner record now binds the README-facing actionable-error states to a
-  fail-closed real-device evidence gate and remains blocked for Screen
-  Recording denial, Accessibility denial/limited state, ADB reverse missing,
-  USB disconnected, LAN route unavailable, TCP `54321` unavailable, stale
-  epoch/session errors, and the feature-specific Android Internet, codec,
-  managed-policy, peripheral, file-transfer, and clipboard error states until
-  each state has retained evidence. The latest no-Host P0110 owner record
+  fail-closed real-device evidence gate. It remains non-closing: Screen
+  Recording denial, Accessibility denial/limited state, USB disconnected, LAN
+  route unavailable, TCP `54321` unavailable, and the feature-specific Android
+  Internet, codec, managed-policy, peripheral, file-transfer, and clipboard
+  error states remain blocked; ADB reverse missing remains insufficient; and
+  stale epoch/session errors remain an insufficient gate item because that state
+  is still not run, until each state has retained evidence. The latest no-Host
+  P0110 owner record
   confirms the disconnected USB surface shows actionable recovery copy, but it
   is not Host-backed E2E evidence and does not close the Phase 1 gate.
 - Validate sustained operation on the active Android acceptance device. Xiaomi
