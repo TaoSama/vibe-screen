@@ -17,6 +17,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="top|start"
+        android:hint="@string/internet_import_hint"
         android:importantForAutofill="noExcludeDescendants"
         android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
         android:inputType="textMultiLine"

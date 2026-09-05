@@ -1,0 +1,53 @@
+Sat Sep  5 20:52:44 CST 2026
+Branch: codex/android-nohost-qr-error-focus
+Remote: git@github.com:TaoSama/vibe-screen.git
+Base source revision: da382dd01779e80306b5058116d12af030268e79
+Source revision: containing commit for this evidence package
+--- changed files versus origin/main ---
+M	baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/InternetPairingDialogLayoutInstrumentedTest.kt
+M	baseline/AndroidClient/app/src/main/res/layout/dialog_internet_pairing_completion.xml
+M	baseline/AndroidClient/app/src/main/res/layout/dialog_internet_profile_import.xml
+M	baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTerminalGuidanceContractTest.kt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/README.md
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/SHA256SUMS
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/adb-devices.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/android-offline-verification.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/focused-instrumentation-tests.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/focused-jvm-contract-test.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/git-diff-check.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/gradle-install.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/no-host-boundary.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/pm-instrumentation.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/source-state.txt
+A	docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/metadata/device-identity.txt
+--- diff stat versus origin/main ---
+ .../InternetPairingDialogLayoutInstrumentedTest.kt |  22 +++-
+ .../layout/dialog_internet_pairing_completion.xml  |   1 +
+ .../res/layout/dialog_internet_profile_import.xml  |   1 +
+ .../MainActivityTerminalGuidanceContractTest.kt    |   7 ++
+ .../README.md                                      |  68 ++++++++++++
+ .../SHA256SUMS                                     |  11 ++
+ .../logs/adb-devices.txt                           |   2 +
+ .../logs/android-offline-verification.txt          | 122 +++++++++++++++++++++
+ .../logs/focused-instrumentation-tests.txt         |  37 +++++++
+ .../logs/focused-jvm-contract-test.txt             |  57 ++++++++++
+ .../logs/git-diff-check.txt                        |   0
+ .../logs/gradle-install.txt                        | 108 ++++++++++++++++++
+ .../logs/no-host-boundary.txt                      |   3 +
+ .../logs/pm-instrumentation.txt                    |   1 +
+ .../logs/source-state.txt                          |  53 +++++++++
+ .../metadata/device-identity.txt                   |   5 +
+ 16 files changed, 496 insertions(+), 2 deletions(-)
+--- evidence files ---
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/adb-devices.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/android-offline-verification.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/focused-instrumentation-tests.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/focused-jvm-contract-test.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/git-diff-check.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/gradle-install.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/no-host-boundary.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/pm-instrumentation.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/logs/source-state.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/metadata/device-identity.txt
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/README.md
+docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-internet-dialog-hints-current-source/SHA256SUMS

@@ -1366,6 +1366,8 @@ class MainActivityTerminalGuidanceContractTest {
     fun internetPairingDialogUsesDedicatedSmallScreenLayout() {
         val source = mainActivitySource()
         val pairingDialog = extractMethod(source, "private fun showInternetPairingCompletionDialog")
+        val layout = resourceSource("app/src/main/res/layout/dialog_internet_pairing_completion.xml")
+        val acceptanceInput = extractXmlElement(layout, """android:id="@+id/internetPairingAcceptanceInput""")
         val compactPairingDialog = pairingDialog.replace(Regex("\\s+"), "")
 
         assertTrue(pairingDialog.contains("R.layout.dialog_internet_pairing_completion"))
@@ -1377,6 +1379,10 @@ class MainActivityTerminalGuidanceContractTest {
             "The one-time request must remain selectable and should not scroll horizontally on phones",
             compactPairingDialog.contains("setTextIsSelectable(true)") &&
                 compactPairingDialog.contains("setHorizontallyScrolling(false)"),
+        )
+        assertTrue(
+            "The static pairing layout must expose the acceptance input hint before runtime setup",
+            acceptanceInput.contains("""android:hint="@string/internet_pairing_acceptance_hint""""),
         )
     }
 
@@ -1399,6 +1405,7 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(scroll.contains("""android:paddingStart="8dp""""))
         assertTrue(scroll.contains("""android:paddingEnd="8dp""""))
         assertTrue(input.contains("""android:breakStrategy="simple""""))
+        assertTrue(input.contains("""android:hint="@string/internet_import_hint""""))
         assertTrue(input.contains("""android:minHeight="128dp""""))
         assertTrue(input.contains("""android:minLines="4""""))
         assertTrue(input.contains("""android:textSize="11sp""""))

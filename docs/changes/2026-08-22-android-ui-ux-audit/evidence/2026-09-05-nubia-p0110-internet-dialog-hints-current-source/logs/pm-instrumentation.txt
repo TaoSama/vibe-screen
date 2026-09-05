@@ -1,0 +1,1 @@
+instrumentation:dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner (target=dev.telemachus.display)

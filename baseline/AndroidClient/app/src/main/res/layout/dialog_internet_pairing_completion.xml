@@ -70,6 +70,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:gravity="top|start"
+            android:hint="@string/internet_pairing_acceptance_hint"
             android:importantForAutofill="noExcludeDescendants"
             android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
             android:inputType="textMultiLine"

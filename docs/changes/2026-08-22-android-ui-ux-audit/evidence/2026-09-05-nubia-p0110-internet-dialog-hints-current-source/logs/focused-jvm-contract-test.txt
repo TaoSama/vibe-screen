@@ -1,0 +1,57 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.6/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build
+> Task :transport:checkKotlinGradlePluginConfigurationErrors
+> Task :transport:processResources NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateReleaseDependencyLicenses
+> Task :app:generateReleaseSbom
+> Task :app:syncOpenSourceNotices
+> Task :app:preBuild
+> Task :app:preDebugBuild
+> Task :transport:compileKotlin
+> Task :app:dataBindingMergeDependencyArtifactsDebug
+> Task :transport:compileJava NO-SOURCE
+> Task :transport:classes UP-TO-DATE
+> Task :transport:jar
+> Task :app:generateDebugResValues
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:extractDebugProto
+> Task :app:parseDebugLocalResources
+> Task :app:mergeDebugResources
+> Task :app:extractIncludeDebugProto
+> Task :app:dataBindingGenBaseClassesDebug
+> Task :app:extractProto
+> Task :app:generateDebugProto
+> Task :app:mapDebugSourceSetPaths
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:checkDebugAarMetadata
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:extractTestDebugProto
+> Task :app:javaPreCompileDebug
+> Task :app:extractTestProto
+> Task :app:preDebugUnitTestBuild
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+
+> Task :app:compileDebugKotlin
+w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/4842/vibe-screen/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:1856:9 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
+w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/4842/vibe-screen/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:2483:23 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
+w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/4842/vibe-screen/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ManagedConfigurationProvider.kt:160:37 'get(String!): Any?' is deprecated. Deprecated in Java
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:extractIncludeDebugUnitTestProto
+> Task :app:generateDebugUnitTestProto NO-SOURCE
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 33s
+39 actionable tasks: 39 executed
