@@ -809,8 +809,8 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue("USB content should include the compact route status after the action", statusIndex >= 0)
         assertTrue("USB content should include diagnostic checklist details", checklistIndex >= 0)
         assertTrue(
-            "The retry/connect action must appear before long diagnostic details so it remains reachable at large font scale",
-            usbIndex < connectIndex && connectIndex < errorIndex && errorIndex < statusIndex && statusIndex < checklistIndex,
+            "The retry/connect action and checklist must appear before long diagnostic details so they remain reachable at large font scale",
+            usbIndex < connectIndex && connectIndex < statusIndex && statusIndex < checklistIndex && checklistIndex < errorIndex,
         )
 
         val connectButton = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectButton\"")
@@ -854,6 +854,10 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "USB recovery guidance contains ports and repair steps, so users should be able to copy it for diagnostics",
             errorMessage.contains("android:textIsSelectable=\"true\""),
+        )
+        assertTrue(
+            "Selectable diagnostic text should not split the grouped screen-reader status",
+            errorMessage.contains("android:importantForAccessibility=\"no\""),
         )
         assertFalse(
             "The scroll view must not fill the viewport because that can remeasure tall two-column content to the card height and clip controls",
