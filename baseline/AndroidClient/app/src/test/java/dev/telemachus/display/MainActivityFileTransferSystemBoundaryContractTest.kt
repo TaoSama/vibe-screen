@@ -355,6 +355,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 connectionStatus.contains("rejectPendingIncomingFileOffer()") &&
                 managedPolicy.contains("if (!callbackClient.canTransferFiles)") &&
                 managedPolicy.contains("rejectPendingIncomingFileOffer()") &&
+                managedPolicy.contains("discardPendingOutgoingFileTransfer()") &&
+                assertBeforeValue(managedPolicy, "if (!callbackClient.canTransferFiles)", "discardPendingOutgoingFileTransfer()") &&
                 assertBeforeValue(managedPolicy, "if (!callbackClient.canTransferFiles)", "refreshFileTransferControl()") &&
                 updateInternetState.contains("state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED") &&
                 updateInternetState.contains("rejectPendingIncomingFileOffer()") &&

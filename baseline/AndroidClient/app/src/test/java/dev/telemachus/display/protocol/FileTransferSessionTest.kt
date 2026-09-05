@@ -290,6 +290,34 @@ class FileTransferSessionTest {
     }
 
     @Test
+    fun incomingManagerAllowsConfiguredConcurrentTransfersUntilLimit() {
+        val directory = temporaryDirectory()
+        val policy = FileTransferPolicy(maximumConcurrentTransfers = 2)
+        val manager = IncomingFileTransferManager(
+            policy = policy,
+            directory = directory,
+        ) { true }
+        val first = offer(payload = "first".toByteArray())
+        val second = offer(payload = "second".toByteArray())
+            .toBuilder()
+            .setTransferId(ByteString.copyFrom(byteArrayOf(9, 8, 7, 6)))
+            .build()
+        val third = offer(payload = "third".toByteArray())
+            .toBuilder()
+            .setTransferId(ByteString.copyFrom(byteArrayOf(6, 7, 8, 9)))
+            .build()
+
+        manager.accept(first, RemoteManagedPolicy.UNMANAGED, policy, sessionEpoch = 7)
+        manager.accept(second, RemoteManagedPolicy.UNMANAGED, policy, sessionEpoch = 7)
+
+        assertFileTransferFailure("concurrent_limit") {
+            manager.accept(third, RemoteManagedPolicy.UNMANAGED, policy, sessionEpoch = 7)
+        }
+        assertEquals(2, manager.activeTransferCount())
+        assertEquals(2, directory.listFiles()?.size)
+    }
+
+    @Test
     fun incomingManagerRejectsOfferExceedingTemporarySpaceLimit() {
         val oversizedDirectory = temporaryDirectory()
         val oversizedManager = IncomingFileTransferManager(
@@ -338,6 +366,46 @@ class FileTransferSessionTest {
     }
 
     @Test
+    fun incomingManagerAcceptsTemporarySpaceBoundaryEqualToLimit() {
+        val exactDirectory = temporaryDirectory()
+        val exactPolicy = FileTransferPolicy(maximumFileBytes = 10, maximumTotalTemporaryBytes = 5)
+        val exactManager = IncomingFileTransferManager(
+            policy = exactPolicy,
+            directory = exactDirectory,
+        ) { true }
+
+        exactManager.accept(
+            offer(payload = "hello".toByteArray()),
+            remotePolicy = RemoteManagedPolicy.UNMANAGED,
+            negotiatedPolicy = exactPolicy,
+            sessionEpoch = 7,
+        )
+        assertEquals(1, exactManager.activeTransferCount())
+
+        val cumulativeDirectory = temporaryDirectory()
+        val cumulativePolicy = FileTransferPolicy(
+            maximumConcurrentTransfers = 2,
+            maximumFileBytes = 10,
+            maximumTotalTemporaryBytes = 9,
+        )
+        val cumulativeManager = IncomingFileTransferManager(
+            policy = cumulativePolicy,
+            directory = cumulativeDirectory,
+        ) { true }
+        val first = offer(payload = "first".toByteArray())
+        val second = offer(payload = "more".toByteArray())
+            .toBuilder()
+            .setTransferId(ByteString.copyFrom(byteArrayOf(9, 8, 7, 6)))
+            .build()
+
+        cumulativeManager.accept(first, RemoteManagedPolicy.UNMANAGED, cumulativePolicy, sessionEpoch = 7)
+        cumulativeManager.accept(second, RemoteManagedPolicy.UNMANAGED, cumulativePolicy, sessionEpoch = 7)
+
+        assertEquals(2, cumulativeManager.activeTransferCount())
+        assertEquals(2, cumulativeDirectory.listFiles()?.size)
+    }
+
+    @Test
     fun incomingManagerAppendRejectsUnknownTransfer() {
         val directory = temporaryDirectory()
         val manager = IncomingFileTransferManager(FileTransferPolicy(), directory) { true }
@@ -349,6 +417,21 @@ class FileTransferSessionTest {
 
         assertEquals(0, manager.activeTransferCount())
         assertTrue(directory.listFiles()?.isEmpty() == true)
+    }
+
+    @Test
+    fun incomingManagerCancelUnknownTransferLeavesActiveTransferInPlace() {
+        val directory = temporaryDirectory()
+        val manager = IncomingFileTransferManager(FileTransferPolicy(), directory) { true }
+        val offer = offer(payload = "hello".toByteArray())
+        val unknownTransferId = ByteString.copyFrom(byteArrayOf(9, 8, 7, 6))
+        manager.accept(offer, RemoteManagedPolicy.UNMANAGED, FileTransferPolicy(), sessionEpoch = 7)
+
+        assertFalse(manager.cancel(unknownTransferId))
+
+        assertTrue(manager.contains(offer.transferId))
+        assertEquals(1, manager.activeTransferCount())
+        assertEquals(1, directory.listFiles()?.size)
     }
 
     @Test
