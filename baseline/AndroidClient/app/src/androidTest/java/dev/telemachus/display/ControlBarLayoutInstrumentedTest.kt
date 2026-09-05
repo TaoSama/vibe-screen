@@ -180,6 +180,7 @@ class ControlBarLayoutInstrumentedTest {
                 assertEquals(expectedProgressWidth, progressParams.width)
                 assertEquals(0, progressParams.marginEnd)
                 assertEquals(0, progressParams.topMargin)
+                assertEquals(0, layout.actionButtonsParams.topMargin)
                 assertEquals(
                     "Active progress should be a status row above the buttons",
                     LinearLayout.VERTICAL,

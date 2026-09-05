@@ -189,7 +189,12 @@ internal object ControlBarLayoutApplier {
         views.actionButtons.layoutParams = actionButtonsParams
         (views.actionButtons.layoutParams as LinearLayout.LayoutParams).also { params ->
             params.marginStart = 0
-            params.topMargin = if (transferProgressVisible) geometry.columnActionSpacingPx else 0
+            params.topMargin =
+                if (transferProgressVisible && mode == ControlBarLayoutPolicy.Mode.COLUMN) {
+                    geometry.columnActionSpacingPx
+                } else {
+                    0
+                }
             params.marginEnd = 0
             params.bottomMargin = 0
             views.actionButtons.layoutParams = params
