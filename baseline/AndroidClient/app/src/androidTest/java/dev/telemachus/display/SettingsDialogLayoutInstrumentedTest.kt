@@ -18,6 +18,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -194,6 +195,78 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun unavailableVideoControlsExposeNoteInsteadOfDeadControls() {
+        withLayout(screenWidthDp = 360) { layout ->
+            val note = layout.root.findViewById<TextView>(R.id.videoControlUnavailable)
+            val controls =
+                listOf(
+                    layout.root.findViewById<View>(R.id.videoQualityLabel),
+                    layout.root.findViewById<View>(R.id.videoQualityGroup),
+                    layout.root.findViewById<View>(R.id.videoFrameRateLabel),
+                    layout.root.findViewById<View>(R.id.videoFrameRateGroup),
+                    layout.root.findViewById<View>(R.id.videoBitrateLabel),
+                    layout.root.findViewById<View>(R.id.videoBitrateValue),
+                    layout.root.findViewById<View>(R.id.videoBitrateSlider),
+                )
+
+            SettingsUnavailableControlsAccessibilityApplier.apply(
+                available = false,
+                unavailableNote = note,
+                unavailableContent = controls,
+            )
+
+            assertUnavailableNoteOwnsAccessibility(note)
+            controls.forEach(::assertUnavailableControlHiddenFromAccessibility)
+
+            SettingsUnavailableControlsAccessibilityApplier.apply(
+                available = true,
+                unavailableNote = note,
+                unavailableContent = controls,
+            )
+
+            assertAvailableControlsRestoreDefaultAccessibility(note, controls)
+        }
+    }
+
+    @Test
+    fun unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls() {
+        withLayout(screenWidthDp = 360) { layout ->
+            val note = layout.root.findViewById<TextView>(R.id.gestureShortcutUnavailable)
+            val description = layout.root.findViewById<TextView>(R.id.gestureShortcutsDescription)
+            val swipeUpLabel = layout.root.findViewById<TextView>(R.id.gestureSwipeUpLabel)
+            val swipeDownLabel = layout.root.findViewById<TextView>(R.id.gestureSwipeDownLabel)
+            val controls =
+                listOf(
+                    description,
+                    swipeUpLabel,
+                    layout.root.findViewById<View>(R.id.gestureSwipeUpGroup),
+                    swipeDownLabel,
+                    layout.root.findViewById<View>(R.id.gestureSwipeDownGroup),
+                )
+            assertEquals(layout.context.getString(R.string.gesture_shortcuts_description), description.text.toString())
+            assertEquals(layout.context.getString(R.string.gesture_swipe_up_label), swipeUpLabel.text.toString())
+            assertEquals(layout.context.getString(R.string.gesture_swipe_down_label), swipeDownLabel.text.toString())
+
+            SettingsUnavailableControlsAccessibilityApplier.apply(
+                available = false,
+                unavailableNote = note,
+                unavailableContent = controls,
+            )
+
+            assertUnavailableNoteOwnsAccessibility(note)
+            controls.forEach(::assertUnavailableControlHiddenFromAccessibility)
+
+            SettingsUnavailableControlsAccessibilityApplier.apply(
+                available = true,
+                unavailableNote = note,
+                unavailableContent = controls,
+            )
+
+            assertAvailableControlsRestoreDefaultAccessibility(note, controls)
+        }
+    }
+
+    @Test
     fun capturesSustainedUseStatusEvidenceImages() {
         listOf("portrait" to (600 to 960), "landscape" to (960 to 600)).forEach { (name, dimensions) ->
             val (widthDp, heightDp) = dimensions
@@ -242,6 +315,38 @@ class SettingsDialogLayoutInstrumentedTest {
             assertTrue(group.isSelectionRequired)
             assertEquals(0, listenerCalls)
         }
+    }
+
+    private fun assertUnavailableNoteOwnsAccessibility(note: TextView) {
+        assertEquals(View.VISIBLE, note.visibility)
+        assertTrue(note.isFocusable)
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, note.importantForAccessibility)
+        assertEquals(null, note.contentDescription)
+        assertNotNull(note.background)
+    }
+
+    private fun assertAvailableControlsRestoreDefaultAccessibility(
+        note: TextView,
+        controls: List<View>,
+    ) {
+        assertEquals(View.GONE, note.visibility)
+        assertFalse(note.isFocusable)
+        assertEquals(null, note.contentDescription)
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO, note.importantForAccessibility)
+        assertNotNull(note.background)
+        controls.forEach { control ->
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO, control.importantForAccessibility)
+        }
+    }
+
+    private fun assertUnavailableControlHiddenFromAccessibility(control: View) {
+        val expectedImportance =
+            if (control is ViewGroup) {
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            } else {
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+        assertEquals(expectedImportance, control.importantForAccessibility)
     }
 
     private fun renderNominalDeviceHealth(layout: MeasuredLayout) {
