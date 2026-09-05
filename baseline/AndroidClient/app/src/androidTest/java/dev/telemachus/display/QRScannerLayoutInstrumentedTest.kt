@@ -79,6 +79,16 @@ class QRScannerLayoutInstrumentedTest {
         }
     }
 
+    @Test
+    @UiThreadTest
+    fun permanentlyDeniedCameraStateUsesSettingsAction() {
+        listOf(320 to 568, 640 to 320).forEach { (widthDp, heightDp) ->
+            withLayout(widthDp = widthDp, heightDp = heightDp, fontScale = 2f) { layout ->
+                layout.assertCameraPermissionBlockedStateSeparated()
+            }
+        }
+    }
+
     private fun withLayout(
         widthDp: Int,
         heightDp: Int,
@@ -231,6 +241,36 @@ class QRScannerLayoutInstrumentedTest {
             assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
             assertFalse(Rect.intersects(bounds(status), bounds(target)))
             assertFalse(Rect.intersects(bounds(target), bounds(cancel)))
+        }
+
+        fun assertCameraPermissionBlockedStateSeparated() {
+            target.visibility = View.GONE
+            retry.visibility = View.VISIBLE
+            status.visibility = View.VISIBLE
+            val message = context.getString(R.string.qr_scanner_camera_permission_blocked)
+            status.text = message
+            status.contentDescription = message
+            retry.text = context.getString(R.string.open_settings)
+            retry.contentDescription = context.getString(R.string.qr_scanner_open_settings_description)
+            measureAndLayout()
+
+            assertEquals(View.VISIBLE, status.visibility)
+            assertEquals(View.VISIBLE, retry.visibility)
+            assertEquals(View.GONE, target.visibility)
+            assertEquals(message, status.contentDescription.toString())
+            assertEquals(context.getString(R.string.open_settings), retry.text.toString())
+            assertEquals(
+                context.getString(R.string.qr_scanner_open_settings_description),
+                retry.contentDescription.toString(),
+            )
+            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
+            assertFalse(Rect.intersects(bounds(status), bounds(retry)))
+            assertFalse(Rect.intersects(bounds(retry), bounds(cancel)))
+            assertTrue(status.left >= 0)
+            assertTrue(status.right <= root.width)
+            assertTrue(retry.left >= 0)
+            assertTrue(retry.right <= root.width)
+            assertTrue(cancel.bottom <= root.height)
         }
 
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()

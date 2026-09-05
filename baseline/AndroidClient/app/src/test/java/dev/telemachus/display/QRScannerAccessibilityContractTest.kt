@@ -14,7 +14,6 @@ class QRScannerAccessibilityContractTest {
 
         assertFalse("QR scanner should not rely on Toast feedback", source.contains("Toast.makeText"))
         assertTrue(source.contains("@Volatile private var alreadyDelivered = false"))
-        assertTrue(source.contains("showScannerError(R.string.qr_scanner_camera_permission_missing)"))
         assertTrue(source.contains("showScannerError(R.string.qr_scanner_camera_bind_failed)"))
         assertTrue(source.contains("findViewById<Button>(R.id.retryCameraButton).apply"))
         assertTrue(source.contains("visibility = View.VISIBLE"))
@@ -26,6 +25,34 @@ class QRScannerAccessibilityContractTest {
         assertTrue(retryFocusIndex >= 0)
         assertTrue(statusUpdateIndex < retryFocusIndex)
         assertFalse("Assertive live region should not be double-announced", source.contains("announceForAccessibility"))
+    }
+
+    @Test
+    fun missingCameraPermissionRequestsThenRecoversOrOpensSettings() {
+        val source = qrScannerActivitySource()
+        val startMissingIndex = source.indexOf("handleMissingCameraPermission()")
+        val requestIndex = source.indexOf("cameraPerm.request(REQ_CAMERA)")
+        val grantedIndex = source.indexOf("PackageManager.PERMISSION_GRANTED")
+        val startAfterGrantIndex = source.indexOf("startCamera()", grantedIndex)
+
+        assertTrue(source.contains("private val cameraPerm by lazy { CameraPermissionManager(this) }"))
+        assertTrue(source.contains("findViewById<Button>(R.id.retryCameraButton).setOnClickListener { handleCameraRetry() }"))
+        assertTrue(source.contains("else -> requestCameraPermission()"))
+        assertTrue(source.contains("showScannerError(R.string.qr_scanner_camera_permission_missing)"))
+        assertTrue(source.contains("cameraPerm.request(REQ_CAMERA)"))
+        assertTrue(source.contains("override fun onRequestPermissionsResult"))
+        assertTrue(source.contains("grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED"))
+        assertTrue(source.contains("showCameraPermissionBlocked()"))
+        assertTrue(source.contains("R.string.qr_scanner_camera_permission_blocked"))
+        assertTrue(source.contains("R.string.open_settings"))
+        assertTrue(source.contains("R.string.qr_scanner_open_settings_description"))
+        assertTrue(source.contains("cameraPerm.openAppSettings()"))
+        assertTrue(source.contains("waitingForSettingsGrant && hasCameraPermission()"))
+        assertTrue(startMissingIndex >= 0)
+        assertTrue(requestIndex >= 0)
+        assertTrue(startMissingIndex < requestIndex)
+        assertTrue(grantedIndex >= 0)
+        assertTrue(startAfterGrantIndex > grantedIndex)
     }
 
     @Test

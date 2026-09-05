@@ -6,12 +6,14 @@
     <string name="trusted_network_dialog_confirm">I understand — scan</string>
     <string name="qr_scanner_camera_bind_failed">Camera could not start. Check Camera permission and retry. USB still works.</string>
     <string name="qr_scanner_camera_permission_missing">Camera permission is missing. Allow Camera, then retry. USB still works.</string>
+    <string name="qr_scanner_camera_permission_blocked">Camera access is blocked. Open Settings, allow Camera, then return here. USB still works.</string>
     <string name="qr_scanner_starting_status">Scanner status will appear here.</string>
     <string name="invalid_pairing_qr">Invalid QR code. Scan a Vibe Screen pairing code.</string>
     <string name="qr_scanner_instruction">Aim the camera at the QR code on your Mac</string>
     <string name="qr_scanner_instruction_accessibility">QR scanner. Aim the camera at the QR code on your Mac.</string>
     <string name="qr_scanner_cancel_description">Cancel QR scanning and return to Vibe Screen</string>
     <string name="qr_scanner_retry_camera_description">Try starting the camera again</string>
+    <string name="qr_scanner_open_settings_description">Open app settings to allow Camera access</string>
     <string name="cancel">Cancel</string>
     <string name="wireless_trusted_network_note">Wireless mode is for trusted private networks only. Current Mac and Android apps use encrypted application records unless explicit legacy fallback is selected.</string>
     <string name="connection_details">Connection details</string>

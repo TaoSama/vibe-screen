@@ -1,6 +1,5 @@
 package dev.telemachus.display
 
-import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -30,6 +29,8 @@ import java.util.concurrent.Executors
 class QRScannerActivity : AppCompatActivity() {
     private val reader = QRCodeReader()
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
+    private val cameraPerm by lazy { CameraPermissionManager(this) }
+    private var waitingForSettingsGrant = false
     private val decodeHints =
         mapOf(
             DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
@@ -42,15 +43,24 @@ class QRScannerActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_qr_scanner)
         findViewById<Button>(R.id.cancelButton).setOnClickListener { finishCanceled() }
-        findViewById<Button>(R.id.retryCameraButton).setOnClickListener { startCamera() }
+        findViewById<Button>(R.id.retryCameraButton).setOnClickListener { handleCameraRetry() }
         startCamera()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (waitingForSettingsGrant && hasCameraPermission()) {
+            waitingForSettingsGrant = false
+            startCamera()
+        }
     }
 
     private fun startCamera() {
         if (!hasCameraPermission()) {
-            showScannerError(R.string.qr_scanner_camera_permission_missing)
+            handleMissingCameraPermission()
             return
         }
+        waitingForSettingsGrant = false
         showScannerReady()
         val previewView = findViewById<PreviewView>(R.id.preview)
         val providerFuture = ProcessCameraProvider.getInstance(this)
@@ -76,8 +86,58 @@ class QRScannerActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun hasCameraPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    private fun handleCameraRetry() {
+        when {
+            hasCameraPermission() -> startCamera()
+            cameraPerm.isPermanentlyDenied() -> openCameraPermissionSettings()
+            else -> requestCameraPermission()
+        }
+    }
+
+    private fun handleMissingCameraPermission() {
+        if (cameraPerm.isPermanentlyDenied()) {
+            showCameraPermissionBlocked()
+        } else {
+            requestCameraPermission()
+        }
+    }
+
+    private fun requestCameraPermission() {
+        showScannerError(R.string.qr_scanner_camera_permission_missing)
+        cameraPerm.request(REQ_CAMERA)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_CAMERA) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            startCamera()
+        } else if (cameraPerm.isPermanentlyDenied()) {
+            showCameraPermissionBlocked()
+        } else {
+            showScannerError(R.string.qr_scanner_camera_permission_missing)
+        }
+    }
+
+    private fun showCameraPermissionBlocked() {
+        showScannerError(
+            R.string.qr_scanner_camera_permission_blocked,
+            R.string.open_settings,
+            R.string.qr_scanner_open_settings_description,
+        )
+    }
+
+    private fun openCameraPermissionSettings() {
+        waitingForSettingsGrant = true
+        showCameraPermissionBlocked()
+        cameraPerm.openAppSettings()
+    }
+
+    private fun hasCameraPermission(): Boolean = cameraPerm.isGranted()
 
     private fun showScannerReady() {
         findViewById<PreviewView>(R.id.preview).visibility = View.VISIBLE
@@ -88,11 +148,17 @@ class QRScannerActivity : AppCompatActivity() {
         LiveRegionTextApplier.hide(status)
     }
 
-    private fun showScannerError(@StringRes messageRes: Int) {
+    private fun showScannerError(
+        @StringRes messageRes: Int,
+        @StringRes actionTextRes: Int = R.string.retry_now,
+        @StringRes actionDescriptionRes: Int = R.string.qr_scanner_retry_camera_description,
+    ) {
         findViewById<PreviewView>(R.id.preview).visibility = View.INVISIBLE
         findViewById<View>(R.id.targetFrame).visibility = View.GONE
         showScannerStatus(getString(messageRes))
         findViewById<Button>(R.id.retryCameraButton).apply {
+            text = getString(actionTextRes)
+            contentDescription = getString(actionDescriptionRes)
             visibility = View.VISIBLE
             requestFocus()
         }
@@ -177,6 +243,7 @@ class QRScannerActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "QRScanner"
         private const val INTERNET_PAIRING_PREFIX = "vibescreen://pair?"
+        private const val REQ_CAMERA = 1201
         const val EXTRA_URL = "qr_url"
 
         internal fun isSupportedPairingNamespace(raw: String): Boolean =
