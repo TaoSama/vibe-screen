@@ -110,6 +110,7 @@
     <string name="gesture_action_move_window">Move here</string>
     <string name="gesture_action_return_windows">Return</string>
     <string name="gesture_shortcuts_unavailable">Connect to a compatible Mac session with window actions to use shortcuts.</string>
+    <string name="gesture_shortcuts_policy_disabled">Gesture shortcuts are disabled by this device or Mac session policy.</string>
     <string name="video_quality_request_sent">Quality request sent to Mac</string>
     <string name="video_frame_rate_request_sent">Frame-rate request sent to Mac</string>
     <string name="video_bitrate_request_sent">Bitrate request sent to Mac</string>
@@ -166,6 +167,7 @@
     <string name="display_capsule_placeholder">Display</string>
     <!-- Host window-action control (move focused window to this device / return moved windows). -->
     <string name="control_host_actions">Window actions</string>
+    <string name="control_host_actions_policy_disabled">Window actions disabled by policy</string>
     <string name="host_action_move_window">Move window here</string>
     <string name="host_action_return_windows">Return windows to Mac</string>
     <string name="host_action_confirm_message">This action changes windows on your Mac.</string>
@@ -180,7 +182,9 @@
     <string name="host_action_rejected_no_window">Select a movable window on your Mac, then try again.</string>
     <!-- Clipboard control in the streaming control bar. -->
     <string name="control_clipboard">Clipboard</string>
+    <string name="control_clipboard_policy_disabled">Clipboard disabled by policy</string>
     <string name="control_file_transfer">File transfer</string>
+    <string name="control_file_transfer_policy_disabled">File transfer disabled by policy</string>
     <string name="control_file_transfer_cancel">Cancel file transfer</string>
     <string name="control_file_transfer_cancel_with_progress">Cancel file transfer, %1$s</string>
     <string name="control_file_transfer_cancelling_with_progress">Cancelling file transfer, %1$s</string>

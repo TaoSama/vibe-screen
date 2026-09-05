@@ -80,7 +80,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "The control bar should render incoming receive progress through the same text and cancel affordance as outgoing sends",
             refreshControl.contains("val activeIncoming = activeIncomingFileTransfer") &&
-                refreshControl.contains("val transferAvailable = state.fileTransferVisible || internetFileTransfer") &&
+                refreshControl.contains("val fileTransferPresentation =") &&
+                refreshControl.contains("ManagedPolicyControlAvailabilityPolicy.presentation(") &&
+                refreshControl.contains("capabilityAvailable = controlBarPolicySurface.fileTransfer") &&
+                refreshControl.contains("policyAllowed = managedFileTransferAllowed") &&
+                refreshControl.contains("val transferAvailable = fileTransferPresentation.visible") &&
                 refreshControl.contains("if (!transferAvailable)") &&
                 assertBeforeValue(refreshControl, "if (!transferAvailable)", "val activeIncoming = activeIncomingFileTransfer") &&
                 refreshControl.contains("val activeTransferVisible = activeIncoming != null || activeOutgoing != null") &&
@@ -89,6 +93,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 refreshControl.contains("val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false") &&
                 refreshControl.contains("R.drawable.ic_cancel_transfer") &&
                 refreshControl.contains("if (activeTransferVisible)") &&
+                refreshControl.contains("getString(fileTransferPresentation.labelResource)") &&
                 refreshControl.contains("binding.controlFileTransferProgressText.visibility = View.VISIBLE") &&
                 refreshControl.contains("refreshClipboardStatusText(client, activeSessionGeneration)"),
         )
@@ -355,6 +360,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 connectionStatus.contains("rejectPendingIncomingFileOffer()") &&
                 managedPolicy.contains("if (!callbackClient.canTransferFiles)") &&
                 managedPolicy.contains("rejectPendingIncomingFileOffer()") &&
+                managedPolicy.contains("discardPendingOutgoingFileTransfer()") &&
+                assertBeforeValue(managedPolicy, "if (!callbackClient.canTransferFiles)", "discardPendingOutgoingFileTransfer()") &&
                 assertBeforeValue(managedPolicy, "if (!callbackClient.canTransferFiles)", "refreshFileTransferControl()") &&
                 updateInternetState.contains("state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED") &&
                 updateInternetState.contains("rejectPendingIncomingFileOffer()") &&

@@ -1472,6 +1472,10 @@ class StreamClient(
     internal fun negotiatedCapabilities(): Set<dev.vibescreen.protocol.v1.Capability> =
         if (wireMode == WireMode.V1) protocolSessionOwner.currentSession?.negotiated ?: emptySet() else emptySet()
 
+    /** Capabilities negotiated before managed-policy filtering; used only to explain disabled UI controls. */
+    internal fun managedPolicyControlSurfaceCapabilities(): Set<dev.vibescreen.protocol.v1.Capability> =
+        if (wireMode == WireMode.V1) protocolSessionOwner.currentSession?.policyControlSurface ?: emptySet() else emptySet()
+
     /** True when host actions can be invoked on the active Protocol v1 session. */
     internal val canInvokeHostActions: Boolean
         get() = protocolSessionOwner.isConnected && wireMode == WireMode.V1 && protocolSessionOwner.currentSession?.canInvokeHostActions == true
