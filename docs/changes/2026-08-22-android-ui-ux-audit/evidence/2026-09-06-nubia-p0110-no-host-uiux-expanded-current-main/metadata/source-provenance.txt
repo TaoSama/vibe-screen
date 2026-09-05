@@ -1,0 +1,5 @@
+repository=TaoSama/vibe-screen
+evidence_branch=docs/p0110-no-host-uiux-evidence-20260906
+tested_source_commit=aa578cb960408e8113ee5c84fb412c6d23ec0020
+origin_main_at_test=aa578cb960408e8113ee5c84fb412c6d23ec0020
+tested_source_subject=Improve managed-policy disabled UI explanations

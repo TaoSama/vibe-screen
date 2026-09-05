@@ -1,0 +1,20 @@
+fd5c651e7850df08426c5b2c53ca15bd57ed27f466119a02910cc0b90dfa87b4  ./README.md
+2851d0b2f14f4ff1b75f0d01438887911eb474e235be93e561709227cefb18db  ./android-test-report/css/base-style.css
+f1b366319836f8726d0939654d0eeddfc5b20f67d9e5954b9a1632c60f2f31bf  ./android-test-report/css/style.css
+bc5bb671fbc3c9011c318fddaa425cbb9a075b4de2fbec3095f2e136f9da8540  ./android-test-report/dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest.html
+73c8c22da21cc5d8e475798aaef28397ead9fd4ea7c7881527cba1622e412d44  ./android-test-report/dev.telemachus.display.ControlBarLayoutInstrumentedTest.html
+2547f047d0a176cf90708108e665f7308eaaa1b25eda6b2370488977408c4d6d  ./android-test-report/dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest.html
+b5af959246b0056335823c3f4385162e9eea03ad05ccde02d15c51c4199df087  ./android-test-report/dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.html
+23e3f94ef5d056adcf6658a017adc3917c131c68566bffc0341291f4040f11a0  ./android-test-report/dev.telemachus.display.html
+96dcb8303a55740eb7f67e63e8f778607b17bae1e69f0b37031b262eaaa6933c  ./android-test-report/index.html
+0aa306f94805890682c639b2d5c06108801d64b859a171a3c6eea66c8bab4c6a  ./android-test-report/js/report.js
+8560a03f0f1712db2f4a18732f7f087ddb9234567b945b6bcc79ed0d765d0ed8  ./android-test-results/P0110 - 16/test-result.textproto
+39a240f9b7128f568ad4c1b475d7b60717c43126bccdf9451588d20f7642e152  ./android-test-results/P0110 - 16/testlog/test-results.log
+3e816c831a66efe4162971845b8a8894a531d15edc8f8f5ff16ed9643263d833  ./android-test-results/TEST-P0110 - 16-_app-.xml
+e36316bfac5a9f8699aae7329102f2ba9424839f0bee4b30e948cb168ba2a470  ./logs/adb-reverse-after-tests.txt
+b555a30608a6391b7b0bd38134ac09f603a21f2abd0b3bc90fc1a123ece0d5a7  ./logs/connected-uiux-layout-instrumentation.log
+e7d51c0e03a9a61fd4d398798493de7f9de37011cb2d588b19e6db2d912f75ac  ./logs/gradle-assemble-debug-androidtest.log
+ad0bdcb79bade9598348abcee2b20335129f552890023cc21d9d20337d20a4ef  ./logs/internet-dialog-device-files.txt
+39cc4c1c9f1df9e8195d5de63b29fb4bfc659b0b5d2fbea84d69c7fc062d8084  ./logs/no-host-boundary.txt
+8c41f5f301715ea10738bcfd7e3b57abe1e08175c433e01e162578b8573e5d02  ./metadata/device-identity.txt
+a35a965229808dd41addcd3b48077a2e5420aedf7b792364cc2a32fe4db17f72  ./metadata/source-provenance.txt

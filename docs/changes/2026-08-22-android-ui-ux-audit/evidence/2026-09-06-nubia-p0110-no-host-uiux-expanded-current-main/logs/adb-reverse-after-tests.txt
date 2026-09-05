@@ -1,0 +1,2 @@
+# adb reverse --list after no-Host instrumentation
+UsbFfs tcp:8908 tcp:8908
