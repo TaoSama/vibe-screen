@@ -1381,6 +1381,32 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun internetProfileImportDialogUsesParentOwnedScrollingLayout() {
+        val source = mainActivitySource()
+        val importDialog = extractMethod(source, "private fun showInternetProfileImportDialog")
+        val layout = resourceSource("app/src/main/res/layout/dialog_internet_profile_import.xml")
+        val scroll = extractXmlElement(layout, """android:id="@+id/internetProfileImportScroll"""")
+        val input = extractXmlElement(scroll, """android:id="@+id/internetProfileImportInput"""")
+
+        assertTrue(importDialog.contains("R.layout.dialog_internet_profile_import"))
+        assertTrue(importDialog.contains("R.id.internetProfileImportInput"))
+        assertTrue(importDialog.contains("setHorizontallyScrolling(false)"))
+        assertTrue(importDialog.contains("EditorInfo.IME_FLAG_NO_EXTRACT_UI"))
+        assertTrue(importDialog.contains("EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING"))
+        assertTrue(importDialog.contains("View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS"))
+        assertTrue(importDialog.contains("isSaveEnabled = false"))
+        assertTrue(scroll.contains("""android:fillViewport="true""""))
+        assertTrue(scroll.contains("""android:paddingStart="8dp""""))
+        assertTrue(scroll.contains("""android:paddingEnd="8dp""""))
+        assertTrue(input.contains("""android:breakStrategy="simple""""))
+        assertTrue(input.contains("""android:minHeight="128dp""""))
+        assertTrue(input.contains("""android:minLines="4""""))
+        assertTrue(input.contains("""android:textSize="11sp""""))
+        assertFalse("Import input should not create nested vertical scrolling inside the dialog ScrollView", input.contains("android:maxLines="))
+        assertFalse("Import input should leave vertical scrolling to the parent ScrollView", input.contains("""android:scrollbars="vertical""""))
+    }
+
+    @Test
     fun onFreshSessionRequiredInternetErrorTextUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val callback = extractMethod(source, "override fun onFreshSessionRequired")

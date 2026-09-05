@@ -53,7 +53,9 @@ class InternetPairingDialogLayoutInstrumentedTest {
         listOf(
             Triple(320, 640, 1.3f),
             Triple(360, 740, 1.8f),
-            Triple(640, 320, 1.8f),
+            Triple(360, 740, 2.0f),
+            Triple(320, 640, 2.0f),
+            Triple(640, 320, 2.0f),
         ).forEach { (widthDp, heightDp, fontScale) ->
             withImportLayout(widthDp = widthDp, heightDp = heightDp, fontScale = fontScale) { layout ->
                 layout.input.setText(sampleLeaseJson())
@@ -258,8 +260,11 @@ class InternetPairingDialogLayoutInstrumentedTest {
 
         fun assertImportInputCanScrollIntoView() {
             val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            assertTrue("import scroll view should fill the constrained dialog viewport", scroll.isFillViewport)
+            assertEquals("import input lets the parent own vertical scrolling", Int.MAX_VALUE, input.maxLines)
             assertTrue("import dialog keeps a visible input area", visibleHeight > 0)
             assertTrue("import input bottom starts below top padding", input.bottom > scroll.paddingTop)
+            assertTrue("long import payload should be taller than the narrow viewport", input.bottom > visibleHeight)
             scroll.scrollTo(0, 0)
             assertTrue("import input top is visible initially", input.top >= scroll.scrollY)
             assertTrue("import input top starts inside the viewport", input.top < scroll.scrollY + visibleHeight)
