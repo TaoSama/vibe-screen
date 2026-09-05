@@ -22,6 +22,41 @@ final class StreamInputInjectorKeyReleaseTests: XCTestCase {
         )
     }
 
+    func testEditingNavigationAndKeypadHIDUsagesMapToMacKeyCodes() {
+        let cases: [(UInt32, CGKeyCode)] = [
+            (0x49, 0x72),
+            (0x4B, 0x74),
+            (0x4C, 0x75),
+            (0x4E, 0x79),
+            (0x53, 0x47),
+            (0x54, 0x4B),
+            (0x55, 0x43),
+            (0x56, 0x4E),
+            (0x57, 0x45),
+            (0x58, 0x4C),
+            (0x59, 0x53),
+            (0x5A, 0x54),
+            (0x5B, 0x55),
+            (0x5C, 0x56),
+            (0x5D, 0x57),
+            (0x5E, 0x58),
+            (0x5F, 0x59),
+            (0x60, 0x5B),
+            (0x61, 0x5C),
+            (0x62, 0x52),
+            (0x63, 0x41),
+            (0x67, 0x51),
+        ]
+
+        for (usage, expectedKeyCode) in cases {
+            XCTAssertEqual(
+                StreamInputMapping.macKeyCode(fromUSBHIDUsage: usage),
+                expectedKeyCode,
+                "Unexpected key code for HID usage \(String(format: "0x%02X", usage))"
+            )
+        }
+    }
+
     func testPressedKeyStateConsumesKeysByHIDUsageAndIsIdempotent() {
         var state = PressedKeyState()
 
@@ -82,6 +117,34 @@ final class StreamInputInjectorKeyReleaseTests: XCTestCase {
 
         injector.reset()
         XCTAssertEqual(posted.count, 4)
+    }
+
+    func testInjectorPostsAndResetsExtendedKeyboardUsages() throws {
+        var posted: [CGEvent] = []
+        let injector = StreamInputInjector(
+            eventSource: try XCTUnwrap(CGEventSource(stateID: .privateState)),
+            keyboardEventPoster: { posted.append($0.copy()!) }
+        )
+
+        XCTAssertTrue(injector.handleKey(
+            usbHIDUsage: 0x4B,
+            pressed: true,
+            modifierMask: StreamInputWire.modifierShift
+        ))
+        XCTAssertTrue(injector.handleKey(
+            usbHIDUsage: 0x58,
+            pressed: true,
+            modifierMask: 0
+        ))
+
+        injector.reset()
+
+        XCTAssertEqual(posted.map(\.type), [.keyDown, .keyDown, .keyUp, .keyUp])
+        XCTAssertEqual(
+            posted.map { $0.getIntegerValueField(.keyboardEventKeycode) },
+            [0x74, 0x4C, 0x74, 0x4C]
+        )
+        XCTAssertTrue(posted[2].flags.contains(.maskShift))
     }
 
     func testNativePointerMoveAndPrimaryButtonLifecycleArePosted() throws {
