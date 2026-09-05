@@ -6,6 +6,7 @@
     android:id="@+id/qrScannerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#000000"
     tools:ignore="MergeRootFrame">
 
     <androidx.camera.view.PreviewView
@@ -27,6 +28,7 @@
         android:layout_marginEnd="24dp"
         android:gravity="center"
         android:text="@string/qr_scanner_instruction"
+        android:contentDescription="@string/qr_scanner_instruction_accessibility"
         android:textColor="#ffffff"
         android:textSize="14sp"
         android:shadowColor="#000000"
@@ -37,6 +39,47 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <TextView
+        android:id="@+id/scannerStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="24dp"
+        android:accessibilityLiveRegion="polite"
+        android:background="@drawable/qr_scanner_status_bg"
+        android:contentDescription="@string/qr_scanner_starting_status"
+        android:gravity="center"
+        android:lineSpacingExtra="2dp"
+        android:padding="14dp"
+        android:text="@string/qr_scanner_starting_status"
+        android:textColor="@color/on_surface"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/scannerInstruction" />
+
+    <Button
+        android:id="@+id/retryCameraButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:contentDescription="@string/qr_scanner_retry_camera_description"
+        android:minHeight="48dp"
+        android:minWidth="48dp"
+        android:text="@string/retry_now"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/cancelButton"
+        app:layout_constraintTop_toBottomOf="@id/scannerStatus"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintVertical_bias="0"
+        app:layout_goneMarginTop="8dp"
+        app:layout_goneMarginBottom="8dp"
+        app:layout_constrainedHeight="true" />
+
     <Button
         android:id="@+id/cancelButton"
         android:layout_width="wrap_content"
@@ -44,6 +87,7 @@
         android:layout_marginBottom="16dp"
         android:minHeight="48dp"
         android:minWidth="48dp"
+        android:contentDescription="@string/qr_scanner_cancel_description"
         android:text="@string/cancel"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -64,6 +108,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHeight_max="240dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/scannerInstruction"
+        app:layout_constraintTop_toBottomOf="@id/scannerStatus"
+        app:layout_goneMarginBottom="16dp"
+        app:layout_goneMarginTop="16dp"
         app:layout_constraintWidth_max="240dp" />
 </androidx.constraintlayout.widget.ConstraintLayout>

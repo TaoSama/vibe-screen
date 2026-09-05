@@ -2,7 +2,9 @@ package dev.telemachus.display
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -57,6 +59,26 @@ class QRScannerLayoutInstrumentedTest {
         }
     }
 
+    @Test
+    @UiThreadTest
+    fun cameraErrorStateIsReadableAndRecoverable() {
+        listOf(320 to 568, 640 to 320, 320 to 400).forEach { (widthDp, heightDp) ->
+            withLayout(widthDp = widthDp, heightDp = heightDp, fontScale = 2f) { layout ->
+                layout.assertCameraErrorStateSeparated()
+            }
+        }
+    }
+
+    @Test
+    @UiThreadTest
+    fun invalidQrStatusStaysReadableAboveTarget() {
+        listOf(320 to 568, 640 to 320).forEach { (widthDp, heightDp) ->
+            withLayout(widthDp = widthDp, heightDp = heightDp, fontScale = 2f) { layout ->
+                layout.assertInvalidQrStateSeparated()
+            }
+        }
+    }
+
     private fun withLayout(
         widthDp: Int,
         heightDp: Int,
@@ -89,7 +111,9 @@ class QRScannerLayoutInstrumentedTest {
     ) {
         val preview = root.findViewById<PreviewView>(R.id.preview)
         val instruction = root.findViewById<TextView>(R.id.scannerInstruction)
+        val status = root.findViewById<TextView>(R.id.scannerStatus)
         val target = root.findViewById<View>(R.id.targetFrame)
+        val retry = root.findViewById<Button>(R.id.retryCameraButton)
         val cancel = root.findViewById<Button>(R.id.cancelButton)
         private val widthPx = dp(widthDp)
         private val heightPx = dp(heightDp)
@@ -110,6 +134,23 @@ class QRScannerLayoutInstrumentedTest {
             assertTrue(target.width <= dp(240))
             assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, target.importantForAccessibility)
             assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, preview.importantForAccessibility)
+            assertEquals(View.GONE, status.visibility)
+            assertEquals(View.GONE, retry.visibility)
+            assertEquals(Color.BLACK, (root.background as ColorDrawable).color)
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, instruction.accessibilityLiveRegion)
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, status.accessibilityLiveRegion)
+            assertEquals(
+                context.getString(R.string.qr_scanner_instruction_accessibility),
+                instruction.contentDescription.toString(),
+            )
+            assertEquals(
+                context.getString(R.string.qr_scanner_cancel_description),
+                cancel.contentDescription.toString(),
+            )
+            assertEquals(
+                context.getString(R.string.qr_scanner_starting_status),
+                status.contentDescription.toString(),
+            )
             assertTrue(cancel.width >= dp(48))
             assertTrue(cancel.height >= dp(48))
             val instructionLayout = instruction.layout
@@ -132,6 +173,64 @@ class QRScannerLayoutInstrumentedTest {
             assertFalse(Rect.intersects(bounds(instruction), bounds(cancel)))
             assertTrue(instruction.top >= 0)
             assertTrue(cancel.bottom <= root.height)
+        }
+
+        fun assertCameraErrorStateSeparated() {
+            target.visibility = View.GONE
+            retry.visibility = View.VISIBLE
+            status.visibility = View.VISIBLE
+            val message = context.getString(R.string.qr_scanner_camera_bind_failed)
+            status.text = message
+            status.contentDescription = message
+            measureAndLayout()
+
+            assertEquals(View.VISIBLE, status.visibility)
+            assertEquals(View.VISIBLE, retry.visibility)
+            assertEquals(View.GONE, target.visibility)
+            assertEquals(message, status.contentDescription.toString())
+            assertEquals(
+                context.getString(R.string.qr_scanner_retry_camera_description),
+                retry.contentDescription.toString(),
+            )
+            assertTrue(retry.width >= dp(48))
+            assertTrue(retry.height >= dp(48))
+            val statusLayout = status.layout
+            assertTrue(statusLayout != null && statusLayout.lineCount > 0)
+            assertTrue(
+                (0 until statusLayout.lineCount).all { line ->
+                    statusLayout.getEllipsisCount(line) == 0
+                },
+            )
+            assertTrue(
+                statusLayout.getLineBottom(statusLayout.lineCount - 1) <=
+                    status.height - status.compoundPaddingBottom,
+            )
+            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
+            assertFalse(Rect.intersects(bounds(status), bounds(retry)))
+            assertFalse(Rect.intersects(bounds(retry), bounds(cancel)))
+            assertTrue(status.left >= 0)
+            assertTrue(status.right <= root.width)
+            assertTrue(retry.left >= 0)
+            assertTrue(retry.right <= root.width)
+            assertTrue(cancel.bottom <= root.height)
+        }
+
+        fun assertInvalidQrStateSeparated() {
+            status.visibility = View.VISIBLE
+            val message = context.getString(R.string.invalid_pairing_qr)
+            status.text = message
+            status.contentDescription = message
+            measureAndLayout()
+
+            assertEquals(View.VISIBLE, status.visibility)
+            assertEquals(View.VISIBLE, target.visibility)
+            assertEquals(View.GONE, retry.visibility)
+            assertEquals(message, status.contentDescription.toString())
+            assertTrue(target.width > 0)
+            assertTrue(target.width <= dp(240))
+            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
+            assertFalse(Rect.intersects(bounds(status), bounds(target)))
+            assertFalse(Rect.intersects(bounds(target), bounds(cancel)))
         }
 
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()

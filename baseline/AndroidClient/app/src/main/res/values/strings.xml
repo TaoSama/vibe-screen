@@ -4,9 +4,14 @@
     <string name="trusted_network_dialog_title">Wireless mode is experimental</string>
     <string name="trusted_network_dialog_message">Wireless mode is for trusted private networks only. Current Mac and Android apps protect video and input with per-session application records; explicit legacy fallback remains plaintext.</string>
     <string name="trusted_network_dialog_confirm">I understand — scan</string>
-    <string name="qr_scanner_unavailable">QR scanning is unavailable on this device. Use USB mode instead.</string>
+    <string name="qr_scanner_camera_bind_failed">Camera could not start. Check Camera permission and retry. USB still works.</string>
+    <string name="qr_scanner_camera_permission_missing">Camera permission is missing. Allow Camera, then retry. USB still works.</string>
+    <string name="qr_scanner_starting_status">Scanner status will appear here.</string>
     <string name="invalid_pairing_qr">Invalid QR code. Scan a Vibe Screen pairing code.</string>
     <string name="qr_scanner_instruction">Aim the camera at the QR code on your Mac</string>
+    <string name="qr_scanner_instruction_accessibility">QR scanner. Aim the camera at the QR code on your Mac.</string>
+    <string name="qr_scanner_cancel_description">Cancel QR scanning and return to Vibe Screen</string>
+    <string name="qr_scanner_retry_camera_description">Try starting the camera again</string>
     <string name="cancel">Cancel</string>
     <string name="wireless_trusted_network_note">Wireless mode is for trusted private networks only. Current Mac and Android apps use encrypted application records unless explicit legacy fallback is selected.</string>
     <string name="connection_details">Connection details</string>
@@ -41,7 +46,8 @@
     <string name="wireless_error_protocol_message">Couldn’t complete the secure handshake with the Mac. Scan the QR again.</string>
     <string name="scan_fresh_qr">Scan a fresh QR from your Mac to re-pair.</string>
     <string name="camera_permission_required">Camera permission required to scan a QR code</string>
-    <string name="camera_permission_settings_instructions">Camera access was blocked. Open Settings → Apps → Vibe Screen → Permissions to allow it.</string>
+    <string name="camera_permission_retry_instructions">Camera permission is required to scan. Tap Scan QR Code again and allow Camera, or use USB mode.</string>
+    <string name="camera_permission_settings_instructions">Camera access was blocked. Open Settings → Apps → Vibe Screen → Permissions, allow Camera, then return here to scan again. USB mode still works without Camera.</string>
     <string name="internet_camera_permission_blocked">Camera access was blocked. Open Settings → Apps → Vibe Screen → Permissions, allow Camera, then return here to scan the Internet profile QR.</string>
     <string name="open_settings">Open Settings</string>
     <string name="display_settings">Display settings</string>

@@ -1,11 +1,15 @@
 package dev.telemachus.display
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.Toast
+import android.widget.TextView
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -31,17 +35,23 @@ class QRScannerActivity : AppCompatActivity() {
             DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
             DecodeHintType.TRY_HARDER to true,
         )
-    private var alreadyDelivered = false
+    @Volatile private var alreadyDelivered = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_qr_scanner)
         findViewById<Button>(R.id.cancelButton).setOnClickListener { finishCanceled() }
+        findViewById<Button>(R.id.retryCameraButton).setOnClickListener { startCamera() }
         startCamera()
     }
 
     private fun startCamera() {
+        if (!hasCameraPermission()) {
+            showScannerError(R.string.qr_scanner_camera_permission_missing)
+            return
+        }
+        showScannerReady()
         val previewView = findViewById<PreviewView>(R.id.preview)
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
@@ -61,12 +71,37 @@ class QRScannerActivity : AppCompatActivity() {
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analyzer)
             } catch (e: Exception) {
                 Log.e(TAG, "Camera bind failed", e)
-                Toast
-                    .makeText(this, R.string.qr_scanner_unavailable, Toast.LENGTH_LONG)
-                    .show()
-                finishCanceled()
+                showScannerError(R.string.qr_scanner_camera_bind_failed)
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    private fun showScannerReady() {
+        findViewById<PreviewView>(R.id.preview).visibility = View.VISIBLE
+        findViewById<View>(R.id.targetFrame).visibility = View.VISIBLE
+        findViewById<Button>(R.id.retryCameraButton).visibility = View.GONE
+        val status = findViewById<TextView>(R.id.scannerStatus)
+        status.contentDescription = getString(R.string.qr_scanner_starting_status)
+        LiveRegionTextApplier.hide(status)
+    }
+
+    private fun showScannerError(@StringRes messageRes: Int) {
+        findViewById<PreviewView>(R.id.preview).visibility = View.INVISIBLE
+        findViewById<View>(R.id.targetFrame).visibility = View.GONE
+        showScannerStatus(getString(messageRes))
+        findViewById<Button>(R.id.retryCameraButton).apply {
+            visibility = View.VISIBLE
+            requestFocus()
+        }
+    }
+
+    private fun showScannerStatus(message: CharSequence) {
+        val status = findViewById<TextView>(R.id.scannerStatus)
+        status.contentDescription = message
+        LiveRegionTextApplier.show(status, message)
     }
 
     private fun analyze(proxy: ImageProxy) {
@@ -120,7 +155,7 @@ class QRScannerActivity : AppCompatActivity() {
             // the namespaced payload and never interprets its security fields.
             val validInternet = raw.startsWith(INTERNET_PAIRING_PREFIX)
             if (!validLegacy && !validInternet) {
-                Toast.makeText(this, R.string.invalid_pairing_qr, Toast.LENGTH_SHORT).show()
+                showScannerStatus(getString(R.string.invalid_pairing_qr))
                 alreadyDelivered = false
             } else {
                 setResult(RESULT_OK, Intent().putExtra(EXTRA_URL, raw))

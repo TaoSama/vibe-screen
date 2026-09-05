@@ -971,6 +971,17 @@
                         android:layout_marginBottom="16dp" />
 
                     <TextView
+                        android:id="@+id/wirelessCameraPermissionRetry"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        android:gravity="center"
+                        android:text="@string/camera_permission_retry_instructions"
+                        android:textColor="@color/danger_text"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="16dp"
