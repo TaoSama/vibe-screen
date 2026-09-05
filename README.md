@@ -731,10 +731,13 @@ sends `AudioConfig` after the initial video configuration is acknowledged, and
 streams packets on audio stream `2`; Android accepts/rejects the config through
 its PCM playback adapter, submits packets to `AudioTrack`, and stops playback on
 disconnect, fresh-session recovery, failure, or revocation. This is offline
-product-flow coverage only. Existing USB/LAN audio, clipboard, and file-transfer
-evidence plus Internet audio/bulk hook tests remain readiness evidence; without
-retained, hashed real macOS+Android public-Internet product-flow artifacts, this
-child gate stays blocked.
+product-flow and Android wrapper coverage only: the Internet playback wrapper now
+has direct JVM coverage for configuration, packet submission, playback failure,
+malformed packet rejection, and the shared USB/LAN `no_audio_configuration`
+diagnostic. Existing USB/LAN audio, clipboard, and file-transfer evidence plus
+Internet audio/bulk hook tests remain readiness evidence; without retained,
+hashed real macOS+Android public-Internet product-flow artifacts, this child gate
+stays blocked.
 The current-base package-level checker
 `vibescreen_evidence.phase3_internet_release_gate` now makes the Internet
 soak/latency boundary executable: it requires public-path and deployed remote

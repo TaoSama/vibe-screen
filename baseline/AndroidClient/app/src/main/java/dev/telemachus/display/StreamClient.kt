@@ -5,6 +5,7 @@ import android.os.Build
 import android.util.Log
 import android.view.WindowManager
 import com.google.protobuf.ByteString
+import dev.telemachus.display.audio.AUDIO_PACKET_NO_CONFIGURATION_CODE
 import dev.telemachus.display.audio.AndroidAudioTrackOutputFactory
 import dev.telemachus.display.audio.AudioPacketRejectReason
 import dev.telemachus.display.audio.ProtocolAudioConfigureResult
@@ -2937,7 +2938,7 @@ class StreamClient(
 
     private fun AudioPacketRejectReason.audioCode(): String =
         when (this) {
-            AudioPacketRejectReason.NO_CONFIGURATION -> "no_audio_configuration"
+            AudioPacketRejectReason.NO_CONFIGURATION -> AUDIO_PACKET_NO_CONFIGURATION_CODE
             is AudioPacketRejectReason.ProtocolRejected -> reason.code
         }
 

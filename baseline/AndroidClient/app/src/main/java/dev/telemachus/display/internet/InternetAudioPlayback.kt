@@ -1,6 +1,7 @@
 package dev.telemachus.display.internet
 
 import dev.telemachus.display.audio.AndroidAudioTrackOutputFactory
+import dev.telemachus.display.audio.AUDIO_PACKET_NO_CONFIGURATION_CODE
 import dev.telemachus.display.audio.AudioPacketRejectReason
 import dev.telemachus.display.audio.ProtocolAudioConfigureResult
 import dev.telemachus.display.audio.ProtocolAudioPacketResult
@@ -58,6 +59,6 @@ internal class ProtocolInternetAudioPlayback(
 private val AudioPacketRejectReason.protocolCode: String
     get() =
         when (this) {
-            AudioPacketRejectReason.NO_CONFIGURATION -> "audio_not_configured"
+            AudioPacketRejectReason.NO_CONFIGURATION -> AUDIO_PACKET_NO_CONFIGURATION_CODE
             is AudioPacketRejectReason.ProtocolRejected -> reason.code
         }
