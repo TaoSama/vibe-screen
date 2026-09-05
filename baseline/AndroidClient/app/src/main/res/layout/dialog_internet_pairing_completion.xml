@@ -6,9 +6,9 @@
     android:fadeScrollbars="true"
     android:fillViewport="true"
     android:overScrollMode="ifContentScrolls"
-    android:paddingStart="24dp"
+    android:paddingStart="8dp"
     android:paddingTop="8dp"
-    android:paddingEnd="24dp"
+    android:paddingEnd="8dp"
     android:paddingBottom="16dp"
     android:scrollIndicators="bottom">
 
@@ -33,10 +33,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
             android:labelFor="@id/internetPairingRequestText"
             android:text="@string/internet_pairing_request_label"
             android:textColor="?attr/colorOnSurface"
-            android:textSize="13sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <TextView
@@ -51,17 +52,18 @@
             android:scrollHorizontally="false"
             android:textColor="?attr/colorOnSurface"
             android:textIsSelectable="true"
-            android:textSize="11sp" />
+            android:textSize="10sp" />
 
         <TextView
             android:id="@+id/internetPairingAcceptanceLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
             android:labelFor="@id/internetPairingAcceptanceInput"
             android:text="@string/internet_pairing_acceptance_label"
             android:textColor="?attr/colorOnSurface"
-            android:textSize="13sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <EditText
@@ -75,13 +77,12 @@
             android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
             android:inputType="textMultiLine"
             android:breakStrategy="simple"
-            android:maxLines="4"
             android:minHeight="128dp"
             android:minLines="4"
             android:overScrollMode="ifContentScrolls"
             android:saveEnabled="false"
             android:scrollHorizontally="false"
-            android:scrollbars="vertical"
-            android:singleLine="false" />
+            android:singleLine="false"
+            android:textSize="10sp" />
     </LinearLayout>
 </ScrollView>

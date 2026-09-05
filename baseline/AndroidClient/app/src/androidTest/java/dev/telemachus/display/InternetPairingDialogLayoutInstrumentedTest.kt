@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -37,9 +38,12 @@ class InternetPairingDialogLayoutInstrumentedTest {
             Triple(320, 640, 1.8f),
             Triple(320, 640, 2.0f),
             Triple(360, 740, 1.3f),
+            Triple(361, 740, 1.5f),
+            Triple(361, 740, 2.0f),
             Triple(360, 740, 1.8f),
             Triple(360, 740, 2.0f),
             Triple(640, 320, 1.3f),
+            Triple(640, 320, 1.5f),
             Triple(640, 320, 1.8f),
             Triple(640, 320, 2.0f),
         ).forEach { (widthDp, heightDp, fontScale) ->
@@ -56,10 +60,36 @@ class InternetPairingDialogLayoutInstrumentedTest {
                 layout.assertTextReadable(layout.acceptanceLabel)
                 layout.assertSensitiveInput(layout.acceptance)
                 layout.assertRequestRemainsFullyAvailable()
+                layout.assertParentOwnsAcceptanceScrolling()
                 layout.assertLastFieldCanScrollIntoView()
                 if (shouldCaptureEvidence(widthDp, heightDp, fontScale)) {
                     assertTrue("pairing evidence screenshot exists", layout.capture("pairing-$widthDp-$heightDp-$fontScale").isFile)
                 }
+            }
+        }
+    }
+
+    @Test
+    fun imeConstrainedPairingDialogKeepsAcceptanceInputReachable() {
+        listOf(
+            Triple(361, 740, 1.5f),
+            Triple(361, 740, 2.0f),
+            Triple(640, 320, 1.5f),
+            Triple(640, 320, 2.0f),
+        ).forEach { (widthDp, heightDp, fontScale) ->
+            withPairingLayout(
+                widthDp = widthDp,
+                heightDp = heightDp,
+                fontScale = fontScale,
+                heightRatio = IME_CONSTRAINED_DIALOG_MAX_HEIGHT_RATIO,
+            ) { layout ->
+                layout.renderSamplePayloads()
+                layout.measureAndLayout()
+
+                assertTrue("IME-constrained pairing viewport remains usable", layout.root.measuredHeight > layout.dp(120))
+                layout.assertSensitiveInput(layout.acceptance)
+                layout.assertParentOwnsAcceptanceScrolling()
+                layout.assertFieldEdgesCanScrollIntoView(layout.acceptance)
             }
         }
     }
@@ -93,6 +123,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         var dialog: AlertDialog? = null
         var root: ScrollView? = null
+        var assertionFailure: Throwable? = null
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
                 scenario.onActivity { activity ->
@@ -111,20 +142,26 @@ class InternetPairingDialogLayoutInstrumentedTest {
                 }
                 instrumentation.waitForIdleSync()
                 scenario.onActivity { activity ->
-                    val dialogRoot = checkNotNull(root)
-                    val content = dialogRoot.findViewById<ViewGroup>(R.id.internetPairingDialogContent)
-                    val measured = PairingMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
+                    try {
+                        val dialogRoot = checkNotNull(root)
+                        val measured = PairingMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
 
-                    assertTrue("production dialog measures pairing root", dialogRoot.width > 0 && dialogRoot.height > 0)
-                    assertTrue("production dialog constrains pairing root to activity viewport", dialogRoot.height <= activity.window.decorView.height)
-                    assertTrue("production dialog keeps oversized pairing content scrollable", content.height > dialogRoot.height - dialogRoot.paddingTop - dialogRoot.paddingBottom)
-                    assertTrue("pairing scroll view fills production dialog viewport", dialogRoot.isFillViewport)
-                    measured.assertTextReadable(measured.identity)
-                    measured.assertTextReadable(measured.request)
-                    measured.assertSensitiveInput(measured.acceptance)
-                    measured.assertRequestRemainsFullyAvailable()
-                    measured.assertLastFieldCanScrollIntoView()
+                        assertTrue("production dialog measures pairing root", dialogRoot.width > 0 && dialogRoot.height > 0)
+                        assertTrue("production dialog constrains pairing root to activity viewport", dialogRoot.height <= activity.window.decorView.height)
+                        assertTrue("pairing scroll view fills production dialog viewport", dialogRoot.isFillViewport)
+                        checkNotNull(dialog).assertDialogButtonTouchTargets(activity)
+                        measured.assertTextReadable(measured.identity)
+                        measured.assertTextReadable(measured.request)
+                        measured.assertSensitiveInput(measured.acceptance)
+                        measured.assertRequestRemainsFullyAvailable()
+                        measured.assertParentOwnsAcceptanceScrolling()
+                        measured.assertContentReachableInProductionDialog()
+                        measured.assertNoDuplicateDialogLiveRegions()
+                    } catch (failure: Throwable) {
+                        assertionFailure = failure
+                    }
                 }
+                assertionFailure?.let { throw it }
             } finally {
                 scenario.onActivity {
                     dialog?.dismiss()
@@ -139,6 +176,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         widthDp: Int,
         heightDp: Int,
         fontScale: Float,
+        heightRatio: Float = DIALOG_MAX_HEIGHT_RATIO,
         assertion: (PairingMeasuredLayout) -> Unit,
     ) {
         val context = configuredContext(widthDp, heightDp, fontScale)
@@ -146,7 +184,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val parent = FrameLayout(context)
             val root = inflate(context, parent, R.layout.dialog_internet_pairing_completion) as ScrollView
             parent.addView(root)
-            PairingMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
+            PairingMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp, heightRatio))
                 .also(PairingMeasuredLayout::assertAcceptanceHint)
                 .let(assertion)
         }
@@ -203,7 +241,8 @@ class InternetPairingDialogLayoutInstrumentedTest {
     private fun layoutHeight(
         context: Context,
         screenHeightDp: Int,
-    ): Int = dp(context, (screenHeightDp * DIALOG_MAX_HEIGHT_RATIO).roundToInt())
+        heightRatio: Float = DIALOG_MAX_HEIGHT_RATIO,
+    ): Int = dp(context, (screenHeightDp * heightRatio).roundToInt())
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
 
@@ -252,8 +291,21 @@ class InternetPairingDialogLayoutInstrumentedTest {
             assertEquals(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS, input.importantForAutofill)
             assertTrue(input.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0)
             assertTrue(!input.isHorizontallyScrollable)
+            assertTrue(input.imeOptions and EditorInfo.IME_FLAG_NO_EXTRACT_UI != 0)
             assertTrue(input.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
             assertTrue(input.measuredHeight >= dp(96))
+        }
+
+        fun assertFieldEdgesCanScrollIntoView(field: TextView) {
+            val scroll = root as ScrollView
+            val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            assertTrue("scroll viewport remains positive", visibleHeight > 0)
+            scroll.scrollTo(0, field.top.coerceAtLeast(0))
+            assertTrue("field top can scroll into viewport", field.top >= scroll.scrollY)
+            assertTrue("field top is visible after targeted scroll", field.top < scroll.scrollY + visibleHeight)
+            scroll.scrollTo(0, (field.bottom - visibleHeight).coerceAtLeast(0))
+            val visibleBottom = scroll.scrollY + visibleHeight
+            assertTrue("field bottom can scroll into viewport", field.bottom <= visibleBottom)
         }
 
         fun capture(prefix: String): File {
@@ -299,6 +351,8 @@ class InternetPairingDialogLayoutInstrumentedTest {
         fun assertRequestRemainsFullyAvailable() {
             assertTrue(request.text.startsWith("vibescreen://pair?v=1&o="))
             assertTrue(request.text.length > 200)
+            assertEquals(request.id, requestLabel.labelFor)
+            assertTrue(requestLabel.isAccessibilityHeading)
             assertTrue(request.isTextSelectable)
             assertTrue(!request.isHorizontallyScrollable)
             assertTrue("long request wraps into multiple lines", request.lineCount > 1)
@@ -307,10 +361,34 @@ class InternetPairingDialogLayoutInstrumentedTest {
         fun assertLastFieldCanScrollIntoView() {
             val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
             assertTrue("dialog content should need vertical scroll on a narrow phone", content.height > visibleHeight)
-            scroll.scrollTo(0, (acceptance.bottom - visibleHeight).coerceAtLeast(0))
-            val visibleBottom = scroll.scrollY + visibleHeight
-            assertTrue("acceptance field top is visible after scroll", acceptance.top >= scroll.scrollY)
-            assertTrue("acceptance field bottom is visible after scroll", acceptance.bottom <= visibleBottom)
+            assertFieldEdgesCanScrollIntoView(acceptance)
+        }
+
+        fun assertContentReachableInProductionDialog() {
+            val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            assertTrue("production dialog leaves a usable viewport", visibleHeight > 0)
+            if (content.height > visibleHeight) {
+                assertFieldEdgesCanScrollIntoView(acceptance)
+            } else {
+                assertTrue("acceptance field is fully visible when content fits", acceptance.bottom <= scroll.scrollY + visibleHeight)
+            }
+        }
+
+        fun assertParentOwnsAcceptanceScrolling() {
+            assertEquals(acceptance.id, acceptanceLabel.labelFor)
+            assertTrue(acceptanceLabel.isAccessibilityHeading)
+            assertEquals("pairing input lets the parent own vertical scrolling", Int.MAX_VALUE, acceptance.maxLines)
+            assertTrue("pairing input preserves a comfortable minimum entry area", acceptance.measuredHeight >= dp(128))
+        }
+
+        fun assertNoDuplicateDialogLiveRegions() {
+            listOf(scroll, content, identity, requestLabel, request, acceptanceLabel, acceptance).forEach { view ->
+                assertEquals(
+                    "${view.resources.getResourceEntryName(view.id)} should not announce duplicate live-region updates",
+                    View.ACCESSIBILITY_LIVE_REGION_NONE,
+                    view.accessibilityLiveRegion,
+                )
+            }
         }
 
         fun assertAcceptanceHint() {
@@ -359,6 +437,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
     private companion object {
         const val DIALOG_WINDOW_MARGIN_DP = 24
         const val DIALOG_MAX_HEIGHT_RATIO = 0.85f
+        const val IME_CONSTRAINED_DIALOG_MAX_HEIGHT_RATIO = 0.48f
         const val TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX = 2f
 
         fun shouldCaptureEvidence(
@@ -368,6 +447,17 @@ class InternetPairingDialogLayoutInstrumentedTest {
         ): Boolean =
             (widthDp == 320 && heightDp == 640 && fontScale == 1.3f) ||
                 (widthDp == 640 && heightDp == 320 && fontScale == 2.0f)
+    }
+}
+
+private fun AlertDialog.assertDialogButtonTouchTargets(context: Context) {
+    listOf(
+        getButton(AlertDialog.BUTTON_NEGATIVE),
+        getButton(AlertDialog.BUTTON_POSITIVE),
+    ).forEach { button: Button ->
+        val minimum = (48 * context.resources.displayMetrics.density).roundToInt()
+        assertTrue("${button.text} button is at least 48dp wide", button.width >= minimum)
+        assertTrue("${button.text} button is at least 48dp tall", button.height >= minimum)
     }
 }
 
