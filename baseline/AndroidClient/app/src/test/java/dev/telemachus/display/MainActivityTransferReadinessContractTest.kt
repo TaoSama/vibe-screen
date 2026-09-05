@@ -50,9 +50,11 @@ class MainActivityTransferReadinessContractTest {
             renderTransferReadiness.contains("internetSession?.canTransferFiles == true"),
         )
         assertTrue(
-            "Readiness should explain policy-disabled clipboard and file transfer separately from compatibility gaps",
+            "Readiness should explain policy-disabled managed features separately from compatibility gaps",
             renderTransferReadiness.contains("clipboardPolicyAllowed = managedClipboardAllowed") &&
-                renderTransferReadiness.contains("fileTransferPolicyAllowed = managedFileTransferAllowed"),
+                renderTransferReadiness.contains("fileTransferPolicyAllowed = managedFileTransferAllowed") &&
+                renderTransferReadiness.contains("wakeHostPolicyAllowed = managedWakeHostAllowed") &&
+                renderTransferReadiness.contains("fixedHostPolicyAllowed = managedFixedHostAllowed"),
         )
         assertTrue(
             "Readiness should be presented by the pure policy",
@@ -205,6 +207,10 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(strings.contains("Clipboard &amp; files. %1\$s. %2\$s"))
         assertTrue(strings.contains("transfer_readiness_policy_blocked_status"))
         assertTrue(strings.contains("disabled by this device or Mac session policy"))
+        assertTrue(strings.contains("transfer_readiness_wake_policy_blocked_summary"))
+        assertTrue(strings.contains("Wake host is disabled by this device or Mac session policy"))
+        assertTrue(strings.contains("transfer_readiness_fixed_host_policy_blocked_summary"))
+        assertTrue(strings.contains("restricted to managed host IDs"))
         assertFalse(
             "Readiness copy must not close the runtime E2E gate by calling the feature stable or accepted",
             Regex("transfer_readiness_[^>]+>(?:(?!</string>).)*(stable|accepted|E2E passed|verified end to end)", RegexOption.IGNORE_CASE)
@@ -228,11 +234,23 @@ class MainActivityTransferReadinessContractTest {
                 assertBeforeValue(onCreate, "refreshLocalManagedPolicySnapshot()", "setupUI()"),
         )
         assertTrue(
-            "Local policy snapshots should retain clipboard and file-transfer denial state for no-host Settings",
+            "Local policy snapshots should retain managed denial state for no-host Settings",
             applyLocalPolicy.contains("localClipboardAllowed = policy.clipboardAllowed") &&
                 applyLocalPolicy.contains("localFileTransferAllowed = policy.fileTransferAllowed") &&
+                applyLocalPolicy.contains("localWakeHostAllowed = policy.wakeAllowed") &&
+                applyLocalPolicy.contains("localFixedHostAllowed = fixedHostPolicyAllowsNoHost(policy)") &&
                 applyLocalPolicy.contains("managedClipboardAllowed = localClipboardAllowed") &&
-                applyLocalPolicy.contains("managedFileTransferAllowed = localFileTransferAllowed"),
+                applyLocalPolicy.contains("managedFileTransferAllowed = localFileTransferAllowed") &&
+                applyLocalPolicy.contains("managedWakeHostAllowed = localWakeHostAllowed") &&
+                applyLocalPolicy.contains("managedFixedHostAllowed = localFixedHostAllowed"),
+        )
+        assertTrue(
+            "No-host fixed-host readiness should fail closed when a local host binding restriction is configured",
+            applyLocalPolicy.contains("fixedHostPolicyAllowsNoHost(policy)") &&
+                source.contains("private fun fixedHostPolicyAllowsNoHost(policy: ProtocolV1Session.ManagedPolicy): Boolean") &&
+                source.contains("ManagedPolicyUiAvailabilityPolicy.fixedHostPolicyAllowsNoHost(") &&
+                source.contains("allowedHostsRestricted = policy.allowedHostsRestricted") &&
+                source.contains("deniedHosts = policy.deniedHosts"),
         )
         assertTrue(
             "Refreshing the local snapshot should read Android managed configuration through the existing provider",
@@ -242,21 +260,29 @@ class MainActivityTransferReadinessContractTest {
             "Disconnect should return to the latest local policy snapshot instead of showing false allowed state",
             disconnect.contains("refreshLocalManagedPolicySnapshot()") &&
                 !disconnect.contains("managedClipboardAllowed = true") &&
-                !disconnect.contains("managedFileTransferAllowed = true"),
+                !disconnect.contains("managedFileTransferAllowed = true") &&
+                !disconnect.contains("managedWakeHostAllowed = true") &&
+                !disconnect.contains("managedFixedHostAllowed = true"),
         )
         assertTrue(
-            "Stream managed-policy updates should propagate clipboard and file-transfer availability into Settings",
+            "Stream managed-policy updates should propagate managed feature availability into Settings",
             streamManagedCallback.contains("localClipboardAllowed = localClipboardAllowed") &&
                 streamManagedCallback.contains("localFileTransferAllowed = localFileTransferAllowed") &&
+                streamManagedCallback.contains("localWakeHostAllowed = localWakeHostAllowed") &&
                 streamManagedCallback.contains("managedClipboardAllowed = availability.clipboardAllowed") &&
-                streamManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed"),
+                streamManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed") &&
+                streamManagedCallback.contains("managedWakeHostAllowed = availability.wakeHostAllowed") &&
+                streamManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed"),
         )
         assertTrue(
             "Internet managed-policy updates should use the same Settings availability source",
             internetManagedCallback.contains("localClipboardAllowed = localClipboardAllowed") &&
                 internetManagedCallback.contains("localFileTransferAllowed = localFileTransferAllowed") &&
+                internetManagedCallback.contains("localWakeHostAllowed = localWakeHostAllowed") &&
                 internetManagedCallback.contains("managedClipboardAllowed = availability.clipboardAllowed") &&
-                internetManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed"),
+                internetManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed") &&
+                internetManagedCallback.contains("managedWakeHostAllowed = availability.wakeHostAllowed") &&
+                internetManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed"),
         )
     }
 
