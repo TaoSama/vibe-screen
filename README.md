@@ -1099,10 +1099,12 @@ increase it.
   `StreamClient` Protocol v1 session. The Android no-host JVM coverage also
   verifies host fail-closed restoration for malformed managed statuses,
   local-and-remote UI deny-wins for custom gestures and Host actions, managed
-  WakeHost cleanup, and dynamic Internet audio denial. This is
-  source/unit/self-test evidence only; real Apple MDM profile delivery, iOS
-  managed App Configuration injection, and Android Enterprise
-  app-restrictions delivery remain open gates.
+  WakeHost cleanup, dynamic Internet audio denial, no outgoing clipboard
+  messages after remote clipboard denial, and local `MaximumFileBytes` limits
+  for USB/LAN file-transfer negotiation without a Host managed-policy status.
+  This is source/unit/self-test evidence only; real Apple MDM profile delivery,
+  iOS managed App Configuration injection, Android Enterprise app-restrictions
+  delivery, and USB/LAN product enforcement remain open gates.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,

@@ -37,6 +37,45 @@ Host: macOS local development environment
 - cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest:
   BUILD SUCCESSFUL in 26s.
 
+2026-09-05 Android no-host minimal refresh on current `origin/main`:
+
+- cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardFailClosedTest
+  --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+  --tests dev.telemachus.display.FileTransferProductOwnerTest
+  --tests dev.telemachus.display.ManagedConfigurationProviderTest
+  --tests dev.telemachus.display.ProductSessionCoordinatorTest
+  --tests dev.telemachus.display.MainActivityControllerForwardingContractTest:
+  BUILD SUCCESSFUL in 46s.
+- cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest
+  --tests dev.telemachus.display.protocol.ProtocolV1SessionTest
+  --tests dev.telemachus.display.protocol.FileTransferSessionTest
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardFailClosedTest
+  --tests dev.telemachus.display.FileTransferProductOwnerTest
+  --tests dev.telemachus.display.ManagedConfigurationProviderTest
+  --tests dev.telemachus.display.ProductSessionCoordinatorTest
+  --tests dev.telemachus.display.MainActivityControllerForwardingContractTest
+  --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest
+  --tests dev.telemachus.display.internet.InternetClipboardTest
+  --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest:
+  BUILD SUCCESSFUL in 14s.
+- cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest:
+  BUILD SUCCESSFUL in 24s.
+- cd baseline/AndroidClient && ./gradlew --no-daemon :app:lintDebug:
+  BUILD SUCCESSFUL in 29s.
+- make baseline-android-check: BUILD SUCCESSFUL. This reran the transport
+  boundary gate, Android JVM tests, lint, assembleDebug, and release dependency
+  audit.
+- make phase5-host-advanced-adapters-gate: pass; wrote
+  .build/evidence/phase5-host-advanced-adapters-readiness.json with
+  verdict=pass.
+- PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest
+  tools.tests.test_clipboard_e2e_gate
+  tools.tests.test_file_transfer_android_smoke
+  tools.tests.test_file_transfer_bulk_current_base_gate
+  tools.tests.test_file_transfer_bulk_current_base_manifest -v:
+  Ran 80 tests, OK.
+
 The iOS generated-protocol verifier was also run after regenerating the Swift
 bindings. Before the regenerated files were staged, it correctly reported the
 tracked binding diff as not current; after staging those generated files for the
@@ -69,6 +108,11 @@ PR, rerunning it passed with macOS and iOS Protocol v1 bindings current.
   managed configuration is negotiated.
 - Effective policy denies host actions, clipboard, file transfer, and peer host
   identity as soon as the merged policy says they are not allowed.
+- Remote clipboard denial removes clipboard from the effective negotiated
+  surface and suppresses outgoing Android clipboard offer/request envelopes.
+- Local Android managed `MaximumFileBytes` bounds USB/LAN ClientHello resource
+  limits and the negotiated file-transfer policy even when the Host peer does
+  not negotiate managed configuration.
 
 ## Blocked local gates
 

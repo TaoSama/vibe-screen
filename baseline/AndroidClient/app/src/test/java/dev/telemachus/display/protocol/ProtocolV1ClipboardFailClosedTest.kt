@@ -19,6 +19,7 @@ import dev.vibescreen.protocol.v1.StartDisplayResponse
 import dev.vibescreen.protocol.v1.TransportKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -57,6 +58,22 @@ class ProtocolV1ClipboardFailClosedTest {
             assertPeerProtocolViolation("$payload should fail closed after remote clipboard deny", session, envelope)
             assertFalse(session.canSendClipboard)
         }
+    }
+
+    @Test
+    fun managedPolicyDenyBlocksOutgoingClipboardMessages() {
+        val session = readyClipboardSession()
+        val offeredChangeId = defaultChangeId()
+        session.receive(clipboardOffer(id = 10, changeId = offeredChangeId))
+        assertTrue(session.canSendClipboard)
+
+        session.receive(base(11).setManagedPolicyStatus(managedPolicyStatus(clipboardAllowed = false)).build())
+
+        assertFalse(session.canSendClipboard)
+        assertFalse(Capability.CAPABILITY_CLIPBOARD in session.negotiated)
+        assertEquals(0L, session.negotiatedMaxClipboardBytes)
+        assertNull(session.offerClipboard("policy denied"))
+        assertNull(session.requestClipboard(offeredChangeId))
     }
 
     @Test

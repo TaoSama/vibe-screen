@@ -142,6 +142,36 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun localManagedMaximumFileBytesLimitsFilePolicyWithoutRemoteManagedConfiguration() {
+        val maximumFileBytes = 100L
+        val capabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+        val peerLimits =
+            ResourceLimits
+                .newBuilder()
+                .setMaximumFileBytes(4_096)
+                .setMaximumFileChunkBytes(1_024)
+                .build()
+        val session =
+            session(
+                localManagedPolicy =
+                    ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                        isManaged = true,
+                        maximumFileBytes = maximumFileBytes,
+                    ),
+            )
+        val hello = session.clientHello().clientHello
+
+        assertTrue(hello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
+        assertEquals(maximumFileBytes, hello.resourceLimits.maximumFileBytes)
+
+        session.receive(hostHello(2, advertisedCapabilities = capabilities))
+        session.receive(sessionAccepted(3, negotiatedCapabilities = capabilities, resourceLimits = peerLimits))
+
+        assertTrue(Capability.CAPABILITY_FILE_TRANSFER in session.negotiated)
+        assertEquals(maximumFileBytes, session.negotiatedFilePolicy.maximumFileBytes)
+    }
+
+    @Test
     fun hostModifierCapabilityWithoutKeyboardFailsDependencyValidation() {
         val session = session()
         session.clientHello()

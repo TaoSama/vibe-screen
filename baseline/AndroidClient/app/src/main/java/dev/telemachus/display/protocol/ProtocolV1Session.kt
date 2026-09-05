@@ -620,7 +620,6 @@ internal class ProtocolV1Session(
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
     private val decodeCapabilities = VideoColorNegotiation.sdrDecodeCapabilities(codecs)
-    private var negotiatedFileTransferPolicy = fileTransferPolicy
     private var acceptedResourceLimits = ResourceLimits.getDefaultInstance()
     // Host actions advertised for the active session, filtered to the fixed ids
     // this client can invoke. Reset whenever a session ends.
@@ -633,6 +632,9 @@ internal class ProtocolV1Session(
     private val pendingWakeHostRequests = ArrayDeque<ByteString>()
     internal val localManagedPolicySnapshot: ManagedPolicy = localManagedPolicy
     private val managedPolicyResolver = ManagedPolicyResolver(localManagedPolicySnapshot)
+    private val localFileTransferPolicy =
+        fileTransferPolicy.applyingLocalManagedPolicy(localManagedPolicySnapshot)
+    private var negotiatedFileTransferPolicy = localFileTransferPolicy
 
     // Host-advertised clipboard byte limit from HostHello.resource_limits.
     private var hostMaxClipboardBytes = 0L
@@ -661,7 +663,7 @@ internal class ProtocolV1Session(
             addAll(BASE_ADVERTISED_CAPABILITIES)
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
             if (advertisePeripheralInputFramework) add(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK)
-            if (fileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
+            if (localFileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
             if (advertiseWakeHost) {
                 add(Capability.CAPABILITY_WAKE_HOST)
             }
@@ -813,13 +815,13 @@ internal class ProtocolV1Session(
                         .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES)
                         .setMaximumFileBytes(
                             if (Capability.CAPABILITY_FILE_TRANSFER in advertisedCapabilities) {
-                                fileTransferPolicy.maximumFileBytes
+                                localFileTransferPolicy.maximumFileBytes
                             } else {
                                 0L
                             },
                         ).setMaximumFileChunkBytes(
                             if (Capability.CAPABILITY_FILE_TRANSFER in advertisedCapabilities) {
-                                fileTransferPolicy.maximumChunkBytes
+                                localFileTransferPolicy.maximumChunkBytes
                             } else {
                                 0
                             },
@@ -1519,7 +1521,7 @@ internal class ProtocolV1Session(
             throw protocolFailure("Negotiated capabilities omitted required peer intersection: $omittedNonPolicyCapabilities")
         }
         acceptedResourceLimits = accepted.negotiatedResourceLimits
-        negotiatedFileTransferPolicy = fileTransferPolicy.negotiated(acceptedResourceLimits)
+        negotiatedFileTransferPolicy = localFileTransferPolicy.negotiated(acceptedResourceLimits)
         sessionId = accepted.sessionId
         sessionEpoch = accepted.sessionEpoch
         baseNegotiatedCapabilities = negotiated
@@ -2390,7 +2392,7 @@ internal class ProtocolV1Session(
         val effective = managedPolicyResolver.effectivePolicy
         remoteManagedClipboardAllowed = effective.clipboardAllowed
         if (!remoteManagedClipboardAllowed) clearClipboardState()
-        negotiatedFileTransferPolicy = fileTransferPolicy
+        negotiatedFileTransferPolicy = localFileTransferPolicy
             .negotiated(acceptedResourceLimits)
             .applying(RemoteManagedPolicy(effective.toStatus()))
         if (!effective.allowsHost(hostId = peerHostId)) {
@@ -2747,6 +2749,16 @@ internal class ProtocolV1Session(
             }
             return capabilities
         }
+
+        private fun FileTransferPolicy.applyingLocalManagedPolicy(policy: ManagedPolicy): FileTransferPolicy =
+            if (!policy.isManaged) {
+                this
+            } else {
+                copy(
+                    allowed = allowed && policy.fileTransferAllowed && policy.maximumFileBytes > 0L,
+                    maximumFileBytes = minOf(maximumFileBytes, policy.maximumFileBytes),
+                )
+            }
 
         // Bound the surfaced actions and in-flight invocations so a misbehaving
         // host or caller cannot grow either without limit.

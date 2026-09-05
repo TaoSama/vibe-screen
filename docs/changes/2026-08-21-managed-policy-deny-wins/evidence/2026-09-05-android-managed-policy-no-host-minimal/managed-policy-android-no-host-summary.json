@@ -1,0 +1,53 @@
+{
+  "android_device_commands_run": false,
+  "date": "2026-09-05",
+  "host_started": false,
+  "not_device_evidence": true,
+  "not_proven": [
+    "real Android Enterprise app-restrictions delivery through RestrictionsManager.applicationRestrictions",
+    "Android ClipboardManager <-> macOS NSPasteboard managed-policy denial over USB or trusted LAN",
+    "Android file-transfer bytes, cancellation, digest verification, or filesystem landing against a real macOS Host session under managed-policy denial",
+    "Xiaomi 13/fuxi or Nubia P0110/pacific device behavior for this specific no-host refresh"
+  ],
+  "scope": "offline Android/JVM managed-policy deny-wins behavior for clipboard and file-transfer policy boundaries",
+  "source_commit": "91d7414454ac1161edbd2ed4ad9aa252ed559066",
+  "swift_commands_run": false,
+  "verification": [
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardFailClosedTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.ManagedConfigurationProviderTest --tests dev.telemachus.display.ProductSessionCoordinatorTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 46s"
+    },
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1SessionTest --tests dev.telemachus.display.protocol.FileTransferSessionTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardFailClosedTest --tests dev.telemachus.display.FileTransferProductOwnerTest --tests dev.telemachus.display.ManagedConfigurationProviderTest --tests dev.telemachus.display.ProductSessionCoordinatorTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest --tests dev.telemachus.display.StreamClientProtocolV1IntegrationTest --tests dev.telemachus.display.internet.InternetClipboardTest --tests dev.telemachus.display.internet.ProtocolV1ProductCodecTest",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 14s"
+    },
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 24s"
+    },
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon :app:lintDebug",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL in 29s"
+    },
+    {
+      "command": "make baseline-android-check",
+      "result": "pass",
+      "summary": "BUILD SUCCESSFUL; reran transport boundary, Android JVM tests, lint, assembleDebug, and release dependency audit"
+    },
+    {
+      "command": "make phase5-host-advanced-adapters-gate",
+      "result": "pass",
+      "summary": "source/readiness gate passed without Host startup"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_clipboard_e2e_gate tools.tests.test_file_transfer_android_smoke tools.tests.test_file_transfer_bulk_current_base_gate tools.tests.test_file_transfer_bulk_current_base_manifest -v",
+      "result": "pass",
+      "summary": "80 tests passed; real clipboard and file-transfer product E2E gates remain blocked without retained product evidence"
+    }
+  ],
+  "verdict": "offline_android_jvm_pass_real_e2e_open"
+}
