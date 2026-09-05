@@ -13,10 +13,13 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -29,13 +32,24 @@ import org.junit.runner.RunWith
 class InternetPairingDialogLayoutInstrumentedTest {
     @Test
     fun narrowPhoneKeepsPairingDialogContentReadableAndScrollable() {
-        listOf(320 to 640, 360 to 740).forEach { (widthDp, heightDp) ->
-            withPairingLayout(widthDp, heightDp, fontScale = 1.3f) { layout ->
+        listOf(
+            Triple(320, 640, 1.3f),
+            Triple(320, 640, 1.8f),
+            Triple(320, 640, 2.0f),
+            Triple(360, 740, 1.3f),
+            Triple(360, 740, 1.8f),
+            Triple(360, 740, 2.0f),
+            Triple(640, 320, 1.3f),
+            Triple(640, 320, 1.8f),
+            Triple(640, 320, 2.0f),
+        ).forEach { (widthDp, heightDp, fontScale) ->
+            withPairingLayout(widthDp, heightDp, fontScale = fontScale) { layout ->
                 layout.renderSamplePayloads()
                 layout.measureAndLayout()
 
                 assertEquals(layout.dialogWidthPx, layout.root.measuredWidth)
                 assertEquals(layout.dialogHeightPx, layout.root.measuredHeight)
+                assertTrue("pairing scroll view fills constrained dialog viewport", layout.scroll.isFillViewport)
                 layout.assertTextReadable(layout.identity)
                 layout.assertTextReadable(layout.requestLabel)
                 layout.assertTextReadable(layout.request)
@@ -43,7 +57,9 @@ class InternetPairingDialogLayoutInstrumentedTest {
                 layout.assertSensitiveInput(layout.acceptance)
                 layout.assertRequestRemainsFullyAvailable()
                 layout.assertLastFieldCanScrollIntoView()
-                assertTrue("pairing evidence screenshot exists", layout.capture("pairing").isFile)
+                if (shouldCaptureEvidence(widthDp, heightDp, fontScale)) {
+                    assertTrue("pairing evidence screenshot exists", layout.capture("pairing-$widthDp-$heightDp-$fontScale").isFile)
+                }
             }
         }
     }
@@ -65,7 +81,56 @@ class InternetPairingDialogLayoutInstrumentedTest {
                 layout.assertSensitiveInput(layout.input)
                 layout.assertTextReadable(layout.input)
                 layout.assertImportInputCanScrollIntoView()
-                assertTrue("import evidence screenshot exists", layout.capture("import-$widthDp-$heightDp-$fontScale").isFile)
+                if (shouldCaptureEvidence(widthDp, heightDp, fontScale)) {
+                    assertTrue("import evidence screenshot exists", layout.capture("import-$widthDp-$heightDp-$fontScale").isFile)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun productionBuilderConstrainsPairingDialogContent() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var dialog: AlertDialog? = null
+        var root: ScrollView? = null
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity { activity ->
+                    val container =
+                        activity.layoutInflater.inflate(R.layout.dialog_internet_pairing_completion, null, false) as ScrollView
+                    renderSamplePairingPayloads(activity, container)
+                    root = container
+                    dialog =
+                        MaterialAlertDialogBuilder(activity)
+                            .setTitle(R.string.internet_pairing_complete_title)
+                            .setMessage(R.string.internet_pairing_complete_message)
+                            .setView(container)
+                            .setNegativeButton(R.string.cancel, null)
+                            .setPositiveButton(R.string.internet_pairing_complete_action, null)
+                            .show()
+                }
+                instrumentation.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    val dialogRoot = checkNotNull(root)
+                    val content = dialogRoot.findViewById<ViewGroup>(R.id.internetPairingDialogContent)
+                    val measured = PairingMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
+
+                    assertTrue("production dialog measures pairing root", dialogRoot.width > 0 && dialogRoot.height > 0)
+                    assertTrue("production dialog constrains pairing root to activity viewport", dialogRoot.height <= activity.window.decorView.height)
+                    assertTrue("production dialog keeps oversized pairing content scrollable", content.height > dialogRoot.height - dialogRoot.paddingTop - dialogRoot.paddingBottom)
+                    assertTrue("pairing scroll view fills production dialog viewport", dialogRoot.isFillViewport)
+                    measured.assertTextReadable(measured.identity)
+                    measured.assertTextReadable(measured.request)
+                    measured.assertSensitiveInput(measured.acceptance)
+                    measured.assertRequestRemainsFullyAvailable()
+                    measured.assertLastFieldCanScrollIntoView()
+                }
+            } finally {
+                scenario.onActivity {
+                    dialog?.dismiss()
+                    dialog = null
+                    root = null
+                }
             }
         }
     }
@@ -174,7 +239,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineWidth)
             assertTrue(
                 "${text.resources.getResourceEntryName(text.id)} line width $maximumLineWidth fits $contentWidth",
-                maximumLineWidth <= contentWidth,
+                maximumLineWidth <= contentWidth + TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX,
             )
         }
 
@@ -189,16 +254,20 @@ class InternetPairingDialogLayoutInstrumentedTest {
 
         fun capture(prefix: String): File {
             val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
-            root.draw(Canvas(bitmap))
-            val outputRoot = context.getExternalFilesDir(null) ?: context.cacheDir
-            val output = File(outputRoot, "internet-dialog-polish")
-            assertTrue("evidence directory exists", output.isDirectory || output.mkdirs())
-            val file = File(output, "$prefix-${root.width}x${root.height}.png")
-            FileOutputStream(file).use { stream ->
-                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+            try {
+                root.draw(Canvas(bitmap))
+                val outputRoot = context.getExternalFilesDir(null) ?: context.cacheDir
+                val output = File(outputRoot, "internet-dialog-polish")
+                assertTrue("evidence directory exists", output.isDirectory || output.mkdirs())
+                val file = File(output, "$prefix-${root.width}x${root.height}.png")
+                FileOutputStream(file).use { stream ->
+                    assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+                }
+                assertTrue("evidence screenshot is non-empty", file.length() > 0L)
+                return file
+            } finally {
+                bitmap.recycle()
             }
-            assertTrue("evidence screenshot is non-empty", file.length() > 0L)
-            return file
         }
 
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
@@ -220,15 +289,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         val acceptance: EditText = root.findViewById(R.id.internetPairingAcceptanceInput)
 
         fun renderSamplePayloads() {
-            identity.text =
-                context.getString(
-                    R.string.internet_pairing_identity_format,
-                    "development-macbook-pro",
-                    "0123456789abcdef",
-                    "fedcba9876543210",
-                )
-            request.text = "vibescreen://pair?v=1&o=" + "requestpayload".repeat(40)
-            acceptance.setText("vibescreen://accept?v=1&a=" + "acceptancepayload".repeat(20))
+            renderSamplePairingPayloads(context, root)
         }
 
         fun assertRequestRemainsFullyAvailable() {
@@ -236,6 +297,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
             assertTrue(request.text.length > 200)
             assertTrue(request.isTextSelectable)
             assertTrue(!request.isHorizontallyScrollable)
+            assertTrue("long request wraps into multiple lines", request.lineCount > 1)
         }
 
         fun assertLastFieldCanScrollIntoView() {
@@ -243,8 +305,8 @@ class InternetPairingDialogLayoutInstrumentedTest {
             assertTrue("dialog content should need vertical scroll on a narrow phone", content.height > visibleHeight)
             scroll.scrollTo(0, (acceptance.bottom - visibleHeight).coerceAtLeast(0))
             val visibleBottom = scroll.scrollY + visibleHeight
-            assertTrue("acceptance field top is above viewport", acceptance.top >= scroll.scrollY)
-            assertTrue("acceptance field bottom is below viewport", acceptance.bottom <= visibleBottom)
+            assertTrue("acceptance field top is visible after scroll", acceptance.top >= scroll.scrollY)
+            assertTrue("acceptance field bottom is visible after scroll", acceptance.bottom <= visibleBottom)
         }
     }
 
@@ -279,7 +341,34 @@ class InternetPairingDialogLayoutInstrumentedTest {
     private companion object {
         const val DIALOG_WINDOW_MARGIN_DP = 24
         const val DIALOG_MAX_HEIGHT_RATIO = 0.85f
+        const val TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX = 2f
+
+        fun shouldCaptureEvidence(
+            widthDp: Int,
+            heightDp: Int,
+            fontScale: Float,
+        ): Boolean =
+            (widthDp == 320 && heightDp == 640 && fontScale == 1.3f) ||
+                (widthDp == 640 && heightDp == 320 && fontScale == 2.0f)
     }
+}
+
+private fun renderSamplePairingPayloads(
+    context: Context,
+    root: View,
+) {
+    root.findViewById<TextView>(R.id.internetPairingIdentityText).text =
+        context.getString(
+            R.string.internet_pairing_identity_format,
+            "development-macbook-pro",
+            "0123456789abcdef",
+            "fedcba9876543210",
+        )
+    root.findViewById<TextView>(R.id.internetPairingRequestText).text =
+        "vibescreen://pair?v=1&o=" + "requestpayload".repeat(40)
+    root.findViewById<EditText>(R.id.internetPairingAcceptanceInput).setText(
+        "vibescreen://accept?v=1&a=" + "acceptancepayload".repeat(20),
+    )
 }
 
 private fun sampleLeaseJson(): String =

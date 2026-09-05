@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:fadeScrollbars="true"
-    android:fillViewport="false"
+    android:fillViewport="true"
     android:overScrollMode="ifContentScrolls"
     android:paddingStart="24dp"
     android:paddingTop="8dp"
@@ -23,6 +23,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:lineSpacingExtra="2dp"
+            android:breakStrategy="simple"
             android:textColor="?attr/colorOnSurface"
             android:textIsSelectable="true"
             android:textSize="14sp" />
@@ -44,11 +45,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:background="@drawable/dialog_field_bg"
+            android:breakStrategy="simple"
             android:minHeight="88dp"
             android:padding="12dp"
+            android:scrollHorizontally="false"
             android:textColor="?attr/colorOnSurface"
             android:textIsSelectable="true"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
 
         <TextView
             android:id="@+id/internetPairingAcceptanceLabel"
@@ -70,11 +73,13 @@
             android:importantForAutofill="noExcludeDescendants"
             android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
             android:inputType="textMultiLine"
-            android:maxLines="8"
+            android:breakStrategy="simple"
+            android:maxLines="4"
             android:minHeight="128dp"
             android:minLines="4"
             android:overScrollMode="ifContentScrolls"
             android:saveEnabled="false"
+            android:scrollHorizontally="false"
             android:scrollbars="vertical"
             android:singleLine="false" />
     </LinearLayout>
