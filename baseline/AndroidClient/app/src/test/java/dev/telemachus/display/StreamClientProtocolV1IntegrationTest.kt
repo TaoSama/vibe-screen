@@ -2627,6 +2627,54 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun hostFileOfferRejectsNegativeByteLengthBeforeReceiverApprovalCallback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 58).toByte() })
+            val content = "negative-length".toByteArray(Charsets.UTF_8)
+            val approvalCallbacks = AtomicInteger()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "negative-length.txt",
+                                content = content,
+                                byteLength = -1,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertEquals(transferId, accept.fileAccept.transferId)
+                        assertFalse(accept.fileAccept.accepted)
+                        assertEquals("invalid_byte_length", accept.fileAccept.rejectionReason)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { approvalCallbacks.incrementAndGet() }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(0, approvalCallbacks.get())
+            Unit
+        }
+    }
+
+    @Test
     fun hostManagedPolicyDenialRejectsIncomingFileOfferAndEndsSession() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(
@@ -4446,13 +4494,14 @@ class StreamClientProtocolV1IntegrationTest {
         transferId: ByteString,
         fileName: String,
         content: ByteArray,
+        byteLength: Long = content.size.toLong(),
     ): Envelope =
         base(id).setFileOffer(
             FileOffer.newBuilder()
                 .setTransferId(transferId)
                 .setFileName(fileName)
                 .setMimeType("text/plain")
-                .setByteLength(content.size.toLong())
+                .setByteLength(byteLength)
                 .setSha256(ByteString.copyFrom(sha256(content))),
         ).build()
 

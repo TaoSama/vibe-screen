@@ -260,6 +260,9 @@ internal class IncomingFileTransferManager(
         if (offer.transferId.isEmpty) throw fileTransferFailure("invalid_transfer_id", "File transfer id is missing")
         if (!isSafeFileName(offer.fileName)) throw fileTransferFailure("invalid_file_name", "Unsafe file name")
         if (offer.sha256.size() != SHA256_BYTES) throw fileTransferFailure("invalid_digest", "File digest must be SHA-256")
+        if (offer.byteLength < 0L) {
+            throw fileTransferFailure("invalid_byte_length", "File byte length must not be negative")
+        }
         if (!effective.allowed || effective.maximumFileBytes <= 0L) {
             throw fileTransferFailure("policy_denied", "File transfer denied by policy")
         }

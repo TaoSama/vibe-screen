@@ -115,12 +115,22 @@ class FileTransferProductOwnerTest {
             connectionGeneration = 1,
             offer = offer(id = 104, payload = "large".toByteArray()),
         )
+        val negativeLength = owner.receiveFileOffer(
+            ownerToken = session,
+            connectionGeneration = 1,
+            offer = offer(id = 107, payload = "ok".toByteArray())
+                .toBuilder()
+                .setByteLength(-1)
+                .build(),
+        )
 
         assertEquals("invalid_file_name", requireNotNull(unsafeName).rejectionReason)
         assertEquals("invalid_digest", requireNotNull(invalidDigest).rejectionReason)
         assertEquals("file_too_large", requireNotNull(tooLarge).rejectionReason)
+        assertEquals("invalid_byte_length", requireNotNull(negativeLength).rejectionReason)
         assertTrue(callbacks.isEmpty())
         assertNull(owner.claimFileOfferDecision(offer(id = 102, payload = "ok".toByteArray(), fileName = "../escape.txt")))
+        assertNull(owner.claimFileOfferDecision(offer(id = 107, payload = "ok".toByteArray())))
         assertEquals(0, owner.activeIncomingTransferCount())
     }
 

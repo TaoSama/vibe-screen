@@ -250,6 +250,29 @@ class FileTransferSessionTest {
         }
         assertEquals(0, approvalCalls)
 
+        val negativeLengthDirectory = temporaryDirectory()
+        val negativeLengthManager = IncomingFileTransferManager(
+            policy = FileTransferPolicy(maximumFileBytes = 4),
+            directory = negativeLengthDirectory,
+        ) {
+            approvalCalls += 1
+            true
+        }
+        assertFileTransferFailure("invalid_byte_length") {
+            negativeLengthManager.accept(
+                offer(payload = "hi".toByteArray())
+                    .toBuilder()
+                    .setByteLength(-1)
+                    .build(),
+                remotePolicy = RemoteManagedPolicy.UNMANAGED,
+                negotiatedPolicy = FileTransferPolicy(maximumFileBytes = 4),
+                sessionEpoch = 7,
+            )
+        }
+        assertEquals(0, approvalCalls)
+        assertEquals(0, negativeLengthManager.activeTransferCount())
+        assertTrue(negativeLengthDirectory.listFiles()?.isEmpty() == true)
+
         val denied =
             ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
                 isManaged = true,
