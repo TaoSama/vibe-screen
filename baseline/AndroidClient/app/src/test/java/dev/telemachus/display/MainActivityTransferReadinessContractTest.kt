@@ -191,8 +191,10 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(layout.contains("@+id/transferReadinessStatus"))
         assertTrue(layout.contains("@+id/transferReadinessSummary"))
         assertTrue(layout.contains("@string/transfer_readiness_title"))
+        val title = extractXmlElement(layout, "android:text=\"@string/transfer_readiness_title\"")
         val status = extractXmlElement(layout, "android:id=\"@+id/transferReadinessStatus\"")
         val summary = extractXmlElement(layout, "android:id=\"@+id/transferReadinessSummary\"")
+        assertTrue(title.contains("android:accessibilityHeading=\"true\""))
         assertTrue(status.contains("android:accessibilityLiveRegion=\"polite\""))
         assertFalse(
             "Summary should not be a second live region because status already announces the full section",
