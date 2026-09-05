@@ -163,12 +163,50 @@ class ControlBarLayoutInstrumentedTest {
                     )
                 assertEquals(expectedMode, layout.mode)
                 assertEquals(View.VISIBLE, layout.views.fileTransferProgress.visibility)
-                assertEquals(
-                    layout.context.resources.getDimensionPixelSize(R.dimen.control_bar_transfer_progress_width),
-                    (layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams).width,
-                )
+                val progressParams = layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams
+                val expectedProgressWidth =
+                    if (expectedMode == ControlBarLayoutPolicy.Mode.COLUMN) {
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    } else {
+                        layout.context.resources.getDimensionPixelSize(R.dimen.control_bar_transfer_progress_width)
+                    }
+                assertEquals(expectedProgressWidth, progressParams.width)
                 assertActionGeometry(layout)
             }
+        }
+    }
+
+    @Test
+    fun columnModeGivesActiveTransferProgressTheFullActionWidthAtLargeFontScale() {
+        val context = configurationContext(screenWidthDp = 320, screenHeightDp = 600, fontScale = 2.0f)
+        val geometry = ControlBarLayoutApplier.geometry(context.resources)
+        val columnWidth =
+            stackedMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+                transferProgressVisible = true,
+            ) - 1
+
+        withLayout(
+            context = context,
+            widthPx = columnWidth,
+            fileTransferVisible = true,
+            transferProgressVisible = true,
+            transferProgressText = "very-long-transfer-archive-name-for-review.zip 87%",
+        ) { layout ->
+            assertEquals(ControlBarLayoutPolicy.Mode.COLUMN, layout.mode)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.actionsParams.width)
+            val progressParams = layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progressParams.width)
+            assertEquals(TextUtils.TruncateAt.MIDDLE, layout.views.fileTransferProgress.ellipsize)
+            assertEquals(1, layout.views.fileTransferProgress.maxLines)
+            assertTrue(
+                "Transfer progress should use the full vertical action column",
+                layout.views.fileTransferProgress.measuredWidth >= layout.views.actions.measuredWidth - 1,
+            )
+            assertActionGeometry(layout)
         }
     }
 
@@ -631,6 +669,7 @@ class ControlBarLayoutInstrumentedTest {
                     assertEquals(0, layout.cardParams.width)
                     assertEquals(LinearLayout.VERTICAL, layout.views.content.orientation)
                     assertEquals(LinearLayout.VERTICAL, layout.views.actions.orientation)
+                    assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.actionsParams.width)
                     assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.selectorParams.width)
                     assertEquals(0f, layout.selectorParams.weight)
                     if (fileTransferVisible) {
@@ -641,6 +680,7 @@ class ControlBarLayoutInstrumentedTest {
                     if (transferProgressVisible) {
                         val geometry = ControlBarLayoutApplier.geometry(layout.context.resources)
                         val progressParams = layout.views.fileTransferProgress.layoutParams as LinearLayout.LayoutParams
+                        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progressParams.width)
                         assertEquals(geometry.columnActionSpacingPx, progressParams.topMargin)
                         assertEquals(0, progressParams.marginEnd)
                     }
@@ -788,6 +828,7 @@ class ControlBarLayoutInstrumentedTest {
         clipboardVisible: Boolean = hostVisible,
         fileTransferVisible: Boolean = false,
         transferProgressVisible: Boolean = false,
+        transferProgressText: String = "sample.bin 45%",
         applyLayout: Boolean = true,
         assertion: (MeasuredLayout) -> Unit,
     ) {
@@ -821,7 +862,7 @@ class ControlBarLayoutInstrumentedTest {
         views.clipboard.visibility = if (clipboardVisible) View.VISIBLE else View.GONE
         views.fileTransfer.visibility = if (fileTransferVisible) View.VISIBLE else View.GONE
         views.fileTransferProgress.visibility = if (transferProgressVisible) View.VISIBLE else View.GONE
-        if (transferProgressVisible) views.fileTransferProgress.text = "sample.bin 45%"
+        if (transferProgressVisible) views.fileTransferProgress.text = transferProgressText
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(
                 resources = themedContext.resources,
@@ -850,10 +891,17 @@ class ControlBarLayoutInstrumentedTest {
     private fun widthClassContext(
         screenWidthDp: Int,
         screenHeightDp: Int,
+    ): Context = configurationContext(screenWidthDp = screenWidthDp, screenHeightDp = screenHeightDp)
+
+    private fun configurationContext(
+        screenWidthDp: Int,
+        screenHeightDp: Int,
+        fontScale: Float = applicationContext().resources.configuration.fontScale,
     ): Context {
         val configuration = Configuration(applicationContext().resources.configuration)
         configuration.screenWidthDp = screenWidthDp
         configuration.screenHeightDp = screenHeightDp
+        configuration.fontScale = fontScale
         configuration.orientation =
             if (screenWidthDp > screenHeightDp) {
                 Configuration.ORIENTATION_LANDSCAPE
@@ -907,6 +955,8 @@ class ControlBarLayoutInstrumentedTest {
             get() = views.card.layoutParams as ViewGroup.MarginLayoutParams
         val selectorParams: LinearLayout.LayoutParams
             get() = views.displaySelector.layoutParams as LinearLayout.LayoutParams
+        val actionsParams: LinearLayout.LayoutParams
+            get() = views.actions.layoutParams as LinearLayout.LayoutParams
         val statusParams: LinearLayout.LayoutParams
             get() = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
 
