@@ -88,7 +88,9 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 refreshControl.contains("activeIncoming?.let(::incomingFileProgressLabel) ?: activeOutgoing?.let(::outgoingFileProgressLabel)") &&
                 refreshControl.contains("val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false") &&
                 refreshControl.contains("R.drawable.ic_cancel_transfer") &&
-                refreshControl.contains("binding.controlFileTransferProgressText.visibility = if (!activeTransferVisible) View.GONE else View.VISIBLE"),
+                refreshControl.contains("if (activeTransferVisible)") &&
+                refreshControl.contains("binding.controlFileTransferProgressText.visibility = View.VISIBLE") &&
+                refreshControl.contains("refreshClipboardStatusText(client, activeSessionGeneration)"),
         )
         assertTrue(
             "Internet file-transfer capability loss must clear active receive state before rendering active-transfer controls",
@@ -211,7 +213,9 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 refreshControl.contains("val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false") &&
                 refreshControl.contains("R.drawable.ic_cancel_transfer") &&
                 refreshControl.contains("R.color.danger") &&
-                refreshControl.contains("binding.controlFileTransferProgressText.visibility = if (!activeTransferVisible) View.GONE else View.VISIBLE") &&
+                refreshControl.contains("if (activeTransferVisible)") &&
+                refreshControl.contains("binding.controlFileTransferProgressText.visibility = View.VISIBLE") &&
+                refreshControl.contains("refreshClipboardStatusText(client, activeSessionGeneration)") &&
                 refreshControl.contains("binding.controlFileTransferProgressText.contentDescription = progressLabel ?: \"\""),
         )
         assertTrue(
