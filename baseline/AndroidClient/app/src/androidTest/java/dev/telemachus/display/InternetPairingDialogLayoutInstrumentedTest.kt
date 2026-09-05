@@ -50,14 +50,21 @@ class InternetPairingDialogLayoutInstrumentedTest {
 
     @Test
     fun importDialogUsesProtectedMultiLineInputWithoutHorizontalScroll() {
-        withImportLayout(widthDp = 320, heightDp = 640, fontScale = 1.3f) { layout ->
-            layout.input.setText(sampleLeaseJson())
-            layout.measureAndLayout()
+        listOf(
+            Triple(320, 640, 1.3f),
+            Triple(360, 740, 1.8f),
+            Triple(640, 320, 1.8f),
+        ).forEach { (widthDp, heightDp, fontScale) ->
+            withImportLayout(widthDp = widthDp, heightDp = heightDp, fontScale = fontScale) { layout ->
+                layout.input.setText(sampleLeaseJson())
+                layout.measureAndLayout()
 
-            assertEquals(layout.dialogWidthPx, layout.root.measuredWidth)
-            layout.assertSensitiveInput(layout.input)
-            layout.assertTextReadable(layout.input)
-            assertTrue("import evidence screenshot exists", layout.capture("import").isFile)
+                assertEquals(layout.dialogWidthPx, layout.root.measuredWidth)
+                layout.assertSensitiveInput(layout.input)
+                layout.assertTextReadable(layout.input)
+                layout.assertImportInputCanScrollIntoView()
+                assertTrue("import evidence screenshot exists", layout.capture("import-$widthDp-$heightDp-$fontScale").isFile)
+            }
         }
     }
 
@@ -85,7 +92,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         val context = configuredContext(widthDp, heightDp, fontScale)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val parent = FrameLayout(context)
-            val root = inflate(context, parent, R.layout.dialog_internet_profile_import) as FrameLayout
+            val root = inflate(context, parent, R.layout.dialog_internet_profile_import) as ScrollView
             parent.addView(root)
             assertion(ImportMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp)))
         }
@@ -173,6 +180,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
             assertEquals(false, input.isSaveEnabled)
             assertEquals(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS, input.importantForAutofill)
             assertTrue(input.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE != 0)
+            assertTrue(!input.isHorizontallyScrollable)
             assertTrue(input.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
             assertTrue(input.measuredHeight >= dp(96))
         }
@@ -241,11 +249,27 @@ class InternetPairingDialogLayoutInstrumentedTest {
     private class ImportMeasuredLayout(
         context: Context,
         viewport: FrameLayout,
-        root: FrameLayout,
+        root: ScrollView,
         dialogWidthPx: Int,
         dialogHeightPx: Int,
     ) : DialogMeasuredLayout(context, viewport, root, dialogWidthPx, dialogHeightPx) {
+        val scroll = root
         val input: EditText = root.findViewById(R.id.internetProfileImportInput)
+
+        fun assertImportInputCanScrollIntoView() {
+            val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            assertTrue("import dialog keeps a visible input area", visibleHeight > 0)
+            assertTrue("import input bottom starts below top padding", input.bottom > scroll.paddingTop)
+            scroll.scrollTo(0, 0)
+            assertTrue("import input top is visible initially", input.top >= scroll.scrollY)
+            assertTrue("import input top starts inside the viewport", input.top < scroll.scrollY + visibleHeight)
+            val targetScroll = (input.bottom - visibleHeight).coerceAtLeast(0)
+            scroll.scrollTo(0, targetScroll)
+            val visibleBottom = scroll.scrollY + visibleHeight
+            val reachedBottom = input.bottom <= visibleBottom
+            val scrolledTowardBottom = targetScroll == 0 || scroll.scrollY > 0
+            assertTrue("import input bottom can scroll into viewport or toward the final input lines", reachedBottom || scrolledTowardBottom)
+        }
     }
 
     private companion object {
