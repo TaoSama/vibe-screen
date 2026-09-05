@@ -76,6 +76,22 @@ class WirelessTabControllerContractTest {
         )
     }
 
+    @Test
+    fun temporaryCameraDenialReturnsToReadableScanEntry() {
+        val source = wirelessTabControllerSource()
+        val permissionResult = extractMethod(source, "fun onCameraPermissionResult")
+        val showRetry = extractMethod(source, "private fun showCameraPermissionRetryHint")
+        val hideRetry = extractMethod(source, "private fun hideCameraPermissionRetryHint")
+
+        assertTrue(permissionResult.contains("showCameraPermissionRetryHint()"))
+        assertTrue(permissionResult.contains("transition(State.FIRST_TIME)"))
+        assertTrue(showRetry.contains("R.string.camera_permission_retry_instructions"))
+        assertTrue(showRetry.contains("views.permissionRetryMessage.contentDescription = message"))
+        assertTrue(showRetry.contains("LiveRegionTextApplier.show(views.permissionRetryMessage, message)"))
+        assertTrue(hideRetry.contains("views.permissionRetryMessage.contentDescription = null"))
+        assertTrue(hideRetry.contains("LiveRegionTextApplier.hide(views.permissionRetryMessage)"))
+    }
+
     private fun extractMethod(source: String, signature: String): String {
         val declaration =
             Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")

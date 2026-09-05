@@ -752,6 +752,7 @@ class MainActivity : AppCompatActivity() {
                         idleMacName = binding.idleMacName,
                         idleMacIp = binding.idleMacIp,
                         reconnectCountdown = binding.wirelessReconnectCountdown,
+                        permissionRetryMessage = binding.wirelessCameraPermissionRetry,
                         repairTitle = binding.repairTitle,
                         repairMessage = binding.repairMessage,
                     ),

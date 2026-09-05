@@ -50,6 +50,7 @@ class WirelessTabController(
         val idleMacName: TextView,
         val idleMacIp: TextView,
         val reconnectCountdown: TextView,
+        val permissionRetryMessage: TextView,
         val repairTitle: TextView,
         val repairMessage: TextView,
     )
@@ -129,6 +130,7 @@ class WirelessTabController(
      */
     fun show() {
         val entry = storage.load()
+        hideCameraPermissionRetryHint()
         if (entry != null) {
             // Camera permission is needed only to scan a new QR. A previously
             // paired host must remain reconnectable if permission is denied.
@@ -286,11 +288,15 @@ class WirelessTabController(
     fun onCameraPermissionResult(granted: Boolean) {
         if (granted) {
             // Re-evaluate; user just granted, jump straight into scanner.
+            hideCameraPermissionRetryHint()
             launchScanner()
         } else if (cameraPerm.isPermanentlyDenied()) {
+            hideCameraPermissionRetryHint()
             transition(State.PERM_DENIED)
+        } else {
+            showCameraPermissionRetryHint()
+            transition(State.FIRST_TIME)
         }
-        // else: stay in current state; user can tap Scan again to re-prompt.
     }
 
     /** Reconcile permission changes made in Android Settings while this Activity was stopped. */
@@ -340,10 +346,23 @@ class WirelessTabController(
             return
         }
         if (!cameraPerm.isGranted()) {
+            hideCameraPermissionRetryHint()
             cameraPerm.request(REQ_CAMERA)
             return
         }
+        hideCameraPermissionRetryHint()
         launchScanner()
+    }
+
+    private fun showCameraPermissionRetryHint() {
+        val message = activity.getString(R.string.camera_permission_retry_instructions)
+        views.permissionRetryMessage.contentDescription = message
+        LiveRegionTextApplier.show(views.permissionRetryMessage, message)
+    }
+
+    private fun hideCameraPermissionRetryHint() {
+        views.permissionRetryMessage.contentDescription = null
+        LiveRegionTextApplier.hide(views.permissionRetryMessage)
     }
 
     private fun launchScanner() {

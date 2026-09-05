@@ -62,6 +62,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE,
                 root.findViewById<View>(R.id.internetErrorText).accessibilityLiveRegion,
             )
+            assertEquals(
+                View.ACCESSIBILITY_LIVE_REGION_NONE,
+                root.findViewById<View>(R.id.wirelessCameraPermissionRetry).accessibilityLiveRegion,
+            )
         }
     }
 
@@ -156,6 +160,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
                                 idleMacName = activity.findViewById(R.id.idleMacName),
                                 idleMacIp = activity.findViewById(R.id.idleMacIp),
                                 reconnectCountdown = activity.findViewById(R.id.wirelessReconnectCountdown),
+                                permissionRetryMessage = activity.findViewById(R.id.wirelessCameraPermissionRetry),
                                 repairTitle = activity.findViewById(R.id.repairTitle),
                                 repairMessage = activity.findViewById(R.id.repairMessage),
                             ),
