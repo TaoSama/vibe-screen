@@ -46,6 +46,15 @@ internal object ConnectionPanelLayoutApplier {
                     fontScale = resources.configuration.fontScale,
                 ),
         )
+        applyInternetProfileActionsLayout(
+            views = views,
+            layout =
+                InternetProfileActionsLayoutPolicy.resolve(
+                    stackedContent = stackedContent,
+                    fontScale = resources.configuration.fontScale,
+                    gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
+                ),
+        )
         applySubtitleDisclosure(
             resources = resources,
             subtitle = views.subtitle,
@@ -188,6 +197,49 @@ internal object ConnectionPanelLayoutApplier {
         listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
             updateModeButtonLayout(requiredView(group, id), layout)
         }
+    }
+
+    private fun applyInternetProfileActionsLayout(
+        views: Views,
+        layout: InternetProfileActionsLayoutPolicy.Layout,
+    ) {
+        val actions = requiredView(views.actions, R.id.internetProfileActions) as? LinearLayout ?: return
+        actions.orientation =
+            when (layout.orientation) {
+                InternetProfileActionsLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
+                InternetProfileActionsLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
+            }
+        updateInternetProfileActionButtonLayout(
+            view = requiredView(actions, R.id.internetScanProfileButton),
+            layout = layout,
+            marginStartPx = 0,
+            marginTopPx = 0,
+        )
+        updateInternetProfileActionButtonLayout(
+            view = requiredView(actions, R.id.internetImportProfileButton),
+            layout = layout,
+            marginStartPx = layout.importMarginStartPx,
+            marginTopPx = layout.importMarginTopPx,
+        )
+    }
+
+    private fun updateInternetProfileActionButtonLayout(
+        view: View,
+        layout: InternetProfileActionsLayoutPolicy.Layout,
+        marginStartPx: Int,
+        marginTopPx: Int,
+    ) {
+        val params = view.layoutParams as? LinearLayout.LayoutParams ?: return
+        params.width =
+            if (layout.buttonWidthMatchParent) {
+                ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                0
+            }
+        params.weight = layout.buttonWeight
+        params.marginStart = marginStartPx
+        params.topMargin = marginTopPx
+        view.layoutParams = params
     }
 
     private fun updateModeButtonLayout(

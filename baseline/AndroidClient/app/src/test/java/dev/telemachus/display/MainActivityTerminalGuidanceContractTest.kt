@@ -526,6 +526,60 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun internetProfileActionsHaveResponsiveReadableButtons() {
+        val source = mainActivityLayoutSource()
+        val row = extractXmlElement(source, "android:id=\"@+id/internetProfileActions\"")
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Scan and import profile actions need a stable row id for runtime responsive layout",
+            row.contains("android:id=\"@+id/internetProfileActions\"") &&
+                row.contains("android:orientation=\"horizontal\""),
+        )
+        listOf("internetScanProfileButton", "internetImportProfileButton").forEach { id ->
+            val button = extractXmlElement(row, "android:id=\"@+id/$id\"")
+
+            assertTrue(
+                "$id should keep equal responsive width in the default row",
+                button.contains("android:layout_width=\"0dp\"") &&
+                    button.contains("android:layout_weight=\"1\""),
+            )
+            assertTrue(
+                "$id should grow instead of clipping at large font scale",
+                button.contains("android:layout_height=\"wrap_content\"") &&
+                    button.contains("android:minHeight=\"48dp\"") &&
+                    button.contains("android:maxLines=\"2\"") &&
+                    button.contains("android:singleLine=\"false\"") &&
+                    button.contains("android:ellipsize=\"none\""),
+            )
+            assertTrue(
+                "$id should preserve compact text while allowing autosize fallback",
+                button.contains("android:paddingStart=\"4dp\"") &&
+                    button.contains("android:paddingEnd=\"4dp\"") &&
+                    button.contains("android:paddingLeft=\"0dp\"") &&
+                    button.contains("android:paddingRight=\"0dp\"") &&
+                    button.contains("app:autoSizeTextType=\"uniform\"") &&
+                    button.contains("app:autoSizeMinTextSize=\"10sp\"") &&
+                    button.contains("app:autoSizeMaxTextSize=\"14sp\""),
+            )
+            assertTrue(
+                "$id must keep natural casing and spacing inside compact Material buttons",
+                button.contains("android:textAllCaps=\"false\"") &&
+                    button.contains("app:textAllCaps=\"false\"") &&
+                    button.contains("android:letterSpacing=\"0\""),
+            )
+        }
+        assertTrue(
+            "ConnectionPanelLayoutApplier must re-resolve profile action orientation after rotation or font-scale changes",
+            applier.contains("applyInternetProfileActionsLayout(") &&
+                applier.contains("InternetProfileActionsLayoutPolicy.resolve(") &&
+                applier.contains("R.dimen.connection_profile_action_gap"),
+        )
+    }
+
+    @Test
     fun internetSecondaryActionsShareCompactAccessibleRow() {
         val source = mainActivityLayoutSource()
         val row = source.substring(

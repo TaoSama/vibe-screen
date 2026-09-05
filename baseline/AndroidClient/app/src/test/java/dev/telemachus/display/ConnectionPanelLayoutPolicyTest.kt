@@ -95,4 +95,65 @@ class ConnectionPanelLayoutPolicyTest {
         assertFalse(layout.buttonWidthMatchParent)
         assertEquals(1f, layout.buttonWeight, 0f)
     }
+
+    @Test
+    fun `internet profile actions stack for large-font single-column layout`() {
+        val layout =
+            InternetProfileActionsLayoutPolicy.resolve(
+                stackedContent = true,
+                fontScale = 1.3f,
+                gapPx = 8,
+            )
+
+        assertEquals(InternetProfileActionsLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+        assertEquals(0, layout.importMarginStartPx)
+        assertEquals(8, layout.importMarginTopPx)
+    }
+
+    @Test
+    fun `internet profile actions stay side by side for default font`() {
+        val layout =
+            InternetProfileActionsLayoutPolicy.resolve(
+                stackedContent = true,
+                fontScale = 1.0f,
+                gapPx = 8,
+            )
+
+        assertEquals(InternetProfileActionsLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+        assertEquals(8, layout.importMarginStartPx)
+        assertEquals(0, layout.importMarginTopPx)
+    }
+
+    @Test
+    fun `internet profile actions stay side by side outside single-column layout`() {
+        val layout =
+            InternetProfileActionsLayoutPolicy.resolve(
+                stackedContent = false,
+                fontScale = 1.3f,
+                gapPx = 8,
+            )
+
+        assertEquals(InternetProfileActionsLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+        assertEquals(8, layout.importMarginStartPx)
+        assertEquals(0, layout.importMarginTopPx)
+    }
+
+    @Test
+    fun `internet profile action gap is clamped to zero`() {
+        val layout =
+            InternetProfileActionsLayoutPolicy.resolve(
+                stackedContent = true,
+                fontScale = 1.3f,
+                gapPx = -8,
+            )
+
+        assertEquals(0, layout.importMarginStartPx)
+        assertEquals(0, layout.importMarginTopPx)
+    }
 }

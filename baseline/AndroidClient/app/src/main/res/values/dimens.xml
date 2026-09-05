@@ -65,6 +65,7 @@
     <dimen name="connection_subtitle_disclosure_icon_padding">4dp</dimen>
     <dimen name="connection_progress_margin_bottom">12dp</dimen>
     <dimen name="connection_primary_action_margin_top">12dp</dimen>
+    <dimen name="connection_profile_action_gap">8dp</dimen>
 
     <!-- Floating stats overlay. The overlay stacks into multiple rows on
          narrow windows so FPS/bitrate/resolution/RTT/link never extend past
