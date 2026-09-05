@@ -4,11 +4,11 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:fadeScrollbars="true"
-    android:fillViewport="false"
+    android:fillViewport="true"
     android:overScrollMode="ifContentScrolls"
-    android:paddingStart="24dp"
+    android:paddingStart="8dp"
     android:paddingTop="8dp"
-    android:paddingEnd="24dp"
+    android:paddingEnd="8dp"
     android:paddingBottom="16dp"
     android:scrollIndicators="bottom">
 
@@ -20,11 +20,11 @@
         android:importantForAutofill="noExcludeDescendants"
         android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
         android:inputType="textMultiLine"
-        android:maxLines="10"
-        android:minHeight="160dp"
-        android:minLines="6"
+        android:breakStrategy="simple"
+        android:minHeight="128dp"
+        android:minLines="4"
         android:overScrollMode="ifContentScrolls"
         android:saveEnabled="false"
-        android:scrollbars="vertical"
-        android:singleLine="false" />
+        android:singleLine="false"
+        android:textSize="11sp" />
 </ScrollView>
