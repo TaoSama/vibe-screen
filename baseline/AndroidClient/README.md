@@ -163,9 +163,10 @@ At the Protocol v1 production boundary, `StreamClient` reads this provider once
 for each newly created session and passes that immutable local snapshot into
 `ProtocolV1Session`. The client reports that local snapshot in its
 `ManagedPolicyStatus`; remote Host policy is combined separately with deny-wins
-semantics and is cleared when the session ends. This remains source/JVM-unit
-evidence only: real Android Enterprise EMM delivery into
-`RestrictionsManager.applicationRestrictions` and USB/LAN device enforcement
+semantics and is cleared when the session ends. The no-Host device smoke covers
+the real Android `RestrictionsManager.applicationRestrictions` empty path and
+verifies an unmanaged device maps to `UNMANAGED`; real Android Enterprise EMM
+delivery of a non-empty restrictions payload and USB/LAN device enforcement
 remain open gates.
 
 ## Phase 3 secure-session composition
