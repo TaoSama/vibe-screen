@@ -344,6 +344,31 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun statusLiveRegionCopyUsesStringResources() {
+        val source = mainActivitySource()
+        val setupUi = extractMethod(source, "private fun setupUI")
+        val decoderWarning = extractMethod(source, "private fun warnIfAvcOnlyWithoutNegotiation")
+        val updateMainStatus = extractMethod(source, "private fun updateMainStatus")
+        val compactSetupUi = setupUi.replace(Regex("\\s+"), "")
+        val compactDecoderWarning = decoderWarning.replace(Regex("\\s+"), "")
+        val compactUpdateMainStatus = updateMainStatus.replace(Regex("\\s+"), "")
+
+        assertFalse(setupUi.contains("Checking for your Mac"))
+        assertTrue(compactSetupUi.contains("updateStatus(getString(R.string.checking_for_mac))"))
+
+        assertFalse(decoderWarning.contains("This device has no HEVC decoder"))
+        assertTrue(compactDecoderWarning.contains("updateStatus(getString(R.string.video_decoder_avc_only_status))"))
+
+        assertFalse(updateMainStatus.contains("Ready to connect"))
+        assertFalse(updateMainStatus.contains("Check the connection details below"))
+        assertTrue(
+            compactUpdateMainStatus.contains(
+                "getString(if(allReady)R.string.ready_to_connectelseR.string.check_connection_details)",
+            ),
+        )
+    }
+
+    @Test
     fun internetFailuresUseLocalizedGuidanceAndStateLabels() {
         val source = mainActivitySource()
         val updateInternetState = extractMethod(source, "private fun updateInternetState")

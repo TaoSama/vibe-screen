@@ -1555,7 +1555,7 @@ class MainActivity : AppCompatActivity() {
 
             clearUsbConnectionGuidance()
             pendingTerminalGuidance = null
-            updateStatus("Checking for your Mac…")
+            updateStatus(getString(R.string.checking_for_mac))
             connect(host, port, automatic = retryingAutomaticUsbConnection)
         }
 
@@ -4146,7 +4146,7 @@ class MainActivity : AppCompatActivity() {
         if (CodecCapabilities.shouldAdvertiseAvcOnly && streamClient?.codecNegotiated != true) {
             mainDiag("AVC-only device but Mac did not negotiate codec — Mac app too old")
             runOnUiThread {
-                updateStatus("This device has no HEVC decoder. Update the Vibe Screen Mac app to enable H.264 support.")
+                updateStatus(getString(R.string.video_decoder_avc_only_status))
             }
         }
     }
@@ -7208,7 +7208,9 @@ class MainActivity : AppCompatActivity() {
             },
         )
         if (!automaticUsbConnect && !connectionAttemptInProgress) {
-            updateStatus(if (allReady) "Ready to connect" else "Check the connection details below")
+            updateStatus(
+                getString(if (allReady) R.string.ready_to_connect else R.string.check_connection_details),
+            )
         }
     }
 
