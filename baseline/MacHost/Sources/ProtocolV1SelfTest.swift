@@ -1433,6 +1433,14 @@ enum ProtocolV1SelfTest {
         }
         guard StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x04) == 0x00,
               StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x28) == 0x24,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x49) == 0x72,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x4B) == 0x74,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x4C) == 0x75,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x53) == 0x47,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x58) == 0x4C,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x60) == 0x5B,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x62) == 0x52,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x67) == 0x51,
               StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x00) == nil else {
             failures.append("HID-to-keycode mapping is incorrect")
             return

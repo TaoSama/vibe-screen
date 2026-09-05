@@ -46,9 +46,10 @@ internal object AndroidKeyInputMapper {
             in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z -> HID_A + (this - KeyEvent.KEYCODE_A)
             in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9 -> HID_1 + (this - KeyEvent.KEYCODE_1)
             KeyEvent.KEYCODE_0 -> HID_0
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> 0x28
+            KeyEvent.KEYCODE_ENTER -> 0x28
             KeyEvent.KEYCODE_ESCAPE -> 0x29
             KeyEvent.KEYCODE_DEL -> 0x2A
+            KeyEvent.KEYCODE_INSERT -> 0x49
             KeyEvent.KEYCODE_TAB -> 0x2B
             KeyEvent.KEYCODE_SPACE -> 0x2C
             KeyEvent.KEYCODE_MINUS -> 0x2D
@@ -64,11 +65,24 @@ internal object AndroidKeyInputMapper {
             KeyEvent.KEYCODE_SLASH -> 0x38
             in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 -> 0x3A + (this - KeyEvent.KEYCODE_F1)
             KeyEvent.KEYCODE_MOVE_HOME -> 0x4A
+            KeyEvent.KEYCODE_PAGE_UP -> 0x4B
+            KeyEvent.KEYCODE_FORWARD_DEL -> 0x4C
             KeyEvent.KEYCODE_MOVE_END -> 0x4D
+            KeyEvent.KEYCODE_PAGE_DOWN -> 0x4E
             KeyEvent.KEYCODE_DPAD_RIGHT -> 0x4F
             KeyEvent.KEYCODE_DPAD_LEFT -> 0x50
             KeyEvent.KEYCODE_DPAD_DOWN -> 0x51
             KeyEvent.KEYCODE_DPAD_UP -> 0x52
+            KeyEvent.KEYCODE_NUM_LOCK -> 0x53
+            KeyEvent.KEYCODE_NUMPAD_DIVIDE -> 0x54
+            KeyEvent.KEYCODE_NUMPAD_MULTIPLY -> 0x55
+            KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> 0x56
+            KeyEvent.KEYCODE_NUMPAD_ADD -> 0x57
+            KeyEvent.KEYCODE_NUMPAD_ENTER -> 0x58
+            KeyEvent.KEYCODE_NUMPAD_0 -> 0x62
+            in KeyEvent.KEYCODE_NUMPAD_1..KeyEvent.KEYCODE_NUMPAD_9 -> 0x59 + (this - KeyEvent.KEYCODE_NUMPAD_1)
+            KeyEvent.KEYCODE_NUMPAD_DOT -> 0x63
+            KeyEvent.KEYCODE_NUMPAD_EQUALS -> 0x67
             else -> null
         }
 

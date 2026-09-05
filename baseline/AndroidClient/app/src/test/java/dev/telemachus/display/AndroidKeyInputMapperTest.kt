@@ -39,7 +39,43 @@ class AndroidKeyInputMapperTest {
                 KeyEvent.KEYCODE_DPAD_DOWN to 0x51,
                 KeyEvent.KEYCODE_DPAD_UP to 0x52,
                 KeyEvent.KEYCODE_ESCAPE to 0x29,
-                KeyEvent.KEYCODE_NUMPAD_ENTER to 0x28,
+            )
+
+        cases.forEach { (keyCode, expectedUsage) ->
+            assertEquals(
+                "Unexpected HID usage for keyCode=$keyCode",
+                expectedUsage,
+                requireNotNull(AndroidKeyInputMapper.map(keyCode, KeyEvent.ACTION_DOWN, 0, 0)).usbHidUsage,
+            )
+        }
+    }
+
+    @Test
+    fun `maps editing page navigation and numeric keypad HID usages`() {
+        val cases =
+            listOf(
+                KeyEvent.KEYCODE_INSERT to 0x49,
+                KeyEvent.KEYCODE_PAGE_UP to 0x4B,
+                KeyEvent.KEYCODE_FORWARD_DEL to 0x4C,
+                KeyEvent.KEYCODE_PAGE_DOWN to 0x4E,
+                KeyEvent.KEYCODE_NUM_LOCK to 0x53,
+                KeyEvent.KEYCODE_NUMPAD_DIVIDE to 0x54,
+                KeyEvent.KEYCODE_NUMPAD_MULTIPLY to 0x55,
+                KeyEvent.KEYCODE_NUMPAD_SUBTRACT to 0x56,
+                KeyEvent.KEYCODE_NUMPAD_ADD to 0x57,
+                KeyEvent.KEYCODE_NUMPAD_ENTER to 0x58,
+                KeyEvent.KEYCODE_NUMPAD_1 to 0x59,
+                KeyEvent.KEYCODE_NUMPAD_2 to 0x5A,
+                KeyEvent.KEYCODE_NUMPAD_3 to 0x5B,
+                KeyEvent.KEYCODE_NUMPAD_4 to 0x5C,
+                KeyEvent.KEYCODE_NUMPAD_5 to 0x5D,
+                KeyEvent.KEYCODE_NUMPAD_6 to 0x5E,
+                KeyEvent.KEYCODE_NUMPAD_7 to 0x5F,
+                KeyEvent.KEYCODE_NUMPAD_8 to 0x60,
+                KeyEvent.KEYCODE_NUMPAD_9 to 0x61,
+                KeyEvent.KEYCODE_NUMPAD_0 to 0x62,
+                KeyEvent.KEYCODE_NUMPAD_DOT to 0x63,
+                KeyEvent.KEYCODE_NUMPAD_EQUALS to 0x67,
             )
 
         cases.forEach { (keyCode, expectedUsage) ->
@@ -105,6 +141,10 @@ class AndroidKeyInputMapperTest {
         assertFalse(left.pressed)
         assertEquals(2, left.repeatCount)
         assertEquals(0x28, requireNotNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_ENTER, 0, 0, 0)).usbHidUsage)
+        assertEquals(
+            0x58,
+            requireNotNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_NUMPAD_ENTER, 0, 0, 0)).usbHidUsage,
+        )
         assertEquals(0x2A, requireNotNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_DEL, 0, 0, 0)).usbHidUsage)
     }
 
