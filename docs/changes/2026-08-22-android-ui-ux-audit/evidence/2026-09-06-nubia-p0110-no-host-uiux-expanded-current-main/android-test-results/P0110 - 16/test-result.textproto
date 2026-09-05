@@ -1,0 +1,2512 @@
+# 2026-09-05T22:33:21.037436Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 48
+}
+test_status: PASSED
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect"
+    start_time {
+      seconds: 1788647504
+      nanos: 727000000
+    }
+    end_time {
+      seconds: 1788647504
+      nanos: 821000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "xiaomi13RotationReappliesLandscapeDimensionsWithoutReinflatingTheViewTree"
+    start_time {
+      seconds: 1788647504
+      nanos: 831000000
+    }
+    end_time {
+      seconds: 1788647504
+      nanos: 900000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-xiaomi13RotationReappliesLandscapeDimensionsWithoutReinflatingTheViewTree.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "defaultFontKeepsInternetProfileActionsSideBySide"
+    start_time {
+      seconds: 1788647504
+      nanos: 902000000
+    }
+    end_time {
+      seconds: 1788647504
+      nanos: 943000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-defaultFontKeepsInternetProfileActionsSideBySide.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "xiaomi13PortraitAndLandscapeKeepModeGuidanceReadableAndSeparated"
+    start_time {
+      seconds: 1788647504
+      nanos: 946000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 94000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-xiaomi13PortraitAndLandscapeKeepModeGuidanceReadableAndSeparated.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "wideLandscapeKeepsInlineSettingsButtonWithoutFloatingPolicy"
+    start_time {
+      seconds: 1788647505
+      nanos: 97000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 135000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-wideLandscapeKeepsInlineSettingsButtonWithoutFloatingPolicy.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPortraitKeepsUsbRetryDiagnosticsReadableAtMaxFontScale"
+    start_time {
+      seconds: 1788647505
+      nanos: 136000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 207000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-narrowPortraitKeepsUsbRetryDiagnosticsReadableAtMaxFontScale.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable"
+    start_time {
+      seconds: 1788647505
+      nanos: 208000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 248000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale"
+    start_time {
+      seconds: 1788647505
+      nanos: 251000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 291000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "xiaomi13LandscapeKeepsLongestUsbLanAndInternetErrorsReadable"
+    start_time {
+      seconds: 1788647505
+      nanos: 293000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 333000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-xiaomi13LandscapeKeepsLongestUsbLanAndInternetErrorsReadable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPortraitKeepsInternetProfileActionsReadableAtLargeFontScale"
+    start_time {
+      seconds: 1788647505
+      nanos: 338000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 375000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-narrowPortraitKeepsInternetProfileActionsReadableAtLargeFontScale.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "nubiaP0110AndXiaomi13PortraitKeepConnectPreviewOnTheFirstScreen"
+    start_time {
+      seconds: 1788647505
+      nanos: 377000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 479000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-nubiaP0110AndXiaomi13PortraitKeepConnectPreviewOnTheFirstScreen.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ConnectionGuidanceLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPortraitKeepsModeLabelsReadableAtLargeFontScale"
+    start_time {
+      seconds: 1788647505
+      nanos: 483000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 520000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest-narrowPortraitKeepsModeLabelsReadableAtLargeFontScale.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "splitWindowProgressKeepsFullAccessibilityLabelAndButtonTargetsAtLargeFontScale"
+    start_time {
+      seconds: 1788647505
+      nanos: 522000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 673000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-splitWindowProgressKeepsFullAccessibilityLabelAndButtonTargetsAtLargeFontScale.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "resourceGeometryUsesExactPixelsAtNonIntegerDensityBoundaries"
+    start_time {
+      seconds: 1788647505
+      nanos: 680000000
+    }
+    end_time {
+      seconds: 1788647505
+      nanos: 993000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-resourceGeometryUsesExactPixelsAtNonIntegerDensityBoundaries.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "safeInsetsAndRepeatedResizeReapplyTheProductionLayout"
+    start_time {
+      seconds: 1788647505
+      nanos: 996000000
+    }
+    end_time {
+      seconds: 1788647506
+      nanos: 34000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-safeInsetsAndRepeatedResizeReapplyTheProductionLayout.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "columnModeGivesActiveTransferProgressTheFullActionWidthAtLargeFontScale"
+    start_time {
+      seconds: 1788647506
+      nanos: 36000000
+    }
+    end_time {
+      seconds: 1788647506
+      nanos: 75000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-columnModeGivesActiveTransferProgressTheFullActionWidthAtLargeFontScale.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "phoneWidthsUseProductionLayoutAndPreserveTouchTargets"
+    start_time {
+      seconds: 1788647506
+      nanos: 79000000
+    }
+    end_time {
+      seconds: 1788647506
+      nanos: 155000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-phoneWidthsUseProductionLayoutAndPreserveTouchTargets.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "productionRevealActionRestoresHiddenStreamControls"
+    start_time {
+      seconds: 1788647506
+      nanos: 157000000
+    }
+    end_time {
+      seconds: 1788647551
+      nanos: 736000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-productionRevealActionRestoresHiddenStreamControls.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "pendingClipboardStatusUsesSharedRowWithoutShrinkingControls"
+    start_time {
+      seconds: 1788647551
+      nanos: 739000000
+    }
+    end_time {
+      seconds: 1788647551
+      nanos: 779000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-pendingClipboardStatusUsesSharedRowWithoutShrinkingControls.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "activeFileTransferProgressPreservesControlBarGeometryOnPhoneWidths"
+    start_time {
+      seconds: 1788647551
+      nanos: 780000000
+    }
+    end_time {
+      seconds: 1788647551
+      nanos: 898000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-activeFileTransferProgressPreservesControlBarGeometryOnPhoneWidths.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletWidthKeepsStreamControlsInlineWithReadableLabels"
+    start_time {
+      seconds: 1788647551
+      nanos: 900000000
+    }
+    end_time {
+      seconds: 1788647551
+      nanos: 905000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-smallTabletWidthKeepsStreamControlsInlineWithReadableLabels.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "statsOverlayStacksInsideNarrowSafeWindows"
+    start_time {
+      seconds: 1788647551
+      nanos: 907000000
+    }
+    end_time {
+      seconds: 1788647551
+      nanos: 940000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-statsOverlayStacksInsideNarrowSafeWindows.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "revealActionIsARealClickableNodeOnlyWhileConnectedChromeIsHidden"
+    start_time {
+      seconds: 1788647551
+      nanos: 942000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 2000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-revealActionIsARealClickableNodeOnlyWhileConnectedChromeIsHidden.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "productionApplierCoversStackedColumnAndHiddenSelectorBoundaries"
+    start_time {
+      seconds: 1788647552
+      nanos: 4000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 572000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-productionApplierCoversStackedColumnAndHiddenSelectorBoundaries.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "productionBinderDisablesDisplaySelectorWhileSwitchIsPending"
+    start_time {
+      seconds: 1788647552
+      nanos: 578000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 620000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-productionBinderDisablesDisplaySelectorWhileSwitchIsPending.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "hiddenSelectorUsesExactCompactBoundariesAtNonIntegerDensity"
+    start_time {
+      seconds: 1788647552
+      nanos: 625000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 762000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-hiddenSelectorUsesExactCompactBoundariesAtNonIntegerDensity.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "statsOverlayKeepsSingleRowWhenAllColumnsFit"
+    start_time {
+      seconds: 1788647552
+      nanos: 768000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 810000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-statsOverlayKeepsSingleRowWhenAllColumnsFit.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "productionBinderClearsStaleDisplayStateWhenSelectionIsUnavailable"
+    start_time {
+      seconds: 1788647552
+      nanos: 812000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 885000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-productionBinderClearsStaleDisplayStateWhenSelectionIsUnavailable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "ControlBarLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "fileTransferControlPreservesTouchTargetsWhenVisible"
+    start_time {
+      seconds: 1788647552
+      nanos: 893000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 934000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ControlBarLayoutInstrumentedTest-fileTransferControlPreservesTouchTargetsWhenVisible.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "transferReadinessUsesSinglePoliteLiveRegion"
+    start_time {
+      seconds: 1788647552
+      nanos: 936000000
+    }
+    end_time {
+      seconds: 1788647552
+      nanos: 983000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-transferReadinessUsesSinglePoliteLiveRegion.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "unavailableVideoControlsExposeNoteInsteadOfDeadControls"
+    start_time {
+      seconds: 1788647552
+      nanos: 986000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 29000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-unavailableVideoControlsExposeNoteInsteadOfDeadControls.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices"
+    start_time {
+      seconds: 1788647553
+      nanos: 30000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 74000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls"
+    start_time {
+      seconds: 1788647553
+      nanos: 79000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 127000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "sixHundredDpPortraitWindowKeepsOneSettingsColumn"
+    start_time {
+      seconds: 1788647553
+      nanos: 132000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 137000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-sixHundredDpPortraitWindowKeepsOneSettingsColumn.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "largeTextStacksOptionGroupsWithoutClipping"
+    start_time {
+      seconds: 1788647553
+      nanos: 139000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 308000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-largeTextStacksOptionGroupsWithoutClipping.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "wideWindowKeepsOptionGroupsHorizontal"
+    start_time {
+      seconds: 1788647553
+      nanos: 310000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 315000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-wideWindowKeepsOptionGroupsHorizontal.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "opacitySliderKeepsAccessibilityContract"
+    start_time {
+      seconds: 1788647553
+      nanos: 317000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 355000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-opacitySliderKeepsAccessibilityContract.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable"
+    start_time {
+      seconds: 1788647553
+      nanos: 357000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 456000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions"
+    start_time {
+      seconds: 1788647553
+      nanos: 458000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 463000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics"
+    start_time {
+      seconds: 1788647553
+      nanos: 464000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 499000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPhoneWindowsStackOptionGroupsWithoutClipping"
+    start_time {
+      seconds: 1788647553
+      nanos: 500000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 598000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-narrowPhoneWindowsStackOptionGroupsWithoutClipping.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletPortraitKeepsSettingsSingleColumnForReadableCards"
+    start_time {
+      seconds: 1788647553
+      nanos: 599000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 631000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-smallTabletPortraitKeepsSettingsSingleColumnForReadableCards.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "sixHundredDpLandscapeWindowUsesTwoSettingsColumns"
+    start_time {
+      seconds: 1788647553
+      nanos: 633000000
+    }
+    end_time {
+      seconds: 1788647553
+      nanos: 671000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-sixHundredDpLandscapeWindowUsesTwoSettingsColumns.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "capturesSustainedUseStatusEvidenceImages"
+    start_time {
+      seconds: 1788647553
+      nanos: 673000000
+    }
+    end_time {
+      seconds: 1788647554
+      nanos: 328000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-capturesSustainedUseStatusEvidenceImages.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "InternetPairingDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "productionBuilderConstrainsPairingDialogContent"
+    start_time {
+      seconds: 1788647554
+      nanos: 333000000
+    }
+    end_time {
+      seconds: 1788647599
+      nanos: 653000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest-productionBuilderConstrainsPairingDialogContent.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "InternetPairingDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "imeConstrainedPairingDialogKeepsAcceptanceInputReachable"
+    start_time {
+      seconds: 1788647599
+      nanos: 658000000
+    }
+    end_time {
+      seconds: 1788647599
+      nanos: 698000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest-imeConstrainedPairingDialogKeepsAcceptanceInputReachable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "InternetPairingDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "importDialogUsesProtectedMultiLineInputWithoutHorizontalScroll"
+    start_time {
+      seconds: 1788647599
+      nanos: 700000000
+    }
+    end_time {
+      seconds: 1788647599
+      nanos: 921000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest-importDialogUsesProtectedMultiLineInputWithoutHorizontalScroll.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "InternetPairingDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPhoneKeepsPairingDialogContentReadableAndScrollable"
+    start_time {
+      seconds: 1788647599
+      nanos: 926000000
+    }
+    end_time {
+      seconds: 1788647600
+      nanos: 164000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest-narrowPhoneKeepsPairingDialogContentReadableAndScrollable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/5e08/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/testlog/test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}
