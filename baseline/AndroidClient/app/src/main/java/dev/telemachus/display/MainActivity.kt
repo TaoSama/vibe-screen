@@ -343,8 +343,9 @@ class MainActivity : AppCompatActivity() {
                 },
             )
 
-        // Follow user-enabled orientations while disconnected.
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        // Do not request an Activity-level orientation while disconnected; the
+        // no-host surface should stay under the platform and user policy.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
         // Enable edge-to-edge display (draw behind system bars and cutout)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -6902,10 +6903,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Reset orientation to follow user-enabled device orientations when disconnected.
+     * Reset orientation to the platform default when disconnected.
+     *
+     * Streaming can temporarily request fixed portrait or landscape orientations
+     * for frame mapping. UNSPECIFIED clears that Activity-level override so the
+     * disconnected UI returns to the platform and user rotation policy.
      */
     private fun resetOrientationToUserPreference() {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 
     @SuppressLint("SetTextI18n") // Developer-only rolling diagnostic output is not user-facing copy.

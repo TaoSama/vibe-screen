@@ -282,12 +282,9 @@ class ConnectionStateAccessibilityInstrumentedTest {
         preferences.connectionMode = ConnectionMode.INTERNET
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { activity ->
-                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
-                }
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { activity ->
-                    assertEquals(ActivityInfo.SCREEN_ORIENTATION_FULL_USER, activity.requestedOrientation)
+                    assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
                     val subtitle = activity.findViewById<TextView>(R.id.connectionSubtitle)
                     assertEquals(Int.MAX_VALUE, subtitle.maxLines)
                     assertFalse(subtitle.isClickable)
@@ -312,7 +309,24 @@ class ConnectionStateAccessibilityInstrumentedTest {
     fun disconnectedActivityFollowsUserOrientationPolicy() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                assertEquals(ActivityInfo.SCREEN_ORIENTATION_FULL_USER, activity.requestedOrientation)
+                assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
+            }
+        }
+    }
+
+    @Test
+    fun disconnectedResetClearsStreamingOrientationOverride() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                assertEquals(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, activity.requestedOrientation)
+
+                val resetOrientation =
+                    MainActivity::class.java.getDeclaredMethod("resetOrientationToUserPreference")
+                resetOrientation.isAccessible = true
+                resetOrientation.invoke(activity)
+
+                assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, activity.requestedOrientation)
             }
         }
     }
