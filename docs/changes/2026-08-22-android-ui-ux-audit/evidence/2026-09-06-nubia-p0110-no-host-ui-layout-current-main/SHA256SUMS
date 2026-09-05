@@ -1,0 +1,18 @@
+4d72c0b4baaf7f3cb90fb304714482134685378b8d8b4da5d93545a0c855b99f  ./adb-devices-after-tests.txt
+0df0cfc750b5fcf5f86013e0983c6088f728e1bc1cec3e9cd5db02beff8b3ba4  ./adb-reverse-list-after-tests.txt
+2851d0b2f14f4ff1b75f0d01438887911eb474e235be93e561709227cefb18db  ./android-test-report/css/base-style.css
+f1b366319836f8726d0939654d0eeddfc5b20f67d9e5954b9a1632c60f2f31bf  ./android-test-report/css/style.css
+15108e06533ace20af3b968f4036b2507ecb1bfc3be76ced91c0b9ef6e9d52eb  ./android-test-report/dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest.html
+52a287139ca211d90f43cf55315907ad5a0599bd144d8ebbb010ba1535bfeb86  ./android-test-report/dev.telemachus.display.ControlBarLayoutInstrumentedTest.html
+6d896164e1ff69da5c80351eb9afa9093c1eebd4e8c0b24969a40f34a7ab59c3  ./android-test-report/dev.telemachus.display.html
+6df2efaee3907173ca7fdcecd3599187c3078b68947feae7f624c0f9a66769ce  ./android-test-report/dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.html
+807886d6a9f0d4b5a0142945ba508f0c3b5e017df30922f87985ffb6acc518aa  ./android-test-report/index.html
+0aa306f94805890682c639b2d5c06108801d64b859a171a3c6eea66c8bab4c6a  ./android-test-report/js/report.js
+cd745f7cfffc3f63a036a7d579e129b3f684fd71e0fa5bc573673ceb86ebfcc8  ./android-test-results/TEST-P0110 - 16-_app-.xml
+2a1113e9bc4c9a434e6d999bd7847c20ce7fcf97900f14108931a39a6260b4e1  ./connected-layout-instrumentation.log
+2e44549568a91ebcd81d24ac52ac850075cd8f14b1637b0eb808083d8c46deb5  ./device-identity.txt
+28a4058ce4046a5000e3a7f62ec329dba06152b85ab8548c4690e848ffd8f1cd  ./gradle-assemble-debug-androidtest.log
+791acb0d56d415be30dc8b91acfbe91ff1be8bfe39e65147ccb911fc364d1fae  ./metadata.json
+a321c08735fda3d30c940c1939b1f577b2c6f9ac811ab4a919ffdca2af8e5e39  ./README.md
+2e40157fff49b5fbd48068ea400c95de67e4cf116645aa59e1d3d0d0a4b45a31  ./source-provenance.txt
+898a9e41b95ca23b986e97ec2e6f6c26b1eee83ab0bbe7c50ffd4a7d5dc07746  ./test-results.log
