@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Sequence, TextIO
 
 from . import SCHEMA_VERSION
+from .latency import MIN_GATE_SAMPLE_COUNT
 
 KIND = "phase0_stable_release_closure"
 STATUS_PASS = "pass"
@@ -389,11 +390,14 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
     if (
         not _is_positive_number(sample_count)
         or not _is_positive_number(min_sample_count)
+        or min_sample_count != MIN_GATE_SAMPLE_COUNT
+        or sample_count < MIN_GATE_SAMPLE_COUNT
         or sample_count < min_sample_count
     ):
         issues.append(
-            f"{path}: formal latency report sample_count must be positive and "
-            "greater than or equal to min_sample_count"
+            f"{path}: formal latency report min_sample_count must equal "
+            f"{MIN_GATE_SAMPLE_COUNT} and sample_count must be at least "
+            f"{MIN_GATE_SAMPLE_COUNT}"
         )
     source = record.get("source")
     if not isinstance(source, dict) or not isinstance(source.get("manifest"), str):

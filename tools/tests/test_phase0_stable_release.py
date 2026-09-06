@@ -515,8 +515,33 @@ class Phase0StableReleaseTest(unittest.TestCase):
             issues = summary["blocking_required_gates"][0]["issues"]
             self.assertIn(
                 "docs/evidence/latency-evidence-usb.json: formal latency report "
-                "sample_count must be positive and greater than or equal to "
-                "min_sample_count",
+                "min_sample_count must equal 5 and sample_count must be at least 5",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_requires_formal_latency_gate_sample_floor(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            latency_path = Path("docs/evidence/latency-evidence-usb.json")
+            latency_file = repo / latency_path
+            record = json.loads(latency_file.read_text(encoding="utf-8"))
+            record["gate"]["sample_count"] = 4
+            record["gate"]["min_sample_count"] = 1
+            latency_file.write_text(json.dumps(record), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/latency-evidence-usb.json: formal latency report "
+                "min_sample_count must equal 5 and sample_count must be at least 5",
                 issues,
             )
 
