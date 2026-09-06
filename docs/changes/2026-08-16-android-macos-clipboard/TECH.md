@@ -55,6 +55,13 @@ protocol fixture proof. Each transfer direction in `product-e2e.json` must prove
 - The Android -> macOS and macOS -> Android markers are distinct, so one
   transfer, one local ClipboardManager smoke, or one synthetic protocol replay
   cannot satisfy both directions.
+- Each direction retains evidence-relative, non-escaping artifact files for
+  source clipboard read, sender action, receiver approval, protocol packets,
+  destination clipboard write, final verification, and negative boundary
+  verification, with each role backed by a distinct non-empty file. Absolute
+  paths, `..` escapes, symlink escapes outside the bundle, missing artifacts,
+  duplicate role files, local-only smoke logs, and synthetic fixtures cannot
+  close the product E2E gate.
 
 ## 能力协商与旧 Peer
 

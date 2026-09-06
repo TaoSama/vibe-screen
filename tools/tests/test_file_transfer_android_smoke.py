@@ -69,12 +69,20 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "explicit_user_action": True,
         "receiver_approved": True,
         "remote_file_written": True,
+        "session_id_verified": True,
         "final_sha256_match": True,
         "session_epoch_verified": True,
+        "transfer_id_verified": True,
+        "progress_observed": True,
+        "source_endpoint_verified": True,
+        "destination_endpoint_verified": True,
         "file_name": "vibe-screen-smoke.txt",
         "byte_length": 32,
         "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "transfer_id_hex": "00112233445566778899aabbccddeeff",
         "session_epoch": 7,
+        "source_endpoint": "android_saf_selected_file",
+        "destination_endpoint": "macos_saved_file",
         "retained_artifacts": [
             {"role": "sender_action", "path": "android-to-macos/sender-action.txt"},
             {"role": "receiver_approval", "path": "android-to-macos/receiver-approval.txt"},
@@ -84,6 +92,11 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         ],
     }
     macos_to_android = dict(direction)
+    macos_to_android["file_name"] = "vibe-screen-smoke-macos-to-android.txt"
+    macos_to_android["sha256"] = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+    macos_to_android["transfer_id_hex"] = "ffeeddccbbaa99887766554433221100"
+    macos_to_android["source_endpoint"] = "macos_selected_file"
+    macos_to_android["destination_endpoint"] = "android_downloads_file"
     macos_to_android["retained_artifacts"] = [
         {"role": "sender_action", "path": "macos-to-android/sender-action.txt"},
         {"role": "receiver_approval", "path": "macos-to-android/receiver-approval.txt"},
@@ -342,6 +355,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             android_to_macos.pop("receiver_request_observed")
             android_to_macos["content_chunks_observed"] = False
             android_to_macos["sha256"] = "not-a-sha"
+            android_to_macos["transfer_id_hex"] = "not-a-transfer-id"
             write_json(paths["product"], document)
 
             result = derive_gate(
@@ -358,6 +372,135 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertIn("bidirectional_product_e2e: android_to_macos_file_transfer.content_chunks_observed must be true", result["blockers"])
         self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.sha256 must be a 64-character hex SHA-256 digest",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.transfer_id_hex must be a 32-character hex transfer ID",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_exact_file_endpoints_session_id_and_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_to_macos["source_endpoint"] = "android_app_private_fixture"
+            android_to_macos["destination_endpoint"] = "macos_temp_fixture"
+            android_to_macos["source_endpoint_verified"] = False
+            android_to_macos["destination_endpoint_verified"] = False
+            android_to_macos["session_id_verified"] = False
+            android_to_macos["progress_observed"] = False
+            android_to_macos["transfer_id_verified"] = False
+            macos_to_android["byte_length"] = True
+            macos_to_android["session_epoch"] = True
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.source_endpoint must be android_saf_selected_file",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.destination_endpoint must be macos_saved_file",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.source_endpoint_verified must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.destination_endpoint_verified must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.session_id_verified must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.progress_observed must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.transfer_id_verified must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_to_android_file_transfer.byte_length must be a positive integer",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_to_android_file_transfer.session_epoch must be a positive integer",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_distinct_direction_transfer_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            for direction in directions.values():
+                assert isinstance(direction, dict)
+                direction["transfer_id_hex"] = "00112233445566778899aabbccddeeff"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: direction transfer IDs must be distinct so one file exchange cannot satisfy both directions",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_distinct_direction_file_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            for direction in directions.values():
+                assert isinstance(direction, dict)
+                direction["file_name"] = "same-file.txt"
+                direction["sha256"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: direction SHA-256 digests must be distinct so one file payload cannot satisfy both directions",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: direction file names must be distinct so one file exchange cannot satisfy both directions",
             result["blockers"],
         )
 
@@ -441,6 +584,56 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].path must stay inside the evidence bundle",
+            result["blockers"],
+        )
+
+    def test_retained_artifacts_must_be_non_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text("", encoding="utf-8")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].path retained artifact android-to-macos/protocol-packets.jsonl must be non-empty",
+            result["blockers"],
+        )
+
+    def test_retained_artifact_paths_must_be_distinct_per_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            retained_artifacts = android_to_macos["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            receiver_artifact = retained_artifacts[1]
+            assert isinstance(receiver_artifact, dict)
+            receiver_artifact["path"] = "android-to-macos/sender-action.txt"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[1].path must be distinct from sender_action artifact path",
             result["blockers"],
         )
 

@@ -52,6 +52,16 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "sha256_verification",
 )
 REQUIRED_CANCEL_ARTIFACT_ROLES = ("cancel_request", "cleanup_state")
+EXPECTED_DIRECTION_ENDPOINTS = {
+    "android_to_macos_file_transfer": (
+        "android_saf_selected_file",
+        "macos_saved_file",
+    ),
+    "macos_to_android_file_transfer": (
+        "macos_selected_file",
+        "android_downloads_file",
+    ),
+}
 
 
 class FileTransferAndroidSmokeGateError(ValueError):
@@ -113,6 +123,7 @@ def _retained_artifact_reasons(
     reasons: list[str] = []
     resolved_evidence_dir = evidence_dir.resolve() if evidence_dir is not None else None
     seen_roles: set[str] = set()
+    seen_artifact_paths: dict[Path | str, str] = {}
     for index, artifact in enumerate(artifacts):
         artifact_label = f"{label}.{RETAINED_ARTIFACTS_FIELD}[{index}]"
         if not isinstance(artifact, dict):
@@ -120,8 +131,10 @@ def _retained_artifact_reasons(
             continue
         role = artifact.get("role")
         if isinstance(role, str) and role.strip():
-            seen_roles.add(role.strip())
+            role_name = role.strip()
+            seen_roles.add(role_name)
         else:
+            role_name = f"entry {index}"
             reasons.append(f"{artifact_label}.role must be present")
 
         path_value = artifact.get("path")
@@ -135,6 +148,7 @@ def _retained_artifact_reasons(
         if (path.parts and path.parts[0] == "..") or ".." in path.parts:
             reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
             continue
+        artifact_key: Path | str | None = path.as_posix() if evidence_dir is None else None
         if evidence_dir is not None and resolved_evidence_dir is not None:
             candidate = evidence_dir / path
             try:
@@ -142,7 +156,7 @@ def _retained_artifact_reasons(
             except FileNotFoundError:
                 reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
                 continue
-            except (OSError, RuntimeError) as error:
+            except (OSError, RuntimeError, ValueError) as error:
                 reasons.append(
                     f"{artifact_label}.path cannot access retained artifact "
                     f"{sanitize_text(path_value)}: {sanitize_text(error)}"
@@ -155,6 +169,16 @@ def _retained_artifact_reasons(
                 continue
             if not resolved_candidate.is_file():
                 reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
+            elif resolved_candidate.stat().st_size <= 0:
+                reasons.append(f"{artifact_label}.path retained artifact {sanitize_text(path_value)} must be non-empty")
+            else:
+                artifact_key = resolved_candidate
+        if artifact_key is not None:
+            previous_role = seen_artifact_paths.get(artifact_key)
+            if previous_role is not None:
+                reasons.append(f"{artifact_label}.path must be distinct from {previous_role} artifact path")
+            else:
+                seen_artifact_paths[artifact_key] = role_name
 
     missing_roles = [role for role in required_roles if role not in seen_roles]
     reasons.extend(
@@ -300,8 +324,13 @@ def _direction_reasons(
         "explicit_user_action",
         "receiver_approved",
         "remote_file_written",
+        "session_id_verified",
         "final_sha256_match",
         "session_epoch_verified",
+        "transfer_id_verified",
+        "progress_observed",
+        "source_endpoint_verified",
+        "destination_endpoint_verified",
     )
     reasons = [
         f"{label}.{field} must be true"
@@ -315,15 +344,23 @@ def _direction_reasons(
     sha256 = direction.get("sha256")
     if isinstance(sha256, str) and not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         reasons.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
+    transfer_id = direction.get("transfer_id_hex")
+    if not isinstance(transfer_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
+        reasons.append(f"{label}.transfer_id_hex must be a 32-character hex transfer ID")
     byte_length = direction.get("byte_length")
-    if not isinstance(byte_length, int) or byte_length <= 0:
+    if not isinstance(byte_length, int) or isinstance(byte_length, bool) or byte_length <= 0:
         reasons.append(f"{label}.byte_length must be a positive integer")
     session_epoch = direction.get("session_epoch")
-    if not isinstance(session_epoch, int) or session_epoch <= 0:
+    if not isinstance(session_epoch, int) or isinstance(session_epoch, bool) or session_epoch <= 0:
         reasons.append(f"{label}.session_epoch must be a positive integer")
     transport = direction.get("transport")
     if transport not in {"usb", "trusted_lan"}:
         reasons.append(f"{label}.transport must be usb or trusted_lan")
+    source, destination = EXPECTED_DIRECTION_ENDPOINTS[label]
+    if direction.get("source_endpoint") != source:
+        reasons.append(f"{label}.source_endpoint must be {source}")
+    if direction.get("destination_endpoint") != destination:
+        reasons.append(f"{label}.destination_endpoint must be {destination}")
     reasons.extend(
         _retained_artifact_reasons(
             direction,
@@ -351,11 +388,23 @@ def _product_e2e_gate(
         directions = product.get("directions") if isinstance(product.get("directions"), dict) else {}
         android_to_macos = directions.get("android_to_macos_file_transfer")
         macos_to_android = directions.get("macos_to_android_file_transfer")
+        transfer_ids: dict[str, str] = {}
+        digests: dict[str, str] = {}
+        file_names: dict[str, str] = {}
         if isinstance(android_to_macos, dict):
             reasons.extend(_direction_reasons(android_to_macos, "android_to_macos_file_transfer", evidence_dir))
             transport = android_to_macos.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"android_to_macos_file_transfer.transport {transport} is not ready")
+            transfer_id = android_to_macos.get("transfer_id_hex")
+            if isinstance(transfer_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
+                transfer_ids["android_to_macos_file_transfer"] = transfer_id.lower()
+            digest = android_to_macos.get("sha256")
+            if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                digests["android_to_macos_file_transfer"] = digest.lower()
+            file_name = android_to_macos.get("file_name")
+            if isinstance(file_name, str) and file_name.strip():
+                file_names["android_to_macos_file_transfer"] = file_name.strip()
         else:
             reasons.append("missing android_to_macos_file_transfer direction evidence")
         if isinstance(macos_to_android, dict):
@@ -363,8 +412,35 @@ def _product_e2e_gate(
             transport = macos_to_android.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"macos_to_android_file_transfer.transport {transport} is not ready")
+            transfer_id = macos_to_android.get("transfer_id_hex")
+            if isinstance(transfer_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
+                transfer_ids["macos_to_android_file_transfer"] = transfer_id.lower()
+            digest = macos_to_android.get("sha256")
+            if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                digests["macos_to_android_file_transfer"] = digest.lower()
+            file_name = macos_to_android.get("file_name")
+            if isinstance(file_name, str) and file_name.strip():
+                file_names["macos_to_android_file_transfer"] = file_name.strip()
         else:
             reasons.append("missing macos_to_android_file_transfer direction evidence")
+        if (
+            transfer_ids.get("android_to_macos_file_transfer")
+            and transfer_ids.get("android_to_macos_file_transfer")
+            == transfer_ids.get("macos_to_android_file_transfer")
+        ):
+            reasons.append("direction transfer IDs must be distinct so one file exchange cannot satisfy both directions")
+        if (
+            digests.get("android_to_macos_file_transfer")
+            and digests.get("android_to_macos_file_transfer")
+            == digests.get("macos_to_android_file_transfer")
+        ):
+            reasons.append("direction SHA-256 digests must be distinct so one file payload cannot satisfy both directions")
+        if (
+            file_names.get("android_to_macos_file_transfer")
+            and file_names.get("android_to_macos_file_transfer")
+            == file_names.get("macos_to_android_file_transfer")
+        ):
+            reasons.append("direction file names must be distinct so one file exchange cannot satisfy both directions")
     return _gate("bidirectional_product_e2e", PASS if not reasons else BLOCKED, reasons, evidence)
 
 
@@ -497,7 +573,7 @@ def derive_gate(
             for item in (
                 "Android -> macOS single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
                 "macOS -> Android single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
-                "receiver approval, session epoch, retained artifacts, cancel cleanup, and end-to-end SHA-256 on retained product evidence" if verdict != PASS else "",
+                "receiver approval, verified session ID and epoch, distinct verified 16-byte transfer IDs, observed progress, exact file endpoints, non-empty retained artifacts, cancel cleanup, and end-to-end SHA-256 on retained product evidence" if verdict != PASS else "",
             )
             if item
         ],
@@ -511,8 +587,10 @@ def derive_gate(
             "A pass requires a current signed/TCC-ready Host, a ready USB or trusted-LAN real-device path, "
             "a current Android file-transfer smoke log, and retained bidirectional product E2E evidence "
             "showing file offer/request/content packets, source file read, explicit user action, receiver "
-            "approval, remote file write, positive session epoch, final SHA-256 equality, retained product "
-            "artifacts, and cancel/cleanup behavior. Offline or synthetic coverage alone remains readiness evidence."
+            "approval, remote file write, verified session ID and session epoch, distinct transfer IDs, "
+            "distinct file names, distinct SHA-256 payload digests, observed progress, exact file endpoints, "
+            "retained non-empty product artifacts with distinct files per role, and cancel/cleanup behavior. "
+            "Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
 
