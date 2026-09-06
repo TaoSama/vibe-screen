@@ -1,8 +1,8 @@
-a0415dcf7278a41fb44e65540a7bc8cede620183
-46e8b18eebe8f622d3ba71530df3f76c94197b79
-a0415dcf7 docs: refresh phase0 aggregate after PR 644
+fa3d2e472b02e8c74877ebab2564af0290e849c7
+fa3d2e472b02e8c74877ebab2564af0290e849c7
+fa3d2e472 test(android): harden PCM audio protocol boundaries (#645)
+fc7ba3df1 docs: refresh phase0 aggregate after PR 647 (#648)
 46e8b18ee Harden evidence fail-closed validation (#647)
 12c0eb663 Validate Android input dispatch boundaries (#644)
 d31a24c46 docs: refresh phase0 aggregate after pr642 (#643)
 fdf87a225 Harden Android audio gap recovery (#641)
-87caf4da2 fix(android): classify host setup connection guidance
