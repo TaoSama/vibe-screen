@@ -370,6 +370,8 @@
       "offline_evidence": [
         "contracts/tests/test_security_contract.py",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/PeripheralInputDiagnosticsTest.kt",
         "docs/runbook/peripheral-input-framework.md#what-this-gate-covers"
       ],
       "device_evidence_status": "open",

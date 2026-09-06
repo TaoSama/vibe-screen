@@ -212,6 +212,20 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun pointerRejectsReservedButtonMaskBitsBeforeWireSubmission() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true),
+            recorder = recorder,
+        )
+
+        assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.5f, 0.5f, 1 shl 2))
+        assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.5f, 0.5f, -1))
+
+        assertTrue(recorder.submissions.isEmpty())
+    }
+
+    @Test
     fun nativeInputReleaseWithPressedKeysRequiresKeyboardCapability() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(
@@ -1555,13 +1569,16 @@ class StreamInputDispatcherTest {
     @Test
     fun peripheralInputUsesStructuralProtocolBatchOnlyAfterNegotiation() {
         val recorder = RecordingSubmitter()
+        val peripheralAcks = PeripheralInputAckTracker()
         val dispatcher = dispatcher(
             state = negotiatedState(peripheral = true),
             recorder = recorder,
             firstInputId = 50,
+            peripheralInputAcks = peripheralAcks,
         )
 
         assertTrue(dispatcher.sendPeripheral("vendor-device", byteArrayOf(0x01, 0x02)))
+        assertEquals("vendor-device", peripheralAcks.acknowledge(50))
 
         val submission = recorder.single()
         assertEquals(OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH, submission.kind)
@@ -1611,15 +1628,18 @@ class StreamInputDispatcherTest {
     @Test
     fun rejectedSubmissionPropagatesFalseForStatefulNativeInput() {
         val recorder = RecordingSubmitter(result = OutboundCommandScheduler.Submission.CLOSED)
+        val peripheralAcks = PeripheralInputAckTracker()
         val dispatcher = dispatcher(
             state = negotiatedState(pointer = true, keyboard = true, controller = true, peripheral = true),
             recorder = recorder,
+            peripheralInputAcks = peripheralAcks,
         )
 
         assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_BEGAN, 0.2f, 0.3f, 1))
         assertFalse(dispatcher.sendKey(0x04, pressed = true, modifierMask = 0))
         assertFalse(dispatcher.sendController(controllerDispatch()))
         assertFalse(dispatcher.sendPeripheral("vendor-device", byteArrayOf(0x01)))
+        assertEquals(0, peripheralAcks.pendingCount())
         assertFalse(
             dispatcher.sendNativeInputRelease(
                 NativeInputReleasePlan(listOf(0x04), NativePointerSnapshot(0.2f, 0.3f)),
@@ -1632,6 +1652,7 @@ class StreamInputDispatcherTest {
         state: StreamInputSessionState,
         recorder: RecordingSubmitter,
         tracker: ControllerConnectionAckTracker = ControllerConnectionAckTracker(),
+        peripheralInputAcks: PeripheralInputAckTracker = PeripheralInputAckTracker(),
         firstInputId: Long = 1,
         maximumDeferredControllerDispatches: Int = MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES,
         onControllerDeferredOverflow: () -> Unit = {},
@@ -1643,6 +1664,7 @@ class StreamInputDispatcherTest {
         nextInputId = AtomicLong(firstInputId),
         submitOutbound = recorder::submit,
         controllerConnectionAcks = tracker,
+        peripheralInputAcks = peripheralInputAcks,
         maximumDeferredControllerDispatches = maximumDeferredControllerDispatches,
         onControllerDeferredOverflow = onControllerDeferredOverflow,
         onControllerAckTimeout = onControllerAckTimeout,

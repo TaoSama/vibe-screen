@@ -229,6 +229,7 @@ class StreamClient(
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
+    private val peripheralInputAcks = PeripheralInputAckTracker()
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val heartbeatTelemetryReporter = HeartbeatTelemetryReporter(HEARTBEAT_TELEMETRY_INTERVAL_NS)
@@ -363,6 +364,7 @@ class StreamClient(
             nextInputId = nextInputId,
             submitOutbound = ::submitOutbound,
             controllerConnectionAcks = controllerConnectionAcks,
+            peripheralInputAcks = peripheralInputAcks,
             onControllerDeferredOverflow = ::failControllerDeferredOverflow,
             onControllerAckTimeout = ::failControllerAckTimeout,
         )
@@ -784,6 +786,7 @@ class StreamClient(
                 protocolSessionOwner.activate(session)
                 nextInputId.set(1L)
                 controllerConnectionAcks.reset()
+                peripheralInputAcks.reset()
                 inputDispatcher.resetControllerState()
                 writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
@@ -838,6 +841,7 @@ class StreamClient(
             recordProtocolAudioStopped("legacy_fallback")
         }
         controllerConnectionAcks.reset()
+        peripheralInputAcks.reset()
         inputDispatcher.resetControllerState()
         pendingLegacyFirstByte = firstByte
         advertiseAvcOnlyIfNeeded()
@@ -1474,6 +1478,7 @@ class StreamClient(
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
     internal var onControllerInputAck: ((ControllerConnection, Boolean, String) -> Unit)? = null
+    internal var onPeripheralInputAck: ((peripheralKind: String, accepted: Boolean, rejectionReason: String) -> Unit)? = null
 
     /** Capabilities negotiated for the active Protocol v1 session, empty otherwise. */
     internal fun negotiatedCapabilities(): Set<dev.vibescreen.protocol.v1.Capability> =
@@ -2224,6 +2229,11 @@ class StreamClient(
                 onControllerInputAck?.invoke(connection, accepted, rejectionReason)
             }
             if (acknowledgement != null) inputDispatcher.flushControllerDisconnectCleanup()
+            if (acknowledgement == null) {
+                peripheralInputAcks.acknowledge(inputId)?.let { peripheralKind ->
+                    onPeripheralInputAck?.invoke(peripheralKind, accepted, rejectionReason)
+                }
+            }
         }
 
         override fun onHostActionsAvailable(actions: List<ProtocolV1Session.HostAction>) {
@@ -2887,6 +2897,7 @@ class StreamClient(
         fileTransferProductOwner.clear()
         protocolSessionOwner.clear()
         controllerConnectionAcks.reset()
+        peripheralInputAcks.reset()
         inputDispatcher.resetControllerState()
         pendingLegacyFirstByte = null
         lanSecureRecordSession?.close()

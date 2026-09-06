@@ -1272,7 +1272,7 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
                 ClientInputDispatchResult.REJECTED -> {
-                    mainDiag("negotiated pointer sink rejected ${nativePointerInput.action}")
+                    mainDiag(PeripheralInputDiagnostics.nativePointerSinkRejected(nativePointerInput).message())
                     return true
                 }
 
@@ -1350,10 +1350,7 @@ class MainActivity : AppCompatActivity() {
         nativePointerInput: ClientPointerInput,
         capabilities: ClientSessionCapabilities,
     ) {
-        mainDiag(
-            "native pointer input blocked without negotiated pointer capability " +
-                "action=${nativePointerInput.action} buttonState=${nativePointerInput.buttonState}",
-        )
+        mainDiag(PeripheralInputDiagnostics.nativePointerUnsupported(nativePointerInput, capabilities).message())
         if (!unsupportedNativePointerNoticeShown) {
             unsupportedNativePointerNoticeShown = true
             Toast
@@ -1375,12 +1372,15 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (!shouldLogNativePointerForward(nativePointerInput.action)) return
         mainDiag(
-            "native pointer forwarded action=${nativePointerInput.action} " +
-                "deviceId=${event.deviceId} " +
-                "source=${NativeInputWire.mouseLikeSourceNames(event.source, event.device?.sources).joinToString("+").ifEmpty { "OTHER" }} " +
-                "buttonState=${event.buttonState} actionButton=${event.actionButton} " +
-                "wireButtons=${NativeInputWire.buttonMask(event.buttonState)} " +
-                "x=${nativePointerInput.x} y=${nativePointerInput.y}",
+            PeripheralInputDiagnostics
+                .nativePointerForwarded(
+                    eventDeviceId = event.deviceId,
+                    eventSource = event.source,
+                    inputDeviceSources = event.device?.sources,
+                    eventButtonState = event.buttonState,
+                    eventActionButton = event.actionButton,
+                    input = nativePointerInput,
+                ).message(),
         )
     }
 
@@ -1425,11 +1425,19 @@ class MainActivity : AppCompatActivity() {
         return when (result) {
             ClientInputDispatchResult.SENT -> true
             ClientInputDispatchResult.REJECTED -> {
-                mainDiag("negotiated controller sink rejected $source")
+                mainDiag(
+                    PeripheralInputDiagnostics
+                        .controllerSinkRejected(PeripheralInputDiagnosticTransport.USB_LAN, source)
+                        .message(),
+                )
                 false
             }
             ClientInputDispatchResult.UNSUPPORTED -> {
-                mainDiag("controller input blocked by host without controller capability source=$source")
+                mainDiag(
+                    PeripheralInputDiagnostics
+                        .controllerCapabilityUnsupported(PeripheralInputDiagnosticTransport.USB_LAN, source)
+                        .message(),
+                )
                 false
             }
         }
@@ -1449,7 +1457,13 @@ class MainActivity : AppCompatActivity() {
                 ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
             }
         val accepted = session.sendController(events, delivery)
-        if (!accepted) mainDiag("internet controller sink rejected $source")
+        if (!accepted) {
+            mainDiag(
+                PeripheralInputDiagnostics
+                    .controllerSinkRejected(PeripheralInputDiagnosticTransport.INTERNET, source)
+                    .message(),
+            )
+        }
         return accepted
     }
 
@@ -1492,13 +1506,23 @@ class MainActivity : AppCompatActivity() {
             )
         if (result.connected > 0 || result.disconnected > 0 || result.resynchronized) {
             mainDiag(
-                "controller hotplug synchronized reason=$reason " +
-                    "connected=${result.connected} disconnected=${result.disconnected} " +
-                    "resynchronized=${result.resynchronized}",
+                PeripheralInputDiagnostics
+                    .controllerHotplugSynchronized(
+                        reason = reason,
+                        availableDeviceCount = snapshots.size,
+                        result = result,
+                    ).message(),
             )
         }
         if (result.limitReached > 0) {
-            mainDiag("controller hotplug ignored ${result.limitReached} device(s): active controller limit reached")
+            mainDiag(
+                PeripheralInputDiagnostics
+                    .controllerLimitReached(
+                        reason = reason,
+                        availableDeviceCount = snapshots.size,
+                        limitReached = result.limitReached,
+                    ).message(),
+            )
         }
     }
 
@@ -4961,10 +4985,24 @@ class MainActivity : AppCompatActivity() {
             }
             if (streamControllerSessionState.rejectConnection(connection.controllerId, connection.controllerEpoch)) {
                 mainDiag(
-                    "controller connection rejected id=${connection.controllerId} " +
-                        "epoch=${connection.controllerEpoch} reason=$rejectionReason",
+                    PeripheralInputDiagnostics
+                        .controllerHostRejected(
+                            transport = PeripheralInputDiagnosticTransport.USB_LAN,
+                            controllerId = connection.controllerId,
+                            controllerEpoch = connection.controllerEpoch,
+                            rejectionReason = rejectionReason,
+                        ).message(),
                 )
             }
+        }
+        callbackClient.onPeripheralInputAck = peripheralAck@{ peripheralKind, accepted, rejectionReason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@peripheralAck
+            if (accepted || rejectionReason != UNSUPPORTED_PERIPHERAL_KIND_REJECTION_REASON) return@peripheralAck
+            mainDiag(
+                PeripheralInputDiagnostics
+                    .unsupportedPeripheralKind(peripheralKind, rejectionReason)
+                    .message(),
+            )
         }
         callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@hostActionResult
@@ -5463,9 +5501,14 @@ class MainActivity : AppCompatActivity() {
                         ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted) ?: return
                     if (internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)) {
                         mainDiag(
-                            "internet controller input rejected input_id=$inputId " +
-                                "controller=${rejectedConnection.controllerId} " +
-                                "epoch=${rejectedConnection.controllerEpoch} reason=$rejectionReason",
+                            PeripheralInputDiagnostics
+                                .controllerHostRejected(
+                                    transport = PeripheralInputDiagnosticTransport.INTERNET,
+                                    controllerId = rejectedConnection.controllerId,
+                                    controllerEpoch = rejectedConnection.controllerEpoch,
+                                    rejectionReason = rejectionReason,
+                                    inputId = inputId,
+                                ).message(),
                         )
                     }
                 }
@@ -6037,6 +6080,7 @@ class MainActivity : AppCompatActivity() {
             port,
             applicationContext,
             advertiseController = true,
+            advertisePeripheralInputFramework = true,
             wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf()),
             managedPolicyProvider = { localManagedPolicy },
         )
@@ -6210,6 +6254,7 @@ class MainActivity : AppCompatActivity() {
             port,
             applicationContext,
             advertiseController = true,
+            advertisePeripheralInputFramework = true,
             managedPolicyProvider = { localManagedPolicy },
         )
         val guidanceContext = ConnectionGuidanceContext.adb(port, currentUsbTransportSnapshot().adbTransport)

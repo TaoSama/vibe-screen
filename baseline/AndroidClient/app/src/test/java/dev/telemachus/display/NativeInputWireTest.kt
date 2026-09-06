@@ -3,7 +3,9 @@ package dev.telemachus.display
 import android.view.MotionEvent
 import dev.vibescreen.protocol.v1.InputPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Verifies the shared native-input wire encoding matches the host bits. */
@@ -32,6 +34,19 @@ class NativeInputWireTest {
             NativeInputWire.BUTTON_SECONDARY,
             NativeInputWire.buttonMask(MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_BACK or MotionEvent.BUTTON_FORWARD),
         )
+    }
+
+    @Test
+    fun supportedPointerButtonMaskRejectsReservedBits() {
+        assertEquals(
+            NativeInputWire.BUTTON_PRIMARY or NativeInputWire.BUTTON_SECONDARY,
+            NativeInputWire.SUPPORTED_POINTER_BUTTON_MASK,
+        )
+        assertTrue(NativeInputWire.hasOnlySupportedPointerButtons(0))
+        assertTrue(NativeInputWire.hasOnlySupportedPointerButtons(NativeInputWire.BUTTON_PRIMARY))
+        assertTrue(NativeInputWire.hasOnlySupportedPointerButtons(NativeInputWire.SUPPORTED_POINTER_BUTTON_MASK))
+        assertFalse(NativeInputWire.hasOnlySupportedPointerButtons(1 shl 2))
+        assertFalse(NativeInputWire.hasOnlySupportedPointerButtons(-1))
     }
 
     @Test

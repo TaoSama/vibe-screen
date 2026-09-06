@@ -194,6 +194,43 @@ internal data class ControllerConnectionAcknowledgement(
     val hasDeferredDisconnect: Boolean,
 )
 
+/** Correlates optional host InputAck messages with generic peripheral input. */
+internal class PeripheralInputAckTracker(
+    private val maximumPendingInputs: Int = MAXIMUM_PENDING_PERIPHERAL_INPUT_ACKS,
+) {
+    init {
+        require(maximumPendingInputs > 0) { "maximumPendingInputs must be positive" }
+    }
+
+    private val lock = Any()
+    private val peripheralKindsByInputId = linkedMapOf<Long, String>()
+
+    fun record(
+        inputId: Long,
+        peripheralKind: String,
+    ) = synchronized(lock) {
+        require(inputId > 0)
+        require(peripheralKind.isNotBlank())
+        check(inputId !in peripheralKindsByInputId) { "duplicate peripheral input id" }
+        peripheralKindsByInputId[inputId] = peripheralKind
+        while (peripheralKindsByInputId.size > maximumPendingInputs) {
+            peripheralKindsByInputId.remove(peripheralKindsByInputId.keys.first())
+        }
+    }
+
+    fun acknowledge(inputId: Long): String? = synchronized(lock) {
+        peripheralKindsByInputId.remove(inputId)
+    }
+
+    fun reset() = synchronized(lock) {
+        peripheralKindsByInputId.clear()
+    }
+
+    internal fun pendingCount(): Int = synchronized(lock) { peripheralKindsByInputId.size }
+}
+
+internal const val MAXIMUM_PENDING_PERIPHERAL_INPUT_ACKS = 128
+
 internal data class DeferredControllerDisconnect(
     val connection: ControllerConnection,
 )

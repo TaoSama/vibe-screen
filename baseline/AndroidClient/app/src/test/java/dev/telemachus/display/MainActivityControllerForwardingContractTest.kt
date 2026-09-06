@@ -185,7 +185,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(unsupportedGate, "nativePointerInput.actionButton == MotionEvent.BUTTON_SECONDARY")
         assertContains(unsupportedGate, "nativePointerInput.buttonState and MotionEvent.BUTTON_SECONDARY != 0")
         assertContains(unsupportedReporter, "capabilities: ClientSessionCapabilities")
-        assertContains(unsupportedReporter, "native pointer input blocked without negotiated pointer capability")
+        assertContains(unsupportedReporter, "PeripheralInputDiagnostics.nativePointerUnsupported(nativePointerInput, capabilities).message()")
         assertContains(unsupportedReporter, "nativePointerUnavailableMessage(capabilities)")
         assertContains(unsupportedReporter, "unsupportedNativePointerNoticeShown = true")
         assertContains(source, "private fun nativePointerUnavailableMessage(capabilities: ClientSessionCapabilities): Int")
@@ -199,6 +199,7 @@ class MainActivityControllerForwardingContractTest {
         val source = mainActivitySource()
         val genericMotion = extractMethod(source, "private fun handleGenericMotion")
         val sink = extractClass(source, "private inner class StreamClientInputSink")
+        val forwardLogger = extractMethod(source, "private fun logNativePointerForwarded")
 
         assertContains(source, "binding.inputViewport.setOnHoverListener { view, event ->")
         assertContains(genericMotion, "val nativePointerAction = NativeInputWire.pointerAction(event.actionMasked)")
@@ -207,6 +208,10 @@ class MainActivityControllerForwardingContractTest {
         assertContains(sink, "val observedButtonMask = NativeInputWire.buttonMask(input.buttonState)")
         assertContains(sink, "val buttonMask = NativeInputWire.outboundButtonMask(input.action, input.buttonState)")
         assertBefore(sink, "NativeInputWire.pointerPhase(input.action, observedButtonMask, changedButtonMask)", "buttonMask = buttonMask")
+        assertContains(forwardLogger, "PeripheralInputDiagnostics")
+        assertContains(forwardLogger, ".nativePointerForwarded(")
+        assertContains(forwardLogger, "inputDeviceSources = event.device?.sources")
+        assertContains(forwardLogger, "eventButtonState = event.buttonState")
     }
 
     @Test
@@ -362,10 +367,14 @@ class MainActivityControllerForwardingContractTest {
         assertContains(dispatch, "ClientInputDispatchResult.SENT -> true")
         assertContains(dispatch, "ClientInputDispatchResult.REJECTED ->")
         assertContains(dispatch, "ClientInputDispatchResult.UNSUPPORTED ->")
+        assertContains(dispatch, "PeripheralInputDiagnostics")
+        assertContains(dispatch, ".controllerSinkRejected(PeripheralInputDiagnosticTransport.USB_LAN, source)")
+        assertContains(dispatch, ".controllerCapabilityUnsupported(PeripheralInputDiagnosticTransport.USB_LAN, source)")
         assertContains(internetDispatch, "val orderedDispatch = ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)")
         assertContains(internetDispatch, "orderedDispatch.samples.map { sample -> ProductControllerEvent(sample) }")
         assertContains(internetDispatch, "targetSession: InternetProductSession? = internetSession")
         assertContains(internetDispatch, "session.sendController(events, delivery)")
+        assertContains(internetDispatch, ".controllerSinkRejected(PeripheralInputDiagnosticTransport.INTERNET, source)")
         assertContains(source, "nextControllerInputId = internetInputIds::next")
         assertBefore(internetDispatch, "ControllerDispatchOrdering.disconnectsBeforeLaterEpochSamples(dispatch)", "ProductControllerEvent(sample)")
         assertContains(sink, "override fun sendController(input: ClientControllerInput): Boolean")
@@ -394,10 +403,25 @@ class MainActivityControllerForwardingContractTest {
         assertBefore(internetConnect, "if (accepted && controllerId != null && controllerEpoch != null) {", "ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted)")
         assertContains(internetConnect, "ControllerInputAckPolicy.rejectedConnection(controllerId, controllerEpoch, accepted)")
         assertContains(internetConnect, "internetControllerSessionState.rejectConnection(rejectedConnection.controllerId, rejectedConnection.controllerEpoch)")
+        assertContains(internetConnect, ".controllerHostRejected(")
+        assertContains(internetConnect, "transport = PeripheralInputDiagnosticTransport.INTERNET")
+        assertContains(internetConnect, "inputId = inputId")
         assertContains(source, "sendInternetControllerDispatch(dispatch, \"internet controller video configuration\")")
         assertContains(source, "internetControllerSessionState.takeRelease()?.let { release ->")
         assertContains(source, "sendInternetControllerDispatch(release, \"internet controller release\", internet)")
         assertContains(source, "internet controller release")
+    }
+
+    @Test
+    fun peripheralUnsupportedAckReportsStructuredUsbLanDiagnosticOnlyForUnsupportedKind() {
+        val source = mainActivitySource()
+        val callback = extractCallback(source, "callbackClient.onPeripheralInputAck = peripheralAck@")
+
+        assertContains(callback, "if (!isCurrentSession(callbackClient, callbackGeneration)) return@peripheralAck")
+        assertContains(callback, "if (accepted || rejectionReason != UNSUPPORTED_PERIPHERAL_KIND_REJECTION_REASON) return@peripheralAck")
+        assertContains(callback, "PeripheralInputDiagnostics")
+        assertContains(callback, ".unsupportedPeripheralKind(peripheralKind, rejectionReason)")
+        assertContains(callback, ".message()")
     }
 
     @Test
@@ -416,9 +440,11 @@ class MainActivityControllerForwardingContractTest {
         assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
         assertContains(displaysCallback, "if (controller) synchronizeControllerDevices(\"capability negotiation\")")
         assertContains(usbConnect, "val localManagedPolicy = ManagedConfigurationProvider(applicationContext).loadPolicy()")
+        assertContains(usbConnect, "advertisePeripheralInputFramework = true")
         assertContains(usbConnect, "managedPolicyProvider = { localManagedPolicy }")
         assertContains(usbConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)")
         assertContains(wirelessConnect, "advertiseController = true")
+        assertContains(wirelessConnect, "advertisePeripheralInputFramework = true")
         assertContains(wirelessConnect, "wakeHostPolicy = SharedSecretWakeHostPolicy(token.copyOf())")
         assertContains(wirelessConnect, "managedPolicyProvider = { localManagedPolicy }")
         assertContains(wirelessConnect, "applyLocalManagedPolicySnapshot(localManagedPolicy)")
@@ -497,6 +523,9 @@ class MainActivityControllerForwardingContractTest {
         assertContains(synchronize, "controllerHotplugCoordinator.synchronizeAvailableControllers")
         assertContains(synchronize, "sessionState = state")
         assertContains(synchronize, "sendStreamControllerDispatch(dispatch, \"controller hotplug \$reason\")")
+        assertContains(synchronize, ".controllerHotplugSynchronized(")
+        assertContains(synchronize, "availableDeviceCount = snapshots.size")
+        assertContains(synchronize, ".controllerLimitReached(")
         assertContains(source, "isConnected && currentSessionBinding().capabilities.controller")
         assertContains(snapshots, "InputDevice.getDeviceIds().forEach")
         assertContains(snapshots, "ControllerInputMapper.isControllerSource(device.sources)")
