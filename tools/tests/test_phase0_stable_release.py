@@ -753,6 +753,32 @@ class Phase0StableReleaseTest(unittest.TestCase):
             summary["merged_pr_guard"]["reasons"][0],
         )
 
+    def test_merged_pr_snapshot_rejects_invalid_utf8_snapshot(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            snapshot = manifest["merged_pr_snapshot"]
+            assert isinstance(snapshot, dict)
+            snapshot_path = snapshot["path"]
+            assert isinstance(snapshot_path, str)
+            (repo / snapshot_path).write_bytes(b"{\xff\xfe}")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "insufficient")
+            self.assertTrue(
+                any(
+                    "could not read merged_pr_snapshot.path" in reason
+                    for reason in summary["merged_pr_guard"]["reasons"]
+                )
+            )
+
+        with_temporary_repo(run)
+
     def test_merged_pr_snapshot_requires_base_main_and_merge_commit_projection(self) -> None:
         manifest = complete_manifest()
         manifest["source"]["base_commit"] = "a" * 40
