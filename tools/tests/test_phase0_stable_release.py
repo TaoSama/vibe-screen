@@ -137,6 +137,8 @@ def add_merged_pr_snapshot(
     *,
     merge_commit: str | None = None,
     entry_base: str = "main",
+    excluded_pr_numbers: list[int] | None = None,
+    maximum: int = 158,
     path: str = "merged-prs.jsonl",
 ) -> None:
     snapshot_path = repo / path
@@ -157,9 +159,10 @@ def add_merged_pr_snapshot(
         "command": MERGED_PR_COMMAND,
         "state": "merged",
         "base": "main",
-        "range": {"min": 158, "max": 158},
+        "range": {"min": 158, "max": maximum},
         "path": path,
         "audited_source_commit": audited_source_commit,
+        "excluded_pr_numbers": excluded_pr_numbers or [],
     }
 
 
@@ -471,12 +474,35 @@ class Phase0StableReleaseTest(unittest.TestCase):
             "range": {"min": 158, "max": 158},
             "path": "merged-prs.jsonl",
             "audited_source_commit": "a" * 40,
+            "excluded_pr_numbers": [],
         }
 
         with self.assertRaisesRegex(
             Phase0StableReleaseError, "with --base main and mergeCommit"
         ):
             evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_merged_pr_snapshot_requires_explicit_excluded_pr_numbers(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            feature = repo / "feature.txt"
+            feature.write_text("feature\n", encoding="utf-8")
+            merge_commit = commit_all(repo, "merge pr 158")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = merge_commit
+            add_merged_pr_snapshot(manifest, repo, merge_commit)
+            del manifest["merged_pr_snapshot"]["excluded_pr_numbers"]
+
+            with self.assertRaisesRegex(
+                Phase0StableReleaseError,
+                "merged_pr_snapshot.excluded_pr_numbers is required",
+            ):
+                evaluate_manifest(
+                    manifest,
+                    readme_text=GUARDED_README_TEXT,
+                    repo_root=repo,
+                )
+
+        with_temporary_repo(run)
 
     def test_merged_pr_snapshot_rejects_non_ancestor_merge_commit(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
@@ -535,6 +561,56 @@ class Phase0StableReleaseTest(unittest.TestCase):
             self.assertEqual(summary["merged_pr_guard"]["verdict"], "insufficient")
             self.assertIn("baseRefName", summary["merged_pr_guard"]["reasons"][0])
             self.assertEqual(summary["aggregate_verdict"], "insufficient")
+
+        with_temporary_repo(run)
+
+    def test_merged_pr_snapshot_requires_complete_declared_range(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            feature = repo / "feature.txt"
+            feature.write_text("feature\n", encoding="utf-8")
+            merge_commit = commit_all(repo, "merge pr 158")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = merge_commit
+            add_merged_pr_snapshot(
+                manifest, repo, merge_commit, excluded_pr_numbers=[159], maximum=160
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "insufficient")
+            self.assertIn(
+                "merged_pr_snapshot.path is missing PR numbers from the declared range #158-#160: #160",
+                summary["merged_pr_guard"]["reasons"],
+            )
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+
+        with_temporary_repo(run)
+
+    def test_merged_pr_snapshot_accepts_explicit_excluded_range_numbers(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            feature = repo / "feature.txt"
+            feature.write_text("feature\n", encoding="utf-8")
+            merge_commit = commit_all(repo, "merge pr 158")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = merge_commit
+            add_merged_pr_snapshot(
+                manifest, repo, merge_commit, excluded_pr_numbers=[159, 160], maximum=160
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
+            self.assertEqual(summary["merged_pr_guard"]["merged_pr_numbers"], [158])
+            self.assertEqual(summary["merged_pr_guard"]["excluded_pr_numbers"], [159, 160])
+            self.assertEqual(summary["aggregate_verdict"], "pass")
 
         with_temporary_repo(run)
 
@@ -990,8 +1066,10 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["closed_required_gate_count"], 6)
         self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
         self.assertEqual(summary["owner_pr_guard"]["owner_prs"], [])
+        self.assertEqual(summary["owner_pr_guard"]["open_pr_numbers"], [628])
         self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
         self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
+        self.assertEqual(summary["merged_pr_guard"]["excluded_pr_numbers"], [568, 576, 627])
         self.assertEqual(summary["merged_pr_guard"]["non_ancestor_prs"], [])
         macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
         self.assertEqual(macos_gate["verdict"], "open")
