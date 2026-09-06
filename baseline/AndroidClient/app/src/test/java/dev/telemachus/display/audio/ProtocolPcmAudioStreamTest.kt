@@ -51,12 +51,24 @@ class ProtocolPcmAudioStreamTest {
         assertProtocolThrows(AudioRejectReason.PAYLOAD_LENGTH_MISMATCH) {
             ProtocolAudioPacket.parse(encodePacket(packet.header.toBuilder().setPayloadLength(5).build(), packet.payload))
         }
+    }
+
+    @Test
+    fun rejectsMalformedAudioPacketHeaderVarint() {
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
             ProtocolAudioPacket.parse(ByteArray(10) { 0x80.toByte() })
         }
+    }
+
+    @Test
+    fun rejectsOversizedAudioPacketHeader() {
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
             ProtocolAudioPacket.parse(encodeVarint(64 * 1024 + 1) + byteArrayOf(0x00))
         }
+    }
+
+    @Test
+    fun rejectsTruncatedAudioPacketHeader() {
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
             ProtocolAudioPacket.parse(byteArrayOf(0xff.toByte(), 0x7f, 0x00))
         }
