@@ -1,0 +1,28 @@
+before_manual_reverse_list:
+UsbFfs tcp:8908 tcp:8908
+
+resolve_activity:
+priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false
+dev.telemachus.display/.MainActivity
+launch_launcher_intent
+  bash arg: -p
+  bash arg: dev.telemachus.display
+  bash arg: -c
+  bash arg: android.intent.category.LAUNCHER
+  bash arg: 1
+args: [-p, dev.telemachus.display, -c, android.intent.category.LAUNCHER, 1]
+ arg: "-p"
+ arg: "dev.telemachus.display"
+ arg: "-c"
+ arg: "android.intent.category.LAUNCHER"
+ arg: "1"
+data="dev.telemachus.display"
+data="android.intent.category.LAUNCHER"
+Events injected: 1
+## Network stats: elapsed time=23ms (0ms mobile, 0ms wifi, 23ms not connected)
+current_focus:
+  mCurrentFocus=Window{7a38ead u0 NotificationShade}
+  mFocusedApp=ActivityRecord{4689387 u0 dev.telemachus.display/.MainActivity t1543}
+after_manual_reverse_list:
+UsbFfs tcp:8908 tcp:8908
+
