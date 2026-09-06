@@ -322,7 +322,7 @@
   "schema_version": "vibescreen.evidence/v1",
   "source": {
     "audit_date": "2026-09-06",
-    "base_commit": "50b564a81b1003f65121631443a772389bba2ab3",
+    "base_commit": "170be3fc46c5560259259954c2799dfed7995e7b",
     "base_ref": "origin/main",
     "owner": "Phase 0 module ownership extraction owner"
   },
