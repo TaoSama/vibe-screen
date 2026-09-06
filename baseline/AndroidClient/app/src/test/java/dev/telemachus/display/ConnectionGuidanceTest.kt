@@ -216,6 +216,140 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun rawNetworkInterfaceUnavailableMessagesUseModeSpecificRouteGuidance() {
+        val contexts =
+            listOf(
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB) to
+                    R.string.connection_guidance_adb_route_unavailable_title,
+                ConnectionGuidanceContext.trustedLan(54321) to
+                    R.string.connection_guidance_lan_route_unavailable_title,
+                ConnectionGuidanceContext.internet() to
+                    R.string.connection_guidance_internet_route_unavailable_title,
+            )
+        val failures =
+            listOf(
+                IOException("Network interface unavailable for selected route"),
+                IOException("No active network interface"),
+                IOException("connect failed: ENODEV (No such device)"),
+                IOException("connect failed: ENONET (Machine is not on the network)"),
+            )
+
+        contexts.forEach { (context, expectedTitleResource) ->
+            failures.forEach { failure ->
+                val guidance = ConnectionGuidanceFactory.from(failure, context)
+
+                assertEquals(
+                    context.mode.name + " " + failure.message,
+                    ConnectionFailureKind.NETWORK_UNREACHABLE,
+                    guidance.kind,
+                )
+                assertEquals(context.mode.name + " " + failure.message, expectedTitleResource, guidance.status.resourceId)
+                if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance)
+            }
+        }
+    }
+
+    @Test
+    fun hostPermissionDeniedMessagesUseTccRecoveryWithoutRawDetails() {
+        val secret = "/Users/example/Library/Application Support/com.apple.TCC/TCC.db"
+        val failures =
+            listOf(
+                IOException("startServer aborted: Missing Screen Recording permission for $secret"),
+                IOException("Accessibility permission is required to move Mac windows."),
+                IOException("screen capture failed: operation not permitted by TCC for $secret"),
+                IOException("Screen & System Audio permission is missing for the installed app identity"),
+                IOException("input injection not authorized for the installed app identity"),
+                IOException("window control not authorised for the installed app identity"),
+                SessionProtocolException(
+                    SessionFailure.protocol(
+                        SessionFailureKind.SESSION_REJECTED,
+                        "Missing Screen Recording permission for $secret",
+                    ),
+                ),
+            )
+
+        failures.forEach { failure ->
+            val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.trustedLan(54321))
+
+            assertEquals(failure.message, ConnectionFailureKind.HOST_PERMISSION_DENIED, guidance.kind)
+            assertEquals(R.string.connection_guidance_mac_permission_denied_title, guidance.status.resourceId)
+            assertEquals(R.string.connection_guidance_mac_permission_denied_message, guidance.message.resourceId)
+            assertNoAdbReferences(guidance)
+            assertNoRawArg(guidance, secret)
+            assertNoRawArg(guidance, "TCC.db")
+        }
+    }
+
+    @Test
+    fun genericPermissionDeniedDoesNotMasqueradeAsMacTccGuidance() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                IOException("permission denied while opening local cache"),
+                ConnectionGuidanceContext.internet(),
+            )
+
+        assertEquals(ConnectionFailureKind.UNKNOWN, guidance.kind)
+        assertEquals(R.string.connection_guidance_internet_unknown_message, guidance.message.resourceId)
+        assertNoRawArg(guidance, "local cache")
+    }
+
+    @Test
+    fun genericCaptureAndHandshakeFailuresStayOnExistingGuidanceFamilies() {
+        val capture =
+            ConnectionGuidanceFactory.from(
+                IOException("frame capture failed: operation not permitted while reading decoder cache"),
+                ConnectionGuidanceContext.internet(),
+            )
+        val handshake =
+            ConnectionGuidanceFactory.from(
+                SessionFailure.transport("secure handshake response timed out"),
+                ConnectionGuidanceContext.internet(),
+            )
+
+        assertEquals(ConnectionFailureKind.UNKNOWN, capture.kind)
+        assertEquals(ConnectionFailureKind.TIMEOUT, handshake.kind)
+    }
+
+    @Test
+    fun sessionMismatchDetailsUseRepairablePairingGuidance() {
+        val failures =
+            listOf(
+                SessionFailure.protocol(SessionFailureKind.SESSION_REJECTED, "protocol version mismatch: host=2 client=1"),
+                SessionFailure.protocol(SessionFailureKind.HOST_PROTOCOL_ERROR, "secure session handshake failed"),
+                SessionFailure.transport("wireless handshake rejected"),
+                SessionFailure.transport("Internet session lease signature is invalid"),
+                SessionFailure.transport("Lease signing key does not match the verified Mac"),
+                SessionFailure.transport("The paired host identity no longer matches the Keychain signing key. Pair again."),
+                SessionFailure.transport("incompatible protocol version from paired Mac"),
+                SessionFailure.transport("unsupported protocol version from paired Mac"),
+                SessionFailure.transport("identity binding does not match the paired Mac"),
+            )
+
+        failures.forEach { failure ->
+            val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.internet())
+
+            assertEquals(failure.detail, ConnectionFailureKind.SESSION_MISMATCH, guidance.kind)
+            assertEquals(R.string.connection_guidance_session_mismatch_title, guidance.status.resourceId)
+            assertEquals(R.string.connection_guidance_session_mismatch_message, guidance.message.resourceId)
+            assertNoAdbReferences(guidance)
+            assertNoRawArg(guidance, failure.detail)
+        }
+    }
+
+    @Test
+    fun explicitNetworkFailureWinsOverHandshakeText() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                IOException("secure session handshake failed: Network is unreachable"),
+                ConnectionGuidanceContext.trustedLan(54321),
+            )
+
+        assertEquals(ConnectionFailureKind.NETWORK_UNREACHABLE, guidance.kind)
+        assertEquals(R.string.connection_guidance_lan_route_unavailable_title, guidance.status.resourceId)
+        assertNoAdbReferences(guidance)
+    }
+
+    @Test
     fun lanErrorsProvideExecutableTrustedNetworkRecoveryWithoutAdb() {
         val expectedMessageByFailure =
             listOf(
@@ -409,6 +543,19 @@ class ConnectionGuidanceTest {
     @Test
     fun overloadedAndDecoderGuidanceAvoidNarrowRecoveryClaims() {
         val strings = stringsXml()
+
+        val permission = strings.stringResource("connection_guidance_mac_permission_denied_message")
+        assertTrue(permission, permission.isActionableRecoveryCopy())
+        assertTrue(permission, permission.contains("Screen Recording", ignoreCase = true))
+        assertTrue(permission, permission.contains("Accessibility", ignoreCase = true))
+        assertTrue(permission, permission.contains("reconnect", ignoreCase = true))
+        assertFalse(permission, permission.contains("TCC.db", ignoreCase = true))
+
+        val mismatch = strings.stringResource("connection_guidance_session_mismatch_message")
+        assertTrue(mismatch, mismatch.isActionableRecoveryCopy())
+        assertTrue(mismatch, mismatch.contains("Pair", ignoreCase = true))
+        assertTrue(mismatch, mismatch.contains("fresh session profile", ignoreCase = true))
+        assertTrue(mismatch, mismatch.contains("update Vibe Screen", ignoreCase = true))
 
         val overloaded = strings.stringResource("connection_guidance_input_overloaded_message")
         assertTrue(overloaded, overloaded.isActionableRecoveryCopy())
