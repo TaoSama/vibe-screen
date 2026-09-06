@@ -104,6 +104,34 @@ class ConnectionGuidanceTest {
     }
 
     @Test
+    fun rawHostUnreachableMessagesUseModeSpecificRouteGuidance() {
+        val contexts =
+            listOf(
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB) to
+                    R.string.connection_guidance_adb_route_unavailable_title,
+                ConnectionGuidanceContext.trustedLan(54321) to
+                    R.string.connection_guidance_lan_route_unavailable_title,
+                ConnectionGuidanceContext.internet() to
+                    R.string.connection_guidance_internet_route_unavailable_title,
+            )
+        val failures =
+            listOf(
+                IOException("connect failed: EHOSTUNREACH (No route to host)"),
+                IOException("No route to host"),
+            )
+
+        contexts.forEach { (context, expectedTitleResource) ->
+            failures.forEach { failure ->
+                val guidance = ConnectionGuidanceFactory.from(failure, context)
+
+                assertEquals("${context.mode} ${failure.message}", ConnectionFailureKind.NETWORK_UNREACHABLE, guidance.kind)
+                assertEquals("${context.mode} ${failure.message}", expectedTitleResource, guidance.status.resourceId)
+                if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance)
+            }
+        }
+    }
+
+    @Test
     fun lanErrorsProvideExecutableTrustedNetworkRecoveryWithoutAdb() {
         val expectedMessageByFailure =
             listOf(
