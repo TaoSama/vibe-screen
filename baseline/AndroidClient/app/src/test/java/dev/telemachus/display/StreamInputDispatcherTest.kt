@@ -1556,6 +1556,26 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun peripheralInputSnapshotsMutablePayloadBeforeDeferredProtocolEncoding() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(peripheral = true),
+            recorder = recorder,
+            firstInputId = 51,
+        )
+        val payload = byteArrayOf(0x01, 0x02)
+
+        assertTrue(dispatcher.sendPeripheral("vendor-device", payload))
+        payload.fill(0x7f)
+
+        val event = recorder.single().protocolEnvelopes(
+            streamingSession(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK),
+        ).single().peripheralEvent
+        assertEquals(51L, event.inputId)
+        assertEquals(listOf(0x01.toByte(), 0x02.toByte()), event.payload.toByteArray().toList())
+    }
+
+    @Test
     fun peripheralInputRejectsInvalidEnvelopeBeforeWireSubmission() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(
