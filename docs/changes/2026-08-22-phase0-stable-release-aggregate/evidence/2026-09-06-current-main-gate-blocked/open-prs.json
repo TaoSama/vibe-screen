@@ -1,18 +1,1 @@
-[
-  {
-    "baseRefName": "main",
-    "headRefName": "android-no-host-uiux-p0110-review",
-    "isDraft": false,
-    "number": 623,
-    "title": "docs: record P0110 no-host UI UX review",
-    "url": "https://github.com/TaoSama/vibe-screen/pull/623"
-  },
-  {
-    "baseRefName": "main",
-    "headRefName": "codex/refresh-phase0-aggregate-current-main",
-    "isDraft": false,
-    "number": 624,
-    "title": "docs: refresh phase0 aggregate source guard",
-    "url": "https://github.com/TaoSama/vibe-screen/pull/624"
-  }
-]
+[]
