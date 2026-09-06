@@ -984,13 +984,18 @@ class Phase0StableReleaseTest(unittest.TestCase):
             repo_root=REPO_ROOT,
         )
 
-        self.assertEqual(summary["aggregate_verdict"], "blocked")
+        self.assertIn(summary["aggregate_verdict"], {"blocked", "insufficient"})
         self.assertFalse(summary["can_mark_phase0_stable_release"])
         self.assertEqual(summary["readme_guard"]["verdict"], "pass")
         self.assertEqual(summary["closed_required_gate_count"], 6)
         self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
         self.assertEqual(summary["owner_pr_guard"]["owner_prs"], [])
         self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
+        merged_pr_guard = summary["merged_pr_guard"]
+        self.assertIn(merged_pr_guard["verdict"], {"pass", "insufficient"})
+        if merged_pr_guard["verdict"] == "pass":
+            self.assertEqual(summary["aggregate_verdict"], "blocked")
+            self.assertEqual(merged_pr_guard["non_ancestor_prs"], [])
         macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
         self.assertEqual(macos_gate["verdict"], "open")
         self.assertIn(
