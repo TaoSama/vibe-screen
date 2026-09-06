@@ -70,6 +70,20 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun configureRejectsNegativeInitialSequenceWithoutCreatingOutput() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory)
+
+        assertEquals(
+            ProtocolAudioConfigureResult.Rejected(AudioRejectReason.INVALID_SEQUENCE),
+            player.configure(audioConfig(), sessionEpoch = 5, firstSequence = -1),
+        )
+
+        assertEquals(0, factory.created.size)
+        assertNull(player.activeFormat())
+    }
+
+    @Test
     fun invalidReconfigureStopsOldOutputAndLeavesPlayerUnconfigured() {
         val factory = FakePcmAudioOutputFactory()
         val player = ProtocolPcmAudioPlayer(factory)
@@ -191,6 +205,42 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun submitMapsProtocolRejectReasonsWithoutWriting() {
+        val format = testFormat()
+        val mismatchedPackets =
+            listOf(
+                AudioRejectReason.STALE_SESSION_EPOCH to
+                    audioPacket(sessionEpoch = 4, payload = pcmPayload(format)),
+                AudioRejectReason.FUTURE_SESSION_EPOCH to
+                    audioPacket(sessionEpoch = 6, payload = pcmPayload(format)),
+                AudioRejectReason.STALE_CONFIG_EPOCH to
+                    audioPacket(configEpoch = 2, payload = pcmPayload(format)),
+                AudioRejectReason.FUTURE_CONFIG_EPOCH to
+                    audioPacket(configEpoch = 4, payload = pcmPayload(format)),
+                AudioRejectReason.STREAM_MISMATCH to
+                    audioPacket(streamId = 8, payload = pcmPayload(format)),
+                AudioRejectReason.INVALID_SEQUENCE to
+                    audioPacket(sequence = -1, payload = pcmPayload(format)),
+                AudioRejectReason.INVALID_PCM_BYTE_COUNT to
+                    audioPacket(frameCount = 1, payload = pcmPayload(format)),
+            )
+
+        mismatchedPackets.forEach { (expectedReason, packet) ->
+            val factory = FakePcmAudioOutputFactory()
+            val player = ProtocolPcmAudioPlayer(factory)
+            assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+
+            assertEquals(
+                ProtocolAudioPacketResult.Rejected(AudioPacketRejectReason.ProtocolRejected(expectedReason)),
+                player.submit(packet),
+            )
+
+            assertEquals(0, factory.created.single().writes.size)
+            assertEquals(testFormat(), player.activeFormat())
+        }
+    }
+
+    @Test
     fun threeChannelPcmConfigurationCreatesOutputWithExpectedPacketSize() {
         val factory = FakePcmAudioOutputFactory()
         val player = ProtocolPcmAudioPlayer(factory)
@@ -261,6 +311,59 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun startFailureReportsCleanupFailureReason() {
+        val factory = FakePcmAudioOutputFactory(
+            startFailure = AudioOutputFailureReason.START_FAILED,
+            closeFailure = AudioOutputFailureReason.RELEASE_FAILED,
+        )
+        val player = ProtocolPcmAudioPlayer(factory)
+
+        assertEquals(
+            ProtocolAudioConfigureResult.PlaybackFailed(
+                reason = AudioOutputFailureReason.START_FAILED,
+                cleanupFailureReason = AudioOutputFailureReason.RELEASE_FAILED,
+            ),
+            player.configure(audioConfig(), sessionEpoch = 5),
+        )
+        assertEquals(listOf("start", "stop", "close"), factory.created.single().events)
+        assertNull(player.activeFormat())
+    }
+
+    @Test
+    fun writeFailureReportsCleanupFailureReasonAndClearsPlayback() {
+        val factory = FakePcmAudioOutputFactory(
+            writeFailures = mutableListOf(AudioOutputFailureReason.WRITE_DEAD_OBJECT),
+            closeFailure = AudioOutputFailureReason.RELEASE_FAILED,
+        )
+        val player = ProtocolPcmAudioPlayer(factory)
+        assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+        val format = checkNotNull(player.activeFormat())
+
+        assertEquals(
+            ProtocolAudioPacketResult.PlaybackFailed(
+                reason = AudioOutputFailureReason.WRITE_DEAD_OBJECT,
+                cleanupFailureReason = AudioOutputFailureReason.RELEASE_FAILED,
+            ),
+            player.submit(audioPacket(sequence = 0, payload = pcmPayload(format))),
+        )
+
+        assertNull(player.activeFormat())
+        assertEquals(listOf("start", "stop", "close"), factory.created.single().events)
+    }
+
+    @Test
+    fun stopReturnsCleanupFailureReasonAndClearsPlayback() {
+        val factory = FakePcmAudioOutputFactory(closeFailure = AudioOutputFailureReason.RELEASE_FAILED)
+        val player = ProtocolPcmAudioPlayer(factory)
+        assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+
+        assertEquals(AudioOutputFailureReason.RELEASE_FAILED, player.stop())
+
+        assertNull(player.activeFormat())
+        assertEquals(listOf("start", "stop", "close"), factory.created.single().events)
+    }
+
+    @Test
     fun reconfigureClosesOldOutputAndStartsFreshSequence() {
         val factory = FakePcmAudioOutputFactory()
         val player = ProtocolPcmAudioPlayer(factory)
@@ -315,18 +418,20 @@ private class FakePcmAudioOutputFactory(
     var createFailure: AudioOutputFailureReason? = null,
     private val startFailure: AudioOutputFailureReason? = null,
     private val writeFailures: MutableList<AudioOutputFailureReason> = mutableListOf(),
+    private val closeFailure: AudioOutputFailureReason? = null,
 ) : PcmAudioOutputFactory {
     val created = mutableListOf<FakePcmAudioOutput>()
 
     override fun create(format: PcmAudioStreamFormat): PcmAudioOutput {
         createFailure?.let { throw AudioOutputException(it) }
-        return FakePcmAudioOutput(startFailure, writeFailures, format).also { created += it }
+        return FakePcmAudioOutput(startFailure, writeFailures, closeFailure, format).also { created += it }
     }
 }
 
 private class FakePcmAudioOutput(
     private val startFailure: AudioOutputFailureReason?,
     private val writeFailures: MutableList<AudioOutputFailureReason>,
+    private val closeFailure: AudioOutputFailureReason?,
     val format: PcmAudioStreamFormat,
 ) : PcmAudioOutput {
     val events = mutableListOf<String>()
@@ -353,5 +458,6 @@ private class FakePcmAudioOutput(
     override fun close() {
         stop()
         events += "close"
+        closeFailure?.let { throw AudioOutputException(it) }
     }
 }

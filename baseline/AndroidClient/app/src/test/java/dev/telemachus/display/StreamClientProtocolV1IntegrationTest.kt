@@ -328,11 +328,13 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
-    fun staleAudioEpochOnProductChannelFailsSessionAndReleasesOutput() = runBlocking {
+    fun staleAudioEpochOnProductChannelDropsPacketAndKeepsPlaybackAlive() = runBlocking {
         ServerSocket(0).use { server ->
             val fixture = loadUsbLanPcmAudioFixture()
             val audioOutputFactory = TestPcmAudioOutputFactory()
             val sessionEnded = CountDownLatch(1)
+            val currentPacketWritten = CountDownLatch(1)
+            audioOutputFactory.onWrite = { currentPacketWritten.countDown() }
             val serverJob =
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
@@ -365,6 +367,13 @@ class StreamClientProtocolV1IntegrationTest {
                                 fixture.packets.first().payloadBytes,
                             ),
                         )
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.AUDIO,
+                            fixture.packets.first().serializedFrameBytes,
+                        )
+                        assertTrue(currentPacketWritten.await(8, TimeUnit.SECONDS))
+                        write(peer, disconnect(id = 7))
                     }
                 }
             var failure: SessionFailure? = null
@@ -380,10 +389,13 @@ class StreamClientProtocolV1IntegrationTest {
             withTimeout(8_000) { serverJob.await() }
             withTimeout(8_000) { clientJob.await() }
             assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
-            assertEquals(SessionFailureKind.INVALID_MEDIA_PAYLOAD, checkNotNull(failure).kind)
-            assertTrue(checkNotNull(failure).detail.contains("stale_session_epoch"))
+            assertFalse(checkNotNull(failure).detail.contains("stale_session_epoch"))
             assertEquals(1, audioOutputFactory.created.size)
-            assertEquals(fixture.cleanupExpectations.outputEventsAfterPacketError, audioOutputFactory.created.single().events)
+            assertEquals(listOf("start", "write", "stop", "close"), audioOutputFactory.created.single().events)
+            assertEquals(
+                listOf(fixture.packets.first().payloadBytes.toList()),
+                audioOutputFactory.created.single().writes.map { it.toList() },
+            )
         }
     }
 
