@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import datetime as _datetime
 import json
+import math
 import re
 import shlex
 import subprocess
@@ -26,6 +27,10 @@ STATUS_FAIL = "fail"
 STATUS_INSUFFICIENT = "insufficient"
 STATUS_OPEN = "open"
 EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
+TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID = "telemetry_and_latency_archive"
+LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
+ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
+LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
 ALLOWED_VERDICTS = {
     STATUS_PASS,
     STATUS_BLOCKED,
@@ -181,7 +186,9 @@ def _compile_guard_pattern(pattern: str) -> re.Pattern[str]:
         ) from error
 
 
-def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
+def _gate_summary(
+    gate: dict[str, Any], *, repo_root: Path | None = None
+) -> dict[str, Any]:
     gate_id = _string(gate, "id")
     title = _string(gate, "title")
     verdict = _string(gate, "verdict")
@@ -210,6 +217,12 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
                 "pass gate must use a closing evidence strength for this gate, "
                 f"got {evidence_strength!r}"
             )
+        if gate_id == TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID:
+            issues.extend(
+                _telemetry_and_latency_archive_issues(
+                    evidence_paths=evidence_paths, repo_root=repo_root
+                )
+            )
     elif required and not blockers:
         issues.append("non-pass required gate must list at least one blocker")
     can_close = required and verdict == STATUS_PASS and not issues
@@ -225,6 +238,259 @@ def _gate_summary(gate: dict[str, Any]) -> dict[str, Any]:
         "blockers": blockers,
         "issues": issues,
     }
+
+
+def _telemetry_and_latency_archive_issues(
+    *, evidence_paths: Sequence[str], repo_root: Path | None
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "telemetry_and_latency_archive pass requires repo_root to verify "
+            "structured evidence paths"
+        ]
+
+    valid_latency_report = False
+    valid_android_stream_report = False
+    issues: list[str] = []
+    latency_candidate_issues: list[str] = []
+    android_candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(repository, raw_path)
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                f"telemetry_and_latency_archive evidence path {raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(evidence_path, raw_path)
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        kind = record.get("kind")
+        if kind == LATENCY_EVIDENCE_GATE_KIND:
+            report_issues = _formal_latency_report_issues(record, raw_path)
+            if report_issues:
+                latency_candidate_issues.extend(report_issues)
+            else:
+                valid_latency_report = True
+        elif kind == ANDROID_USB_LIVE_SMOKE_KIND:
+            report_issues = _android_usb_live_smoke_report_issues(record, raw_path)
+            if report_issues:
+                android_candidate_issues.extend(report_issues)
+            else:
+                valid_android_stream_report = True
+
+    if not valid_latency_report:
+        issues.append(
+            "telemetry_and_latency_archive pass requires at least one passing "
+            "formal latency_evidence_gate report in evidence_paths"
+        )
+        issues.extend(latency_candidate_issues)
+    if not valid_android_stream_report:
+        issues.append(
+            "telemetry_and_latency_archive pass requires at least one passing "
+            "android_usb_live_smoke report with stream telemetry and decoder "
+            "counters in evidence_paths"
+        )
+        issues.extend(android_candidate_issues)
+    return issues
+
+
+def _repo_relative_evidence_path(
+    repo_root: Path, raw_path: str
+) -> tuple[Path | None, str | None]:
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", raw_path):
+        return None, None
+    path = Path(raw_path)
+    if path.is_absolute() or ".." in path.parts:
+        return (
+            None,
+            f"telemetry_and_latency_archive evidence path {raw_path!r} must be "
+            "repo-relative",
+        )
+    candidate = repo_root / path
+    try:
+        candidate.resolve().relative_to(repo_root)
+    except ValueError:
+        return (
+            None,
+            f"telemetry_and_latency_archive evidence path {raw_path!r} must stay "
+            "inside repo_root",
+        )
+    return candidate, None
+
+
+def _load_evidence_json(
+    evidence_path: Path, raw_path: str
+) -> tuple[dict[str, Any], str | None]:
+    try:
+        record = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except OSError as error:
+        return {}, (
+            f"could not read telemetry_and_latency_archive evidence {raw_path}: "
+            f"{error}"
+        )
+    except json.JSONDecodeError as error:
+        return {}, (
+            f"telemetry_and_latency_archive evidence {raw_path} has invalid "
+            f"JSON: {error}"
+        )
+    if not isinstance(record, dict):
+        return (
+            {},
+            f"telemetry_and_latency_archive evidence {raw_path} must be a JSON object",
+        )
+    return record, None
+
+
+def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{path}: formal latency report schema_version must be {SCHEMA_VERSION}")
+    if record.get("status") != "complete":
+        issues.append(f"{path}: formal latency report status must be complete")
+    if record.get("derivation_status") != "complete":
+        issues.append(
+            f"{path}: formal latency report derivation_status must be complete"
+        )
+    if record.get("verdict") != STATUS_PASS:
+        issues.append(f"{path}: formal latency report verdict must be pass")
+    measurement_method = record.get("measurement_method")
+    if measurement_method not in LATENCY_ARCHIVE_MEASUREMENT_METHODS:
+        issues.append(
+            f"{path}: formal latency report measurement_method must be "
+            "external-camera or synchronized-clock"
+        )
+    if (
+        measurement_method == "synchronized-clock"
+        and record.get("latency_kind") != "input"
+    ):
+        issues.append(
+            f"{path}: synchronized-clock latency report must use latency_kind input"
+        )
+    gate = record.get("gate")
+    if not isinstance(gate, dict):
+        issues.append(f"{path}: formal latency report gate must be an object")
+        return issues
+    if gate.get("can_close_performance_gate") is not True:
+        issues.append(
+            f"{path}: formal latency report gate.can_close_performance_gate "
+            "must be true"
+        )
+    if gate.get("summary_verdict") != STATUS_PASS:
+        issues.append(f"{path}: formal latency report gate.summary_verdict must be pass")
+    sample_count = gate.get("sample_count")
+    min_sample_count = gate.get("min_sample_count")
+    if (
+        not _is_number(sample_count)
+        or not _is_number(min_sample_count)
+        or sample_count < min_sample_count
+    ):
+        issues.append(
+            f"{path}: formal latency report sample_count must be greater than "
+            "or equal to min_sample_count"
+        )
+    source = record.get("source")
+    if not isinstance(source, dict) or not isinstance(source.get("manifest"), str):
+        issues.append(f"{path}: formal latency report source.manifest must be present")
+    return issues
+
+
+def _android_usb_live_smoke_report_issues(record: dict[str, Any], path: str) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{path}: Android USB live smoke schema_version must be {SCHEMA_VERSION}")
+    if record.get("verdict") != STATUS_PASS:
+        issues.append(f"{path}: Android USB live smoke verdict must be pass")
+    claims = record.get("claims")
+    if not isinstance(claims, dict) or claims.get("live_usb_stream_observed") is not True:
+        issues.append(
+            f"{path}: Android USB live smoke must claim live_usb_stream_observed=true"
+        )
+    logs = record.get("logs")
+    if not isinstance(logs, dict):
+        issues.append(f"{path}: Android USB live smoke logs must be an object")
+        return issues
+    telemetry = logs.get("telemetry")
+    if not isinstance(telemetry, dict):
+        issues.append(f"{path}: Android USB live smoke logs.telemetry must be an object")
+    else:
+        _extend_android_telemetry_issues(issues, telemetry, path)
+    decoder = logs.get("decoder")
+    if not isinstance(decoder, dict):
+        issues.append(f"{path}: Android USB live smoke logs.decoder must be an object")
+    else:
+        _extend_android_decoder_issues(issues, decoder, path)
+    return issues
+
+
+def _extend_android_telemetry_issues(
+    issues: list[str], telemetry: dict[str, Any], path: str
+) -> None:
+    session_epochs = telemetry.get("session_epochs")
+    if not isinstance(session_epochs, list) or not session_epochs:
+        issues.append(
+            f"{path}: Android USB live smoke telemetry must include session_epochs"
+        )
+    stream_stats = telemetry.get("stream_stats")
+    if not isinstance(stream_stats, dict):
+        issues.append(
+            f"{path}: Android USB live smoke telemetry.stream_stats must be an object"
+        )
+        return
+    if not _is_positive_number(stream_stats.get("count")):
+        issues.append(
+            f"{path}: Android USB live smoke telemetry.stream_stats.count must be positive"
+        )
+    if not _is_positive_number(stream_stats.get("positive_fps_count")):
+        issues.append(
+            f"{path}: Android USB live smoke telemetry must include positive FPS stream_stats"
+        )
+    frame_drops = telemetry.get("frame_drops")
+    latest = stream_stats.get("latest")
+    has_frame_drop_summary = isinstance(frame_drops, dict) and _is_number(
+        frame_drops.get("max_dropped_total")
+    )
+    has_latest_dropped_frames = isinstance(latest, dict) and _is_number(
+        latest.get("dropped_frames")
+    )
+    if not has_frame_drop_summary and not has_latest_dropped_frames:
+        issues.append(
+            f"{path}: Android USB live smoke telemetry must include frame-drop counters"
+        )
+
+
+def _extend_android_decoder_issues(
+    issues: list[str], decoder: dict[str, Any], path: str
+) -> None:
+    has_output_counter = decoder.get("latest_output_counter") is not None
+    has_decode_stats = isinstance(decoder.get("latest_decode_stats"), dict)
+    if not has_output_counter and not has_decode_stats:
+        issues.append(
+            f"{path}: Android USB live smoke decoder counters must be present"
+        )
+    latency = decoder.get("latest_output_latency")
+    if (
+        not isinstance(latency, dict)
+        or not _is_number(latency.get("avg_ms"))
+        or not _is_number(latency.get("max_ms"))
+    ):
+        issues.append(
+            f"{path}: Android USB live smoke decoder latency metrics must be present"
+        )
+
+
+def _is_number(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(value)
+
+
+def _is_positive_number(value: Any) -> bool:
+    return _is_number(value) and value > 0
 
 
 def _open_pr_snapshot_guard(
@@ -688,7 +954,7 @@ def evaluate_manifest(
     for raw_gate in gates_value:
         if not isinstance(raw_gate, dict):
             raise Phase0StableReleaseError("required_gates entries must be objects")
-        summary = _gate_summary(raw_gate)
+        summary = _gate_summary(raw_gate, repo_root=repo_root)
         if summary["id"] in seen_gate_ids:
             duplicate_gate_ids.append(summary["id"])
         seen_gate_ids.add(summary["id"])
