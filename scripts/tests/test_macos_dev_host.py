@@ -3372,6 +3372,19 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             "Accessibility authorized, but Host identity was not inspected",
             interpretation,
         )
+        record = macos_dev_host.permission_record(status)
+        self.assertEqual(
+            record["screen_recording_state"],
+            "authorized_host_identity_not_inspected",
+        )
+        self.assertEqual(
+            record["accessibility_state"],
+            "authorized_host_identity_not_inspected",
+        )
+        self.assertEqual(
+            record["microphone_state"],
+            "authorized_host_identity_not_inspected",
+        )
 
     def test_permission_record_distinguishes_unbound_and_unauthorized_grants(self) -> None:
         status = macos_dev_host.PermissionStatus(

@@ -209,6 +209,8 @@ def _tcc_row_requirement_matches(row: dict[str, Any], requirement: str | None) -
 def _tcc_row_identity_state(row: dict[str, Any] | None, host_requirement: str | None) -> str:
     if not row or not row.get("authorized"):
         return "not_authorized"
+    if host_requirement is None:
+        return "authorized_host_identity_not_inspected"
     if _tcc_row_requirement_matches(row, host_requirement):
         return "authorized_current_host_identity"
     return "authorized_different_or_unreadable_host_identity"

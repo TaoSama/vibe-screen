@@ -1359,7 +1359,9 @@ def tcc_service_identity_state(
         return None
     if not permissions.is_allowed(services):
         return "not_authorized"
-    if host_requirement is not None and permissions.has_matching_requirement(services, host_requirement):
+    if host_requirement is None:
+        return "authorized_host_identity_not_inspected"
+    if permissions.has_matching_requirement(services, host_requirement):
         return "authorized_current_host_identity"
     return "authorized_different_or_unreadable_host_identity"
 
@@ -1374,7 +1376,7 @@ def permission_interpretation(permissions: PermissionStatus, host_requirement: s
             return f"{label} not authorized"
         if state == "authorized_current_host_identity":
             return f"{label} authorized and bound to this installed Host identity"
-        if host_requirement is None:
+        if state == "authorized_host_identity_not_inspected":
             return f"{label} authorized, but Host identity was not inspected"
         return f"{label} authorized but bound to a different or unreadable Host identity"
 

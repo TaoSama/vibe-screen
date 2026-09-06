@@ -185,6 +185,24 @@ class TouchRerunPreflightTests(unittest.TestCase):
         )
         self.assertEqual(tcc["screen_recording"]["csreq_requirement"], MISMATCHED_REQUIREMENT.lower())
 
+    def test_tcc_collection_marks_authorized_rows_uninspected_without_host_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_db(
+                db_path,
+                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 10, HOST_CSREQ_BLOB)],
+            )
+
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([db_path], "dev.telemachus.display")
+
+        self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertFalse(tcc["screen_recording"]["identity_bound"])
+        self.assertEqual(
+            tcc["screen_recording"]["identity_state"],
+            "authorized_host_identity_not_inspected",
+        )
+
     def test_tcc_collection_marks_missing_csreq_as_not_identity_bound(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             db_path = Path(directory) / PRIVACY_DB_FILENAME
