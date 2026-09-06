@@ -1350,15 +1350,25 @@ def format_permission_row(row: TCCRow) -> str:
     )
 
 
-def permission_interpretation(permissions: PermissionStatus) -> str:
+def permission_interpretation(permissions: PermissionStatus, host_requirement: str | None = None) -> str:
     if not permissions.readable:
         return f"unverified ({permissions.error})"
-    screen = "allowed" if permissions.is_allowed(SCREEN_CAPTURE_SERVICES) else "not allowed"
-    accessibility = "allowed" if permissions.is_allowed(ACCESSIBILITY_SERVICES) else "not allowed"
-    microphone = "allowed" if permissions.is_allowed(MICROPHONE_SERVICES) else "not allowed"
+
+    def service_state(label: str, services: tuple[str, ...]) -> str:
+        if not permissions.is_allowed(services):
+            return f"{label} not allowed"
+        if host_requirement is None:
+            return f"{label} allowed"
+        if permissions.has_matching_requirement(services, host_requirement):
+            return f"{label} allowed and bound to this installed Host identity"
+        return f"{label} allowed but bound to a different or unreadable Host identity"
+
+    screen = service_state("Screen Recording", SCREEN_CAPTURE_SERVICES)
+    accessibility = service_state("Accessibility", ACCESSIBILITY_SERVICES)
+    microphone = service_state("Microphone", MICROPHONE_SERVICES)
     if permissions.error:
-        return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}; read warning: {permissions.error}."
-    return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}."
+        return f"{screen}; {accessibility}; {microphone}; read warning: {permissions.error}."
+    return f"{screen}; {accessibility}; {microphone}."
 
 
 def format_report(
@@ -1436,7 +1446,7 @@ Database: {permissions.database_path}
 Field order: service|client|client_type|auth_value|auth_reason|last_modified|csreq_sha256|csreq_requirement|csreq_error
 {rows}
 
-Interpretation: {permission_interpretation(permissions)}
+Interpretation: {permission_interpretation(permissions, metadata.designated_requirement if metadata else None)}
 
 Preflight result
 ----------------

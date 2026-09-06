@@ -3322,6 +3322,34 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
         self.assertFalse(status.has_matching_requirement(macos_dev_host.SCREEN_CAPTURE_SERVICES, HOST_REQUIREMENT))
         self.assertEqual(row.csreq_requirement, macos_dev_host.normalize_requirement_text(MISMATCHED_REQUIREMENT))
+        interpretation = macos_dev_host.permission_interpretation(status, HOST_REQUIREMENT)
+        self.assertIn(
+            "Screen Recording allowed but bound to a different or unreadable Host identity",
+            interpretation,
+        )
+        self.assertNotIn("Screen Recording allowed;", interpretation)
+
+    def test_permission_interpretation_reports_identity_bound_grants(self) -> None:
+        status = macos_dev_host.PermissionStatus(
+            database_path=TEST_PRIVACY_DATABASE,
+            readable=True,
+            rows=allowed_tcc_rows(),
+        )
+
+        interpretation = macos_dev_host.permission_interpretation(status, HOST_REQUIREMENT)
+
+        self.assertIn(
+            "Screen Recording allowed and bound to this installed Host identity",
+            interpretation,
+        )
+        self.assertIn(
+            "Accessibility allowed and bound to this installed Host identity",
+            interpretation,
+        )
+        self.assertIn(
+            "Microphone allowed and bound to this installed Host identity",
+            interpretation,
+        )
 
     def test_tcc_permission_state_uses_latest_row_per_service(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
