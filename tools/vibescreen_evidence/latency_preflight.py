@@ -176,6 +176,8 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except OSError as error:
         raise LatencyPreflightError(f"cannot read {label} {path}: {error}") from error
+    except UnicodeError as error:
+        raise LatencyPreflightError(f"invalid UTF-8 in {label} {path}") from error
     except json.JSONDecodeError as error:
         raise LatencyPreflightError(f"invalid JSON in {label} {path}: {error}") from error
     if not isinstance(document, dict):

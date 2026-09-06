@@ -1168,6 +1168,8 @@ def build_latency_evidence_report(
                 run_id=str(manifest.get("run_id")),
                 gate_profile=gate_profile,
             )
+        except UnicodeDecodeError:
+            errors.append("cannot summarize samples: samples.file must be UTF-8 text")
         except (OSError, LatencyInputError) as error:
             errors.append(f"cannot summarize samples: {error}")
     elif sample_format not in ("csv", "json"):

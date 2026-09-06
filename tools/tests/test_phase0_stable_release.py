@@ -226,7 +226,7 @@ def write_latency_archive_evidence(
                     },
                     "decoder": {
                         "latest_output_counter": 180,
-                        "latest_decode_stats": {"dropped": 0},
+                        "latest_decode_stats": {"output": 180, "dropped": 0},
                         "latest_output_latency": {
                             "avg_ms": 6.1,
                             "max_ms": 11.0,
@@ -546,6 +546,129 @@ class Phase0StableReleaseTest(unittest.TestCase):
             )
 
         with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_malformed_latency_report_fields(self) -> None:
+        cases = (
+            (
+                "fractional_sample_count",
+                lambda record: record["gate"].__setitem__("sample_count", 5.5),
+                "formal latency report min_sample_count must equal 5",
+            ),
+            (
+                "fractional_min_sample_count",
+                lambda record: record["gate"].__setitem__("min_sample_count", 5.0),
+                "formal latency report min_sample_count must equal 5",
+            ),
+            (
+                "empty_source_manifest",
+                lambda record: record["source"].__setitem__("manifest", ""),
+                "formal latency report source.manifest must be present",
+            ),
+        )
+        for _name, mutate, expected_issue in cases:
+            with self.subTest(_name):
+                def run(repo: Path, base_commit: str) -> None:
+                    manifest = complete_manifest_for_repo(repo, base_commit)
+                    latency_path = Path("docs/evidence/latency-evidence-usb.json")
+                    latency_file = repo / latency_path
+                    record = json.loads(latency_file.read_text(encoding="utf-8"))
+                    mutate(record)
+                    latency_file.write_text(json.dumps(record), encoding="utf-8")
+
+                    summary = evaluate_manifest(
+                        manifest,
+                        readme_text=GUARDED_README_TEXT,
+                        repo_root=repo,
+                    )
+
+                    self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                    issues = summary["blocking_required_gates"][0]["issues"]
+                    self.assertTrue(
+                        any(expected_issue in issue for issue in issues),
+                        issues,
+                    )
+
+                with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_malformed_android_stream_fields(self) -> None:
+        def mutate_android_smoke(
+            record: dict[str, object], path: tuple[str, ...], value: object
+        ) -> None:
+            target = record
+            for key in path[:-1]:
+                child = target[key]
+                assert isinstance(child, dict)
+                target = child
+            target[path[-1]] = value
+
+        cases = (
+            (
+                "non_integer_session_epoch",
+                ("logs", "telemetry", "session_epochs"),
+                ["not-an-int"],
+                "telemetry must include integer session_epochs",
+            ),
+            (
+                "fractional_stream_count",
+                ("logs", "telemetry", "stream_stats", "count"),
+                3.5,
+                "telemetry.stream_stats.count must be a positive integer",
+            ),
+            (
+                "fractional_positive_fps_count",
+                ("logs", "telemetry", "stream_stats", "positive_fps_count"),
+                2.5,
+                "telemetry must include positive integer FPS stream_stats",
+            ),
+            (
+                "negative_frame_drop_summary",
+                ("logs", "telemetry", "frame_drops", "max_dropped_total"),
+                -1,
+                "telemetry.frame_drops.max_dropped_total must be a non-negative integer",
+            ),
+            (
+                "string_decoder_output_counter",
+                ("logs", "decoder", "latest_output_counter"),
+                "60",
+                "decoder.latest_output_counter must be a positive integer",
+            ),
+            (
+                "empty_decode_stats",
+                ("logs", "decoder", "latest_decode_stats"),
+                {},
+                "decoder.latest_decode_stats must include a positive integer counter",
+            ),
+            (
+                "negative_decoder_latency",
+                ("logs", "decoder", "latest_output_latency", "avg_ms"),
+                -0.1,
+                "decoder latency metrics must be present",
+            ),
+        )
+        for _name, path, value, expected_issue in cases:
+            with self.subTest(_name):
+                def run(repo: Path, base_commit: str) -> None:
+                    manifest = complete_manifest_for_repo(repo, base_commit)
+                    smoke_path = Path("docs/evidence/android-usb-live-smoke.json")
+                    smoke_file = repo / smoke_path
+                    record = json.loads(smoke_file.read_text(encoding="utf-8"))
+                    mutate_android_smoke(record, path, value)
+                    smoke_file.write_text(json.dumps(record), encoding="utf-8")
+
+                    summary = evaluate_manifest(
+                        manifest,
+                        readme_text=GUARDED_README_TEXT,
+                        repo_root=repo,
+                    )
+
+                    self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                    issues = summary["blocking_required_gates"][0]["issues"]
+                    self.assertTrue(
+                        any(expected_issue in issue for issue in issues),
+                        issues,
+                    )
+
+                with_temporary_repo(run)
 
     def test_telemetry_latency_archive_accepts_structured_latency_and_stream_reports(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
