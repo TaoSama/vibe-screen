@@ -313,6 +313,10 @@
     <string name="connection_guidance_input_overloaded_message">Reconnect. If this repeats, reduce simultaneous input or wait for the current action to finish before retrying.</string>
     <string name="connection_guidance_video_decoder_recovery_title">Video decoder recovery</string>
     <string name="connection_guidance_video_decoder_recovery_message">Keep the Mac app open while the client retries the connection. If this repeats, update both apps so they support the same negotiated codec; AVC-only devices require a Mac build with H.264 support.</string>
+    <string name="connection_guidance_mac_permission_denied_title">Mac permission blocked</string>
+    <string name="connection_guidance_mac_permission_denied_message">Grant the requested Screen Recording or Accessibility permission to the installed Vibe Screen app on your Mac, quit and reopen the Mac app, then reconnect.</string>
+    <string name="connection_guidance_session_mismatch_title">Session setup mismatch</string>
+    <string name="connection_guidance_session_mismatch_message">Pair with your Mac again or import a fresh session profile. If the app versions are incompatible, update Vibe Screen on both devices before retrying.</string>
     <string name="connection_guidance_session_ended_title">Session ended</string>
     <string name="connection_guidance_mac_ended_session_message">Mac ended the session. Start a new session from the Mac, then reconnect.</string>
     <string name="connection_guidance_user_disconnected_message">Disconnected by user. Use Try again or pair with your Mac again to reconnect.</string>

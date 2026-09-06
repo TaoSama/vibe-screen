@@ -14,7 +14,9 @@ internal enum class ConnectionFailureKind {
     USB_ROUTE_UNAVAILABLE,
     NETWORK_UNREACHABLE,
     TIMEOUT,
+    HOST_PERMISSION_DENIED,
     INCOMPATIBLE_SESSION,
+    SESSION_MISMATCH,
     STALE_SESSION,
     INPUT_OVERLOADED,
     UNKNOWN,
@@ -92,14 +94,11 @@ internal object ConnectionGuidanceFactory {
             SessionFailureKind.HOST_PROTOCOL_ERROR,
             SessionFailureKind.UNKNOWN_MESSAGE,
             ->
-                if (failure.detail.isStaleEpochOrSession()) {
-                    staleSession()
-                } else {
-                    ConnectionGuidance(
-                        kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
-                        status = text(R.string.connection_guidance_mac_incompatible_title),
-                        message = text(R.string.connection_guidance_mac_incompatible_message),
-                    )
+                when {
+                    failure.detail.isHostPermissionDenied() -> hostPermissionDenied()
+                    failure.detail.isStaleEpochOrSession() -> staleSession()
+                    failure.detail.isSessionMismatch() -> sessionMismatch()
+                    else -> incompatibleSession()
                 }
 
             SessionFailureKind.OUTBOUND_BACKPRESSURE ->
@@ -155,17 +154,25 @@ internal object ConnectionGuidanceFactory {
                 causes.containMessage("Protocol upgrade probe closed before a response") ->
                 hostNotRunning(context)
 
+            causes.hasHostPermissionDeniedDetail() ->
+                hostPermissionDenied()
+
             causes.any { it is NoRouteToHostException || it is UnknownHostException } ||
                 causes.containMessage("Network is unreachable") ||
                 causes.containMessage("No route to host") ||
                 causes.containMessage("Cannot assign requested address") ||
                 causes.containMessage("Network is down") ||
                 causes.containMessage("Host is down") ||
+                causes.containMessage("Network interface unavailable") ||
+                causes.containMessage("No active network interface") ||
+                causes.containMessage("No network interface") ||
                 causes.containMessage("EHOSTUNREACH") ||
                 causes.containMessage("EHOSTDOWN") ||
                 causes.containMessage("ENETUNREACH") ||
                 causes.containMessage("EADDRNOTAVAIL") ||
                 causes.containMessage("ENETDOWN") ||
+                causes.containMessage("ENODEV") ||
+                causes.containMessage("ENONET") ||
                 causes.containMessage("No Wi-Fi route is available") ->
                 networkUnreachable(context)
 
@@ -174,6 +181,9 @@ internal object ConnectionGuidanceFactory {
 
             causes.isConnectionRefused() ->
                 hostNotRunning(context)
+
+            causes.hasSessionMismatchDetail() ->
+                sessionMismatch()
 
             else ->
                 unknown(context)
@@ -220,6 +230,27 @@ internal object ConnectionGuidanceFactory {
             kind = ConnectionFailureKind.USB_ROUTE_UNAVAILABLE,
             status = text(R.string.connection_guidance_adb_route_unavailable_title),
             message = adbRecovery(context, text(R.string.connection_guidance_usb_route_unavailable_prefix)),
+        )
+
+    private fun hostPermissionDenied(): ConnectionGuidance =
+        ConnectionGuidance(
+            kind = ConnectionFailureKind.HOST_PERMISSION_DENIED,
+            status = text(R.string.connection_guidance_mac_permission_denied_title),
+            message = text(R.string.connection_guidance_mac_permission_denied_message),
+        )
+
+    private fun incompatibleSession(): ConnectionGuidance =
+        ConnectionGuidance(
+            kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
+            status = text(R.string.connection_guidance_mac_incompatible_title),
+            message = text(R.string.connection_guidance_mac_incompatible_message),
+        )
+
+    private fun sessionMismatch(): ConnectionGuidance =
+        ConnectionGuidance(
+            kind = ConnectionFailureKind.SESSION_MISMATCH,
+            status = text(R.string.connection_guidance_session_mismatch_title),
+            message = text(R.string.connection_guidance_session_mismatch_message),
         )
 
     private fun staleSession(): ConnectionGuidance =
@@ -281,6 +312,34 @@ internal object ConnectionGuidanceFactory {
             containMessage("ECONNREFUSED") ||
             containMessage("Connection refused")
 
+    private fun List<Throwable>.hasHostPermissionDeniedDetail(): Boolean =
+        any { cause -> cause.message?.isHostPermissionDenied() == true }
+
+    private fun List<Throwable>.hasSessionMismatchDetail(): Boolean =
+        any { cause -> cause.message?.isSessionMismatch() == true }
+
+    private fun String.isHostPermissionDenied(): Boolean {
+        val hasPermissionFailure =
+            contains("permission denied", ignoreCase = true) ||
+                contains("permission is missing", ignoreCase = true) ||
+                contains("permission is required", ignoreCase = true) ||
+                contains("not authorized", ignoreCase = true) ||
+                contains("not authorised", ignoreCase = true) ||
+                contains("operation not permitted", ignoreCase = true)
+        val hasMacPermissionSubject =
+                contains("Screen Recording", ignoreCase = true) ||
+                contains("Screen & System Audio", ignoreCase = true) ||
+                contains("Accessibility", ignoreCase = true) ||
+                contains("TCC", ignoreCase = true) ||
+                contains("screen capture", ignoreCase = true) ||
+                contains("display capture", ignoreCase = true) ||
+                contains("input injection", ignoreCase = true) ||
+                contains("window control", ignoreCase = true)
+        return hasPermissionFailure && hasMacPermissionSubject ||
+            contains("Missing Screen Recording permission", ignoreCase = true) ||
+            contains("Accessibility permission is required", ignoreCase = true)
+    }
+
     private fun String.isStaleEpochOrSession(): Boolean =
         contains("stale_session", ignoreCase = true) ||
             contains("stale session", ignoreCase = true) ||
@@ -288,6 +347,18 @@ internal object ConnectionGuidanceFactory {
             contains("stale_config_epoch", ignoreCase = true) ||
             contains("stale config", ignoreCase = true) ||
             contains("stale epoch", ignoreCase = true)
+
+    private fun String.isSessionMismatch(): Boolean =
+        contains("wireless handshake rejected", ignoreCase = true) ||
+            contains("secure session handshake", ignoreCase = true) ||
+            contains("secure record handshake", ignoreCase = true) ||
+            contains("protocol version mismatch", ignoreCase = true) ||
+            contains("incompatible protocol", ignoreCase = true) ||
+            contains("unsupported protocol", ignoreCase = true) ||
+            contains("signature is invalid", ignoreCase = true) ||
+            contains("signing key does not match", ignoreCase = true) ||
+            contains("identity no longer matches", ignoreCase = true) ||
+            contains("identity binding", ignoreCase = true)
 
     private fun adbRecovery(
         context: ConnectionGuidanceContext,
