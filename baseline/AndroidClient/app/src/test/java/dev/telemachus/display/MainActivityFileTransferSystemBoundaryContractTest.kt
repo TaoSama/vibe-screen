@@ -141,6 +141,15 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 internetCompleted.contains("if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()"),
         )
         assertTrue(
+            "Stale incoming completion callbacks must delete staging files before returning",
+            completedCallback.contains("completed.stagingFile.deleteBestEffort()") &&
+                completedCallback.contains("return@incomingFile") &&
+                completedCallback.contains("return@runOnUiThread") &&
+                internetCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
+                internetCompleted.contains("return") &&
+                internetCompleted.contains("return@runOnUiThread"),
+        )
+        assertTrue(
             "Incoming finish should clear receive state through the shared cleanup path",
             finish.contains("activeIncomingFileTransfer?.transferId != transferId") &&
                 finish.contains("return false") &&

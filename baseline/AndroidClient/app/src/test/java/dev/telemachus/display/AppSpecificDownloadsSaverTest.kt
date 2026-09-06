@@ -1,5 +1,8 @@
 package dev.telemachus.display
 
+import com.google.protobuf.ByteString
+import dev.telemachus.display.protocol.CompletedIncomingFile
+import dev.telemachus.display.protocol.sha256
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -15,6 +18,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class AppSpecificDownloadsSaverTest {
+    private companion object {
+        const val COLLISION_ATTEMPT_LIMIT = 1_000
+    }
+
     @Test
     fun savePublishesAtomicallyAndAvoidsOverwritingExistingName() {
         val directory = Files.createTempDirectory("vibescreen-downloads").toFile()
@@ -127,6 +134,28 @@ class AppSpecificDownloadsSaverTest {
     }
 
     @Test
+    fun saveRemovesPartialWhenDestinationNamesAreExhausted() {
+        val directory = Files.createTempDirectory("vibescreen-downloads-exhausted").toFile()
+        try {
+            val source = File(directory, "source.tmp")
+            source.writeText("source-content")
+            File(directory, "report.txt").writeText("existing")
+            for (attempt in 1..COLLISION_ATTEMPT_LIMIT) {
+                File(directory, "report ($attempt).txt").writeText("existing-$attempt")
+            }
+
+            assertThrows(IOException::class.java) {
+                AppSpecificDownloadsSaver.save(source, directory, "report.txt")
+            }
+
+            assertEquals("existing", File(directory, "report.txt").readText())
+            assertFalse(directory.containsPartialDownload())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun validateDisplayNameRejectsPathSegmentsForAllSaveBackends() {
         assertThrows(IOException::class.java) {
             AppSpecificDownloadsSaver.validateDisplayName("nested/escape.txt")
@@ -140,16 +169,134 @@ class AppSpecificDownloadsSaverTest {
     }
 
     @Test
+    fun validateDisplayNameRejectsControlCharactersAndAmbiguousWhitespace() {
+        assertThrows(IOException::class.java) {
+            AppSpecificDownloadsSaver.validateDisplayName("foo\nbar.txt")
+        }
+        assertThrows(IOException::class.java) {
+            AppSpecificDownloadsSaver.validateDisplayName("foo\rbar.txt")
+        }
+        assertThrows(IOException::class.java) {
+            AppSpecificDownloadsSaver.validateDisplayName("foo\tbar.txt")
+        }
+        assertThrows(IOException::class.java) {
+            AppSpecificDownloadsSaver.validateDisplayName("   ")
+        }
+        assertThrows(IOException::class.java) {
+            AppSpecificDownloadsSaver.validateDisplayName("  report.txt  ")
+        }
+    }
+
+    @Test
+    fun saveHandlesCollisionForExtensionlessMultidotAndDotfileNames() {
+        val directory = Files.createTempDirectory("vibescreen-downloads-collision-edges").toFile()
+        try {
+            val cases = listOf(
+                "report" to "report (1)",
+                "archive.tar.gz" to "archive.tar (1).gz",
+                ".gitignore" to ".gitignore (1)",
+                "foo." to "foo. (1)",
+            )
+            cases.forEachIndexed { index, (displayName, expectedCollisionName) ->
+                File(directory, displayName).writeText("existing-$index")
+                val source = File(directory, "source-$index.tmp")
+                source.writeText("new-$index")
+
+                val saved = AppSpecificDownloadsSaver.save(source, directory, displayName)
+
+                assertEquals(expectedCollisionName, saved.name)
+                assertEquals("new-$index", saved.readText())
+                assertEquals("existing-$index", File(directory, displayName).readText())
+            }
+            assertFalse(directory.containsPartialDownload())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun safeDisplayNameNormalizesUnsafeIncomingNamesBeforeSaving() {
         assertEquals("escape.txt", AppSpecificDownloadsSaver.safeDisplayName("../escape.txt", 120))
         assertEquals("file.txt", AppSpecificDownloadsSaver.safeDisplayName("dir/file.txt", 120))
         assertEquals("bad_name.txt", AppSpecificDownloadsSaver.safeDisplayName("bad\u0000name.txt", 120))
+        assertEquals("bad_name.txt", AppSpecificDownloadsSaver.safeDisplayName("bad\nname.txt", 120))
+        assertEquals("bad_name.txt", AppSpecificDownloadsSaver.safeDisplayName("bad\tname.txt", 120))
         assertEquals("foo.txt", AppSpecificDownloadsSaver.safeDisplayName("  foo.txt  ", 120))
         assertEquals("download.bin", AppSpecificDownloadsSaver.safeDisplayName(".", 120, fallback = "download.bin"))
         assertEquals("download.bin", AppSpecificDownloadsSaver.safeDisplayName("..", 120, fallback = "download.bin"))
+        assertEquals("download.bin", AppSpecificDownloadsSaver.safeDisplayName("   ", 120, fallback = "download.bin"))
         assertEquals("abcdef", AppSpecificDownloadsSaver.safeDisplayName("abcdefgh", 6))
+    }
+
+    @Test
+    fun saveCompletedIncomingFileUsesSafeBasenameAndRemovesStagingFile() {
+        val directory = Files.createTempDirectory("vibescreen-completed-save").toFile()
+        val downloads = File(directory, "downloads")
+        val staging = File(directory, ".vibescreen-staged.partial")
+        try {
+            val payload = "saved-content".toByteArray()
+            staging.writeBytes(payload)
+            val completed = completedIncomingFile(staging, "../report.txt", payload)
+
+            val saved = AppSpecificDownloadsSaver.saveCompletedIncomingFile(
+                completed = completed,
+                downloads = downloads,
+                maxDisplayNameLength = 120,
+            )
+
+            assertEquals("report.txt", saved.name)
+            assertEquals("saved-content", saved.readText())
+            assertFalse(staging.exists())
+            assertFalse(downloads.containsPartialDownload())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun saveCompletedIncomingFileRemovesStagingAndPartialWhenCopyFails() {
+        val directory = Files.createTempDirectory("vibescreen-completed-failure").toFile()
+        val downloads = File(directory, "downloads")
+        val staging = File(directory, ".vibescreen-staged.partial")
+        try {
+            val payload = "source-content".toByteArray()
+            staging.writeBytes(payload)
+            val completed = completedIncomingFile(staging, "incoming.txt", payload)
+            val copyFailure = IOException("simulated full disk")
+
+            val thrown = assertThrows(IOException::class.java) {
+                AppSpecificDownloadsSaver.saveCompletedIncomingFile(
+                    completed = completed,
+                    downloads = downloads,
+                    maxDisplayNameLength = 120,
+                ) { _, output ->
+                    output.write("partial".toByteArray())
+                    throw copyFailure
+                }
+            }
+
+            assertSame(copyFailure, thrown)
+            assertFalse(staging.exists())
+            assertFalse(File(downloads, "incoming.txt").exists())
+            assertFalse(downloads.containsPartialDownload())
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     private fun File.containsPartialDownload(): Boolean =
         listFiles().orEmpty().any { it.name.startsWith(".vibescreen-") && it.name.endsWith(".partial") }
+
+    private fun completedIncomingFile(
+        staging: File,
+        fileName: String,
+        payload: ByteArray,
+    ): CompletedIncomingFile =
+        CompletedIncomingFile(
+            transferId = ByteString.copyFromUtf8("completed-${staging.name}"),
+            fileName = fileName,
+            mimeType = "text/plain",
+            stagingFile = staging,
+            sha256 = sha256(payload),
+        )
 }

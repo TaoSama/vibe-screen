@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import dev.telemachus.display.protocol.CompletedIncomingFile
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -38,6 +39,30 @@ internal object AppSpecificDownloadsSaver {
         }
     }
 
+    fun saveCompletedIncomingFile(
+        completed: CompletedIncomingFile,
+        downloads: File,
+        maxDisplayNameLength: Int,
+        fallbackDisplayName: String = DEFAULT_DISPLAY_NAME,
+        copy: (File, OutputStream) -> Unit = ::copyFileTo,
+    ): File {
+        val displayName = safeDisplayName(
+            completed.fileName,
+            maxDisplayNameLength,
+            fallback = fallbackDisplayName,
+        )
+        return try {
+            save(
+                source = completed.stagingFile,
+                downloads = downloads,
+                displayName = displayName,
+                copy = copy,
+            )
+        } finally {
+            completed.stagingFile.delete()
+        }
+    }
+
     private fun ensureDirectory(directory: File) {
         if (directory.exists()) {
             if (!directory.isDirectory) throw IOException("Downloads path is not a directory")
@@ -48,9 +73,11 @@ internal object AppSpecificDownloadsSaver {
 
     fun validateDisplayName(displayName: String) {
         if (displayName.isEmpty() ||
+            displayName.isBlank() ||
+            displayName.trim() != displayName ||
             displayName == "." ||
             displayName == ".." ||
-            displayName.contains('\u0000') ||
+            displayName.any(Char::isISOControl) ||
             displayName.contains('/') ||
             displayName.contains('\\') ||
             File(displayName).name != displayName
@@ -69,7 +96,8 @@ internal object AppSpecificDownloadsSaver {
             displayName
                 ?.substringAfterLast('/')
                 ?.substringAfterLast('\\')
-                ?.replace('\u0000', '_')
+                ?.map { character -> if (character.isISOControl()) '_' else character }
+                ?.joinToString(separator = "")
                 ?.trim()
                 ?.take(maxLength)
                 .orEmpty()
@@ -84,9 +112,11 @@ internal object AppSpecificDownloadsSaver {
 
     private fun String.isSafeDisplayName(): Boolean =
         isNotEmpty() &&
+            isNotBlank() &&
+            trim() == this &&
             this != "." &&
             this != ".." &&
-            !contains('\u0000') &&
+            !any(Char::isISOControl) &&
             !contains('/') &&
             !contains('\\') &&
             File(this).name == this
