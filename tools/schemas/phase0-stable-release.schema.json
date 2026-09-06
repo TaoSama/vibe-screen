@@ -112,6 +112,7 @@
         "path",
         "audited_source_commit",
         "merged_pr_numbers",
+        "excluded_pr_numbers",
         "non_ancestor_prs",
         "reasons"
       ],
@@ -133,6 +134,7 @@
         "path": {"type": ["string", "null"]},
         "audited_source_commit": {"type": ["string", "null"]},
         "merged_pr_numbers": {"type": "array", "items": {"type": "integer"}},
+        "excluded_pr_numbers": {"type": "array", "items": {"type": "integer"}},
         "non_ancestor_prs": {"type": "array", "items": {"type": "integer"}},
         "reasons": {"type": "array", "items": {"type": "string"}}
       }

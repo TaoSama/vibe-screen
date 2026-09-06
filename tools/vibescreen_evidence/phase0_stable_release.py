@@ -337,6 +337,7 @@ def _merged_pr_snapshot_guard(
             "path": None,
             "audited_source_commit": None,
             "merged_pr_numbers": [],
+            "excluded_pr_numbers": [],
             "non_ancestor_prs": [],
             "reasons": [
                 "merged_pr_snapshot is required to verify audited mainline inputs"
@@ -351,6 +352,7 @@ def _merged_pr_snapshot_guard(
     base = _string(snapshot, "base")
     path = _string(snapshot, "path")
     audited_source_commit = _string(snapshot, "audited_source_commit")
+    excluded_pr_numbers = sorted(_int_list(snapshot, "excluded_pr_numbers"))
     pr_range = snapshot.get("range")
     if not isinstance(pr_range, dict):
         raise Phase0StableReleaseError("merged_pr_snapshot.range must be an object")
@@ -441,6 +443,39 @@ def _merged_pr_snapshot_guard(
             )
     if not merged_pr_numbers:
         reasons.append("merged_pr_snapshot.path must contain merged PR entries")
+    duplicate_numbers = sorted({
+        number for number in merged_pr_numbers if merged_pr_numbers.count(number) > 1
+    })
+    if duplicate_numbers:
+        reasons.append(
+            "merged_pr_snapshot.path must not contain duplicate PR numbers: "
+            + ", ".join(f"#{number}" for number in duplicate_numbers)
+        )
+    expected_numbers = set(range(minimum, maximum + 1))
+    recorded_numbers = set(merged_pr_numbers)
+    excluded_numbers = set(excluded_pr_numbers)
+    overlap = sorted(recorded_numbers & excluded_numbers)
+    if overlap:
+        reasons.append(
+            "merged_pr_snapshot.excluded_pr_numbers must not contain recorded "
+            "merged PRs: " + ", ".join(f"#{number}" for number in overlap)
+        )
+    outside_excluded = sorted(
+        number for number in excluded_numbers if number < minimum or number > maximum
+    )
+    if outside_excluded:
+        reasons.append(
+            "merged_pr_snapshot.excluded_pr_numbers contains PRs outside the "
+            f"declared range #{minimum}-#{maximum}: "
+            + ", ".join(f"#{number}" for number in outside_excluded)
+        )
+    missing_numbers = sorted(expected_numbers - recorded_numbers - excluded_numbers)
+    if missing_numbers:
+        reasons.append(
+            "merged_pr_snapshot.path is missing PR numbers from the declared "
+            f"range #{minimum}-#{maximum}: "
+            + ", ".join(f"#{number}" for number in missing_numbers)
+        )
 
     return {
         "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
@@ -452,6 +487,7 @@ def _merged_pr_snapshot_guard(
         "path": path,
         "audited_source_commit": audited_source_commit,
         "merged_pr_numbers": sorted(merged_pr_numbers),
+        "excluded_pr_numbers": excluded_pr_numbers,
         "non_ancestor_prs": non_ancestor_prs,
         "reasons": reasons,
     }

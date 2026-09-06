@@ -126,7 +126,8 @@
         "base",
         "range",
         "path",
-        "audited_source_commit"
+        "audited_source_commit",
+        "excluded_pr_numbers"
       ],
       "properties": {
         "repository": {
@@ -158,6 +159,13 @@
         "audited_source_commit": {
           "type": "string",
           "minLength": 40
+        },
+        "excluded_pr_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "uniqueItems": true
         }
       }
     },

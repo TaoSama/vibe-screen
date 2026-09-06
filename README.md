@@ -14,12 +14,12 @@
 > clipboard forwarding is implemented for explicit Android/macOS text transfers
 > and covered by offline gates, but real Android ClipboardManager <-> macOS
 > NSPasteboard USB/LAN E2E evidence remains open. A two-hour soak has run with a
-> stable stream, but the host resident-memory no-growth gate (tracked in
+> stable stream, but the macOS Host hardware compatibility matrix, host
+> resident-memory no-growth gate (tracked in
 > [the Host RSS investigation](docs/changes/2026-08-10-host-rss-growth/TECH.md)),
 > telemetry and external-latency archive gate, native-pointer HID confirmation,
-> controller runtime acceptance, clipboard product E2E, and file-transfer
-> product E2E remain open. Do not treat roadmap items below as shipped
-> features.
+> controller runtime acceptance, clipboard product E2E, and file-transfer product
+> E2E remain open. Do not treat roadmap items below as shipped features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -284,9 +284,11 @@ These iOS and HarmonyOS jobs do not constitute real-device evidence. A historica
 An earlier 2026-08-06 CI run on `4c2e908fe31af4c187684991301e163371444eab`
 recorded a 202-test MacHost suite; the count has since grown as tests were
 added. Protocol v1 real-device interoperability is now verified on a Xiaomi 13,
-but a published macOS Host hardware compatibility matrix, a valid two-hour host
-RSS no-growth run, native-pointer HID confirmation, and controller runtime
-acceptance remain open gates.**
+but the Phase 0 stable-release aggregate remains blocked by seven required gates:
+the macOS Host hardware compatibility matrix, telemetry and external-latency
+archive, Host RSS two-hour no-growth, native-pointer HID mouse acceptance,
+controller runtime acceptance, Android/macOS clipboard product E2E, and
+Android/macOS file-transfer product E2E.**
 
 On 2026-08-08 a Xiaomi 13 (model 2211133C, codename fuxi, Android 16, USB)
 recorded the first Xiaomi 13 streaming evidence: a stale-Surface
