@@ -33,6 +33,16 @@ DEFAULT_DEVICE_IDENTITY = {
 }
 LOCAL_MAXIMUM_CLIPBOARD_BYTES = 1_048_576
 SAFE_SERIAL_LABEL = "REDACTED_P0110_USB_SERIAL"
+RETAINED_ARTIFACTS_FIELD = "retained_artifacts"
+REQUIRED_DIRECTION_ARTIFACT_ROLES = (
+    "source_clipboard_read",
+    "sender_action",
+    "receiver_approval",
+    "protocol_packets",
+    "destination_clipboard_write",
+    "final_verification",
+    "negative_boundary_verification",
+)
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
 TCC_DATABASE_COMPONENT = "TCC" + r"\.db"
@@ -110,6 +120,84 @@ def _gate(
         "reasons": [sanitize_text(reason) for reason in reasons],
         "evidence": list(evidence),
     }
+
+
+def _retained_artifact_reasons(
+    document: dict[str, Any],
+    label: str,
+    required_roles: Sequence[str],
+    evidence_dir: Path | None,
+) -> list[str]:
+    artifacts = document.get(RETAINED_ARTIFACTS_FIELD)
+    if not isinstance(artifacts, list) or not artifacts:
+        return [f"{label}.{RETAINED_ARTIFACTS_FIELD} must retain product evidence artifacts"]
+
+    reasons: list[str] = []
+    resolved_evidence_dir = evidence_dir.resolve() if evidence_dir is not None else None
+    seen_roles: set[str] = set()
+    seen_artifact_paths: dict[Path | str, str] = {}
+    for index, artifact in enumerate(artifacts):
+        artifact_label = f"{label}.{RETAINED_ARTIFACTS_FIELD}[{index}]"
+        if not isinstance(artifact, dict):
+            reasons.append(f"{artifact_label} must be an object")
+            continue
+        role = artifact.get("role")
+        if isinstance(role, str) and role.strip():
+            role_name = role.strip()
+            seen_roles.add(role_name)
+        else:
+            role_name = f"entry {index}"
+            reasons.append(f"{artifact_label}.role must be present")
+
+        path_value = artifact.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            reasons.append(f"{artifact_label}.path must be present")
+            continue
+        path = Path(path_value)
+        if path.is_absolute():
+            reasons.append(f"{artifact_label}.path must be evidence-relative")
+            continue
+        if (path.parts and path.parts[0] == "..") or ".." in path.parts:
+            reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
+            continue
+        artifact_key: Path | str | None = path.as_posix() if evidence_dir is None else None
+        if evidence_dir is not None and resolved_evidence_dir is not None:
+            candidate = evidence_dir / path
+            try:
+                resolved_candidate = candidate.resolve(strict=True)
+            except FileNotFoundError:
+                reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
+                continue
+            except (OSError, RuntimeError, ValueError) as error:
+                reasons.append(
+                    f"{artifact_label}.path cannot access retained artifact "
+                    f"{sanitize_text(path_value)}: {sanitize_text(error)}"
+                )
+                continue
+            try:
+                resolved_candidate.relative_to(resolved_evidence_dir)
+            except ValueError:
+                reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
+                continue
+            if not resolved_candidate.is_file():
+                reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
+            elif resolved_candidate.stat().st_size <= 0:
+                reasons.append(f"{artifact_label}.path retained artifact {sanitize_text(path_value)} must be non-empty")
+            else:
+                artifact_key = resolved_candidate
+        if artifact_key is not None:
+            previous_role = seen_artifact_paths.get(artifact_key)
+            if previous_role is not None:
+                reasons.append(f"{artifact_label}.path must be distinct from {previous_role} artifact path")
+            else:
+                seen_artifact_paths[artifact_key] = role_name
+
+    missing_roles = [role for role in required_roles if role not in seen_roles]
+    reasons.extend(
+        f"{label}.{RETAINED_ARTIFACTS_FIELD} missing {role} artifact"
+        for role in missing_roles
+    )
+    return reasons
 
 
 def _device_identity(document: dict[str, Any] | None) -> dict[str, Any]:
@@ -263,7 +351,11 @@ EXPECTED_DIRECTION_ENDPOINTS = {
 }
 
 
-def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
+def _direction_reasons(
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+) -> list[str]:
     required_true = (
         "protocol_v1_session",
         "system_source_clipboard_read",
@@ -347,6 +439,14 @@ def _direction_reasons(direction: dict[str, Any], label: str) -> list[str]:
             reasons.append(f"{label}.{field} must be distinct from {previous}")
         else:
             seen_markers[normalized] = field
+    reasons.extend(
+        _retained_artifact_reasons(
+            direction,
+            label,
+            REQUIRED_DIRECTION_ARTIFACT_ROLES,
+            evidence_dir,
+        )
+    )
     return reasons
 
 
@@ -354,6 +454,7 @@ def _product_e2e_gate(
     product: dict[str, Any] | None,
     missing: Sequence[str],
     available_transports: set[str],
+    evidence_dir: Path | None,
 ) -> dict[str, Any]:
     reasons = list(missing)
     evidence = ["product-e2e.json"] if product is not None else []
@@ -369,7 +470,13 @@ def _product_e2e_gate(
         change_ids: dict[str, str] = {}
         digests: dict[str, str] = {}
         if isinstance(android_to_macos, dict):
-            reasons.extend(_direction_reasons(android_to_macos, "android_clipboardmanager_to_macos_nspasteboard"))
+            reasons.extend(
+                _direction_reasons(
+                    android_to_macos,
+                    "android_clipboardmanager_to_macos_nspasteboard",
+                    evidence_dir,
+                )
+            )
             transport = android_to_macos.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"android_clipboardmanager_to_macos_nspasteboard.transport {transport} is not ready")
@@ -385,7 +492,13 @@ def _product_e2e_gate(
         else:
             reasons.append("missing android_clipboardmanager_to_macos_nspasteboard direction evidence")
         if isinstance(macos_to_android, dict):
-            reasons.extend(_direction_reasons(macos_to_android, "macos_nspasteboard_to_android_clipboardmanager"))
+            reasons.extend(
+                _direction_reasons(
+                    macos_to_android,
+                    "macos_nspasteboard_to_android_clipboardmanager",
+                    evidence_dir,
+                )
+            )
             transport = macos_to_android.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"macos_nspasteboard_to_android_clipboardmanager.transport {transport} is not ready")
@@ -464,6 +577,7 @@ def derive_gate(
     usb, usb_missing = _load_optional(usb_preflight, "USB preflight")
     lan, lan_missing = _load_optional(trusted_lan_preflight, "trusted-LAN preflight")
     product, product_missing = _load_optional(product_e2e, "product E2E evidence")
+    evidence_dir = product_e2e.parent if product_e2e is not None else None
 
     usb_gate = _usb_gate(usb, usb_missing)
     lan_gate = _lan_gate(lan, lan_missing)
@@ -479,7 +593,7 @@ def derive_gate(
         lan_gate,
         _transport_gate(usb_gate, lan_gate),
         _android_clipboard_gate(android_clipboard_instrumentation_log),
-        _product_e2e_gate(product, product_missing, available_transports),
+        _product_e2e_gate(product, product_missing, available_transports, evidence_dir),
     ]
     required_gate_names = {
         "device_identity",
@@ -535,7 +649,9 @@ def derive_gate(
             "SHA-256 digest, text/plain MIME, strict UTF-8 validation, bounded byte length, receiver approval, "
             "overwrite confirmation, cancel/no-write behavior, failure/no-write behavior, deny-wins managed-policy blocking, "
             "absence of send/write failures, cleanup completion, exact source/destination system clipboard endpoints, "
-            "distinct final marker matches, distinct change IDs, and distinct SHA-256 digests. Offline or "
+            "distinct final marker matches, distinct change IDs, distinct SHA-256 digests, and retained product "
+            "artifacts for the source read, sender action, receiver approval, protocol packets, destination write, "
+            "final verification, and negative boundary checks, with distinct non-empty artifact files per role. Offline or "
             "synthetic coverage alone remains readiness evidence."
         ),
     }

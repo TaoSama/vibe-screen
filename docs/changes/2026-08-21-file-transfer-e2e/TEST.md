@@ -168,7 +168,9 @@ offline tests alone. A pass requires Host readiness, a ready USB or trusted-LAN
 real-device path, a current Android file-transfer smoke log, bidirectional
 Android -> macOS and macOS -> Android product evidence, observed
 file-offer/request/content packets, explicit sender action, receiver approval,
-saved remote file, positive session epoch, final SHA-256 equality, and
+saved remote file, verified session ID and session epoch, verified 16-byte
+transfer ID, observed progress, exact source/destination file endpoints, final
+SHA-256 equality, a distinct file name and payload digest per direction, and
 cancel/cleanup evidence. Nubia P0110 evidence must remain labeled as nubia
 P0110 / pacific / Android 16 / SDK 36 and must not be relabeled as Xiaomi/fuxi.
 
@@ -176,17 +178,23 @@ The retained `file-transfer-product-e2e.json` must include both
 `android_to_macos_file_transfer` and `macos_to_android_file_transfer`. Each
 direction must include evidence-relative `retained_artifacts` entries for
 `sender_action`, `receiver_approval`, `protocol_packets`, `remote_file`, and
-`sha256_verification`; the files must exist under the same evidence bundle.
+`sha256_verification`; the files must exist under the same evidence bundle and
+be non-empty, with each role backed by a distinct file. Each direction must
+also record the exact source and destination endpoints:
+`android_saf_selected_file` -> `macos_saved_file`, or
+`macos_selected_file` -> `android_downloads_file`.
 The `cancel_cleanup` block must similarly retain `cancel_request` and
 `cleanup_state` artifacts. Absolute paths, `..` escapes, symlink escapes outside
-the bundle, missing artifact files, offline fixtures, and synthetic logs cannot
-close the gate.
+the bundle, missing artifact files, duplicate role files, offline fixtures, and
+synthetic logs cannot close the gate.
 
 The `android_file_transfer_smoke` subcheck names the Android control-bar UI
 instrumentation log only. A passing subcheck proves the visible file-transfer
 action and layout path, not real file transfer. The real product closure remains
 the `bidirectional_product_e2e` evidence: two directions, user approval, remote
-file writes, final SHA-256 equality, positive session epoch, and cancel cleanup.
+file writes, distinct verified transfer IDs, exact file endpoints, progress,
+final SHA-256 equality, distinct file names and payload digests, positive
+session epoch, and cancel cleanup.
 
 Current 2026-08-28 collection on clean `origin/main`-based branch
 `codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device
