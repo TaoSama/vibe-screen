@@ -140,11 +140,13 @@ internal class AudioJitterBuffer(
 
         val earliest = packets.firstKey()
         return if (earliest > expectedSequence) {
-            val droppedPackets = earliest - expectedSequence
-            expectedSequence = earliest
+            val previousExpectedSequence = expectedSequence
+            // The original gap is unrecoverable once the buffer is full; keep the newest live window.
             while (packets.size > maximumPackets) {
-                packets.remove(packets.lastKey())
+                packets.remove(packets.firstKey())
             }
+            expectedSequence = packets.firstKey()
+            val droppedPackets = expectedSequence - previousExpectedSequence
             AudioEnqueueResult.AdvancedPastGap(droppedPackets)
         } else {
             val droppedSequence = packets.lastKey()

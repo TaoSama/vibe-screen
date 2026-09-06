@@ -162,8 +162,8 @@ class ProtocolPcmAudioStreamTest {
 
         assertEquals(AudioEnqueueResult.Queued, gapBuffer.enqueue(audioPacket(sequence = 3, payload = pcmPayload(format)), 5, format))
         assertEquals(AudioEnqueueResult.Queued, gapBuffer.enqueue(audioPacket(sequence = 4, payload = pcmPayload(format)), 5, format))
-        assertEquals(AudioEnqueueResult.AdvancedPastGap(2), gapBuffer.enqueue(audioPacket(sequence = 5, payload = pcmPayload(format)), 5, format))
-        assertEquals(listOf(3L, 4L), gapBuffer.drainReady().map { it.header.sequence })
+        assertEquals(AudioEnqueueResult.AdvancedPastGap(3), gapBuffer.enqueue(audioPacket(sequence = 5, payload = pcmPayload(format)), 5, format))
+        assertEquals(listOf(4L, 5L), gapBuffer.drainReady().map { it.header.sequence })
 
         val newestDropBuffer = AudioJitterBuffer(firstSequence = 1, maximumPackets = 2)
         assertEquals(AudioEnqueueResult.Queued, newestDropBuffer.enqueue(audioPacket(sequence = 1, payload = pcmPayload(format)), 5, format))
@@ -171,6 +171,22 @@ class ProtocolPcmAudioStreamTest {
         assertEquals(AudioEnqueueResult.QueueFullDropped(4), newestDropBuffer.enqueue(audioPacket(sequence = 4, payload = pcmPayload(format)), 5, format))
         assertEquals(listOf(1L), newestDropBuffer.drainReady().map { it.header.sequence })
         assertEquals(1, newestDropBuffer.queuedPacketCount())
+    }
+
+    @Test
+    fun advancingPastGapKeepsNewestLiveWindowForImmediateRecovery() {
+        val buffer = AudioJitterBuffer(firstSequence = 10, maximumPackets = 2)
+        val format = testFormat(framesPerPacket = 2)
+        val recovered = audioPacket(sequence = 14, payload = pcmPayload(format, seed = 40))
+
+        assertEquals(AudioEnqueueResult.Queued, buffer.enqueue(audioPacket(sequence = 12, payload = pcmPayload(format, seed = 20)), 5, format))
+        assertEquals(AudioEnqueueResult.Queued, buffer.enqueue(audioPacket(sequence = 13, payload = pcmPayload(format, seed = 30)), 5, format))
+        assertEquals(AudioEnqueueResult.AdvancedPastGap(3), buffer.enqueue(recovered, 5, format))
+
+        val ready = buffer.drainReady()
+        assertEquals(listOf(13L, 14L), ready.map { it.header.sequence })
+        assertArrayEquals(recovered.payload, ready.last().payload)
+        assertEquals(0, buffer.queuedPacketCount())
     }
 
     private fun assertRejects(
