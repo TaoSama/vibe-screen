@@ -52,7 +52,7 @@ class ProtocolPcmAudioStreamTest {
             ProtocolAudioPacket.parse(encodePacket(packet.header.toBuilder().setPayloadLength(5).build(), packet.payload))
         }
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
-            ProtocolAudioPacket.parse(byteArrayOf(0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01))
+            ProtocolAudioPacket.parse(ByteArray(10) { 0x80.toByte() })
         }
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
             ProtocolAudioPacket.parse(encodeVarint(64 * 1024 + 1) + byteArrayOf(0x00))

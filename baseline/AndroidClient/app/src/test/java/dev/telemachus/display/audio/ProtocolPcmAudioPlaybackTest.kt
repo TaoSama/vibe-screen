@@ -425,7 +425,9 @@ class ProtocolPcmAudioPlaybackTest {
                 ),
             ),
         )
-        assertEquals(1, factory.created[1].writes.size)
+        val newOutputWrites = factory.created[1].writes
+        assertEquals(1, newOutputWrites.size)
+        assertArrayEquals(pcmBytes(6), newOutputWrites.single())
     }
 
     @Test
