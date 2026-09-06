@@ -291,6 +291,37 @@ class ProtocolPcmAudioPlaybackTest {
     }
 
     @Test
+    fun gapRecoveryWritesNewestLiveWindowWithoutWaitingForAnotherFrame() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory, maximumBufferedPackets = 2)
+        assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+        val format = checkNotNull(player.activeFormat())
+        val recovered = audioPacket(sequence = 4, payload = pcmPayload(format, seed = 40))
+
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 0),
+            player.submit(audioPacket(sequence = 2, payload = pcmPayload(format, seed = 20))),
+        )
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 0),
+            player.submit(audioPacket(sequence = 3, payload = pcmPayload(format, seed = 30))),
+        )
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.AdvancedPastGap(3), writtenPackets = 2),
+            player.submit(recovered),
+        )
+
+        assertEquals(2, factory.created.single().writes.size)
+        assertEquals(
+            listOf(
+                pcmPayload(format, seed = 30).toList(),
+                recovered.payload.toList(),
+            ),
+            factory.created.single().writes.map { it.toList() },
+        )
+    }
+
+    @Test
     fun writeFailureStopsActiveOutputAndRejectsFurtherPacketsUntilReconfigured() {
         val factory = FakePcmAudioOutputFactory(writeFailures = mutableListOf(AudioOutputFailureReason.WRITE_DEAD_OBJECT))
         val player = ProtocolPcmAudioPlayer(factory)
