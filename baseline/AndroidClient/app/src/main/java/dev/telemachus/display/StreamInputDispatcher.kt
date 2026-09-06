@@ -618,6 +618,7 @@ internal class StreamInputDispatcher(
         val kindBytes = peripheralKind.toByteArray(StandardCharsets.UTF_8)
         if (peripheralKind.isBlank() || kindBytes.size > ProtocolV1Session.MAX_PERIPHERAL_KIND_BYTES) return false
         if (payload.size > ProtocolV1Session.MAX_PERIPHERAL_PAYLOAD_BYTES) return false
+        val stablePayload = payload.copyOf()
         val submission =
             submitOutbound(
                 OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
@@ -626,7 +627,7 @@ internal class StreamInputDispatcher(
                         activeSession.peripheral(
                             inputId = nextInputId.getAndIncrement(),
                             peripheralKind = peripheralKind,
-                            payload = payload,
+                            payload = stablePayload,
                         ),
                     )
                 },
