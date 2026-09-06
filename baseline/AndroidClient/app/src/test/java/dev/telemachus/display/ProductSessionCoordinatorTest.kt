@@ -732,6 +732,35 @@ class ProductSessionCoordinatorTest {
     }
 
     @Test
+    fun `file transfer workflow is cleared when runtime availability is lost`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = true)
+
+        val fileToken = Any()
+        assertTrue(coordinator.stageOutgoingFileTransfer(client, generation, fileToken))
+
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = false)
+
+        assertNull(coordinator.takePendingOutgoingFileTransfer())
+        assertFalse(coordinator.requestOutgoingFileTransfer(client, generation))
+        assertFalse(coordinator.stageOutgoingFileTransfer(client, generation, Any()))
+
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = true)
+        val offerToken = Any()
+        assertTrue(coordinator.beginIncomingFileOffer(client, generation, offerToken))
+
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = false)
+
+        assertFalse(coordinator.acceptsIncomingFileOffer(client, generation, offerToken))
+        assertFalse(coordinator.finishIncomingFileOffer(client, generation, offerToken))
+        assertFalse(coordinator.requestOutgoingFileTransfer(client, generation))
+    }
+
+    @Test
     fun `clearFileTransferWorkflow returns pending outgoing token for explicit resource handoff`() {
         val coordinator = ProductSessionCoordinator<TestClient>()
         val client = TestClient("current")
