@@ -1,3 +1,5 @@
+local_head_commit=ba684f576744c5048bc3ecba74637bf3a05fd43f
+origin_main_commit=50b564a81b1003f65121631443a772389bba2ab3
 audited_source_commit=50b564a81b1003f65121631443a772389bba2ab3
 audited_source_ref=origin/main
 audited_source_subject=Tighten Host TCC identity preflight (#625)

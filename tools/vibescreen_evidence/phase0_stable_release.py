@@ -352,6 +352,10 @@ def _merged_pr_snapshot_guard(
     base = _string(snapshot, "base")
     path = _string(snapshot, "path")
     audited_source_commit = _string(snapshot, "audited_source_commit")
+    if "excluded_pr_numbers" not in snapshot:
+        raise Phase0StableReleaseError(
+            "merged_pr_snapshot.excluded_pr_numbers is required"
+        )
     excluded_pr_numbers = sorted(_int_list(snapshot, "excluded_pr_numbers"))
     pr_range = snapshot.get("range")
     if not isinstance(pr_range, dict):
