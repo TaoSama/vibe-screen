@@ -1240,8 +1240,12 @@ def validate_preflight(
             if row is None or row.auth_value != ALLOWED_AUTH_VALUE:
                 errors.append(f"{label} is not authorized for the installed Host")
                 continue
-            if not tcc_row_requirement_matches(row, metadata.designated_requirement):
-                detail = row.csreq_error or "TCC csreq does not match installed Host designated requirement"
+            identity_state = tcc_service_identity_state(permissions, services, metadata.designated_requirement)
+            if identity_state != "authorized_current_host_identity":
+                if identity_state == "authorized_host_identity_not_inspected":
+                    detail = "Host designated requirement was not inspected"
+                else:
+                    detail = row.csreq_error or "TCC csreq does not match installed Host designated requirement"
                 errors.append(f"{label} TCC authorization is not bound to the installed Host identity: {detail}")
     return errors
 
@@ -1350,15 +1354,42 @@ def format_permission_row(row: TCCRow) -> str:
     )
 
 
-def permission_interpretation(permissions: PermissionStatus) -> str:
+def tcc_service_identity_state(
+    permissions: PermissionStatus,
+    services: tuple[str, ...],
+    host_requirement: str | None,
+) -> str | None:
+    if not permissions.readable:
+        return None
+    if not permissions.is_allowed(services):
+        return "not_authorized"
+    if host_requirement is None:
+        return "authorized_host_identity_not_inspected"
+    if permissions.has_matching_requirement(services, host_requirement):
+        return "authorized_current_host_identity"
+    return "authorized_different_or_unreadable_host_identity"
+
+
+def permission_interpretation(permissions: PermissionStatus, host_requirement: str | None = None) -> str:
     if not permissions.readable:
         return f"unverified ({permissions.error})"
-    screen = "allowed" if permissions.is_allowed(SCREEN_CAPTURE_SERVICES) else "not allowed"
-    accessibility = "allowed" if permissions.is_allowed(ACCESSIBILITY_SERVICES) else "not allowed"
-    microphone = "allowed" if permissions.is_allowed(MICROPHONE_SERVICES) else "not allowed"
+
+    def service_state(label: str, services: tuple[str, ...]) -> str:
+        state = tcc_service_identity_state(permissions, services, host_requirement)
+        if state == "not_authorized":
+            return f"{label} not authorized"
+        if state == "authorized_current_host_identity":
+            return f"{label} authorized and bound to this installed Host identity"
+        if state == "authorized_host_identity_not_inspected":
+            return f"{label} authorized, but Host identity was not inspected"
+        return f"{label} authorized but bound to a different or unreadable Host identity"
+
+    screen = service_state("Screen Recording", SCREEN_CAPTURE_SERVICES)
+    accessibility = service_state("Accessibility", ACCESSIBILITY_SERVICES)
+    microphone = service_state("Microphone", MICROPHONE_SERVICES)
     if permissions.error:
-        return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}; read warning: {permissions.error}."
-    return f"Screen Recording {screen}; Accessibility {accessibility}; Microphone {microphone}."
+        return f"{screen}; {accessibility}; {microphone}; read warning: {permissions.error}."
+    return f"{screen}; {accessibility}; {microphone}."
 
 
 def format_report(
@@ -1436,7 +1467,7 @@ Database: {permissions.database_path}
 Field order: service|client|client_type|auth_value|auth_reason|last_modified|csreq_sha256|csreq_requirement|csreq_error
 {rows}
 
-Interpretation: {permission_interpretation(permissions)}
+Interpretation: {permission_interpretation(permissions, metadata.designated_requirement if metadata else None)}
 
 Preflight result
 ----------------
@@ -1739,6 +1770,21 @@ def permission_record(permissions: PermissionStatus, host_requirement: str | Non
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
         "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
         "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
+        "screen_recording_state": tcc_service_identity_state(
+            permissions,
+            SCREEN_CAPTURE_SERVICES,
+            host_requirement,
+        ),
+        "accessibility_state": tcc_service_identity_state(
+            permissions,
+            ACCESSIBILITY_SERVICES,
+            host_requirement,
+        ),
+        "microphone_state": tcc_service_identity_state(
+            permissions,
+            MICROPHONE_SERVICES,
+            host_requirement,
+        ),
         "screen_recording_identity_bound": (
             permissions.has_matching_requirement(SCREEN_CAPTURE_SERVICES, host_requirement)
             if permissions.readable
