@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 from . import SCHEMA_VERSION
-from .soak_public_report import EvidenceInputError
+from .soak_public_report import EvidenceInputError, is_integer
 from .soak_report import _parse_timestamp
 
 
@@ -117,6 +117,20 @@ def evaluate_exact_window_report(
         telemetry.get("encoder_present_values", []),
         "exact_window_report.metrics.telemetry.encoder_present_values",
     )
+    boolean_counts = _optional_section(
+        telemetry.get("stream_boolean_counts"),
+        "exact_window_report.metrics.telemetry.stream_boolean_counts",
+    )
+    required_stream_statistics = {
+        "fps": fps,
+        "queue_depth": queue_depth,
+        "queue_capacity": queue_capacity,
+        "encoder_in_flight": encoder_in_flight,
+        "encoder_in_flight_capacity": encoder_capacity,
+        "frame_registry_count": frame_registry_count,
+        "latest_pixel_buffer_retained": latest_pixel_buffer_retained,
+        "latest_pixel_buffer_capacity": latest_pixel_buffer_capacity,
+    }
 
     sufficiency = {
         "schema_version": _boolean_criterion(
@@ -152,6 +166,10 @@ def evaluate_exact_window_report(
             accepted_heartbeat_count,
             MINIMUM_ACCEPTED_HEARTBEAT_COUNT,
         ),
+        "telemetry_gap_counts_match_events": _boolean_criterion(
+            stream_stats_gaps["count"] == stream_stats_count
+            and heartbeat_gaps["count"] == heartbeat_count
+        ),
         "queue_metrics_present": _boolean_criterion(
             queue_depth is not None and queue_capacity is not None
         ),
@@ -168,6 +186,22 @@ def evaluate_exact_window_report(
         ),
         "capture_state_booleans_present": _boolean_criterion(
             bool(fallback_values) and bool(encoder_present_values)
+        ),
+        "stream_lifecycle_counts_complete": _boolean_criterion(
+            _all_statistics_match_count(
+                required_stream_statistics,
+                expected_count=stream_stats_count,
+            )
+            and _boolean_count_matches(
+                boolean_counts,
+                "fallback_capture_active",
+                expected_count=stream_stats_count,
+            )
+            and _boolean_count_matches(
+                boolean_counts,
+                "encoder_present",
+                expected_count=stream_stats_count,
+            )
         ),
     }
     criteria = {
@@ -216,6 +250,9 @@ def evaluate_exact_window_report(
             and latest_pixel_buffer_capacity["min"] == latest_pixel_buffer_capacity["max"]
             and latest_pixel_buffer_retained["max"] <= latest_pixel_buffer_capacity["min"]
         ),
+        "fallback_capture_inactive_through_window": _boolean_criterion(
+            fallback_values == [False]
+        ),
         "encoder_present_through_window": _boolean_criterion(encoder_present_values == [True]),
     }
     insufficiencies = [
@@ -249,6 +286,7 @@ def evaluate_exact_window_report(
             "latest_pixel_buffer_retained": latest_pixel_buffer_retained,
             "latest_pixel_buffer_capacity": latest_pixel_buffer_capacity,
             "frame_queue_drop_total": frame_queue_drop_total,
+            "stream_boolean_counts": boolean_counts,
             "fallback_capture_active_values": fallback_values,
             "encoder_present_values": encoder_present_values,
         },
@@ -310,6 +348,12 @@ def _section(value: Any, context: str) -> dict[str, Any]:
     return value
 
 
+def _optional_section(value: Any, context: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    return _section(value, context)
+
+
 def _statistics(value: Any, context: str) -> dict[str, float | int] | None:
     if value is None:
         return None
@@ -358,6 +402,33 @@ def _stat_pair_present(
     left = _statistics(stream.get(left_name), f"metrics.stream.{left_name}")
     right = _statistics(stream.get(right_name), f"metrics.stream.{right_name}")
     return left, right, (left is None) == (right is None)
+
+
+def _all_statistics_match_count(
+    statistics: dict[str, dict[str, float | int] | None],
+    *,
+    expected_count: int,
+) -> bool:
+    if expected_count <= 0:
+        return False
+    return all(
+        item is not None and item["count"] == expected_count
+        for item in statistics.values()
+    )
+
+
+def _boolean_count_matches(
+    counts: dict[str, Any],
+    name: str,
+    *,
+    expected_count: int,
+) -> bool:
+    value = counts.get(name)
+    return (
+        expected_count > 0
+        and is_integer(value)
+        and value == expected_count
+    )
 
 
 def _boolean_list(value: Any, context: str) -> list[bool]:

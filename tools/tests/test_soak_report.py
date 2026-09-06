@@ -207,6 +207,10 @@ class SoakReportTest(unittest.TestCase):
             report["metrics"]["telemetry"]["accepted_heartbeat_count"], 2
         )
         self.assertEqual(
+            report["metrics"]["telemetry"]["stream_boolean_counts"],
+            {"encoder_present": 2, "fallback_capture_active": 2},
+        )
+        self.assertEqual(
             report["metrics"]["telemetry"]["fallback_capture_active_values"],
             [False],
         )
