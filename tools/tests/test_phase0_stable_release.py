@@ -462,6 +462,66 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_telemetry_latency_archive_rejects_invalid_utf8_evidence(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            bad_path = Path("docs/evidence/bad-latency.json")
+            bad_file = repo / bad_path
+            bad_file.parent.mkdir(parents=True, exist_ok=True)
+            bad_file.write_bytes(b"{\xff\xfe}")
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            gate["evidence_paths"] = [
+                bad_path.as_posix(),
+                "docs/evidence/android-usb-live-smoke.json",
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "could not read telemetry_and_latency_archive evidence" in issue
+                    for issue in issues
+                )
+            )
+            self.assertTrue(
+                any("formal latency_evidence_gate report" in issue for issue in issues)
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_requires_positive_latency_sample_counts(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            latency_path = Path("docs/evidence/latency-evidence-usb.json")
+            latency_file = repo / latency_path
+            record = json.loads(latency_file.read_text(encoding="utf-8"))
+            record["gate"]["sample_count"] = 0
+            record["gate"]["min_sample_count"] = 0
+            latency_file.write_text(json.dumps(record), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/latency-evidence-usb.json: formal latency report "
+                "sample_count must be positive and greater than or equal to "
+                "min_sample_count",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
     def test_telemetry_latency_archive_accepts_structured_latency_and_stream_reports(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
             manifest = complete_manifest_for_repo(repo, base_commit)

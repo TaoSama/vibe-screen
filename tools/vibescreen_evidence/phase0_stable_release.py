@@ -330,7 +330,7 @@ def _load_evidence_json(
 ) -> tuple[dict[str, Any], str | None]:
     try:
         record = json.loads(evidence_path.read_text(encoding="utf-8"))
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         return {}, (
             f"could not read telemetry_and_latency_archive evidence {raw_path}: "
             f"{error}"
@@ -387,13 +387,13 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
     sample_count = gate.get("sample_count")
     min_sample_count = gate.get("min_sample_count")
     if (
-        not _is_number(sample_count)
-        or not _is_number(min_sample_count)
+        not _is_positive_number(sample_count)
+        or not _is_positive_number(min_sample_count)
         or sample_count < min_sample_count
     ):
         issues.append(
-            f"{path}: formal latency report sample_count must be greater than "
-            "or equal to min_sample_count"
+            f"{path}: formal latency report sample_count must be positive and "
+            "greater than or equal to min_sample_count"
         )
     source = record.get("source")
     if not isinstance(source, dict) or not isinstance(source.get("manifest"), str):
