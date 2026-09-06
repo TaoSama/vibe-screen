@@ -318,27 +318,27 @@ internal object ConnectionGuidanceFactory {
     private fun List<Throwable>.hasSessionMismatchDetail(): Boolean =
         any { cause -> cause.message?.isSessionMismatch() == true }
 
-    private fun String.isHostPermissionDenied(): Boolean {
-        val hasPermissionFailure =
-            contains("permission denied", ignoreCase = true) ||
-                contains("permission is missing", ignoreCase = true) ||
-                contains("permission is required", ignoreCase = true) ||
-                contains("not authorized", ignoreCase = true) ||
-                contains("not authorised", ignoreCase = true) ||
-                contains("operation not permitted", ignoreCase = true)
-        val hasMacPermissionSubject =
-                contains("Screen Recording", ignoreCase = true) ||
-                contains("Screen & System Audio", ignoreCase = true) ||
-                contains("Accessibility", ignoreCase = true) ||
-                contains("TCC", ignoreCase = true) ||
-                contains("screen capture", ignoreCase = true) ||
-                contains("display capture", ignoreCase = true) ||
-                contains("input injection", ignoreCase = true) ||
-                contains("window control", ignoreCase = true)
-        return hasPermissionFailure && hasMacPermissionSubject ||
-            contains("Missing Screen Recording permission", ignoreCase = true) ||
-            contains("Accessibility permission is required", ignoreCase = true)
-    }
+    private fun String.isHostPermissionDenied(): Boolean =
+        contains("Missing Screen Recording permission", ignoreCase = true) ||
+            (hasPermissionFailureText() && hasMacPermissionSubject())
+
+    private fun String.hasPermissionFailureText(): Boolean =
+        contains("permission denied", ignoreCase = true) ||
+            contains("permission is missing", ignoreCase = true) ||
+            contains("permission is required", ignoreCase = true) ||
+            contains("not authorized", ignoreCase = true) ||
+            contains("not authorised", ignoreCase = true) ||
+            contains("operation not permitted", ignoreCase = true)
+
+    private fun String.hasMacPermissionSubject(): Boolean =
+        contains("Screen Recording", ignoreCase = true) ||
+            contains("Screen & System Audio", ignoreCase = true) ||
+            contains("Accessibility", ignoreCase = true) ||
+            contains("TCC", ignoreCase = true) ||
+            contains("screen capture", ignoreCase = true) ||
+            contains("display capture", ignoreCase = true) ||
+            contains("input injection", ignoreCase = true) ||
+            contains("window control", ignoreCase = true)
 
     private fun String.isStaleEpochOrSession(): Boolean =
         contains("stale_session", ignoreCase = true) ||
