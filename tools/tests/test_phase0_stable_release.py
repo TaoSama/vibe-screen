@@ -1391,7 +1391,10 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["closed_required_gate_count"], 6)
         self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
         self.assertEqual(summary["owner_pr_guard"]["owner_prs"], [])
-        self.assertEqual(summary["owner_pr_guard"]["open_pr_numbers"], [])
+        self.assertEqual(
+            summary["owner_pr_guard"]["open_pr_numbers"],
+            manifest["open_pr_snapshot"]["open_pr_numbers"],
+        )
         self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
         self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
         self.assertEqual(summary["merged_pr_guard"]["excluded_pr_numbers"], [568, 576, 627])

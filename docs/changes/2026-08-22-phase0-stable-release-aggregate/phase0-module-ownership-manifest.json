@@ -3,7 +3,7 @@
   "kind": "phase0_module_ownership_current_base_manifest",
   "phase": "phase0",
   "source": {
-    "base_commit": "966ee31116dcfd890b2cd3355d4862daf0b659ba",
+    "base_commit": "b10c933ffc63808eadaa2ca2bd329aa696eb43a8",
     "base_ref": "origin/main",
     "audit_date": "2026-09-06",
     "owner": "Phase 0 module ownership extraction owner"
@@ -80,14 +80,16 @@
       "title": "StreamClient input envelope routing owner",
       "required_for_phase0_stable": true,
       "status": "closed",
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt",
       "evidence_paths": [
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/NativeInputWireTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientInputDispatchTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
       ],

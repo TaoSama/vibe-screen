@@ -85,9 +85,11 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputDispatcherTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/NativeInputWireTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientInputDispatchTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/OutboundCommandSchedulerTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamInputBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientOwnershipBoundaryContractTest.kt"
       ],
@@ -98,7 +100,7 @@
       "id": "stream_client_input_envelope_routing",
       "issues": [],
       "missing_evidence_paths": [],
-      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt",
+      "owner_surface": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/NativeInputWire.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ClientInputDispatch.kt; baseline/AndroidClient/app/src/main/java/dev/telemachus/display/OutboundCommandScheduler.kt",
       "required_for_phase0_stable": true,
       "status": "closed",
       "title": "StreamClient input envelope routing owner"
@@ -322,7 +324,7 @@
   "schema_version": "vibescreen.evidence/v1",
   "source": {
     "audit_date": "2026-09-06",
-    "base_commit": "966ee31116dcfd890b2cd3355d4862daf0b659ba",
+    "base_commit": "b10c933ffc63808eadaa2ca2bd329aa696eb43a8",
     "base_ref": "origin/main",
     "owner": "Phase 0 module ownership extraction owner"
   },
