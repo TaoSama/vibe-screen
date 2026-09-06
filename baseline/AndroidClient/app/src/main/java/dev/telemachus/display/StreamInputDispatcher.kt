@@ -180,6 +180,7 @@ internal class StreamInputDispatcher(
     ): Boolean {
         val current = state()
         if (!current.connected || !current.protocolV1 || !current.canSendPointer) return false
+        if (x !in 0f..1f || y !in 0f..1f) return false
         val submission =
             submitOutbound(
                 if (phase == InputPhase.INPUT_PHASE_CHANGED) {
@@ -209,6 +210,7 @@ internal class StreamInputDispatcher(
     ): Boolean {
         val current = state()
         if (!current.connected || !current.protocolV1 || !current.canSendPointer) return false
+        if (!deltaX.isFinite() || !deltaY.isFinite()) return false
         submitOutbound(
             // Scroll deltas are incremental and must not be coalesced with pointer moves.
             OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,

@@ -194,6 +194,24 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun pointerAndScrollRejectInvalidCoordinatesBeforeWireSubmission() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true),
+            recorder = recorder,
+        )
+
+        assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, -0.01f, 0.5f, 0))
+        assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 1.01f, 0.5f, 0))
+        assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, Float.NaN, 0.5f, 0))
+        assertFalse(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.5f, Float.POSITIVE_INFINITY, 0))
+        assertFalse(dispatcher.sendScroll(deltaX = Double.NaN, deltaY = 0.0))
+        assertFalse(dispatcher.sendScroll(deltaX = 0.0, deltaY = Double.NEGATIVE_INFINITY))
+
+        assertTrue(recorder.submissions.isEmpty())
+    }
+
+    @Test
     fun nativeInputReleaseWithPressedKeysRequiresKeyboardCapability() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(
