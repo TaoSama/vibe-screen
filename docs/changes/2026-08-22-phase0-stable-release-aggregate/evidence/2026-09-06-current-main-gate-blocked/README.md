@@ -1,7 +1,7 @@
 # 2026-09-06 Phase 0 stable-release aggregate current-main gate: blocked
 
 This record refreshes the Phase 0 stable-release aggregate owner on current
-`origin/main` commit `966ee31116dcfd890b2cd3355d4862daf0b659ba`. It does not
+`origin/main` commit `b10c933ffc63808eadaa2ca2bd329aa696eb43a8`. It does not
 close Phase 0 and does not change product status.
 
 ## Verdict
@@ -13,7 +13,7 @@ expected:
 
 ```sh
 make phase0-stable-release-gate \
-  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=966ee31116dcfd890b2cd3355d4862daf0b659ba \
+  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=b10c933ffc63808eadaa2ca2bd329aa696eb43a8 \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
@@ -24,20 +24,20 @@ The retained summary reports:
 - `required_gate_count=13`
 - `closed_required_gate_count=6`
 - `source_guard.verdict=pass` for commit
-  `966ee31116dcfd890b2cd3355d4862daf0b659ba`
+  `b10c933ffc63808eadaa2ca2bd329aa696eb43a8`
 - `readme_guard.verdict=pass`
 - `owner_pr_guard.verdict=pass` with no active owner PRs and current open PR
-  snapshot `[]`
+  snapshot containing PR #639
 - `phase0-module-ownership-summary.json` reports
   `can_close_phase0_module_ownership_extraction=true` with 13 of 13 required
   boundaries closed
 
 ## Current-main inputs
 
-GitHub reported no current open PRs (`[]`) at this refresh. PR #633 is now
-merged into the audited mainline base, along with PR #630, PR #631, and
-PR #632, rather than listed as an active owner PR. PR #569 through PR #575,
-PR #577 through PR #626, and PR #628 through PR #633 are merged into the audited mainline base. PR #568,
+GitHub reported current open PR #639 at this refresh. PR #638 is now
+merged into the audited mainline base, along with PR #634 through PR #637,
+rather than listed as an active owner PR. PR #569 through PR #575,
+PR #577 through PR #626, and PR #628 through PR #638 are merged into the audited mainline base. PR #568,
 PR #576, and closed-unmerged PR #627 are explicit non-merged exclusions from
 the declared PR range.
 
@@ -51,11 +51,14 @@ hardening, no-Host Android UI check stabilization, and P0110 no-Host UI/UX
 review evidence. PR #621 adds host-unreachable/route-unavailable guidance JVM
 coverage only, PR #622/#624/#626/#628/#629/#630 refresh aggregate evidence,
 PR #623 records no-Host UI/UX review evidence, PR #631/#632 harden evidence
-gates, and PR #633 stabilizes no-Host UI checks; none counts as USB/LAN route, TCP 54321,
+gates, PR #633 stabilizes no-Host UI checks, PR #635 hardens phase0 evidence
+guidance, PR #636 hardens Android audio protocol contracts, PR #637 isolates
+input move coalescing domains, and PR #638 hardens Android network-down
+connection guidance; none counts as USB/LAN route, TCP 54321,
 Host-backed product, or retained device evidence. These inputs do not replace
 Host-backed product evidence.
 
-Current main also passed GitHub Phase 0 checks run `34035564302`, including the
+Current main also passed GitHub Phase 0 checks run `34045280984`, including the
 protocol, phase3, Android, evidence-tools, and macOS jobs.
 
 ## Blocking required gates
@@ -98,17 +101,17 @@ converted to pass by this refresh.
 - `phase0-stable-release-exit.txt`: captured Make release-claim gate exit status,
   `2`, expected.
 - `head.txt`: audited local HEAD and `origin/main` commit.
-- `open-prs.json`: open PR snapshot, `[]`.
-- `merged-prs-568-633.jsonl`: merged PR range audit input from GitHub.
-- `closed-prs-568-633.json`: retained closed-unmerged PR range snapshot
+- `open-prs.json`: open PR snapshot containing PR #639.
+- `merged-prs-568-638.jsonl`: merged PR range audit input from GitHub.
+- `closed-prs-568-638.json`: retained closed-unmerged PR range snapshot
   proving PR #568, PR #576, and PR #627 did not land in the audited mainline
   base.
-- `pr-633-merged.json`: PR #633 merged-state snapshot.
-- `github-run-34035564302.json`: GitHub Phase 0 workflow snapshot for the audited
+- `pr-638-merged.json`: PR #638 merged-state snapshot.
+- `github-run-34045280984.json`: GitHub Phase 0 workflow snapshot for the audited
   commit.
-- `github-run-34035564291.json`: GitHub iOS engineering workflow snapshot for the audited
+- `github-run-34045280867.json`: GitHub iOS engineering workflow snapshot for the audited
   commit.
-- `github-run-34035564316.json`: GitHub HarmonyOS portable workflow snapshot for the audited
+- `github-run-34045280813.json`: GitHub HarmonyOS portable workflow snapshot for the audited
   commit.
 - `commands.txt`: command ledger for this refresh.
 - `SHA256SUMS`: artifact checksums.
