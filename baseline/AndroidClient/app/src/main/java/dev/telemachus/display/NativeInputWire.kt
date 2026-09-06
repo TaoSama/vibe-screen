@@ -15,6 +15,7 @@ internal object NativeInputWire {
     // PointerEvent.button_mask bits.
     const val BUTTON_PRIMARY = 1 shl 0
     const val BUTTON_SECONDARY = 1 shl 1
+    const val SUPPORTED_POINTER_BUTTON_MASK = BUTTON_PRIMARY or BUTTON_SECONDARY
 
     // Canonical standard USB HID modifier byte used inside the client.
     const val MODIFIER_CONTROL = 1 shl 0
@@ -40,6 +41,9 @@ internal object NativeInputWire {
         if (androidButtonState and MotionEvent.BUTTON_SECONDARY != 0) mask = mask or BUTTON_SECONDARY
         return mask
     }
+
+    fun hasOnlySupportedPointerButtons(buttonMask: Int): Boolean =
+        buttonMask >= 0 && buttonMask and SUPPORTED_POINTER_BUTTON_MASK.inv() == 0
 
     fun outboundButtonMask(
         action: ClientPointerAction,

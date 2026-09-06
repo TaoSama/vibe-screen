@@ -933,6 +933,18 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun pointerRejectsReservedButtonMaskBits() {
+        val session = nativeInputStreamingSession()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            session.pointer(200, InputPhase.INPUT_PHASE_BEGAN, 0.4, 0.6, buttonMask = 1 shl 2)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            session.pointer(201, InputPhase.INPUT_PHASE_BEGAN, 0.4, 0.6, buttonMask = -1)
+        }
+    }
+
+    @Test
     fun keyEventsRequireStreamingNegotiatedKeyboardAndPositiveInputId() {
         val beforeStreaming = sessionThroughDisplayStart()
         assertThrows(IllegalStateException::class.java) {

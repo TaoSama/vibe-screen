@@ -1201,6 +1201,80 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun peripheralInputRejectedAckReachesDiagnosticCallback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val configurationRequested = CountDownLatch(1)
+            val configurationApplied = CountDownLatch(1)
+            val peripheralAcked = CountDownLatch(1)
+            val acknowledgement = AtomicReference<Triple<String, Boolean, String>?>()
+            val client = StreamClient("127.0.0.1", server.localPort, advertisePeripheralInputFramework = true)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities =
+                                listOf(
+                                    Capability.CAPABILITY_TOUCH,
+                                    Capability.CAPABILITY_COLOR_MANAGEMENT,
+                                    Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK,
+                                ),
+                            negotiatedCapabilities =
+                                listOf(
+                                    Capability.CAPABILITY_TOUCH,
+                                    Capability.CAPABILITY_COLOR_MANAGEMENT,
+                                    Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK,
+                                ),
+                            expectedClientCapabilities =
+                                DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK,
+                        )
+                        assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
+                        val peripheral = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.PERIPHERAL_EVENT, peripheral.payloadCase)
+                        assertEquals("vendor-device", peripheral.peripheralEvent.peripheralKind)
+                        write(
+                            peer,
+                            base(6)
+                                .setInputAck(
+                                    InputAck
+                                        .newBuilder()
+                                        .setInputId(peripheral.peripheralEvent.inputId)
+                                        .setAccepted(false)
+                                        .setRejectionReason(UNSUPPORTED_PERIPHERAL_KIND_REJECTION_REASON),
+                                ).build(),
+                        )
+                        assertTrue(peripheralAcked.await(8, TimeUnit.SECONDS))
+                        write(peer, disconnect(id = 7))
+                    }
+                }
+            client.onVideoConfiguration = { _, commit ->
+                commit.accept()
+                configurationRequested.countDown()
+            }
+            client.onVideoConfigurationApplied = {
+                configurationApplied.countDown()
+            }
+            client.onPeripheralInputAck = { peripheralKind, accepted, rejectionReason ->
+                acknowledgement.set(Triple(peripheralKind, accepted, rejectionReason))
+                peripheralAcked.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
+            assertTrue(client.sendPeripheral("vendor-device", byteArrayOf(0x01, 0x02)))
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(
+                Triple("vendor-device", false, UNSUPPORTED_PERIPHERAL_KIND_REJECTION_REASON),
+                acknowledgement.get(),
+            )
+            Unit
+        }
+    }
+
+    @Test
     fun hostDisconnectNoticeInvalidatesLateDecoderCompletionWithoutAck() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)

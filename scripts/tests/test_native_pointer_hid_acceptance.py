@@ -82,6 +82,18 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
         self.assertEqual(acceptance.observed_android_event_device_ids(log), {"move": [11], "press": [12], "release": [11]})
 
+    def test_observed_android_events_accept_structured_forwarding_logs(self) -> None:
+        log = """
+        08-21 12:00:00.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=11 sources=MOUSE button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
+        08-21 12:00:01.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_press device_id=12 sources=MOUSE_RELATIVE button_state=1 action_button=1 wire_buttons=1 x=0.5 y=0.5 acceptance_evidence=external_gate_required
+        08-21 12:00:02.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_release device_id=11 sources=TOUCHPAD button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
+        08-21 12:00:03.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=-1 sources=MOUSE button_state=0 action_button=0 wire_buttons=0 x=0.2 y=0.2 acceptance_evidence=external_gate_required
+        08-21 12:00:04.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=13 sources=OTHER button_state=0 action_button=0 wire_buttons=0 x=0.1 y=0.1 acceptance_evidence=external_gate_required
+        """
+
+        self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
+        self.assertEqual(acceptance.observed_android_event_device_ids(log), {"move": [11], "press": [12], "release": [11]})
+
     def test_utc_timestamp_uses_z_suffix(self) -> None:
         created_at = acceptance.utc_timestamp()
 
@@ -145,7 +157,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
                 0,
                 "08-21 12:00:00.000 D MA      : stale before marker\n"
                 "08-21 12:00:00.000 I MA      : marker-123\n"
-                "08-21 12:00:00.001 D MA      : native pointer forwarded action=MOVE deviceId=11 source=MOUSE x=0.5 y=0.5\n",
+                "08-21 12:00:00.001 D MA      : peripheral_input kind=native_pointer_forwarded action=move device_id=11 sources=MOUSE x=0.5 y=0.5\n",
                 "",
             )
 
@@ -157,7 +169,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             adb.mock_calls[0],
             mock.call("SERIAL", ["shell", "log", "-t", acceptance.ANDROID_LOGCAT_TAG, "marker-123"], timeout=5.0),
         )
-        self.assertIn(b"native pointer forwarded action=MOVE", data)
+        self.assertIn(b"peripheral_input kind=native_pointer_forwarded", data)
         self.assertNotIn(b"stale before marker", data)
 
     def test_logcat_capture_requires_marker(self) -> None:

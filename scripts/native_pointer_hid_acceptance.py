@@ -52,14 +52,29 @@ ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_PATTERN = r"\S*(?:MOUSE|MOUSE_RELATIVE|TOUCHPAD|TRACKBALL)\S*"
 VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
 ANDROID_POINTER_PATTERNS = {
-    "move": re.compile(
-        rf"native pointer forwarded action=MOVE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+    "move": (
+        re.compile(
+            rf"native pointer forwarded action=MOVE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+        ),
+        re.compile(
+            rf"peripheral_input kind=native_pointer_forwarded\b(?=[^\n]*\baction=move\b)(?=[^\n]*\bdevice_id=([1-9]\d*)\b)(?=[^\n]*\bsources={ANDROID_MOUSE_SOURCE_PATTERN})"
+        ),
     ),
-    "press": re.compile(
-        rf"native pointer forwarded action=BUTTON_PRESS\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+    "press": (
+        re.compile(
+            rf"native pointer forwarded action=BUTTON_PRESS\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+        ),
+        re.compile(
+            rf"peripheral_input kind=native_pointer_forwarded\b(?=[^\n]*\baction=button_press\b)(?=[^\n]*\bdevice_id=([1-9]\d*)\b)(?=[^\n]*\bsources={ANDROID_MOUSE_SOURCE_PATTERN})"
+        ),
     ),
-    "release": re.compile(
-        rf"native pointer forwarded action=BUTTON_RELEASE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+    "release": (
+        re.compile(
+            rf"native pointer forwarded action=BUTTON_RELEASE\b(?=[^\n]*\bdeviceId=([1-9]\d*)\b)(?=[^\n]*\bsource={ANDROID_MOUSE_SOURCE_PATTERN})"
+        ),
+        re.compile(
+            rf"peripheral_input kind=native_pointer_forwarded\b(?=[^\n]*\baction=button_release\b)(?=[^\n]*\bdevice_id=([1-9]\d*)\b)(?=[^\n]*\bsources={ANDROID_MOUSE_SOURCE_PATTERN})"
+        ),
     ),
 }
 
@@ -427,13 +442,13 @@ def observed_events(log_text: str) -> list[str]:
 
 
 def observed_android_events(log_text: str) -> list[str]:
-    return [name for name, pattern in ANDROID_POINTER_PATTERNS.items() if pattern.search(log_text)]
+    return [name for name, patterns in ANDROID_POINTER_PATTERNS.items() if any(pattern.search(log_text) for pattern in patterns)]
 
 
 def observed_android_event_device_ids(log_text: str) -> dict[str, list[int]]:
     observed: dict[str, list[int]] = {}
-    for name, pattern in ANDROID_POINTER_PATTERNS.items():
-        device_ids = sorted({int(match.group(1)) for match in pattern.finditer(log_text)})
+    for name, patterns in ANDROID_POINTER_PATTERNS.items():
+        device_ids = sorted({int(match.group(1)) for pattern in patterns for match in pattern.finditer(log_text)})
         if device_ids:
             observed[name] = device_ids
     return observed

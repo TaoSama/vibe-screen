@@ -9,6 +9,32 @@ import org.junit.Test
 
 class ControllerSessionFeedbackTest {
     @Test
+    fun peripheralInputAckTrackerBoundsPendingInputs() {
+        val tracker = PeripheralInputAckTracker(maximumPendingInputs = 2)
+
+        tracker.record(10, "first")
+        tracker.record(11, "second")
+        tracker.record(12, "third")
+
+        assertEquals(2, tracker.pendingCount())
+        assertNull(tracker.acknowledge(10))
+        assertEquals("second", tracker.acknowledge(11))
+        assertEquals("third", tracker.acknowledge(12))
+    }
+
+    @Test
+    fun peripheralInputAckTrackerRejectsDuplicateInputId() {
+        val tracker = PeripheralInputAckTracker()
+
+        tracker.record(10, "first")
+
+        assertThrows(IllegalStateException::class.java) {
+            tracker.record(10, "second")
+        }
+        assertEquals("first", tracker.acknowledge(10))
+    }
+
+    @Test
     fun connectionTrackerIsIdempotentAndRejectsConflictingMappings() {
         val tracker = ControllerConnectionAckTracker()
 

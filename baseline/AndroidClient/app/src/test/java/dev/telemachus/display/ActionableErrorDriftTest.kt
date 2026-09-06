@@ -60,6 +60,29 @@ class ActionableErrorDriftTest {
         }
     }
 
+    @Test
+    fun unsupportedPeripheralKindContractKeepsStructuredDiagnosticsEvidence() {
+        val state = requireNotNull(loadStatesById()["android-unsupported-peripheral-kind"]) {
+            "Missing android-unsupported-peripheral-kind state"
+        }
+        val evidence = state.getAsJsonArray("offline_evidence").map { it.asString }
+
+        assertEquals("covered-offline", state.get("gate_status").asString)
+        assertFalse(state.get("readme_gate_closure").asBoolean)
+        assertTrue(
+            "generic peripheral row must cite Android structured diagnostics evidence",
+            evidence.contains("baseline/AndroidClient/app/src/test/java/dev/telemachus/display/PeripheralInputDiagnosticsTest.kt"),
+        )
+        assertTrue(
+            "generic peripheral row must cite real Protocol v1 rejected ACK callback evidence",
+            evidence.contains("baseline/AndroidClient/app/src/test/java/dev/telemachus/display/StreamClientProtocolV1IntegrationTest.kt"),
+        )
+        assertTrue(
+            state.get("source_classifier").asString,
+            state.get("source_classifier").asString.contains(UNSUPPORTED_PERIPHERAL_KIND_REJECTION_REASON),
+        )
+    }
+
     private fun loadActionableErrorMatrix(): Map<String, JsonObject> {
         val matrix = JsonParser.parseString(actionableErrorMatrixFile().readText()).asJsonObject
         val states = matrix.getAsJsonArray("states")
@@ -69,6 +92,18 @@ class ActionableErrorDriftTest {
                 val contract = state.getAsJsonObject("contract") ?: return@forEach
                 val code = contract.get("code")?.asString ?: return@forEach
                 put(code, state)
+            }
+        }
+    }
+
+    private fun loadStatesById(): Map<String, JsonObject> {
+        val matrix = JsonParser.parseString(actionableErrorMatrixFile().readText()).asJsonObject
+        val states = matrix.getAsJsonArray("states")
+        return buildMap {
+            states.forEach { element ->
+                val state = element.asJsonObject
+                val id = state.get("id")?.asString ?: return@forEach
+                put(id, state)
             }
         }
     }

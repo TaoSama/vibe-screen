@@ -25,6 +25,7 @@ internal class StreamInputDispatcher(
     private val submitOutbound:
         (OutboundCommandScheduler.Kind, StreamOutboundCommand, Long) -> OutboundCommandScheduler.Submission,
     private val controllerConnectionAcks: ControllerConnectionAckTracker,
+    private val peripheralInputAcks: PeripheralInputAckTracker,
     private val maximumDeferredControllerDispatches: Int = MAXIMUM_CONTROLLER_STRUCTURAL_BATCHES,
     private val onControllerDeferredOverflow: () -> Unit = {},
     private val onControllerAckTimeout: (List<ControllerConnection>) -> Unit = {},
@@ -181,6 +182,7 @@ internal class StreamInputDispatcher(
         val current = state()
         if (!current.connected || !current.protocolV1 || !current.canSendPointer) return false
         if (x !in 0f..1f || y !in 0f..1f) return false
+        if (!NativeInputWire.hasOnlySupportedPointerButtons(buttonMask)) return false
         val submission =
             submitOutbound(
                 if (phase == InputPhase.INPUT_PHASE_CHANGED) {
@@ -621,13 +623,17 @@ internal class StreamInputDispatcher(
         if (peripheralKind.isBlank() || kindBytes.size > ProtocolV1Session.MAX_PERIPHERAL_KIND_BYTES) return false
         if (payload.size > ProtocolV1Session.MAX_PERIPHERAL_PAYLOAD_BYTES) return false
         val stablePayload = payload.copyOf()
+        val inputId = nextInputId.getAndIncrement()
+        peripheralInputAcks.record(inputId, peripheralKind)
         val submission =
             submitOutbound(
                 OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                StreamOutboundCommand.ProtocolBatch { activeSession ->
+                StreamOutboundCommand.ProtocolBatch(
+                    onUnavailable = { peripheralInputAcks.acknowledge(inputId) },
+                ) { activeSession ->
                     listOf(
                         activeSession.peripheral(
-                            inputId = nextInputId.getAndIncrement(),
+                            inputId = inputId,
                             peripheralKind = peripheralKind,
                             payload = stablePayload,
                         ),
@@ -635,7 +641,9 @@ internal class StreamInputDispatcher(
                 },
                 0,
             )
-        return submission.wasAdmitted()
+        val admitted = submission.wasAdmitted()
+        if (!admitted) peripheralInputAcks.acknowledge(inputId)
+        return admitted
     }
 
     private fun StylusToolKind.toProtocol(): dev.vibescreen.protocol.v1.StylusToolKind =

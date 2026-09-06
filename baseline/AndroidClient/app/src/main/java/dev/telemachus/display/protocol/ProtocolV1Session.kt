@@ -1293,6 +1293,9 @@ internal class ProtocolV1Session(
         check(Capability.CAPABILITY_POINTER in negotiatedCapabilities) { "Pointer was not negotiated" }
         require(inputId > 0 && phase != InputPhase.INPUT_PHASE_UNSPECIFIED)
         require(x in 0.0..1.0 && y in 0.0..1.0)
+        require(NativeInputWire.hasOnlySupportedPointerButtons(buttonMask)) {
+            "Pointer button mask contains unsupported bits"
+        }
         val event =
             PointerEvent
                 .newBuilder()
