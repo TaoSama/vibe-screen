@@ -334,6 +334,14 @@ class ClientExperienceTest {
 
     @Test
     fun `control buttons stay explainable when managed policy denies a negotiated surface`() {
+        val allowed =
+            ManagedPolicyControlAvailabilityPolicy.presentation(
+                capabilityAvailable = true,
+                runtimeEnabled = true,
+                policyAllowed = true,
+                defaultLabelResource = R.string.control_clipboard,
+                policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
+            )
         val denied =
             ManagedPolicyControlAvailabilityPolicy.presentation(
                 capabilityAvailable = true,
@@ -367,6 +375,9 @@ class ClientExperienceTest {
                 policyDeniedLabelResource = R.string.control_clipboard_policy_disabled,
             )
 
+        assertTrue(allowed.visible)
+        assertTrue(allowed.enabled)
+        assertEquals(R.string.control_clipboard, allowed.labelResource)
         assertTrue(denied.visible)
         assertFalse(denied.enabled)
         assertEquals(R.string.control_clipboard_policy_disabled, denied.labelResource)
