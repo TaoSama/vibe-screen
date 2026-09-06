@@ -1,0 +1,7 @@
+final_reverse_list:
+UsbFfs tcp:8908 tcp:8908
+
+final_window_state:
+  mCurrentFocus=Window{7a38ead u0 NotificationShade}
+  mFocusedApp=null
+    mShowingDream=false mDreamingLockscreen=true

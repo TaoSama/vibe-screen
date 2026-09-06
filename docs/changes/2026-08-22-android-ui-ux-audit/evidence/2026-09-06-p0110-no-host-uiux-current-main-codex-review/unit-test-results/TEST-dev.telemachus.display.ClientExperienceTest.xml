@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.ClientExperienceTest" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-09-06T03:58:45" hostname="Mac.local" time="0.03">
+  <properties/>
+  <testcase name="transfer readiness reports unnegotiated controls without claiming support" classname="dev.telemachus.display.ClientExperienceTest" time="0.001"/>
+  <testcase name="quarter turns swap viewport aspect and preserve decoder surface orientation" classname="dev.telemachus.display.ClientExperienceTest" time="0.006"/>
+  <testcase name="gesture shortcut unavailable copy distinguishes policy denial from capability gaps" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="control buttons stay explainable when managed policy denies a negotiated surface" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="lan clipboard confirmation mirrors negotiated protection state" classname="dev.telemachus.display.ClientExperienceTest" time="0.001"/>
+  <testcase name="control policy surface preserves discovered controls across later policy denials" classname="dev.telemachus.display.ClientExperienceTest" time="0.004"/>
+  <testcase name="transfer readiness stays waiting before a compatible Mac session" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="streaming status distinguishes transport security" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="fill viewport covers parent while quarter turn swaps surface dimensions" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="control policy surface refreshes host action catalog without losing other discovered controls" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="transfer readiness distinguishes partial and full negotiated controls" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="saved enum parsing falls back safely" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="transfer readiness reports managed policy blocks before compatibility fallback" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="legacy session exposes touch without claiming unnegotiated controls" classname="dev.telemachus.display.ClientExperienceTest" time="0.001"/>
+  <testcase name="fit surface preserves non-square video aspect while fill matches constraints" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="transfer readiness keeps negotiated transfer state ahead of wake and fixed host policy hints" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="client rotation composes with normalized host rotation" classname="dev.telemachus.display.ClientExperienceTest" time="0.015"/>
+  <testcase name="lan streaming status does not report legacy or unknown protection as encrypted" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="surface transform stays client local when host rotation changes" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="transfer readiness reports wake and fixed host policy blocks while disconnected" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="effective host rotation maps only to Android screen orientation" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="normalizes arbitrary rotation to the nearest display quadrant" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <testcase name="transfer readiness reports local managed policy blocks while disconnected" classname="dev.telemachus.display.ClientExperienceTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

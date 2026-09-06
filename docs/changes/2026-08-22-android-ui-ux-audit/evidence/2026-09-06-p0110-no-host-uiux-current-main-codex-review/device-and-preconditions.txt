@@ -1,0 +1,14 @@
+source_head=377516f0e53f05bf4d48e869e7e46e75a2130236
+source_branch=android-no-host-uiux-p0110-review
+origin_main=377516f0e53f05bf4d48e869e7e46e75a2130236
+device_serial=<redacted-adb-serial>
+manufacturer=nubia
+model=P0110
+device=pacific
+android_release=16
+android_sdk=36
+wm_size=Physical size: 1264x2800
+wm_density=Physical density: 560
+font_scale=1.0
+reverse_list_before:
+UsbFfs tcp:8908 tcp:8908

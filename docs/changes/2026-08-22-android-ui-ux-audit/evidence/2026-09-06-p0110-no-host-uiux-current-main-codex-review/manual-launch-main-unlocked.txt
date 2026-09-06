@@ -1,0 +1,15 @@
+pre_unlock_window:
+  mCurrentFocus=Window{7a38ead u0 NotificationShade}
+  mFocusedApp=ActivityRecord{4689387 u0 dev.telemachus.display/.MainActivity t1543}
+    mShowingDream=false mDreamingLockscreen=true
+wake_and_dismiss_keyguard
+launch_component
+Starting: Intent { cmp=dev.telemachus.display/.MainActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+post_launch_window:
+  mCurrentFocus=Window{7a38ead u0 NotificationShade}
+  mFocusedApp=ActivityRecord{4689387 u0 dev.telemachus.display/.MainActivity t1543}
+    mShowingDream=false mDreamingLockscreen=true
+reverse_list_after_launch:
+UsbFfs tcp:8908 tcp:8908
+
