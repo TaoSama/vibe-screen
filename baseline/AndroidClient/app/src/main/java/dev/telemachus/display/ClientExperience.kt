@@ -1400,6 +1400,52 @@ internal object InternetProfileActionsLayoutPolicy {
 }
 
 /**
+ * Keeps the Internet disconnect/settings/revoke row readable at accessibility
+ * text scales without changing the compact default disconnected layout.
+ */
+internal object InternetSecondaryActionsLayoutPolicy {
+    enum class Orientation {
+        VERTICAL,
+        HORIZONTAL,
+    }
+
+    data class Layout(
+        val orientation: Orientation,
+        val buttonWidthMatchParent: Boolean,
+        val buttonWeight: Float,
+        val interButtonMarginStartPx: Int,
+        val interButtonMarginTopPx: Int,
+    )
+
+    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionModeToggleLayoutPolicy.STACKED_FONT_SCALE_THRESHOLD
+
+    fun resolve(
+        stackedContent: Boolean,
+        fontScale: Float,
+        gapPx: Int,
+    ): Layout {
+        val resolvedGapPx = gapPx.coerceAtLeast(0)
+        return if (stackedContent && fontScale >= STACKED_FONT_SCALE_THRESHOLD) {
+            Layout(
+                orientation = Orientation.VERTICAL,
+                buttonWidthMatchParent = true,
+                buttonWeight = 0f,
+                interButtonMarginStartPx = 0,
+                interButtonMarginTopPx = resolvedGapPx,
+            )
+        } else {
+            Layout(
+                orientation = Orientation.HORIZONTAL,
+                buttonWidthMatchParent = false,
+                buttonWeight = 1f,
+                interButtonMarginStartPx = resolvedGapPx,
+                interButtonMarginTopPx = 0,
+            )
+        }
+    }
+}
+
+/**
  * Keeps the USB diagnostic card breathable at accessibility text scales while
  * preserving its full, selectable recovery copy.
  */

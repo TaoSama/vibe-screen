@@ -723,10 +723,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             startChecklistUpdates()
         }
-        applyConnectionPanelLayout(mode)
         if (!isConnected) {
             applyDisconnectedSettingsEntryPolicy()
         }
+        applyConnectionPanelLayout(mode)
         updateDisconnectedHeader(mode)
     }
 
@@ -1018,12 +1018,12 @@ class MainActivity : AppCompatActivity() {
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
         connectionSubtitleDisclosure.reset()
-        applyConnectionPanelLayout()
         applyControlBarLayout()
         applyStatusOverlayLayout()
         if (!isConnected) {
             applyDisconnectedSettingsEntryPolicy()
         }
+        applyConnectionPanelLayout()
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
@@ -1833,6 +1833,7 @@ class MainActivity : AppCompatActivity() {
         refreshInternetProfileUi()
         if (internetSession != null && internetRevocationCoordinator.hasActiveReservation()) {
             binding.internetDisconnectButton.visibility = View.VISIBLE
+            applyConnectionPanelLayout()
         }
     }
 
@@ -2084,6 +2085,7 @@ class MainActivity : AppCompatActivity() {
         binding.settingsPanel.visibility = View.GONE
         binding.connectionSettingsButton.visibility = View.GONE
         binding.internetConnectionSettingsButton.visibility = View.GONE
+        applyConnectionPanelLayout()
         LiveRegionTextApplier.apply(binding.statusText, connectedStatus)
         updateOverlayVisibility(prefs.showStatsOverlay)
         revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
@@ -2108,6 +2110,7 @@ class MainActivity : AppCompatActivity() {
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
         applyDisconnectedSettingsEntryPolicy()
+        applyConnectionPanelLayout()
         binding.statusBar.visibility = View.GONE
         binding.connectionSecurityGroup.visibility = View.GONE
         binding.connectButton.isEnabled = true
@@ -5588,6 +5591,7 @@ class MainActivity : AppCompatActivity() {
             refreshTransferReadinessInSettings()
             binding.internetConnectButton.isEnabled = false
             binding.internetDisconnectButton.visibility = View.VISIBLE
+            applyConnectionPanelLayout()
             LiveRegionTextApplier.hide(binding.internetErrorText)
             internetTickJob =
                 lifecycleScope.launch(Dispatchers.Default) {
@@ -5959,6 +5963,7 @@ class MainActivity : AppCompatActivity() {
         binding.internetImportProfileButton.isEnabled = false
         binding.internetScanProfileButton.isEnabled = false
         binding.internetDisconnectButton.visibility = View.VISIBLE
+        applyConnectionPanelLayout()
         setStreamingWindowState(false)
         showDisconnectedStreamUi()
         android.util.Log.e(INTERNET_LOG_TAG, "Internet session retained behind a failed durable revocation barrier", failure)

@@ -158,6 +158,67 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
+    fun `internet secondary actions stack for large-font single-column layout`() {
+        val layout =
+            InternetSecondaryActionsLayoutPolicy.resolve(
+                stackedContent = true,
+                fontScale = 1.3f,
+                gapPx = 8,
+            )
+
+        assertEquals(InternetSecondaryActionsLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+        assertEquals(0, layout.interButtonMarginStartPx)
+        assertEquals(8, layout.interButtonMarginTopPx)
+    }
+
+    @Test
+    fun `internet secondary actions stay side by side for default font`() {
+        val layout =
+            InternetSecondaryActionsLayoutPolicy.resolve(
+                stackedContent = true,
+                fontScale = 1.0f,
+                gapPx = 8,
+            )
+
+        assertEquals(InternetSecondaryActionsLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+        assertEquals(8, layout.interButtonMarginStartPx)
+        assertEquals(0, layout.interButtonMarginTopPx)
+    }
+
+    @Test
+    fun `internet secondary actions stay side by side outside single-column layout`() {
+        val layout =
+            InternetSecondaryActionsLayoutPolicy.resolve(
+                stackedContent = false,
+                fontScale = 1.3f,
+                gapPx = 8,
+            )
+
+        assertEquals(InternetSecondaryActionsLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+        assertEquals(8, layout.interButtonMarginStartPx)
+        assertEquals(0, layout.interButtonMarginTopPx)
+    }
+
+    @Test
+    fun `internet secondary action gap is clamped to zero`() {
+        val layout =
+            InternetSecondaryActionsLayoutPolicy.resolve(
+                stackedContent = true,
+                fontScale = 1.3f,
+                gapPx = -8,
+            )
+
+        assertEquals(0, layout.interButtonMarginStartPx)
+        assertEquals(0, layout.interButtonMarginTopPx)
+    }
+
+    @Test
     fun `diagnostic card keeps compact padding at default font scale`() {
         val layout =
             ConnectionDiagnosticsLayoutPolicy.resolve(

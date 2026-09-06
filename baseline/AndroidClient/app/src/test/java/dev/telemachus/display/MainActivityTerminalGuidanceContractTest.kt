@@ -423,9 +423,19 @@ class MainActivityTerminalGuidanceContractTest {
             disconnected.contains("applyDisconnectedSettingsEntryPolicy()"),
         )
         assertTrue(
+            "Disconnected state must resolve settings visibility before laying out secondary Internet actions",
+            disconnected.replace(Regex("\\s+"), "")
+                .contains("applyDisconnectedSettingsEntryPolicy()applyConnectionPanelLayout()"),
+        )
+        assertTrue(
             "Configuration changes must re-expose the inline settings entry while disconnected",
             configurationChanged.contains("if (!isConnected)") &&
                 configurationChanged.contains("applyDisconnectedSettingsEntryPolicy()"),
+        )
+        assertTrue(
+            "Configuration changes must resolve disconnected settings visibility before relaying out secondary Internet actions",
+            configurationChanged.replace(Regex("\\s+"), "")
+                .contains("if(!isConnected){applyDisconnectedSettingsEntryPolicy()}applyConnectionPanelLayout()"),
         )
     }
 
@@ -609,17 +619,20 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
-    fun internetSecondaryActionsShareCompactAccessibleRow() {
+    fun internetSecondaryActionsUseResponsiveAccessibleLayout() {
         val source = mainActivityLayoutSource()
         val row = source.substring(
             source.indexOf("android:id=\"@+id/internetSecondaryActions\""),
             source.indexOf("android:id=\"@+id/internetErrorText\""),
         )
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
         val settingsIndex = row.indexOf("android:id=\"@+id/internetConnectionSettingsButton\"")
         val disconnectIndex = row.indexOf("android:id=\"@+id/internetDisconnectButton\"")
         val revokeIndex = row.indexOf("android:id=\"@+id/internetRevokeButton\"")
 
-        assertTrue("Internet secondary actions should render in one compact row", row.contains("android:orientation=\"horizontal\""))
+        assertTrue("Internet secondary actions should default to one compact row", row.contains("android:orientation=\"horizontal\""))
         assertTrue("Settings, disconnect, and revoke should share the same row order", settingsIndex >= 0 && settingsIndex < disconnectIndex && disconnectIndex < revokeIndex)
         listOf("internetConnectionSettingsButton", "internetDisconnectButton", "internetRevokeButton").forEach { id ->
             val button = extractXmlElement(row, "android:id=\"@+id/$id\"")
@@ -636,6 +649,12 @@ class MainActivityTerminalGuidanceContractTest {
                     button.contains("app:autoSizeMaxTextSize=\"14sp\""),
             )
         }
+        assertTrue(
+            "ConnectionPanelLayoutApplier must re-resolve secondary action orientation after rotation or font-scale changes",
+            applier.contains("applyInternetSecondaryActionsLayout(") &&
+                applier.contains("InternetSecondaryActionsLayoutPolicy.resolve(") &&
+                applier.contains("R.dimen.connection_profile_action_gap"),
+        )
     }
 
     @Test
@@ -1308,6 +1327,10 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Mode visibility must render disclosure state from the requested mode",
             compactModeVisibility.contains("applyConnectionPanelLayout(mode)"),
+        )
+        assertTrue(
+            "Mode visibility must resolve disconnected settings affordances before laying out secondary Internet actions",
+            compactModeVisibility.contains("if(!isConnected){applyDisconnectedSettingsEntryPolicy()}applyConnectionPanelLayout(mode)"),
         )
         assertTrue(
             "Configuration-driven callers may still use the current persisted mode by default",
