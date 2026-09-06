@@ -1,0 +1,13 @@
+git fetch --prune origin
+git rebase origin/main --autostash
+git rev-parse HEAD origin/main
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url
+gh pr list --repo TaoSama/vibe-screen --state merged --limit 100 --json number,title,mergedAt,headRefOid,url --jq '.[] | select(.number>=568 and .number<=621)'
+gh pr list --repo TaoSama/vibe-screen --state closed --limit 200 --json number,title,state,mergedAt,headRefOid,url --jq '[.[] | select(.number>=568 and .number<=621 and .mergedAt==null)]'
+gh pr view 621 --repo TaoSama/vibe-screen --json number,title,state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,url,files,body
+gh run view 34007427903 --repo TaoSama/vibe-screen --json databaseId,workflowName,displayTitle,status,conclusion,headSha,createdAt,updatedAt,url,jobs
+gh run watch 34007427903 --repo TaoSama/vibe-screen --exit-status
+make phase0-module-ownership-gate
+make phase0-stable-release-gate
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git rev-parse origin/main) PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
+shasum -a 256 -c docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-06-current-main-gate-blocked/SHA256SUMS

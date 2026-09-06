@@ -3,18 +3,20 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "3c97f98f21e8bc2a58f44a0a1e586f78cb874e89",
+    "base_commit": "a3fbc0f52ab14b119995fe1c63858f901a052ba6",
     "base_ref": "origin/main",
-    "audit_date": "2026-09-04",
+    "audit_date": "2026-09-06",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
-    "queried_at": "2026-09-04",
+    "queried_at": "2026-09-06",
     "state": "open",
-    "open_pr_numbers": []
+    "open_pr_numbers": [
+      622
+    ]
   },
   "readme_guard": {
     "required_phrases": [
@@ -50,7 +52,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33891389089"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903"
       ],
       "owner_prs": [],
       "blockers": []
@@ -63,7 +65,9 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33891389089"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionGuidance.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt"
       ],
       "owner_prs": [],
       "blockers": []
@@ -76,7 +80,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/33891389089",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -228,15 +232,18 @@
         "docs/changes/2026-08-16-android-macos-clipboard/TEST.md",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/README.md",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-29-nubia-p0110-clipboard-current-base-gate-blocked/clipboard-e2e-gate.json",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/README.md",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-05-nubia-p0110-clipboard-android-baseline-blocked/clipboard-e2e-gate.json",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/README.md",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-28-nubia-p0110-clipboard-android-e2e-smoke-blocked/clipboard-e2e-gate.json",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientExperienceTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityClipboardSystemBoundaryContractTest.kt",
         "docs/changes/2026-08-28-p0110-usb-current-source/evidence/2026-08-28-p0110-pacific-usb-e2e-current-source/clipboard-e2e-gate.json"
       ],
       "owner_prs": [],
       "blockers": [
         "Host readiness is blocked on stable signing, installed Host source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, Host listener availability, virtual HID entitlement, and login/headless readiness.",
-        "Android now requires explicit overwrite confirmation before writing solicited or direct Mac clipboard content into ClipboardManager, but this is source/contract readiness rather than system-pasteboard product E2E.",
+        "Android now requires explicit overwrite confirmation, pending-action status visibility, duplicate action suppression, PR #620 allowed-state managed-policy control happy-path coverage, and control-boundary coverage before writing solicited or direct Mac clipboard content into ClipboardManager, but this is source/contract and local Android readiness rather than system-pasteboard product E2E.",
         "No retained bidirectional Android ClipboardManager -> macOS NSPasteboard and macOS NSPasteboard -> Android ClipboardManager product transfer evidence exists with exact system clipboard endpoints, explicit user action, Protocol v1 session ownership, verified session epoch, verified origin device ID, 16-byte change ID, SHA-256 digest, bounded byte length, final digest match, distinct markers, and final marker equality.",
         "Existing P0110 evidence proves only local Android ClipboardManager smoke and offline/protocol readiness; it must not be relabeled as Xiaomi 13/fuxi evidence."
       ]
@@ -251,11 +258,14 @@
         "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/README.md",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/no-host-transfer-controls-summary.json",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-no-host-uiux-current-source/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-06-nubia-p0110-no-host-uiux-expanded-current-main/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-08-29-nubia-p0110-file-transfer-current-base-readiness/file-transfer-android-smoke-gate.json",
         "docs/changes/2026-09-04-android-transfer-readiness-settings/evidence/2026-09-04-p0110-no-host-transfer-ui-smoke/README.md",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientExperienceTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ProductSessionCoordinatorTest.kt",
         "tools/vibescreen_evidence/file_transfer_bulk_current_base_gate.py",
@@ -266,6 +276,7 @@
         "Host readiness is blocked on stable signing, source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, virtual HID entitlement, and login/headless readiness.",
         "Android now exposes incoming file-transfer progress and user cancellation in source and contract tests, but this is not a retained Host-backed bidirectional product transfer pass.",
         "Android PR #551/#552/#553 and PR #560/#561 add no-Host readiness, outgoing progress, control reachability, and progress-state race hardening, but these are source/contract readiness rather than retained Host-backed bidirectional product transfer evidence.",
+        "PR #590, PR #597, PR #609, PR #612, PR #615, PR #616, and PR #619 add transfer-progress layout, no-Host boundary, runtime-loss, settings-heading, selectable guidance, and app-specific local-save cleanup coverage, but all remain source/unit/no-Host readiness.",
         "PR #555 and PR #562 record P0110 no-Host transfer UI smoke only; they do not prove real Host readiness, stream establishment, Protocol v1 handshake with a real Host, or Android/macOS file bytes landing behavior.",
         "PR #563 keeps active outgoing transfer controls visible while sending and resets disconnected transfer controls with Android source-level contract coverage only.",
         "PR #564 treats Internet outgoing file-transfer cancellation as locally successful after local owner cleanup and retains fail-closed session behavior when the reliable cancel frame is rejected, but this is Internet semantic offline coverage only.",
