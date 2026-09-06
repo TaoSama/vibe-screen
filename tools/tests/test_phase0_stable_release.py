@@ -43,6 +43,10 @@ COMPLETE_MANIFEST_STRENGTHS = {
     "file_transfer_android_product_e2e": "current-real-device",
     "module_ownership_extraction": "current-source",
 }
+MERGED_PR_COMMAND = (
+    "gh pr list --repo TaoSama/vibe-screen --state merged --base main "
+    "--limit 100 --json number,title,baseRefName,mergeCommit,url"
+)
 
 
 def gate_by_id(manifest: dict[str, object], gate_id: str) -> dict[str, object]:
@@ -126,39 +130,92 @@ def with_temporary_repo(callback: Callable[[Path, str], None]) -> None:
         callback(repo, base_commit)
 
 
+def add_merged_pr_snapshot(
+    manifest: dict[str, object],
+    repo: Path,
+    audited_source_commit: str,
+    *,
+    merge_commit: str | None = None,
+    entry_base: str = "main",
+    path: str = "merged-prs.jsonl",
+) -> None:
+    snapshot_path = repo / path
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.write_text(
+        json.dumps({
+            "number": 158,
+            "title": "Merged owner",
+            "baseRefName": entry_base,
+            "mergeCommit": {"oid": merge_commit or audited_source_commit},
+            "url": "https://github.com/TaoSama/vibe-screen/pull/158",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest["merged_pr_snapshot"] = {
+        "repository": "TaoSama/vibe-screen",
+        "command": MERGED_PR_COMMAND,
+        "state": "merged",
+        "base": "main",
+        "range": {"min": 158, "max": 158},
+        "path": path,
+        "audited_source_commit": audited_source_commit,
+    }
+
+
+def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[str, object]:
+    manifest = complete_manifest()
+    manifest["source"]["base_commit"] = audited_source_commit
+    add_merged_pr_snapshot(manifest, repo, audited_source_commit)
+    return manifest
+
+
 class Phase0StableReleaseTest(unittest.TestCase):
     def test_pass_requires_all_required_gates(self) -> None:
-        summary = evaluate_manifest(
-            complete_manifest(), readme_text="Phase 0 stable-release summary"
-        )
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
 
-        self.assertEqual(summary["aggregate_verdict"], "pass")
-        self.assertTrue(summary["can_mark_phase0_stable_release"])
-        self.assertEqual(summary["blocking_required_gates"], [])
-        self.assertEqual(summary["source_guard"]["verdict"], "pass")
-        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertTrue(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(summary["blocking_required_gates"], [])
+            self.assertEqual(summary["source_guard"]["verdict"], "pass")
+            self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
+
+        with_temporary_repo(run)
 
     def test_open_sub_gate_blocks_aggregate_without_failing_readme_guard(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
-        gate["verdict"] = "blocked"
-        gate["evidence_strength"] = "readiness"
-        gate["evidence_paths"] = []
-        gate["blockers"] = ["host_rss_gate has no current-source pass"]
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+            gate["verdict"] = "blocked"
+            gate["evidence_strength"] = "readiness"
+            gate["evidence_paths"] = []
+            gate["blockers"] = ["host_rss_gate has no current-source pass"]
 
-        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+            summary = evaluate_manifest(
+                manifest, readme_text=GUARDED_README_TEXT, repo_root=repo
+            )
 
-        self.assertEqual(summary["aggregate_verdict"], "blocked")
-        self.assertFalse(summary["can_mark_phase0_stable_release"])
-        self.assertEqual(
-            [gate["id"] for gate in summary["blocking_required_gates"]],
-            ["host_rss_2h_no_growth"],
-        )
-        self.assertEqual(summary["readme_guard"]["verdict"], "pass")
-        self.assertIn(
-            "host_rss_2h_no_growth: host_rss_gate has no current-source pass",
-            summary["reasons"],
-        )
+            self.assertEqual(summary["aggregate_verdict"], "blocked")
+            self.assertFalse(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(
+                [gate["id"] for gate in summary["blocking_required_gates"]],
+                ["host_rss_2h_no_growth"],
+            )
+            self.assertEqual(summary["readme_guard"]["verdict"], "pass")
+            self.assertIn(
+                "host_rss_2h_no_growth: host_rss_gate has no current-source pass",
+                summary["reasons"],
+            )
+
+        with_temporary_repo(run)
 
     def test_readme_guard_fails_on_premature_shipped_claim(self) -> None:
         manifest = complete_manifest()
@@ -229,16 +286,21 @@ class Phase0StableReleaseTest(unittest.TestCase):
         )
 
     def test_retained_real_device_strength_only_closes_android_baseline_gate(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "android_device_usb_stream_reconnect_codec")
-        gate["evidence_strength"] = "real-device"
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "android_device_usb_stream_reconnect_codec")
+            gate["evidence_strength"] = "real-device"
 
-        summary = evaluate_manifest(
-            manifest, readme_text="Phase 0 stable-release summary"
-        )
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
 
-        self.assertEqual(summary["aggregate_verdict"], "pass")
-        self.assertTrue(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertTrue(summary["can_mark_phase0_stable_release"])
+
+        with_temporary_repo(run)
 
     def test_pass_gate_with_blockers_is_insufficient(self) -> None:
         manifest = complete_manifest()
@@ -345,16 +407,136 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertIn("#158", summary["owner_pr_guard"]["reasons"][0])
 
     def test_owner_prs_can_match_current_open_pr_snapshot(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [158]
+            manifest["open_pr_snapshot"]["open_pr_numbers"] = [158, 232]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
+            self.assertEqual(
+                summary["owner_pr_guard"]["repository"], "TaoSama/vibe-screen"
+            )
+            self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
+
+        with_temporary_repo(run)
+
+    def test_merged_pr_snapshot_accepts_main_ancestor_merge_commit(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            feature = repo / "feature.txt"
+            feature.write_text("feature\n", encoding="utf-8")
+            merge_commit = commit_all(repo, "merge pr 158")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = merge_commit
+            add_merged_pr_snapshot(manifest, repo, merge_commit)
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
+            self.assertEqual(summary["merged_pr_guard"]["merged_pr_numbers"], [158])
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+
+        with_temporary_repo(run)
+
+    def test_merged_pr_snapshot_is_required(self) -> None:
         manifest = complete_manifest()
-        gate_by_id(manifest, "host_rss_2h_no_growth")["owner_prs"] = [158]
-        manifest["open_pr_snapshot"]["open_pr_numbers"] = [158, 232]
 
-        summary = evaluate_manifest(manifest, readme_text="Phase 0 stable-release summary")
+        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
 
-        self.assertEqual(summary["aggregate_verdict"], "pass")
-        self.assertEqual(summary["owner_pr_guard"]["verdict"], "pass")
-        self.assertEqual(summary["owner_pr_guard"]["repository"], "TaoSama/vibe-screen")
-        self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
+        self.assertEqual(summary["aggregate_verdict"], "insufficient")
+        self.assertEqual(summary["merged_pr_guard"]["verdict"], "insufficient")
+        self.assertIn(
+            "merged_pr_snapshot is required",
+            summary["merged_pr_guard"]["reasons"][0],
+        )
+
+    def test_merged_pr_snapshot_requires_base_main_and_merge_commit_projection(self) -> None:
+        manifest = complete_manifest()
+        manifest["source"]["base_commit"] = "a" * 40
+        manifest["merged_pr_snapshot"] = {
+            "repository": "TaoSama/vibe-screen",
+            "command": "gh pr list --repo TaoSama/vibe-screen --state merged --limit 100 --json number,title,url",
+            "state": "merged",
+            "base": "main",
+            "range": {"min": 158, "max": 158},
+            "path": "merged-prs.jsonl",
+            "audited_source_commit": "a" * 40,
+        }
+
+        with self.assertRaisesRegex(
+            Phase0StableReleaseError, "with --base main and mergeCommit"
+        ):
+            evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+
+    def test_merged_pr_snapshot_rejects_non_ancestor_merge_commit(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            good_path = repo / "good.txt"
+            good_path.write_text("good\n", encoding="utf-8")
+            audited_commit = commit_all(repo, "audited main")
+            subprocess.run(
+                ["git", "checkout", "--detach", base_commit],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            side_path = repo / "side.txt"
+            side_path.write_text("side\n", encoding="utf-8")
+            side_commit = commit_all(repo, "side commit")
+            subprocess.run(
+                ["git", "checkout", "main"],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = audited_commit
+            add_merged_pr_snapshot(
+                manifest, repo, audited_commit, merge_commit=side_commit
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "insufficient")
+            self.assertEqual(summary["merged_pr_guard"]["non_ancestor_prs"], [158])
+            self.assertIn("mergeCommit", summary["merged_pr_guard"]["reasons"][0])
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+
+        with_temporary_repo(run)
+
+    def test_merged_pr_snapshot_rejects_wrong_entry_base(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            feature = repo / "feature.txt"
+            feature.write_text("feature\n", encoding="utf-8")
+            merge_commit = commit_all(repo, "merge pr 158")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = merge_commit
+            add_merged_pr_snapshot(manifest, repo, merge_commit, entry_base="release")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["merged_pr_guard"]["verdict"], "insufficient")
+            self.assertIn("baseRefName", summary["merged_pr_guard"]["reasons"][0])
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+
+        with_temporary_repo(run)
 
     def test_owner_prs_reject_bool_values(self) -> None:
         manifest = complete_manifest()
@@ -520,6 +702,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             successor_commit = commit_all(repo, "aggregate refresh")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = base_commit
+            add_merged_pr_snapshot(manifest, repo, base_commit)
             gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
             gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
                 "host_rss_gate has no current-source pass"
@@ -551,6 +734,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             successor_commit = commit_all(repo, "aggregate refresh")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = base_commit
+            add_merged_pr_snapshot(manifest, repo, base_commit)
 
             summary = evaluate_manifest(
                 manifest,
@@ -631,15 +815,21 @@ class Phase0StableReleaseTest(unittest.TestCase):
         with_temporary_repo(run)
 
     def test_expected_source_commit_allows_matching_manifest_base_commit(self) -> None:
-        summary = evaluate_manifest(
-            complete_manifest(),
-            readme_text="Phase 0 stable-release summary",
-            expected_source_commit="abc123",
-        )
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
 
-        self.assertEqual(summary["aggregate_verdict"], "pass")
-        self.assertTrue(summary["can_mark_phase0_stable_release"])
-        self.assertEqual(summary["source_guard"]["verdict"], "pass")
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                expected_source_commit=base_commit,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertTrue(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(summary["source_guard"]["verdict"], "pass")
+
+        with_temporary_repo(run)
 
     def test_hardware_compatibility_matrix_is_required(self) -> None:
         manifest = complete_manifest()
@@ -789,7 +979,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
         summary = evaluate_manifest(
-            manifest, readme_text=readme_path.read_text(encoding="utf-8")
+            manifest,
+            readme_text=readme_path.read_text(encoding="utf-8"),
+            repo_root=REPO_ROOT,
         )
 
         self.assertEqual(summary["aggregate_verdict"], "blocked")
@@ -813,15 +1005,14 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
 class Phase0StableReleaseCliTest(unittest.TestCase):
     def test_cli_allows_open_aggregate_by_default_but_writes_summary(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
-        gate["verdict"] = "blocked"
-        gate["blockers"] = ["host_rss_gate has no current-source pass"]
-        with tempfile.TemporaryDirectory() as directory_name:
-            directory = Path(directory_name)
-            manifest_path = directory / "manifest.json"
-            readme_path = directory / "README.md"
-            output_path = directory / "summary.json"
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+            gate["verdict"] = "blocked"
+            gate["blockers"] = ["host_rss_gate has no current-source pass"]
+            manifest_path = repo / "manifest.json"
+            readme_path = repo / "README.md"
+            output_path = repo / "summary.json"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             readme_path.write_text(GUARDED_README_TEXT, encoding="utf-8")
 
@@ -834,6 +1025,8 @@ class Phase0StableReleaseCliTest(unittest.TestCase):
                     str(manifest_path),
                     "--readme",
                     str(readme_path),
+                    "--repo-root",
+                    str(repo),
                     "--output",
                     str(output_path),
                 ],
@@ -845,13 +1038,14 @@ class Phase0StableReleaseCliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(output_path.read_text())["aggregate_verdict"], "blocked")
 
+        with_temporary_repo(run)
+
     def test_cli_require_pass_exits_nonzero_for_open_aggregate(self) -> None:
-        manifest = complete_manifest()
-        gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
-        with tempfile.TemporaryDirectory() as directory_name:
-            directory = Path(directory_name)
-            manifest_path = directory / "manifest.json"
-            readme_path = directory / "README.md"
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
+            manifest_path = repo / "manifest.json"
+            readme_path = repo / "README.md"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             readme_path.write_text(GUARDED_README_TEXT, encoding="utf-8")
 
@@ -864,6 +1058,10 @@ class Phase0StableReleaseCliTest(unittest.TestCase):
                     str(manifest_path),
                     "--readme",
                     str(readme_path),
+                    "--repo-root",
+                    str(repo),
+                    "--expected-source-commit",
+                    base_commit,
                     "--require-pass",
                 ],
                 capture_output=True,
@@ -873,6 +1071,8 @@ class Phase0StableReleaseCliTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("aggregate_verdict", result.stdout)
+
+        with_temporary_repo(run)
 
     def test_cli_require_pass_requires_expected_source_commit(self) -> None:
         manifest = complete_manifest()

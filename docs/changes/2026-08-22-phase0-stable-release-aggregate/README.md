@@ -10,9 +10,11 @@ Open PR input: `gh pr list --repo TaoSama/vibe-screen --state open --limit 200
 --json number,title,headRefName,baseRefName,isDraft,url | jq 'sort_by(.number)'`
 returned current open PRs #623 and #624. They are not listed as required-gate
 owners in the manifest. Merged PR #569 through PR #575 and PR #577 through PR #622
-landed in the audited mainline base. PR #568 and PR #576 were closed without
-merging and are not included in the audited mainline base. Merged PR #569
-through PR #575 and PR #577 through PR #622 include additional Android
+were collected with `--base main`, `baseRefName`, and `mergeCommit`; the
+checker verifies each recorded merge commit is an ancestor of the audited
+mainline base before treating it as an audited input. PR #568 and PR #576 were
+closed without merging and are not included in the audited mainline base. Merged
+PR #569 through PR #575 and PR #577 through PR #622 include additional Android
 no-Host UI/layout evidence,
 clipboard baseline/control hardening, keyboard boundary coverage, AV1 and
 managed-policy no-Host admission probes, controller hotplug neutral-release
@@ -124,8 +126,9 @@ The 2026-09-06 UTC manifest refresh binds the aggregate source guard to
 `377516f0e53f05bf4d48e869e7e46e75a2130236`, records the current open-PR
 snapshot containing PR #623 and this refresh PR #624 while keeping all required
 gate `owner_prs` lists empty, consumes current-main Phase 0 checks run `34009753699`, records
-merged PR #569 through PR #575 and PR #577 through PR #622 as source/unit/offline
-or no-Host readiness, and keeps the
+merged PR #569 through PR #575 and PR #577 through PR #622 as `main`-targeted
+source/unit/offline or no-Host readiness after validating each recorded
+`mergeCommit.oid` is reachable from the audited main commit, and keeps the
 Android/macOS clipboard and file-transfer product E2E gates as required Phase 0
 gates that are blocked. PR #568 and PR #576 were closed without merging and are
 not counted as audited mainline inputs. The retained current refresh summary
