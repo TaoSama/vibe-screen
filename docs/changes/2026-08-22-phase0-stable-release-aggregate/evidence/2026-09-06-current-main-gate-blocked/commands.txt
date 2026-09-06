@@ -1,12 +1,14 @@
 git fetch --prune origin
-git rebase origin/main --autostash
 git rev-parse HEAD origin/main
-gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url
-gh pr list --repo TaoSama/vibe-screen --state merged --limit 100 --json number,title,mergedAt,headRefOid,url --jq '.[] | select(.number>=568 and .number<=621)'
-gh pr list --repo TaoSama/vibe-screen --state closed --limit 200 --json number,title,state,mergedAt,headRefOid,url --jq '[.[] | select(.number>=568 and .number<=621 and .mergedAt==null)]'
-gh pr view 621 --repo TaoSama/vibe-screen --json number,title,state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,url,files,body
-gh run view 34007427903 --repo TaoSama/vibe-screen --json databaseId,workflowName,displayTitle,status,conclusion,headSha,createdAt,updatedAt,url,jobs
-gh run watch 34007427903 --repo TaoSama/vibe-screen --exit-status
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,baseRefName,isDraft,url | jq 'sort_by(.number)'
+gh pr view 623 --repo TaoSama/vibe-screen --json number,title,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,url,author
+gh pr create --repo TaoSama/vibe-screen --base main --head codex/refresh-phase0-aggregate-current-main --title "docs: refresh phase0 aggregate source guard" --body ...
+gh pr view 624 --repo TaoSama/vibe-screen --json number,title,state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,url,author
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,baseRefName,isDraft,url | jq 'sort_by(.number)'
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 100 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=622)'
+gh pr list --repo TaoSama/vibe-screen --state closed --limit 200 --json number,title,state,mergedAt,headRefOid,url --jq '[.[] | select(.number>=568 and .number<=622 and .mergedAt==null)]'
+gh run view 34009753699 --repo TaoSama/vibe-screen --json databaseId,workflowName,displayTitle,status,conclusion,headSha,createdAt,updatedAt,url,jobs
+gh run watch 34009753699 --repo TaoSama/vibe-screen --exit-status
 make phase0-module-ownership-gate
 make phase0-stable-release-gate
 make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git rev-parse origin/main) PHASE0_STABLE_RELEASE_REQUIRE_PASS=1

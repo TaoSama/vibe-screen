@@ -645,6 +645,7 @@ phase0-stable-release-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase0_stable_release \
 		--manifest "$(PHASE0_STABLE_RELEASE_MANIFEST)" \
 		--readme README.md \
+		--repo-root . \
 		--output "$(PHASE0_STABLE_RELEASE_SUMMARY)" \
 		$(if $(strip $(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)),--expected-source-commit "$(PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT)",) \
 		$(if $(strip $(PHASE0_STABLE_RELEASE_REQUIRE_PASS)),--require-pass,)

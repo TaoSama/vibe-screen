@@ -9,6 +9,7 @@
     "kind",
     "phase",
     "source",
+    "merged_pr_snapshot",
     "required_gates"
   ],
   "properties": {
@@ -112,6 +113,51 @@
             "type": "integer"
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "merged_pr_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "command",
+        "state",
+        "base",
+        "range",
+        "path",
+        "audited_source_commit"
+      ],
+      "properties": {
+        "repository": {
+          "const": "TaoSama/vibe-screen"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "const": "merged"
+        },
+        "base": {
+          "const": "main"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": {"type": "integer"},
+            "max": {"type": "integer"}
+          }
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audited_source_commit": {
+          "type": "string",
+          "minLength": 40
         }
       }
     },

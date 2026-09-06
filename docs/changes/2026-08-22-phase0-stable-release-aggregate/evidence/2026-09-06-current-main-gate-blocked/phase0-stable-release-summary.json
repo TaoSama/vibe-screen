@@ -224,7 +224,7 @@
       "can_close": true,
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34009753699"
       ],
       "evidence_strength": "current-ci",
       "id": "protocol_contract_ci",
@@ -239,7 +239,7 @@
       "can_close": true,
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34009753699",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionGuidance.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt"
       ],
@@ -256,7 +256,7 @@
       "can_close": true,
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34009753699",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "evidence_strength": "current-ci",
@@ -506,15 +506,86 @@
   "manifest_source": {
     "audit_date": "2026-09-06",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md",
-    "base_commit": "a3fbc0f52ab14b119995fe1c63858f901a052ba6",
+    "base_commit": "377516f0e53f05bf4d48e869e7e46e75a2130236",
     "base_ref": "origin/main",
     "owner": "Vibe Screen core team"
   },
+  "merged_pr_guard": {
+    "audited_source_commit": "377516f0e53f05bf4d48e869e7e46e75a2130236",
+    "base": "main",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 100 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=622)'",
+    "merged_pr_numbers": [
+      569,
+      570,
+      571,
+      572,
+      573,
+      574,
+      575,
+      577,
+      578,
+      579,
+      580,
+      581,
+      582,
+      583,
+      584,
+      585,
+      586,
+      587,
+      588,
+      589,
+      590,
+      591,
+      592,
+      593,
+      594,
+      595,
+      596,
+      597,
+      598,
+      599,
+      600,
+      601,
+      602,
+      603,
+      604,
+      605,
+      606,
+      607,
+      608,
+      609,
+      610,
+      611,
+      612,
+      613,
+      614,
+      615,
+      616,
+      617,
+      618,
+      619,
+      620,
+      621,
+      622
+    ],
+    "non_ancestor_prs": [],
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-06-current-main-gate-blocked/merged-prs-568-622.jsonl",
+    "range": {
+      "max": 622,
+      "min": 568
+    },
+    "reasons": [],
+    "repository": "TaoSama/vibe-screen",
+    "state": "merged",
+    "verdict": "pass"
+  },
   "missing_required_gate_ids": [],
   "owner_pr_guard": {
-    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,baseRefName,isDraft,url | jq 'sort_by(.number)'",
     "open_pr_numbers": [
-      622
+      623,
+      624
     ],
     "owner_prs": [],
     "queried_at": "2026-09-06",
@@ -564,8 +635,9 @@
   "required_gate_count": 13,
   "schema_version": "vibescreen.evidence/v1",
   "source_guard": {
-    "expected_source_commit": "a3fbc0f52ab14b119995fe1c63858f901a052ba6",
-    "manifest_base_commit": "a3fbc0f52ab14b119995fe1c63858f901a052ba6",
+    "accepted_aggregate_only_successor": false,
+    "expected_source_commit": "377516f0e53f05bf4d48e869e7e46e75a2130236",
+    "manifest_base_commit": "377516f0e53f05bf4d48e869e7e46e75a2130236",
     "reasons": [],
     "verdict": "pass"
   }
