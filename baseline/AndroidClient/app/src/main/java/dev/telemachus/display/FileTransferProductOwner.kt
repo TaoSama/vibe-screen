@@ -448,7 +448,17 @@ internal class FileTransferProductOwner(
     }
 
     fun notifyIncomingFileCompleted(completed: CompletedIncomingFile) {
-        onIncomingFileCompleted?.invoke(completed)
+        val callback = onIncomingFileCompleted
+        if (callback == null) {
+            completed.stagingFile.delete()
+            return
+        }
+        try {
+            callback.invoke(completed)
+        } catch (failure: Throwable) {
+            completed.stagingFile.delete()
+            throw failure
+        }
     }
 
     fun notifyIncomingFileProgress(transferId: ByteString, receivedBytes: Long) {

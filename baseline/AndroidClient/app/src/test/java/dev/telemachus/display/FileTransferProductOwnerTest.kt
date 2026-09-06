@@ -18,6 +18,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -911,6 +913,156 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `incoming user cancel removes real partial staging file`() {
+        val staging = stagingDirectory()
+        val owner = realIncomingOwner(staging)
+        val payload = "partial-cleanup".toByteArray()
+        val partialPayload = payload.copyOfRange(0, 7)
+        val offer = offer(id = 109, payload = payload)
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+
+        val accepted = owner.receiveIncomingChunk(
+            chunk(offer, payload = partialPayload, final = false),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+        assertTrue(accepted is FileTransferProductOwner.IncomingChunkResult.Accepted)
+        assertTrue(staging.containsPartialDownload())
+
+        assertTrue(owner.cancelIncomingTransfer(offer.transferId))
+
+        assertFalse(staging.containsPartialDownload())
+        assertEquals(0, owner.activeIncomingTransferCount())
+        staging.deleteRecursively()
+    }
+
+    @Test
+    fun `disconnect cleanup removes real partial staging file`() {
+        val staging = stagingDirectory()
+        val owner = realIncomingOwner(staging)
+        val payload = "disconnect-cleanup".toByteArray()
+        val partialPayload = payload.copyOfRange(0, 10)
+        val offer = offer(id = 110, payload = payload)
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+
+        val accepted = owner.receiveIncomingChunk(
+            chunk(offer, payload = partialPayload, final = false),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+        assertTrue(accepted is FileTransferProductOwner.IncomingChunkResult.Accepted)
+        assertTrue(staging.containsPartialDownload())
+
+        owner.clear()
+
+        assertFalse(staging.containsPartialDownload())
+        assertEquals(0, owner.activeIncomingTransferCount())
+        staging.deleteRecursively()
+    }
+
+    @Test
+    fun `incoming completion callback can save to app downloads and remove staging file`() {
+        val staging = stagingDirectory()
+        val downloads = stagingDirectory()
+        val owner = realIncomingOwner(staging)
+        val payload = "completed-save".toByteArray()
+        val offer = offer(id = 111, payload = payload, fileName = "report.txt")
+        val savedFiles = mutableListOf<File>()
+        owner.onIncomingFileCompleted = { completed ->
+            savedFiles += AppSpecificDownloadsSaver.saveCompletedIncomingFile(
+                completed = completed,
+                downloads = downloads,
+                maxDisplayNameLength = 120,
+            )
+        }
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+
+        val accepted = owner.receiveIncomingChunk(
+            chunk(offer, payload = payload, final = true),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+
+        assertTrue(accepted is FileTransferProductOwner.IncomingChunkResult.Accepted)
+        val completed = (accepted as FileTransferProductOwner.IncomingChunkResult.Accepted).completed
+        assertNotNull(completed)
+        assertTrue(requireNotNull(completed).stagingFile.exists())
+
+        owner.notifyIncomingFileCompleted(completed)
+
+        assertEquals(listOf("report.txt"), savedFiles.map { it.name })
+        assertEquals("completed-save", savedFiles.single().readText())
+        assertFalse(completed.stagingFile.exists())
+        assertFalse(staging.containsPartialDownload())
+        assertFalse(downloads.containsPartialDownload())
+        staging.deleteRecursively()
+        downloads.deleteRecursively()
+    }
+
+    @Test
+    fun `incoming completion without consumer deletes staging file`() {
+        val staging = stagingDirectory()
+        try {
+            val payload = "orphan-completed".toByteArray()
+            val stagingFile = File(staging, ".vibescreen-orphan.partial").also { it.writeBytes(payload) }
+            val owner = owner()
+            val completed = completedIncomingFile(stagingFile, "orphan.txt", payload)
+
+            owner.notifyIncomingFileCompleted(completed)
+
+            assertFalse(stagingFile.exists())
+        } finally {
+            staging.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `incoming completion consumer failure deletes staging file and propagates failure`() {
+        val staging = stagingDirectory()
+        try {
+            val payload = "consumer-failure".toByteArray()
+            val stagingFile = File(staging, ".vibescreen-consumer.partial").also { it.writeBytes(payload) }
+            val owner = owner()
+            val completed = completedIncomingFile(stagingFile, "consumer.txt", payload)
+            val failure = IOException("save failed")
+            owner.onIncomingFileCompleted = { throw failure }
+
+            val thrown = assertThrows(IOException::class.java) {
+                owner.notifyIncomingFileCompleted(completed)
+            }
+
+            assertSame(failure, thrown)
+            assertFalse(stagingFile.exists())
+        } finally {
+            staging.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `incoming progress and cancellation notifications forward transfer identity and reason`() {
         val owner = owner()
         val transferId = ByteString.copyFromUtf8("incoming-callback")
@@ -1000,6 +1152,18 @@ class FileTransferProductOwnerTest {
             },
         )
     }
+
+    private fun realIncomingOwner(
+        staging: File,
+        gate: FakePendingOfferGate = FakePendingOfferGate(),
+    ): FileTransferProductOwner =
+        FileTransferProductOwner(
+            stagingDirectory = { staging },
+            pendingOfferGate = gate,
+        )
+
+    private fun File.containsPartialDownload(): Boolean =
+        listFiles().orEmpty().any { it.name.startsWith(".vibescreen-") && it.name.endsWith(".partial") }
 
     private class FakePendingOfferGate(
         private val maximumPendingOffers: Int = 16,
@@ -1157,5 +1321,18 @@ class FileTransferProductOwnerTest {
                     .build()
             return FileChunk(header, payload)
         }
+
+        fun completedIncomingFile(
+            staging: File,
+            fileName: String,
+            payload: ByteArray,
+        ): CompletedIncomingFile =
+            CompletedIncomingFile(
+                transferId = ByteString.copyFromUtf8("completed-${staging.name}"),
+                fileName = fileName,
+                mimeType = "text/plain",
+                stagingFile = staging,
+                sha256 = sha256(payload),
+            )
     }
 }

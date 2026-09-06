@@ -3136,10 +3136,11 @@ class MainActivity : AppCompatActivity() {
         val downloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: throw IOException("Downloads directory is unavailable")
         val target =
-            AppSpecificDownloadsSaver.save(
-                source = completed.stagingFile,
+            AppSpecificDownloadsSaver.saveCompletedIncomingFile(
+                completed = completed,
                 downloads = downloads,
-                displayName = displayName,
+                maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+                fallbackDisplayName = displayName,
                 copy = ::copyFileTo,
             )
         return Uri.fromFile(target)
@@ -5065,9 +5066,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
         callbackClient.onIncomingFileCompleted = incomingFile@{ completed ->
-            if (!isCurrentSession(callbackClient, callbackGeneration)) return@incomingFile
+            if (!isCurrentSession(callbackClient, callbackGeneration)) {
+                completed.stagingFile.deleteBestEffort()
+                return@incomingFile
+            }
             runOnUiThread {
-                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                if (!isCurrentSession(callbackClient, callbackGeneration)) {
+                    completed.stagingFile.deleteBestEffort()
+                    return@runOnUiThread
+                }
                 if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()
                 onIncomingFileCompleted(completed)
             }
@@ -5355,9 +5362,15 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
-                    if (!isCurrentInternetSession()) return
+                    if (!isCurrentInternetSession()) {
+                        completed.stagingFile.deleteBestEffort()
+                        return
+                    }
                     runOnUiThread {
-                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        if (!isCurrentInternetSession()) {
+                            completed.stagingFile.deleteBestEffort()
+                            return@runOnUiThread
+                        }
                         if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()
                         onIncomingFileCompleted(completed)
                     }
