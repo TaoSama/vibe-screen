@@ -1520,7 +1520,10 @@ class Phase0StableReleaseTest(unittest.TestCase):
         )
         self.assertEqual(summary["owner_pr_guard"]["stale_owner_prs"], [])
         self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
-        self.assertEqual(summary["merged_pr_guard"]["excluded_pr_numbers"], [568, 576, 627])
+        self.assertEqual(
+            summary["merged_pr_guard"]["excluded_pr_numbers"],
+            [568, 576, 627, 645, 646],
+        )
         self.assertEqual(summary["merged_pr_guard"]["non_ancestor_prs"], [])
         macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
         self.assertEqual(macos_gate["verdict"], "open")

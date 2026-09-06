@@ -1,6 +1,8 @@
-fdf87a225127d2b2f43b201e3c44dda8d49e64d7
-fdf87a225127d2b2f43b201e3c44dda8d49e64d7
+a0415dcf7278a41fb44e65540a7bc8cede620183
+46e8b18eebe8f622d3ba71530df3f76c94197b79
+a0415dcf7 docs: refresh phase0 aggregate after PR 644
+46e8b18ee Harden evidence fail-closed validation (#647)
+12c0eb663 Validate Android input dispatch boundaries (#644)
+d31a24c46 docs: refresh phase0 aggregate after pr642 (#643)
 fdf87a225 Harden Android audio gap recovery (#641)
 87caf4da2 fix(android): classify host setup connection guidance
-b31231df8 fix(android): snapshot peripheral input payloads (#640)
-282026c01 docs: refresh phase0 aggregate current main evidence
