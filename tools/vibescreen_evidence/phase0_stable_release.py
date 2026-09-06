@@ -11,6 +11,7 @@ import datetime as _datetime
 import json
 import re
 import shlex
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -81,6 +82,18 @@ REQUIRED_GATE_IDS = (
     "clipboard_android_macos_product_e2e",
     "file_transfer_android_product_e2e",
     "module_ownership_extraction",
+)
+HASH_RE = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
+AGGREGATE_REFRESH_PATHS = (
+    "README.md",
+    "tools/README.md",
+    "docs/changes/2026-08-22-phase0-stable-release-aggregate/",
+)
+RELEASE_CLAIM_GUARD_PATHS = (
+    "Makefile",
+    "tools/vibescreen_evidence/phase0_stable_release.py",
+    "tools/schemas/phase0-stable-release.schema.json",
+    "tools/schemas/phase0-stable-release-manifest.schema.json",
 )
 
 
@@ -307,6 +320,143 @@ def _open_pr_snapshot_guard(
     }
 
 
+def _merged_pr_snapshot_guard(
+    manifest: dict[str, Any],
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    snapshot = manifest.get("merged_pr_snapshot")
+    if snapshot is None:
+        return {
+            "verdict": STATUS_INSUFFICIENT,
+            "command": None,
+            "repository": None,
+            "state": None,
+            "base": None,
+            "range": None,
+            "path": None,
+            "audited_source_commit": None,
+            "merged_pr_numbers": [],
+            "non_ancestor_prs": [],
+            "reasons": [
+                "merged_pr_snapshot is required to verify audited mainline inputs"
+            ],
+        }
+    if not isinstance(snapshot, dict):
+        raise Phase0StableReleaseError("merged_pr_snapshot must be an object")
+
+    command = _string(snapshot, "command")
+    repository = _string(snapshot, "repository")
+    state = _string(snapshot, "state")
+    base = _string(snapshot, "base")
+    path = _string(snapshot, "path")
+    audited_source_commit = _string(snapshot, "audited_source_commit")
+    pr_range = snapshot.get("range")
+    if not isinstance(pr_range, dict):
+        raise Phase0StableReleaseError("merged_pr_snapshot.range must be an object")
+    minimum = pr_range.get("min")
+    maximum = pr_range.get("max")
+    if type(minimum) is not int or type(maximum) is not int or minimum > maximum:
+        raise Phase0StableReleaseError(
+            "merged_pr_snapshot.range must contain integer min <= max"
+        )
+    if repository != EXPECTED_OPEN_PR_REPOSITORY:
+        raise Phase0StableReleaseError(
+            "merged_pr_snapshot.repository must be TaoSama/vibe-screen"
+        )
+    if state != "merged":
+        raise Phase0StableReleaseError("merged_pr_snapshot.state must be merged")
+    if base != "main":
+        raise Phase0StableReleaseError("merged_pr_snapshot.base must be main")
+    if not HASH_RE.fullmatch(audited_source_commit):
+        raise Phase0StableReleaseError(
+            "merged_pr_snapshot.audited_source_commit must be a git object id"
+        )
+    source = manifest.get("source", {})
+    if isinstance(source, dict):
+        manifest_base_commit = source.get("base_commit")
+        if (
+            isinstance(manifest_base_commit, str)
+            and manifest_base_commit.strip()
+            and audited_source_commit != manifest_base_commit
+        ):
+            raise Phase0StableReleaseError(
+                "merged_pr_snapshot.audited_source_commit must match "
+                "manifest source.base_commit"
+            )
+    if not _is_expected_merged_pr_command(command, repository):
+        raise Phase0StableReleaseError(
+            "merged_pr_snapshot.command must list merged PRs for "
+            "TaoSama/vibe-screen with --base main and mergeCommit"
+        )
+
+    entries, load_reasons = _load_merged_pr_entries(path, repo_root=repo_root)
+    reasons = list(load_reasons)
+    merged_pr_numbers: list[int] = []
+    non_ancestor_prs: list[int] = []
+    for entry in entries:
+        number = entry.get("number")
+        if type(number) is not int:
+            reasons.append("merged PR entry is missing integer number")
+            continue
+        merged_pr_numbers.append(number)
+        if number < minimum or number > maximum:
+            reasons.append(
+                f"merged PR #{number} is outside the declared audited range "
+                f"#{minimum}-#{maximum}"
+            )
+        base_ref_name = entry.get("baseRefName")
+        if base_ref_name != base:
+            reasons.append(
+                f"merged PR #{number} targets baseRefName={base_ref_name!r}, "
+                f"expected {base!r}"
+            )
+        merge_commit = entry.get("mergeCommit")
+        if not isinstance(merge_commit, dict):
+            reasons.append(f"merged PR #{number} is missing mergeCommit object")
+            continue
+        merge_commit_oid = merge_commit.get("oid")
+        if not isinstance(merge_commit_oid, str) or not HASH_RE.fullmatch(
+            merge_commit_oid
+        ):
+            reasons.append(f"merged PR #{number} is missing mergeCommit.oid")
+            continue
+        if repo_root is None:
+            reasons.append(
+                f"merged PR #{number} ancestry requires repo_root to verify "
+                "mergeCommit.oid"
+            )
+            continue
+        if not _git_check_call(
+            repo_root.resolve(),
+            "merge-base",
+            "--is-ancestor",
+            merge_commit_oid,
+            audited_source_commit,
+        ):
+            non_ancestor_prs.append(number)
+            reasons.append(
+                f"merged PR #{number} mergeCommit {merge_commit_oid} is not an "
+                f"ancestor of audited source commit {audited_source_commit}"
+            )
+    if not merged_pr_numbers:
+        reasons.append("merged_pr_snapshot.path must contain merged PR entries")
+
+    return {
+        "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+        "command": command,
+        "repository": repository,
+        "state": state,
+        "base": base,
+        "range": {"min": minimum, "max": maximum},
+        "path": path,
+        "audited_source_commit": audited_source_commit,
+        "merged_pr_numbers": sorted(merged_pr_numbers),
+        "non_ancestor_prs": non_ancestor_prs,
+        "reasons": reasons,
+    }
+
+
 def _is_expected_open_pr_command(command: str, repository: str) -> bool:
     try:
         tokens = shlex.split(command)
@@ -320,6 +470,62 @@ def _is_expected_open_pr_command(command: str, repository: str) -> bool:
         repo == repository
         and state == "open"
     )
+
+
+def _is_expected_merged_pr_command(command: str, repository: str) -> bool:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if tokens[:3] != ["gh", "pr", "list"]:
+        return False
+    repo = _option_value(tokens, "--repo") or _option_value(tokens, "-R")
+    state = _option_value(tokens, "--state") or _option_value(tokens, "-s")
+    base = _option_value(tokens, "--base") or _option_value(tokens, "-B")
+    json_fields = _option_value(tokens, "--json") or ""
+    requested_fields = {field.strip() for field in json_fields.split(",")}
+    return (
+        repo == repository
+        and state == "merged"
+        and base == "main"
+        and {"number", "baseRefName", "mergeCommit"}.issubset(requested_fields)
+    )
+
+
+def _load_merged_pr_entries(
+    path: str, *, repo_root: Path | None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    reasons: list[str] = []
+    if path.startswith("/") or ".." in Path(path).parts:
+        raise Phase0StableReleaseError(
+            "merged_pr_snapshot.path must be repo-relative"
+        )
+    if repo_root is None:
+        return [], ["merged_pr_snapshot.path requires repo_root to load entries"]
+    snapshot_path = repo_root.resolve() / path
+    try:
+        raw_lines = snapshot_path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        return [], [f"could not read merged_pr_snapshot.path {path}: {error}"]
+
+    entries: list[dict[str, Any]] = []
+    for index, line in enumerate(raw_lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as error:
+            reasons.append(
+                f"merged_pr_snapshot.path {path} line {index} has invalid JSON: {error}"
+            )
+            continue
+        if not isinstance(entry, dict):
+            reasons.append(
+                f"merged_pr_snapshot.path {path} line {index} must be a JSON object"
+            )
+            continue
+        entries.append(entry)
+    return entries, reasons
 
 
 def _parse_manifest_date(value: str, field: str) -> _datetime.date:
@@ -413,6 +619,7 @@ def evaluate_manifest(
     readme_text: str | None = None,
     expected_source_commit: str | None = None,
     evaluation_date: _datetime.date | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise Phase0StableReleaseError("schema_version must be vibescreen.evidence/v1")
@@ -425,7 +632,10 @@ def evaluate_manifest(
         raise Phase0StableReleaseError("source must be an object")
 
     source_guard = _source_guard(
-        source, expected_source_commit, evaluation_date=evaluation_date
+        source,
+        expected_source_commit,
+        evaluation_date=evaluation_date,
+        repo_root=repo_root,
     )
 
     gates_value = manifest.get("required_gates")
@@ -447,6 +657,7 @@ def evaluate_manifest(
     owner_pr_guard = _open_pr_snapshot_guard(
         manifest, gate_summaries, evaluation_date=evaluation_date
     )
+    merged_pr_guard = _merged_pr_snapshot_guard(manifest, repo_root=repo_root)
 
     missing_gate_ids = [gate_id for gate_id in REQUIRED_GATE_IDS if gate_id not in seen_gate_ids]
     unexpected_required_gate_ids = [
@@ -482,10 +693,32 @@ def evaluate_manifest(
         for summary in required_gate_summaries
         if not summary["can_close"] or summary["issues"]
     ]
+    all_required_gates_closed = (
+        not malformed_reasons
+        and owner_pr_guard["verdict"] == STATUS_PASS
+        and merged_pr_guard["verdict"] == STATUS_PASS
+        and not blocking_gates
+        and not any(summary["issues"] for summary in gate_summaries)
+    )
+    if (
+        source_guard["accepted_aggregate_only_successor"]
+        and all_required_gates_closed
+    ):
+        source_guard = {
+            **source_guard,
+            "verdict": STATUS_INSUFFICIENT,
+            "reasons": [
+                *source_guard["reasons"],
+                "aggregate-only successor commits cannot support a Phase 0 "
+                "stable-release claim; refresh source.base_commit to the exact "
+                "evaluated commit before marking every required gate closed",
+            ],
+        }
     aggregate_passed = (
         not malformed_reasons
         and source_guard["verdict"] == STATUS_PASS
         and owner_pr_guard["verdict"] == STATUS_PASS
+        and merged_pr_guard["verdict"] == STATUS_PASS
         and not blocking_gates
         and not any(summary["issues"] for summary in gate_summaries)
     )
@@ -503,6 +736,7 @@ def evaluate_manifest(
         malformed_reasons
         or source_guard["verdict"] == STATUS_INSUFFICIENT
         or owner_pr_guard["verdict"] == STATUS_INSUFFICIENT
+        or merged_pr_guard["verdict"] == STATUS_INSUFFICIENT
         or any(summary["issues"] for summary in gate_summaries)
     ):
         aggregate_verdict = STATUS_INSUFFICIENT
@@ -528,11 +762,13 @@ def evaluate_manifest(
         "readme_guard": readme_guard,
         "source_guard": source_guard,
         "owner_pr_guard": owner_pr_guard,
+        "merged_pr_guard": merged_pr_guard,
         "manifest_source": source,
         "reasons": [
             *malformed_reasons,
             *source_guard["reasons"],
             *owner_pr_guard["reasons"],
+            *merged_pr_guard["reasons"],
             *gate_reasons,
             *readme_guard["reasons"],
         ],
@@ -544,16 +780,23 @@ def _source_guard(
     expected_source_commit: str | None,
     *,
     evaluation_date: _datetime.date | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     base_commit = source.get("base_commit")
     reasons: list[str] = []
+    accepted_aggregate_only_successor = False
     if not isinstance(base_commit, str) or not base_commit.strip():
         reasons.append("manifest source.base_commit must be a non-empty string")
     elif expected_source_commit and base_commit != expected_source_commit:
-        reasons.append(
-            "manifest source.base_commit does not match the evaluated source "
-            f"commit: {base_commit} != {expected_source_commit}"
+        accepted_aggregate_only_successor, successor_reasons = (
+            _aggregate_only_successor_guard(
+                base_commit=base_commit,
+                expected_source_commit=expected_source_commit,
+                repo_root=repo_root,
+            )
         )
+        if not accepted_aggregate_only_successor:
+            reasons.extend(successor_reasons)
     for field in ("base_ref", "owner", "audit_source"):
         value = source.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -580,10 +823,159 @@ def _source_guard(
 
     return {
         "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+        "accepted_aggregate_only_successor": accepted_aggregate_only_successor,
         "expected_source_commit": expected_source_commit or None,
         "manifest_base_commit": base_commit if isinstance(base_commit, str) else None,
         "reasons": reasons,
     }
+
+
+def _aggregate_only_successor_guard(
+    *,
+    base_commit: str,
+    expected_source_commit: str,
+    repo_root: Path | None,
+) -> tuple[bool, list[str]]:
+    mismatch = (
+        "manifest source.base_commit does not match the evaluated source "
+        f"commit: {base_commit} != {expected_source_commit}"
+    )
+    if repo_root is None:
+        return False, [mismatch]
+    if not HASH_RE.fullmatch(base_commit) or not HASH_RE.fullmatch(
+        expected_source_commit
+    ):
+        return False, [mismatch]
+
+    repository = repo_root.resolve()
+    if not _git_check_call(
+        repository, "merge-base", "--is-ancestor", base_commit, expected_source_commit
+    ):
+        return False, [
+            mismatch,
+            "expected source commit is not a descendant of manifest source.base_commit",
+        ]
+
+    changed_files, diff_error = _git_changed_files(
+        repository, base_commit, expected_source_commit
+    )
+    if diff_error:
+        return False, [mismatch, diff_error]
+    disallowed_paths = [
+        path for path in changed_files if not _is_aggregate_refresh_path(path)
+    ]
+    if disallowed_paths:
+        return False, [
+            mismatch,
+            "expected source commit contains non-aggregate changes after "
+            "manifest source.base_commit: " + ", ".join(disallowed_paths),
+        ]
+    return True, []
+
+
+def _git_check_call(repo_root: Path, *args: str) -> bool:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _git_changed_files(
+    repo_root: Path, base_commit: str, expected_source_commit: str
+) -> tuple[list[str], str | None]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", base_commit, expected_source_commit],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip()
+        return [], f"could not inspect changed files between source commits: {message}"
+    return [line for line in result.stdout.splitlines() if line.strip()], None
+
+
+def _is_aggregate_refresh_path(path: str) -> bool:
+    if path.startswith("/") or ".." in Path(path).parts:
+        return False
+    return any(
+        path == allowed_path.rstrip("/")
+        or (allowed_path.endswith("/") and path.startswith(allowed_path))
+        for allowed_path in AGGREGATE_REFRESH_PATHS
+    )
+
+
+def _release_claim_checkout_reasons(
+    *,
+    repo_root: Path,
+    expected_source_commit: str,
+    manifest_path: Path,
+    readme_path: Path,
+) -> list[str]:
+    repository = repo_root.resolve()
+    reasons: list[str] = []
+
+    head_result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if head_result.returncode != 0:
+        message = head_result.stderr.strip() or head_result.stdout.strip()
+        return [f"could not inspect current git HEAD: {message}"]
+    current_head = head_result.stdout.strip()
+    if current_head != expected_source_commit:
+        reasons.append(
+            "current git HEAD does not match --expected-source-commit: "
+            f"{current_head} != {expected_source_commit}"
+        )
+
+    candidate_paths = [
+        _repo_relative_path(repository, manifest_path),
+        _repo_relative_path(repository, readme_path),
+        *RELEASE_CLAIM_GUARD_PATHS,
+    ]
+    guard_paths = sorted({path for path in candidate_paths if path})
+    diff_result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--", *guard_paths],
+        cwd=repository,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if diff_result.returncode != 0:
+        message = diff_result.stderr.strip() or diff_result.stdout.strip()
+        reasons.append(f"could not inspect release-claim guard paths: {message}")
+        return reasons
+    dirty_paths = []
+    for line in diff_result.stdout.splitlines():
+        if not line:
+            continue
+        dirty_paths.append(line[3:].strip() if len(line) > 3 else line.strip())
+    if dirty_paths:
+        reasons.append(
+            "release-claim guard paths contain uncommitted changes: "
+            + ", ".join(dirty_paths)
+        )
+    return reasons
+
+
+def _repo_relative_path(repo_root: Path, path: Path) -> str | None:
+    resolved_path = path.resolve()
+    try:
+        return resolved_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return None
 
 
 def _gate_reasons(gate_summaries: Sequence[dict[str, Any]]) -> list[str]:
@@ -641,7 +1033,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, help="summary JSON path")
     parser.add_argument(
         "--expected-source-commit",
-        help="Fail closed unless manifest source.base_commit matches this commit",
+        help=(
+            "Fail closed unless manifest source.base_commit matches this commit, "
+            "or the expected commit is a blocked aggregate-only refresh "
+            "successor"
+        ),
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path("."),
+        help=(
+            "Repository root used to verify that an expected-source-commit "
+            "mismatch contains only aggregate refresh files"
+        ),
     )
     parser.add_argument(
         "--require-pass",
@@ -653,6 +1058,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.require_pass and not args.expected_source_commit:
+        print(
+            "error: --require-pass requires --expected-source-commit so stale "
+            "Phase 0 release claims fail closed",
+            file=sys.stderr,
+        )
+        return 1
     try:
         with args.manifest.open("r", encoding="utf-8") as stream:
             manifest = load_json(stream)
@@ -661,6 +1073,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             manifest,
             readme_text=readme_text,
             expected_source_commit=args.expected_source_commit,
+            repo_root=args.repo_root,
         )
         if args.output:
             _write_summary(args.output, summary)
@@ -673,6 +1086,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if summary["readme_guard"]["verdict"] != STATUS_PASS:
         return 1
+    if args.require_pass and summary["aggregate_verdict"] == STATUS_PASS:
+        checkout_reasons = _release_claim_checkout_reasons(
+            repo_root=args.repo_root,
+            expected_source_commit=args.expected_source_commit,
+            manifest_path=args.manifest,
+            readme_path=args.readme,
+        )
+        if checkout_reasons:
+            for reason in checkout_reasons:
+                print(f"error: {reason}", file=sys.stderr)
+            return 1
     if args.require_pass and summary["aggregate_verdict"] != STATUS_PASS:
         return 1
     return 0

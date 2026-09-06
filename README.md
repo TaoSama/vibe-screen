@@ -16,8 +16,9 @@
 > NSPasteboard USB/LAN E2E evidence remains open. A two-hour soak has run with a
 > stable stream, but the host resident-memory no-growth gate (tracked in
 > [the Host RSS investigation](docs/changes/2026-08-10-host-rss-growth/TECH.md)),
-> telemetry and external-latency archive gate, and native-pointer HID
-> confirmation remain open. Do not treat roadmap items below as shipped
+> telemetry and external-latency archive gate, native-pointer HID confirmation,
+> controller runtime acceptance, clipboard product E2E, and file-transfer
+> product E2E remain open. Do not treat roadmap items below as shipped
 > features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for

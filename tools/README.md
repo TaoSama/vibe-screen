@@ -91,8 +91,9 @@ The Phase 0 stable-release aggregate gate is intentionally separate from the
 individual evidence tools. Run `make phase0-stable-release-gate` to verify that
 README still carries the in-progress guard while any required sub-gate is open.
 Before changing README to complete/stable Phase 0 wording, run `make
-phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1`; that command
-fails closed until every required entry in
+phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git
+rev-parse HEAD) PHASE0_STABLE_RELEASE_REQUIRE_PASS=1`; that command fails
+closed until every required entry in
 `docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json`
 has verdict `pass` with closing-strength evidence. Historical real-device
 evidence is accepted only for the Android USB baseline gate; current-source
@@ -100,8 +101,16 @@ runtime, latency, Host RSS, hardware compatibility, HID, controller, and module
 ownership gates require their gate-specific closing evidence.
 Pass `PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git rev-parse HEAD)` when
 refreshing or auditing the aggregate owner so the summary records whether the
-manifest is bound to the evaluated source commit; a mismatch is reported as
+manifest is bound to the evaluated source commit. A mismatch normally reports
 `source_guard.verdict=insufficient` and cannot pass the release-claim gate.
+If the evaluated commit is a descendant whose diff from the manifest base is
+limited to README or the aggregate owner records, the source guard records
+`accepted_aggregate_only_successor=true` and may keep a still-blocked aggregate
+evaluable. Checker, schema, and test changes are deliberately excluded from
+that exception: when release-gate rules change, refresh `source.base_commit` to
+the exact commit containing those rules. The exception never supports a stable-
+release claim: once every required gate is pass-capable, the manifest must bind
+exactly to the evaluated commit.
 
 The iOS HDR output / EDR rendering row has a narrower dedicated owner. It
 validates retained physical-device HDR observations and returns nonzero for the

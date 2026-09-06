@@ -18,6 +18,7 @@
     "readme_guard",
     "source_guard",
     "owner_pr_guard",
+    "merged_pr_guard",
     "manifest_source",
     "reasons"
   ],
@@ -57,9 +58,16 @@
     "source_guard": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["verdict", "expected_source_commit", "manifest_base_commit", "reasons"],
+      "required": [
+        "verdict",
+        "accepted_aggregate_only_successor",
+        "expected_source_commit",
+        "manifest_base_commit",
+        "reasons"
+      ],
       "properties": {
         "verdict": {"enum": ["pass", "insufficient"]},
+        "accepted_aggregate_only_successor": {"type": "boolean"},
         "expected_source_commit": {"type": ["string", "null"]},
         "manifest_base_commit": {"type": ["string", "null"]},
         "reasons": {"type": "array", "items": {"type": "string"}}
@@ -88,6 +96,44 @@
         "open_pr_numbers": {"type": "array", "items": {"type": "integer"}},
         "owner_prs": {"type": "array", "items": {"type": "integer"}},
         "stale_owner_prs": {"type": "array", "items": {"type": "integer"}},
+        "reasons": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "merged_pr_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "command",
+        "repository",
+        "state",
+        "base",
+        "range",
+        "path",
+        "audited_source_commit",
+        "merged_pr_numbers",
+        "non_ancestor_prs",
+        "reasons"
+      ],
+      "properties": {
+        "verdict": {"enum": ["pass", "insufficient"]},
+        "command": {"type": ["string", "null"]},
+        "repository": {"enum": ["TaoSama/vibe-screen", null]},
+        "state": {"type": ["string", "null"]},
+        "base": {"type": ["string", "null"]},
+        "range": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": {"type": "integer"},
+            "max": {"type": "integer"}
+          }
+        },
+        "path": {"type": ["string", "null"]},
+        "audited_source_commit": {"type": ["string", "null"]},
+        "merged_pr_numbers": {"type": "array", "items": {"type": "integer"}},
+        "non_ancestor_prs": {"type": "array", "items": {"type": "integer"}},
         "reasons": {"type": "array", "items": {"type": "string"}}
       }
     },
