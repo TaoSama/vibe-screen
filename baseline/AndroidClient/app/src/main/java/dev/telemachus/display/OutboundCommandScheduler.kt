@@ -13,8 +13,8 @@ import kotlin.concurrent.withLock
 /**
  * A bounded, single-writer scheduler for latency-sensitive outbound commands.
  *
- * Recovery commands are written before input commands. Pending pointer/stylus
- * moves, controller moves, pings, and keyframe requests use independent
+ * Recovery commands are written before input commands. Pending touch, stylus,
+ * pointer, controller moves, pings, and keyframe requests use independent
  * coalescing domains; submitting a new command of the same domain replaces the
  * older pending command.
  * Admitted structural touch and controller structural commands retain FIFO
@@ -44,6 +44,9 @@ class OutboundCommandScheduler<C : Any>(
     enum class Kind {
         STRUCTURAL_TOUCH,
         MOVE,
+        TOUCH_MOVE,
+        STYLUS_MOVE,
+        POINTER_MOVE,
         CONTROLLER_STRUCTURAL,
         CONTROLLER_MOVE,
         KEYFRAME,
@@ -134,7 +137,7 @@ class OutboundCommandScheduler<C : Any>(
 
         var remainingNanos = (deadlineNs - System.nanoTime()).coerceAtLeast(0L)
         while (!reserveSlot(kind)) {
-            if (kind != Kind.MOVE && removeOldestMoveFor(kind)) {
+            if (!kind.isMoveDomain() && removeOldestMoveFor(kind)) {
                 pendingCount--
                 // Reuse the evicted move's reservation. Rechecking the global
                 // occupied count would incorrectly include recovery commands
@@ -358,6 +361,9 @@ class OutboundCommandScheduler<C : Any>(
     ): Submission? =
         when (kind) {
             Kind.MOVE,
+            Kind.TOUCH_MOVE,
+            Kind.STYLUS_MOVE,
+            Kind.POINTER_MOVE,
             Kind.CONTROLLER_MOVE,
             -> {
                 val pendingIndex = pendingMoveIndexAfterLatestStructuralBoundary(kind)
@@ -388,16 +394,20 @@ class OutboundCommandScheduler<C : Any>(
 
     /**
      * Returns the index of the latest pending move of [kind] that comes after
-     * the most recent structural boundary (STRUCTURAL_TOUCH for MOVE,
-     * CONTROLLER_STRUCTURAL for CONTROLLER_MOVE). A structural boundary is a
-     * hard separator: moves before it belong to a previous lifecycle phase and
-     * must not be coalesced with moves after it. Returns -1 when no such move
-     * exists.
+     * the most recent structural boundary (STRUCTURAL_TOUCH for touch, stylus,
+     * pointer and generic MOVE domains; CONTROLLER_STRUCTURAL for
+     * CONTROLLER_MOVE). A structural boundary is a hard separator: moves before
+     * it belong to a previous lifecycle phase and must not be coalesced with
+     * moves after it. Returns -1 when no such move exists.
      */
     private fun pendingMoveIndexAfterLatestStructuralBoundary(kind: Kind): Int {
         val boundaryKind =
             when (kind) {
-                Kind.MOVE -> Kind.STRUCTURAL_TOUCH
+                Kind.MOVE,
+                Kind.TOUCH_MOVE,
+                Kind.STYLUS_MOVE,
+                Kind.POINTER_MOVE,
+                -> Kind.STRUCTURAL_TOUCH
                 Kind.CONTROLLER_MOVE -> Kind.CONTROLLER_STRUCTURAL
                 else -> return -1
             }
@@ -419,6 +429,9 @@ class OutboundCommandScheduler<C : Any>(
         when (kind) {
             Kind.STRUCTURAL_TOUCH,
             Kind.MOVE,
+            Kind.TOUCH_MOVE,
+            Kind.STYLUS_MOVE,
+            Kind.POINTER_MOVE,
             Kind.CONTROLLER_STRUCTURAL,
             Kind.CONTROLLER_MOVE,
             Kind.FILE_TRANSFER,
@@ -581,10 +594,10 @@ class OutboundCommandScheduler<C : Any>(
                 Kind.PING,
                 // A controller move can be the final neutral-axis snapshot;
                 // another input domain cannot assume a later update will arrive.
-                -> touchCommands.indexOfFirst { it.kind == Kind.MOVE }
+                -> touchCommands.indexOfFirst { it.kind.isNonControllerMoveDomain() }
                 Kind.CONTROLLER_STRUCTURAL ->
                     touchCommands.indexOfFirst {
-                        it.kind == Kind.MOVE || it.kind == Kind.CONTROLLER_MOVE
+                        it.kind.isMoveDomain()
                     }
                 else -> return false
             }
@@ -715,6 +728,9 @@ class OutboundCommandScheduler<C : Any>(
             Kind.PING -> overflowPing
             Kind.STRUCTURAL_TOUCH,
             Kind.MOVE,
+            Kind.TOUCH_MOVE,
+            Kind.STYLUS_MOVE,
+            Kind.POINTER_MOVE,
             Kind.CONTROLLER_STRUCTURAL,
             Kind.FILE_TRANSFER,
             -> null
@@ -771,6 +787,9 @@ class OutboundCommandScheduler<C : Any>(
         when (kind) {
             Kind.STRUCTURAL_TOUCH,
             Kind.MOVE,
+            Kind.TOUCH_MOVE,
+            Kind.STYLUS_MOVE,
+            Kind.POINTER_MOVE,
             Kind.CONTROLLER_MOVE,
             -> capacity - recoveryReservedSlots
 
@@ -780,6 +799,9 @@ class OutboundCommandScheduler<C : Any>(
             Kind.FILE_TRANSFER,
             -> capacity
         }
+
+    private fun Kind.isMoveDomain(): Boolean =
+        isNonControllerMoveDomain() || this == Kind.CONTROLLER_MOVE
 
     private data class PendingTouch<C : Any>(
         val kind: Kind,
@@ -832,3 +854,9 @@ data class OutboundWriteFailure<C : Any>(
     val command: C,
     val cause: Throwable,
 )
+
+internal fun OutboundCommandScheduler.Kind.isNonControllerMoveDomain(): Boolean =
+    this == OutboundCommandScheduler.Kind.MOVE ||
+        this == OutboundCommandScheduler.Kind.TOUCH_MOVE ||
+        this == OutboundCommandScheduler.Kind.STYLUS_MOVE ||
+        this == OutboundCommandScheduler.Kind.POINTER_MOVE

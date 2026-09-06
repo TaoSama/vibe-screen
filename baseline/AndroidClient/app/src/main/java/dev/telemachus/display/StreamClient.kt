@@ -1756,7 +1756,7 @@ class StreamClient(
             }
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT &&
             failOnTimeout &&
-            kind != OutboundCommandScheduler.Kind.MOVE &&
+            !kind.isNonControllerMoveDomain() &&
             kind != OutboundCommandScheduler.Kind.PING
         ) {
             requestConnectionEnd(
