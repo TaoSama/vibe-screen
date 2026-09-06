@@ -192,6 +192,27 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun nativeInputReleaseWithPressedKeysRequiresKeyboardCapability() {
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true),
+            recorder = recorder,
+        )
+
+        assertFalse(
+            dispatcher.sendNativeInputRelease(
+                NativeInputReleasePlan(
+                    pressedKeyUsages = listOf(0x04),
+                    pointer = NativePointerSnapshot(0.2f, 0.3f),
+                ),
+                InputPhase.INPUT_PHASE_ENDED,
+            ),
+        )
+
+        assertTrue(recorder.submissions.isEmpty())
+    }
+
+    @Test
     fun nativePointerMoveUsesMoveBatchAndPreservesButtonMask() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(

@@ -45,6 +45,36 @@ class ClientInputDispatchTest {
     }
 
     @Test
+    fun `unnegotiated keyboard drops modified press release before sink state can change`() {
+        val received = mutableListOf<String>()
+        val dispatch =
+            ClientInputDispatch(
+                ClientSessionBinding(
+                    ClientSessionCapabilities.LEGACY_TOUCH_ONLY,
+                    recordingSink(received),
+                ),
+            )
+        val shortcutModifiers =
+            setOf(
+                ClientKeyModifier.SHIFT,
+                ClientKeyModifier.CONTROL,
+                ClientKeyModifier.ALT,
+                ClientKeyModifier.META,
+            )
+
+        assertEquals(
+            ClientInputDispatchResult.UNSUPPORTED,
+            dispatch.sendKey(ClientKeyInput(usbHidUsage = 0x4B, pressed = true, shortcutModifiers, repeatCount = 2)),
+        )
+        assertEquals(
+            ClientInputDispatchResult.UNSUPPORTED,
+            dispatch.sendKey(ClientKeyInput(usbHidUsage = 0x4B, pressed = false, shortcutModifiers, repeatCount = 0)),
+        )
+
+        assertEquals(emptyList<String>(), received)
+    }
+
+    @Test
     fun `negotiated sink receives physical key and pointer sequence in order`() {
         val received = mutableListOf<String>()
         val sink = recordingSink(received)

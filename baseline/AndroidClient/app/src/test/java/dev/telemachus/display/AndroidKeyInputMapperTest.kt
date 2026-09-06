@@ -88,6 +88,47 @@ class AndroidKeyInputMapperTest {
     }
 
     @Test
+    fun `maps hardware navigation and keypad shortcuts with combined modifiers`() {
+        val metaState =
+            KeyEvent.META_CTRL_LEFT_ON or
+                KeyEvent.META_ALT_RIGHT_ON or
+                KeyEvent.META_SHIFT_ON or
+                KeyEvent.META_META_LEFT_ON
+        val cases =
+            listOf(
+                KeyEvent.KEYCODE_INSERT to 0x49,
+                KeyEvent.KEYCODE_PAGE_UP to 0x4B,
+                KeyEvent.KEYCODE_PAGE_DOWN to 0x4E,
+                KeyEvent.KEYCODE_FORWARD_DEL to 0x4C,
+                KeyEvent.KEYCODE_NUMPAD_0 to 0x62,
+                KeyEvent.KEYCODE_NUMPAD_5 to 0x5D,
+                KeyEvent.KEYCODE_NUMPAD_9 to 0x61,
+                KeyEvent.KEYCODE_NUMPAD_ADD to 0x57,
+                KeyEvent.KEYCODE_NUMPAD_SUBTRACT to 0x56,
+                KeyEvent.KEYCODE_NUMPAD_MULTIPLY to 0x55,
+                KeyEvent.KEYCODE_NUMPAD_DIVIDE to 0x54,
+                KeyEvent.KEYCODE_NUMPAD_EQUALS to 0x67,
+            )
+
+        cases.forEach { (keyCode, expectedUsage) ->
+            val input = requireNotNull(AndroidKeyInputMapper.map(keyCode, KeyEvent.ACTION_DOWN, metaState, 1))
+
+            assertEquals("Unexpected HID usage for keyCode=$keyCode", expectedUsage, input.usbHidUsage)
+            assertTrue(input.pressed)
+            assertEquals(
+                setOf(
+                    ClientKeyModifier.SHIFT,
+                    ClientKeyModifier.CONTROL,
+                    ClientKeyModifier.ALT,
+                    ClientKeyModifier.META,
+                ),
+                input.modifiers,
+            )
+            assertEquals(1, input.repeatCount)
+        }
+    }
+
+    @Test
     fun `maps letter shortcut and modifiers to protocol neutral event`() {
         val input =
             requireNotNull(
@@ -217,6 +258,48 @@ class AndroidKeyInputMapperTest {
                     action = KeyEvent.ACTION_UP,
                     metaState = 0,
                     repeatCount = 0,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `oem media app system and unsupported keypad keys fail closed`() {
+        listOf(
+            KeyEvent.KEYCODE_SYSRQ,
+            KeyEvent.KEYCODE_BREAK,
+            KeyEvent.KEYCODE_SCROLL_LOCK,
+            KeyEvent.KEYCODE_LANGUAGE_SWITCH,
+            KeyEvent.KEYCODE_MUHENKAN,
+            KeyEvent.KEYCODE_HENKAN,
+            KeyEvent.KEYCODE_KATAKANA_HIRAGANA,
+            KeyEvent.KEYCODE_YEN,
+            KeyEvent.KEYCODE_RO,
+            KeyEvent.KEYCODE_NUMPAD_COMMA,
+            KeyEvent.KEYCODE_NUMPAD_LEFT_PAREN,
+            KeyEvent.KEYCODE_NUMPAD_RIGHT_PAREN,
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_STOP,
+            KeyEvent.KEYCODE_HOME,
+            KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_SEARCH,
+            KeyEvent.KEYCODE_ASSIST,
+            KeyEvent.KEYCODE_ALL_APPS,
+            KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_BUTTON_START,
+        ).forEach { keyCode ->
+            assertNull(
+                "keyCode=$keyCode",
+                AndroidKeyInputMapper.map(
+                    keyCode = keyCode,
+                    action = KeyEvent.ACTION_DOWN,
+                    metaState =
+                        KeyEvent.META_SHIFT_ON or
+                            KeyEvent.META_CTRL_ON or
+                            KeyEvent.META_ALT_ON or
+                            KeyEvent.META_META_ON,
+                    repeatCount = 3,
                 ),
             )
         }
