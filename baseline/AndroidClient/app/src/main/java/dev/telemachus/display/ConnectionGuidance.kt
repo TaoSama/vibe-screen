@@ -161,8 +161,10 @@ internal object ConnectionGuidanceFactory {
             causes.any { it is NoRouteToHostException || it is UnknownHostException } ||
                 causes.containMessage("Network is unreachable") ||
                 causes.containMessage("No route to host") ||
+                causes.containMessage("Cannot assign requested address") ||
                 causes.containMessage("EHOSTUNREACH") ||
                 causes.containMessage("ENETUNREACH") ||
+                causes.containMessage("EADDRNOTAVAIL") ||
                 causes.containMessage("No Wi-Fi route is available") ->
                 networkUnreachable(context)
 

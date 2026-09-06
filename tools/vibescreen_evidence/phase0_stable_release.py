@@ -815,7 +815,7 @@ def _load_merged_pr_entries(
     snapshot_path = repo_root.resolve() / path
     try:
         raw_lines = snapshot_path.read_text(encoding="utf-8").splitlines()
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         return [], [f"could not read merged_pr_snapshot.path {path}: {error}"]
 
     entries: list[dict[str, Any]] = []
