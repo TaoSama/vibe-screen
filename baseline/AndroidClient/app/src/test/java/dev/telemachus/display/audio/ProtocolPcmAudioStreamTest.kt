@@ -54,6 +54,9 @@ class ProtocolPcmAudioStreamTest {
         assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
             ProtocolAudioPacket.parse(byteArrayOf(0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x01))
         }
+        assertProtocolThrows(AudioRejectReason.INVALID_HEADER) {
+            ProtocolAudioPacket.parse(byteArrayOf(0xff.toByte(), 0x7f, 0x00))
+        }
     }
 
     @Test
