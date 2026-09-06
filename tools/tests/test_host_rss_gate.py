@@ -420,6 +420,38 @@ class HostRSSGateTest(unittest.TestCase):
         self.assertEqual(report["verdict"], "insufficient")
         self.assertEqual(report["sufficiency"], {})
 
+    def test_cli_fails_closed_on_malformed_host_rss_values(self):
+        for bad_rss in ("120000", True, {}, []):
+            with self.subTest(bad_rss=bad_rss), tempfile.TemporaryDirectory() as raw_directory:
+                directory = Path(raw_directory)
+                summary, samples = write_inputs(directory)
+                rows = [
+                    json.loads(line)
+                    for line in samples.read_text(encoding="utf-8").splitlines()
+                ]
+                rows[10]["host"]["rss_kb"] = bad_rss
+                samples.write_text(
+                    "\n".join(json.dumps(row) for row in rows) + "\n",
+                    encoding="utf-8",
+                )
+                exact_window = write_exact_window_report(directory)
+                output = directory / "gate.json"
+
+                with redirect_stdout(io.StringIO()):
+                    exit_code = main(
+                        [
+                            "--summary", str(summary),
+                            "--samples", str(samples),
+                            "--exact-window-report", str(exact_window),
+                            "--output", str(output),
+                        ]
+                    )
+                report = json.loads(output.read_text(encoding="utf-8"))
+
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(report["derivation_status"], "failed")
+                self.assertEqual(report["verdict"], "insufficient")
+
     def test_single_in_window_sample_is_insufficient(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)

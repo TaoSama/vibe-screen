@@ -388,8 +388,8 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
     sample_count = gate.get("sample_count")
     min_sample_count = gate.get("min_sample_count")
     if (
-        not _is_positive_number(sample_count)
-        or not _is_positive_number(min_sample_count)
+        not _is_positive_integer(sample_count)
+        or not _is_positive_integer(min_sample_count)
         or min_sample_count != MIN_GATE_SAMPLE_COUNT
         or sample_count < MIN_GATE_SAMPLE_COUNT
         or sample_count < min_sample_count
@@ -400,7 +400,11 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
             f"{MIN_GATE_SAMPLE_COUNT}"
         )
     source = record.get("source")
-    if not isinstance(source, dict) or not isinstance(source.get("manifest"), str):
+    if (
+        not isinstance(source, dict)
+        or not isinstance(source.get("manifest"), str)
+        or not source.get("manifest", "").strip()
+    ):
         issues.append(f"{path}: formal latency report source.manifest must be present")
     return issues
 
@@ -437,9 +441,13 @@ def _extend_android_telemetry_issues(
     issues: list[str], telemetry: dict[str, Any], path: str
 ) -> None:
     session_epochs = telemetry.get("session_epochs")
-    if not isinstance(session_epochs, list) or not session_epochs:
+    if (
+        not isinstance(session_epochs, list)
+        or not session_epochs
+        or not all(_is_non_negative_integer(item) for item in session_epochs)
+    ):
         issues.append(
-            f"{path}: Android USB live smoke telemetry must include session_epochs"
+            f"{path}: Android USB live smoke telemetry must include integer session_epochs"
         )
     stream_stats = telemetry.get("stream_stats")
     if not isinstance(stream_stats, dict):
@@ -447,22 +455,34 @@ def _extend_android_telemetry_issues(
             f"{path}: Android USB live smoke telemetry.stream_stats must be an object"
         )
         return
-    if not _is_positive_number(stream_stats.get("count")):
+    if not _is_positive_integer(stream_stats.get("count")):
         issues.append(
-            f"{path}: Android USB live smoke telemetry.stream_stats.count must be positive"
+            f"{path}: Android USB live smoke telemetry.stream_stats.count must be a positive integer"
         )
-    if not _is_positive_number(stream_stats.get("positive_fps_count")):
+    if not _is_positive_integer(stream_stats.get("positive_fps_count")):
         issues.append(
-            f"{path}: Android USB live smoke telemetry must include positive FPS stream_stats"
+            f"{path}: Android USB live smoke telemetry must include positive integer FPS stream_stats"
         )
     frame_drops = telemetry.get("frame_drops")
     latest = stream_stats.get("latest")
-    has_frame_drop_summary = isinstance(frame_drops, dict) and _is_number(
-        frame_drops.get("max_dropped_total")
-    )
-    has_latest_dropped_frames = isinstance(latest, dict) and _is_number(
-        latest.get("dropped_frames")
-    )
+    has_frame_drop_summary = False
+    if isinstance(frame_drops, dict) and "max_dropped_total" in frame_drops:
+        has_frame_drop_summary = _is_non_negative_integer(
+            frame_drops.get("max_dropped_total")
+        )
+        if not has_frame_drop_summary:
+            issues.append(
+                f"{path}: Android USB live smoke telemetry.frame_drops.max_dropped_total must be a non-negative integer"
+            )
+    has_latest_dropped_frames = False
+    if isinstance(latest, dict) and "dropped_frames" in latest:
+        has_latest_dropped_frames = _is_non_negative_integer(
+            latest.get("dropped_frames")
+        )
+        if not has_latest_dropped_frames:
+            issues.append(
+                f"{path}: Android USB live smoke telemetry.stream_stats.latest.dropped_frames must be a non-negative integer"
+            )
     if not has_frame_drop_summary and not has_latest_dropped_frames:
         issues.append(
             f"{path}: Android USB live smoke telemetry must include frame-drop counters"
@@ -472,8 +492,24 @@ def _extend_android_telemetry_issues(
 def _extend_android_decoder_issues(
     issues: list[str], decoder: dict[str, Any], path: str
 ) -> None:
-    has_output_counter = decoder.get("latest_output_counter") is not None
-    has_decode_stats = isinstance(decoder.get("latest_decode_stats"), dict)
+    decode_stats = decoder.get("latest_decode_stats")
+    has_output_counter = False
+    if "latest_output_counter" in decoder:
+        has_output_counter = _is_positive_integer(decoder.get("latest_output_counter"))
+        if not has_output_counter:
+            issues.append(
+                f"{path}: Android USB live smoke decoder.latest_output_counter must be a positive integer"
+            )
+    has_decode_stats = False
+    if "latest_decode_stats" in decoder:
+        has_decode_stats = (
+            isinstance(decode_stats, dict)
+            and any(_is_positive_integer(value) for value in decode_stats.values())
+        )
+        if not has_decode_stats:
+            issues.append(
+                f"{path}: Android USB live smoke decoder.latest_decode_stats must include a positive integer counter"
+            )
     if not has_output_counter and not has_decode_stats:
         issues.append(
             f"{path}: Android USB live smoke decoder counters must be present"
@@ -481,8 +517,8 @@ def _extend_android_decoder_issues(
     latency = decoder.get("latest_output_latency")
     if (
         not isinstance(latency, dict)
-        or not _is_number(latency.get("avg_ms"))
-        or not _is_number(latency.get("max_ms"))
+        or not _is_non_negative_number(latency.get("avg_ms"))
+        or not _is_non_negative_number(latency.get("max_ms"))
     ):
         issues.append(
             f"{path}: Android USB live smoke decoder latency metrics must be present"
@@ -493,8 +529,16 @@ def _is_number(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def _is_positive_number(value: Any) -> bool:
-    return _is_number(value) and value > 0
+def _is_non_negative_number(value: Any) -> bool:
+    return _is_number(value) and value >= 0
+
+
+def _is_non_negative_integer(value: Any) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _is_positive_integer(value: Any) -> bool:
+    return type(value) is int and value > 0
 
 
 def _open_pr_snapshot_guard(

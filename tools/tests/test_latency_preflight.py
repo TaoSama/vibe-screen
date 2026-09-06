@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -203,6 +204,32 @@ class LatencyPreflightCliTest(unittest.TestCase):
         self.assertEqual(report["device"]["manufacturer"], "nubia")
         self.assertEqual(report["device"]["model"], "P0110")
         self.assertEqual(report["device"]["device"], "pacific")
+
+    def test_cli_rejects_invalid_utf8_input_as_preflight_error(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            input_path = Path(raw_directory) / "input.json"
+            input_path.write_bytes(b"{\xff")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    MODULE,
+                    "--repository-revision",
+                    "fixture-revision",
+                    "--input",
+                    str(input_path),
+                ],
+                cwd=REPOSITORY_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("error: invalid UTF-8 in latency preflight input", result.stderr)
+        self.assertNotIn("codec can't decode", result.stderr)
 
 
 if __name__ == "__main__":

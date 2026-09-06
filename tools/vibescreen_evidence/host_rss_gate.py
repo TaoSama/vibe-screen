@@ -283,9 +283,14 @@ def derive_gate(
         if not (started <= captured_at <= finished):
             continue
         elapsed_values.append(elapsed)
-        rss_value = record.get("host", {}).get("rss_kb")
-        if not isinstance(rss_value, (int, float)) or isinstance(rss_value, bool):
+        host = record.get("host", {})
+        if not isinstance(host, dict) or "rss_kb" not in host:
             continue
+        rss_value = host.get("rss_kb")
+        if not isinstance(rss_value, (int, float)) or isinstance(rss_value, bool):
+            raise EvidenceInputError(
+                f"samples line {source_line}.host.rss_kb: must be finite and non-negative"
+            )
         rss = float(rss_value)
         if not math.isfinite(rss) or rss < 0:
             raise EvidenceInputError(

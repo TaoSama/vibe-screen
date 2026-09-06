@@ -1714,6 +1714,35 @@ class LatencyEvidenceCliTest(unittest.TestCase):
         self.assertIn("invalid UTF-8 in latency evidence manifest", output["gate"]["reasons"][0])
         self.assertEqual(result.stderr, "")
 
+    def test_cli_outputs_insufficient_json_for_invalid_utf8_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            helper = LatencyEvidenceReportTest(
+                methodName="test_real_device_shaped_external_camera_package_passes"
+            )
+            manifest = helper.copy_valid_package(root)
+            invalid_samples = b"\xff"
+            (root / "samples.csv").write_bytes(invalid_samples)
+            samples = manifest["samples"]
+            assert isinstance(samples, dict)
+            samples["sha256"] = hashlib.sha256(invalid_samples).hexdigest()
+            helper.write_manifest(root, manifest)
+
+            result = self.run_cli(
+                str(root / "manifest.json"),
+                "--gate-profile",
+                GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "insufficient")
+        self.assertIn(
+            "cannot summarize samples: samples.file must be UTF-8 text",
+            output["gate"]["reasons"],
+        )
+        self.assertEqual(result.stderr, "")
+
 
 if __name__ == "__main__":
     unittest.main()
