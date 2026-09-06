@@ -154,6 +154,7 @@
                         android:accessibilityLiveRegion="polite"
                         android:text="@string/transfer_readiness_waiting_status"
                         android:textColor="@color/on_surface_muted"
+                        android:textIsSelectable="true"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
@@ -164,6 +165,7 @@
                         android:layout_marginTop="4dp"
                         android:text="@string/transfer_readiness_waiting_summary"
                         android:textColor="@color/on_surface_muted"
+                        android:textIsSelectable="true"
                         android:textSize="13sp" />
                 </LinearLayout>
 

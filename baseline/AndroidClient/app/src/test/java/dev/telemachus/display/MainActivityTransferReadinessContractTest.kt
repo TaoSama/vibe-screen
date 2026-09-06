@@ -194,6 +194,14 @@ class MainActivityTransferReadinessContractTest {
         val status = extractXmlElement(layout, "android:id=\"@+id/transferReadinessStatus\"")
         val summary = extractXmlElement(layout, "android:id=\"@+id/transferReadinessSummary\"")
         assertTrue(status.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(
+            "Transfer readiness status should be selectable so no-host and policy-blocked guidance can be copied",
+            status.contains("android:textIsSelectable=\"true\""),
+        )
+        assertTrue(
+            "Transfer readiness summary should be selectable so users can copy the exact Settings guidance",
+            summary.contains("android:textIsSelectable=\"true\""),
+        )
         assertFalse(
             "Summary should not be a second live region because status already announces the full section",
             summary.contains("android:accessibilityLiveRegion"),
