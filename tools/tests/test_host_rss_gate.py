@@ -68,6 +68,8 @@ def write_exact_window_report(
     stream_stats_count: int = 241,
     heartbeat_count: int = 241,
     accepted_heartbeat_count: int = 241,
+    stream_gap_count: int | None = None,
+    heartbeat_gap_count: int | None = None,
     stream_gap_seconds: float | None = 30.0,
     heartbeat_gap_seconds: float | None = 30.0,
     fps_min: float = 60.0,
@@ -82,6 +84,9 @@ def write_exact_window_report(
     latest_pixel_buffer_retained_max: float = 1.0,
     latest_pixel_buffer_capacity_min: float = 1.0,
     latest_pixel_buffer_capacity_max: float = 1.0,
+    lifecycle_metric_count: int | None = None,
+    stream_boolean_count: int | None = None,
+    fallback_capture_active_values: list[bool] | None = None,
     encoder_present_values: list[bool] | None = None,
 ) -> Path:
     def stats(
@@ -103,6 +108,12 @@ def write_exact_window_report(
         }
 
     report = directory / "exact-window-report.json"
+    lifecycle_count = (
+        stream_stats_count if lifecycle_metric_count is None else lifecycle_metric_count
+    )
+    boolean_count = stream_stats_count if stream_boolean_count is None else stream_boolean_count
+    stream_gap_count = stream_stats_count if stream_gap_count is None else stream_gap_count
+    heartbeat_gap_count = heartbeat_count if heartbeat_gap_count is None else heartbeat_gap_count
     report.write_text(
         json.dumps(
             {
@@ -143,11 +154,11 @@ def write_exact_window_report(
                         },
                         "frame_queue_drop_total": frame_queue_drop_total,
                         "queue_depth": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             maximum=queue_depth_max,
                         ),
                         "queue_capacity": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             first=queue_capacity_min,
                             final=queue_capacity_min,
                             minimum=queue_capacity_min,
@@ -155,11 +166,11 @@ def write_exact_window_report(
                             maximum=queue_capacity_max,
                         ),
                         "encoder_in_flight": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             maximum=encoder_in_flight_max,
                         ),
                         "encoder_in_flight_capacity": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             first=encoder_capacity_min,
                             final=encoder_capacity_min,
                             minimum=encoder_capacity_min,
@@ -167,15 +178,15 @@ def write_exact_window_report(
                             maximum=encoder_capacity_max,
                         ),
                         "frame_registry_count": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             maximum=frame_registry_max,
                         ),
                         "latest_pixel_buffer_retained": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             maximum=latest_pixel_buffer_retained_max,
                         ),
                         "latest_pixel_buffer_capacity": stats(
-                            count=stream_stats_count,
+                            count=lifecycle_count,
                             first=latest_pixel_buffer_capacity_min,
                             final=latest_pixel_buffer_capacity_min,
                             minimum=latest_pixel_buffer_capacity_min,
@@ -189,17 +200,23 @@ def write_exact_window_report(
                             "heartbeat_received": heartbeat_count,
                         },
                         "stream_stats_gaps": {
-                            "count": stream_stats_count,
+                            "count": stream_gap_count,
                             "maximum_interval_seconds": stream_gap_seconds,
                             "maximum_window_gap_seconds": stream_gap_seconds,
                         },
                         "heartbeat_gaps": {
-                            "count": heartbeat_count,
+                            "count": heartbeat_gap_count,
                             "maximum_interval_seconds": heartbeat_gap_seconds,
                             "maximum_window_gap_seconds": heartbeat_gap_seconds,
                         },
                         "accepted_heartbeat_count": accepted_heartbeat_count,
-                        "fallback_capture_active_values": [False],
+                        "stream_boolean_counts": {
+                            "fallback_capture_active": boolean_count,
+                            "encoder_present": boolean_count,
+                        },
+                        "fallback_capture_active_values": fallback_capture_active_values
+                        if fallback_capture_active_values is not None
+                        else [False],
                         "encoder_present_values": encoder_present_values
                         if encoder_present_values is not None
                         else [True],
@@ -631,6 +648,38 @@ class HostRSSGateTest(unittest.TestCase):
             report["telemetry_criteria"]["stream_stats_window_gap_seconds"]["passed"]
         )
 
+    def test_exact_window_gap_counts_must_match_event_counts(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(
+                directory,
+                stream_stats_count=241,
+                stream_gap_count=1,
+            )
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["telemetry_gap_counts_match_events"]["passed"]
+        )
+
+    def test_exact_window_heartbeat_gap_count_must_match_event_count(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(
+                directory,
+                heartbeat_count=241,
+                heartbeat_gap_count=1,
+            )
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["telemetry_gap_counts_match_events"]["passed"]
+        )
+
     def test_exact_window_non_positive_fps_fails(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
@@ -656,6 +705,112 @@ class HostRSSGateTest(unittest.TestCase):
         self.assertEqual(report["verdict"], "fail")
         self.assertFalse(
             report["telemetry_criteria"]["encoder_present_through_window"]["passed"]
+        )
+
+    def test_exact_window_fallback_capture_active_fails(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(
+                directory,
+                fallback_capture_active_values=[False, True],
+            )
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "fail")
+        self.assertFalse(
+            report["telemetry_criteria"]["fallback_capture_inactive_through_window"]["passed"]
+        )
+
+    def test_exact_window_lifecycle_stat_counts_must_cover_all_stream_stats(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(
+                directory,
+                stream_stats_count=241,
+                lifecycle_metric_count=1,
+            )
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["stream_lifecycle_counts_complete"]["passed"]
+        )
+        self.assertTrue(
+            any(
+                "stream_lifecycle_counts_complete" in reason
+                for reason in report["reasons"]
+            )
+        )
+
+    def test_exact_window_capture_state_counts_must_cover_all_stream_stats(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(
+                directory,
+                stream_stats_count=241,
+                stream_boolean_count=1,
+            )
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["stream_lifecycle_counts_complete"]["passed"]
+        )
+        self.assertEqual(
+            report["telemetry_metrics"]["stream_boolean_counts"],
+            {"fallback_capture_active": 1, "encoder_present": 1},
+        )
+
+    def test_exact_window_missing_capture_state_counts_are_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            payload = json.loads(exact_window.read_text(encoding="utf-8"))
+            del payload["metrics"]["telemetry"]["stream_boolean_counts"]
+            exact_window.write_text(json.dumps(payload), encoding="utf-8")
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["stream_lifecycle_counts_complete"]["passed"]
+        )
+
+    def test_exact_window_partial_capture_state_counts_are_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            payload = json.loads(exact_window.read_text(encoding="utf-8"))
+            del payload["metrics"]["telemetry"]["stream_boolean_counts"][
+                "fallback_capture_active"
+            ]
+            exact_window.write_text(json.dumps(payload), encoding="utf-8")
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["stream_lifecycle_counts_complete"]["passed"]
+        )
+
+    def test_exact_window_capture_state_counts_must_be_integers(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            payload = json.loads(exact_window.read_text(encoding="utf-8"))
+            payload["metrics"]["telemetry"]["stream_boolean_counts"][
+                "fallback_capture_active"
+            ] = True
+            exact_window.write_text(json.dumps(payload), encoding="utf-8")
+            report = derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["telemetry_sufficiency"]["stream_lifecycle_counts_complete"]["passed"]
         )
 
 

@@ -226,6 +226,17 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   `latest_pixel_buffer_retained` 必须落在固定 latest pixel-buffer capacity 内，并且
   `encoder_present_values` 必须全程为 `[true]`；这些字段缺失或不完整都会让正式
   Host RSS gate fail closed 为 `insufficient` 或 `fail`。
+- 2026-09-06 current-base follow-up 进一步收紧正式 telemetry 覆盖：
+  `soak_report` 现在记录 `stream_boolean_counts`，`host_rss_gate` 要求 `fps`、
+  queue、encoder in-flight/capacity、callback registry、latest pixel-buffer retained/capacity
+  统计数量、`stream_stats_gaps.count` 以及 `fallback_capture_active` / `encoder_present`
+  布尔数量全部等于同窗 `stream_stats` 事件数；`heartbeat_gaps.count` 也必须等于
+  `heartbeat_received` 事件数；同时要求 `fallback_capture_active_values == [false]`。若 Host
+  在两小时窗口内只有部分 `stream_stats` 携带生命周期字段，gap 统计与事件数不一致，
+  或 capture path 退化到 fallback，
+  正式门禁会 fail closed 为 `insufficient` / `fail`，避免用覆盖不足或路径退化的 telemetry
+  支撑 RSS no-growth 结论。本轮只做离线 fixture hardening，没有启动 Host GUI、TCC 路径、
+  ADB reverse、短窗诊断或正式两小时 soak，Host RSS no-growth gate 仍保持开放。
 - 当前源码已离线验证新增 capture/encoder telemetry 合约和诊断 fail-closed 逻辑；
   本机没有完整 Xcode XCTest runtime，`swift test` 因缺少 `xctest` 阻塞。该分支没有
   运行当前源码的真机短窗或两小时 soak，因此正式 Host RSS no-growth 门禁保持开放。

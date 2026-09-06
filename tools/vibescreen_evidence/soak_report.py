@@ -474,6 +474,10 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                     event_timestamps.get("heartbeat_received", []), started, finished
                 ),
                 "accepted_heartbeat_count": accepted_heartbeat_count,
+                "stream_boolean_counts": {
+                    name: len(values)
+                    for name, values in sorted(stream_boolean_values.items())
+                },
                 "fallback_capture_active_values": sorted(
                     set(stream_boolean_values.get("fallback_capture_active", []))
                 ),
