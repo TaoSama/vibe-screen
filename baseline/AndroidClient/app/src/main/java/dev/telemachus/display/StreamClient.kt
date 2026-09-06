@@ -8,6 +8,7 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.audio.AUDIO_PACKET_NO_CONFIGURATION_CODE
 import dev.telemachus.display.audio.AndroidAudioTrackOutputFactory
 import dev.telemachus.display.audio.AudioPacketRejectReason
+import dev.telemachus.display.audio.AudioRejectReason
 import dev.telemachus.display.audio.ProtocolAudioConfigureResult
 import dev.telemachus.display.audio.ProtocolAudioPacketResult
 import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
@@ -1326,6 +1327,12 @@ class StreamClient(
                         recordHeartbeatReceived(HeartbeatTelemetrySource.AUDIO)
                     }
                     is ProtocolAudioPacketResult.Rejected -> {
+                        if (result.reason ==
+                            AudioPacketRejectReason.ProtocolRejected(AudioRejectReason.STALE_SESSION_EPOCH)
+                        ) {
+                            recordProtocolAudioPacketDropped(result.reason.audioCode())
+                            return
+                        }
                         throw SessionProtocolException(
                             SessionFailure.protocol(
                                 SessionFailureKind.INVALID_MEDIA_PAYLOAD,
@@ -2996,6 +3003,30 @@ class StreamClient(
                 "written_packets=${audioWrittenPacketCount.get()}"
         Log.i(TAG, message)
         diagLog(message)
+    }
+
+    private fun recordProtocolAudioPacketDropped(reason: String) {
+        val format = audioPlayer.activeFormat()
+        val sessionEpoch = protocolSessionOwner.connectionEpoch
+        val message =
+            "audio_packet_dropped " +
+                "reason=$reason " +
+                "session_epoch=$sessionEpoch " +
+                "stream_id=${format?.streamId ?: 0} " +
+                "config_epoch=${format?.configEpoch ?: 0} " +
+                "accepted_packets=${audioAcceptedPacketCount.get()} " +
+                "written_packets=${audioWrittenPacketCount.get()}"
+        Log.i(TAG, message)
+        diagLog(message)
+        emitTelemetry(
+            "audio_packet_dropped",
+            mapOf(
+                "reason" to reason,
+                "session_epoch" to sessionEpoch,
+                "stream_id" to (format?.streamId ?: 0),
+                "config_epoch" to (format?.configEpoch ?: 0),
+            ),
+        )
     }
 
     private fun shouldLogAudioPacketProgress(acceptedPackets: Long): Boolean =
