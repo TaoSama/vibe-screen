@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "a3fbc0f52ab14b119995fe1c63858f901a052ba6",
+    "base_commit": "377516f0e53f05bf4d48e869e7e46e75a2130236",
     "base_ref": "origin/main",
     "audit_date": "2026-09-06",
     "owner": "Vibe Screen core team",
@@ -11,11 +11,12 @@
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,baseRefName,isDraft,url | jq 'sort_by(.number)'",
     "queried_at": "2026-09-06",
     "state": "open",
     "open_pr_numbers": [
-      622
+      623,
+      624
     ]
   },
   "readme_guard": {
@@ -52,7 +53,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34009753699"
       ],
       "owner_prs": [],
       "blockers": []
@@ -65,7 +66,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34009753699",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionGuidance.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt"
       ],
@@ -80,7 +81,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34007427903",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34009753699",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],

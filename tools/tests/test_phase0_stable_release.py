@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
 import datetime as _datetime
 import json
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 from vibescreen_evidence.phase0_stable_release import (
     REQUIRED_GATE_IDS,
     Phase0StableReleaseError,
+    _release_claim_checkout_reasons,
     _write_summary,
     evaluate_manifest,
 )
@@ -86,6 +88,42 @@ def complete_manifest() -> dict[str, object]:
             for gate_id in REQUIRED_GATE_IDS
         ],
     }
+
+
+def commit_all(repo: Path, message: str) -> str:
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Phase 0 Test",
+            "-c",
+            "user.email=phase0@example.invalid",
+            "commit",
+            "-m",
+            message,
+        ],
+        cwd=repo,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+    ).strip()
+
+
+def with_temporary_repo(callback: Callable[[Path, str], None]) -> None:
+    with tempfile.TemporaryDirectory() as directory_name:
+        repo = Path(directory_name)
+        subprocess.run(
+            ["git", "init", "--initial-branch=main"],
+            cwd=repo,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        (repo / "README.md").write_text(GUARDED_README_TEXT, encoding="utf-8")
+        base_commit = commit_all(repo, "base")
+        callback(repo, base_commit)
 
 
 class Phase0StableReleaseTest(unittest.TestCase):
@@ -472,6 +510,126 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
         self.assertEqual(summary["readme_guard"]["verdict"], "fail")
 
+    def test_blocked_aggregate_accepts_aggregate_only_successor_commit(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            aggregate_dir = repo / "docs/changes/2026-08-22-phase0-stable-release-aggregate"
+            aggregate_dir.mkdir(parents=True)
+            (aggregate_dir / "README.md").write_text(
+                "Aggregate refresh.\n", encoding="utf-8"
+            )
+            successor_commit = commit_all(repo, "aggregate refresh")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = base_commit
+            gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
+            gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
+                "host_rss_gate has no current-source pass"
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                expected_source_commit=successor_commit,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "blocked")
+            self.assertEqual(summary["source_guard"]["verdict"], "pass")
+            self.assertTrue(
+                summary["source_guard"]["accepted_aggregate_only_successor"]
+            )
+            self.assertFalse(summary["can_mark_phase0_stable_release"])
+
+        with_temporary_repo(run)
+
+    def test_aggregate_only_successor_cannot_support_stable_release_claim(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            aggregate_dir = repo / "docs/changes/2026-08-22-phase0-stable-release-aggregate"
+            aggregate_dir.mkdir(parents=True)
+            (aggregate_dir / "README.md").write_text(
+                "Aggregate refresh.\n", encoding="utf-8"
+            )
+            successor_commit = commit_all(repo, "aggregate refresh")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = base_commit
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                expected_source_commit=successor_commit,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertFalse(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+            self.assertTrue(
+                summary["source_guard"]["accepted_aggregate_only_successor"]
+            )
+            self.assertIn(
+                "aggregate-only successor commits cannot support a Phase 0 stable-release claim",
+                summary["source_guard"]["reasons"][0],
+            )
+
+        with_temporary_repo(run)
+
+    def test_expected_source_commit_rejects_non_aggregate_successor_changes(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            source_dir = repo / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display"
+            source_dir.mkdir(parents=True)
+            (source_dir / "Product.kt").write_text("class Product\n", encoding="utf-8")
+            successor_commit = commit_all(repo, "product change")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = base_commit
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                expected_source_commit=successor_commit,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+            self.assertFalse(
+                summary["source_guard"]["accepted_aggregate_only_successor"]
+            )
+            self.assertIn(
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/Product.kt",
+                summary["source_guard"]["reasons"][1],
+            )
+
+        with_temporary_repo(run)
+
+    def test_expected_source_commit_rejects_checker_successor_changes(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            checker_path = repo / "tools/vibescreen_evidence/phase0_stable_release.py"
+            checker_path.parent.mkdir(parents=True)
+            checker_path.write_text("# checker changed\n", encoding="utf-8")
+            successor_commit = commit_all(repo, "checker change")
+            manifest = complete_manifest()
+            manifest["source"]["base_commit"] = base_commit
+            gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
+            gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
+                "host_rss_gate has no current-source pass"
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                expected_source_commit=successor_commit,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["source_guard"]["verdict"], "insufficient")
+            self.assertFalse(
+                summary["source_guard"]["accepted_aggregate_only_successor"]
+            )
+            self.assertIn(
+                "tools/vibescreen_evidence/phase0_stable_release.py",
+                summary["source_guard"]["reasons"][1],
+            )
+
+        with_temporary_repo(run)
+
     def test_expected_source_commit_allows_matching_manifest_base_commit(self) -> None:
         summary = evaluate_manifest(
             complete_manifest(),
@@ -715,6 +873,70 @@ class Phase0StableReleaseCliTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("aggregate_verdict", result.stdout)
+
+    def test_cli_require_pass_requires_expected_source_commit(self) -> None:
+        manifest = complete_manifest()
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            manifest_path = directory / "manifest.json"
+            readme_path = directory / "README.md"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            readme_path.write_text("Phase 0 stable-release summary", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    MODULE,
+                    "--manifest",
+                    str(manifest_path),
+                    "--readme",
+                    str(readme_path),
+                    "--require-pass",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("--require-pass requires --expected-source-commit", result.stderr)
+
+    def test_release_claim_checkout_rejects_dirty_guard_paths(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest_path = repo / "manifest.json"
+            manifest_path.write_text("{}\n", encoding="utf-8")
+            clean_commit = commit_all(repo, "manifest")
+
+            self.assertEqual(
+                _release_claim_checkout_reasons(
+                    repo_root=repo,
+                    expected_source_commit=clean_commit,
+                    manifest_path=manifest_path,
+                    readme_path=repo / "README.md",
+                ),
+                [],
+            )
+
+            (repo / "README.md").write_text(
+                f"{GUARDED_README_TEXT}\nDirty but still guarded.\n",
+                encoding="utf-8",
+            )
+
+            reasons = _release_claim_checkout_reasons(
+                repo_root=repo,
+                expected_source_commit=clean_commit,
+                manifest_path=manifest_path,
+                readme_path=repo / "README.md",
+            )
+
+            self.assertIn(
+                "release-claim guard paths contain uncommitted changes",
+                reasons[0],
+            )
+            self.assertIn("README.md", reasons[0])
+
+        with_temporary_repo(run)
 
     def test_summary_writer_uses_unique_atomic_temporary_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

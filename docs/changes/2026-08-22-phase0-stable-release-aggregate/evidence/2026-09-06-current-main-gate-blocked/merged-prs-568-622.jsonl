@@ -1,3 +1,4 @@
+{"headRefOid":"332ce2d9e0d827bb1e19d7b31dd3783eec8c4a1e","mergedAt":"2026-09-06T03:44:31Z","number":622,"title":"docs: refresh Phase 0 stable aggregate","url":"https://github.com/TaoSama/vibe-screen/pull/622"}
 {"headRefOid":"f6723f1dd71bd46e79808557f4892615999d00b7","mergedAt":"2026-09-06T02:48:38Z","number":621,"title":"Classify Android host-unreachable guidance","url":"https://github.com/TaoSama/vibe-screen/pull/621"}
 {"headRefOid":"c343ae91da0a1200a06ebd63f0c3c3f3334b3834","mergedAt":"2026-09-06T02:23:18Z","number":620,"title":"test(android): cover managed policy control happy path","url":"https://github.com/TaoSama/vibe-screen/pull/620"}
 {"headRefOid":"f1cc69e14a30fa2299646078ce6fb02a38a404f4","mergedAt":"2026-09-06T01:57:36Z","number":619,"title":"Harden Android file transfer local save cleanup","url":"https://github.com/TaoSama/vibe-screen/pull/619"}

@@ -11,6 +11,7 @@ import datetime as _datetime
 import json
 import re
 import shlex
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -81,6 +82,18 @@ REQUIRED_GATE_IDS = (
     "clipboard_android_macos_product_e2e",
     "file_transfer_android_product_e2e",
     "module_ownership_extraction",
+)
+HASH_RE = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
+AGGREGATE_REFRESH_PATHS = (
+    "README.md",
+    "tools/README.md",
+    "docs/changes/2026-08-22-phase0-stable-release-aggregate/",
+)
+RELEASE_CLAIM_GUARD_PATHS = (
+    "Makefile",
+    "tools/vibescreen_evidence/phase0_stable_release.py",
+    "tools/schemas/phase0-stable-release.schema.json",
+    "tools/schemas/phase0-stable-release-manifest.schema.json",
 )
 
 
@@ -413,6 +426,7 @@ def evaluate_manifest(
     readme_text: str | None = None,
     expected_source_commit: str | None = None,
     evaluation_date: _datetime.date | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise Phase0StableReleaseError("schema_version must be vibescreen.evidence/v1")
@@ -425,7 +439,10 @@ def evaluate_manifest(
         raise Phase0StableReleaseError("source must be an object")
 
     source_guard = _source_guard(
-        source, expected_source_commit, evaluation_date=evaluation_date
+        source,
+        expected_source_commit,
+        evaluation_date=evaluation_date,
+        repo_root=repo_root,
     )
 
     gates_value = manifest.get("required_gates")
@@ -482,6 +499,26 @@ def evaluate_manifest(
         for summary in required_gate_summaries
         if not summary["can_close"] or summary["issues"]
     ]
+    all_required_gates_closed = (
+        not malformed_reasons
+        and owner_pr_guard["verdict"] == STATUS_PASS
+        and not blocking_gates
+        and not any(summary["issues"] for summary in gate_summaries)
+    )
+    if (
+        source_guard["accepted_aggregate_only_successor"]
+        and all_required_gates_closed
+    ):
+        source_guard = {
+            **source_guard,
+            "verdict": STATUS_INSUFFICIENT,
+            "reasons": [
+                *source_guard["reasons"],
+                "aggregate-only successor commits cannot support a Phase 0 "
+                "stable-release claim; refresh source.base_commit to the exact "
+                "evaluated commit before marking every required gate closed",
+            ],
+        }
     aggregate_passed = (
         not malformed_reasons
         and source_guard["verdict"] == STATUS_PASS
@@ -544,16 +581,23 @@ def _source_guard(
     expected_source_commit: str | None,
     *,
     evaluation_date: _datetime.date | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     base_commit = source.get("base_commit")
     reasons: list[str] = []
+    accepted_aggregate_only_successor = False
     if not isinstance(base_commit, str) or not base_commit.strip():
         reasons.append("manifest source.base_commit must be a non-empty string")
     elif expected_source_commit and base_commit != expected_source_commit:
-        reasons.append(
-            "manifest source.base_commit does not match the evaluated source "
-            f"commit: {base_commit} != {expected_source_commit}"
+        accepted_aggregate_only_successor, successor_reasons = (
+            _aggregate_only_successor_guard(
+                base_commit=base_commit,
+                expected_source_commit=expected_source_commit,
+                repo_root=repo_root,
+            )
         )
+        if not accepted_aggregate_only_successor:
+            reasons.extend(successor_reasons)
     for field in ("base_ref", "owner", "audit_source"):
         value = source.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -580,10 +624,159 @@ def _source_guard(
 
     return {
         "verdict": STATUS_INSUFFICIENT if reasons else STATUS_PASS,
+        "accepted_aggregate_only_successor": accepted_aggregate_only_successor,
         "expected_source_commit": expected_source_commit or None,
         "manifest_base_commit": base_commit if isinstance(base_commit, str) else None,
         "reasons": reasons,
     }
+
+
+def _aggregate_only_successor_guard(
+    *,
+    base_commit: str,
+    expected_source_commit: str,
+    repo_root: Path | None,
+) -> tuple[bool, list[str]]:
+    mismatch = (
+        "manifest source.base_commit does not match the evaluated source "
+        f"commit: {base_commit} != {expected_source_commit}"
+    )
+    if repo_root is None:
+        return False, [mismatch]
+    if not HASH_RE.fullmatch(base_commit) or not HASH_RE.fullmatch(
+        expected_source_commit
+    ):
+        return False, [mismatch]
+
+    repository = repo_root.resolve()
+    if not _git_check_call(
+        repository, "merge-base", "--is-ancestor", base_commit, expected_source_commit
+    ):
+        return False, [
+            mismatch,
+            "expected source commit is not a descendant of manifest source.base_commit",
+        ]
+
+    changed_files, diff_error = _git_changed_files(
+        repository, base_commit, expected_source_commit
+    )
+    if diff_error:
+        return False, [mismatch, diff_error]
+    disallowed_paths = [
+        path for path in changed_files if not _is_aggregate_refresh_path(path)
+    ]
+    if disallowed_paths:
+        return False, [
+            mismatch,
+            "expected source commit contains non-aggregate changes after "
+            "manifest source.base_commit: " + ", ".join(disallowed_paths),
+        ]
+    return True, []
+
+
+def _git_check_call(repo_root: Path, *args: str) -> bool:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _git_changed_files(
+    repo_root: Path, base_commit: str, expected_source_commit: str
+) -> tuple[list[str], str | None]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", base_commit, expected_source_commit],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip()
+        return [], f"could not inspect changed files between source commits: {message}"
+    return [line for line in result.stdout.splitlines() if line.strip()], None
+
+
+def _is_aggregate_refresh_path(path: str) -> bool:
+    if path.startswith("/") or ".." in Path(path).parts:
+        return False
+    return any(
+        path == allowed_path.rstrip("/")
+        or (allowed_path.endswith("/") and path.startswith(allowed_path))
+        for allowed_path in AGGREGATE_REFRESH_PATHS
+    )
+
+
+def _release_claim_checkout_reasons(
+    *,
+    repo_root: Path,
+    expected_source_commit: str,
+    manifest_path: Path,
+    readme_path: Path,
+) -> list[str]:
+    repository = repo_root.resolve()
+    reasons: list[str] = []
+
+    head_result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if head_result.returncode != 0:
+        message = head_result.stderr.strip() or head_result.stdout.strip()
+        return [f"could not inspect current git HEAD: {message}"]
+    current_head = head_result.stdout.strip()
+    if current_head != expected_source_commit:
+        reasons.append(
+            "current git HEAD does not match --expected-source-commit: "
+            f"{current_head} != {expected_source_commit}"
+        )
+
+    candidate_paths = [
+        _repo_relative_path(repository, manifest_path),
+        _repo_relative_path(repository, readme_path),
+        *RELEASE_CLAIM_GUARD_PATHS,
+    ]
+    guard_paths = sorted({path for path in candidate_paths if path})
+    diff_result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--", *guard_paths],
+        cwd=repository,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if diff_result.returncode != 0:
+        message = diff_result.stderr.strip() or diff_result.stdout.strip()
+        reasons.append(f"could not inspect release-claim guard paths: {message}")
+        return reasons
+    dirty_paths = []
+    for line in diff_result.stdout.splitlines():
+        if not line:
+            continue
+        dirty_paths.append(line[3:].strip() if len(line) > 3 else line.strip())
+    if dirty_paths:
+        reasons.append(
+            "release-claim guard paths contain uncommitted changes: "
+            + ", ".join(dirty_paths)
+        )
+    return reasons
+
+
+def _repo_relative_path(repo_root: Path, path: Path) -> str | None:
+    resolved_path = path.resolve()
+    try:
+        return resolved_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return None
 
 
 def _gate_reasons(gate_summaries: Sequence[dict[str, Any]]) -> list[str]:
@@ -641,7 +834,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, help="summary JSON path")
     parser.add_argument(
         "--expected-source-commit",
-        help="Fail closed unless manifest source.base_commit matches this commit",
+        help=(
+            "Fail closed unless manifest source.base_commit matches this commit, "
+            "or the expected commit is a blocked aggregate-only refresh "
+            "successor"
+        ),
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path("."),
+        help=(
+            "Repository root used to verify that an expected-source-commit "
+            "mismatch contains only aggregate refresh files"
+        ),
     )
     parser.add_argument(
         "--require-pass",
@@ -661,6 +867,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             manifest,
             readme_text=readme_text,
             expected_source_commit=args.expected_source_commit,
+            repo_root=args.repo_root,
         )
         if args.output:
             _write_summary(args.output, summary)
@@ -673,6 +880,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if summary["readme_guard"]["verdict"] != STATUS_PASS:
         return 1
+    if args.require_pass and not args.expected_source_commit:
+        print(
+            "error: --require-pass requires --expected-source-commit so stale "
+            "Phase 0 release claims fail closed",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_pass and summary["aggregate_verdict"] == STATUS_PASS:
+        checkout_reasons = _release_claim_checkout_reasons(
+            repo_root=args.repo_root,
+            expected_source_commit=args.expected_source_commit,
+            manifest_path=args.manifest,
+            readme_path=args.readme,
+        )
+        if checkout_reasons:
+            for reason in checkout_reasons:
+                print(f"error: {reason}", file=sys.stderr)
+            return 1
     if args.require_pass and summary["aggregate_verdict"] != STATUS_PASS:
         return 1
     return 0

@@ -57,9 +57,16 @@
     "source_guard": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["verdict", "expected_source_commit", "manifest_base_commit", "reasons"],
+      "required": [
+        "verdict",
+        "accepted_aggregate_only_successor",
+        "expected_source_commit",
+        "manifest_base_commit",
+        "reasons"
+      ],
       "properties": {
         "verdict": {"enum": ["pass", "insufficient"]},
+        "accepted_aggregate_only_successor": {"type": "boolean"},
         "expected_source_commit": {"type": ["string", "null"]},
         "manifest_base_commit": {"type": ["string", "null"]},
         "reasons": {"type": "array", "items": {"type": "string"}}

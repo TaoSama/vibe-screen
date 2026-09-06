@@ -1,7 +1,7 @@
 # 2026-09-06 Phase 0 stable-release aggregate current-main gate: blocked
 
 This record refreshes the Phase 0 stable-release aggregate owner on current
-`origin/main` commit `a3fbc0f52ab14b119995fe1c63858f901a052ba6`. It does not
+`origin/main` commit `377516f0e53f05bf4d48e869e7e46e75a2130236`. It does not
 close Phase 0 and does not change product status.
 
 ## Verdict
@@ -13,7 +13,7 @@ expected:
 
 ```sh
 make phase0-stable-release-gate \
-  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a3fbc0f52ab14b119995fe1c63858f901a052ba6 \
+  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=377516f0e53f05bf4d48e869e7e46e75a2130236 \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
@@ -24,31 +24,30 @@ The retained summary reports:
 - `required_gate_count=13`
 - `closed_required_gate_count=6`
 - `source_guard.verdict=pass` for commit
-  `a3fbc0f52ab14b119995fe1c63858f901a052ba6`
+  `377516f0e53f05bf4d48e869e7e46e75a2130236`
 - `readme_guard.verdict=pass`
-- `owner_pr_guard.verdict=pass` with no open owner PRs
+- `owner_pr_guard.verdict=pass` with no active required-gate owner PRs
 - `phase0-module-ownership-summary.json` reports
   `can_close_phase0_module_ownership_extraction=true` with 13 of 13 required
   boundaries closed
 
 ## Current-main inputs
 
-GitHub reported only this refresh PR #622 as open at this refresh. It is not
-listed as a required-gate owner in the manifest. PR #569 through PR #575 and PR
-#577 through PR #621 are merged into the audited mainline base. PR
-#568 and PR #576 were closed without merging and are not counted as audited
-mainline inputs.
+GitHub reported current open PRs #623 and #624 at this refresh. They are not
+listed as required-gate owners in the manifest. PR #569 through PR #575 and PR #577
+through PR #622 are merged into the audited mainline base. PR #568 and PR #576
+were closed without merging and are not counted as audited mainline inputs.
 
 The merged PR range adds source/unit/offline or no-Host readiness around Android
 clipboard controls, file-transfer readiness and cleanup, keyboard boundaries,
 managed-policy handling, controller neutral release, AV1 admission probes,
 AudioTrack no-Host smoke, UI/layout/accessibility evidence, and gate
 documentation fixes. PR #621 adds host-unreachable/route-unavailable guidance
-JVM coverage only; it does not count as USB/LAN route, TCP 54321, Host-backed
-product, or retained device evidence. These inputs do not replace Host-backed
-product evidence.
+JVM coverage only, and PR #622 refreshes the aggregate evidence; neither counts
+as USB/LAN route, TCP 54321, Host-backed product, or retained device evidence.
+These inputs do not replace Host-backed product evidence.
 
-Current main also passed GitHub Phase 0 checks run `34007427903`, including the
+Current main also passed GitHub Phase 0 checks run `34009753699`, including the
 protocol, phase3, Android, evidence-tools, and macOS jobs.
 
 ## Blocking required gates
@@ -91,11 +90,11 @@ converted to pass by this refresh.
 - `phase0-stable-release-exit.txt`: captured Make release-claim gate exit status,
   `2`, expected.
 - `head.txt`: audited local HEAD and `origin/main` commit.
-- `open-prs.json`: open PR snapshot containing this refresh PR #622.
-- `merged-prs-568-621.jsonl`: merged PR range audit input from GitHub.
-- `closed-prs-568-621.json`: retained closed-unmerged PR range snapshot
+- `open-prs.json`: open PR snapshot containing PR #623 and PR #624.
+- `merged-prs-568-622.jsonl`: merged PR range audit input from GitHub.
+- `closed-prs-568-622.json`: retained closed-unmerged PR range snapshot
   proving PR #568 and PR #576 did not land in the audited mainline base.
-- `github-run-34007427903.json`: GitHub workflow snapshot for the audited
+- `github-run-34009753699.json`: GitHub workflow snapshot for the audited
   commit.
 - `commands.txt`: command ledger for this refresh.
 - `SHA256SUMS`: artifact checksums.
