@@ -1189,6 +1189,36 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun controlBarRevealUsesSharedProductionBinder() {
+        val source = mainActivitySource()
+        val setup = extractMethod(source, "private fun setupControlBar")
+        val reveal = extractMethod(source, "private fun revealControlBar")
+        val hide = extractMethod(source, "private fun hideControlBar")
+        val compactSetup = setup.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "The hidden stream input plane must use the shared reveal binder so no-Host UI tests exercise production wiring",
+            setup.contains("ControlBarRevealBinder.bind(binding.inputViewport)"),
+        )
+        assertTrue(
+            "The reveal binder callback must route to the production reveal path",
+            compactSetup.contains("ControlBarRevealBinder.bind(binding.inputViewport){revealControlBar()}"),
+        )
+        assertFalse(
+            "MainActivity must not own a separate inputViewport click listener implementation",
+            setup.contains("binding.inputViewport.setOnClickListener"),
+        )
+        assertTrue(
+            "Reveal state must go through the shared production binder",
+            reveal.contains("ControlBarRevealBinder.reveal("),
+        )
+        assertTrue(
+            "Hide state must go through the shared production binder",
+            hide.contains("ControlBarRevealBinder.hide("),
+        )
+    }
+
+    @Test
     fun controlMenusAnchorToTheirFullTouchTargets() {
         val source = mainActivitySource()
         val displaysMenu = extractMethod(source, "private fun showDisplaysMenu")

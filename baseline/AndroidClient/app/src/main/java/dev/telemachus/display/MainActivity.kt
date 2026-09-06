@@ -2106,7 +2106,7 @@ class MainActivity : AppCompatActivity() {
         // The video input plane remains reachable after the transient chrome is
         // hidden. TalkBack users can activate it to restore every session
         // control without relying on a raw ACTION_DOWN gesture.
-        binding.inputViewport.setOnClickListener { revealControlBar() }
+        ControlBarRevealBinder.bind(binding.inputViewport) { revealControlBar() }
         binding.controlSettingsButton.setOnClickListener {
             showSettingsDialog()
             revealControlBar()
@@ -2161,11 +2161,10 @@ class MainActivity : AppCompatActivity() {
             ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
     ) {
         if (!isConnected) return
-        binding.controlBar.visibility = View.VISIBLE
-        ControlBarAccessibilityApplier.applyRevealAction(
+        ControlBarRevealBinder.reveal(
             binding.inputViewport,
-            connected = true,
-            controlBarVisible = true,
+            binding.controlBar,
+            connected = isConnected,
         )
         binding.controlBar.animate().alpha(1f).setDuration(120).start()
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
@@ -2191,11 +2190,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideControlBar() {
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
-        binding.controlBar.visibility = View.GONE
-        ControlBarAccessibilityApplier.applyRevealAction(
+        ControlBarRevealBinder.hide(
             binding.inputViewport,
+            binding.controlBar,
             connected = isConnected,
-            controlBarVisible = false,
         )
     }
 

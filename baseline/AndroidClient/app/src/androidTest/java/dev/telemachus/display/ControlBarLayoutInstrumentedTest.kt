@@ -11,10 +11,8 @@ import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,32 +24,20 @@ import kotlin.math.roundToInt
 class ControlBarLayoutInstrumentedTest {
     @Test
     fun productionRevealActionRestoresHiddenStreamControls() {
-        val preferences = PreferencesManager(InstrumentationRegistry.getInstrumentation().targetContext)
-        val previousMode = preferences.connectionMode
-        preferences.connectionMode = ConnectionMode.INTERNET
-        try {
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { activity ->
-                    MainActivity::class.java.getDeclaredField("isConnected").apply {
-                        isAccessible = true
-                        setBoolean(activity, true)
-                    }
-                    MainActivity::class.java.getDeclaredMethod("hideControlBar").apply {
-                        isAccessible = true
-                        invoke(activity)
-                    }
-                    val inputViewport = activity.findViewById<View>(R.id.inputViewport)
-                    val controlBar = activity.findViewById<View>(R.id.controlBar)
-                    assertEquals(View.GONE, controlBar.visibility)
-                    assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, inputViewport.importantForAccessibility)
-
-                    assertTrue(inputViewport.performAccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, null))
-                    assertEquals(View.VISIBLE, controlBar.visibility)
-                    assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, inputViewport.importantForAccessibility)
-                }
+        withLayout(widthDp = 320) { layout ->
+            val inputViewport = layout.root.findViewById<View>(R.id.inputViewport)
+            val controlBar = layout.views.card
+            ControlBarRevealBinder.bind(inputViewport) {
+                ControlBarRevealBinder.reveal(inputViewport, controlBar, connected = true)
             }
-        } finally {
-            preferences.connectionMode = previousMode
+
+            ControlBarRevealBinder.hide(inputViewport, controlBar, connected = true)
+            assertEquals(View.GONE, controlBar.visibility)
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, inputViewport.importantForAccessibility)
+
+            assertTrue(inputViewport.performAccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, null))
+            assertEquals(View.VISIBLE, controlBar.visibility)
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, inputViewport.importantForAccessibility)
         }
     }
 
