@@ -9,9 +9,9 @@ import android.view.inputmethod.EditorInfo
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -124,7 +124,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         var dialog: AlertDialog? = null
         var root: ScrollView? = null
         var assertionFailure: Throwable? = null
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
             try {
                 scenario.onActivity { activity ->
                     val container =

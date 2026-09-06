@@ -38,6 +38,44 @@ internal object ControlBarAccessibilityApplier {
     }
 }
 
+/** Production binding for restoring transient stream controls from the full-screen input plane. */
+internal object ControlBarRevealBinder {
+    fun bind(
+        inputViewport: View,
+        reveal: () -> Unit,
+    ) {
+        inputViewport.setOnClickListener { reveal() }
+    }
+
+    fun reveal(
+        inputViewport: View,
+        controlBar: View,
+        connected: Boolean,
+    ): Boolean {
+        if (!connected) return false
+        controlBar.visibility = View.VISIBLE
+        ControlBarAccessibilityApplier.applyRevealAction(
+            inputViewport,
+            connected = true,
+            controlBarVisible = true,
+        )
+        return true
+    }
+
+    fun hide(
+        inputViewport: View,
+        controlBar: View,
+        connected: Boolean,
+    ) {
+        controlBar.visibility = View.GONE
+        ControlBarAccessibilityApplier.applyRevealAction(
+            inputViewport,
+            connected = connected,
+            controlBarVisible = false,
+        )
+    }
+}
+
 /** Applies physical window insets to start/end-aware chrome margins. */
 internal object ChromeSafeAreaApplier {
     fun captureBaseMargins(view: View): SafeAreaGeometry.Insets {
