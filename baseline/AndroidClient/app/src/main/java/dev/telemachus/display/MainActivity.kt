@@ -2436,6 +2436,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun resetClipboardControlToDefault() {
+        cancelClipboardRequestTimeout()
+        productSessionCoordinator.clearClipboardWorkflow()
+        binding.controlClipboardButton.visibility = View.GONE
+        binding.controlClipboardButton.isEnabled = false
+        binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
+        TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
+    }
+
     private fun refreshClipboardStatusText(
         client: StreamClient?,
         generation: Long,
@@ -3458,6 +3467,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!submitted && productSessionCoordinator.cancelClipboardOfferApproval(client, generation, exactChangeId)) {
                     refreshClipboardControl()
+                    showDedupedToast(R.string.clipboard_request_timed_out)
                 }
             }
         clipboardRequestTimeout = timeout
@@ -4227,7 +4237,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun activateSession(client: StreamClient): Long {
-        cancelClipboardRequestTimeout()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
         streamControllerSessionState.resetForNewSession()
@@ -4240,6 +4249,7 @@ class MainActivity : AppCompatActivity() {
         val generation = productSessionCoordinator.activate(client)
         streamClient = client
         activeSessionGeneration = generation
+        resetClipboardControlToDefault()
         return generation
     }
 
@@ -6278,12 +6288,7 @@ class MainActivity : AppCompatActivity() {
         refreshTransferReadinessInSettings()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
-        cancelClipboardRequestTimeout()
-        productSessionCoordinator.clearClipboardWorkflow()
-        binding.controlClipboardButton.visibility = View.GONE
-        binding.controlClipboardButton.isEnabled = false
-        binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
-        TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
+        resetClipboardControlToDefault()
         binding.controlFileTransferButton.visibility = View.GONE
         binding.controlFileTransferButton.isEnabled = false
         binding.controlFileTransferButton.contentDescription = getString(R.string.control_file_transfer)
