@@ -40,7 +40,7 @@ class MainActivityClipboardSystemBoundaryContractTest {
         assertBefore(send, "ClipboardMenuPolicy.isWithinSizeLimit", "client.offerClipboard(clipboardText)")
         assertTrue(
             "A failed protocol send must surface a user-visible failure",
-            send.contains("R.string.clipboard_send_failed"),
+            send.contains("showDedupedToast(if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed)"),
         )
     }
 
@@ -85,7 +85,7 @@ class MainActivityClipboardSystemBoundaryContractTest {
         assertBefore(receive, "client.canSendClipboard", "client.requestClipboard(offer.changeId)")
         assertTrue(
             "A failed remote clipboard request must surface a user-visible failure",
-            receive.contains("R.string.clipboard_receive_failed"),
+            receive.contains("showDedupedToast(R.string.clipboard_receive_failed)"),
         )
     }
 
@@ -101,7 +101,7 @@ class MainActivityClipboardSystemBoundaryContractTest {
         )
         assertTrue(
             "Clipboard write failures must remain visible to the user and diagnostics",
-            write.contains("R.string.clipboard_write_failed") &&
+            write.contains("showDedupedToast(if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed)") &&
                 write.contains("clipboard write failed"),
         )
         assertTrue(
@@ -121,6 +121,10 @@ class MainActivityClipboardSystemBoundaryContractTest {
             activateSession.contains("productSessionCoordinator.activate(client)"),
         )
         assertTrue(
+            "New sessions must reset stale clipboard controls before any negotiation callback can republish them",
+            activateSession.contains("resetClipboardControlToDefault()"),
+        )
+        assertTrue(
             "Remote managed-policy clipboard deny must clear pending approvals",
             managedPolicyCallback.contains("if (!clipboard) {") &&
                 managedPolicyCallback.contains("cancelClipboardRequestTimeout()") &&
@@ -132,15 +136,27 @@ class MainActivityClipboardSystemBoundaryContractTest {
     fun pendingClipboardReceiveOwnsVisibleStatusUntilUserAction() {
         val source = mainActivitySource()
         val refreshClipboard = extractMethod(source, "private fun refreshClipboardControl")
+        val updateClipboardLabel = extractMethod(source, "private fun updateClipboardAccessibilityLabel")
         val refreshClipboardStatus = extractMethod(source, "private fun refreshClipboardStatusText")
         val refreshFileTransfer = extractMethod(source, "private fun refreshFileTransferControl")
         val overwriteConfirmation = extractMethod(source, "private fun showClipboardOverwriteConfirmation")
         val timeout = extractMethod(source, "private fun scheduleClipboardRequestTimeout")
         val disconnectedUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+        val resetClipboard = extractMethod(source, "private fun resetClipboardControlToDefault")
+        val clipboardOfferCallback = extractCallback(source, "callbackClient.onClipboardOffered = clipboardOffer@")
+        val clipboardContentCallback = extractCallback(source, "callbackClient.onClipboardContentReceived = clipboardContent@")
 
         assertTrue(
             "Refreshing clipboard controls should reconcile the shared visible status row",
             refreshClipboard.contains("refreshClipboardStatusText(client, activeSessionGeneration)"),
+        )
+        assertTrue(
+            "Pending clipboard state should use a pending button label plus matching tooltip",
+            updateClipboardLabel.contains("productSessionCoordinator.hasPendingClipboardReceive(client, generation)") &&
+                updateClipboardLabel.contains("R.string.control_clipboard_pending") &&
+                updateClipboardLabel.contains("R.string.control_clipboard") &&
+                updateClipboardLabel.contains("TooltipCompat.setTooltipText(") &&
+                updateClipboardLabel.contains("binding.controlClipboardButton.contentDescription"),
         )
         assertTrue(
             "Pending clipboard state should use a short visible row and a full accessibility instruction",
@@ -149,6 +165,26 @@ class MainActivityClipboardSystemBoundaryContractTest {
                 refreshClipboardStatus.contains("R.string.clipboard_pending_status") &&
                 refreshClipboardStatus.contains("R.string.clipboard_pending_from_mac") &&
                 refreshClipboardStatus.contains("binding.controlFileTransferProgressText.visibility = if (pending) View.VISIBLE else View.GONE"),
+        )
+        assertTrue(
+            "Remote clipboard offers should announce the actionable pending state after the button label is refreshed",
+            clipboardOfferCallback.contains("productSessionCoordinator.stageClipboardOffer") &&
+                clipboardOfferCallback.contains("R.string.clipboard_pending_from_mac"),
+        )
+        assertBefore(
+            clipboardOfferCallback,
+            "refreshClipboardControl()",
+            "binding.controlClipboardButton.announceForAccessibility(",
+        )
+        assertTrue(
+            "Direct clipboard content should announce the approval-required pending state after the button label is refreshed",
+            clipboardContentCallback.contains("productSessionCoordinator.stageDirectClipboardContent") &&
+                clipboardContentCallback.contains("R.string.clipboard_pending_confirmation"),
+        )
+        assertBefore(
+            clipboardContentCallback,
+            "refreshClipboardControl()",
+            "binding.controlClipboardButton.announceForAccessibility(",
         )
         assertTrue(
             "Active file-transfer progress must retain precedence over clipboard status text",
@@ -168,6 +204,21 @@ class MainActivityClipboardSystemBoundaryContractTest {
                 timeout.contains("productSessionCoordinator.cancelClipboardOfferApproval(client, generation, exactChangeId)") &&
                 timeout.contains("refreshClipboardControl()") &&
                 timeout.contains("R.string.clipboard_request_timed_out"),
+        )
+        assertTrue(
+            "Clipboard request timeout must surface the same timeout toast even when the expiry command cannot be submitted",
+            timeout.contains("if (!submitted && productSessionCoordinator.cancelClipboardOfferApproval(client, generation, exactChangeId))") &&
+                timeout.contains("showDedupedToast(R.string.clipboard_request_timed_out)"),
+        )
+        assertTrue(
+            "Disconnected UI must fail closed by cancelling timers, clearing clipboard workflow, hiding the button, and restoring its default label",
+            disconnectedUi.contains("resetClipboardControlToDefault()") &&
+                resetClipboard.contains("cancelClipboardRequestTimeout()") &&
+                resetClipboard.contains("productSessionCoordinator.clearClipboardWorkflow()") &&
+                resetClipboard.contains("binding.controlClipboardButton.visibility = View.GONE") &&
+                resetClipboard.contains("binding.controlClipboardButton.isEnabled = false") &&
+                resetClipboard.contains("binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)") &&
+                resetClipboard.contains("TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))"),
         )
         assertTrue(
             "Disconnected UI must hide the shared transfer/clipboard status row so pending clipboard text cannot leak",
