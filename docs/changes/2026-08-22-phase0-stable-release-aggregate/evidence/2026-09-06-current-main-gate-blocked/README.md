@@ -1,7 +1,7 @@
 # 2026-09-06 Phase 0 stable-release aggregate current-main gate: blocked
 
 This record refreshes the Phase 0 stable-release aggregate owner on current
-`origin/main` commit `170be3fc46c5560259259954c2799dfed7995e7b`. It does not
+`origin/main` commit `1473d0befa40a461a8b986c58030dcddf06a2679`. It does not
 close Phase 0 and does not change product status.
 
 ## Verdict
@@ -13,7 +13,7 @@ expected:
 
 ```sh
 make phase0-stable-release-gate \
-  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=170be3fc46c5560259259954c2799dfed7995e7b \
+  PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=1473d0befa40a461a8b986c58030dcddf06a2679 \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
@@ -24,7 +24,7 @@ The retained summary reports:
 - `required_gate_count=13`
 - `closed_required_gate_count=6`
 - `source_guard.verdict=pass` for commit
-  `170be3fc46c5560259259954c2799dfed7995e7b`
+  `1473d0befa40a461a8b986c58030dcddf06a2679`
 - `readme_guard.verdict=pass`
 - `owner_pr_guard.verdict=pass` with no active owner PRs and current open PR
   snapshot `[]`
@@ -34,10 +34,10 @@ The retained summary reports:
 
 ## Current-main inputs
 
-GitHub reported no current open PRs (`[]`) at this refresh. PR #628 is now
+GitHub reported no current open PRs (`[]`) at this refresh. PR #629 is now
 merged into the audited mainline base, along with PR #623, PR #624, PR #625,
-and PR #626, rather than listed as an active owner PR. PR #569 through PR #575
-and PR #577 through PR #628 are merged into the audited mainline base. PR #568,
+PR #626, and PR #628, rather than listed as an active owner PR. PR #569 through PR #575,
+PR #577 through PR #626, PR #628, and PR #629 are merged into the audited mainline base. PR #568,
 PR #576, and closed-unmerged PR #627 are explicit non-merged exclusions from
 the declared PR range.
 
@@ -47,12 +47,12 @@ managed-policy handling, controller neutral release, AV1 admission probes,
 AudioTrack no-Host smoke, UI/layout/accessibility evidence, Host TCC identity
 preflight tightening, gate documentation fixes, aggregate source-guard refreshes,
 and P0110 no-Host UI/UX review evidence. PR #621 adds host-unreachable/route-unavailable guidance JVM
-coverage only, PR #622/#624/#626/#628 refresh aggregate evidence, and PR #623 records
+coverage only, PR #622/#624/#626/#628/#629 refresh aggregate evidence, and PR #623 records
 no-Host UI/UX review evidence; none counts as USB/LAN route, TCP 54321,
 Host-backed product, or retained device evidence. These inputs do not replace
 Host-backed product evidence.
 
-Current main also passed GitHub Phase 0 checks run `34024631706`, including the
+Current main also passed GitHub Phase 0 checks run `34026162856`, including the
 protocol, phase3, Android, evidence-tools, and macOS jobs.
 
 ## Blocking required gates
@@ -96,16 +96,16 @@ converted to pass by this refresh.
   `2`, expected.
 - `head.txt`: audited local HEAD and `origin/main` commit.
 - `open-prs.json`: open PR snapshot, `[]`.
-- `merged-prs-568-628.jsonl`: merged PR range audit input from GitHub.
-- `closed-prs-568-628.json`: retained closed-unmerged PR range snapshot
+- `merged-prs-568-629.jsonl`: merged PR range audit input from GitHub.
+- `closed-prs-568-629.json`: retained closed-unmerged PR range snapshot
   proving PR #568, PR #576, and PR #627 did not land in the audited mainline
   base.
-- `pr-628-merged.json`: PR #628 merged-state snapshot.
-- `github-run-34024631706.json`: GitHub Phase 0 workflow snapshot for the audited
+- `pr-629-merged.json`: PR #629 merged-state snapshot.
+- `github-run-34026162856.json`: GitHub Phase 0 workflow snapshot for the audited
   commit.
-- `github-run-34024631661.json`: GitHub iOS engineering workflow snapshot for the audited
+- `github-run-34026162855.json`: GitHub iOS engineering workflow snapshot for the audited
   commit.
-- `github-run-34024631673.json`: GitHub HarmonyOS portable workflow snapshot for the audited
+- `github-run-34026162862.json`: GitHub HarmonyOS portable workflow snapshot for the audited
   commit.
 - `commands.txt`: command ledger for this refresh.
 - `SHA256SUMS`: artifact checksums.
