@@ -17,10 +17,16 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
+
+SCRIPTS_ROOT = Path(__file__).resolve().parents[2] / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+import package_macos
 
 from . import SCHEMA_VERSION
 from .adb import ADBClient, ADBError
@@ -29,6 +35,7 @@ from .adb import ADBClient, ADBError
 SCREEN_CAPTURE_SERVICE = "kTCCServiceScreenCapture"
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
 AUTHORIZED_TCC_VALUE = 2
+TCC_QUERY_TIMEOUT_SECONDS = 5.0
 DEFAULT_BUNDLE_PATH = Path("/Applications/Vibe Screen.app")
 PRIVACY_DB_RELATIVE_PATH = Path("Library") / "Application Support" / "com.apple.TCC" / ("TCC" + ".db")
 USER_TCC_DB = Path.home() / PRIVACY_DB_RELATIVE_PATH
@@ -138,13 +145,80 @@ def _source_identity(info: dict[str, Any]) -> dict[str, Any]:
 def _codesign_summary(bundle_path: Path) -> dict[str, Any]:
     details = _run(["codesign", "-dv", "--verbose=4", str(bundle_path)]).stderr
     verify = _run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(bundle_path)])
+    requirement_output = _run(["codesign", "-d", "-r-", str(bundle_path)])
     authorities = re.findall(r"^Authority=(.+)$", details, flags=re.MULTILINE)
     cdhash_match = re.search(r"^CDHash=(.+)$", details, flags=re.MULTILINE)
+    requirement_text = "\n".join(
+        part for part in (requirement_output.stdout, requirement_output.stderr) if part
+    )
     return {
         "authorities": authorities,
         "cdhash": cdhash_match.group(1).strip() if cdhash_match else None,
+        "designated_requirement": package_macos.parse_designated_requirement(requirement_text),
         "verify": verify.stderr or verify.stdout,
     }
+
+
+def _normalize_requirement_text(requirement: str | None) -> str | None:
+    if requirement is None:
+        return None
+    normalized = " ".join(requirement.strip().split())
+    return normalized.lower() if normalized else None
+
+
+def _csreq_binary_to_requirement(blob: bytes | memoryview | None) -> tuple[str | None, str | None]:
+    if blob is None:
+        return None, "missing TCC csreq"
+    payload = bytes(blob)
+    if not payload:
+        return None, "empty TCC csreq"
+    with tempfile.NamedTemporaryFile(prefix="vibe-screen-touch-tcc-csreq-", suffix=".bin") as csreq_file:
+        csreq_file.write(payload)
+        csreq_file.flush()
+        try:
+            result = _run(
+                ["/usr/bin/csreq", "-r", csreq_file.name, "-t"],
+                timeout_seconds=TCC_QUERY_TIMEOUT_SECONDS,
+            )
+        except TouchRerunPreflightError as error:
+            return None, f"cannot decode TCC csreq: {error}"
+    normalized = _normalize_requirement_text(result.stdout or result.stderr)
+    if normalized is None:
+        return None, "decoded TCC csreq was empty"
+    return normalized, None
+
+
+def _tcc_row_requirement_matches(row: dict[str, Any], requirement: str | None) -> bool:
+    expected = _normalize_requirement_text(requirement)
+    row_requirement = row.get("csreq_requirement")
+    if expected is None or row.get("csreq_error") is not None or not isinstance(row_requirement, str):
+        return False
+    if row_requirement == expected:
+        return True
+    try:
+        row_contract = package_macos.parse_designated_requirement_contract(row_requirement)
+        expected_contract = package_macos.parse_designated_requirement_contract(expected)
+    except ValueError:
+        return False
+    return (
+        row_contract.identifier == expected_contract.identifier
+        and row_contract.leaf_sha1 == expected_contract.leaf_sha1
+    )
+
+
+def _tcc_row_identity_state(row: dict[str, Any] | None, host_requirement: str | None) -> str:
+    if not row or not row.get("authorized"):
+        return "not_authorized"
+    if _tcc_row_requirement_matches(row, host_requirement):
+        return "authorized_current_host_identity"
+    return "authorized_different_or_unreadable_host_identity"
+
+
+def _annotate_tcc_identity_binding(row: dict[str, Any] | None, host_requirement: str | None) -> None:
+    if row is None:
+        return
+    row["identity_bound"] = _tcc_row_requirement_matches(row, host_requirement)
+    row["identity_state"] = _tcc_row_identity_state(row, host_requirement)
 
 
 def collect_host_bundle(bundle_path: Path) -> dict[str, Any]:
@@ -226,12 +300,14 @@ def _query_tcc_db_direct(db_path: Path, bundle_identifier: str) -> dict[str, dic
     except sqlite3.Error as error:
         raise TouchRerunPreflightError(f"could not open TCC database read-only: {error}") from error
     try:
+        columns = {str(row[1]) for row in connection.execute("pragma table_info(access)").fetchall()}
+        csreq_select = "csreq" if "csreq" in columns else "NULL AS csreq"
         rows = connection.execute(
-            """
-            select service, client, client_type, auth_value, auth_reason, last_modified
+            f"""
+            select service, client, client_type, auth_value, auth_reason, last_modified, {csreq_select}
             from access
-            where client = ? and service in (?, ?)
-            order by service
+            where client = ? and client_type = 0 and service in (?, ?)
+            order by service, last_modified
             """,
             (bundle_identifier, ACCESSIBILITY_SERVICE, SCREEN_CAPTURE_SERVICE),
         ).fetchall()
@@ -240,8 +316,11 @@ def _query_tcc_db_direct(db_path: Path, bundle_identifier: str) -> dict[str, dic
     finally:
         connection.close()
 
-    return {
-        service: {
+    result: dict[str, dict[str, Any]] = {}
+    for service, client, client_type, auth_value, auth_reason, last_modified, csreq in rows:
+        csreq_blob = None if csreq is None else bytes(csreq)
+        requirement, csreq_error = _csreq_binary_to_requirement(csreq_blob)
+        result[service] = {
             "service": service,
             "client": client,
             "client_type": client_type,
@@ -249,13 +328,19 @@ def _query_tcc_db_direct(db_path: Path, bundle_identifier: str) -> dict[str, dic
             "auth_reason": auth_reason,
             "last_modified": last_modified,
             "authorized": auth_value == AUTHORIZED_TCC_VALUE,
+            "csreq_sha256": hashlib.sha256(csreq_blob).hexdigest() if csreq_blob else None,
+            "csreq_requirement": requirement,
+            "csreq_error": csreq_error,
             "db_path": _public_path(db_path),
         }
-        for service, client, client_type, auth_value, auth_reason, last_modified in rows
-    }
+    return result
 
 
-def collect_tcc(db_paths: Sequence[Path], bundle_identifier: str) -> dict[str, Any]:
+def collect_tcc(
+    db_paths: Sequence[Path],
+    bundle_identifier: str,
+    host_requirement: str | None = None,
+) -> dict[str, Any]:
     if not db_paths:
         raise TouchRerunPreflightError("at least one TCC database path is required")
     by_service: dict[str, dict[str, Any]] = {}
@@ -270,6 +355,8 @@ def collect_tcc(db_paths: Sequence[Path], bundle_identifier: str) -> dict[str, A
             current = by_service.get(service)
             if current is None or row["last_modified"] >= current["last_modified"]:
                 by_service[service] = row
+    for row in by_service.values():
+        _annotate_tcc_identity_binding(row, host_requirement)
     return {
         "db_paths": inspected,
         "missing_db_paths": missing,
@@ -326,12 +413,17 @@ def _blockers(
                 blockers.append("installed Host bundle source commit does not match current HEAD")
             if host_source.get("tree") != current_source.get("tree"):
                 blockers.append("installed Host bundle source tree does not match current tree")
-    screen = tcc.get("screen_recording")
-    if not screen or not screen.get("authorized"):
-        blockers.append("Screen Recording is not authorized for the Host bundle identifier")
-    accessibility = tcc.get("accessibility")
-    if not accessibility or not accessibility.get("authorized"):
-        blockers.append("Accessibility is not authorized for the Host bundle identifier")
+    def require_identity_bound_permission(key: str, label: str) -> None:
+        row = tcc.get(key)
+        if not row or not row.get("authorized"):
+            blockers.append(f"{label} is not authorized for the Host bundle identifier")
+            return
+        if not row.get("identity_bound"):
+            detail = row.get("csreq_error") or "TCC csreq does not match installed Host designated requirement"
+            blockers.append(f"{label} TCC authorization is not bound to the installed Host identity: {detail}")
+
+    require_identity_bound_permission("screen_recording", "Screen Recording")
+    require_identity_bound_permission("accessibility", "Accessibility")
     if android is None:
         blockers.append("no explicit Android device serial was recorded")
     else:
@@ -372,7 +464,8 @@ def build_document(
 ) -> dict[str, Any]:
     host = collect_host_bundle(bundle_path)
     current_source = collect_current_source(source_root) if source_root is not None else None
-    tcc = collect_tcc(tcc_dbs, host["identifier"])
+    host_requirement = (host.get("codesign") or {}).get("designated_requirement")
+    tcc = collect_tcc(tcc_dbs, host["identifier"], host_requirement)
     android = collect_android(serial, adb_path, adb_timeout)
     blockers = _blockers(
         host=host,

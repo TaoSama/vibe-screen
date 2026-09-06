@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import queue
 import sqlite3
@@ -25,13 +26,25 @@ from vibescreen_evidence.touch_rerun_preflight import (
 
 
 PRIVACY_DB_FILENAME = "privacy.sqlite"
+HOST_CSREQ_BLOB = b"host-test-csreq"
+MISMATCHED_CSREQ_BLOB = b"mismatched-test-csreq"
+HOST_REQUIREMENT = (
+    'identifier "dev.telemachus.display" and '
+    'certificate leaf = H"9AAE572BF6D764E3436A6109197D345B5A87998C"'
+)
+MISMATCHED_REQUIREMENT = (
+    'identifier "dev.telemachus.display" and '
+    'certificate leaf = H"1111111111111111111111111111111111111111"'
+)
 
 
 class TouchRerunPreflightTests(unittest.TestCase):
-    def write_tcc_db(self, path: Path, rows: list[tuple[str, str, int, int, int, int]]) -> None:
+    def write_tcc_db(self, path: Path, rows: list[tuple]) -> None:
+        has_csreq = any(len(row) == 7 for row in rows)
         connection = sqlite3.connect(path)
+        csreq_column = ", csreq blob" if has_csreq else ""
         connection.execute(
-            """
+            f"""
             create table access (
                 service text not null,
                 client text not null,
@@ -39,12 +52,36 @@ class TouchRerunPreflightTests(unittest.TestCase):
                 auth_value integer not null,
                 auth_reason integer not null,
                 last_modified integer not null
+                {csreq_column}
             )
             """
         )
-        connection.executemany("insert into access values (?, ?, ?, ?, ?, ?)", rows)
+        placeholder_count = 7 if has_csreq else 6
+        placeholders = ", ".join("?" for _ in range(placeholder_count))
+        connection.executemany(f"insert into access values ({placeholders})", rows)
         connection.commit()
         connection.close()
+
+    def mock_csreq_decoder(self):
+        original = touch_rerun_preflight._run
+
+        def fake_run(command, *, timeout_seconds=15.0, cwd=None):
+            command_list = list(command)
+            if (
+                len(command_list) == 4
+                and command_list[0] == "/usr/bin/csreq"
+                and command_list[1] == "-r"
+                and command_list[3] == "-t"
+            ):
+                payload = Path(command_list[2]).read_bytes()
+                if payload == HOST_CSREQ_BLOB:
+                    return touch_rerun_preflight.CommandResult(HOST_REQUIREMENT, "")
+                if payload == MISMATCHED_CSREQ_BLOB:
+                    return touch_rerun_preflight.CommandResult(MISMATCHED_REQUIREMENT, "")
+                raise TouchRerunPreflightError("invalid csreq")
+            return original(command, timeout_seconds=timeout_seconds, cwd=cwd)
+
+        return patch("vibescreen_evidence.touch_rerun_preflight._run", side_effect=fake_run)
 
     def test_tcc_collection_marks_screen_and_accessibility_authorized(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -52,15 +89,22 @@ class TouchRerunPreflightTests(unittest.TestCase):
             self.write_tcc_db(
                 db_path,
                 [
-                    (SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 10),
-                    (ACCESSIBILITY_SERVICE, "dev.telemachus.display", 0, 2, 4, 11),
+                    (SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 10, HOST_CSREQ_BLOB),
+                    (ACCESSIBILITY_SERVICE, "dev.telemachus.display", 0, 2, 4, 11, HOST_CSREQ_BLOB),
                 ],
             )
 
-            tcc = collect_tcc([db_path], "dev.telemachus.display")
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([db_path], "dev.telemachus.display", HOST_REQUIREMENT)
 
         self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertTrue(tcc["screen_recording"]["identity_bound"])
+        self.assertEqual(tcc["screen_recording"]["identity_state"], "authorized_current_host_identity")
+        self.assertEqual(tcc["screen_recording"]["csreq_requirement"], HOST_REQUIREMENT.lower())
+        self.assertEqual(tcc["screen_recording"]["csreq_sha256"], hashlib.sha256(HOST_CSREQ_BLOB).hexdigest())
         self.assertTrue(tcc["accessibility"]["authorized"])
+        self.assertTrue(tcc["accessibility"]["identity_bound"])
+        self.assertEqual(tcc["accessibility"]["identity_state"], "authorized_current_host_identity")
         self.assertEqual(tcc["accessibility"]["auth_value"], 2)
         self.assertEqual(tcc["accessibility"]["db_path"], str(db_path))
 
@@ -70,21 +114,24 @@ class TouchRerunPreflightTests(unittest.TestCase):
             system_db = Path(directory) / "system-privacy.sqlite"
             self.write_tcc_db(
                 user_db,
-                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 0, 4, 10)],
+                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 0, 4, 10, MISMATCHED_CSREQ_BLOB)],
             )
             self.write_tcc_db(
                 system_db,
                 [
-                    (SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 20),
-                    (ACCESSIBILITY_SERVICE, "dev.telemachus.display", 0, 0, 4, 21),
+                    (SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 20, HOST_CSREQ_BLOB),
+                    (ACCESSIBILITY_SERVICE, "dev.telemachus.display", 0, 0, 4, 21, HOST_CSREQ_BLOB),
                 ],
             )
 
-            tcc = collect_tcc([user_db, system_db], "dev.telemachus.display")
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([user_db, system_db], "dev.telemachus.display", HOST_REQUIREMENT)
 
         self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertTrue(tcc["screen_recording"]["identity_bound"])
         self.assertEqual(tcc["screen_recording"]["db_path"], str(system_db))
         self.assertFalse(tcc["accessibility"]["authorized"])
+        self.assertTrue(tcc["accessibility"]["identity_bound"])
 
     def test_tcc_collection_records_missing_databases_without_failing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -92,13 +139,127 @@ class TouchRerunPreflightTests(unittest.TestCase):
             system_db = Path(directory) / "system-privacy.sqlite"
             self.write_tcc_db(
                 system_db,
-                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 20)],
+                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 20, HOST_CSREQ_BLOB)],
             )
 
-            tcc = collect_tcc([missing_db, system_db], "dev.telemachus.display")
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([missing_db, system_db], "dev.telemachus.display", HOST_REQUIREMENT)
 
         self.assertEqual(tcc["missing_db_paths"], [str(missing_db)])
         self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertTrue(tcc["screen_recording"]["identity_bound"])
+
+    def test_tcc_collection_ignores_path_client_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_db(
+                db_path,
+                [
+                    (SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 1, 2, 4, 20, HOST_CSREQ_BLOB),
+                    (ACCESSIBILITY_SERVICE, "dev.telemachus.display", 0, 2, 4, 21, HOST_CSREQ_BLOB),
+                ],
+            )
+
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([db_path], "dev.telemachus.display", HOST_REQUIREMENT)
+
+        self.assertIsNone(tcc["screen_recording"])
+        self.assertTrue(tcc["accessibility"]["authorized"])
+
+    def test_tcc_collection_marks_mismatched_csreq_as_not_identity_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_db(
+                db_path,
+                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 10, MISMATCHED_CSREQ_BLOB)],
+            )
+
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([db_path], "dev.telemachus.display", HOST_REQUIREMENT)
+
+        self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertFalse(tcc["screen_recording"]["identity_bound"])
+        self.assertEqual(
+            tcc["screen_recording"]["identity_state"],
+            "authorized_different_or_unreadable_host_identity",
+        )
+        self.assertEqual(tcc["screen_recording"]["csreq_requirement"], MISMATCHED_REQUIREMENT.lower())
+
+    def test_tcc_collection_marks_missing_csreq_as_not_identity_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_db(
+                db_path,
+                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 10)],
+            )
+
+            tcc = collect_tcc([db_path], "dev.telemachus.display", HOST_REQUIREMENT)
+
+        self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertFalse(tcc["screen_recording"]["identity_bound"])
+        self.assertEqual(
+            tcc["screen_recording"]["identity_state"],
+            "authorized_different_or_unreadable_host_identity",
+        )
+        self.assertEqual(tcc["screen_recording"]["csreq_error"], "missing TCC csreq")
+
+    def test_tcc_collection_marks_undecodable_csreq_as_not_identity_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_db(
+                db_path,
+                [(SCREEN_CAPTURE_SERVICE, "dev.telemachus.display", 0, 2, 4, 10, b"unknown-csreq")],
+            )
+
+            with self.mock_csreq_decoder():
+                tcc = collect_tcc([db_path], "dev.telemachus.display", HOST_REQUIREMENT)
+
+        self.assertTrue(tcc["screen_recording"]["authorized"])
+        self.assertFalse(tcc["screen_recording"]["identity_bound"])
+        self.assertEqual(
+            tcc["screen_recording"]["identity_state"],
+            "authorized_different_or_unreadable_host_identity",
+        )
+        self.assertIn("cannot decode TCC csreq", tcc["screen_recording"]["csreq_error"])
+
+    def test_blockers_reject_authorized_tcc_rows_for_different_host_identity(self) -> None:
+        blockers = _blockers(
+            host={"binary_sha256": "abc"},
+            tcc={
+                "screen_recording": {"authorized": True, "identity_bound": False, "csreq_error": "missing TCC csreq"},
+                "accessibility": {"authorized": True, "identity_bound": False},
+            },
+            android={"model": "P0110"},
+            expected_host_sha256="abc",
+        )
+
+        self.assertIn(
+            "Screen Recording TCC authorization is not bound to the installed Host identity: missing TCC csreq",
+            blockers,
+        )
+        self.assertIn(
+            "Accessibility TCC authorization is not bound to the installed Host identity: "
+            "TCC csreq does not match installed Host designated requirement",
+            blockers,
+        )
+
+    def test_codesign_summary_records_designated_requirement(self) -> None:
+        def fake_run(command, *, timeout_seconds=15.0, cwd=None):
+            command_list = list(command)
+            if command_list[:3] == ["codesign", "-dv", "--verbose=4"]:
+                return touch_rerun_preflight.CommandResult("", "Authority=Vibe Screen Dev\nCDHash=abc123")
+            if command_list[:2] == ["codesign", "--verify"]:
+                return touch_rerun_preflight.CommandResult("", "valid on disk")
+            if command_list[:3] == ["codesign", "-d", "-r-"]:
+                return touch_rerun_preflight.CommandResult("", "designated => " + HOST_REQUIREMENT)
+            raise AssertionError(f"unexpected command: {command_list}")
+
+        with patch("vibescreen_evidence.touch_rerun_preflight._run", side_effect=fake_run):
+            summary = touch_rerun_preflight._codesign_summary(Path("/Applications/Vibe Screen.app"))
+
+        self.assertEqual(summary["authorities"], ["Vibe Screen Dev"])
+        self.assertEqual(summary["cdhash"], "abc123")
+        self.assertEqual(summary["designated_requirement"], HOST_REQUIREMENT)
 
     def test_tcc_query_times_out_instead_of_hanging(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -259,8 +420,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
         ), patch(
             "vibescreen_evidence.touch_rerun_preflight.collect_tcc",
             return_value={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
         ), patch(
             "vibescreen_evidence.touch_rerun_preflight.collect_android",
@@ -291,7 +452,7 @@ class TouchRerunPreflightTests(unittest.TestCase):
         blockers = _blockers(
             host={"binary_sha256": "old"},
             tcc={
-                "screen_recording": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
                 "accessibility": {"authorized": False},
             },
             android=None,
@@ -312,8 +473,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
         blockers = _blockers(
             host={"binary_sha256": "abc"},
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={
                 "manufacturer": "Xiaomi",
@@ -351,8 +512,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
                 "codesign": {"authorities": ["Vibe Screen Dev"]},
             },
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={"model": "P0110"},
             expected_host_sha256="abc",
@@ -365,8 +526,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
     def test_current_source_requirement_blocks_legacy_or_stale_host(self) -> None:
         base = {
             "tcc": {
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             "android": {"model": "P0110"},
             "expected_host_sha256": None,
@@ -399,8 +560,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
                 "codesign": {"authorities": ["Vibe Screen Dev"]},
             },
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={"model": "P0110"},
             expected_host_sha256=None,
@@ -416,8 +577,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
                 "codesign": {"authorities": ["Vibe Screen Dev"]},
             },
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={"model": "P0110"},
             expected_host_sha256=None,
@@ -434,8 +595,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
                 "codesign": {"authorities": []},
             },
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={"model": "P0110"},
             expected_host_sha256=None,
@@ -449,8 +610,8 @@ class TouchRerunPreflightTests(unittest.TestCase):
         blockers = _blockers(
             host={"binary_sha256": "abc", "source": {}},
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={"model": "P0110"},
             expected_host_sha256="abc",
@@ -461,6 +622,12 @@ class TouchRerunPreflightTests(unittest.TestCase):
         self.assertEqual(blockers, [])
 
     def test_build_document_records_current_source_requirement(self) -> None:
+        collect_tcc_mock = unittest.mock.Mock(
+            return_value={
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
+            }
+        )
         with (
             patch(
                 "vibescreen_evidence.touch_rerun_preflight.collect_host_bundle",
@@ -468,15 +635,15 @@ class TouchRerunPreflightTests(unittest.TestCase):
                     "identifier": "dev.telemachus.display",
                     "binary_sha256": "abc",
                     "source": {"commit": "old", "tree": "old-tree", "dirty": False},
-                    "codesign": {"authorities": ["Vibe Screen Dev"]},
+                    "codesign": {
+                        "authorities": ["Vibe Screen Dev"],
+                        "designated_requirement": HOST_REQUIREMENT,
+                    },
                 },
             ),
             patch(
                 "vibescreen_evidence.touch_rerun_preflight.collect_tcc",
-                return_value={
-                    "screen_recording": {"authorized": True},
-                    "accessibility": {"authorized": True},
-                },
+                collect_tcc_mock,
             ),
             patch(
                 "vibescreen_evidence.touch_rerun_preflight.collect_android",
@@ -502,13 +669,18 @@ class TouchRerunPreflightTests(unittest.TestCase):
         self.assertTrue(document["current_source_required"])
         self.assertEqual(document["current_source"]["commit"], "new")
         self.assertIn("installed Host bundle source commit does not match current HEAD", document["blockers"])
+        collect_tcc_mock.assert_called_once_with(
+            [Path("fixture-tcc.sqlite")],
+            "dev.telemachus.display",
+            HOST_REQUIREMENT,
+        )
 
     def test_no_blockers_when_expected_android_identity_matches(self) -> None:
         blockers = _blockers(
             host={"binary_sha256": "abc"},
             tcc={
-                "screen_recording": {"authorized": True},
-                "accessibility": {"authorized": True},
+                "screen_recording": {"authorized": True, "identity_bound": True},
+                "accessibility": {"authorized": True, "identity_bound": True},
             },
             android={
                 "manufacturer": "nubia",

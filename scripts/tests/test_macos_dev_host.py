@@ -464,7 +464,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Source commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", report)
         self.assertIn("Source tree: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", report)
         self.assertIn("kTCCServiceAccessibility|dev.telemachus.display|0|0|4|1786811429", report)
-        self.assertIn("Microphone not allowed", report)
+        self.assertIn("Microphone not authorized", report)
         self.assertIn("Status: FAIL", report)
         self.assertIn("System Settings -> Privacy & Security", report)
 
@@ -3322,6 +3322,95 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertTrue(status.is_allowed(macos_dev_host.SCREEN_CAPTURE_SERVICES))
         self.assertFalse(status.has_matching_requirement(macos_dev_host.SCREEN_CAPTURE_SERVICES, HOST_REQUIREMENT))
         self.assertEqual(row.csreq_requirement, macos_dev_host.normalize_requirement_text(MISMATCHED_REQUIREMENT))
+        interpretation = macos_dev_host.permission_interpretation(status, HOST_REQUIREMENT)
+        self.assertIn(
+            "Screen Recording authorized but bound to a different or unreadable Host identity",
+            interpretation,
+        )
+        self.assertNotIn("Screen Recording authorized;", interpretation)
+
+    def test_permission_interpretation_reports_identity_bound_grants(self) -> None:
+        status = macos_dev_host.PermissionStatus(
+            database_path=TEST_PRIVACY_DATABASE,
+            readable=True,
+            rows=allowed_tcc_rows(),
+        )
+
+        interpretation = macos_dev_host.permission_interpretation(status, HOST_REQUIREMENT)
+
+        self.assertIn(
+            "Screen Recording authorized and bound to this installed Host identity",
+            interpretation,
+        )
+        self.assertIn(
+            "Accessibility authorized and bound to this installed Host identity",
+            interpretation,
+        )
+        self.assertIn(
+            "Microphone authorized and bound to this installed Host identity",
+            interpretation,
+        )
+        record = macos_dev_host.permission_record(status, HOST_REQUIREMENT)
+        self.assertEqual(record["screen_recording_state"], "authorized_current_host_identity")
+        self.assertEqual(record["accessibility_state"], "authorized_current_host_identity")
+        self.assertEqual(record["microphone_state"], "authorized_current_host_identity")
+
+    def test_permission_interpretation_reports_uninspected_host_identity(self) -> None:
+        status = macos_dev_host.PermissionStatus(
+            database_path=TEST_PRIVACY_DATABASE,
+            readable=True,
+            rows=allowed_tcc_rows(),
+        )
+
+        interpretation = macos_dev_host.permission_interpretation(status)
+
+        self.assertIn(
+            "Screen Recording authorized, but Host identity was not inspected",
+            interpretation,
+        )
+        self.assertIn(
+            "Accessibility authorized, but Host identity was not inspected",
+            interpretation,
+        )
+
+    def test_permission_record_distinguishes_unbound_and_unauthorized_grants(self) -> None:
+        status = macos_dev_host.PermissionStatus(
+            database_path=TEST_PRIVACY_DATABASE,
+            readable=True,
+            rows=(
+                macos_dev_host.TCCRow(
+                    "kTCCServiceScreenCapture",
+                    "dev.telemachus.display",
+                    0,
+                    2,
+                    4,
+                    1,
+                    FIXTURE_CSREQ_SHA256,
+                    macos_dev_host.normalize_requirement_text(MISMATCHED_REQUIREMENT),
+                    None,
+                ),
+                macos_dev_host.TCCRow(
+                    "kTCCServiceAccessibility",
+                    "dev.telemachus.display",
+                    0,
+                    0,
+                    4,
+                    2,
+                    FIXTURE_CSREQ_SHA256,
+                    macos_dev_host.normalize_requirement_text(HOST_REQUIREMENT),
+                    None,
+                ),
+            ),
+        )
+
+        record = macos_dev_host.permission_record(status, HOST_REQUIREMENT)
+
+        self.assertEqual(
+            record["screen_recording_state"],
+            "authorized_different_or_unreadable_host_identity",
+        )
+        self.assertEqual(record["accessibility_state"], "not_authorized")
+        self.assertEqual(record["microphone_state"], "not_authorized")
 
     def test_tcc_permission_state_uses_latest_row_per_service(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
