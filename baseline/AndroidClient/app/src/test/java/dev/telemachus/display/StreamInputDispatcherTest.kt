@@ -11,6 +11,8 @@ import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.StartDisplayResponse
+import dev.vibescreen.protocol.v1.ControllerEvent as ProtocolControllerEvent
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
 import org.junit.Assert.assertEquals
@@ -33,7 +35,7 @@ class StreamInputDispatcherTest {
         dispatcher.sendTouch(0.2f, 0.3f, action = 1, pointerCount = 3, x2 = 0.7f, y2 = 0.8f)
 
         val submission = recorder.single()
-        assertEquals(OutboundCommandScheduler.Kind.MOVE, submission.kind)
+        assertEquals(OutboundCommandScheduler.Kind.TOUCH_MOVE, submission.kind)
         val touch = submission.command as StreamOutboundCommand.Touch
         assertEquals(0.2f, touch.x)
         assertEquals(0.3f, touch.y)
@@ -104,7 +106,7 @@ class StreamInputDispatcherTest {
         )
 
         val submission = recorder.single()
-        assertEquals(OutboundCommandScheduler.Kind.MOVE, submission.kind)
+        assertEquals(OutboundCommandScheduler.Kind.TOUCH_MOVE, submission.kind)
         val envelopes = submission.protocolEnvelopes(streamingSession(Capability.CAPABILITY_TOUCH))
         assertEquals(listOf(7, 9), envelopes.map { it.touchEvent.pointerId })
         assertEquals(listOf(10L, 11L), envelopes.map { it.touchEvent.inputId })
@@ -213,6 +215,66 @@ class StreamInputDispatcherTest {
     }
 
     @Test
+    fun nativeInputReleaseRequiresProtocolV1AndPointerCapabilityForPointerCleanup() {
+        val release = NativeInputReleasePlan(
+            pressedKeyUsages = emptyList(),
+            pointer = NativePointerSnapshot(0.2f, 0.3f),
+        )
+
+        listOf(
+            StreamInputSessionState(connected = false, protocolV1 = true, canSendPointer = true),
+            StreamInputSessionState(connected = true, protocolV1 = false, canSendPointer = true),
+            negotiatedState(pointer = false),
+        ).forEach { sessionState ->
+            val recorder = RecordingSubmitter()
+            val dispatcher = dispatcher(state = sessionState, recorder = recorder)
+
+            assertFalse(dispatcher.sendNativeInputRelease(release, InputPhase.INPUT_PHASE_CANCELLED))
+            assertTrue(recorder.submissions.isEmpty())
+        }
+    }
+
+    @Test
+    fun accumulatedKeyboardAndPointerReleaseSendsKeyUpsBeforePointerTerminalWithSharedInputIds() {
+        data class Client(val id: String)
+        val state = NativeInputSessionState<Client>()
+        val client = Client("stream")
+        state.admit(client, generation = 9)
+        assertTrue(state.recordKey(client, generation = 9, usbHidUsage = 0x04, pressed = true))
+        assertTrue(
+            state.recordPointer(
+                client,
+                generation = 9,
+                x = 0.2f,
+                y = 0.3f,
+                buttonMask = NativeInputWire.BUTTON_PRIMARY,
+            ),
+        )
+        val release = requireNotNull(state.takeRelease(client, generation = 9))
+        val recorder = RecordingSubmitter()
+        val dispatcher = dispatcher(
+            state = negotiatedState(pointer = true, keyboard = true),
+            recorder = recorder,
+            firstInputId = 60,
+        )
+
+        assertTrue(dispatcher.sendNativeInputRelease(release, InputPhase.INPUT_PHASE_CANCELLED))
+
+        val envelopes = recorder.single().protocolEnvelopes(
+            streamingSession(Capability.CAPABILITY_POINTER, Capability.CAPABILITY_KEYBOARD),
+        )
+        assertEquals(2, envelopes.size)
+        assertEquals(60L, envelopes[0].keyEvent.inputId)
+        assertEquals(0x04, envelopes[0].keyEvent.usbHidUsage)
+        assertFalse(envelopes[0].keyEvent.pressed)
+        assertEquals(61L, envelopes[1].pointerEvent.inputId)
+        assertEquals(InputPhase.INPUT_PHASE_CANCELLED, envelopes[1].pointerEvent.phase)
+        assertEquals(0, envelopes[1].pointerEvent.buttonMask)
+        assertEquals(0.2, envelopes[1].pointerEvent.position.x, 0.000001)
+        assertEquals(0.3, envelopes[1].pointerEvent.position.y, 0.000001)
+    }
+
+    @Test
     fun nativePointerMoveUsesMoveBatchAndPreservesButtonMask() {
         val recorder = RecordingSubmitter()
         val dispatcher = dispatcher(
@@ -224,7 +286,7 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.6f, 0.4f, NativeInputWire.BUTTON_PRIMARY))
 
         val submission = recorder.single()
-        assertEquals(OutboundCommandScheduler.Kind.MOVE, submission.kind)
+        assertEquals(OutboundCommandScheduler.Kind.POINTER_MOVE, submission.kind)
         val pointer = submission.protocolEnvelopes(streamingSession(Capability.CAPABILITY_POINTER)).single().pointerEvent
         assertEquals(40L, pointer.inputId)
         assertEquals(InputPhase.INPUT_PHASE_CHANGED, pointer.phase)
@@ -245,7 +307,7 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.sendPointer(InputPhase.INPUT_PHASE_CHANGED, 0.25f, 0.75f, 0))
 
         val submission = recorder.single()
-        assertEquals(OutboundCommandScheduler.Kind.MOVE, submission.kind)
+        assertEquals(OutboundCommandScheduler.Kind.POINTER_MOVE, submission.kind)
         val pointer = submission.protocolEnvelopes(streamingSession(Capability.CAPABILITY_POINTER)).single().pointerEvent
         assertEquals(41L, pointer.inputId)
         assertEquals(InputPhase.INPUT_PHASE_CHANGED, pointer.phase)
@@ -365,11 +427,9 @@ class StreamInputDispatcherTest {
 
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
-        val cleanup = recorder.submissions[1].protocolEnvelopes(controllerSession).single().controllerEvent
-        assertEquals(31L, cleanup.inputId)
-        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, cleanup.kind)
-        assertEquals("pad-1", cleanup.controllerId)
-        assertEquals(1L, cleanup.controllerEpoch)
+        val cleanup = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(2, cleanup.size)
+        assertNeutralReleasePair(cleanup, 0, "pad-1", 1, firstInputId = 31)
         assertFalse(tracker.isPending("pad-1", 1))
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
         assertEquals(2, recorder.submissions.size)
@@ -421,16 +481,9 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val cleanup = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
-        assertEquals(2, cleanup.size)
-        assertEquals(listOf(32L, 33L), cleanup.map { it.inputId })
-        assertEquals(listOf("pad-1", "pad-2"), cleanup.map { it.controllerId })
-        assertEquals(
-            listOf(
-                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
-                dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
-            ),
-            cleanup.map { it.kind },
-        )
+        assertEquals(4, cleanup.size)
+        assertNeutralReleasePair(cleanup, 0, "pad-1", 1, firstInputId = 32)
+        assertNeutralReleasePair(cleanup, 2, "pad-2", 1, firstInputId = 34)
         assertFalse(tracker.isPending("pad-1", 1))
         assertFalse(tracker.isPending("pad-2", 1))
     }
@@ -474,10 +527,9 @@ class StreamInputDispatcherTest {
         tracker.markDisconnectReady(acknowledgement.connection)
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
-        val cleanup = recorder.submissions[1].protocolEnvelopes(controllerSession).single().controllerEvent
-        assertEquals(31L, cleanup.inputId)
-        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, cleanup.kind)
-        assertEquals("pad-1", cleanup.controllerId)
+        val cleanup = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
+        assertEquals(2, cleanup.size)
+        assertNeutralReleasePair(cleanup, 0, "pad-1", 1, firstInputId = 31)
         assertFalse(tracker.isPending("pad-1", 1))
     }
 
@@ -570,16 +622,18 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
-        assertEquals(2, flushed.size)
-        assertEquals(listOf(31L, 32L), flushed.map { it.inputId })
+        assertEquals(3, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 31)
+        assertEquals(33L, flushed[2].inputId)
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
             flushed.map { it.kind },
         )
-        assertEquals(listOf(1L, 2L), flushed.map { it.controllerEpoch })
+        assertEquals(listOf(1L, 1L, 2L), flushed.map { it.controllerEpoch })
         assertFalse(tracker.isPending("pad-1", 1))
         assertTrue(tracker.isPending("pad-1", 2))
     }
@@ -620,16 +674,18 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
-        assertEquals(2, flushed.size)
-        assertEquals(listOf(31L, 32L), flushed.map { it.inputId })
+        assertEquals(3, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 31)
+        assertEquals(33L, flushed[2].inputId)
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
             flushed.map { it.kind },
         )
-        assertEquals(listOf(1L, 2L), flushed.map { it.controllerEpoch })
+        assertEquals(listOf(1L, 1L, 2L), flushed.map { it.controllerEpoch })
         assertFalse(tracker.isPending("pad-1", 1))
         assertTrue(tracker.isPending("pad-1", 2))
     }
@@ -669,16 +725,18 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
-        assertEquals(2, flushed.size)
-        assertEquals(listOf(31L, 32L), flushed.map { it.inputId })
+        assertEquals(3, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 31)
+        assertEquals(33L, flushed[2].inputId)
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
             flushed.map { it.kind },
         )
-        assertEquals(listOf(1L, 2L), flushed.map { it.controllerEpoch })
+        assertEquals(listOf(1L, 1L, 2L), flushed.map { it.controllerEpoch })
         assertFalse(tracker.isPending("pad-1", 1))
         assertTrue(tracker.isPending("pad-1", 2))
     }
@@ -817,19 +875,23 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.submissions[1].protocolEnvelopes(controllerSession).map { it.controllerEvent }
-        assertEquals(4, flushed.size)
-        assertEquals(listOf(32L, 33L, 34L, 35L), flushed.map { it.inputId })
+        assertEquals(6, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 32)
+        assertNeutralReleasePair(flushed, 2, "pad-2", 1, firstInputId = 34)
+        assertEquals(listOf(36L, 37L), flushed.drop(4).map { it.inputId })
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
             flushed.map { it.kind },
         )
-        assertEquals(listOf("pad-1", "pad-2", "pad-1", "pad-2"), flushed.map { it.controllerId })
-        assertEquals(listOf(1L, 1L, 2L, 2L), flushed.map { it.controllerEpoch })
+        assertEquals(listOf("pad-1", "pad-1", "pad-2", "pad-2", "pad-1", "pad-2"), flushed.map { it.controllerId })
+        assertEquals(listOf(1L, 1L, 1L, 1L, 2L, 2L), flushed.map { it.controllerEpoch })
         assertEquals(0, dispatcher.deferredControllerDispatchCount())
     }
 
@@ -864,9 +926,11 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
-        assertEquals(2, flushed.size)
+        assertEquals(3, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 32)
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
@@ -916,11 +980,13 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val cleanup = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
-        assertEquals(2, cleanup.size)
-        assertEquals(listOf("pad-1", "pad-1"), cleanup.map { it.controllerId })
-        assertEquals(listOf(1L, 2L), cleanup.map { it.controllerEpoch })
+        assertEquals(3, cleanup.size)
+        assertNeutralReleasePair(cleanup, 0, "pad-1", 1, firstInputId = 32)
+        assertEquals(listOf("pad-1", "pad-1", "pad-1"), cleanup.map { it.controllerId })
+        assertEquals(listOf(1L, 1L, 2L), cleanup.map { it.controllerEpoch })
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
@@ -928,7 +994,7 @@ class StreamInputDispatcherTest {
         )
         assertTrue(tracker.isPending("pad-1", 2))
 
-        assertEquals(ControllerConnection("pad-1", 2), tracker.acknowledge(cleanup[1].inputId)?.connection)
+        assertEquals(ControllerConnection("pad-1", 2), tracker.acknowledge(cleanup[2].inputId)?.connection)
         assertTrue(dispatcher.sendController(controllerState("pad-1", 2, buttonMask = 7)))
         val resync = recorder.controllerEventBatches(controllerSession).last().single().controllerEvent
         assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE, resync.kind)
@@ -1010,11 +1076,9 @@ class StreamInputDispatcherTest {
         tracker.markDisconnectReady(acknowledgement.connection)
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
-        val cleanup = recorder.controllerEventBatches(controllerSession).last().single().controllerEvent
-        assertEquals(31L, cleanup.inputId)
-        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, cleanup.kind)
-        assertEquals("pad-1", cleanup.controllerId)
-        assertEquals(1L, cleanup.controllerEpoch)
+        val cleanup = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
+        assertEquals(2, cleanup.size)
+        assertNeutralReleasePair(cleanup, 0, "pad-1", 1, firstInputId = 31)
         assertFalse(tracker.isPending("pad-1", 1))
     }
 
@@ -1138,15 +1202,16 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
-        assertEquals(1, flushed.size)
-        assertEquals(listOf(32L), flushed.map { it.inputId })
+        assertEquals(2, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 32)
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
             ),
             flushed.map { it.kind },
         )
-        assertEquals(listOf("pad-1"), flushed.map { it.controllerId })
+        assertEquals(listOf("pad-1", "pad-1"), flushed.map { it.controllerId })
     }
 
     @Test
@@ -1191,11 +1256,13 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val flushed = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
-        assertEquals(2, flushed.size)
-        assertEquals(listOf(32L, 33L), flushed.map { it.inputId })
-        assertEquals(listOf("pad-1", "pad-1"), flushed.map { it.controllerId })
+        assertEquals(3, flushed.size)
+        assertNeutralReleasePair(flushed, 0, "pad-1", 1, firstInputId = 32)
+        assertEquals(34L, flushed[2].inputId)
+        assertEquals(listOf("pad-1", "pad-1", "pad-1"), flushed.map { it.controllerId })
         assertEquals(
             listOf(
+                ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
                 dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
             ),
@@ -1262,8 +1329,9 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val firstFlush = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
-        assertEquals(listOf("pad-a", "pad-a"), firstFlush.map { it.controllerId })
-        assertEquals(listOf(1L, 2L), firstFlush.map { it.controllerEpoch })
+        assertEquals(listOf("pad-a", "pad-a", "pad-a"), firstFlush.map { it.controllerId })
+        assertEquals(listOf(1L, 1L, 2L), firstFlush.map { it.controllerEpoch })
+        assertNeutralReleasePair(firstFlush, 0, "pad-a", 1, firstInputId = 32)
         assertEquals(1, dispatcher.deferredControllerDispatchCount())
         assertTrue(tracker.isPending("pad-b", 1))
         assertTrue(tracker.isPending("pad-a", 2))
@@ -1274,8 +1342,9 @@ class StreamInputDispatcherTest {
         assertTrue(dispatcher.flushControllerDisconnectCleanup())
 
         val secondFlush = recorder.controllerEventBatches(controllerSession).last().map { it.controllerEvent }
-        assertEquals(listOf("pad-b", "pad-b"), secondFlush.map { it.controllerId })
-        assertEquals(listOf(1L, 2L), secondFlush.map { it.controllerEpoch })
+        assertEquals(listOf("pad-b", "pad-b", "pad-b"), secondFlush.map { it.controllerId })
+        assertEquals(listOf(1L, 1L, 2L), secondFlush.map { it.controllerEpoch })
+        assertNeutralReleasePair(secondFlush, 0, "pad-b", 1, firstInputId = 35)
         assertEquals(0, dispatcher.deferredControllerDispatchCount())
         assertTrue(tracker.isPending("pad-b", 2))
     }
@@ -1608,6 +1677,40 @@ class StreamInputDispatcherTest {
         samples = listOf(ControllerStateSample(controllerId, epoch, ControllerEventKind.STATE, buttonMask = buttonMask)),
         delivery = ControllerDelivery.ANALOG,
     )
+
+    private fun assertNeutralReleasePair(
+        events: List<ProtocolControllerEvent>,
+        startIndex: Int,
+        controllerId: String,
+        controllerEpoch: Long,
+        firstInputId: Long,
+    ) {
+        val state = events[startIndex]
+        assertEquals(firstInputId, state.inputId)
+        assertEquals(controllerId, state.controllerId)
+        assertEquals(controllerEpoch, state.controllerEpoch)
+        assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE, state.kind)
+        assertNeutralControllerState(state)
+
+        val disconnected = events[startIndex + 1]
+        assertEquals(firstInputId + 1, disconnected.inputId)
+        assertEquals(controllerId, disconnected.controllerId)
+        assertEquals(controllerEpoch, disconnected.controllerEpoch)
+        assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, disconnected.kind)
+        assertNeutralControllerState(disconnected)
+    }
+
+    private fun assertNeutralControllerState(event: ProtocolControllerEvent) {
+        assertEquals(0, event.buttonMask)
+        assertEquals(0.0, event.leftStickX, 0.0)
+        assertEquals(0.0, event.leftStickY, 0.0)
+        assertEquals(0.0, event.rightStickX, 0.0)
+        assertEquals(0.0, event.rightStickY, 0.0)
+        assertEquals(0.0, event.leftTrigger, 0.0)
+        assertEquals(0.0, event.rightTrigger, 0.0)
+        assertEquals(0, event.hatX)
+        assertEquals(0, event.hatY)
+    }
 
     private class RecordingSubmitter(
         private val result: OutboundCommandScheduler.Submission = OutboundCommandScheduler.Submission.ACCEPTED,

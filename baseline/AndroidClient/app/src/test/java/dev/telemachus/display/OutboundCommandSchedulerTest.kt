@@ -37,6 +37,31 @@ class OutboundCommandSchedulerTest {
     }
 
     @Test
+    fun inputMoveDomainsDoNotCoalesceAcrossTouchStylusAndPointer() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 6) { command ->
+            if (command == "down") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "down"))
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(TOUCH_MOVE, "touch-move"))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STYLUS_MOVE, "stylus-move"))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(POINTER_MOVE, "pointer-move"))
+        assertEquals(OutboundCommandScheduler.Submission.COALESCED, scheduler.submit(POINTER_MOVE, "pointer-latest"))
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("down", "touch-move", "stylus-move", "pointer-latest"), written)
+    }
+
+    @Test
     fun latestMoveRemainsBetweenGestureBoundaries() {
         val writerEntered = CountDownLatch(1)
         val releaseWriter = CountDownLatch(1)
@@ -1336,6 +1361,9 @@ class OutboundCommandSchedulerTest {
     private companion object {
         val STRUCTURAL = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
         val MOVE = OutboundCommandScheduler.Kind.MOVE
+        val TOUCH_MOVE = OutboundCommandScheduler.Kind.TOUCH_MOVE
+        val STYLUS_MOVE = OutboundCommandScheduler.Kind.STYLUS_MOVE
+        val POINTER_MOVE = OutboundCommandScheduler.Kind.POINTER_MOVE
         val KEYFRAME = OutboundCommandScheduler.Kind.KEYFRAME
         val PING = OutboundCommandScheduler.Kind.PING
         val CONTROLLER_STRUCTURAL = OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL

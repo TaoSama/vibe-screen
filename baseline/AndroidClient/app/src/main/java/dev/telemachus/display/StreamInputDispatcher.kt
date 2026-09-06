@@ -81,7 +81,7 @@ internal class StreamInputDispatcher(
             if (samples.isEmpty()) return
             submitOutbound(
                 if (samples.all { it.phase == InputPhase.INPUT_PHASE_CHANGED }) {
-                    OutboundCommandScheduler.Kind.MOVE
+                    OutboundCommandScheduler.Kind.TOUCH_MOVE
                 } else {
                     OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
                 },
@@ -107,7 +107,7 @@ internal class StreamInputDispatcher(
         val second = points.getOrNull(1)
         submitOutbound(
             if (legacyAction == TOUCH_ACTION_MOVE) {
-                OutboundCommandScheduler.Kind.MOVE
+                OutboundCommandScheduler.Kind.TOUCH_MOVE
             } else {
                 OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
             },
@@ -135,7 +135,7 @@ internal class StreamInputDispatcher(
         val submission =
             submitOutbound(
                 if (copied.all { it.delivery == StylusDelivery.MOTION }) {
-                    OutboundCommandScheduler.Kind.MOVE
+                    OutboundCommandScheduler.Kind.STYLUS_MOVE
                 } else {
                     OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
                 },
@@ -183,7 +183,7 @@ internal class StreamInputDispatcher(
         val submission =
             submitOutbound(
                 if (phase == InputPhase.INPUT_PHASE_CHANGED) {
-                    OutboundCommandScheduler.Kind.MOVE
+                    OutboundCommandScheduler.Kind.POINTER_MOVE
                 } else {
                     OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
                 },
@@ -464,16 +464,27 @@ internal class StreamInputDispatcher(
 
     private fun prepareControllerCleanup(): PreparedControllerCleanup {
         val readyDisconnects = controllerConnectionAcks.readyDisconnects()
-        val samples = readyDisconnects.map { connection ->
-            controllerConnectionAcks.recordDisconnected(connection.controllerId, connection.controllerEpoch)
-            ControllerStateSample(
-                controllerId = connection.controllerId,
-                controllerEpoch = connection.controllerEpoch,
-                kind = ControllerEventKind.DISCONNECTED,
-            )
-        }.map { sample ->
-            PreparedControllerSample(nextInputId.getAndIncrement(), sample)
-        }.toMutableList()
+        val samples =
+            readyDisconnects
+                .flatMap { connection ->
+                    controllerConnectionAcks.recordDisconnected(connection.controllerId, connection.controllerEpoch)
+                    listOf(
+                        ControllerStateSample(
+                            controllerId = connection.controllerId,
+                            controllerEpoch = connection.controllerEpoch,
+                            kind = ControllerEventKind.STATE,
+                        ),
+                        ControllerStateSample(
+                            controllerId = connection.controllerId,
+                            controllerEpoch = connection.controllerEpoch,
+                            kind = ControllerEventKind.DISCONNECTED,
+                        ),
+                    )
+                }
+                .map { sample ->
+                    PreparedControllerSample(nextInputId.getAndIncrement(), sample)
+                }
+                .toMutableList()
         while (true) {
             val queued = pollDrainableDeferredControllerDispatch() ?: break
             val plan = prepareControllerDispatch(

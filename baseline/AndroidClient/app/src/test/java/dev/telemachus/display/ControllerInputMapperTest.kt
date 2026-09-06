@@ -42,6 +42,14 @@ class ControllerInputMapperTest {
     }
 
     @Test
+    fun normalizeStickClampsControllerAxesOutsideAdvertisedRange() {
+        val calibration = ControllerAxisCalibration(minimum = -1f, maximum = 1f, flat = 0.1f)
+
+        assertEquals(1.0, ControllerInputMapper.normalizeStick(1.8f, calibration), 1e-9)
+        assertEquals(-1.0, ControllerInputMapper.normalizeStick(-2.5f, calibration), 1e-9)
+    }
+
+    @Test
     fun normalizeStickSupportsZeroFlatAndSaturatingFlat() {
         val zeroFlat = ControllerAxisCalibration(minimum = -1f, maximum = 1f, flat = 0f)
         assertEquals(0.5, ControllerInputMapper.normalizeStick(0.5f, zeroFlat), 1e-9)
@@ -94,6 +102,14 @@ class ControllerInputMapperTest {
         assertEquals(0.0, ControllerInputMapper.normalizeTrigger(0f, calibration), 0.0)
         assertEquals(0.0, ControllerInputMapper.normalizeTrigger(10f, calibration), 0.0)
         assertEquals(1.0, ControllerInputMapper.normalizeTrigger(255f, calibration), 1e-9)
+    }
+
+    @Test
+    fun normalizeTriggerClampsControllerAxesOutsideAdvertisedRange() {
+        val calibration = ControllerAxisCalibration(minimum = 0f, maximum = 1f, flat = 0.05f)
+
+        assertEquals(1.0, ControllerInputMapper.normalizeTrigger(1.5f, calibration), 1e-9)
+        assertEquals(0.0, ControllerInputMapper.normalizeTrigger(-0.2f, calibration), 0.0)
     }
 
     @Test
