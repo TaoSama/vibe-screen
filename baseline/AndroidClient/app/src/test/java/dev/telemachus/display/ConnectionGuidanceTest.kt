@@ -144,6 +144,7 @@ class ConnectionGuidanceTest {
             )
         val failures =
             listOf(
+                ConnectException("connect failed: EADDRNOTAVAIL (Cannot assign requested address)"),
                 IOException("connect failed: EADDRNOTAVAIL (Cannot assign requested address)"),
                 IOException("Cannot assign requested address"),
             )
@@ -161,6 +162,57 @@ class ConnectionGuidanceTest {
                 if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance)
             }
         }
+    }
+
+    @Test
+    fun rawNetworkDownMessagesUseModeSpecificRouteGuidance() {
+        val contexts =
+            listOf(
+                ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB) to
+                    R.string.connection_guidance_adb_route_unavailable_title,
+                ConnectionGuidanceContext.trustedLan(54321) to
+                    R.string.connection_guidance_lan_route_unavailable_title,
+                ConnectionGuidanceContext.internet() to
+                    R.string.connection_guidance_internet_route_unavailable_title,
+            )
+        val failures =
+            listOf(
+                ConnectException("connect failed: ENETDOWN (Network is down)"),
+                IOException("connect failed: ENETDOWN (Network is down)"),
+                IOException("Network is down"),
+                ConnectException("connect failed: EHOSTDOWN (Host is down)"),
+                IOException("connect failed: EHOSTDOWN (Host is down)"),
+                IOException("Host is down"),
+            )
+
+        contexts.forEach { (context, expectedTitleResource) ->
+            failures.forEach { failure ->
+                val guidance = ConnectionGuidanceFactory.from(failure, context)
+
+                assertEquals(
+                    "${context.mode} ${failure.message}",
+                    ConnectionFailureKind.NETWORK_UNREACHABLE,
+                    guidance.kind,
+                )
+                assertEquals("${context.mode} ${failure.message}", expectedTitleResource, guidance.status.resourceId)
+                if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance)
+            }
+        }
+    }
+
+    @Test
+    fun transportFailureNetworkDownDetailsUseRouteGuidance() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                SessionFailure.transport("connect failed: ENETDOWN (Network is down)"),
+                ConnectionGuidanceContext.trustedLan(54321),
+            )
+
+        assertEquals(ConnectionFailureKind.NETWORK_UNREACHABLE, guidance.kind)
+        assertEquals(R.string.connection_guidance_lan_route_unavailable_title, guidance.status.resourceId)
+        assertEquals(R.string.connection_guidance_lan_network_unavailable_message, guidance.message.resourceId)
+        assertEquals(54321, guidance.message.args.single())
+        assertNoAdbReferences(guidance)
     }
 
     @Test

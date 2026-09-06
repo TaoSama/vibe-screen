@@ -155,18 +155,22 @@ internal object ConnectionGuidanceFactory {
                 causes.containMessage("Protocol upgrade probe closed before a response") ->
                 hostNotRunning(context)
 
-            context.mode == ConnectionMode.USB && causes.isConnectionRefused() ->
-                usbRouteUnavailable(context)
-
             causes.any { it is NoRouteToHostException || it is UnknownHostException } ||
                 causes.containMessage("Network is unreachable") ||
                 causes.containMessage("No route to host") ||
                 causes.containMessage("Cannot assign requested address") ||
+                causes.containMessage("Network is down") ||
+                causes.containMessage("Host is down") ||
                 causes.containMessage("EHOSTUNREACH") ||
+                causes.containMessage("EHOSTDOWN") ||
                 causes.containMessage("ENETUNREACH") ||
                 causes.containMessage("EADDRNOTAVAIL") ||
+                causes.containMessage("ENETDOWN") ||
                 causes.containMessage("No Wi-Fi route is available") ->
                 networkUnreachable(context)
+
+            context.mode == ConnectionMode.USB && causes.isConnectionRefused() ->
+                usbRouteUnavailable(context)
 
             causes.isConnectionRefused() ->
                 hostNotRunning(context)
