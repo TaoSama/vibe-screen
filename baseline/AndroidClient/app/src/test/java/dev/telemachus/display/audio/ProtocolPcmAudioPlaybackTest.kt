@@ -425,6 +425,44 @@ class ProtocolPcmAudioPlaybackTest {
                 ),
             ),
         )
+        val newOutputWrites = factory.created[1].writes
+        assertEquals(1, newOutputWrites.size)
+        assertArrayEquals(pcmBytes(6), newOutputWrites.single())
+    }
+
+    @Test
+    fun reconfigureDropsUndrainedOldPacketsAndStartsFreshSequence() {
+        val factory = FakePcmAudioOutputFactory()
+        val player = ProtocolPcmAudioPlayer(factory)
+
+        assertEquals(ProtocolAudioConfigureResult.Accepted(7, 3), player.configure(audioConfig(), sessionEpoch = 5))
+        val oldFormat = checkNotNull(player.activeFormat())
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 0),
+            player.submit(audioPacket(sequence = 1, payload = pcmPayload(oldFormat, seed = 20))),
+        )
+
+        assertEquals(
+            ProtocolAudioConfigureResult.Accepted(9, 4),
+            player.configure(audioConfig(streamId = 9, configEpoch = 4, channelCount = 1, framesPerPacket = 3), sessionEpoch = 6),
+        )
+
+        assertEquals(emptyList<ByteArray>(), factory.created[0].writes)
+        assertEquals(listOf("start", "stop", "close"), factory.created[0].events)
+        assertEquals(listOf("start"), factory.created[1].events)
+        assertEquals(
+            ProtocolAudioPacketResult.Accepted(AudioEnqueueResult.Queued, writtenPackets = 1),
+            player.submit(
+                audioPacket(
+                    streamId = 9,
+                    sessionEpoch = 6,
+                    configEpoch = 4,
+                    sequence = 0,
+                    frameCount = 3,
+                    payload = pcmBytes(6),
+                ),
+            ),
+        )
         assertEquals(1, factory.created[1].writes.size)
     }
 
