@@ -36,8 +36,8 @@ The retained summary reports:
 
 GitHub reported no current open PRs (`[]`) at this refresh. PR #629 is now
 merged into the audited mainline base, along with PR #623, PR #624, PR #625,
-PR #626, and PR #628, rather than listed as an active owner PR. PR #569 through PR #575
-and PR #577 through PR #629 are merged into the audited mainline base. PR #568,
+PR #626, and PR #628, rather than listed as an active owner PR. PR #569 through PR #575,
+PR #577 through PR #626, PR #628, and PR #629 are merged into the audited mainline base. PR #568,
 PR #576, and closed-unmerged PR #627 are explicit non-merged exclusions from
 the declared PR range.
 
