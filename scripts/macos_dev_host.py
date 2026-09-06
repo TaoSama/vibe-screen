@@ -1240,8 +1240,12 @@ def validate_preflight(
             if row is None or row.auth_value != ALLOWED_AUTH_VALUE:
                 errors.append(f"{label} is not authorized for the installed Host")
                 continue
-            if not tcc_row_requirement_matches(row, metadata.designated_requirement):
-                detail = row.csreq_error or "TCC csreq does not match installed Host designated requirement"
+            identity_state = tcc_service_identity_state(permissions, services, metadata.designated_requirement)
+            if identity_state != "authorized_current_host_identity":
+                if identity_state == "authorized_host_identity_not_inspected":
+                    detail = "Host designated requirement was not inspected"
+                else:
+                    detail = row.csreq_error or "TCC csreq does not match installed Host designated requirement"
                 errors.append(f"{label} TCC authorization is not bound to the installed Host identity: {detail}")
     return errors
 

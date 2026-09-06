@@ -261,6 +261,32 @@ class TouchRerunPreflightTests(unittest.TestCase):
             blockers,
         )
 
+    def test_blockers_report_uninspected_host_identity_without_mismatch_claim(self) -> None:
+        blockers = _blockers(
+            host={"binary_sha256": "abc"},
+            tcc={
+                "screen_recording": {
+                    "authorized": True,
+                    "identity_bound": False,
+                    "identity_state": "authorized_host_identity_not_inspected",
+                },
+                "accessibility": {"authorized": True, "identity_bound": True},
+            },
+            android={"model": "P0110"},
+            expected_host_sha256="abc",
+        )
+
+        self.assertIn(
+            "Screen Recording TCC authorization is not bound to the installed Host identity: "
+            "Host designated requirement was not inspected",
+            blockers,
+        )
+        self.assertNotIn(
+            "Screen Recording TCC authorization is not bound to the installed Host identity: "
+            "TCC csreq does not match installed Host designated requirement",
+            blockers,
+        )
+
     def test_codesign_summary_records_designated_requirement(self) -> None:
         def fake_run(command, *, timeout_seconds=15.0, cwd=None):
             command_list = list(command)

@@ -653,6 +653,38 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         self.assertIn("Accessibility TCC authorization is not bound", joined)
         self.assertIn("Microphone TCC authorization is not bound", joined)
 
+    def test_validate_preflight_reports_uninspected_host_identity_without_mismatch_claim(self) -> None:
+        metadata = self.metadata()
+        metadata = macos_dev_host.SigningMetadata(
+            app_path=metadata.app_path,
+            identifier=metadata.identifier,
+            source_commit=metadata.source_commit,
+            source_tree=metadata.source_tree,
+            source_dirty=metadata.source_dirty,
+            binary_sha256=metadata.binary_sha256,
+            authorities=metadata.authorities,
+            cdhash=metadata.cdhash,
+            designated_requirement=None,
+            signature=metadata.signature,
+            team_identifier=metadata.team_identifier,
+            leaf_certificate_hash=metadata.leaf_certificate_hash,
+        )
+
+        errors = macos_dev_host.validate_preflight(
+            metadata,
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=allowed_tcc_rows(),
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        joined = "\n".join(errors)
+        self.assertIn("Host designated requirement was not inspected", joined)
+        self.assertNotIn("TCC csreq does not match installed Host designated requirement", joined)
+
     def test_validate_preflight_accepts_semantically_matching_tcc_requirement(self) -> None:
         errors = macos_dev_host.validate_preflight(
             self.metadata(),

@@ -421,7 +421,10 @@ def _blockers(
             blockers.append(f"{label} is not authorized for the Host bundle identifier")
             return
         if not row.get("identity_bound"):
-            detail = row.get("csreq_error") or "TCC csreq does not match installed Host designated requirement"
+            if row.get("identity_state") == "authorized_host_identity_not_inspected":
+                detail = "Host designated requirement was not inspected"
+            else:
+                detail = row.get("csreq_error") or "TCC csreq does not match installed Host designated requirement"
             blockers.append(f"{label} TCC authorization is not bound to the installed Host identity: {detail}")
 
     require_identity_bound_permission("screen_recording", "Screen Recording")
