@@ -128,6 +128,45 @@ class ControllerDeviceHotplugCoordinatorTest {
     }
 
     @Test
+    fun duplicateDeviceSnapshotsForSameControllerUseOneActiveSlotAndDoNotFalseDisconnect() {
+        val coordinator = ControllerDeviceHotplugCoordinator()
+        val state = ControllerSessionState()
+        val sent = mutableListOf<ControllerDispatch>()
+
+        val duplicated = coordinator.synchronizeAvailableControllers(
+            availableDevices = listOf(
+                ControllerDeviceSnapshot(1, "controller-a"),
+                ControllerDeviceSnapshot(2, "controller-a"),
+                ControllerDeviceSnapshot(3, "controller-b"),
+                ControllerDeviceSnapshot(4, "controller-c"),
+                ControllerDeviceSnapshot(5, "controller-d"),
+            ),
+            sessionState = state,
+            submit = sent::add,
+        )
+
+        assertEquals(ControllerHotplugSyncResult(connected = 4, disconnected = 0, resynchronized = false, limitReached = 0), duplicated)
+        assertEquals(setOf("controller-a", "controller-b", "controller-c", "controller-d"), state.activeControllerIds())
+        assertEquals(4, sent.count { dispatch -> dispatch.samples.any { it.kind == ControllerEventKind.CONNECTED } })
+        sent.clear()
+
+        val oneDuplicateEndpointRemoved = coordinator.synchronizeAvailableControllers(
+            availableDevices = listOf(
+                ControllerDeviceSnapshot(2, "controller-a"),
+                ControllerDeviceSnapshot(3, "controller-b"),
+                ControllerDeviceSnapshot(4, "controller-c"),
+                ControllerDeviceSnapshot(5, "controller-d"),
+            ),
+            sessionState = state,
+            submit = sent::add,
+        )
+
+        assertEquals(ControllerHotplugSyncResult(connected = 0, disconnected = 0, resynchronized = true, limitReached = 0), oneDuplicateEndpointRemoved)
+        assertEquals(setOf("controller-a", "controller-b", "controller-c", "controller-d"), state.activeControllerIds())
+        assertTrue(sent.single().samples.all { it.kind == ControllerEventKind.STATE })
+    }
+
+    @Test
     fun fullSessionReportsUnsupportedHotplugWithoutMutatingActiveControllers() {
         val coordinator = ControllerDeviceHotplugCoordinator()
         val state = ControllerSessionState()
