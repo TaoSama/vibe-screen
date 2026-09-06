@@ -166,9 +166,86 @@ def add_merged_pr_snapshot(
     }
 
 
+def write_latency_archive_evidence(
+    repo: Path,
+    *,
+    latency_path: str = "docs/evidence/latency-evidence-usb.json",
+    live_smoke_path: str = "docs/evidence/android-usb-live-smoke.json",
+) -> list[str]:
+    latency_file = repo / latency_path
+    latency_file.parent.mkdir(parents=True, exist_ok=True)
+    latency_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "vibescreen.evidence/v1",
+                "kind": "latency_evidence_gate",
+                "status": "complete",
+                "derivation_status": "complete",
+                "verdict": "pass",
+                "latency_kind": "glass-to-glass",
+                "transport": "usb",
+                "measurement_method": "external-camera",
+                "gate": {
+                    "profile": "usb-glass-to-glass-sub50",
+                    "can_close_performance_gate": True,
+                    "summary_verdict": "pass",
+                    "sample_count": 5,
+                    "min_sample_count": 5,
+                    "requires_external_hardware": True,
+                    "reasons": [],
+                },
+                "source": {"manifest": "docs/evidence/latency-manifest.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    live_smoke_file = repo / live_smoke_path
+    live_smoke_file.parent.mkdir(parents=True, exist_ok=True)
+    live_smoke_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "vibescreen.evidence/v1",
+                "kind": "android_usb_live_smoke",
+                "verdict": "pass",
+                "claims": {"live_usb_stream_observed": True},
+                "logs": {
+                    "telemetry": {
+                        "session_epochs": [9],
+                        "stream_stats": {
+                            "count": 3,
+                            "positive_fps_count": 3,
+                            "non_positive_fps_count": 0,
+                            "latest": {
+                                "session_epoch": 9,
+                                "fps": 60.0,
+                                "dropped_frames": 0,
+                            },
+                        },
+                        "frame_drops": {"max_dropped_total": 0},
+                    },
+                    "decoder": {
+                        "latest_output_counter": 180,
+                        "latest_decode_stats": {"dropped": 0},
+                        "latest_output_latency": {
+                            "avg_ms": 6.1,
+                            "max_ms": 11.0,
+                        },
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return [latency_path, live_smoke_path]
+
+
 def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[str, object]:
     manifest = complete_manifest()
     manifest["source"]["base_commit"] = audited_source_commit
+    gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
+        write_latency_archive_evidence(repo)
+    )
     add_merged_pr_snapshot(manifest, repo, audited_source_commit)
     return manifest
 
@@ -257,36 +334,46 @@ class Phase0StableReleaseTest(unittest.TestCase):
         )
         for evidence_strength in non_closing_strengths:
             with self.subTest(evidence_strength=evidence_strength):
-                manifest = complete_manifest()
-                gate = gate_by_id(manifest, "host_rss_2h_no_growth")
-                gate["evidence_strength"] = evidence_strength
+                def run(repo: Path, base_commit: str) -> None:
+                    manifest = complete_manifest_for_repo(repo, base_commit)
+                    gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+                    gate["evidence_strength"] = evidence_strength
 
-                summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+                    summary = evaluate_manifest(
+                        manifest, readme_text=GUARDED_README_TEXT, repo_root=repo
+                    )
 
-                self.assertEqual(summary["aggregate_verdict"], "insufficient")
-                self.assertFalse(summary["can_mark_phase0_stable_release"])
-                self.assertEqual(
-                    [gate["id"] for gate in summary["blocking_required_gates"]],
-                    ["host_rss_2h_no_growth"],
-                )
+                    self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                    self.assertFalse(summary["can_mark_phase0_stable_release"])
+                    self.assertEqual(
+                        [gate["id"] for gate in summary["blocking_required_gates"]],
+                        ["host_rss_2h_no_growth"],
+                    )
+
+                with_temporary_repo(run)
 
     def test_runtime_gate_requires_gate_specific_closing_strength(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "native_pointer_hid_mouse")
-        gate["evidence_strength"] = "current-source"
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "native_pointer_hid_mouse")
+            gate["evidence_strength"] = "current-source"
 
-        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+            summary = evaluate_manifest(
+                manifest, readme_text=GUARDED_README_TEXT, repo_root=repo
+            )
 
-        self.assertEqual(summary["aggregate_verdict"], "insufficient")
-        self.assertFalse(summary["can_mark_phase0_stable_release"])
-        self.assertEqual(
-            [gate["id"] for gate in summary["blocking_required_gates"]],
-            ["native_pointer_hid_mouse"],
-        )
-        self.assertIn(
-            "closing evidence strength for this gate",
-            summary["blocking_required_gates"][0]["issues"][0],
-        )
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertFalse(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(
+                [gate["id"] for gate in summary["blocking_required_gates"]],
+                ["native_pointer_hid_mouse"],
+            )
+            self.assertIn(
+                "closing evidence strength for this gate",
+                summary["blocking_required_gates"][0]["issues"][0],
+            )
+
+        with_temporary_repo(run)
 
     def test_retained_real_device_strength_only_closes_android_baseline_gate(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
@@ -305,59 +392,259 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_telemetry_latency_archive_pass_requires_structured_reports(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            gate["evidence_paths"] = ["README.md", "tools/vibescreen_evidence/latency.py"]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertEqual(
+                [gate["id"] for gate in summary["blocking_required_gates"]],
+                ["telemetry_and_latency_archive"],
+            )
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "telemetry_and_latency_archive pass requires at least one passing formal latency_evidence_gate report in evidence_paths",
+                issues,
+            )
+            self.assertIn(
+                "telemetry_and_latency_archive pass requires at least one passing android_usb_live_smoke report with stream telemetry and decoder counters in evidence_paths",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_blocked_preflight_as_pass(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            preflight_path = Path("docs/evidence/latency-preflight.json")
+            preflight_file = repo / preflight_path
+            preflight_file.parent.mkdir(parents=True, exist_ok=True)
+            preflight_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "latency_preflight",
+                        "gate_profiles": [
+                            {
+                                "profile": "usb-glass-to-glass-sub50",
+                                "can_close_performance_gate": False,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            gate["evidence_paths"] = [preflight_path.as_posix()]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any("formal latency_evidence_gate report" in issue for issue in issues)
+            )
+            self.assertTrue(
+                any("android_usb_live_smoke report" in issue for issue in issues)
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_invalid_utf8_evidence(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            bad_path = Path("docs/evidence/bad-latency.json")
+            bad_file = repo / bad_path
+            bad_file.parent.mkdir(parents=True, exist_ok=True)
+            bad_file.write_bytes(b"{\xff\xfe}")
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            gate["evidence_paths"] = [
+                bad_path.as_posix(),
+                "docs/evidence/android-usb-live-smoke.json",
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "could not read telemetry_and_latency_archive evidence" in issue
+                    for issue in issues
+                )
+            )
+            self.assertTrue(
+                any("formal latency_evidence_gate report" in issue for issue in issues)
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_requires_positive_latency_sample_counts(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            latency_path = Path("docs/evidence/latency-evidence-usb.json")
+            latency_file = repo / latency_path
+            record = json.loads(latency_file.read_text(encoding="utf-8"))
+            record["gate"]["sample_count"] = 0
+            record["gate"]["min_sample_count"] = 0
+            latency_file.write_text(json.dumps(record), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/latency-evidence-usb.json: formal latency report "
+                "min_sample_count must equal 5 and sample_count must be at least 5",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_requires_formal_latency_gate_sample_floor(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            latency_path = Path("docs/evidence/latency-evidence-usb.json")
+            latency_file = repo / latency_path
+            record = json.loads(latency_file.read_text(encoding="utf-8"))
+            record["gate"]["sample_count"] = 4
+            record["gate"]["min_sample_count"] = 1
+            latency_file.write_text(json.dumps(record), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/latency-evidence-usb.json: formal latency report "
+                "min_sample_count must equal 5 and sample_count must be at least 5",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_accepts_structured_latency_and_stream_reports(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            self.assertEqual(
+                gate["evidence_paths"],
+                [
+                    "docs/evidence/latency-evidence-usb.json",
+                    "docs/evidence/android-usb-live-smoke.json",
+                ],
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertTrue(summary["can_mark_phase0_stable_release"])
+            telemetry_gate = next(
+                gate
+                for gate in summary["gate_summaries"]
+                if gate["id"] == "telemetry_and_latency_archive"
+            )
+            self.assertEqual(telemetry_gate["issues"], [])
+            self.assertTrue(telemetry_gate["can_close"])
+
+        with_temporary_repo(run)
+
     def test_pass_gate_with_blockers_is_insufficient(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
-        gate["blockers"] = ["host RSS still grows"]
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+            gate["blockers"] = ["host RSS still grows"]
 
-        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+            summary = evaluate_manifest(
+                manifest, readme_text=GUARDED_README_TEXT, repo_root=repo
+            )
 
-        self.assertEqual(summary["aggregate_verdict"], "insufficient")
-        self.assertFalse(summary["can_mark_phase0_stable_release"])
-        self.assertEqual(
-            [gate["id"] for gate in summary["blocking_required_gates"]],
-            ["host_rss_2h_no_growth"],
-        )
-        self.assertIn(
-            "pass gate must not list unresolved blockers",
-            summary["blocking_required_gates"][0]["issues"],
-        )
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertFalse(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(
+                [gate["id"] for gate in summary["blocking_required_gates"]],
+                ["host_rss_2h_no_growth"],
+            )
+            self.assertIn(
+                "pass gate must not list unresolved blockers",
+                summary["blocking_required_gates"][0]["issues"],
+            )
+
+        with_temporary_repo(run)
 
     def test_non_pass_required_gate_must_explain_blocker(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
-        gate["verdict"] = "blocked"
-        gate["blockers"] = []
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+            gate["verdict"] = "blocked"
+            gate["blockers"] = []
 
-        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+            summary = evaluate_manifest(
+                manifest, readme_text=GUARDED_README_TEXT, repo_root=repo
+            )
 
-        self.assertEqual(summary["aggregate_verdict"], "insufficient")
-        self.assertIn(
-            "non-pass required gate must list at least one blocker",
-            summary["blocking_required_gates"][0]["issues"],
-        )
-        self.assertIn(
-            "host_rss_2h_no_growth: non-pass required gate must list at least one blocker",
-            summary["reasons"],
-        )
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertIn(
+                "non-pass required gate must list at least one blocker",
+                summary["blocking_required_gates"][0]["issues"],
+            )
+            self.assertIn(
+                "host_rss_2h_no_growth: non-pass required gate must list at least one blocker",
+                summary["reasons"],
+            )
+
+        with_temporary_repo(run)
 
     def test_required_gate_cannot_be_marked_optional_to_close_aggregate(self) -> None:
-        manifest = complete_manifest()
-        gate = gate_by_id(manifest, "host_rss_2h_no_growth")
-        gate["required_for_stable_release"] = False
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+            gate["required_for_stable_release"] = False
 
-        summary = evaluate_manifest(manifest, readme_text=GUARDED_README_TEXT)
+            summary = evaluate_manifest(
+                manifest, readme_text=GUARDED_README_TEXT, repo_root=repo
+            )
 
-        self.assertEqual(summary["aggregate_verdict"], "insufficient")
-        self.assertFalse(summary["can_mark_phase0_stable_release"])
-        self.assertEqual(
-            [gate["id"] for gate in summary["blocking_required_gates"]],
-            ["host_rss_2h_no_growth"],
-        )
-        self.assertIn(
-            "required Phase 0 gate cannot set required_for_stable_release=false",
-            summary["blocking_required_gates"][0]["issues"],
-        )
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertFalse(summary["can_mark_phase0_stable_release"])
+            self.assertEqual(
+                [gate["id"] for gate in summary["blocking_required_gates"]],
+                ["host_rss_2h_no_growth"],
+            )
+            self.assertIn(
+                "required Phase 0 gate cannot set required_for_stable_release=false",
+                summary["blocking_required_gates"][0]["issues"],
+            )
+
+        with_temporary_repo(run)
 
     def test_missing_required_gate_is_insufficient(self) -> None:
         manifest = complete_manifest()
@@ -437,6 +724,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             merge_commit = commit_all(repo, "merge pr 158")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = merge_commit
+            gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
+                write_latency_archive_evidence(repo)
+            )
             add_merged_pr_snapshot(manifest, repo, merge_commit)
 
             summary = evaluate_manifest(
@@ -597,6 +887,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             merge_commit = commit_all(repo, "merge pr 158")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = merge_commit
+            gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
+                write_latency_archive_evidence(repo)
+            )
             add_merged_pr_snapshot(
                 manifest, repo, merge_commit, excluded_pr_numbers=[159, 160], maximum=160
             )
@@ -778,6 +1071,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             successor_commit = commit_all(repo, "aggregate refresh")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = base_commit
+            gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
+                write_latency_archive_evidence(repo)
+            )
             add_merged_pr_snapshot(manifest, repo, base_commit)
             gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
             gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
@@ -810,6 +1106,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             successor_commit = commit_all(repo, "aggregate refresh")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = base_commit
+            gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
+                write_latency_archive_evidence(repo)
+            )
             add_merged_pr_snapshot(manifest, repo, base_commit)
 
             summary = evaluate_manifest(

@@ -583,6 +583,33 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_external_camera_requires_whole_positive_frame_window(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            self.replace_samples(
+                root,
+                manifest,
+                "start_frame,end_frame,camera_fps\n10.5,18,240\n110,110,240\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["gate"]["can_close_performance_gate"])
+        self.assertIn(
+            "sample 1: frame indexes must be whole numbers",
+            report["gate"]["reasons"],
+        )
+        self.assertIn(
+            "sample 2: end_frame must be greater than start_frame",
+            report["gate"]["reasons"],
+        )
+
     def test_modified_raw_camera_artifact_is_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

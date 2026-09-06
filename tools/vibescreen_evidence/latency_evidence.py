@@ -1068,6 +1068,12 @@ def _validate_sample_annotations(
                 end_frame = float(row["end_frame"])
             except (TypeError, ValueError):
                 continue
+            if not start_frame.is_integer() or not end_frame.is_integer():
+                errors.append(f"sample {index}: frame indexes must be whole numbers")
+            if end_frame <= start_frame:
+                errors.append(
+                    f"sample {index}: end_frame must be greater than start_frame"
+                )
             if (
                 math.isfinite(declared_frame_rate)
                 and math.isfinite(sample_frame_rate)
