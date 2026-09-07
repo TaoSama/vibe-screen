@@ -1,0 +1,14 @@
+local HEAD before final amend: b78efb48ac8ececf1b9a8d45c0c921ca5907de6b
+origin/main: b363a05183d4330073266bfa06493ecd8d0dc7a9
+b78efb48a docs: refresh phase0 aggregate after PR 673
+b363a0518 Harden controller runtime artifact evidence gate
+f35e37550 Harden file transfer Android smoke evidence gate (#670)
+e54222117 test(evidence): harden macos host readiness gate (#672)
+be9f0cd14 Harden Phase 0 RSS and telemetry gates (#671)
+14d5deddc test(evidence): harden clipboard and TCC gates (#669)
+ac842cf89 test(evidence): verify file transfer remote artifacts (#668)
+53a8d8b6e docs: refresh phase0 aggregate after PR 666
+3c1ad9874 docs: add P0110 no-Host dialog layout evidence
+92ca2ab59 Harden file transfer smoke evidence gate (#665)
+98e07ddaa docs: refresh phase0 aggregate after PR 664 (#662)
+518f6f851 test(evidence): reject shared clipboard artifacts

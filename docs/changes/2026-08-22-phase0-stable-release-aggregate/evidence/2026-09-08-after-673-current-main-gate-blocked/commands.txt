@@ -1,0 +1,21 @@
+git fetch origin main
+git switch -c codex/refresh-phase0-aggregate-after-672 origin/main
+git rev-parse HEAD > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/head.txt
+git rev-parse origin/main >> docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/head.txt
+git log --oneline -12 >> docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/head.txt
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/open-prs.json
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=673)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/merged-prs-568-673.jsonl
+gh pr list --repo TaoSama/vibe-screen --state closed --base main --limit 200 --json number,title,closedAt,mergedAt,headRefName,baseRefName,url --jq '[.[] | select(.number>=568 and .number<=673 and .mergedAt == null)] | sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/closed-prs-568-673.json
+for pr in 667 668 669 670 671 672 673; do gh pr view "$pr" --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/pr-$pr-merged.json; done
+for run in 34146375370 34146375343 34146375366; do gh run view "$run" --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/github-run-$run.json; done
+make phase0-module-ownership-gate PHASE0_MODULE_OWNERSHIP_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/phase0-module-ownership-summary.json
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=b363a05183d4330073266bfa06493ecd8d0dc7a9 PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/phase0-stable-release-summary.json
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=b363a05183d4330073266bfa06493ecd8d0dc7a9 PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/phase0-stable-release-summary.json make phase0-stable-release-gate
+printf '%s\n' "$status" > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/phase0-stable-release-expected-source-exit.txt
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_module_ownership tools.tests.test_phase0_stable_release -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy.RepositoryPrivacyTests.test_current_tree_has_no_raw_android_serial_contexts -v
+make evidence-tools-test
+make phase0-stable-release-gate
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=b363a05183d4330073266bfa06493ecd8d0dc7a9 make phase0-stable-release-gate
+shasum -a 256 -c docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/SHA256SUMS
+git diff --check
