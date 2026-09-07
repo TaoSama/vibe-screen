@@ -493,6 +493,9 @@ def _android_file_transfer_class_test_count(text: str) -> int:
 def _android_file_transfer_has_method_rejection(text: str) -> bool:
     for class_name in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES:
         escaped_class = re.escape(class_name)
+        compact_pattern = re.compile(rf"^{escaped_class}:(?P<markers>[.FEIS]*[IS][.FEIS]*)\r?$", re.MULTILINE)
+        if compact_pattern.search(text):
+            return True
         for method in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHODS:
             escaped_method = re.escape(method)
             if re.search(rf"{escaped_class}#{escaped_method}:\s*(SKIPPED|IGNORED|FAILED|ERROR)\b", text):

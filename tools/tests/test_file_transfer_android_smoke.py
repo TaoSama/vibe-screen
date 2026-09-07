@@ -609,6 +609,35 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_android_log_rejects_compact_file_transfer_skipped_or_ignored_marker(self) -> None:
+        for marker in ("S", "I"):
+            with self.subTest(marker=marker):
+                with tempfile.TemporaryDirectory() as directory_name:
+                    root = Path(directory_name)
+                    paths = write_pass_inputs(root)
+                    paths["android_log"].write_text(
+                        f"dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest:..{marker}\n"
+                        "Tests run: 3,  Failures: 0,  Errors: 0\n"
+                        "Finished 3 tests on P0110 - 16\n"
+                        "BUILD SUCCESSFUL in 12s\n",
+                        encoding="utf-8",
+                    )
+
+                    result = derive_gate(
+                        host_readiness=paths["host"],
+                        usb_preflight=paths["usb"],
+                        trusted_lan_preflight=paths["lan"],
+                        android_file_transfer_instrumentation_log=paths["android_log"],
+                        product_e2e=paths["product"],
+                    )
+
+                self.assertEqual(result["verdict"], "blocked")
+                self.assertIn(
+                    "android_file_transfer_smoke: Android file-transfer instrumentation log contains a "
+                    "skipped or failed file-transfer smoke method",
+                    result["blockers"],
+                )
+
     def test_missing_device_identity_evidence_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
