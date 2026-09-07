@@ -53,6 +53,17 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "sha256_verification",
 )
 REQUIRED_CANCEL_ARTIFACT_ROLES = ("cancel_request", "cleanup_state")
+EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHODS = (
+    "fileTransferControlPreservesTouchTargetsWhenVisible",
+    "productionApplierCoversStackedColumnAndHiddenSelectorBoundaries",
+    "narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable",
+    "offerLayoutKeepsDecisionCopyStructuredForDialogButtons",
+    "outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable",
+)
+EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES = (
+    "dev.telemachus.display.ControlBarLayoutInstrumentedTest",
+    "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+)
 EXPECTED_DIRECTION_ENDPOINTS = {
     "android_to_macos_file_transfer": (
         "android_saf_selected_file",
@@ -396,22 +407,107 @@ def _android_file_transfer_gate(log_path: Path | None) -> dict[str, Any]:
             BLOCKED,
             ["current-run Android file-transfer instrumentation log is missing"],
         )
-    text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
-    executed_tests = _android_file_transfer_test_count(text)
-    passed = executed_tests > 0
+    raw_text = log_path.read_text(encoding="utf-8", errors="replace")
+    executed_tests = _android_file_transfer_test_count(raw_text)
+    passed_methods = _android_file_transfer_passed_methods(raw_text)
+    class_executed_tests = _android_file_transfer_class_test_count(raw_text)
+    has_failure_signal = (
+        "FAILURES!!!" in raw_text
+        or "BUILD FAILED" in raw_text
+        or _android_file_transfer_has_junit_failures(raw_text)
+    )
+    has_success_summary = _android_file_transfer_has_success_summary(raw_text)
+    has_method_rejection = _android_file_transfer_has_method_rejection(raw_text)
+    expected_file_transfer_coverage = bool(passed_methods) or class_executed_tests >= 2
+    passed = (
+        executed_tests > 0
+        and expected_file_transfer_coverage
+        and has_success_summary
+        and not has_failure_signal
+        and not has_method_rejection
+    )
     reasons = []
     if executed_tests <= 0:
         reasons.append("Android file-transfer instrumentation log does not show any executed tests")
-    if not passed:
+    if not expected_file_transfer_coverage:
+        reasons.append(
+            "Android file-transfer instrumentation log must name a file-transfer UI smoke class "
+            "and either list an expected file-transfer method or show at least 2 executed tests"
+        )
+    if has_failure_signal:
+        reasons.append("Android file-transfer instrumentation log contains a failure result")
+    if has_method_rejection:
+        reasons.append("Android file-transfer instrumentation log contains a skipped or failed file-transfer smoke method")
+    if not has_success_summary:
         reasons.append("Android file-transfer instrumentation log does not show an OK result")
     return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
 
 
 def _android_file_transfer_test_count(text: str) -> int:
-    match = re.search(r"^OK \((\d+) tests?\)\r?$", text, re.MULTILINE)
-    if match is None:
-        return 0
-    return int(match.group(1))
+    counts = [
+        int(match.group(1))
+        for match in re.finditer(r"^OK \((\d+) tests?\)\r?$", text, re.MULTILINE)
+    ]
+    counts.extend(int(match.group(1)) for match in re.finditer(r"Tests run:\s*(\d+)", text))
+    counts.extend(
+        int(match.group(1)) for match in re.finditer(r"Finished\s+(\d+)\s+tests?\s+on\s+", text)
+    )
+    return max(counts, default=0)
+
+
+def _android_file_transfer_has_junit_failures(text: str) -> bool:
+    for match in re.finditer(r"Tests run:\s*\d+,\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)", text):
+        if int(match.group(1)) > 0 or int(match.group(2)) > 0:
+            return True
+    for class_name in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES:
+        pattern = re.compile(rf"^{re.escape(class_name)}:[.FEIS]*[FE][.FEIS]*\r?$", re.MULTILINE)
+        if pattern.search(text):
+            return True
+    return False
+
+
+def _android_file_transfer_passed_methods(text: str) -> set[str]:
+    passed_methods: set[str] = set()
+    for class_name in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES:
+        escaped_class = re.escape(class_name)
+        for method in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHODS:
+            escaped_method = re.escape(method)
+            if re.search(rf"{escaped_class}#{escaped_method}:\s*PASSED\b", text):
+                passed_methods.add(method)
+            if re.search(rf"finished:\s*{escaped_method}\({escaped_class}\)", text):
+                passed_methods.add(method)
+    return passed_methods
+
+
+def _android_file_transfer_class_test_count(text: str) -> int:
+    max_count = 0
+    for class_name in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES:
+        compact_pattern = re.compile(rf"^{re.escape(class_name)}:(?P<markers>[.FEIS]+)\r?$", re.MULTILINE)
+        for match in compact_pattern.finditer(text):
+            max_count = max(max_count, match.group("markers").count("."))
+        finished_pattern = re.compile(rf"finished:\s*[^\r\n()]+\({re.escape(class_name)}\)")
+        max_count = max(max_count, len(finished_pattern.findall(text)))
+    return max_count
+
+
+def _android_file_transfer_has_method_rejection(text: str) -> bool:
+    for class_name in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES:
+        escaped_class = re.escape(class_name)
+        for method in EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHODS:
+            escaped_method = re.escape(method)
+            if re.search(rf"{escaped_class}#{escaped_method}:\s*(SKIPPED|IGNORED|FAILED|ERROR)\b", text):
+                return True
+            if re.search(rf"(skipped|ignored|failed|error):\s*{escaped_method}\({escaped_class}\)", text, re.IGNORECASE):
+                return True
+    return False
+
+
+def _android_file_transfer_has_success_summary(text: str) -> bool:
+    ok_match = re.search(r"^OK \((\d+) tests?\)\r?$", text, re.MULTILINE)
+    if ok_match and int(ok_match.group(1)) > 0:
+        return True
+    finished_match = re.search(r"Finished\s+(\d+)\s+tests?\s+on\s+", text)
+    return bool(finished_match and int(finished_match.group(1)) > 0 and "BUILD SUCCESSFUL" in text)
 
 
 def _direction_reasons(

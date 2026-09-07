@@ -10,6 +10,44 @@ from vibescreen_evidence import SCHEMA_VERSION
 from vibescreen_evidence.file_transfer_android_smoke import derive_gate, main
 
 
+def file_transfer_control_bar_success_log() -> str:
+    return (
+        "Starting 2 tests on P0110 - 16\n\n"
+        "dev.telemachus.display.ControlBarLayoutInstrumentedTest#"
+        "fileTransferControlPreservesTouchTargetsWhenVisible: PASSED\n"
+        "dev.telemachus.display.ControlBarLayoutInstrumentedTest#"
+        "productionApplierCoversStackedColumnAndHiddenSelectorBoundaries: PASSED\n\n"
+        "OK (2 tests)\n"
+    )
+
+
+def file_transfer_dialog_success_log() -> str:
+    return (
+        "Starting 3 tests on P0110 - 16\n\n"
+        "09-07 19:45:49.660 I TestRunner: started: "
+        "narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable"
+        "(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)\n"
+        "09-07 19:45:49.713 I TestRunner: finished: "
+        "narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable"
+        "(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)\n"
+        "09-07 19:45:49.617 I TestRunner: started: "
+        "offerLayoutKeepsDecisionCopyStructuredForDialogButtons"
+        "(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)\n"
+        "09-07 19:45:49.658 I TestRunner: finished: "
+        "offerLayoutKeepsDecisionCopyStructuredForDialogButtons"
+        "(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)\n"
+        "09-07 19:45:49.715 I TestRunner: started: "
+        "outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable"
+        "(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)\n"
+        "09-07 19:45:49.759 I TestRunner: finished: "
+        "outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable"
+        "(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)\n\n"
+        "Tests run: 3,  Failures: 0,  Errors: 0\n"
+        "Finished 3 tests on P0110 - 16\n"
+        "BUILD SUCCESSFUL in 22s\n"
+    )
+
+
 def write_json(path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document), encoding="utf-8")
@@ -151,7 +189,7 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
     write_json(paths["host"], host_readiness())
     write_json(paths["usb"], usb_preflight())
     write_json(paths["lan"], lan_preflight())
-    paths["android_log"].write_text("OK (3 tests)\n", encoding="utf-8")
+    paths["android_log"].write_text(file_transfer_control_bar_success_log(), encoding="utf-8")
     write_json(paths["product"], product_e2e())
     for artifact_path in (
         "android-to-macos/sender-action.txt",
@@ -363,7 +401,9 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             root = Path(directory_name)
             paths = write_pass_inputs(root)
             paths["android_log"].write_text(
-                "test session start\r\nOK (3 tests)\r\n",
+                "test session start\r\n"
+                "dev.telemachus.display.ControlBarLayoutInstrumentedTest:..\r\n"
+                "OK (2 tests)\r\n",
                 encoding="utf-8",
             )
 
@@ -380,6 +420,194 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             item for item in result["checks"] if item["name"] == "android_file_transfer_smoke"
         )
         self.assertEqual(android_gate["status"], "pass")
+
+    def test_android_log_accepts_file_transfer_dialog_method_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(file_transfer_dialog_success_log(), encoding="utf-8")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "pass")
+        android_gate = next(
+            item for item in result["checks"] if item["name"] == "android_file_transfer_smoke"
+        )
+        self.assertEqual(android_gate["status"], "pass")
+
+    def test_android_log_accepts_later_file_transfer_class_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "dev.telemachus.display.SettingsDialogLayoutInstrumentedTest:.\n"
+                "Tests run: 1,  Failures: 0,  Errors: 0\n"
+                "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest:..\n"
+                "Tests run: 2,  Failures: 0,  Errors: 0\n"
+                "Finished 2 tests on P0110 - 16\n"
+                "BUILD SUCCESSFUL in 12s\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "pass")
+        android_gate = next(
+            item for item in result["checks"] if item["name"] == "android_file_transfer_smoke"
+        )
+        self.assertEqual(android_gate["status"], "pass")
+
+    def test_android_log_rejects_unrelated_instrumentation_ok_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "Starting 2 tests on P0110 - 16\n\n"
+                "dev.telemachus.display.SettingsDialogLayoutInstrumentedTest:..\n\n"
+                "OK (2 tests)\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log must name a "
+            "file-transfer UI smoke class and either list an expected file-transfer method or show "
+            "at least 2 executed tests",
+            result["blockers"],
+        )
+        self.assertNotIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log does not show an OK result",
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_failure_summary_even_with_file_transfer_class(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest:.F\n\n"
+                "FAILURES!!!\n"
+                "Tests run: 2,  Failures: 1,  Errors: 0\n"
+                "BUILD FAILED in 12s\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log contains a failure result",
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_later_failure_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "dev.telemachus.display.SettingsDialogLayoutInstrumentedTest:.\n"
+                "Tests run: 1,  Failures: 0,  Errors: 0\n"
+                "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest:.F\n"
+                "Tests run: 2,  Failures: 1,  Errors: 0\n"
+                "Finished 2 tests on P0110 - 16\n"
+                "BUILD SUCCESSFUL in 12s\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log contains a failure result",
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_file_transfer_class_warning_with_unrelated_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "W/TestRunner: dev.telemachus.display.ControlBarLayoutInstrumentedTest not found, ignoring\n"
+                "dev.telemachus.display.SettingsDialogLayoutInstrumentedTest:..\n\n"
+                "OK (2 tests)\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log must name a "
+            "file-transfer UI smoke class and either list an expected file-transfer method or show "
+            "at least 2 executed tests",
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_skipped_file_transfer_smoke_method(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "dev.telemachus.display.ControlBarLayoutInstrumentedTest#"
+                "fileTransferControlPreservesTouchTargetsWhenVisible: SKIPPED\n"
+                "dev.telemachus.display.ControlBarLayoutInstrumentedTest#"
+                "productionApplierCoversStackedColumnAndHiddenSelectorBoundaries: PASSED\n\n"
+                "OK (1 test)\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log contains a "
+            "skipped or failed file-transfer smoke method",
+            result["blockers"],
+        )
 
     def test_missing_device_identity_evidence_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
