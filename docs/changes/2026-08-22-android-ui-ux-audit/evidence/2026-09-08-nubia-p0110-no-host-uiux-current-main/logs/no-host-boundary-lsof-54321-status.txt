@@ -1,0 +1,10 @@
+command=command -v lsof
+stdout=/usr/sbin/lsof
+stderr=
+exit_status=0
+
+command=lsof -nP -iTCP:54321 -sTCP:LISTEN
+stdout=
+stderr=
+exit_status=1
+interpretation=lsof was available and returned no listener rows for tcp:54321. On macOS lsof exits 1 when no matching files are found.

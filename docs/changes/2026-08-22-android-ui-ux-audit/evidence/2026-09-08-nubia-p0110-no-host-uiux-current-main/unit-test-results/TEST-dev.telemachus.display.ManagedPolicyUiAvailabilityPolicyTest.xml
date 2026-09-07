@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-09-07T16:45:43" hostname="Mac.local" time="0.011">
+  <properties/>
+  <testcase name="wakeHostDenyIsTrackedAsPolicyDenied" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.01"/>
+  <testcase name="localPolicyStateDistinguishesNoHostFromExplicitPolicyDenial" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="local and remote allow keeps UI controls available" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="unmanaged remote status preserves local allowed snapshot" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="fixedHostPolicyAllowsNoHostFailsClosedForHostBindingRestrictions" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="local deny wins over remote allow" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="fixedHostRestrictionsAreTrackedAsPolicyDeniedWhenNoTargetCanBeAllowed" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="remote deny wins over local allow" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="unmanaged remote status preserves local UI policy snapshot" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="fixedHostPolicyAllowsAnyTargetNormalizesHostSets" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="zero file byte policy disables file transfer availability" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <testcase name="audioDenyIsTrackedAsPolicyDenied" classname="dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
