@@ -17,6 +17,19 @@ class ControllerRuntimeEvidenceTest(unittest.TestCase):
     def complete_record(self) -> dict[str, bool]:
         return {field: True for field in BOOLEAN_FIELDS}
 
+    def complete_record_with_artifacts(self) -> dict[str, object]:
+        record: dict[str, object] = dict(self.complete_record())
+        record["artifact_paths"] = [
+            "dumpsys-input.txt",
+            "android-controller-logcat.txt",
+            "protocol-controller-envelopes.jsonl",
+            "host-codesign.txt",
+            "host-controller-availability.txt",
+            "mac-controller-observer.txt",
+            "neutral-release.txt",
+        ]
+        return record
+
     def test_blocks_when_physical_controller_is_missing(self) -> None:
         record = self.complete_record()
         record["physical_controller_attached"] = False
@@ -59,12 +72,30 @@ class ControllerRuntimeEvidenceTest(unittest.TestCase):
         self.assertFalse(summary["can_close_runtime_gate"])
 
     def test_pass_requires_every_observation(self) -> None:
-        summary = summarize(self.complete_record())
+        summary = summarize(self.complete_record_with_artifacts())
 
         self.assertEqual(summary["verdict"], "pass")
         self.assertTrue(summary["can_close_runtime_gate"])
         self.assertEqual(summary["missing_requirements"], [])
         self.assertEqual(summary["inconsistent_observations"], [])
+
+    def test_insufficient_when_all_observations_lack_retained_artifacts(self) -> None:
+        summary = summarize(self.complete_record())
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_runtime_gate"])
+        self.assertEqual(
+            summary["missing_requirements"],
+            [
+                {
+                    "field": "artifact_paths",
+                    "requirement": (
+                        "retain raw or focused artifacts proving every true controller "
+                        "runtime observation"
+                    ),
+                }
+            ],
+        )
 
     def test_insufficient_when_observations_are_inconsistent(self) -> None:
         record = self.complete_record()
@@ -101,6 +132,11 @@ class ControllerRuntimeCliTest(unittest.TestCase):
     def complete_record(self) -> dict[str, bool]:
         return {field: True for field in BOOLEAN_FIELDS}
 
+    def complete_record_with_artifacts(self) -> dict[str, object]:
+        record: dict[str, object] = dict(self.complete_record())
+        record["artifact_paths"] = ["controller-runtime-observer.txt"]
+        return record
+
     def test_cli_outputs_blocked_summary(self) -> None:
         result = subprocess.run(
             [sys.executable, "-m", MODULE, "-", "--run-id", "run-cli"],
@@ -119,6 +155,7 @@ class ControllerRuntimeCliTest(unittest.TestCase):
     def test_cli_returns_one_for_insufficient_summary(self) -> None:
         record = self.complete_record()
         record["mac_side_controller_response_observed"] = False
+        record["artifact_paths"] = ["controller-runtime-observer.txt"]
         result = subprocess.run(
             [sys.executable, "-m", MODULE, "-", "--run-id", "run-insufficient"],
             input=json.dumps(record),
@@ -130,6 +167,44 @@ class ControllerRuntimeCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         summary = json.loads(result.stdout)
         self.assertEqual(summary["verdict"], "insufficient")
+
+    def test_cli_requires_retained_artifacts_for_pass(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-", "--run-id", "run-no-artifacts"],
+            input=json.dumps(self.complete_record()),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_runtime_gate"])
+        self.assertIn(
+            {
+                "field": "artifact_paths",
+                "requirement": (
+                    "retain raw or focused artifacts proving every true controller "
+                    "runtime observation"
+                ),
+            },
+            summary["missing_requirements"],
+        )
+
+    def test_cli_outputs_pass_summary_with_artifacts(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", MODULE, "-", "--run-id", "run-pass"],
+            input=json.dumps(self.complete_record_with_artifacts()),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertTrue(summary["can_close_runtime_gate"])
 
 
 if __name__ == "__main__":
