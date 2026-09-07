@@ -180,6 +180,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     fun outgoingFileTransferExposesProgressAndUserCancelThroughProductState() {
         val source = mainActivitySource()
         val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val promptOutgoing = extractMethod(source, "private fun promptOutgoingFileTransfer")
+        val outgoingView = extractMethod(source, "private fun outgoingFileTransferView")
+        val finishConfirmed = extractMethod(source, "private fun finishConfirmedOutgoingFileTransfer")
+        val onStop = extractMethod(source, "override fun onStop()")
+        val onDestroy = extractMethod(source, "override fun onDestroy()")
         val refreshControl = extractMethod(source, "private fun refreshFileTransferControl")
         val clickHandler = extractMethod(source, "private fun handleFileTransferControlClick")
         val begin = extractMethod(source, "private fun beginOutgoingFileTransferState")
@@ -187,6 +192,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val finish = extractMethod(source, "private fun finishOutgoingFileTransferState")
         val cancel = extractMethod(source, "private fun cancelOutgoingFileTransfer")
         val discard = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
+        val clearPendingOutgoing = extractMethod(source, "private fun clearPendingOutgoingFileTransfer")
         val failureMessage = extractMethod(source, "private fun fileTransferFailureMessageId")
         val callback = extractCallback(source, "callbackClient.onOutgoingFileProgress = outgoingProgress@")
         val finishedCallback = extractCallback(source, "callbackClient.onOutgoingFileFinished = outgoingFinished@")
@@ -197,23 +203,35 @@ class MainActivityFileTransferSystemBoundaryContractTest {
 
         assertTrue(
             "Starting an outgoing offer should register active sending state from the returned transfer handle",
-            handlePicker.contains("val outgoingValue =") &&
-                handlePicker.contains("beginOutgoingFileTransferState(") &&
-                handlePicker.contains("transferId = outgoingValue.transferId"),
+            promptOutgoing.contains(".setPositiveButton(R.string.file_transfer_outgoing_send)") &&
+                promptOutgoing.contains("val outgoingValue = session.offerFile(pending.file, pending.mimeType)") &&
+                promptOutgoing.contains("finishConfirmedOutgoingFileTransfer(session, outgoingValue)") &&
+                finishConfirmed.contains("beginOutgoingFileTransferState(") &&
+                finishConfirmed.contains("transferId = outgoingValue.transferId"),
         )
         assertTrue(
             "Picker completion must not show a dialog after the Activity is destroyed",
-            handlePicker.contains("if (isFinishing || isDestroyed || !session.isCurrent()) return@withContext"),
+            handlePicker.contains("if (isFinishing || isDestroyed || !session.isCurrent())") &&
+                handlePicker.contains("discardPendingOutgoingFileTransfer(refreshControl = true)"),
+        )
+        assertTrue(
+            "Picker completion should stage the file and defer protocol offer submission until explicit user confirmation",
+            handlePicker.contains("PendingOutgoingFileTransfer(") &&
+                handlePicker.contains("promptOutgoingFileTransfer(") &&
+                assertBeforeValue(handlePicker, "PendingOutgoingFileTransfer(", "promptOutgoingFileTransfer(") &&
+                !handlePicker.contains("session.offerFile(file, mimeType)") &&
+                promptOutgoing.contains("lifecycleScope.launch(Dispatchers.IO)") &&
+                promptOutgoing.contains("val outgoingValue = session.offerFile(pending.file, pending.mimeType)"),
         )
         assertTrue(
             "Started toast should only show when the outgoing progress state is actually displayed",
-            handlePicker.contains("val started =") &&
-                handlePicker.contains("if (started)") &&
-                handlePicker.contains("showDedupedToast(R.string.file_transfer_sent_to_mac)"),
+            finishConfirmed.contains("val started =") &&
+                finishConfirmed.contains("if (started)") &&
+                finishConfirmed.contains("showDedupedToast(R.string.file_transfer_sent_to_mac)"),
         )
         assertTrue(
             "A finished-before-begin transfer should still clean up staged outgoing files",
-            handlePicker.contains("discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)"),
+            finishConfirmed.contains("discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)"),
         )
         assertTrue(
             "Active send state should retain transfer id, display name, byte length, and cancel command",
@@ -223,7 +241,34 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             "Outgoing progress should stay on the non-modal control bar so the cancel action remains reachable",
             begin.contains("revealControlBar(ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER)") &&
                 !source.contains("showOutgoingFileProgressDialog") &&
-                !source.contains("pendingOutgoingFileDialog"),
+                promptOutgoing.contains("pendingOutgoingFileDialog = showImmersiveDialog(dialog)"),
+        )
+        assertTrue(
+            "Outgoing confirmation should use structured preflight content before sending file bytes",
+            promptOutgoing.contains(".setTitle(R.string.file_transfer_outgoing_title)") &&
+                promptOutgoing.contains(".setView(outgoingFileTransferView(pending))") &&
+                promptOutgoing.contains(".setNegativeButton(R.string.cancel)") &&
+                outgoingView.contains("R.layout.dialog_file_transfer_outgoing") &&
+                outgoingView.contains("R.id.fileTransferOutgoingFileName") &&
+                outgoingView.contains("R.id.fileTransferOutgoingSize") &&
+                outgoingView.contains("R.id.fileTransferOutgoingLimit") &&
+                outgoingView.contains("R.id.fileTransferOutgoingTarget") &&
+                outgoingView.contains("readableByteCount(pending.maximumFileBytes)"),
+        )
+        assertTrue(
+            "Outgoing confirmation should expire and clean staged files rather than leaving a pending offer indefinitely",
+            promptOutgoing.contains("fileTransferApprovalHandler.postDelayed(") &&
+                promptOutgoing.contains("FILE_TRANSFER_APPROVAL_TIMEOUT_MS") &&
+                promptOutgoing.contains("fileTransferApprovalHandler::removeCallbacks") &&
+                promptOutgoing.contains("if (pendingOutgoingFileTimeout !== this) return") &&
+                promptOutgoing.contains("clearPendingDialog(dismiss = true)") &&
+                promptOutgoing.contains("R.string.file_transfer_outgoing_expired") &&
+                assertBeforeValue(promptOutgoing, "object : Runnable", "MaterialAlertDialogBuilder(this)"),
+        )
+        assertTrue(
+            "Outgoing confirmation must re-check session validity and mutual exclusion immediately before sending",
+            promptOutgoing.contains("if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())") &&
+                assertBeforeValue(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue = session.offerFile"),
         )
         assertTrue(
             "The file-transfer button should switch between picker and cancellation behavior",
@@ -310,17 +355,39 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Generic outgoing cleanup should dismiss active send state and delete staged files",
-            discard.contains("finishOutgoingFileTransferState(null)") &&
+            discard.contains("clearPendingOutgoingFileTransfer(refreshControl = false)") &&
+                discard.contains("finishOutgoingFileTransferState(null)") &&
                 discard.contains("clearActiveTransfer: Boolean = true") &&
                 discard.contains("if (clearActiveTransfer) finishOutgoingFileTransferState(null)") &&
                 discard.contains("if (clearFinishedTransferMarkers) recentlyFinishedOutgoingTransferIds.clear()") &&
-                discard.contains("takePendingOutgoingFileTransfer()") &&
-                discard.contains("if (refreshControl) refreshFileTransferControl()"),
+                discard.contains("if (refreshControl) refreshFileTransferControl()") &&
+                clearPendingOutgoing.contains("fileTransferApprovalHandler::removeCallbacks") &&
+                clearPendingOutgoing.contains("clearStagedFile: Boolean = true") &&
+                clearPendingOutgoing.contains("if (clearStagedFile)") &&
+                clearPendingOutgoing.contains("pendingOutgoingFileSubmissionInFlight = false") &&
+                clearPendingOutgoing.contains("pendingOutgoingFileDialog?.dismiss()") &&
+                clearPendingOutgoing.contains("takePendingOutgoingFileTransfer()"),
+        )
+        assertTrue(
+            "Lifecycle cleanup should dismiss outgoing confirmation and retry dialogs without leaving stale timeout callbacks",
+            onStop.contains("clearPendingOutgoingFileTransfer(") &&
+                onStop.contains("clearStagedFile = activeOutgoingFileTransfer == null && !pendingOutgoingFileSubmissionInFlight") &&
+                onStop.contains("fileTransferErrorDialog?.dismiss()") &&
+                onDestroy.contains("fileTransferApprovalHandler.removeCallbacksAndMessages(null)") &&
+                onDestroy.contains("discardPendingOutgoingFileTransfer()") &&
+                onDestroy.contains("fileTransferErrorDialog?.dismiss()"),
         )
         assertTrue(
             "Picker cleanup should explicitly refresh the non-modal transfer control after cleanup",
             handlePicker.contains("discardPendingOutgoingFileTransfer(refreshControl = true)") &&
-                handlePicker.contains("discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)"),
+                finishConfirmed.contains("discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)"),
+        )
+        assertTrue(
+            "Recoverable outgoing errors should use a durable retry dialog instead of Toast-only failures",
+            handlePicker.contains("showFileTransferRecoverableError(") &&
+                promptOutgoing.contains("showFileTransferRecoverableError(") &&
+                resultCallback.contains("showFileTransferRecoverableError(message = message)") &&
+                internetResult.contains("showFileTransferRecoverableError(message = message)"),
         )
         assertTrue(
             "File-transfer result callbacks have no transfer id and must not clear active send UI",
@@ -478,6 +545,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(strings.contains("File transfer request was cancelled."))
         assertTrue(strings.contains("file_transfer_cancel_failed"))
         assertTrue(strings.contains("File transfer could not be cancelled."))
+        assertTrue(strings.contains("file_transfer_outgoing_title"))
+        assertTrue(strings.contains("Send file to Mac?"))
+        assertTrue(strings.contains("file_transfer_error_retry"))
+        assertTrue(strings.contains("Choose another file"))
+        assertTrue(strings.contains("file_transfer_outgoing_expired"))
         assertTrue(strings.contains("control_file_transfer_cancel_with_progress"))
         assertTrue(strings.contains("control_file_transfer_cancelling_with_progress"))
     }

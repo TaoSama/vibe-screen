@@ -62,6 +62,33 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
         }
     }
 
+    @Test
+    fun outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable() {
+        listOf(
+            Triple(320, 640, 1.3f),
+            Triple(320, 640, 2.0f),
+            Triple(640, 320, 2.0f),
+        ).forEach { (widthDp, heightDp, fontScale) ->
+            withOutgoingLayout(widthDp = widthDp, heightDp = heightDp, fontScale = fontScale) { layout ->
+                layout.renderSampleOutgoing()
+                layout.measureAndLayout()
+
+                assertEquals(layout.dialogWidthPx, layout.root.measuredWidth)
+                assertEquals(layout.dialogHeightPx, layout.root.measuredHeight)
+                assertTrue("outgoing scroll view fills constrained dialog viewport", layout.scroll.isFillViewport)
+                layout.assertTextReadable(layout.intro)
+                layout.assertTextReadable(layout.fileName)
+                layout.assertTextReadable(layout.size)
+                layout.assertTextReadable(layout.limit)
+                layout.assertTextReadable(layout.target)
+                layout.assertTextReadable(layout.verification)
+                layout.assertLabelsOwnFields()
+                layout.assertDialogActionLabels()
+                layout.assertOutgoingContentCanScrollIntoView()
+            }
+        }
+    }
+
     private fun withOfferLayout(
         widthDp: Int,
         heightDp: Int,
@@ -76,6 +103,29 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
             try {
                 parent.addView(root)
                 OfferMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
+                    .let(assertion)
+            } finally {
+                parent.removeAllViews()
+                root.removeAllViews()
+            }
+        }
+        instrumentation.waitForIdleSync()
+    }
+
+    private fun withOutgoingLayout(
+        widthDp: Int,
+        heightDp: Int,
+        fontScale: Float,
+        assertion: (OutgoingMeasuredLayout) -> Unit,
+    ) {
+        val context = configuredContext(widthDp, heightDp, fontScale)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val parent = FrameLayout(context)
+            val root = inflate(context, parent, R.layout.dialog_file_transfer_outgoing) as ScrollView
+            try {
+                parent.addView(root)
+                OutgoingMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
                     .let(assertion)
             } finally {
                 parent.removeAllViews()
@@ -183,6 +233,97 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
 
     }
 
+    private class OutgoingMeasuredLayout(
+        val context: Context,
+        val viewport: FrameLayout,
+        val root: ScrollView,
+        val dialogWidthPx: Int,
+        val dialogHeightPx: Int,
+    ) {
+        val scroll = root
+        val content: ViewGroup = root.findViewById(R.id.fileTransferOutgoingContent)
+        val intro: TextView = root.findViewById(R.id.fileTransferOutgoingIntro)
+        val fileLabel: TextView = root.findViewById(R.id.fileTransferOutgoingFileLabel)
+        val fileName: TextView = root.findViewById(R.id.fileTransferOutgoingFileName)
+        val sizeLabel: TextView = root.findViewById(R.id.fileTransferOutgoingSizeLabel)
+        val size: TextView = root.findViewById(R.id.fileTransferOutgoingSize)
+        val limitLabel: TextView = root.findViewById(R.id.fileTransferOutgoingLimitLabel)
+        val limit: TextView = root.findViewById(R.id.fileTransferOutgoingLimit)
+        val targetLabel: TextView = root.findViewById(R.id.fileTransferOutgoingTargetLabel)
+        val target: TextView = root.findViewById(R.id.fileTransferOutgoingTarget)
+        val verification: TextView = root.findViewById(R.id.fileTransferOutgoingVerification)
+
+        fun renderSampleOutgoing() {
+            renderSampleOutgoing(context, root)
+        }
+
+        fun measureAndLayout() {
+            root.layoutParams =
+                (root.layoutParams as ViewGroup.LayoutParams).apply {
+                    width = ViewGroup.LayoutParams.MATCH_PARENT
+                    height = dialogHeightPx
+                }
+            viewport.measure(
+                View.MeasureSpec.makeMeasureSpec(dialogWidthPx, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(dialogHeightPx, View.MeasureSpec.EXACTLY),
+            )
+            viewport.layout(0, 0, viewport.measuredWidth, viewport.measuredHeight)
+        }
+
+        fun assertTextReadable(text: TextView) {
+            val textLayout = text.layout
+            assertTrue("${text.resources.getResourceEntryName(text.id)} has text layout", textLayout != null && textLayout.lineCount > 0)
+            assertTrue(
+                "${text.resources.getResourceEntryName(text.id)} is not ellipsized",
+                (0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 },
+            )
+            val contentWidth = text.width - text.compoundPaddingLeft - text.compoundPaddingRight
+            val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineWidth)
+            assertTrue(
+                "${text.resources.getResourceEntryName(text.id)} line width $maximumLineWidth fits $contentWidth",
+                maximumLineWidth <= contentWidth + TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX,
+            )
+        }
+
+        fun assertLabelsOwnFields() {
+            assertEquals(fileName.id, fileLabel.labelFor)
+            assertEquals(size.id, sizeLabel.labelFor)
+            assertEquals(limit.id, limitLabel.labelFor)
+            assertEquals(target.id, targetLabel.labelFor)
+            assertTrue(fileLabel.isAccessibilityHeading)
+            assertTrue(sizeLabel.isAccessibilityHeading)
+            assertTrue(limitLabel.isAccessibilityHeading)
+            assertTrue(targetLabel.isAccessibilityHeading)
+            assertTrue(fileName.isTextSelectable)
+            assertTrue(!fileName.isHorizontallyScrollable)
+        }
+
+        fun assertDialogActionLabels() {
+            assertEquals("Send", context.getString(R.string.file_transfer_outgoing_send))
+            assertEquals("Cancel", context.getString(R.string.cancel))
+        }
+
+        fun assertOutgoingContentCanScrollIntoView() {
+            val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            assertTrue("outgoing dialog leaves a usable viewport", visibleHeight > 0)
+            if (content.height > visibleHeight) {
+                assertFieldEdgesCanScrollIntoView(verification)
+            } else {
+                assertTrue("verification note is visible when outgoing content fits", verification.bottom <= scroll.scrollY + visibleHeight)
+            }
+        }
+
+        fun assertFieldEdgesCanScrollIntoView(field: TextView) {
+            val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            scroll.scrollTo(0, field.top.coerceAtLeast(0))
+            assertTrue("field top can scroll into viewport", field.top >= scroll.scrollY)
+            assertTrue("field top is visible after targeted scroll", field.top < scroll.scrollY + visibleHeight)
+            scroll.scrollTo(0, (field.bottom - visibleHeight).coerceAtLeast(0))
+            val visibleBottom = scroll.scrollY + visibleHeight
+            assertTrue("field bottom can scroll into viewport", field.bottom <= visibleBottom)
+        }
+    }
+
     private companion object {
         const val TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX = 2f
     }
@@ -243,4 +384,15 @@ private fun renderSampleOffer(
     root.findViewById<TextView>(R.id.fileTransferOfferSize).text = context.getString(R.string.file_transfer_size_bytes, 1_048_576L)
     root.findViewById<TextView>(R.id.fileTransferOfferDestination).text =
         context.getString(R.string.file_transfer_app_downloads_destination)
+}
+
+private fun renderSampleOutgoing(
+    context: Context,
+    root: View,
+) {
+    root.findViewById<TextView>(R.id.fileTransferOutgoingFileName).text =
+        "vibescreen-proof-export-" + "review-segment-".repeat(8) + "final.zip"
+    root.findViewById<TextView>(R.id.fileTransferOutgoingSize).text = context.getString(R.string.file_transfer_size_bytes, 1_048_576L)
+    root.findViewById<TextView>(R.id.fileTransferOutgoingLimit).text = context.getString(R.string.file_transfer_size_bytes, 16_777_216L)
+    root.findViewById<TextView>(R.id.fileTransferOutgoingTarget).text = context.getString(R.string.file_transfer_outgoing_target_mac)
 }
