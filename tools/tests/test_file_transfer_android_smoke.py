@@ -637,6 +637,47 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_retained_artifact_roles_must_be_exact_and_unique_per_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            retained_artifacts = android_to_macos["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            unknown_artifact = retained_artifacts[0]
+            duplicate_artifact = retained_artifacts[2]
+            assert isinstance(unknown_artifact, dict)
+            assert isinstance(duplicate_artifact, dict)
+            unknown_artifact["role"] = "transfer_summary"
+            duplicate_artifact["role"] = "receiver_approval"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].role must be one of sender_action, receiver_approval, protocol_packets, remote_file, sha256_verification",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].role duplicates receiver_approval artifact",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing sender_action artifact",
+            result["blockers"],
+        )
+
     def test_cancel_cleanup_requires_retained_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -658,6 +699,47 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "cancel_cleanup: cancel_cleanup.retained_artifacts must retain product evidence artifacts",
+            result["blockers"],
+        )
+
+    def test_cancel_cleanup_artifact_roles_must_be_exact_and_unique(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            cancel_cleanup = document["cancel_cleanup"]
+            assert isinstance(cancel_cleanup, dict)
+            retained_artifacts = cancel_cleanup["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            unknown_artifact = retained_artifacts[1]
+            assert isinstance(unknown_artifact, dict)
+            unknown_artifact["role"] = "cleanup_summary"
+            retained_artifacts.append({"role": "cancel_request", "path": "cancel-cleanup/cancel-request-copy.txt"})
+            (root / "cancel-cleanup" / "cancel-request-copy.txt").write_text(
+                "retained product artifact: cancel-cleanup/cancel-request-copy.txt\n",
+                encoding="utf-8",
+            )
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.retained_artifacts[1].role must be one of cancel_request, cleanup_state",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.retained_artifacts[2].role duplicates cancel_request artifact",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.retained_artifacts missing cleanup_state artifact",
             result["blockers"],
         )
 
