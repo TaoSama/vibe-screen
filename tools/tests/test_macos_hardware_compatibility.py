@@ -29,6 +29,7 @@ def complete_record() -> dict[str, object]:
         "owner": "Vibe Screen macOS Host compatibility owner",
         "implementation_path": "docs/runbook/macos-host-compatibility.md",
         "repository_commit": "0123456789abcdef0123456789abcdef01234567",
+        "repository_tree": "89abcdef0123456789abcdef0123456789abcdef",
         "repository_dirty_state": "clean",
         "cpu_architecture": "apple_silicon",
         "host_model_identifier": "Mac14,10",
@@ -38,15 +39,29 @@ def complete_record() -> dict[str, object]:
         "xcode_version": "Xcode 16.4",
         "swift_version": "Swift 6.1",
         "host_build_identity": "Vibe Screen Dev, sha256 example",
+        "host_install_path": "/Applications/Vibe Screen.app",
         "host_bundle_id": "dev.telemachus.display",
         "host_signing_identity": "Vibe Screen Dev",
+        "host_signing_leaf_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+        "host_designated_requirement": (
+            'identifier "dev.telemachus.display" and certificate leaf = '
+            'H"9AAE572BF6D764E3436A6109197D345B5A87998C"'
+        ),
         "screen_recording_tcc": "authorized",
+        "screen_recording_tcc_auth_reason": 2,
         "accessibility_tcc": "authorized",
+        "accessibility_tcc_auth_reason": 2,
+        "microphone_tcc": "authorized",
+        "microphone_tcc_auth_reason": 2,
+        "screen_recording_tcc_identity_bound": True,
+        "accessibility_tcc_identity_bound": True,
+        "microphone_tcc_identity_bound": True,
         "host_source_commit": "0123456789abcdef0123456789abcdef01234567",
         "host_source_tree": "89abcdef0123456789abcdef0123456789abcdef",
         "host_source_dirty_state": "clean",
         "host_self_test_commit": "0123456789abcdef0123456789abcdef01234567",
         "current_base_commit": "0123456789abcdef0123456789abcdef01234567",
+        "current_base_tree": "89abcdef0123456789abcdef0123456789abcdef",
         "display_topology": "built_in",
         "capture_backend": "screencapturekit",
         "screen_capturekit_result": "selected_display_first_frame",
@@ -85,8 +100,15 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertEqual(summary["row_scope"]["cpu_architecture"], "apple_silicon")
         self.assertEqual(summary["row_scope"]["display_topology"], "built_in")
         self.assertEqual(summary["row_scope"]["repository_dirty_state"], "clean")
+        self.assertEqual(summary["row_scope"]["repository_tree"], "89abcdef0123456789abcdef0123456789abcdef")
         self.assertEqual(summary["row_scope"]["capture_backend"], "screencapturekit")
         self.assertEqual(summary["row_scope"]["virtual_display_result"], "created_online_captured")
+        self.assertEqual(summary["row_scope"]["screen_recording_tcc_auth_reason"], 2)
+        self.assertEqual(summary["row_scope"]["accessibility_tcc_auth_reason"], 2)
+        self.assertEqual(summary["row_scope"]["microphone_tcc_auth_reason"], 2)
+        self.assertTrue(summary["row_scope"]["screen_recording_tcc_identity_bound"])
+        self.assertTrue(summary["row_scope"]["accessibility_tcc_identity_bound"])
+        self.assertTrue(summary["row_scope"]["microphone_tcc_identity_bound"])
         self.assertEqual(summary["missing_requirements"], [])
         self.assertEqual(summary["invalid_claims"], [])
         self.assertEqual(
@@ -181,6 +203,8 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         record["host_source_commit"] = "1" * 40
         record["host_self_test_commit"] = "2" * 40
         record["current_base_commit"] = "3" * 40
+        record["host_source_tree"] = "4" * 40
+        record["current_base_tree"] = "5" * 40
 
         summary = self.summarize_with_artifacts(record)
 
@@ -206,13 +230,37 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
             },
             summary["blocking_reasons"],
         )
+        self.assertIn(
+            {
+                "field": "source_bound_host_recorded",
+                "requirement": "installed Host source tree must match repository_tree for this row",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_self_test_provenance_recorded",
+                "requirement": "current_base_tree must match repository_tree for this current-base row",
+            },
+            summary["blocking_reasons"],
+        )
 
     def test_signing_tcc_and_bundle_fields_fail_closed(self) -> None:
         record = self.complete_record()
         record["host_bundle_id"] = "dev.example.other"
+        record["host_install_path"] = "/tmp/Vibe Screen.app"
+        record["host_signing_leaf_sha1"] = "1" * 40
+        record["host_designated_requirement"] = 'identifier "dev.example.other" and certificate leaf = H"1111111111111111111111111111111111111111"'
         record["host_signing_identity"] = "ad-hoc"
         record["screen_recording_tcc"] = "not_authorized"
+        record["screen_recording_tcc_auth_reason"] = None
         record["accessibility_tcc"] = "unverified"
+        record["accessibility_tcc_auth_reason"] = 4
+        record["microphone_tcc"] = "unverified"
+        record["microphone_tcc_auth_reason"] = 3
+        record["screen_recording_tcc_identity_bound"] = False
+        record["accessibility_tcc_identity_bound"] = False
+        record["microphone_tcc_identity_bound"] = False
 
         summary = self.summarize_with_artifacts(record)
 
@@ -220,7 +268,32 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertIn(
             {
                 "field": "host_build_identity_recorded",
+                "requirement": "Host install path must be /Applications/Vibe Screen.app",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_build_identity_recorded",
                 "requirement": "Host bundle id must be dev.telemachus.display",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_build_identity_recorded",
+                "requirement": "Host signing leaf SHA-1 must be 9AAE572BF6D764E3436A6109197D345B5A87998C",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "host_build_identity_recorded",
+                "requirement": (
+                    "Host designated requirement must bind exact Host identity: "
+                    "codesign designated requirement uses identifier 'dev.example.other', "
+                    "expected 'dev.telemachus.display'"
+                ),
             },
             summary["blocking_reasons"],
         )
@@ -245,7 +318,103 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
             },
             summary["blocking_reasons"],
         )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Microphone TCC must be authorized for the packaged Host",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Screen Recording TCC row must record an accepted user-consent auth_reason",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Accessibility TCC row must record an accepted user-consent auth_reason; got auth_reason=4",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Microphone TCC row must record an accepted user-consent auth_reason; got auth_reason=3",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Screen Recording TCC row csreq must match the packaged Host designated requirement",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Accessibility TCC row csreq must match the packaged Host designated requirement",
+            },
+            summary["blocking_reasons"],
+        )
+        self.assertIn(
+            {
+                "field": "signing_and_tcc_state_recorded",
+                "requirement": "Microphone TCC row csreq must match the packaged Host designated requirement",
+            },
+            summary["blocking_reasons"],
+        )
 
+    def test_accepts_user_consent_auth_reason_one(self) -> None:
+        record = self.complete_record()
+        record["screen_recording_tcc_auth_reason"] = 1
+        record["accessibility_tcc_auth_reason"] = 1
+        record["microphone_tcc_auth_reason"] = 1
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertEqual(summary["missing_requirements"], [])
+        self.assertEqual(summary["row_scope"]["screen_recording_tcc_auth_reason"], 1)
+
+    def test_designated_requirement_rejects_substring_identifier(self) -> None:
+        record = self.complete_record()
+        record["host_designated_requirement"] = (
+            'identifier "dev.telemachus.display.evil" and certificate leaf = '
+            'H"9aae572bf6d764e3436a6109197d345b5a87998c"'
+        )
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertIn(
+            {
+                "field": "host_build_identity_recorded",
+                "requirement": (
+                    "Host designated requirement must bind exact Host identity: "
+                    "codesign designated requirement uses identifier 'dev.telemachus.display.evil', "
+                    "expected 'dev.telemachus.display'"
+                ),
+            },
+            summary["blocking_reasons"],
+        )
+
+    def test_normalizes_host_signing_leaf_sha1_in_row_scope(self) -> None:
+        record = self.complete_record()
+        record["host_signing_leaf_sha1"] = "9aae572bf6d764e3436a6109197d345b5a87998c"
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertEqual(
+            summary["row_scope"]["host_signing_leaf_sha1"],
+            "9AAE572BF6D764E3436A6109197D345B5A87998C",
+        )
+
+    def test_repository_dirty_state_blocks_clean_row(self) -> None:
         record = self.complete_record()
         record["repository_dirty_state"] = "dirty"
 

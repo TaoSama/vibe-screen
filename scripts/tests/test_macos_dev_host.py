@@ -60,7 +60,7 @@ def allowed_tcc_rows(requirement: str | None = HOST_REQUIREMENT) -> tuple[macos_
             "dev.telemachus.display",
             0,
             2,
-            4,
+            2,
             1,
             csreq_sha256,
             normalized_requirement,
@@ -71,7 +71,7 @@ def allowed_tcc_rows(requirement: str | None = HOST_REQUIREMENT) -> tuple[macos_
             "dev.telemachus.display",
             0,
             2,
-            4,
+            2,
             2,
             csreq_sha256,
             normalized_requirement,
@@ -82,7 +82,7 @@ def allowed_tcc_rows(requirement: str | None = HOST_REQUIREMENT) -> tuple[macos_
             "dev.telemachus.display",
             0,
             2,
-            4,
+            2,
             3,
             csreq_sha256,
             normalized_requirement,
@@ -699,6 +699,76 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
 
         self.assertEqual(errors, [])
 
+    def test_validate_preflight_accepts_user_consent_auth_reason_one(self) -> None:
+        rows = tuple(
+            macos_dev_host.TCCRow(
+                row.service,
+                row.client,
+                row.client_type,
+                row.auth_value,
+                1,
+                row.last_modified,
+                row.csreq_sha256,
+                row.csreq_requirement,
+                row.csreq_error,
+            )
+            for row in allowed_tcc_rows()
+        )
+
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(),
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=rows,
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_validate_preflight_rejects_non_user_consent_tcc_grants(self) -> None:
+        rows = tuple(
+            macos_dev_host.TCCRow(
+                row.service,
+                row.client,
+                row.client_type,
+                row.auth_value,
+                4,
+                row.last_modified,
+                row.csreq_sha256,
+                row.csreq_requirement,
+                row.csreq_error,
+            )
+            for row in allowed_tcc_rows()
+        )
+
+        errors = macos_dev_host.validate_preflight(
+            self.metadata(),
+            macos_dev_host.PermissionStatus(
+                database_path=Path(PRIVACY_DB_FILENAME),
+                readable=True,
+                rows=rows,
+            ),
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+
+        joined = "\n".join(errors)
+        self.assertIn(
+            "Screen Recording TCC authorization was not granted by an accepted user-consent reason: auth_reason=4",
+            joined,
+        )
+        self.assertIn(
+            "Accessibility TCC authorization was not granted by an accepted user-consent reason: auth_reason=4",
+            joined,
+        )
+        self.assertIn(
+            "Microphone TCC authorization was not granted by an accepted user-consent reason: auth_reason=4",
+            joined,
+        )
+
     def test_validate_preflight_rejects_tcc_grant_without_csreq(self) -> None:
         errors = macos_dev_host.validate_preflight(
             self.metadata(),
@@ -930,7 +1000,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                                 "dev.telemachus.display",
                                 0,
                                 2,
-                                4,
+                                2,
                                 1,
                             ),
                         ),
@@ -1021,7 +1091,7 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
                                 "dev.telemachus.display",
                                 0,
                                 2,
-                                4,
+                                2,
                                 2,
                             ),
                         ),
@@ -2475,7 +2545,7 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
     def test_inspect_listener_redacts_lsof_user_column(self) -> None:
         output = (
             "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
-            "VibeScreen  1234    localuser 7u  IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+            "Vibe Screen 1234    localuser 7u  IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
         )
 
         with mock.patch.object(macos_dev_host, "run", return_value=output):
@@ -2486,6 +2556,54 @@ Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
         self.assertIn("<redacted-ipv4>:54321", status.output)
         self.assertNotIn("localuser", status.output)
         self.assertNotIn("127." + "0.0.1", status.output)
+
+    def test_inspect_listener_accepts_compacted_host_command(self) -> None:
+        output = (
+            "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
+            "VibeScreen  1234    localuser 7u  IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+        )
+
+        with mock.patch.object(macos_dev_host, "run", return_value=output):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertTrue(status.observed)
+        self.assertIn("<redacted-user>", status.output)
+
+    def test_inspect_listener_accepts_lsof_escaped_host_command(self) -> None:
+        output = (
+            "COMMAND       PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
+            r"Vibe\x20Screen 1234    localuser 7u  IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+        )
+
+        with mock.patch.object(macos_dev_host, "run", return_value=output):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertTrue(status.observed)
+        self.assertIn("<redacted-user>", status.output)
+
+    def test_inspect_listener_rejects_non_host_process_on_port(self) -> None:
+        output = (
+            "COMMAND     PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n"
+            "nc          4321    localuser 7u  IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+        )
+
+        with mock.patch.object(macos_dev_host, "run", return_value=output):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertFalse(status.observed)
+        self.assertEqual(status.error, "listener on TCP port 54321 is not Vibe Screen")
+        self.assertIn("nc", status.output)
+        self.assertIn("<redacted-user>", status.output)
+
+    def test_inspect_listener_rejects_host_command_prefix_on_port(self) -> None:
+        output = "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nVibe\\x20Screen\\x20Helper 4321 localuser 7u IPv4 0x123 0t0 TCP 127.0.0.1:54321 (LISTEN)"
+
+        with mock.patch.object(macos_dev_host, "run", return_value=output):
+            status = macos_dev_host.inspect_listener(54321)
+
+        self.assertFalse(status.observed)
+        self.assertEqual(status.error, "listener on TCP port 54321 is not Vibe Screen")
+        self.assertIn("<redacted-user>", status.output)
 
     def test_readiness_command_writes_source_bound_blocked_json_when_identity_and_bundle_are_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -3318,9 +3436,9 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             self.write_tcc_database(
                 database_path,
                 [
-                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 10),
-                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 11),
-                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 12),
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 2, 10),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 2, 11),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 2, 12),
                     ("kTCCServiceAccessibility", "other.bundle", 0, 0, 4, 12),
                 ],
             )
@@ -3343,7 +3461,7 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             database_path = root / PRIVACY_DB_FILENAME
             self.write_tcc_database(
                 database_path,
-                [("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 10, MISMATCHED_CSREQ_BLOB)],
+                [("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 2, 10, MISMATCHED_CSREQ_BLOB)],
             )
 
             with self.mock_csreq_decoder():
@@ -3384,8 +3502,11 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         )
         record = macos_dev_host.permission_record(status, HOST_REQUIREMENT)
         self.assertEqual(record["screen_recording_state"], "authorized_current_host_identity")
+        self.assertEqual(record["screen_recording_auth_reason"], 2)
         self.assertEqual(record["accessibility_state"], "authorized_current_host_identity")
+        self.assertEqual(record["accessibility_auth_reason"], 2)
         self.assertEqual(record["microphone_state"], "authorized_current_host_identity")
+        self.assertEqual(record["microphone_auth_reason"], 2)
 
     def test_permission_interpretation_reports_uninspected_host_identity(self) -> None:
         status = macos_dev_host.PermissionStatus(
@@ -3464,10 +3585,10 @@ class MacOSDevHostTCCTests(unittest.TestCase):
                 database_path,
                 [
                     ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 0, 4, 10),
-                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 20),
-                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 30),
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 2, 20),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 2, 30),
                     ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 0, 4, 40),
-                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 50),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 2, 50),
                     ("kTCCServiceAccessibility", "other.bundle", 0, 2, 4, 60),
                 ],
             )
@@ -3499,13 +3620,13 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             system_database = root / "system.db"
             self.write_tcc_database(
                 user_database,
-                [("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 10)],
+                [("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 2, 10)],
             )
             self.write_tcc_database(
                 system_database,
                 [
-                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 11),
-                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 4, 12),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 2, 11),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 2, 12),
                 ],
             )
 
@@ -3893,8 +4014,8 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             self.write_tcc_database(
                 readable_database,
                 [
-                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 10),
-                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 11),
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 2, 10),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 2, 11),
                 ],
             )
 
