@@ -19,6 +19,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
         val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer")
         val offerView = extractMethod(source, "private fun fileTransferOfferView")
+        val onIncomingCompleted = extractMethod(source, "private fun onIncomingFileCompleted")
         val callback = extractCallback(source, "callbackClient.onIncomingFileProgress = fileProgress@")
         val cancelledCallback = extractCallback(source, "callbackClient.onIncomingFileCancelled = fileCancelled@")
         val completedCallback = extractCallback(source, "callbackClient.onIncomingFileCompleted = incomingFile@")
@@ -161,6 +162,15 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 internetCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
                 internetCompleted.contains("return") &&
                 internetCompleted.contains("return@runOnUiThread"),
+        )
+        assertTrue(
+            "Incoming completion save failures must clean private staging before reporting the UI result",
+            onIncomingCompleted.contains("val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }") &&
+                onIncomingCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
+                assertBeforeValue(onIncomingCompleted, "val saved = runCatching", "completed.stagingFile.deleteBestEffort()") &&
+                assertBeforeValue(onIncomingCompleted, "completed.stagingFile.deleteBestEffort()", "runOnUiThread") &&
+                onIncomingCompleted.contains(".onFailure { failure ->") &&
+                onIncomingCompleted.contains("file transfer save failed"),
         )
         assertTrue(
             "Incoming finish should clear receive state through the shared cleanup path",

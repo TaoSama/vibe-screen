@@ -1024,6 +1024,57 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `incoming completion save failure removes private staging and downloads partial files`() {
+        val staging = stagingDirectory()
+        val downloads = stagingDirectory()
+        val owner = realIncomingOwner(staging)
+        val payload = "completed-save-failure".toByteArray()
+        val offer = offer(id = 112, payload = payload, fileName = "failure.txt")
+        val saveFailure = IOException("downloads unavailable")
+        owner.onIncomingFileCompleted = { completed ->
+            AppSpecificDownloadsSaver.saveCompletedIncomingFile(
+                completed = completed,
+                downloads = downloads,
+                maxDisplayNameLength = 120,
+            ) { _, output ->
+                output.write(payload.copyOfRange(0, 4))
+                throw saveFailure
+            }
+        }
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+
+        val accepted = owner.receiveIncomingChunk(
+            chunk(offer, payload = payload, final = true),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+
+        assertTrue(accepted is FileTransferProductOwner.IncomingChunkResult.Accepted)
+        val completed = requireNotNull((accepted as FileTransferProductOwner.IncomingChunkResult.Accepted).completed)
+        assertTrue(completed.stagingFile.exists())
+
+        val thrown = assertThrows(IOException::class.java) {
+            owner.notifyIncomingFileCompleted(completed)
+        }
+
+        assertSame(saveFailure, thrown)
+        assertFalse(completed.stagingFile.exists())
+        assertFalse(staging.containsPartialDownload())
+        assertFalse(downloads.containsPartialDownload())
+        assertEquals(0, owner.activeIncomingTransferCount())
+        staging.deleteRecursively()
+        downloads.deleteRecursively()
+    }
+
+    @Test
     fun `incoming completion without consumer deletes staging file`() {
         val staging = stagingDirectory()
         try {
