@@ -1,0 +1,45 @@
+git fetch origin main
+git worktree add -b codex/pr676-after680-rebuild .claude/worktrees/pr676-after680-rebuild origin/main
+git rev-parse HEAD > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/head.txt
+git rev-parse origin/main >> docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/head.txt
+git log --oneline -12 >> docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/head.txt
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/open-prs.json
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=681)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/merged-prs-568-681.jsonl
+gh pr list --repo TaoSama/vibe-screen --state closed --base main --limit 200 --json number,title,closedAt,mergedAt,headRefName,baseRefName,url --jq '[.[] | select(.number>=568 and .number<=681 and .mergedAt == null)] | sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/closed-prs-568-681.json
+for pr in 674 675 676 677 678 679 680 681; do gh pr view "$pr" --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/pr-$pr-<state>.json; done
+for run in 34162132030 34162132009 34162132042; do gh run view "$run" --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/github-run-$run.json; done
+for run in 34160895395 34160895387 34160895423 34168192909 34168192835 34168192901; do gh run view "$run" --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/github-run-$run.json; done
+make phase0-module-ownership-gate PHASE0_MODULE_OWNERSHIP_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-module-ownership-summary.json
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a5fb372f0f93bf1c134317ede4e1c9c23691417a PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-stable-release-summary.json
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a5fb372f0f93bf1c134317ede4e1c9c23691417a PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-stable-release-summary.json make phase0-stable-release-gate
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_module_ownership tools.tests.test_phase0_stable_release -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy.RepositoryPrivacyTests.test_current_tree_has_no_raw_android_serial_contexts -v
+make evidence-tools-test
+make phase3-test
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a5fb372f0f93bf1c134317ede4e1c9c23691417a PHASE0_STABLE_RELEASE_SUMMARY=/tmp/pr676-after681-summary.json
+git diff --check
+(cd docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked && shasum -a 256 -c SHA256SUMS)
+python3 - <<'PY'
+from pathlib import Path
+root = Path("docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked")
+for name in ("pr-678-merged.json", "pr-679-merged.json"):
+    path = root / name
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("<raw-adb-serial>", "<redacted-adb-serial>")
+    path.write_text(text, encoding="utf-8")
+PY
+apply_patch # set manifest source.audit_date and open_pr_snapshot.queried_at to the 2026-09-07 UTC collection date so GitHub Actions does not reject the checked-in snapshot as future-dated
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a5fb372f0f93bf1c134317ede4e1c9c23691417a PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-stable-release-summary.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release.Phase0StableReleaseTest.test_checked_in_manifest_keeps_phase0_open -v
+make evidence-tools-test
+# 2026-09-08 after-681 refresh additions
+git fetch origin --prune
+git switch -C codex/pr676-after681-refresh origin/codex/phase0-aggregate-after-pr-675
+git rebase origin/main
+gh pr view 681 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/pr-681-merged.json
+gh run view 34168192909 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/github-run-34168192909.json
+gh run view 34168192835 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/github-run-34168192835.json
+gh run view 34168192901 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/github-run-34168192901.json
+make phase0-module-ownership-gate PHASE0_MODULE_OWNERSHIP_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-module-ownership-summary.json
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a5fb372f0f93bf1c134317ede4e1c9c23691417a PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-stable-release-summary.json
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=a5fb372f0f93bf1c134317ede4e1c9c23691417a PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/phase0-stable-release-summary.json make phase0-stable-release-gate # expected exit 1
