@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/fileTransferOfferScroll"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fadeScrollbars="true"
+    android:fillViewport="true"
+    android:overScrollMode="ifContentScrolls"
+    android:paddingStart="8dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="16dp"
+    android:scrollIndicators="bottom">
+
+    <LinearLayout
+        android:id="@+id/fileTransferOfferContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/fileTransferOfferIntro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:breakStrategy="simple"
+            android:lineSpacingExtra="2dp"
+            android:text="@string/file_transfer_offer_intro"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferFileLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOfferFileName"
+            android:text="@string/file_transfer_offer_file_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferFileName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/dialog_field_bg"
+            android:breakStrategy="simple"
+            android:padding="12dp"
+            android:scrollHorizontally="false"
+            android:textColor="?attr/colorOnSurface"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferSizeLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOfferSize"
+            android:text="@string/file_transfer_offer_size_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferSize"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:breakStrategy="simple"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferDestinationLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOfferDestination"
+            android:text="@string/file_transfer_offer_destination_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferDestination"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:breakStrategy="simple"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOfferVerification"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:breakStrategy="simple"
+            android:lineSpacingExtra="2dp"
+            android:text="@string/file_transfer_offer_verification_note"
+            android:textColor="@color/on_surface_muted"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

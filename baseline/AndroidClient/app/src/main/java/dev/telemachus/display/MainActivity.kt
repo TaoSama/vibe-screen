@@ -34,6 +34,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.EditText
@@ -2823,14 +2824,7 @@ class MainActivity : AppCompatActivity() {
             val dialog =
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.file_transfer_offer_title)
-                    .setMessage(
-                        getString(
-                            R.string.file_transfer_offer_message,
-                            safeIncomingDisplayName(offer.fileName),
-                            readableByteCount(offer.byteLength),
-                            fileTransferDestinationLabel(),
-                        ),
-                    )
+                    .setView(fileTransferOfferView(offer))
                     .setPositiveButton(R.string.file_transfer_accept) { _, _ ->
                         if (decided) return@setPositiveButton
                         val rejectionReason =
@@ -2858,6 +2852,14 @@ class MainActivity : AppCompatActivity() {
             pendingIncomingFileDialog = showImmersiveDialog(dialog)
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
+    }
+
+    private fun fileTransferOfferView(offer: dev.vibescreen.protocol.v1.FileOffer): ScrollView {
+        val root = layoutInflater.inflate(R.layout.dialog_file_transfer_offer, null, false) as ScrollView
+        root.findViewById<TextView>(R.id.fileTransferOfferFileName).text = safeIncomingDisplayName(offer.fileName)
+        root.findViewById<TextView>(R.id.fileTransferOfferSize).text = readableByteCount(offer.byteLength)
+        root.findViewById<TextView>(R.id.fileTransferOfferDestination).text = fileTransferDestinationLabel()
+        return root
     }
 
     private fun beginIncomingFileTransferState(
