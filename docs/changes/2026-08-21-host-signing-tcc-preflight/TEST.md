@@ -200,6 +200,16 @@ the configured signing identity, installed source-bound Host, TCC grants,
 listener, or virtual HID entitlement. That blocked output is valid readiness
 evidence only; it does not close README-facing runtime gates.
 
+The 2026-09-07 permission reprompt audit is retained under
+[`evidence/2026-09-07-permission-reprompt-audit`](evidence/2026-09-07-permission-reprompt-audit/README.md).
+It found no source regression that requests Screen Recording or Accessibility
+from startup, polling, automatic launch, or manual-start failure paths. The
+most likely explanation for repeated macOS permission UI remains Host identity
+drift: TCC matching depends on the bundle identifier and decoded designated
+requirement. Stable install path, source provenance, and clean signing are
+separate readiness gates that prove the installed Host is the intended current
+artifact before read-only TCC rows can be trusted for runtime claims.
+
 ## Public artifact redaction
 
 Current-base readiness artifacts must keep macOS privacy-store locations behind

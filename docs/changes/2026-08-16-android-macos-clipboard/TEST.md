@@ -418,13 +418,17 @@ ClipboardManager device-smoke evidence because a local 1 MiB ClipboardManager
 write hit Android Binder transaction-size limits on this P0110.
 
 The gate parser was hardened so Android clipboard instrumentation logs must show
-at least one executed test. Logs containing only `BUILD SUCCESSFUL` or `OK (0
-tests)` now stay blocked. The generated `clipboard-e2e-gate.json` is still
-intentionally `blocked` and `gate_closed=false`: Host readiness is blocked, USB
-readiness is blocked because product `tcp:54321` reverse/foreground app/Host
-listener prerequisites are absent, trusted LAN is blocked because the device has
-no Wi-Fi association or route, and no bidirectional `product-e2e.json` record
-exists.
+the complete current local smoke class with at least 5 executed tests. Logs from
+the older 3-test smoke, logs containing only `BUILD SUCCESSFUL`, or `OK (0
+tests)` now stay blocked. The current instrumentation helper tests also execute
+real foreground `ClipboardManager` set/read assertions when no
+`clipboard_marker` argument is supplied, so a default full-class run no longer
+contains parameterized no-op methods. The generated `clipboard-e2e-gate.json` is
+still intentionally `blocked` and `gate_closed=false`: Host readiness is
+blocked, USB readiness is blocked because product `tcp:54321` reverse/foreground
+app/Host listener prerequisites are absent, trusted LAN is blocked because the
+device has no Wi-Fi association or route, and no bidirectional
+`product-e2e.json` record exists.
 
 No Android `ClipboardManager` -> macOS `NSPasteboard` or macOS `NSPasteboard` ->
 Android `ClipboardManager` product transfer was executed. The P0110 evidence
