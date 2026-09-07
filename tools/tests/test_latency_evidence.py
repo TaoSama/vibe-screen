@@ -1169,6 +1169,41 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertAlmostEqual(report["gate"]["observed_ms"], 37.5)
         self.assertAlmostEqual(report["gate"]["observed_with_uncertainty_ms"], 51.5)
 
+    def test_uncertainty_budget_calculation_error_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            self.write_manifest(root, manifest)
+
+            malformed_pass_summary = {
+                "verdict": "pass",
+                "latency_kind": "glass-to-glass",
+                "transport": "usb",
+                "measurement_method": "external-camera",
+                "gate": {
+                    "profile": GATE_USB_GLASS_TO_GLASS_SUB50,
+                    "can_close_performance_gate": True,
+                    "summary_verdict": "pass",
+                    "threshold_ms": 50.0,
+                    "sample_count": 5,
+                    "min_sample_count": 5,
+                    "reasons": [],
+                },
+                "metrics": {},
+            }
+            with patch(f"{MODULE}.summarize", return_value=malformed_pass_summary):
+                report = build_latency_evidence_report(
+                    manifest_path=root / "manifest.json",
+                    gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+                )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "cannot apply latency uncertainty budget to gate threshold: 'observed_ms'",
+            report["gate"]["reasons"],
+        )
+
     def test_schema_rejects_boolean_annotation_uncertainty(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

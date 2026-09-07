@@ -1197,8 +1197,11 @@ def build_latency_evidence_report(
                     manifest["measurement_setup"]["max_frame_annotation_uncertainty_ms"]
                 )
                 conservative_observed_ms = observed_ms + (2 * endpoint_uncertainty_ms)
-        except (KeyError, TypeError, ValueError):
-            pass
+        except (KeyError, TypeError, ValueError) as error:
+            errors.append(
+                "cannot apply latency uncertainty budget to gate threshold: "
+                f"{error}"
+            )
         else:
             if math.isfinite(conservative_observed_ms) and conservative_observed_ms > threshold_ms:
                 formal_verdict = "insufficient"

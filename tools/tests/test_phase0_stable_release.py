@@ -1,6 +1,7 @@
-from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 import datetime as _datetime
+import hashlib
 import json
 import subprocess
 import sys
@@ -15,6 +16,7 @@ from vibescreen_evidence.phase0_stable_release import (
     _write_summary,
     evaluate_manifest,
 )
+from tools.tests.latency_test_helpers import minimal_mov
 
 
 MODULE = "vibescreen_evidence.phase0_stable_release"
@@ -172,6 +174,108 @@ def write_latency_archive_evidence(
     latency_path: str = "docs/evidence/latency-evidence-usb.json",
     live_smoke_path: str = "docs/evidence/android-usb-live-smoke.json",
 ) -> list[str]:
+    evidence_dir = repo / "docs" / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    raw_video_file = evidence_dir / "raw-camera-capture.mov"
+    samples_file = evidence_dir / "samples.csv"
+    usb_artifact_file = evidence_dir / "usb-connection.txt"
+    manifest_file = evidence_dir / "latency-manifest.json"
+    raw_video_file.write_bytes(minimal_mov(b"phase0-aggregate-real-shaped-video"))
+    samples_file.write_text(
+        "start_frame,end_frame,camera_fps\n"
+        "10,18,240\n110,119,240\n210,219,240\n"
+        "310,319,240\n410,419,240\n",
+        encoding="utf-8",
+    )
+    usb_artifact_file.write_text(
+        "adb reverse tcp:54321 tcp:54321\nactive usb stream observed on real device\n",
+        encoding="utf-8",
+    )
+    manifest_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "vibescreen.evidence/v1",
+                "run_id": "phase0-aggregate-latency-package",
+                "latency_kind": "glass-to-glass",
+                "transport": "usb",
+                "measurement_method": "external-camera",
+                "gate_profile": "usb-glass-to-glass-sub50",
+                "evidence_provenance": {
+                    "source": "real-device-capture",
+                    "collection_context": "bench capture in the current latency lab",
+                    "operator_assertion": "This package records a retained device capture run.",
+                    "current_base": {
+                        "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+                        "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+                        "dirty": False,
+                    },
+                },
+                "camera": {
+                    "manufacturer": "Bench Camera Co",
+                    "model": "Retained 240",
+                    "mode": "1080p240",
+                    "frame_rate_fps": 240,
+                    "shutter_mode": "fixed",
+                },
+                "recording": {
+                    "raw_video": raw_video_file.name,
+                    "recorded_at": "2026-08-21T00:00:00Z",
+                    "operator": "bench operator",
+                    "sha256": hashlib.sha256(raw_video_file.read_bytes()).hexdigest(),
+                    "container": "mov",
+                    "file_size_bytes": raw_video_file.stat().st_size,
+                    "frame_count": 600,
+                    "duration_ms": 2500,
+                },
+                "samples": {
+                    "file": samples_file.name,
+                    "format": "csv",
+                    "sha256": hashlib.sha256(samples_file.read_bytes()).hexdigest(),
+                    "annotation_method": "manual-frame-count",
+                    "annotator": "bench annotator",
+                },
+                "device": {
+                    "manufacturer": "nubia",
+                    "model": "P0110",
+                    "codename": "pacific",
+                    "os_version": "Android 16 / SDK 36",
+                    "sdk": 36,
+                    "build_fingerprint": "nubia/pacific/pacific:16/test-keys",
+                },
+                "host": {"model": "Mac16,8", "macos_version": "26.4.1"},
+                "build": {
+                    "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+                    "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+                    "source_dirty": False,
+                    "host_artifact": "Vibe Screen.app sha256 retained in commands.txt",
+                    "host_artifact_sha256": "a" * 64,
+                    "host_artifact_provenance": "codesign and sha256 retained in commands.txt",
+                    "client_artifact": "app-debug.apk sha256 retained in commands.txt",
+                    "client_artifact_sha256": "b" * 64,
+                    "client_artifact_provenance": "APK sha256 retained in commands.txt",
+                },
+                "measurement_setup": {
+                    "stimulus": "mac display flash visible to the camera",
+                    "start_event_definition": "first camera frame where the Mac stimulus changes",
+                    "end_event_definition": "first camera frame where the Android render shows the same change",
+                    "lighting": "stable indoor light",
+                    "mounting": "fixed tripod framing both screens",
+                    "clock_domain": "single-external-camera-timebase",
+                    "max_frame_annotation_uncertainty_ms": 4.2,
+                    "notes": "Bench validation package with retained artifacts.",
+                },
+                "gate_artifacts": {
+                    "usb_connection": {
+                        "file": usb_artifact_file.name,
+                        "sha256": hashlib.sha256(usb_artifact_file.read_bytes()).hexdigest(),
+                        "description": "USB active-stream proof.",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
     latency_file = repo / latency_path
     latency_file.parent.mkdir(parents=True, exist_ok=True)
     latency_file.write_text(
@@ -189,6 +293,9 @@ def write_latency_archive_evidence(
                     "profile": "usb-glass-to-glass-sub50",
                     "can_close_performance_gate": True,
                     "summary_verdict": "pass",
+                    "threshold_ms": 50.0,
+                    "observed_ms": 37.5,
+                    "observed_with_uncertainty_ms": 45.9,
                     "sample_count": 5,
                     "min_sample_count": 5,
                     "requires_external_hardware": True,
@@ -564,6 +671,16 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 lambda record: record["source"].__setitem__("manifest", ""),
                 "formal latency report source.manifest must be present",
             ),
+            (
+                "missing_observed_with_uncertainty",
+                lambda record: record["gate"].pop("observed_with_uncertainty_ms"),
+                "formal latency report gate.observed_with_uncertainty_ms must be a finite non-negative number",
+            ),
+            (
+                "observed_with_uncertainty_over_threshold",
+                lambda record: record["gate"].__setitem__("observed_with_uncertainty_ms", 50.1),
+                "formal latency report gate.observed_with_uncertainty_ms must not exceed gate.threshold_ms",
+            ),
         )
         for _name, mutate, expected_issue in cases:
             with self.subTest(_name):
@@ -589,6 +706,53 @@ class Phase0StableReleaseTest(unittest.TestCase):
                     )
 
                 with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_requires_source_manifest_to_exist(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            (repo / "docs/evidence/latency-manifest.json").unlink()
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/latency-evidence-usb.json: formal latency report source.manifest docs/evidence/latency-manifest.json must exist",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_revalidates_source_manifest_artifacts(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            (repo / "docs/evidence/samples.csv").write_text(
+                "start_frame,end_frame,camera_fps\n10,18,240\n",
+                encoding="utf-8",
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "source.manifest must revalidate as a passing latency evidence package" in issue
+                    and "samples.sha256 does not match its referenced file" in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
 
     def test_telemetry_latency_archive_rejects_malformed_android_stream_fields(self) -> None:
         def mutate_android_smoke(
