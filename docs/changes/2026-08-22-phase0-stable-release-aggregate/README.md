@@ -147,20 +147,21 @@ make phase0-stable-release-gate \
   PHASE0_STABLE_RELEASE_REQUIRE_PASS=1
 ```
 
-The 2026-09-06 UTC / 2026-09-07 local manifest refresh binds the aggregate source guard to
-`ac804cb98adbb061cd01e8f6a9db93adb78ca9c5`, records open PR #652 and PR #653 outside the
-merged current-main evidence input, records merged PR #569 through PR #575, PR
-#577 through PR #626, and PR #628 through PR #651 as `main`-targeted
-source/unit/offline, tooling, or no-Host
-readiness after validating each recorded `mergeCommit.oid` is reachable from
-the audited main commit, and keeps the Android/macOS clipboard and file-transfer
-product E2E gates as required Phase 0 gates that are blocked. PR #568, PR #576,
-PR #627, and PR #646 are explicitly excluded from the complete audited PR #568
-through PR #651 range because they are not merged in the audited mainline base.
-The retained current refresh summary
-bundle is under `evidence/2026-09-07-after-651-current-main-gate-blocked/`; local
-verification also writes the current summary under
-`.build/evidence/phase0-stable-release/`.
+The 2026-09-07 local manifest refresh binds the aggregate source guard to
+`eb87c4965a8db6552af5a0901f72666129ab16e6`, records an empty open PR snapshot,
+records merged PR #569 through PR #575, PR #577 through PR #626, and PR #628
+through PR #653 as `main`-targeted source/unit/offline, tooling, aggregate, or
+no-Host readiness after validating each recorded `mergeCommit.oid` is reachable
+from the audited main commit, and keeps the Android/macOS clipboard and
+file-transfer product E2E gates as required Phase 0 gates that are blocked. PR
+#653 contributes Nubia P0110/pacific no-Host Android UI/UX large-text secondary
+action evidence only; it does not close Host/TCC, Host RSS, native pointer HID,
+controller runtime, clipboard product E2E, or file-transfer product E2E gates.
+PR #568, PR #576, PR #627, and PR #646 are explicitly excluded from the complete
+audited PR #568 through PR #653 range because they are not merged in the audited
+mainline base. The retained current refresh summary bundle is under
+`evidence/2026-09-07-after-653-current-main-gate-blocked/`; local verification
+also writes the current summary under `.build/evidence/phase0-stable-release/`.
 
 ## Update rules
 
