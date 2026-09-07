@@ -1,0 +1,2 @@
+09-07 19:45:49.810 23580 23605 I TestRunner: started: clipboardConfirmationCoversSendReceiveAndOverwriteCopy(dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest)
+09-07 19:45:49.828 23580 23605 I TestRunner: finished: clipboardConfirmationCoversSendReceiveAndOverwriteCopy(dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest)

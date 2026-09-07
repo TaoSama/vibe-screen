@@ -1,0 +1,4 @@
+09-07 19:45:49.660 23580 23605 I TestRunner: started: narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)
+09-07 19:45:49.663 23580 23605 I emachus.display: AssetManager2(0xb400007c725b7c98) locale list changing from [] to [zh-CN]
+09-07 19:45:49.697 23580 23605 I emachus.display: AssetManager2(0xb400007c725b5d58) locale list changing from [] to [zh-CN]
+09-07 19:45:49.713 23580 23605 I TestRunner: finished: narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)

@@ -1,0 +1,5 @@
+repository=TaoSama/vibe-screen
+branch=codex/p0110-no-host-dialog-evidence
+commit=92ca2ab59cd76090ff520c3b1be431cd86d8aa06
+origin_main=92ca2ab59cd76090ff520c3b1be431cd86d8aa06
+date=2026-09-07

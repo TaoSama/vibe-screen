@@ -1,0 +1,3 @@
+command=adb -s <redacted-adb-serial> reverse --list
+UsbFfs tcp:8908 tcp:8908
+
