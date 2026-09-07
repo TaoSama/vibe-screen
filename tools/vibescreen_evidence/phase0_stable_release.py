@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any, Sequence, TextIO
 
 from . import SCHEMA_VERSION
-from .latency import MIN_GATE_SAMPLE_COUNT
+from .latency import GATE_PROFILES, MIN_GATE_SAMPLE_COUNT
+from .latency_evidence import LatencyEvidenceError, build_latency_evidence_report
 
 KIND = "phase0_stable_release_closure"
 STATUS_PASS = "pass"
@@ -274,7 +275,9 @@ def _telemetry_and_latency_archive_issues(
             continue
         kind = record.get("kind")
         if kind == LATENCY_EVIDENCE_GATE_KIND:
-            report_issues = _formal_latency_report_issues(record, raw_path)
+            report_issues = _formal_latency_report_issues(
+                record, raw_path, repo_root=repository
+            )
             if report_issues:
                 latency_candidate_issues.extend(report_issues)
             else:
@@ -349,7 +352,9 @@ def _load_evidence_json(
     return record, None
 
 
-def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str]:
+def _formal_latency_report_issues(
+    record: dict[str, Any], path: str, *, repo_root: Path
+) -> list[str]:
     issues: list[str] = []
     if record.get("schema_version") != SCHEMA_VERSION:
         issues.append(f"{path}: formal latency report schema_version must be {SCHEMA_VERSION}")
@@ -378,6 +383,9 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
     if not isinstance(gate, dict):
         issues.append(f"{path}: formal latency report gate must be an object")
         return issues
+    gate_profile = gate.get("profile")
+    if not isinstance(gate_profile, str) or gate_profile not in GATE_PROFILES:
+        issues.append(f"{path}: formal latency report gate.profile must be a known latency profile")
     if gate.get("can_close_performance_gate") is not True:
         issues.append(
             f"{path}: formal latency report gate.can_close_performance_gate "
@@ -385,6 +393,20 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
         )
     if gate.get("summary_verdict") != STATUS_PASS:
         issues.append(f"{path}: formal latency report gate.summary_verdict must be pass")
+    threshold_ms = gate.get("threshold_ms")
+    observed_with_uncertainty_ms = gate.get("observed_with_uncertainty_ms")
+    if not _is_non_negative_number(threshold_ms):
+        issues.append(
+            f"{path}: formal latency report gate.threshold_ms must be a finite non-negative number"
+        )
+    if not _is_non_negative_number(observed_with_uncertainty_ms):
+        issues.append(
+            f"{path}: formal latency report gate.observed_with_uncertainty_ms must be a finite non-negative number"
+        )
+    elif _is_non_negative_number(threshold_ms) and observed_with_uncertainty_ms > threshold_ms:
+        issues.append(
+            f"{path}: formal latency report gate.observed_with_uncertainty_ms must not exceed gate.threshold_ms"
+        )
     sample_count = gate.get("sample_count")
     min_sample_count = gate.get("min_sample_count")
     if (
@@ -406,6 +428,46 @@ def _formal_latency_report_issues(record: dict[str, Any], path: str) -> list[str
         or not source.get("manifest", "").strip()
     ):
         issues.append(f"{path}: formal latency report source.manifest must be present")
+    elif isinstance(gate_profile, str) and gate_profile in GATE_PROFILES:
+        manifest_ref = source["manifest"].strip()
+        manifest_path, path_issue = _repo_relative_evidence_path(repo_root, manifest_ref)
+        if path_issue is not None or manifest_path is None:
+            issues.append(
+                f"{path}: formal latency report source.manifest must be a repo-relative path inside repo_root"
+            )
+        elif not manifest_path.exists():
+            issues.append(
+                f"{path}: formal latency report source.manifest {manifest_ref} must exist"
+            )
+        else:
+            try:
+                rebuilt_report = build_latency_evidence_report(
+                    manifest_path=manifest_path,
+                    gate_profile=gate_profile,
+                )
+            except LatencyEvidenceError as error:
+                issues.append(
+                    f"{path}: formal latency report source.manifest could not be revalidated: {error}"
+                )
+            else:
+                rebuilt_gate = rebuilt_report.get("gate")
+                if (
+                    rebuilt_report.get("verdict") != STATUS_PASS
+                    or not isinstance(rebuilt_gate, dict)
+                    or rebuilt_gate.get("can_close_performance_gate") is not True
+                ):
+                    rebuilt_reasons = (
+                        rebuilt_gate.get("reasons", [])
+                        if isinstance(rebuilt_gate, dict)
+                        else []
+                    )
+                    detail = "; ".join(
+                        str(reason) for reason in rebuilt_reasons if str(reason).strip()
+                    )
+                    suffix = f": {detail}" if detail else ""
+                    issues.append(
+                        f"{path}: formal latency report source.manifest must revalidate as a passing latency evidence package{suffix}"
+                    )
     return issues
 
 
