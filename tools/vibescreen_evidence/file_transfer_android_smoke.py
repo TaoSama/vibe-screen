@@ -9,6 +9,7 @@ retained product evidence for both transfer directions.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -62,6 +63,7 @@ EXPECTED_DIRECTION_ENDPOINTS = {
         "android_downloads_file",
     ),
 }
+HASH_CHUNK_BYTES = 1024 * 1024
 
 
 class FileTransferAndroidSmokeGateError(ValueError):
@@ -206,6 +208,73 @@ def _retained_artifact_reasons(
         f"{label}.{RETAINED_ARTIFACTS_FIELD} missing {role} artifact"
         for role in missing_roles
     )
+    return reasons
+
+
+def _retained_artifact_path_by_role(document: dict[str, Any], role: str) -> Path | None:
+    artifacts = document.get(RETAINED_ARTIFACTS_FIELD)
+    if not isinstance(artifacts, list):
+        return None
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        if artifact.get("role") != role:
+            continue
+        path_value = artifact.get("path")
+        if isinstance(path_value, str) and path_value.strip():
+            return Path(path_value)
+    return None
+
+
+def _remote_file_artifact_reasons(
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+) -> list[str]:
+    if evidence_dir is None:
+        return []
+    remote_file_path = _retained_artifact_path_by_role(direction, "remote_file")
+    if remote_file_path is None or remote_file_path.is_absolute() or ".." in remote_file_path.parts:
+        return []
+
+    candidate = evidence_dir / remote_file_path
+    try:
+        resolved_evidence_dir = evidence_dir.resolve()
+        remote_file = candidate.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return []
+    try:
+        remote_file.relative_to(resolved_evidence_dir)
+    except ValueError:
+        return []
+    if not remote_file.is_file():
+        return []
+
+    byte_length = direction.get("byte_length")
+    expected_sha256 = direction.get("sha256")
+    reasons: list[str] = []
+    if isinstance(byte_length, int) and not isinstance(byte_length, bool) and byte_length > 0:
+        try:
+            actual_size = remote_file.stat().st_size
+        except OSError as error:
+            reasons.append(f"{label}.remote_file artifact size cannot be read: {sanitize_text(error)}")
+        else:
+            if actual_size != byte_length:
+                reasons.append(
+                    f"{label}.remote_file artifact size {actual_size} must equal byte_length {byte_length}"
+                )
+    if isinstance(expected_sha256, str) and re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        try:
+            digest = hashlib.sha256()
+            with remote_file.open("rb") as file_handle:
+                for chunk in iter(lambda: file_handle.read(HASH_CHUNK_BYTES), b""):
+                    digest.update(chunk)
+            actual_sha256 = digest.hexdigest()
+        except OSError as error:
+            reasons.append(f"{label}.remote_file artifact SHA-256 cannot be read: {sanitize_text(error)}")
+        else:
+            if actual_sha256 != expected_sha256.lower():
+                reasons.append(f"{label}.remote_file artifact SHA-256 must equal direction.sha256")
     return reasons
 
 
@@ -406,6 +475,7 @@ def _direction_reasons(
             cross_product_artifact_paths,
         )
     )
+    reasons.extend(_remote_file_artifact_reasons(direction, label, evidence_dir))
     return reasons
 
 
@@ -633,7 +703,10 @@ def derive_gate(
             for item in (
                 "Android -> macOS single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
                 "macOS -> Android single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
-                "receiver approval, verified session ID and epoch, distinct verified 16-byte transfer IDs, observed progress, exact file endpoints, non-empty retained artifacts, cancel cleanup, and end-to-end SHA-256 on retained product evidence" if verdict != PASS else "",
+                "receiver approval, verified session ID and epoch, distinct verified 16-byte transfer IDs, "
+                "observed progress, exact file endpoints, retained destination-file bytes that match the "
+                "declared byte length and SHA-256, cancel cleanup, and end-to-end SHA-256 on retained "
+                "product evidence" if verdict != PASS else "",
             )
             if item
         ],
@@ -649,6 +722,7 @@ def derive_gate(
             "showing file offer/request/content packets, source file read, explicit user action, receiver "
             "approval, remote file write, verified session ID and session epoch, distinct transfer IDs, "
             "distinct file names, distinct SHA-256 payload digests, observed progress, exact file endpoints, "
+            "retained remote-file bytes whose size and SHA-256 match the direction manifest, "
             "retained non-empty product artifacts with exact required roles, no repeated roles, "
             "distinct files per role, and cancel/cleanup behavior. "
             "Offline or synthetic coverage alone remains readiness evidence."
