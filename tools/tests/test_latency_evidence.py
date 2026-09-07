@@ -1505,6 +1505,41 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_gate_artifact_roles_must_not_share_one_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            gate_artifacts = manifest["gate_artifacts"]
+            assert isinstance(gate_artifacts, dict)
+            input_record = gate_artifacts["input_actuation_record"]
+            sync_record = gate_artifacts["synchronization_record"]
+            assert isinstance(input_record, dict)
+            assert isinstance(sync_record, dict)
+            combined_artifact = root / "combined-input-and-sync-record.txt"
+            combined_artifact.write_text(
+                "physical input actuation visible; visible mac-side result recorded; "
+                "clock synchronization proof: before skew, after skew, drift, "
+                "input timestamp uncertainty, result timestamp uncertainty, total error budget\n",
+                encoding="utf-8",
+            )
+            combined_sha256 = hashlib.sha256(combined_artifact.read_bytes()).hexdigest()
+            input_record["file"] = combined_artifact.name
+            input_record["sha256"] = combined_sha256
+            sync_record["file"] = combined_artifact.name
+            sync_record["sha256"] = combined_sha256
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.synchronization_record.file must reference a distinct retained artifact; already used by gate_artifacts.input_actuation_record.file",
+            report["gate"]["reasons"],
+        )
+
     def test_synchronized_clock_input_package_passes(self) -> None:
         report = build_latency_evidence_report(
             manifest_path=FIXTURE_DIR / "synchronized-clock-input-valid" / "manifest.json",

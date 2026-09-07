@@ -1027,6 +1027,18 @@ def _validate_referenced_files(
     for field, path in references.items():
         if field.startswith("gate_artifacts."):
             _validate_artifact_content(field.rsplit(".", 1)[0], path, errors)
+    resolved_roles: dict[Path, str] = {}
+    for field, path in references.items():
+        if path is None or not path.is_file():
+            continue
+        resolved = path.resolve()
+        previous_field = resolved_roles.get(resolved)
+        if previous_field is not None:
+            errors.append(
+                f"{field} must reference a distinct retained artifact; already used by {previous_field}"
+            )
+        else:
+            resolved_roles[resolved] = field
     raw_video = references.get("recording.raw_video")
     if is_external_camera and raw_video is not None and raw_video.is_file() and not _looks_like_camera_video(raw_video):
         errors.append("recording.raw_video must be a readable camera video container with a supported layout")
