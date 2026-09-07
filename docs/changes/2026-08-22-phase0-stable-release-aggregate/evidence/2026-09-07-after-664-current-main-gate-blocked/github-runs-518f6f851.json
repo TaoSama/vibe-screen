@@ -1,0 +1,845 @@
+[
+  {
+    "conclusion": "success",
+    "createdAt": "2026-09-07T09:41:45Z",
+    "databaseId": 34107468153,
+    "displayTitle": "test(evidence): reject shared clipboard artifacts",
+    "event": "push",
+    "headBranch": "main",
+    "headSha": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
+    "jobs": [
+      {
+        "completedAt": "2026-09-07T09:42:12Z",
+        "conclusion": "success",
+        "databaseId": 101695680340,
+        "name": "Portable core (no DevEco or HAP claim)",
+        "startedAt": "2026-09-07T09:41:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:50Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:54Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:55Z",
+            "conclusion": "success",
+            "name": "Run pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1",
+            "number": 3,
+            "startedAt": "2026-09-07T09:41:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:58Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+            "number": 4,
+            "startedAt": "2026-09-07T09:41:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:00Z",
+            "conclusion": "success",
+            "name": "Install pinned portable test dependencies",
+            "number": 5,
+            "startedAt": "2026-09-07T09:41:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:07Z",
+            "conclusion": "success",
+            "name": "Run canonical portable verification",
+            "number": 6,
+            "startedAt": "2026-09-07T09:42:00Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:08Z",
+            "conclusion": "success",
+            "name": "Validate HarmonyOS readiness and device-gate tooling contracts",
+            "number": 7,
+            "startedAt": "2026-09-07T09:42:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:08Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+            "number": 12,
+            "startedAt": "2026-09-07T09:42:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:08Z",
+            "conclusion": "success",
+            "name": "Post Run pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1",
+            "number": 13,
+            "startedAt": "2026-09-07T09:42:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:08Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 14,
+            "startedAt": "2026-09-07T09:42:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:09Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 15,
+            "startedAt": "2026-09-07T09:42:08Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468153/job/101695680340"
+      }
+    ],
+    "name": "HarmonyOS portable checks",
+    "number": 5952,
+    "status": "completed",
+    "updatedAt": "2026-09-07T09:42:13Z",
+    "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468153",
+    "workflowName": "HarmonyOS portable checks"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-09-07T09:41:45Z",
+    "databaseId": 34107468232,
+    "displayTitle": "test(evidence): reject shared clipboard artifacts",
+    "event": "push",
+    "headBranch": "main",
+    "headSha": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
+    "jobs": [
+      {
+        "completedAt": "2026-09-07T09:42:12Z",
+        "conclusion": "success",
+        "databaseId": 101695681065,
+        "name": "evidence-tools",
+        "startedAt": "2026-09-07T09:41:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:49Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:53Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:53Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+            "number": 3,
+            "startedAt": "2026-09-07T09:41:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:07Z",
+            "conclusion": "success",
+            "name": "Run make evidence-tools-test",
+            "number": 4,
+            "startedAt": "2026-09-07T09:41:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:11Z",
+            "conclusion": "success",
+            "name": "Run make release-tools-test",
+            "number": 5,
+            "startedAt": "2026-09-07T09:42:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:11Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+            "number": 9,
+            "startedAt": "2026-09-07T09:42:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:11Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 10,
+            "startedAt": "2026-09-07T09:42:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:11Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-09-07T09:42:11Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232/job/101695681065"
+      },
+      {
+        "completedAt": "2026-09-07T09:43:55Z",
+        "conclusion": "success",
+        "databaseId": 101695681206,
+        "name": "protocol",
+        "startedAt": "2026-09-07T09:41:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:50Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:53Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:01Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            "number": 3,
+            "startedAt": "2026-09-07T09:41:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:52Z",
+            "conclusion": "success",
+            "name": "Run make protocol",
+            "number": 4,
+            "startedAt": "2026-09-07T09:42:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:52Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            "number": 7,
+            "startedAt": "2026-09-07T09:43:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:53Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 8,
+            "startedAt": "2026-09-07T09:43:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:53Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-09-07T09:43:53Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232/job/101695681206"
+      },
+      {
+        "completedAt": "2026-09-07T10:00:39Z",
+        "conclusion": "success",
+        "databaseId": 101695681384,
+        "name": "macos",
+        "startedAt": "2026-09-07T09:41:55Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:56Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:02Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:17Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            "number": 3,
+            "startedAt": "2026-09-07T09:42:02Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:17Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+            "number": 4,
+            "startedAt": "2026-09-07T09:42:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:19Z",
+            "conclusion": "success",
+            "name": "Install local Phase 3 synthetic product E2E dependencies",
+            "number": 5,
+            "startedAt": "2026-09-07T09:42:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:57:38Z",
+            "conclusion": "success",
+            "name": "Gate local synthetic Protocol v1 harness direct and forced-relay product E2E",
+            "number": 6,
+            "startedAt": "2026-09-07T09:42:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:58:00Z",
+            "conclusion": "success",
+            "name": "Run make baseline-macos-self-test",
+            "number": 7,
+            "startedAt": "2026-09-07T09:57:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:58:07Z",
+            "conclusion": "success",
+            "name": "Run make baseline-macos-permission-prompt-contract",
+            "number": 8,
+            "startedAt": "2026-09-07T09:58:00Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:17Z",
+            "conclusion": "success",
+            "name": "Run make baseline-macos-test",
+            "number": 9,
+            "startedAt": "2026-09-07T09:58:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:25Z",
+            "conclusion": "success",
+            "name": "Run python3 scripts/package_macos.py --sign-identity -",
+            "number": 10,
+            "startedAt": "2026-09-07T10:00:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:25Z",
+            "conclusion": "success",
+            "name": "Validate local Phase 3 synthetic product E2E public summaries",
+            "number": 11,
+            "startedAt": "2026-09-07T10:00:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:27Z",
+            "conclusion": "success",
+            "name": "Upload local Phase 3 synthetic product E2E public summaries",
+            "number": 12,
+            "startedAt": "2026-09-07T10:00:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:27Z",
+            "conclusion": "skipped",
+            "name": "Create local Phase 3 synthetic product E2E failure diagnostic",
+            "number": 13,
+            "startedAt": "2026-09-07T10:00:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:27Z",
+            "conclusion": "skipped",
+            "name": "Upload local Phase 3 synthetic product E2E failure diagnostic",
+            "number": 14,
+            "startedAt": "2026-09-07T10:00:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:32Z",
+            "conclusion": "success",
+            "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+            "number": 15,
+            "startedAt": "2026-09-07T10:00:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:32Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+            "number": 28,
+            "startedAt": "2026-09-07T10:00:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:32Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            "number": 29,
+            "startedAt": "2026-09-07T10:00:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:33Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 30,
+            "startedAt": "2026-09-07T10:00:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T10:00:33Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 31,
+            "startedAt": "2026-09-07T10:00:33Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232/job/101695681384"
+      },
+      {
+        "completedAt": "2026-09-07T09:48:57Z",
+        "conclusion": "success",
+        "databaseId": 101695681414,
+        "name": "android",
+        "startedAt": "2026-09-07T09:41:49Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:52Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:56Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:56Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961",
+            "number": 3,
+            "startedAt": "2026-09-07T09:41:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:18Z",
+            "conclusion": "success",
+            "name": "Run android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699",
+            "number": 4,
+            "startedAt": "2026-09-07T09:41:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:19Z",
+            "conclusion": "success",
+            "name": "Run sdkmanager \"platforms;android-34\" \"build-tools;34.0.0\"",
+            "number": 5,
+            "startedAt": "2026-09-07T09:42:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:48:40Z",
+            "conclusion": "success",
+            "name": "Run make baseline-android-check",
+            "number": 6,
+            "startedAt": "2026-09-07T09:42:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:48:54Z",
+            "conclusion": "success",
+            "name": "Build Android instrumentation test APK",
+            "number": 7,
+            "startedAt": "2026-09-07T09:48:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:48:54Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961",
+            "number": 13,
+            "startedAt": "2026-09-07T09:48:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:48:54Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 14,
+            "startedAt": "2026-09-07T09:48:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:48:55Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 15,
+            "startedAt": "2026-09-07T09:48:54Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232/job/101695681414"
+      },
+      {
+        "completedAt": "2026-09-07T09:44:46Z",
+        "conclusion": "success",
+        "databaseId": 101695681416,
+        "name": "phase3",
+        "startedAt": "2026-09-07T09:41:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:50Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:01Z",
+            "conclusion": "success",
+            "name": "Initialize containers",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:05Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 3,
+            "startedAt": "2026-09-07T09:42:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:15Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            "number": 4,
+            "startedAt": "2026-09-07T09:42:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:15Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+            "number": 5,
+            "startedAt": "2026-09-07T09:42:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:15Z",
+            "conclusion": "success",
+            "name": "Bind verification to the workflow commit",
+            "number": 6,
+            "startedAt": "2026-09-07T09:42:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:53Z",
+            "conclusion": "success",
+            "name": "Run Phase 3, privacy, evidence, and link gates",
+            "number": 7,
+            "startedAt": "2026-09-07T09:42:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:43Z",
+            "conclusion": "success",
+            "name": "Run Authority container and PostgreSQL restart gate",
+            "number": 8,
+            "startedAt": "2026-09-07T09:43:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:43Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+            "number": 13,
+            "startedAt": "2026-09-07T09:44:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:43Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            "number": 14,
+            "startedAt": "2026-09-07T09:44:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:44Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 15,
+            "startedAt": "2026-09-07T09:44:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:44Z",
+            "conclusion": "success",
+            "name": "Stop containers",
+            "number": 16,
+            "startedAt": "2026-09-07T09:44:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:44Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 17,
+            "startedAt": "2026-09-07T09:44:44Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232/job/101695681416"
+      }
+    ],
+    "name": "Phase 0 checks",
+    "number": 5959,
+    "status": "completed",
+    "updatedAt": "2026-09-07T10:00:39Z",
+    "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232",
+    "workflowName": "Phase 0 checks"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-09-07T09:41:46Z",
+    "databaseId": 34107468276,
+    "displayTitle": "test(evidence): reject shared clipboard artifacts",
+    "event": "push",
+    "headBranch": "main",
+    "headSha": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
+    "jobs": [
+      {
+        "completedAt": "2026-09-07T09:52:23Z",
+        "conclusion": "success",
+        "databaseId": 101695681052,
+        "name": "core",
+        "startedAt": "2026-09-07T09:41:54Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:56Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:42:03Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:05Z",
+            "conclusion": "success",
+            "name": "Verify generated Protocol v1 bindings are current",
+            "number": 3,
+            "startedAt": "2026-09-07T09:42:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:43:16Z",
+            "conclusion": "success",
+            "name": "Resolve pinned dependencies",
+            "number": 4,
+            "startedAt": "2026-09-07T09:43:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:44:38Z",
+            "conclusion": "success",
+            "name": "Build native protocol, session, transport, and video modules",
+            "number": 5,
+            "startedAt": "2026-09-07T09:43:16Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:46:06Z",
+            "conclusion": "success",
+            "name": "Run deterministic Core XCTest suite in release mode",
+            "number": 6,
+            "startedAt": "2026-09-07T09:44:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:46:06Z",
+            "conclusion": "success",
+            "name": "Run deterministic self-test and shared Protocol v1 compatibility fixture",
+            "number": 7,
+            "startedAt": "2026-09-07T09:46:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:46:11Z",
+            "conclusion": "success",
+            "name": "Run loopback process orchestration tests",
+            "number": 8,
+            "startedAt": "2026-09-07T09:46:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:49:37Z",
+            "conclusion": "success",
+            "name": "Run trusted-LAN iOS Core to production MacHost loopback",
+            "number": 9,
+            "startedAt": "2026-09-07T09:46:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:52:14Z",
+            "conclusion": "success",
+            "name": "Run baseline MacHost self-tests",
+            "number": 10,
+            "startedAt": "2026-09-07T09:49:37Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:52:17Z",
+            "conclusion": "success",
+            "name": "Generate fail-closed iOS current-base readiness artifact",
+            "number": 11,
+            "startedAt": "2026-09-07T09:52:14Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:52:18Z",
+            "conclusion": "success",
+            "name": "Upload fail-closed iOS current-base readiness artifact",
+            "number": 12,
+            "startedAt": "2026-09-07T09:52:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:52:19Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 24,
+            "startedAt": "2026-09-07T09:52:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:52:21Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 25,
+            "startedAt": "2026-09-07T09:52:19Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468276/job/101695681052"
+      },
+      {
+        "completedAt": "2026-09-07T09:49:50Z",
+        "conclusion": "success",
+        "databaseId": 101695681345,
+        "name": "app-build-test-archive",
+        "startedAt": "2026-09-07T09:41:52Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-07T09:41:53Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-07T09:41:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:41:58Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-09-07T09:41:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:49:43Z",
+            "conclusion": "success",
+            "name": "Build and test on an iPhone simulator, then create an unsigned archive",
+            "number": 3,
+            "startedAt": "2026-09-07T09:41:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:49:46Z",
+            "conclusion": "success",
+            "name": "Upload unsigned archive",
+            "number": 4,
+            "startedAt": "2026-09-07T09:49:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:49:46Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 8,
+            "startedAt": "2026-09-07T09:49:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-07T09:49:48Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-09-07T09:49:46Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468276/job/101695681345"
+      }
+    ],
+    "name": "iOS engineering gates (Simulator & macOS Core Loopback, no device acceptance)",
+    "number": 5964,
+    "status": "completed",
+    "updatedAt": "2026-09-07T09:52:24Z",
+    "url": "https://github.com/TaoSama/vibe-screen/actions/runs/34107468276",
+    "workflowName": "iOS engineering gates (Simulator & macOS Core Loopback, no device acceptance)"
+  }
+]

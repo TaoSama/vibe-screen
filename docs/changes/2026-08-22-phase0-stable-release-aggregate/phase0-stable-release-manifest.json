@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "eb87c4965a8db6552af5a0901f72666129ab16e6",
+    "base_commit": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
     "base_ref": "origin/main",
     "audit_date": "2026-09-07",
     "owner": "Vibe Screen core team",
@@ -11,27 +11,31 @@
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,baseRefName,isDraft,url | jq 'sort_by(.number)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'",
     "queried_at": "2026-09-07",
     "state": "open",
-    "open_pr_numbers": []
+    "open_pr_numbers": [
+      662
+    ]
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 120 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=653)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=664)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 653
+      "max": 664
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-653-current-main-gate-blocked/merged-prs-568-653.jsonl",
-    "audited_source_commit": "eb87c4965a8db6552af5a0901f72666129ab16e6",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-664-current-main-gate-blocked/merged-prs-568-664.jsonl",
+    "audited_source_commit": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
     "excluded_pr_numbers": [
       568,
       576,
       627,
-      646
+      646,
+      655,
+      662
     ]
   },
   "readme_guard": {
@@ -68,7 +72,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34070930516"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232"
       ],
       "owner_prs": [],
       "blockers": []
@@ -81,12 +85,16 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34070930516",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionGuidance.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionGuidanceTest.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionPanelLayoutPolicyTest.kt",
-        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-internet-secondary-actions/README.md"
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-internet-secondary-actions/README.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-file-offer-dialog/README.md",
+        "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTransferReadinessContractTest.kt",
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt"
       ],
       "owner_prs": [],
       "blockers": []
@@ -99,7 +107,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34070930516",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -175,7 +183,7 @@
       ],
       "owner_prs": [],
       "blockers": [
-        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only.",
+        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656 further hardens the formal latency archive validator so malformed, insufficient, or non-revalidating latency packages fail closed; this is evidence-tool hardening only.",
         "The tightened current-base latency gate remains blocked readiness; no external-camera latency sample package, raw camera media, annotated sample set, or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },
@@ -262,7 +270,7 @@
       "owner_prs": [],
       "blockers": [
         "Host readiness is blocked on stable signing, installed Host source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, Host listener availability, virtual HID entitlement, and login/headless readiness.",
-        "Android now requires explicit overwrite confirmation, pending-action status visibility, duplicate action suppression, PR #620 allowed-state managed-policy control happy-path coverage, and control-boundary coverage before writing solicited or direct Mac clipboard content into ClipboardManager, but this is source/contract and local Android readiness rather than system-pasteboard product E2E.",
+        "Android now requires explicit overwrite confirmation, pending-action status visibility, duplicate action suppression, PR #620 allowed-state managed-policy control happy-path coverage, and control-boundary coverage before writing solicited or direct Mac clipboard content into ClipboardManager, but this is source/contract and local Android readiness rather than system-pasteboard product E2E. PR #659 improves Android clipboard confirmation dialog source behavior, but does not add retained Android ClipboardManager <-> macOS NSPasteboard product evidence.",
         "No retained bidirectional Android ClipboardManager -> macOS NSPasteboard and macOS NSPasteboard -> Android ClipboardManager product transfer evidence exists with exact system clipboard endpoints, explicit user action, Protocol v1 session ownership, verified session epoch, verified origin device ID, 16-byte change ID, SHA-256 digest, bounded byte length, final digest match, distinct markers, final marker equality, and evidence-relative non-empty retained artifacts for source read, sender action, receiver approval, protocol packets, destination write, final verification, and negative boundary verification, with each role backed by a distinct file.",
         "Existing P0110 evidence proves only local Android ClipboardManager smoke and offline/protocol readiness; it must not be relabeled as Xiaomi 13/fuxi evidence."
       ]
@@ -293,6 +301,7 @@
       ],
       "owner_prs": [],
       "blockers": [
+        "PR #657 improves incoming file-offer readability, PR #659 improves clipboard confirmation dialogs, PR #660 adds outgoing file-transfer confirmation, PR #658 shows audio readiness in Settings, PR #663 hardens required file-transfer artifact role validation, and PR #664 rejects reused clipboard retained artifacts; these are source/UI/readiness or evidence-tool updates only and do not prove Host-backed file-transfer bytes landing.",
         "PR #653 adds Nubia P0110/pacific no-Host Internet secondary-action large-text and narrow-screen UI/UX evidence, but it is not Host-backed file-transfer product E2E evidence and does not prove bytes landing on macOS or Android.",
         "Host readiness is blocked on stable signing, source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, virtual HID entitlement, and login/headless readiness.",
         "Android now exposes incoming file-transfer progress and user cancellation in source and contract tests, but this is not a retained Host-backed bidirectional product transfer pass.",
