@@ -184,17 +184,20 @@ also record the exact source and destination endpoints:
 `android_saf_selected_file` -> `macos_saved_file`, or
 `macos_selected_file` -> `android_downloads_file`.
 The `cancel_cleanup` block must similarly retain `cancel_request` and
-`cleanup_state` artifacts. Absolute paths, `..` escapes, symlink escapes outside
-the bundle, missing artifact files, duplicate role files, offline fixtures, and
-synthetic logs cannot close the gate.
+`cleanup_state` artifacts. Every required role across both directions and
+`cancel_cleanup` must be backed by a distinct file. Absolute paths, `..`
+escapes, symlink escapes outside the bundle, missing artifact files, duplicate
+role files, reused role files, offline fixtures, and synthetic logs cannot close
+the gate.
 
 The `android_file_transfer_smoke` subcheck names the Android control-bar UI
 instrumentation log only. A passing subcheck proves the visible file-transfer
-action and layout path, not real file transfer. The real product closure remains
-the `bidirectional_product_e2e` evidence: two directions, user approval, remote
-file writes, distinct verified transfer IDs, exact file endpoints, progress,
-final SHA-256 equality, distinct file names and payload digests, positive
-session epoch, and cancel cleanup.
+action and layout path, not real file transfer. The log must include an `OK (N
+tests)` summary with `N > 0`; zero-test or summary-only Gradle output cannot
+pass. The real product closure remains the `bidirectional_product_e2e` evidence:
+two directions, user approval, remote file writes, distinct verified transfer
+IDs, exact file endpoints, progress, final SHA-256 equality, distinct file names
+and payload digests, positive session epoch, and cancel cleanup.
 
 Current 2026-08-28 collection on clean `origin/main`-based branch
 `codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device
