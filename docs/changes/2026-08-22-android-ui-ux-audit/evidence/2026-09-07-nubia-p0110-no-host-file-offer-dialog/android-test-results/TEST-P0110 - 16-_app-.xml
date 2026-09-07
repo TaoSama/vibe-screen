@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.81" timestamp="2026-09-07T01:57:36" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="offerLayoutKeepsDecisionCopyStructuredForDialogButtons" classname="dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest" time="0.004" />
+  <testcase name="narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable" classname="dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest" time="0.038" />
+</testsuite>

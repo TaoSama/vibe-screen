@@ -18,6 +18,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val cleanup = extractMethod(source, "private fun clearActiveIncomingFileTransfer")
         val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
         val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer")
+        val offerView = extractMethod(source, "private fun fileTransferOfferView")
         val callback = extractCallback(source, "callbackClient.onIncomingFileProgress = fileProgress@")
         val cancelledCallback = extractCallback(source, "callbackClient.onIncomingFileCancelled = fileCancelled@")
         val completedCallback = extractCallback(source, "callbackClient.onIncomingFileCompleted = incomingFile@")
@@ -113,6 +114,18 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 promptOffer.contains("if (rejectionReason != null)") &&
                 assertBeforeValue(promptOffer, "if (rejectionReason != null)", "respond(true, \"\")") &&
                 handlePicker.contains("session.isCurrentAndAllowed() && !hasActiveFileTransfer()"),
+        )
+        assertTrue(
+            "Incoming file offers should use structured, scrollable dialog content instead of a single long AlertDialog message",
+            promptOffer.contains(".setView(fileTransferOfferView(offer))") &&
+                !strings.contains("file_transfer_offer_message") &&
+                offerView.contains("R.layout.dialog_file_transfer_offer") &&
+                offerView.contains("R.id.fileTransferOfferFileName") &&
+                offerView.contains("safeIncomingDisplayName(offer.fileName)") &&
+                offerView.contains("R.id.fileTransferOfferSize") &&
+                offerView.contains("readableByteCount(offer.byteLength)") &&
+                offerView.contains("R.id.fileTransferOfferDestination") &&
+                offerView.contains("fileTransferDestinationLabel()"),
         )
         assertTrue(
             "User cancellation must call the active transfer cancellation boundary",

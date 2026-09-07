@@ -1,0 +1,5 @@
+repository=TaoSama/vibe-screen
+evidence_branch=codex/android-file-offer-dialog-readiness
+base_commit=dfbd10c9c5d460ec90f2c75c4a43eefda9875c88
+origin_main_at_test=2e6e0a773ba04770d36e2d6adfba6068b79fdb52
+working_tree_diff_sha256=29ef93abe9c82afb67ed88fb4f34ecbb8ae56f1935558b8fcf674d8b797fd75e
