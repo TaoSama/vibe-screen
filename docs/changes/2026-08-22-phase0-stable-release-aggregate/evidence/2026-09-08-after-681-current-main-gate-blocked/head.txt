@@ -1,0 +1,14 @@
+907be563804113e60dbec224871e3de459482de1
+a5fb372f0f93bf1c134317ede4e1c9c23691417a
+907be5638 docs: refresh phase0 aggregate after PR 680
+a5fb372f0 docs: reference P0110 no-Host UI evidence (#681)
+92a6df592 Harden Android clipboard no-Host baseline (#680)
+528f80cb5 test(android): cover clipboard preview policy (#678)
+3e59d6ed5 test: harden Android file transfer cleanup recovery (#679)
+853cd03ce Harden latency evidence artifact roles (#677)
+85cc7aa45 test(evidence): refresh P0110 no-Host UI/UX
+ae77d1e0b docs: refresh phase0 aggregate after PR 673 (#674)
+b363a0518 Harden controller runtime artifact evidence gate
+f35e37550 Harden file transfer Android smoke evidence gate (#670)
+e54222117 test(evidence): harden macos host readiness gate (#672)
+be9f0cd14 Harden Phase 0 RSS and telemetry gates (#671)

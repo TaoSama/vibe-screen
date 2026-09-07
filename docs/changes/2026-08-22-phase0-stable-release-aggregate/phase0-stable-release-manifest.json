@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "b363a05183d4330073266bfa06493ecd8d0dc7a9",
+    "base_commit": "a5fb372f0f93bf1c134317ede4e1c9c23691417a",
     "base_ref": "origin/main",
     "audit_date": "2026-09-07",
     "owner": "Vibe Screen core team",
@@ -15,27 +15,27 @@
     "queried_at": "2026-09-07",
     "state": "open",
     "open_pr_numbers": [
-      674,
-      675
+      676
     ]
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=673)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=681)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 673
+      "max": 681
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-673-current-main-gate-blocked/merged-prs-568-673.jsonl",
-    "audited_source_commit": "b363a05183d4330073266bfa06493ecd8d0dc7a9",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-681-current-main-gate-blocked/merged-prs-568-681.jsonl",
+    "audited_source_commit": "a5fb372f0f93bf1c134317ede4e1c9c23691417a",
     "excluded_pr_numbers": [
       568,
       576,
       627,
       646,
-      655
+      655,
+      676
     ]
   },
   "readme_guard": {
@@ -72,7 +72,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34146375370"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34168192909"
       ],
       "owner_prs": [],
       "blockers": []
@@ -90,11 +90,12 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionPanelLayoutPolicyTest.kt",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-internet-secondary-actions/README.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34146375370",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34168192909",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-file-offer-dialog/README.md",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTransferReadinessContractTest.kt",
-        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt"
+        "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md"
       ],
       "owner_prs": [],
       "blockers": []
@@ -107,7 +108,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34146375370",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34168192909",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
