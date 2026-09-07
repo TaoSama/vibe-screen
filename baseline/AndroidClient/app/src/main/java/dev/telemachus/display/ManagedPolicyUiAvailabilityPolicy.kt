@@ -7,6 +7,7 @@ internal data class ManagedPolicyUiAvailability(
     val hostActions: ManagedPolicyUiAvailabilityState,
     val clipboard: ManagedPolicyUiAvailabilityState,
     val fileTransfer: ManagedPolicyUiAvailabilityState,
+    val audio: ManagedPolicyUiAvailabilityState,
     val wakeHost: ManagedPolicyUiAvailabilityState,
     val fixedHost: ManagedPolicyUiAvailabilityState,
 ) {
@@ -14,6 +15,7 @@ internal data class ManagedPolicyUiAvailability(
     val hostActionsAllowed: Boolean = hostActions.allowed
     val clipboardAllowed: Boolean = clipboard.allowed
     val fileTransferAllowed: Boolean = fileTransfer.allowed
+    val audioAllowed: Boolean = audio.allowed
     val wakeHostAllowed: Boolean = wakeHost.allowed
     val fixedHostAllowed: Boolean = fixedHost.allowed
 }
@@ -35,6 +37,7 @@ internal object ManagedPolicyUiAvailabilityPolicy {
         localClipboardAllowed: Boolean,
         localFileTransferAllowed: Boolean,
         remoteStatus: ManagedPolicyStatus,
+        localAudioAllowed: Boolean = true,
         localWakeHostAllowed: Boolean = true,
         localFixedHostAllowed: Boolean = true,
     ): ManagedPolicyUiAvailability =
@@ -58,6 +61,11 @@ internal object ManagedPolicyUiAvailabilityPolicy {
                 restrictionState(
                     localAllowed = localFileTransferAllowed,
                     remoteAllowed = !remoteStatus.managed || remoteStatus.fileTransferAllowed && remoteStatus.maximumFileBytes > 0L,
+                ),
+            audio =
+                restrictionState(
+                    localAllowed = localAudioAllowed,
+                    remoteAllowed = !remoteStatus.managed || remoteStatus.audioAllowed,
                 ),
             wakeHost =
                 restrictionState(

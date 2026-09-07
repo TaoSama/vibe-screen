@@ -23,6 +23,7 @@ class ManagedPolicyUiAvailabilityPolicyTest {
         assertFalse(availability.hostActionsAllowed)
         assertFalse(availability.clipboardAllowed)
         assertFalse(availability.fileTransferAllowed)
+        assertTrue(availability.audioAllowed)
         assertEquals(ManagedPolicyUiAvailabilityState.POLICY_DENIED, availability.clipboard)
         assertEquals(ManagedPolicyUiAvailabilityState.POLICY_DENIED, availability.fileTransfer)
     }
@@ -42,6 +43,7 @@ class ManagedPolicyUiAvailabilityPolicyTest {
         assertTrue(availability.hostActionsAllowed)
         assertTrue(availability.clipboardAllowed)
         assertTrue(availability.fileTransferAllowed)
+        assertTrue(availability.audioAllowed)
     }
 
     @Test
@@ -59,6 +61,7 @@ class ManagedPolicyUiAvailabilityPolicyTest {
         assertFalse(availability.hostActionsAllowed)
         assertFalse(availability.clipboardAllowed)
         assertFalse(availability.fileTransferAllowed)
+        assertTrue(availability.audioAllowed)
         assertEquals(ManagedPolicyUiAvailabilityState.POLICY_DENIED, availability.clipboard)
         assertEquals(ManagedPolicyUiAvailabilityState.POLICY_DENIED, availability.fileTransfer)
     }
@@ -84,6 +87,7 @@ class ManagedPolicyUiAvailabilityPolicyTest {
         assertFalse(availability.hostActionsAllowed)
         assertFalse(availability.clipboardAllowed)
         assertFalse(availability.fileTransferAllowed)
+        assertTrue(availability.audioAllowed)
     }
 
     @Test
@@ -101,6 +105,34 @@ class ManagedPolicyUiAvailabilityPolicyTest {
         assertTrue(availability.hostActionsAllowed)
         assertTrue(availability.clipboardAllowed)
         assertTrue(availability.fileTransferAllowed)
+        assertTrue(availability.audioAllowed)
+    }
+
+    @Test
+    fun audioDenyIsTrackedAsPolicyDenied() {
+        val localDenied =
+            ManagedPolicyUiAvailabilityPolicy.combine(
+                localCustomGesturesAllowed = true,
+                localHostActionsAllowed = true,
+                localClipboardAllowed = true,
+                localFileTransferAllowed = true,
+                localAudioAllowed = false,
+                remoteStatus = managedStatus(customGesturesAllowed = true, hostActionsAllowed = true, audioAllowed = true),
+            )
+        val remoteDenied =
+            ManagedPolicyUiAvailabilityPolicy.combine(
+                localCustomGesturesAllowed = true,
+                localHostActionsAllowed = true,
+                localClipboardAllowed = true,
+                localFileTransferAllowed = true,
+                localAudioAllowed = true,
+                remoteStatus = managedStatus(customGesturesAllowed = true, hostActionsAllowed = true, audioAllowed = false),
+            )
+
+        assertEquals(ManagedPolicyUiAvailabilityState.POLICY_DENIED, localDenied.audio)
+        assertFalse(localDenied.audioAllowed)
+        assertEquals(ManagedPolicyUiAvailabilityState.POLICY_DENIED, remoteDenied.audio)
+        assertFalse(remoteDenied.audioAllowed)
     }
 
     @Test
@@ -271,6 +303,7 @@ class ManagedPolicyUiAvailabilityPolicyTest {
         hostActionsAllowed: Boolean,
         clipboardAllowed: Boolean = true,
         fileTransferAllowed: Boolean = true,
+        audioAllowed: Boolean = true,
         wakeAllowed: Boolean = true,
         maximumFileBytes: Long = ProtocolV1Session.ManagedPolicy.DEFAULT_MAXIMUM_FILE_BYTES,
         allowedHostsRestricted: Boolean = false,
@@ -281,6 +314,7 @@ class ManagedPolicyUiAvailabilityPolicyTest {
             .setManaged(true)
             .setClipboardAllowed(clipboardAllowed)
             .setFileTransferAllowed(fileTransferAllowed)
+            .setAudioAllowed(audioAllowed)
             .setWakeAllowed(wakeAllowed)
             .setCustomGesturesAllowed(customGesturesAllowed)
             .setHostActionsAllowed(hostActionsAllowed)

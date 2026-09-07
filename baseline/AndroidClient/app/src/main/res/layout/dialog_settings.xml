@@ -171,6 +171,57 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/audioReadinessSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/settings_section_margin_bottom"
+                    android:background="@drawable/settings_item_bg"
+                    android:orientation="vertical"
+                    android:padding="@dimen/settings_section_padding">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:accessibilityHeading="true"
+                        android:text="@string/audio_readiness_title"
+                        android:textColor="@color/on_surface"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/audioReadinessStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:accessibilityLiveRegion="polite"
+                        android:text="@string/audio_readiness_waiting_status"
+                        android:textColor="@color/on_surface_muted"
+                        android:textIsSelectable="true"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/audioReadinessSummary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/audio_readiness_waiting_summary"
+                        android:textColor="@color/on_surface_muted"
+                        android:textIsSelectable="true"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/audioReadinessCounters"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="@color/on_surface_muted"
+                        android:textIsSelectable="true"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/viewportSection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

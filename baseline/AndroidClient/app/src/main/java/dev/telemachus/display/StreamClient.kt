@@ -9,6 +9,7 @@ import dev.telemachus.display.audio.AUDIO_PACKET_NO_CONFIGURATION_CODE
 import dev.telemachus.display.audio.AndroidAudioTrackOutputFactory
 import dev.telemachus.display.audio.AudioPacketRejectReason
 import dev.telemachus.display.audio.AudioRejectReason
+import dev.telemachus.display.audio.PcmAudioStreamFormat
 import dev.telemachus.display.audio.ProtocolAudioConfigureResult
 import dev.telemachus.display.audio.ProtocolAudioPacketResult
 import dev.telemachus.display.audio.ProtocolPcmAudioPlayer
@@ -175,6 +176,12 @@ class StreamClient(
     @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
     internal val currentLanProtectionState: LanRecordProtectionState
         get() = lanRecordProtectionState
+    internal fun audioReadinessSnapshot(): AudioReadinessSnapshot =
+        AudioReadinessSnapshot(
+            activeFormat = audioPlayer.activeFormat(),
+            acceptedPacketCount = audioAcceptedPacketCount.get(),
+            writtenPacketCount = audioWrittenPacketCount.get(),
+        )
     @Volatile private var lanSecureRecordSession: LanSecureRecordSession? = null
     // Android currently sends only client-to-host control messages on the trusted-LAN record layer.
     @Volatile private var nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
@@ -251,6 +258,7 @@ class StreamClient(
     internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
     internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
     internal var onManagedPolicyReceived: ((ManagedPolicyStatus) -> Unit)? = null
+    internal var onAudioReadinessChanged: ((AudioReadinessSnapshot) -> Unit)? = null
     /** A peer clipboard offer has arrived; the UI may request the content by changeId. */
     internal var onClipboardOffered: ((offer: ClipboardOfferData) -> Unit)? = null
     /** Peer clipboard content has arrived. pending=true means no offer/request handshake preceded it. */
@@ -839,6 +847,7 @@ class StreamClient(
         }
         if (activeAudioFormat != null) {
             recordProtocolAudioStopped("legacy_fallback")
+            notifyAudioReadinessChanged()
         }
         controllerConnectionAcks.reset()
         peripheralInputAcks.reset()
@@ -2892,6 +2901,7 @@ class StreamClient(
         }
         if (activeAudioFormat != null) {
             recordProtocolAudioStopped("connection_cleanup")
+            notifyAudioReadinessChanged()
         }
         wakeHostProductOwner.clearAuthorizationSecret()
         fileTransferProductOwner.clear()
@@ -2980,6 +2990,7 @@ class StreamClient(
                 "frames_per_packet=${action.config.framesPerPacket}"
         Log.i(TAG, message)
         diagLog(message)
+        notifyAudioReadinessChanged()
     }
 
     private fun recordProtocolAudioPacket(result: ProtocolAudioPacketResult.Accepted) {
@@ -2990,7 +3001,9 @@ class StreamClient(
             } else {
                 audioWrittenPacketCount.get()
             }
-        if (result.writtenPackets <= 0 || !shouldLogAudioPacketProgress(acceptedPackets)) {
+        val shouldReportProgress = shouldLogAudioPacketProgress(acceptedPackets)
+        if (result.writtenPackets <= 0 || !shouldReportProgress) {
+            if (shouldReportProgress) notifyAudioReadinessChanged()
             return
         }
         val format = audioPlayer.activeFormat()
@@ -3004,6 +3017,7 @@ class StreamClient(
                 "enqueue=${result.enqueueResult}"
         Log.i(TAG, message)
         diagLog(message)
+        notifyAudioReadinessChanged()
     }
 
     private fun recordProtocolAudioStopped(reason: String) {
@@ -3014,6 +3028,11 @@ class StreamClient(
                 "written_packets=${audioWrittenPacketCount.get()}"
         Log.i(TAG, message)
         diagLog(message)
+        notifyAudioReadinessChanged()
+    }
+
+    private fun notifyAudioReadinessChanged() {
+        onAudioReadinessChanged?.invoke(audioReadinessSnapshot())
     }
 
     private fun recordProtocolAudioPacketDropped(reason: String) {
