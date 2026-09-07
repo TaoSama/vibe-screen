@@ -18,6 +18,28 @@ OFFLINE_CONTRACT_FIXTURE = (
     / "clipboard-product-flow-offline-contract.json"
 )
 
+ANDROID_CLIPBOARD_METHODS = (
+    "foregroundActivityCanUseAndroidSystemClipboardLocally",
+    "foregroundActivityCanRoundTripUnicodeAndLargePlainTextLocally",
+    "foregroundActivityHandlesNonTextClipboardItemSafely",
+    "setForegroundClipboardFromInstrumentationArgument",
+    "assertForegroundClipboardMatchesInstrumentationArgument",
+)
+
+
+def android_clipboard_success_log() -> str:
+    method_lines = "\n".join(
+        f"dev.telemachus.display.ClipboardManagerInstrumentedTest#{method}: PASSED"
+        for method in ANDROID_CLIPBOARD_METHODS
+    )
+    return (
+        "Starting 5 tests on P0110 - 16\n\n"
+        f"{method_lines}\n\n"
+        "Tests run: 5,  Failures: 0,  Errors: 0\n"
+        "Finished 5 tests on P0110 - 16\n\n"
+        "BUILD SUCCESSFUL in 38s\n"
+    )
+
 
 def write_json(path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,7 +213,7 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
     write_json(paths["host"], host_readiness())
     write_json(paths["usb"], usb_preflight())
     write_json(paths["lan"], lan_preflight())
-    paths["android_log"].write_text("OK (3 tests)\n", encoding="utf-8")
+    paths["android_log"].write_text(android_clipboard_success_log(), encoding="utf-8")
     write_json(paths["product"], product_e2e())
     for artifact_path in (
         "android-to-macos/source-clipboard-read.txt",
@@ -235,7 +257,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertIn("bidirectional_product_e2e: missing product E2E evidence: product-e2e.json", result["blockers"])
         self.assertTrue(result["safety"]["offline_tests_do_not_close_gate"])
 
-    def test_android_clipboard_log_must_execute_at_least_one_test(self) -> None:
+    def test_android_clipboard_log_must_execute_complete_smoke_class(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             paths = write_pass_inputs(root)
@@ -251,7 +273,52 @@ class ClipboardE2EGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log does not show any executed tests",
+            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log must show at least 5 executed tests",
+            result["blockers"],
+        )
+
+    def test_android_clipboard_log_rejects_legacy_three_test_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text("OK (3 tests)\n", encoding="utf-8")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log must show at least 5 executed tests",
+            result["blockers"],
+        )
+
+    def test_android_clipboard_log_rejects_count_without_expected_method_identities(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text("OK (5 tests)\n", encoding="utf-8")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any(
+                blocker.startswith(
+                    "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log must show expected test methods: "
+                )
+                for blocker in result["blockers"]
+            ),
             result["blockers"],
         )
 
@@ -271,7 +338,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log does not show any executed tests",
+            "android_clipboardmanager_smoke: Android ClipboardManager instrumentation log must show at least 5 executed tests",
             result["blockers"],
         )
 
@@ -935,13 +1002,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
             paths = write_pass_inputs(root)
-            paths["android_log"].write_text(
-                "Starting 3 tests on P0110 - 16\n\n"
-                "Tests run: 3,  Failures: 0,  Errors: 0\n"
-                "Finished 3 tests on P0110 - 16\n\n"
-                "BUILD SUCCESSFUL in 38s\n",
-                encoding="utf-8",
-            )
+            paths["android_log"].write_text(android_clipboard_success_log(), encoding="utf-8")
 
             result = derive_gate(
                 host_readiness=paths["host"],

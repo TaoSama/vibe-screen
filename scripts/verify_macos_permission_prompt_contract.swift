@@ -492,10 +492,20 @@ do {
         "AppDelegate System Settings opens must be confined to explicit permission request functions"
     )
     let permissionAlert = try functionBody(named: "showPermissionAlert", in: appDelegate)
-    try require(
-        !permissionAlert.contains("x-apple.systempreferences:"),
-        "manual start permission alert must not open System Settings"
-    )
+    for token in [
+        "CGRequestScreenCaptureAccess",
+        "AXIsProcessTrustedWithOptions",
+        "kAXTrustedCheckOptionPrompt",
+        "NSWorkspace.shared.open",
+        "x-apple.systempreferences:",
+        "requestScreenRecordingPermission()",
+        "requestAccessibilityPermission()"
+    ] {
+        try require(
+            !permissionAlert.contains(token),
+            "manual start permission alert must only explain the missing permission; found \(token)"
+        )
+    }
 
     print("PASS macOS permission prompt contract")
 } catch {

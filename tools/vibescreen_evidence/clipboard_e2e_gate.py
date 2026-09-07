@@ -32,6 +32,14 @@ DEFAULT_DEVICE_IDENTITY = {
     "sdk": 36,
 }
 LOCAL_MAXIMUM_CLIPBOARD_BYTES = 1_048_576
+REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS = 5
+REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS = (
+    "foregroundActivityCanUseAndroidSystemClipboardLocally",
+    "foregroundActivityCanRoundTripUnicodeAndLargePlainTextLocally",
+    "foregroundActivityHandlesNonTextClipboardItemSafely",
+    "setForegroundClipboardFromInstrumentationArgument",
+    "assertForegroundClipboardMatchesInstrumentationArgument",
+)
 SAFE_SERIAL_LABEL = "REDACTED_P0110_USB_SERIAL"
 RETAINED_ARTIFACTS_FIELD = "retained_artifacts"
 REQUIRED_DIRECTION_ARTIFACT_ROLES = (
@@ -332,20 +340,33 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
             BLOCKED,
             ["current-run Android ClipboardManager instrumentation log is missing"],
         )
-    text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
-    executed_tests = _android_clipboard_test_count(text)
-    junit_summary = re.search(r"Tests run:\s*\d+,\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)", text)
+    raw_text = log_path.read_text(encoding="utf-8", errors="replace")
+    text = sanitize_text(raw_text)
+    executed_tests = _android_clipboard_test_count(raw_text)
+    missing_methods = [
+        method for method in REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS if method not in raw_text
+    ]
+    junit_summary = re.search(r"Tests run:\s*\d+,\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)", raw_text)
     has_junit_failures = bool(junit_summary and (int(junit_summary.group(1)) > 0 or int(junit_summary.group(2)) > 0))
     passed = (
-        executed_tests > 0
-        and ("OK (" in text or ("Finished " in text and " tests on " in text and "BUILD SUCCESSFUL" in text))
-        and "FAILURES!!!" not in text
-        and "BUILD FAILED" not in text
+        executed_tests >= REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS
+        and not missing_methods
+        and ("OK (" in raw_text or ("Finished " in raw_text and " tests on " in raw_text and "BUILD SUCCESSFUL" in raw_text))
+        and "FAILURES!!!" not in raw_text
+        and "BUILD FAILED" not in raw_text
         and not has_junit_failures
     )
     reasons = []
-    if executed_tests <= 0:
-        reasons.append("Android ClipboardManager instrumentation log does not show any executed tests")
+    if executed_tests < REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS:
+        reasons.append(
+            "Android ClipboardManager instrumentation log must show "
+            f"at least {REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS} executed tests"
+        )
+    if missing_methods:
+        reasons.append(
+            "Android ClipboardManager instrumentation log must show expected test methods: "
+            + ", ".join(missing_methods)
+        )
     if not passed:
         reasons.append("Android ClipboardManager instrumentation log does not show an OK result")
     return _gate("android_clipboardmanager_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])

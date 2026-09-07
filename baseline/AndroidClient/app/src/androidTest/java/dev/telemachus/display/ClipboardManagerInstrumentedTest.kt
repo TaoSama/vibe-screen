@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,9 +21,7 @@ class ClipboardManagerInstrumentedTest {
     @Test
     fun foregroundActivityCanUseAndroidSystemClipboardLocally() {
         val marker = "vs-clipboard-device-${System.currentTimeMillis()}"
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { activity ->
-            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+        withForegroundActivity { activity, clipboard ->
             clipboard.setPrimaryClip(
                 ClipData.newPlainText(
                     activity.getString(R.string.clipboard_plain_text_label),
@@ -37,7 +36,6 @@ class ClipboardManagerInstrumentedTest {
             Log.i(TAG, "clipboard_manager_roundtrip marker=$marker")
 
             clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
-            activity.finish()
         }
     }
 
@@ -47,9 +45,7 @@ class ClipboardManagerInstrumentedTest {
         val marker = prefix + "x".repeat(LARGE_SMOKE_CLIPBOARD_BYTES - prefix.toByteArray(Charsets.UTF_8).size)
         assertEquals(LARGE_SMOKE_CLIPBOARD_BYTES, marker.toByteArray(Charsets.UTF_8).size)
 
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { activity ->
-            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+        withForegroundActivity { activity, clipboard ->
             clipboard.setPrimaryClip(
                 ClipData.newPlainText(
                     activity.getString(R.string.clipboard_plain_text_label),
@@ -64,15 +60,12 @@ class ClipboardManagerInstrumentedTest {
             Log.i(TAG, "clipboard_manager_unicode_large bytes=${marker.toByteArray(Charsets.UTF_8).size}")
 
             clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
-            activity.finish()
         }
     }
 
     @Test
     fun foregroundActivityHandlesNonTextClipboardItemSafely() {
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { activity ->
-            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+        withForegroundActivity { activity, clipboard ->
             val intent = Intent("dev.telemachus.display.CLIPBOARD_NON_TEXT_SMOKE")
             clipboard.setPrimaryClip(ClipData.newIntent("Vibe Screen intent smoke", intent))
 
@@ -85,7 +78,6 @@ class ClipboardManagerInstrumentedTest {
             Log.i(TAG, "clipboard_manager_non_text_safe")
 
             clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
-            activity.finish()
         }
     }
 
@@ -96,10 +88,8 @@ class ClipboardManagerInstrumentedTest {
                 .getArguments()
                 .getString(ARG_CLIPBOARD_MARKER)
                 ?.takeIf { it.isNotBlank() }
-                ?: return
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { activity ->
-            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+                ?: "vs-clipboard-arg-set-${System.currentTimeMillis()}"
+        withForegroundActivity { activity, clipboard ->
             clipboard.setPrimaryClip(
                 ClipData.newPlainText(
                     activity.getString(R.string.clipboard_plain_text_label),
@@ -112,27 +102,48 @@ class ClipboardManagerInstrumentedTest {
             assertEquals(1, primaryClip!!.itemCount)
             assertEquals(marker, primaryClip.getItemAt(0).coerceToText(activity).toString())
             Log.i(TAG, "clipboard_manager_set marker=$marker")
-            activity.finish()
+            clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
         }
     }
 
     @Test
     fun assertForegroundClipboardMatchesInstrumentationArgument() {
-        val expected =
+        val argumentMarker =
             InstrumentationRegistry
                 .getArguments()
                 .getString(ARG_CLIPBOARD_MARKER)
-                ?: return
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity { activity ->
-            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+                ?.takeIf { it.isNotBlank() }
+        val expected = argumentMarker ?: "vs-clipboard-arg-assert-${System.currentTimeMillis()}"
+        withForegroundActivity { activity, clipboard ->
+            if (argumentMarker == null) {
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText(
+                        activity.getString(R.string.clipboard_plain_text_label),
+                        expected,
+                    ),
+                )
+            }
             val primaryClip = clipboard.primaryClip
             assertNotNull("primaryClip should be visible to the foreground app", primaryClip)
             assertEquals(1, primaryClip!!.itemCount)
             val actual = primaryClip.getItemAt(0).coerceToText(activity).toString()
             assertEquals(expected, actual)
             Log.i(TAG, "clipboard_manager_assert marker=$actual")
-            activity.finish()
+            if (argumentMarker == null) {
+                clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
+            }
+        }
+    }
+
+    private fun withForegroundActivity(assertion: (MainActivity, ClipboardManager) -> Unit) {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            scenario.onActivity { activity ->
+                assertion(activity, activity.getSystemService(ClipboardManager::class.java))
+            }
+        } finally {
+            scenario.close()
         }
     }
 
