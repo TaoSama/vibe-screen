@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
+    "base_commit": "3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f",
     "base_ref": "origin/main",
     "audit_date": "2026-09-07",
     "owner": "Vibe Screen core team",
@@ -14,28 +14,25 @@
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'",
     "queried_at": "2026-09-07",
     "state": "open",
-    "open_pr_numbers": [
-      662
-    ]
+    "open_pr_numbers": []
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=664)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=666)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 664
+      "max": 666
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-664-current-main-gate-blocked/merged-prs-568-664.jsonl",
-    "audited_source_commit": "518f6f8512d7f47d36d444557ab841ea0d5e0b83",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/merged-prs-568-666.jsonl",
+    "audited_source_commit": "3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f",
     "excluded_pr_numbers": [
       568,
       576,
       627,
       646,
-      655,
-      662
+      655
     ]
   },
   "readme_guard": {
@@ -72,7 +69,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34120456261"
       ],
       "owner_prs": [],
       "blockers": []
@@ -90,7 +87,7 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ConnectionPanelLayoutPolicyTest.kt",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-internet-secondary-actions/README.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34120456261",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-file-offer-dialog/README.md",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTransferReadinessContractTest.kt",
@@ -107,7 +104,7 @@
       "evidence_strength": "current-ci",
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34107468232",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34120456261",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
       ],
       "owner_prs": [],
@@ -301,7 +298,7 @@
       ],
       "owner_prs": [],
       "blockers": [
-        "PR #657 improves incoming file-offer readability, PR #659 improves clipboard confirmation dialogs, PR #660 adds outgoing file-transfer confirmation, PR #658 shows audio readiness in Settings, PR #663 hardens required file-transfer artifact role validation, and PR #664 rejects reused clipboard retained artifacts; these are source/UI/readiness or evidence-tool updates only and do not prove Host-backed file-transfer bytes landing.",
+        "PR #657 improves incoming file-offer readability, PR #659 improves clipboard confirmation dialogs, PR #660 adds outgoing file-transfer confirmation, PR #658 shows audio readiness in Settings, PR #663 hardens required file-transfer artifact role validation, PR #664 rejects reused clipboard retained artifacts, PR #665 hardens the file-transfer smoke evidence gate against zero-test or summary-only evidence, and PR #666 adds current-main no-Host dialog layout evidence for clipboard confirmations and file-transfer offer/preflight dialogs; these are source/UI/readiness or evidence-tool updates only and do not prove Host-backed file-transfer bytes landing.",
         "PR #653 adds Nubia P0110/pacific no-Host Internet secondary-action large-text and narrow-screen UI/UX evidence, but it is not Host-backed file-transfer product E2E evidence and does not prove bytes landing on macOS or Android.",
         "Host readiness is blocked on stable signing, source provenance, read-only Screen Recording, Accessibility, and Microphone TCC verification, virtual HID entitlement, and login/headless readiness.",
         "Android now exposes incoming file-transfer progress and user cancellation in source and contract tests, but this is not a retained Host-backed bidirectional product transfer pass.",
