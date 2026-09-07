@@ -2,6 +2,10 @@
 
 Date: 2026-09-08 (local Asia/Shanghai; UTC 2026-09-07)
 Source base: `853cd03ce8c26414a0c28bfbb312ebfff5311d34`
+Compatible gate base: `b363a05183d4330073266bfa06493ecd8d0dc7a9`; the
+tested source is a descendant, and no Android clipboard, clipboard evidence
+gate, or clipboard change-doc files changed between the compatible gate base and
+the tested source.
 Device: nubia P0110 / pacific / Android 16 / SDK 36
 Serial label: `REDACTED_P0110_USB_SERIAL`
 
@@ -33,8 +37,9 @@ product transfer.
   still proves send, receive, overwrite copy, size/protection/direction/preview
   fields, truncated previews, large font, narrow portrait, landscape, label
   ownership, selectable preview text, and scroll reachability.
-- `adb -s REDACTED_P0110_USB_SERIAL reverse --list` was read only and showed no
-  `tcp:54321` reverse mapping.
+- `adb -s REDACTED_P0110_USB_SERIAL reverse --list` was read only. The retained
+  raw stdout snapshot is empty, which shows no `tcp:54321` reverse mapping in
+  that captured state.
 
 ## Observed Device Limit
 
@@ -48,7 +53,9 @@ clipboard device-smoke pass.
 
 ## Evidence Boundary
 
-This run did not start Vibe Screen, MacHost, or Telemachus GUI. It did not run
+The instrumentation tests started Android `MainActivity` to exercise foreground
+clipboard access and confirmation-dialog layout. This run did not start the
+macOS Vibe Screen/MacHost/Telemachus GUI or any Host process. It did not run
 `swift run`, request or reset Screen Recording, Accessibility, Microphone,
 Keychain, TCC, or System Settings state, configure `adb reverse tcp:54321
 tcp:54321`, read or write macOS `NSPasteboard`, or execute a bidirectional
@@ -95,5 +102,6 @@ adb -s REDACTED_P0110_USB_SERIAL reverse --list
   instrumentation result, failures 0, errors 0, skipped 0.
 - `logs/clipboard-dialog-instrumentation.log` - instrumentation text log for
   the dialog layout run.
-- `logs/adb-reverse-list.txt` - read-only ADB reverse snapshot with no
-  `tcp:54321` mapping.
+- `logs/adb-reverse-list.txt` - raw stdout from one read-only ADB reverse
+  snapshot. The file is empty, which records no reverse mappings in that
+  captured state.

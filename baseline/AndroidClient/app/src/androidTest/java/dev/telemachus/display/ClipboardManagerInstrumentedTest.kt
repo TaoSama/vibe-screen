@@ -87,8 +87,15 @@ class ClipboardManagerInstrumentedTest {
         withForegroundActivity { activity, clipboard ->
             clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
 
-            assertFalse("clipboard should report no primary clip after clear", clipboard.hasPrimaryClip())
-            assertNull("cleared clipboard must not expose text to send", clipboard.primaryClip)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                assertFalse("clipboard should report no primary clip after clear", clipboard.hasPrimaryClip())
+                assertNull("cleared clipboard must not expose text to send", clipboard.primaryClip)
+            } else {
+                val primaryClip = clipboard.primaryClip
+                assertNotNull("pre-P clear fallback should leave an empty primary clip", primaryClip)
+                assertEquals(1, primaryClip!!.itemCount)
+                assertEquals("", primaryClip.getItemAt(0).coerceToText(activity).toString())
+            }
             Log.i(TAG, "clipboard_manager_empty_safe")
         }
     }

@@ -56,12 +56,15 @@ UTF-8 文本、空剪贴板清理、非文本 Intent `ClipData` 安全处理，�
 非文本但后续项为文本的 multi-item `ClipData` 不被当作首个可发送文本。
 同一证据还重跑 `ClipboardConfirmationDialogLayoutInstrumentedTest`，2 个测试
 通过，确认 clipboard confirmation dialog 布局覆盖仍成立。验证中只读
-`adb reverse --list`，没有 `tcp:54321` 映射。探索性的 512 KiB 与 1 MiB
+`adb reverse --list`，保留的 raw stdout 文件为空，记录该次捕获状态下没有任何
+reverse 映射，因此没有 `tcp:54321` 映射。探索性的 512 KiB 与 1 MiB
 本地 Android `ClipboardManager.setPrimaryClip` 写入在 P0110 上触发 Binder
 `TransactionTooLargeException`，因此不作为通过证据；Protocol v1 1 MiB 上限
-仍只由 JVM/协议离线测试覆盖。该 current-main no-Host refresh 不启动 Host，
-不读写 macOS `NSPasteboard`，不证明真实 Android ClipboardManager <-> macOS
-NSPasteboard USB/LAN 产品 E2E，gate 仍保持 blocked。
+仍只由 JVM/协议离线测试覆盖。该 current-main no-Host refresh 启动 Android
+`MainActivity` 执行前台剪贴板和确认弹窗检查，但不启动 macOS
+Vibe Screen/MacHost/Telemachus GUI 或 Host 进程，不读写 macOS `NSPasteboard`，
+不证明真实 Android ClipboardManager <-> macOS NSPasteboard USB/LAN 产品 E2E，
+gate 仍保持 blocked。
 
 命令：
 

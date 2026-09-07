@@ -24,7 +24,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityDoesNotTreatLaterTextItemAsFirstClipboardText.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityDoesNotTreatLaterTextItemAsFirstClipboardText.txt"
     }
   }
   output_artifact {
@@ -33,7 +33,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -42,7 +42,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -51,7 +51,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -76,7 +76,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-assertForegroundClipboardMatchesInstrumentationArgument.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-assertForegroundClipboardMatchesInstrumentationArgument.txt"
     }
   }
   output_artifact {
@@ -85,7 +85,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -94,7 +94,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -103,7 +103,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -128,7 +128,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityHandlesNonTextClipboardItemSafely.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityHandlesNonTextClipboardItemSafely.txt"
     }
   }
   output_artifact {
@@ -137,7 +137,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -146,7 +146,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -155,7 +155,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -180,7 +180,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityCanUseAndroidSystemClipboardLocally.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityCanUseAndroidSystemClipboardLocally.txt"
     }
   }
   output_artifact {
@@ -189,7 +189,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -198,7 +198,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -207,7 +207,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -232,7 +232,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-setForegroundClipboardFromInstrumentationArgument.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-setForegroundClipboardFromInstrumentationArgument.txt"
     }
   }
   output_artifact {
@@ -241,7 +241,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -250,7 +250,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -259,7 +259,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -284,7 +284,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityCanRoundTripExpandedLargePlainTextLocally.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityCanRoundTripExpandedLargePlainTextLocally.txt"
     }
   }
   output_artifact {
@@ -293,7 +293,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -302,7 +302,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -311,7 +311,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -336,7 +336,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityCanRoundTripUnicodeAndLargePlainTextLocally.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivityCanRoundTripUnicodeAndLargePlainTextLocally.txt"
     }
   }
   output_artifact {
@@ -345,7 +345,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -354,7 +354,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -363,7 +363,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -388,7 +388,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivitySeesEmptyClipboardAsNoPrimaryClip.txt"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.ClipboardManagerInstrumentedTest-foregroundActivitySeesEmptyClipboardAsNoPrimaryClip.txt"
     }
   }
   output_artifact {
@@ -397,7 +397,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
     }
   }
   output_artifact {
@@ -406,7 +406,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
     }
   }
   output_artifact {
@@ -415,7 +415,7 @@ test_result {
       namespace: "android"
     }
     source_path {
-      path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+      path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
     }
   }
 }
@@ -425,7 +425,7 @@ output_artifact {
     namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
   }
   source_path {
-    path: "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/19af/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/testlog/test-results.log"
+    path: "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/testlog/test-results.log"
   }
   type: TEST_DATA
   mime_type: "text/plain"
