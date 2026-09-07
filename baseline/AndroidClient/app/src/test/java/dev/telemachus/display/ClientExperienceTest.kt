@@ -1,12 +1,22 @@
 package dev.telemachus.display
 
 import android.content.pm.ActivityInfo
+import dev.telemachus.display.audio.PcmAudioStreamFormat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClientExperienceTest {
+    private fun activeAudioFormat(): PcmAudioStreamFormat =
+        PcmAudioStreamFormat(
+            streamId = 1,
+            configEpoch = 2,
+            sampleRateHz = 48_000,
+            channelCount = 2,
+            framesPerPacket = 480,
+        )
+
     @Test
     fun `client rotation composes with normalized host rotation`() {
         val rotations = listOf(0, 90, 180, 270)
@@ -153,6 +163,56 @@ class ClientExperienceTest {
         assertEquals(R.string.transfer_readiness_unavailable_status, presentation.statusResource)
         assertEquals(R.string.transfer_readiness_unavailable_summary, presentation.summaryResource)
         assertEquals(R.color.warning, presentation.statusColorResource)
+    }
+
+    @Test
+    fun `audio readiness stays waiting before a compatible Mac session`() {
+        val presentation =
+            AudioReadinessPresentationPolicy.presentation(
+                connected = false,
+                audioPolicyAllowed = true,
+                snapshot = null,
+            )
+
+        assertEquals(R.string.audio_readiness_waiting_status, presentation.statusResource)
+        assertEquals(R.string.audio_readiness_waiting_summary, presentation.summaryResource)
+        assertEquals(R.color.on_surface_muted, presentation.statusColorResource)
+        assertFalse(presentation.showCounters)
+    }
+
+    @Test
+    fun `audio readiness reports policy denial before compatibility fallback`() {
+        val presentation =
+            AudioReadinessPresentationPolicy.presentation(
+                connected = true,
+                audioPolicyAllowed = false,
+                snapshot = null,
+            )
+
+        assertEquals(R.string.audio_readiness_policy_blocked_status, presentation.statusResource)
+        assertEquals(R.string.audio_readiness_policy_blocked_summary, presentation.summaryResource)
+        assertEquals(R.color.warning, presentation.statusColorResource)
+        assertFalse(presentation.showCounters)
+    }
+
+    @Test
+    fun `audio readiness reports active pcm format without claiming system output capture`() {
+        val presentation =
+            AudioReadinessPresentationPolicy.presentation(
+                connected = true,
+                audioPolicyAllowed = true,
+                snapshot =
+                    AudioReadinessSnapshot(
+                        activeFormat = activeAudioFormat(),
+                        acceptedPacketCount = 9,
+                        writtenPacketCount = 7,
+                    ),
+            )
+
+        assertEquals(R.string.audio_readiness_ready_status, presentation.statusResource)
+        assertEquals(R.string.audio_readiness_ready_summary, presentation.summaryResource)
+        assertEquals(R.color.accent, presentation.statusColorResource)
+        assertTrue(presentation.showCounters)
     }
 
     @Test

@@ -290,10 +290,12 @@ class MainActivity : AppCompatActivity() {
     private var localHostActionsAllowed = true
     private var managedClipboardAllowed = true
     private var managedFileTransferAllowed = true
+    private var managedAudioAllowed = true
     private var managedWakeHostAllowed = true
     private var managedFixedHostAllowed = true
     private var localClipboardAllowed = true
     private var localFileTransferAllowed = true
+    private var localAudioAllowed = true
     private var localWakeHostAllowed = true
     private var localFixedHostAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
@@ -490,6 +492,14 @@ class MainActivity : AppCompatActivity() {
         val status = dialog.findViewById<TextView>(R.id.transferReadinessStatus) ?: return
         val summary = dialog.findViewById<TextView>(R.id.transferReadinessSummary) ?: return
         renderTransferReadiness(status, summary)
+    }
+
+    private fun refreshAudioReadinessInSettings() {
+        val dialog = activeSettingsDialog ?: return
+        val status = dialog.findViewById<TextView>(R.id.audioReadinessStatus) ?: return
+        val summary = dialog.findViewById<TextView>(R.id.audioReadinessSummary) ?: return
+        val counters = dialog.findViewById<TextView>(R.id.audioReadinessCounters) ?: return
+        renderAudioReadiness(status, summary, counters)
     }
 
     private fun renderDeviceHealth(dialog: Dialog) {
@@ -4368,6 +4378,9 @@ class MainActivity : AppCompatActivity() {
         val displayCapability = view.findViewById<TextView>(R.id.displayCapability)
         val transferReadinessStatus = view.findViewById<TextView>(R.id.transferReadinessStatus)
         val transferReadinessSummary = view.findViewById<TextView>(R.id.transferReadinessSummary)
+        val audioReadinessStatus = view.findViewById<TextView>(R.id.audioReadinessStatus)
+        val audioReadinessSummary = view.findViewById<TextView>(R.id.audioReadinessSummary)
+        val audioReadinessCounters = view.findViewById<TextView>(R.id.audioReadinessCounters)
 
         // Video tuning controls.
         val videoControlUnavailable = view.findViewById<TextView>(R.id.videoControlUnavailable)
@@ -4422,6 +4435,7 @@ class MainActivity : AppCompatActivity() {
             },
         )
         renderTransferReadiness(transferReadinessStatus, transferReadinessSummary)
+        renderAudioReadiness(audioReadinessStatus, audioReadinessSummary, audioReadinessCounters)
 
         fun updateViewportButtons() {
             scaleFitButton.isChecked = prefs.videoScaleMode == VideoScaleMode.FIT
@@ -4571,6 +4585,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun renderAudioReadiness(
+        status: TextView,
+        summary: TextView,
+        counters: TextView,
+    ) {
+        val connected = isConnected || internetSession?.state == InternetProductSessionState.ACTIVE
+        val snapshot = streamClient?.audioReadinessSnapshot()
+        val presentation =
+            AudioReadinessPresentationPolicy.presentation(
+                connected = connected,
+                audioPolicyAllowed = managedAudioAllowed,
+                snapshot = snapshot,
+            )
+        val format = snapshot?.activeFormat
+        val statusText = getString(presentation.statusResource)
+        val summaryText =
+            if (format != null) {
+                getString(
+                    R.string.audio_readiness_ready_summary,
+                    format.sampleRateHz,
+                    format.channelCount,
+                    format.framesPerPacket,
+                )
+            } else {
+                getString(presentation.summaryResource)
+            }
+        val countersText =
+            if (presentation.showCounters && snapshot != null) {
+                getString(
+                    R.string.audio_readiness_counters,
+                    snapshot.acceptedPacketCount,
+                    snapshot.writtenPacketCount,
+                )
+            } else {
+                ""
+            }
+        val accessibilityCounters =
+            if (countersText.isNotBlank()) {
+                getString(R.string.audio_readiness_accessibility_counters, countersText)
+            } else {
+                ""
+            }
+        val accessibilityText =
+            getString(
+                R.string.audio_readiness_accessibility,
+                statusText,
+                summaryText,
+                accessibilityCounters,
+            )
+        val previousAccessibilityText = status.contentDescription?.toString()
+        status.contentDescription = accessibilityText
+        val statusChanged = LiveRegionTextApplier.apply(status, statusText)
+        status.setTextColor(ContextCompat.getColor(this, presentation.statusColorResource))
+        LiveRegionTextApplier.apply(summary, summaryText)
+        counters.visibility = if (countersText.isBlank()) View.GONE else View.VISIBLE
+        LiveRegionTextApplier.apply(counters, countersText)
+        if (!statusChanged && previousAccessibilityText != accessibilityText && status.isShown) {
+            status.announceForAccessibility(accessibilityText)
+        }
+    }
+
     /** Refit the live settings dialog after an orientation or inset change. */
     private fun resizeSettingsDialog(dialog: Dialog) {
         dialog.window?.let { win ->
@@ -4631,12 +4706,14 @@ class MainActivity : AppCompatActivity() {
     private fun applyLocalManagedPolicySnapshot(policy: ProtocolV1Session.ManagedPolicy) {
         localClipboardAllowed = policy.clipboardAllowed
         localFileTransferAllowed = policy.fileTransferAllowed
+        localAudioAllowed = policy.audioAllowed
         localWakeHostAllowed = policy.wakeAllowed
         localFixedHostAllowed = fixedHostPolicyAllowsNoHost(policy)
         localCustomGesturesAllowed = policy.customGesturesAllowed
         localHostActionsAllowed = policy.hostActionsAllowed
         managedClipboardAllowed = localClipboardAllowed
         managedFileTransferAllowed = localFileTransferAllowed
+        managedAudioAllowed = localAudioAllowed
         managedWakeHostAllowed = localWakeHostAllowed
         managedFixedHostAllowed = localFixedHostAllowed
         managedCustomGesturesAllowed = localCustomGesturesAllowed
@@ -4674,7 +4751,10 @@ class MainActivity : AppCompatActivity() {
             clearActiveIncomingFileTransfer()
         }
         val updated = productSessionCoordinator.updateNegotiatedSession(client, generation, binding)
-        if (updated) refreshTransferReadinessInSettings()
+        if (updated) {
+            refreshTransferReadinessInSettings()
+            refreshAudioReadinessInSettings()
+        }
         return updated
     }
 
@@ -5052,6 +5132,7 @@ class MainActivity : AppCompatActivity() {
                 productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)
                 isConnected = connected
                 applyStreamingWindowState(connected = connected, foreground = isInForeground)
+                refreshAudioReadinessInSettings()
                 if (connected) {
                     refreshTransferReadinessInSettings()
                     nativeInputSessionState.admit(callbackClient, callbackGeneration)
@@ -5093,6 +5174,13 @@ class MainActivity : AppCompatActivity() {
         callbackClient.onServerShutdown = serverShutdown@{
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@serverShutdown
             retryCoordinator.onServerShutdown()
+        }
+        callbackClient.onAudioReadinessChanged = audioReadiness@{
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@audioReadiness
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                refreshAudioReadinessInSettings()
+            }
         }
 
         callbackClient.onVideoConfiguration = displayLifecycle::onVideoConfiguration
@@ -5213,6 +5301,7 @@ class MainActivity : AppCompatActivity() {
                     populateHostActions(availableHostActions)
                     refreshClipboardControl()
                     refreshFileTransferControl()
+                    refreshAudioReadinessInSettings()
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
                             "keyboard=$keyboard nativePointer=$nativePointer " +
@@ -5270,12 +5359,14 @@ class MainActivity : AppCompatActivity() {
                         localHostActionsAllowed = localHostActionsAllowed,
                         localClipboardAllowed = localClipboardAllowed,
                         localFileTransferAllowed = localFileTransferAllowed,
+                        localAudioAllowed = localAudioAllowed,
                         localWakeHostAllowed = localWakeHostAllowed,
                         localFixedHostAllowed = localFixedHostAllowed,
                         remoteStatus = status,
                     )
                 managedClipboardAllowed = availability.clipboardAllowed
                 managedFileTransferAllowed = availability.fileTransferAllowed
+                managedAudioAllowed = availability.audioAllowed
                 managedWakeHostAllowed = availability.wakeHostAllowed
                 managedFixedHostAllowed = availability.fixedHostAllowed
                 managedCustomGesturesAllowed = availability.customGesturesAllowed
@@ -5321,6 +5412,7 @@ class MainActivity : AppCompatActivity() {
                 populateHostActions(availableHostActions)
                 refreshClipboardControl()
                 refreshFileTransferControl()
+                refreshAudioReadinessInSettings()
                 mainDiag(
                     "managed policy updated: customGestures=" + customGestures +
                         " hostActions=" + capabilities.hostActions +
@@ -5696,20 +5788,23 @@ class MainActivity : AppCompatActivity() {
                             ManagedPolicyUiAvailabilityPolicy.combine(
                                 localCustomGesturesAllowed = localCustomGesturesAllowed,
                                 localHostActionsAllowed = localHostActionsAllowed,
-                                localClipboardAllowed = localClipboardAllowed,
-                                localFileTransferAllowed = localFileTransferAllowed,
-                                localWakeHostAllowed = localWakeHostAllowed,
-                                localFixedHostAllowed = localFixedHostAllowed,
+                        localClipboardAllowed = localClipboardAllowed,
+                        localFileTransferAllowed = localFileTransferAllowed,
+                        localAudioAllowed = localAudioAllowed,
+                        localWakeHostAllowed = localWakeHostAllowed,
+                        localFixedHostAllowed = localFixedHostAllowed,
                                 remoteStatus = status,
                             )
                         managedClipboardAllowed = availability.clipboardAllowed
                         managedFileTransferAllowed = availability.fileTransferAllowed
+                        managedAudioAllowed = availability.audioAllowed
                         managedWakeHostAllowed = availability.wakeHostAllowed
                         managedFixedHostAllowed = availability.fixedHostAllowed
                         managedCustomGesturesAllowed = availability.customGesturesAllowed
                         managedHostActionsAllowed = availability.hostActionsAllowed
                         refreshFileTransferControl()
                         refreshTransferReadinessInSettings()
+                        refreshAudioReadinessInSettings()
                         mainDiag(
                             "internet managed policy updated: customGestures=" +
                                 availability.customGesturesAllowed +
@@ -5951,6 +6046,7 @@ class MainActivity : AppCompatActivity() {
             internetNetworkMonitor = monitor
             internetSession = created
             refreshTransferReadinessInSettings()
+            refreshAudioReadinessInSettings()
             binding.internetConnectButton.isEnabled = false
             binding.internetDisconnectButton.visibility = View.VISIBLE
             applyConnectionPanelLayout()
@@ -6172,6 +6268,7 @@ class MainActivity : AppCompatActivity() {
             setStreamingWindowState(false)
         }
         refreshTransferReadinessInSettings()
+        refreshAudioReadinessInSettings()
     }
 
     private fun internetStateLabel(state: InternetProductSessionState): String =
@@ -6259,6 +6356,7 @@ class MainActivity : AppCompatActivity() {
         controlBarPolicySurface = ManagedPolicyControlSurface()
         refreshLocalManagedPolicySnapshot()
         refreshTransferReadinessInSettings()
+        refreshAudioReadinessInSettings()
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
@@ -6305,6 +6403,7 @@ class MainActivity : AppCompatActivity() {
         productSessionCoordinator.setTransportConnected(false)
         refreshLocalManagedPolicySnapshot()
         refreshTransferReadinessInSettings()
+        refreshAudioReadinessInSettings()
         val quarantinedSession = requireNotNull(internetSession)
         check(
             QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
@@ -6709,6 +6808,7 @@ class MainActivity : AppCompatActivity() {
         controlBarPolicySurface = ManagedPolicyControlSurface()
         refreshLocalManagedPolicySnapshot()
         refreshTransferReadinessInSettings()
+        refreshAudioReadinessInSettings()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
         resetClipboardControlToDefault()

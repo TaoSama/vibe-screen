@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import android.content.pm.ActivityInfo
 import android.view.Gravity
+import dev.telemachus.display.audio.PcmAudioStreamFormat
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 
 internal object ControlBarAccessibilityPolicy {
@@ -267,6 +268,57 @@ internal object TransferReadinessPresentationPolicy {
                     statusResource = R.string.transfer_readiness_waiting_status,
                     summaryResource = R.string.transfer_readiness_waiting_summary,
                     statusColorResource = R.color.on_surface_muted,
+                )
+        }
+}
+
+internal data class AudioReadinessSnapshot(
+    val activeFormat: PcmAudioStreamFormat?,
+    val acceptedPacketCount: Long,
+    val writtenPacketCount: Long,
+)
+
+internal object AudioReadinessPresentationPolicy {
+    data class Presentation(
+        val statusResource: Int,
+        val summaryResource: Int,
+        val statusColorResource: Int,
+        val showCounters: Boolean,
+    )
+
+    fun presentation(
+        connected: Boolean,
+        audioPolicyAllowed: Boolean,
+        snapshot: AudioReadinessSnapshot?,
+    ): Presentation =
+        when {
+            !audioPolicyAllowed ->
+                Presentation(
+                    statusResource = R.string.audio_readiness_policy_blocked_status,
+                    summaryResource = R.string.audio_readiness_policy_blocked_summary,
+                    statusColorResource = R.color.warning,
+                    showCounters = false,
+                )
+            !connected ->
+                Presentation(
+                    statusResource = R.string.audio_readiness_waiting_status,
+                    summaryResource = R.string.audio_readiness_waiting_summary,
+                    statusColorResource = R.color.on_surface_muted,
+                    showCounters = false,
+                )
+            snapshot?.activeFormat != null ->
+                Presentation(
+                    statusResource = R.string.audio_readiness_ready_status,
+                    summaryResource = R.string.audio_readiness_ready_summary,
+                    statusColorResource = R.color.accent,
+                    showCounters = true,
+                )
+            else ->
+                Presentation(
+                    statusResource = R.string.audio_readiness_unavailable_status,
+                    summaryResource = R.string.audio_readiness_unavailable_summary,
+                    statusColorResource = R.color.warning,
+                    showCounters = false,
                 )
         }
 }

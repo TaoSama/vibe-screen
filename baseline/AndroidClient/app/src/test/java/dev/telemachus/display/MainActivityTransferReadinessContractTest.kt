@@ -11,7 +11,9 @@ class MainActivityTransferReadinessContractTest {
         val source = mainActivitySource()
         val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
         val renderTransferReadiness = extractMethod(source, "private fun renderTransferReadiness")
+        val renderAudioReadiness = extractMethod(source, "private fun renderAudioReadiness")
         val refreshTransferReadiness = extractMethod(source, "private fun refreshTransferReadinessInSettings")
+        val refreshAudioReadiness = extractMethod(source, "private fun refreshAudioReadinessInSettings")
 
         assertTrue(
             "Settings should bind the transfer-readiness status view",
@@ -20,6 +22,12 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(
             "Settings should bind the transfer-readiness summary view",
             showSettingsDialog.contains("R.id.transferReadinessSummary"),
+        )
+        assertTrue(
+            "Settings should bind the audio-readiness status, summary, and counters",
+            showSettingsDialog.contains("R.id.audioReadinessStatus") &&
+                showSettingsDialog.contains("R.id.audioReadinessSummary") &&
+                showSettingsDialog.contains("R.id.audioReadinessCounters"),
         )
         assertTrue(
             "Settings should render transfer readiness from the shared presentation policy",
@@ -46,6 +54,14 @@ class MainActivityTransferReadinessContractTest {
             refreshTransferReadiness.contains("renderTransferReadiness(status, summary)"),
         )
         assertTrue(
+            "Open Settings audio refreshes should rebind the active dialog instead of caching an opening snapshot",
+            refreshAudioReadiness.contains("activeSettingsDialog ?: return") &&
+                refreshAudioReadiness.contains("R.id.audioReadinessStatus") &&
+                refreshAudioReadiness.contains("R.id.audioReadinessSummary") &&
+                refreshAudioReadiness.contains("R.id.audioReadinessCounters") &&
+                refreshAudioReadiness.contains("renderAudioReadiness(status, summary, counters)"),
+        )
+        assertTrue(
             "Readiness should include active Internet file-transfer capability without claiming clipboard support",
             renderTransferReadiness.contains("internetSession?.canTransferFiles == true"),
         )
@@ -57,8 +73,25 @@ class MainActivityTransferReadinessContractTest {
                 renderTransferReadiness.contains("fixedHostPolicyAllowed = managedFixedHostAllowed"),
         )
         assertTrue(
+            "Audio readiness should explain policy-disabled managed audio separately from compatibility gaps",
+            renderAudioReadiness.contains("audioPolicyAllowed = managedAudioAllowed"),
+        )
+        assertTrue(
             "Readiness should be presented by the pure policy",
             renderTransferReadiness.contains("TransferReadinessPresentationPolicy.presentation("),
+        )
+        assertTrue(
+            "Audio readiness should use StreamClient read-only audio snapshot and pure policy",
+            renderAudioReadiness.contains("streamClient?.audioReadinessSnapshot()") &&
+                renderAudioReadiness.contains("AudioReadinessPresentationPolicy.presentation("),
+        )
+        assertTrue(
+            "Audio readiness should expose active PCM format and packet counters only from existing state",
+            renderAudioReadiness.contains("format.sampleRateHz") &&
+                renderAudioReadiness.contains("format.channelCount") &&
+                renderAudioReadiness.contains("format.framesPerPacket") &&
+                renderAudioReadiness.contains("snapshot.acceptedPacketCount") &&
+                renderAudioReadiness.contains("snapshot.writtenPacketCount"),
         )
         assertTrue(
             "Readiness live-region updates should keep one aggregated announcement source",
@@ -93,6 +126,13 @@ class MainActivityTransferReadinessContractTest {
             renderTransferReadiness.contains("ACTION_OPEN_DOCUMENT") ||
                 renderTransferReadiness.contains("startActivityForResult"),
         )
+        assertFalse(
+            "Opening Settings audio readiness must not create AudioTrack or probe media services",
+            renderAudioReadiness.contains("AudioTrack") ||
+                renderAudioReadiness.contains("getSystemService") ||
+                renderAudioReadiness.contains("configure(") ||
+                renderAudioReadiness.contains("submit("),
+        )
     }
 
     @Test
@@ -120,7 +160,8 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(
             "Negotiated-session capability changes should refresh an already-open Settings dialog",
             applyNegotiatedSession.contains("productSessionCoordinator.updateNegotiatedSession") &&
-                applyNegotiatedSession.contains("if (updated) refreshTransferReadinessInSettings()"),
+                applyNegotiatedSession.contains("refreshTransferReadinessInSettings()") &&
+                applyNegotiatedSession.contains("refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Managed-policy commits should refresh through negotiated-session and runtime-control paths",
@@ -135,7 +176,12 @@ class MainActivityTransferReadinessContractTest {
                 connectionStatusCallback,
                 "productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)",
                 "refreshTransferReadinessInSettings()",
-            ),
+            ) &&
+                assertBeforeValue(
+                    connectionStatusCallback,
+                    "productSessionCoordinator.onConnectionStatus(callbackClient, callbackGeneration, connected)",
+                    "refreshAudioReadinessInSettings()",
+                ),
         )
         assertTrue(
             "Disconnected status commits should refresh through the disconnected UI path after state cleanup",
@@ -144,12 +190,18 @@ class MainActivityTransferReadinessContractTest {
                     disconnectedSessionUi,
                     "productSessionCoordinator.clearDisconnectedUiState()",
                     "refreshTransferReadinessInSettings()",
+                ) &&
+                assertBeforeValue(
+                    disconnectedSessionUi,
+                    "productSessionCoordinator.clearDisconnectedUiState()",
+                    "refreshAudioReadinessInSettings()",
                 ),
         )
         assertTrue(
             "Internet session state changes should refresh an already-open Settings dialog",
             updateInternetState.contains("LiveRegionTextApplier.apply(") &&
-                updateInternetState.contains("refreshTransferReadinessInSettings()"),
+                updateInternetState.contains("refreshTransferReadinessInSettings()") &&
+                updateInternetState.contains("refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Terminal Internet states should reset stale remote policy before repainting transfer readiness",
@@ -159,12 +211,14 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(
             "Manual Internet disconnect should reset stale remote policy before repainting transfer readiness",
             assertBeforeValue(disconnectInternet, "productSessionCoordinator.setTransportConnected(false)", "refreshLocalManagedPolicySnapshot()") &&
-                assertBeforeValue(disconnectInternet, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()"),
+                assertBeforeValue(disconnectInternet, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()") &&
+                assertBeforeValue(disconnectInternet, "refreshLocalManagedPolicySnapshot()", "refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Quarantined Internet disconnect should reset stale remote policy before repainting transfer readiness",
             assertBeforeValue(quarantineInternetSession, "productSessionCoordinator.setTransportConnected(false)", "refreshLocalManagedPolicySnapshot()") &&
-                assertBeforeValue(quarantineInternetSession, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()"),
+                assertBeforeValue(quarantineInternetSession, "refreshLocalManagedPolicySnapshot()", "refreshTransferReadinessInSettings()") &&
+                assertBeforeValue(quarantineInternetSession, "refreshLocalManagedPolicySnapshot()", "refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Internet route changes should refresh through the shared Internet state renderer",
@@ -177,7 +231,8 @@ class MainActivityTransferReadinessContractTest {
                 "productSessionCoordinator.attachInternetSession(generation, created)" +
                     "\n            internetNetworkMonitor = monitor" +
                     "\n            internetSession = created" +
-                    "\n            refreshTransferReadinessInSettings()",
+                    "\n            refreshTransferReadinessInSettings()" +
+                    "\n            refreshAudioReadinessInSettings()",
             ),
         )
     }
@@ -190,12 +245,21 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(layout.contains("@+id/transferReadinessSection"))
         assertTrue(layout.contains("@+id/transferReadinessStatus"))
         assertTrue(layout.contains("@+id/transferReadinessSummary"))
+        assertTrue(layout.contains("@+id/audioReadinessSection"))
+        assertTrue(layout.contains("@+id/audioReadinessStatus"))
+        assertTrue(layout.contains("@+id/audioReadinessSummary"))
+        assertTrue(layout.contains("@+id/audioReadinessCounters"))
         assertTrue(layout.contains("@string/transfer_readiness_title"))
         val title = extractXmlElement(layout, "android:text=\"@string/transfer_readiness_title\"")
         val status = extractXmlElement(layout, "android:id=\"@+id/transferReadinessStatus\"")
         val summary = extractXmlElement(layout, "android:id=\"@+id/transferReadinessSummary\"")
+        val audioTitle = extractXmlElement(layout, "android:text=\"@string/audio_readiness_title\"")
+        val audioStatus = extractXmlElement(layout, "android:id=\"@+id/audioReadinessStatus\"")
+        val audioSummary = extractXmlElement(layout, "android:id=\"@+id/audioReadinessSummary\"")
         assertTrue(title.contains("android:accessibilityHeading=\"true\""))
         assertTrue(status.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(audioTitle.contains("android:accessibilityHeading=\"true\""))
+        assertTrue(audioStatus.contains("android:accessibilityLiveRegion=\"polite\""))
         assertTrue(
             "Transfer readiness status should be selectable so no-host and policy-blocked guidance can be copied",
             status.contains("android:textIsSelectable=\"true\""),
@@ -208,8 +272,12 @@ class MainActivityTransferReadinessContractTest {
             "Summary should not be a second live region because status already announces the full section",
             summary.contains("android:accessibilityLiveRegion"),
         )
+        assertTrue(audioStatus.contains("android:textIsSelectable=\"true\""))
+        assertTrue(audioSummary.contains("android:textIsSelectable=\"true\""))
+        assertFalse(audioSummary.contains("android:accessibilityLiveRegion"))
         assertBefore(layout, "@+id/deviceHealthSection", "@+id/transferReadinessSection")
-        assertBefore(layout, "@+id/transferReadinessSection", "@+id/viewportSection")
+        assertBefore(layout, "@+id/transferReadinessSection", "@+id/audioReadinessSection")
+        assertBefore(layout, "@+id/audioReadinessSection", "@+id/viewportSection")
         assertTrue(strings.contains("transfer_readiness_waiting_status"))
         assertTrue(strings.contains("Waiting for a compatible Mac session"))
         assertTrue(strings.contains("Clipboard and file controls require Protocol v1"))
@@ -221,6 +289,9 @@ class MainActivityTransferReadinessContractTest {
         assertTrue(strings.contains("Wake host is disabled by this device or Mac session policy"))
         assertTrue(strings.contains("transfer_readiness_fixed_host_policy_blocked_summary"))
         assertTrue(strings.contains("restricted to managed host IDs"))
+        assertTrue(strings.contains("audio_readiness_waiting_status"))
+        assertTrue(strings.contains("audio_readiness_unavailable_status"))
+        assertTrue(strings.contains("audio_readiness_counters"))
         assertFalse(
             "Readiness copy must not close the runtime E2E gate by calling the feature stable or accepted",
             Regex("transfer_readiness_[^>]+>(?:(?!</string>).)*(stable|accepted|E2E passed|verified end to end)", RegexOption.IGNORE_CASE)
@@ -247,10 +318,12 @@ class MainActivityTransferReadinessContractTest {
             "Local policy snapshots should retain managed denial state for no-host Settings",
             applyLocalPolicy.contains("localClipboardAllowed = policy.clipboardAllowed") &&
                 applyLocalPolicy.contains("localFileTransferAllowed = policy.fileTransferAllowed") &&
+                applyLocalPolicy.contains("localAudioAllowed = policy.audioAllowed") &&
                 applyLocalPolicy.contains("localWakeHostAllowed = policy.wakeAllowed") &&
                 applyLocalPolicy.contains("localFixedHostAllowed = fixedHostPolicyAllowsNoHost(policy)") &&
                 applyLocalPolicy.contains("managedClipboardAllowed = localClipboardAllowed") &&
                 applyLocalPolicy.contains("managedFileTransferAllowed = localFileTransferAllowed") &&
+                applyLocalPolicy.contains("managedAudioAllowed = localAudioAllowed") &&
                 applyLocalPolicy.contains("managedWakeHostAllowed = localWakeHostAllowed") &&
                 applyLocalPolicy.contains("managedFixedHostAllowed = localFixedHostAllowed"),
         )
@@ -271,6 +344,7 @@ class MainActivityTransferReadinessContractTest {
             disconnect.contains("refreshLocalManagedPolicySnapshot()") &&
                 !disconnect.contains("managedClipboardAllowed = true") &&
                 !disconnect.contains("managedFileTransferAllowed = true") &&
+                !disconnect.contains("managedAudioAllowed = true") &&
                 !disconnect.contains("managedWakeHostAllowed = true") &&
                 !disconnect.contains("managedFixedHostAllowed = true"),
         )
@@ -278,19 +352,24 @@ class MainActivityTransferReadinessContractTest {
             "Stream managed-policy updates should propagate managed feature availability into Settings",
             streamManagedCallback.contains("localClipboardAllowed = localClipboardAllowed") &&
                 streamManagedCallback.contains("localFileTransferAllowed = localFileTransferAllowed") &&
+                streamManagedCallback.contains("localAudioAllowed = localAudioAllowed") &&
                 streamManagedCallback.contains("localWakeHostAllowed = localWakeHostAllowed") &&
                 streamManagedCallback.contains("managedClipboardAllowed = availability.clipboardAllowed") &&
                 streamManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed") &&
+                streamManagedCallback.contains("managedAudioAllowed = availability.audioAllowed") &&
                 streamManagedCallback.contains("managedWakeHostAllowed = availability.wakeHostAllowed") &&
-                streamManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed"),
+                streamManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed") &&
+                streamManagedCallback.contains("refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Internet managed-policy updates should use the same Settings availability source",
             internetManagedCallback.contains("localClipboardAllowed = localClipboardAllowed") &&
                 internetManagedCallback.contains("localFileTransferAllowed = localFileTransferAllowed") &&
+                internetManagedCallback.contains("localAudioAllowed = localAudioAllowed") &&
                 internetManagedCallback.contains("localWakeHostAllowed = localWakeHostAllowed") &&
                 internetManagedCallback.contains("managedClipboardAllowed = availability.clipboardAllowed") &&
                 internetManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed") &&
+                internetManagedCallback.contains("managedAudioAllowed = availability.audioAllowed") &&
                 internetManagedCallback.contains("managedWakeHostAllowed = availability.wakeHostAllowed") &&
                 internetManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed"),
         )

@@ -195,6 +195,26 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion() {
+        listOf(320, 360).forEach { screenWidthDp ->
+            listOf(1f, 1.5f, 2f).forEach { fontScale ->
+                withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
+                    val section = layout.root.findViewById<View>(R.id.audioReadinessSection)
+                    val status = layout.root.findViewById<View>(R.id.audioReadinessStatus)
+                    val summary = layout.root.findViewById<View>(R.id.audioReadinessSummary)
+                    val counters = layout.root.findViewById<View>(R.id.audioReadinessCounters)
+
+                    assertTrue(section.measuredWidth > 0 && section.measuredHeight > 0)
+                    assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, status.accessibilityLiveRegion)
+                    assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, summary.accessibilityLiveRegion)
+                    assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, counters.accessibilityLiveRegion)
+                    assertAllTextReadable(section)
+                }
+            }
+        }
+    }
+
+    @Test
     fun unavailableVideoControlsExposeNoteInsteadOfDeadControls() {
         withLayout(screenWidthDp = 360) { layout ->
             val note = layout.root.findViewById<TextView>(R.id.videoControlUnavailable)
