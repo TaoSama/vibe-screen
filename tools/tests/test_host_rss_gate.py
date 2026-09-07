@@ -241,6 +241,15 @@ class HostRSSGateTest(unittest.TestCase):
             report = derive_gate(summary, samples, exact_window)
 
         self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(
+            report["source"],
+            {
+                "summary": summary.as_posix(),
+                "samples": samples.as_posix(),
+                "exact_window_report": exact_window.as_posix(),
+            },
+        )
+        self.assertEqual(report["source_summary"]["errors"], [])
         self.assertTrue(all(
             item["passed"] for item in report["criteria"].values()
         ))
@@ -419,6 +428,39 @@ class HostRSSGateTest(unittest.TestCase):
         self.assertEqual(report["derivation_status"], "failed")
         self.assertEqual(report["verdict"], "insufficient")
         self.assertEqual(report["sufficiency"], {})
+
+    def test_cli_records_repo_relative_source_paths_when_repo_root_is_set(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            evidence_dir = directory / "docs" / "evidence" / "host-rss"
+            evidence_dir.mkdir(parents=True)
+            summary, samples = write_inputs(evidence_dir)
+            exact_window = write_exact_window_report(evidence_dir)
+            output = evidence_dir / "host-rss-gate.json"
+
+            with redirect_stdout(io.StringIO()):
+                exit_code = main(
+                    [
+                        "--summary", str(summary),
+                        "--samples", str(samples),
+                        "--exact-window-report", str(exact_window),
+                        "--output", str(output),
+                        "--repo-root", str(directory),
+                    ]
+                )
+            report = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            report["source"],
+            {
+                "summary": "docs/evidence/host-rss/summary.json",
+                "samples": "docs/evidence/host-rss/samples.jsonl",
+                "exact_window_report": (
+                    "docs/evidence/host-rss/exact-window-report.json"
+                ),
+            },
+        )
 
     def test_cli_fails_closed_on_malformed_host_rss_values(self):
         for bad_rss in ("120000", True, {}, []):

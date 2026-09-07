@@ -252,6 +252,8 @@ def derive_gate(
     summary_path: Path,
     samples_path: Path,
     exact_window_report_path: Path | None = None,
+    *,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     summary = _read_json(summary_path, "summary")
     run_id = _validate_summary(summary)
@@ -331,6 +333,13 @@ def derive_gate(
         "kind": GATE_KIND,
         "derivation_status": "complete",
         "run_id": run_id,
+        "source": {
+            "summary": _source_path(summary_path, repo_root=repo_root),
+            "samples": _source_path(samples_path, repo_root=repo_root),
+            "exact_window_report": _source_path(
+                exact_window_report_path, repo_root=repo_root
+            ),
+        },
         "window": {
             "started_at": summary["started_at"],
             "finished_at": summary["finished_at"],
@@ -341,6 +350,7 @@ def derive_gate(
         "source_summary": {
             "status": summary.get("status"),
             "error_count": len(summary.get("errors", [])),
+            "errors": summary.get("errors", []),
         },
         "telemetry_sufficiency": telemetry_evaluation["sufficiency"],
         "telemetry_criteria": telemetry_evaluation["criteria"],
@@ -349,6 +359,17 @@ def derive_gate(
         **evaluation,
         "interpretation": INTERPRETATION,
     }
+
+
+def _source_path(path: Path | None, *, repo_root: Path | None) -> str | None:
+    if path is None:
+        return None
+    if repo_root is None:
+        return path.as_posix()
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _failure_report() -> dict[str, Any]:
@@ -392,6 +413,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="soak_report output for the same exact two-hour window",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        help="repository root used to record source paths as repo-relative",
+    )
     return parser
 
 
@@ -402,6 +428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             arguments.summary,
             arguments.samples,
             arguments.exact_window_report,
+            repo_root=arguments.repo_root,
         )
         _write_json(arguments.output, report)
     except (EvidenceInputError, OSError, TypeError, ValueError):
