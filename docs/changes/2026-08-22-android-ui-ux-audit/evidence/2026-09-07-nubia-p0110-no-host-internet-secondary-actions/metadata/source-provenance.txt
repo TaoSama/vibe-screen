@@ -1,0 +1,6 @@
+repository=TaoSama/vibe-screen
+evidence_branch=codex/android-no-host-uiux-p0110-20260907
+base_commit=ac804cb98adbb061cd01e8f6a9db93adb78ca9c5
+origin_main_at_test=ac804cb98adbb061cd01e8f6a9db93adb78ca9c5
+base_subject=Add peripheral input diagnostics and pointer guards (#651)
+working_tree_diff_sha256=7c02464f550902280a23a46d9798fd89c6851f0f8361f6c6dea9fd3769dc0521

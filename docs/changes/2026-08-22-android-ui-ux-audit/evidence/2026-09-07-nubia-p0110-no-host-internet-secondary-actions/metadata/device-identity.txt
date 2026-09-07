@@ -1,0 +1,9 @@
+# adb device identity
+serial=EP0110PZ0B9110300B
+manufacturer=nubia
+model=P0110
+device=pacific
+release=16
+sdk=36
+wm_size=Physical size: 1264x2800
+wm_density=Physical density: 560

@@ -276,6 +276,119 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun narrowPortraitKeepsInternetSecondaryActionsReadableAtLargeFontScale() {
+        withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showAllInternetSecondaryActions()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertInternetSecondaryActionsStacked(expectedGapDp = 8)
+            listOf(
+                layout.internetConnectionSettingsButton,
+                layout.internetDisconnectButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+        }
+    }
+
+    @Test
+    fun defaultFontKeepsInternetSecondaryActionsSideBySide() {
+        withLayout(widthDp = 361, heightDp = 800) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showAllInternetSecondaryActions()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+            listOf(
+                layout.internetConnectionSettingsButton,
+                layout.internetDisconnectButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+        }
+    }
+
+    @Test
+    fun hiddenInternetSettingsDoesNotLeaveLeadingSecondaryActionGap() {
+        withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showConnectedInternetSecondaryActionsWithoutSettings()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConnectedInternetSecondaryActionsStartWithoutGap(expectedGapDp = 8)
+            listOf(
+                layout.internetDisconnectButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+        }
+    }
+
+    @Test
+    fun hiddenInternetSettingsDoesNotLeaveHorizontalLeadingSecondaryActionGap() {
+        withLayout(widthDp = 361, heightDp = 800) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showConnectedInternetSecondaryActionsWithoutSettings()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConnectedInternetSecondaryActionsHorizontalStartWithoutGap(expectedGapDp = 8)
+        }
+    }
+
+    @Test
+    fun disconnectedInternetSecondaryActionsKeepSettingsFlushAtLargeFontScale() {
+        withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showDisconnectedInternetSecondaryActions()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp = 8)
+            listOf(
+                layout.internetConnectionSettingsButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+        }
+    }
+
+    @Test
     fun narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale() {
         withLayout(widthDp = 361, heightDp = 800) { layout ->
             layout.measureAndLayout()
@@ -389,6 +502,10 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val internetProfileActions = root.findViewById<LinearLayout>(R.id.internetProfileActions)
         val internetScanProfileButton = root.findViewById<TextView>(R.id.internetScanProfileButton)
         val internetImportProfileButton = root.findViewById<TextView>(R.id.internetImportProfileButton)
+        val internetSecondaryActions = root.findViewById<LinearLayout>(R.id.internetSecondaryActions)
+        val internetConnectionSettingsButton = root.findViewById<TextView>(R.id.internetConnectionSettingsButton)
+        val internetDisconnectButton = root.findViewById<TextView>(R.id.internetDisconnectButton)
+        val internetRevokeButton = root.findViewById<TextView>(R.id.internetRevokeButton)
         private val scrollView = root.findViewById<NestedScrollView>(R.id.connectionScroll)
         private val icon = root.findViewById<View>(R.id.connectionIcon)
         private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
@@ -436,6 +553,24 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             usbModeContent.visibility = if (modeContentId == R.id.usbModeContent) View.VISIBLE else View.GONE
             wirelessModeContent.visibility = if (modeContentId == R.id.wirelessModeContent) View.VISIBLE else View.GONE
             internetModeContent.visibility = if (modeContentId == R.id.internetModeContent) View.VISIBLE else View.GONE
+        }
+
+        fun showAllInternetSecondaryActions() {
+            internetConnectionSettingsButton.visibility = View.VISIBLE
+            internetDisconnectButton.visibility = View.VISIBLE
+            internetRevokeButton.visibility = View.VISIBLE
+        }
+
+        fun showConnectedInternetSecondaryActionsWithoutSettings() {
+            internetConnectionSettingsButton.visibility = View.GONE
+            internetDisconnectButton.visibility = View.VISIBLE
+            internetRevokeButton.visibility = View.VISIBLE
+        }
+
+        fun showDisconnectedInternetSecondaryActions() {
+            internetConnectionSettingsButton.visibility = View.VISIBLE
+            internetDisconnectButton.visibility = View.GONE
+            internetRevokeButton.visibility = View.VISIBLE
         }
 
         fun measureAndLayout() {
@@ -605,6 +740,79 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(1f, linearMargins(internetImportProfileButton).weight, 0f)
             assertEquals(dp(expectedGapDp), linearMargins(internetImportProfileButton).marginStart)
             assertEquals(0, linearMargins(internetImportProfileButton).topMargin)
+        }
+
+        fun assertInternetSecondaryActionsStacked(expectedGapDp: Int) {
+            assertEquals(LinearLayout.VERTICAL, internetSecondaryActions.orientation)
+            listOf(
+                internetConnectionSettingsButton to 0,
+                internetDisconnectButton to expectedGapDp,
+                internetRevokeButton to expectedGapDp,
+            ).forEach { (button, topMarginDp) ->
+                assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, button.layoutParams.width)
+                assertEquals(0f, linearMargins(button).weight, 0f)
+                assertEquals(0, linearMargins(button).marginStart)
+                assertEquals(dp(topMarginDp), linearMargins(button).topMargin)
+            }
+        }
+
+        fun assertInternetSecondaryActionsHorizontal(expectedGapDp: Int) {
+            assertEquals(LinearLayout.HORIZONTAL, internetSecondaryActions.orientation)
+            listOf(
+                internetConnectionSettingsButton to 0,
+                internetDisconnectButton to expectedGapDp,
+                internetRevokeButton to expectedGapDp,
+            ).forEach { (button, startMarginDp) ->
+                assertEquals(0, button.layoutParams.width)
+                assertEquals(1f, linearMargins(button).weight, 0f)
+                assertEquals(dp(startMarginDp), linearMargins(button).marginStart)
+                assertEquals(0, linearMargins(button).topMargin)
+            }
+        }
+
+        fun assertConnectedInternetSecondaryActionsStartWithoutGap(expectedGapDp: Int) {
+            assertEquals(LinearLayout.VERTICAL, internetSecondaryActions.orientation)
+            assertEquals(View.GONE, internetConnectionSettingsButton.visibility)
+            assertEquals(View.VISIBLE, internetDisconnectButton.visibility)
+            assertEquals(View.VISIBLE, internetRevokeButton.visibility)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, internetDisconnectButton.layoutParams.width)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, internetRevokeButton.layoutParams.width)
+            assertEquals(0f, linearMargins(internetDisconnectButton).weight, 0f)
+            assertEquals(0f, linearMargins(internetRevokeButton).weight, 0f)
+            assertEquals(0, linearMargins(internetDisconnectButton).marginStart)
+            assertEquals(0, linearMargins(internetDisconnectButton).topMargin)
+            assertEquals(0, linearMargins(internetRevokeButton).marginStart)
+            assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).topMargin)
+        }
+
+        fun assertConnectedInternetSecondaryActionsHorizontalStartWithoutGap(expectedGapDp: Int) {
+            assertEquals(LinearLayout.HORIZONTAL, internetSecondaryActions.orientation)
+            assertEquals(View.GONE, internetConnectionSettingsButton.visibility)
+            assertEquals(View.VISIBLE, internetDisconnectButton.visibility)
+            assertEquals(View.VISIBLE, internetRevokeButton.visibility)
+            assertEquals(0, internetDisconnectButton.layoutParams.width)
+            assertEquals(0, internetRevokeButton.layoutParams.width)
+            assertEquals(1f, linearMargins(internetDisconnectButton).weight, 0f)
+            assertEquals(1f, linearMargins(internetRevokeButton).weight, 0f)
+            assertEquals(0, linearMargins(internetDisconnectButton).marginStart)
+            assertEquals(0, linearMargins(internetDisconnectButton).topMargin)
+            assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).marginStart)
+            assertEquals(0, linearMargins(internetRevokeButton).topMargin)
+        }
+
+        fun assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp: Int) {
+            assertEquals(LinearLayout.VERTICAL, internetSecondaryActions.orientation)
+            assertEquals(View.VISIBLE, internetConnectionSettingsButton.visibility)
+            assertEquals(View.GONE, internetDisconnectButton.visibility)
+            assertEquals(View.VISIBLE, internetRevokeButton.visibility)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, internetConnectionSettingsButton.layoutParams.width)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, internetRevokeButton.layoutParams.width)
+            assertEquals(0f, linearMargins(internetConnectionSettingsButton).weight, 0f)
+            assertEquals(0f, linearMargins(internetRevokeButton).weight, 0f)
+            assertEquals(0, linearMargins(internetConnectionSettingsButton).marginStart)
+            assertEquals(0, linearMargins(internetConnectionSettingsButton).topMargin)
+            assertEquals(0, linearMargins(internetRevokeButton).marginStart)
+            assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).topMargin)
         }
 
         fun assertPortraitDimensionsInflated() {

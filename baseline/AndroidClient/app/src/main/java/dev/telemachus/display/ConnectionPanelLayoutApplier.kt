@@ -55,6 +55,15 @@ internal object ConnectionPanelLayoutApplier {
                     gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
                 ),
         )
+        applyInternetSecondaryActionsLayout(
+            views = views,
+            layout =
+                InternetSecondaryActionsLayoutPolicy.resolve(
+                    stackedContent = stackedContent,
+                    fontScale = resources.configuration.fontScale,
+                    gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
+                ),
+        )
         applyDiagnosticsLayout(
             views = views,
             layout =
@@ -242,6 +251,55 @@ internal object ConnectionPanelLayoutApplier {
     private fun updateInternetProfileActionButtonLayout(
         view: View,
         layout: InternetProfileActionsLayoutPolicy.Layout,
+        marginStartPx: Int,
+        marginTopPx: Int,
+    ) {
+        val params = view.layoutParams as? LinearLayout.LayoutParams ?: return
+        params.width =
+            if (layout.buttonWidthMatchParent) {
+                ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                0
+            }
+        params.weight = layout.buttonWeight
+        params.marginStart = marginStartPx
+        params.topMargin = marginTopPx
+        view.layoutParams = params
+    }
+
+    private fun applyInternetSecondaryActionsLayout(
+        views: Views,
+        layout: InternetSecondaryActionsLayoutPolicy.Layout,
+    ) {
+        val actions = requiredView(views.actions, R.id.internetSecondaryActions) as? LinearLayout ?: return
+        actions.orientation =
+            when (layout.orientation) {
+                InternetSecondaryActionsLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
+                InternetSecondaryActionsLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
+            }
+        val buttons =
+            listOf(
+                requiredView(actions, R.id.internetConnectionSettingsButton),
+                requiredView(actions, R.id.internetDisconnectButton),
+                requiredView(actions, R.id.internetRevokeButton),
+            )
+        var visibleButtonIndex = 0
+        buttons.forEach { button ->
+            val visible = button.visibility != View.GONE
+            val firstVisibleButton = visible && visibleButtonIndex == 0
+            if (visible) visibleButtonIndex += 1
+            updateInternetSecondaryActionButtonLayout(
+                view = button,
+                layout = layout,
+                marginStartPx = if (!visible || firstVisibleButton) 0 else layout.interButtonMarginStartPx,
+                marginTopPx = if (!visible || firstVisibleButton) 0 else layout.interButtonMarginTopPx,
+            )
+        }
+    }
+
+    private fun updateInternetSecondaryActionButtonLayout(
+        view: View,
+        layout: InternetSecondaryActionsLayoutPolicy.Layout,
         marginStartPx: Int,
         marginTopPx: Int,
     ) {
