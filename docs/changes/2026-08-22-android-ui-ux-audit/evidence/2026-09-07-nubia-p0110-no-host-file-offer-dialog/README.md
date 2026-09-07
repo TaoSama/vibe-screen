@@ -105,4 +105,5 @@ the direct `adb install -r` plus `am instrument` confirmation independently
 returned `OK (2 tests)`. UTP device-info artifacts referenced inside the
 textproto were intentionally omitted from the retained package because they
 include the raw ADB serial; `metadata/device-identity.txt` records the same
-device identity with the serial redacted.
+device identity with the serial redacted. Retained textproto and diagnostic XML
+paths replace the local checkout prefix with `<repo-root>/`.

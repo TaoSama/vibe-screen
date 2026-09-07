@@ -5,9 +5,9 @@
     <property name="flavor" value="" />
     <property name="project" value=":app" />
   </properties>
-  <system-err>Exception thrown during onBeforeAll invocation of plugin AndroidTestDeviceInfoPlugin: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/6700/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo (No such file or directory)
-/Users/luwentao/Workspaces/dotfiles/codex/worktrees/6700/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo (No such file or directory)
-java.io.FileNotFoundException: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/6700/vibe-screen/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo (No such file or directory)
+  <system-err>Exception thrown during onBeforeAll invocation of plugin AndroidTestDeviceInfoPlugin: <repo-root>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo (No such file or directory)
+<repo-root>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo (No such file or directory)
+java.io.FileNotFoundException: <repo-root>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo (No such file or directory)
 	at java.base/java.io.FileOutputStream.open0(Native Method)
 	at java.base/java.io.FileOutputStream.open(FileOutputStream.java:293)
 	at java.base/java.io.FileOutputStream.&lt;init&gt;(FileOutputStream.java:235)
