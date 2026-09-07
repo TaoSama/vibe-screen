@@ -127,13 +127,13 @@ def _retained_artifact_reasons(
     label: str,
     required_roles: Sequence[str],
     evidence_dir: Path | None,
+    cross_direction_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
 ) -> list[str]:
     artifacts = document.get(RETAINED_ARTIFACTS_FIELD)
     if not isinstance(artifacts, list) or not artifacts:
         return [f"{label}.{RETAINED_ARTIFACTS_FIELD} must retain product evidence artifacts"]
 
     reasons: list[str] = []
-    resolved_evidence_dir = evidence_dir.resolve() if evidence_dir is not None else None
     required_role_names = set(required_roles)
     seen_roles: set[str] = set()
     seen_artifact_paths: dict[Path | str, str] = {}
@@ -147,55 +147,40 @@ def _retained_artifact_reasons(
             role_name = role.strip()
             if role_name not in required_role_names:
                 reasons.append(f"{artifact_label}.role must be one of {', '.join(required_roles)}")
+                role_is_required = False
             elif role_name in seen_roles:
                 reasons.append(f"{artifact_label}.role duplicates {role_name} artifact")
+                role_is_required = True
+            else:
+                role_is_required = True
             seen_roles.add(role_name)
         else:
             role_name = f"entry {index}"
+            role_is_required = False
             reasons.append(f"{artifact_label}.role must be present")
 
         path_value = artifact.get("path")
         if not isinstance(path_value, str) or not path_value.strip():
             reasons.append(f"{artifact_label}.path must be present")
             continue
-        path = Path(path_value)
-        if path.is_absolute():
-            reasons.append(f"{artifact_label}.path must be evidence-relative")
-            continue
-        if (path.parts and path.parts[0] == "..") or ".." in path.parts:
-            reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
-            continue
-        artifact_key: Path | str | None = path.as_posix() if evidence_dir is None else None
-        if evidence_dir is not None and resolved_evidence_dir is not None:
-            candidate = evidence_dir / path
-            try:
-                resolved_candidate = candidate.resolve(strict=True)
-            except FileNotFoundError:
-                reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
-                continue
-            except (OSError, RuntimeError, ValueError) as error:
-                reasons.append(
-                    f"{artifact_label}.path cannot access retained artifact "
-                    f"{sanitize_text(path_value)}: {sanitize_text(error)}"
-                )
-                continue
-            try:
-                resolved_candidate.relative_to(resolved_evidence_dir)
-            except ValueError:
-                reasons.append(f"{artifact_label}.path must stay inside the evidence bundle")
-                continue
-            if not resolved_candidate.is_file():
-                reasons.append(f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}")
-            elif resolved_candidate.stat().st_size <= 0:
-                reasons.append(f"{artifact_label}.path retained artifact {sanitize_text(path_value)} must be non-empty")
-            else:
-                artifact_key = resolved_candidate
+        artifact_key, path_reasons = _retained_artifact_key(artifact_label, path_value, evidence_dir)
+        reasons.extend(path_reasons)
         if artifact_key is not None:
             previous_role = seen_artifact_paths.get(artifact_key)
             if previous_role is not None:
                 reasons.append(f"{artifact_label}.path must be distinct from {previous_role} artifact path")
             else:
                 seen_artifact_paths[artifact_key] = role_name
+            if cross_direction_artifact_paths is not None and role_is_required:
+                previous_artifact = cross_direction_artifact_paths.get(artifact_key)
+                if previous_artifact is not None and previous_artifact[0] != label:
+                    previous_label, previous_role = previous_artifact
+                    reasons.append(
+                        f"{artifact_label}.path for {role_name} must be distinct from "
+                        f"{previous_label} {previous_role} artifact path"
+                    )
+                elif previous_artifact is None:
+                    cross_direction_artifact_paths[artifact_key] = (label, role_name)
 
     missing_roles = [role for role in required_roles if role not in seen_roles]
     reasons.extend(
@@ -203,6 +188,41 @@ def _retained_artifact_reasons(
         for role in missing_roles
     )
     return reasons
+
+
+def _retained_artifact_key(
+    artifact_label: str,
+    path_value: str,
+    evidence_dir: Path | None,
+) -> tuple[Path | str | None, list[str]]:
+    path = Path(path_value)
+    if path.is_absolute():
+        return None, [f"{artifact_label}.path must be evidence-relative"]
+    if (path.parts and path.parts[0] == "..") or ".." in path.parts:
+        return None, [f"{artifact_label}.path must stay inside the evidence bundle"]
+    if evidence_dir is None:
+        return path.as_posix(), []
+
+    resolved_evidence_dir = evidence_dir.resolve()
+    candidate = evidence_dir / path
+    try:
+        resolved_candidate = candidate.resolve(strict=True)
+    except FileNotFoundError:
+        return None, [f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}"]
+    except (OSError, RuntimeError, ValueError) as error:
+        return None, [
+            f"{artifact_label}.path cannot access retained artifact "
+            f"{sanitize_text(path_value)}: {sanitize_text(error)}"
+        ]
+    try:
+        resolved_candidate.relative_to(resolved_evidence_dir)
+    except ValueError:
+        return None, [f"{artifact_label}.path must stay inside the evidence bundle"]
+    if not resolved_candidate.is_file():
+        return None, [f"{artifact_label}.path missing retained artifact {sanitize_text(path_value)}"]
+    if resolved_candidate.stat().st_size <= 0:
+        return None, [f"{artifact_label}.path retained artifact {sanitize_text(path_value)} must be non-empty"]
+    return resolved_candidate, []
 
 
 def _device_identity(document: dict[str, Any] | None) -> dict[str, Any]:
@@ -360,6 +380,7 @@ def _direction_reasons(
     direction: dict[str, Any],
     label: str,
     evidence_dir: Path | None,
+    cross_direction_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
 ) -> list[str]:
     required_true = (
         "protocol_v1_session",
@@ -450,6 +471,7 @@ def _direction_reasons(
             label,
             REQUIRED_DIRECTION_ARTIFACT_ROLES,
             evidence_dir,
+            cross_direction_artifact_paths,
         )
     )
     return reasons
@@ -474,12 +496,14 @@ def _product_e2e_gate(
         markers: dict[str, str] = {}
         change_ids: dict[str, str] = {}
         digests: dict[str, str] = {}
+        retained_artifact_paths: dict[Path | str, tuple[str, str]] = {}
         if isinstance(android_to_macos, dict):
             reasons.extend(
                 _direction_reasons(
                     android_to_macos,
                     "android_clipboardmanager_to_macos_nspasteboard",
                     evidence_dir,
+                    retained_artifact_paths,
                 )
             )
             transport = android_to_macos.get("transport")
@@ -502,6 +526,7 @@ def _product_e2e_gate(
                     macos_to_android,
                     "macos_nspasteboard_to_android_clipboardmanager",
                     evidence_dir,
+                    retained_artifact_paths,
                 )
             )
             transport = macos_to_android.get("transport")
@@ -656,8 +681,8 @@ def derive_gate(
             "absence of send/write failures, cleanup completion, exact source/destination system clipboard endpoints, "
             "distinct final marker matches, distinct change IDs, distinct SHA-256 digests, and retained product "
             "artifacts for the source read, sender action, receiver approval, protocol packets, destination write, "
-            "final verification, and negative boundary checks, with distinct non-empty artifact files per role. Offline or "
-            "synthetic coverage alone remains readiness evidence."
+            "final verification, and negative boundary checks, with distinct non-empty artifact files per role, per "
+            "direction, and across both directions. Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
 
