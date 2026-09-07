@@ -1,22 +1,23 @@
 # Open gates coverage audit
 
 Date: 2026-08-22 local / 2026-08-21 UTC
-Last refreshed: 2026-09-03 UTC / 2026-09-04 local
-Base: `origin/main` at `93d4450a5e583a54fe53616993cc9865c370c076`
+Last refreshed: 2026-09-07 UTC / 2026-09-07 local
+Base: `origin/main` at `518f6f8512d7f47d36d444557ab841ea0d5e0b83`
 Scope: audit only. This document does not close any README gate and does not
 change product status.
 
 ## Inputs checked
 
 - `git fetch origin main --prune` completed before this refresh.
-- `git merge-base --is-ancestor 93d4450a5e583a54fe53616993cc9865c370c076 HEAD`
-  confirmed the PR #536 merge commit is included in the audited base.
-- `gh pr view 535 --json number,state,mergedAt,mergeCommit,title,url` and
-  `gh pr view 536 --json number,state,mergedAt,mergeCommit,title,url`
-  confirmed both PRs are merged.
+- `CURRENT_MAIN_SHA=$(git rev-parse origin/main)` returned
+  `518f6f8512d7f47d36d444557ab841ea0d5e0b83`, and the audit required that
+  value to exactly equal the recorded current-base SHA before writing the
+  refresh.
+- `gh pr view 664 --json number,state,mergedAt,mergeCommit,title,url,baseRefName,headRefName`
+  confirmed PR #664 is merged to `main` at the audited base.
 - `gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url`
-  returned no open PRs before this refresh PR was opened, so there are no
-  active external open PR owners in this refresh.
+  returned PR #662, this aggregate refresh PR itself; there are no active
+  external open PR owners in this refresh.
 - Evidence and command coverage were scanned under `README.md`,
   `docs/changes`, `docs/testing.md`, `Makefile`, `scripts/`, and `tools/`.
 - The Phase 0 stable-release aggregate manifest now records the same open-PR
@@ -35,17 +36,20 @@ change product status.
   external-camera latency, or hardware-specific peripheral gates unless those
   exact hardware conditions are present in the run.
 - Active owner PR freshness is sourced from the GitHub open-PR snapshot. In this
-  refresh there are no open PRs; every active gate `owner_prs` list remains
-  empty. Historical merged PR numbers may appear in prose only as baseline
-  context.
+  refresh the only open PR is PR #662, this aggregate refresh PR itself; every
+  active gate `owner_prs` list remains empty. Historical merged PR numbers may
+  appear in prose only as baseline context.
+- For gate-owner purposes, the open PR snapshot is empty: PR #662 is the
+  aggregate refresh PR itself, not an external owner for a README gate.
 
-## 2026-09-03 UTC / 2026-09-04 local refresh
+## 2026-09-07 UTC / 2026-09-07 local refresh
 
-- The current base is the PR #536 merge commit `93d4450a5e583a54fe53616993cc9865c370c076`.
-- PR #535 and PR #536 are merged, and there were no open PRs when this refresh
-  branch captured the snapshot. Previous owner mappings from #157 through #536
-  are now merged, closed, or superseded historical context rather than active
-  external gate owners.
+- The current base is the PR #664 merge commit `518f6f8512d7f47d36d444557ab841ea0d5e0b83`.
+- PR #654, PR #656, PR #657, PR #658, PR #659, PR #660, PR #661, PR #663, and
+  PR #664 are merged into the audited mainline. PR #655 is closed without
+  merging. The only open PR at snapshot time was PR #662, this aggregate refresh
+  PR itself, so previous owner mappings through #664 are now merged, closed, or
+  superseded historical context rather than active external gate owners.
 - The Phase 0 module-ownership sub-gate now passes on current main. This closes
   only the source/offline module-boundary requirement. It does not close any
   missing runtime evidence gate.
@@ -81,9 +85,10 @@ change product status.
 
 The old audit tracked overlapping open PR clusters for Host RSS/signing, Phase 2,
 Phase 3, HarmonyOS, clipboard/file transfer, WakeHost, iOS, latency, and module
-ownership. As of this refresh, the open PR snapshot is empty. Those clusters
-are retired from current ownership tracking; any future owner must appear in the
-fresh GitHub open-PR snapshot and in the manifest `owner_prs` list.
+ownership. As of this refresh, the only open PR is PR #662, this aggregate
+refresh PR itself. Those clusters are retired from current ownership tracking;
+any future owner must appear in the fresh GitHub open-PR snapshot and in the
+manifest `owner_prs` list.
 
 ## Practical next queue
 

@@ -1,0 +1,16 @@
+c0367f37adcafb73513ebd3e783198140ff8d1f2
+518f6f8512d7f47d36d444557ab841ea0d5e0b83
+c0367f37a docs: refresh phase0 aggregate after PR 658
+518f6f851 test(evidence): reject shared clipboard artifacts
+e1f55254d test(evidence): require exact file-transfer artifact roles (#663)
+a33c08426 test(evidence): require exact clipboard artifact roles (#661)
+2c41ca339 feat(android): show audio readiness in settings (#658)
+c7038be11 fix(android): add outgoing file transfer confirmation (#660)
+022462098 fix(android): improve clipboard confirmation dialogs (#659)
+65450f8a3 fix(android): make incoming file offers readable
+670dd5ea6 test(evidence): harden latency archive validation (#656)
+2e6e0a773 docs: refresh phase0 aggregate after PR 653 (#654)
+eb87c4965 fix(android): adapt Internet secondary actions for large text
+cce7ed9df docs: refresh phase0 aggregate after PR 651
+ac804cb98 Add peripheral input diagnostics and pointer guards (#651)
+3e7dec205 test(evidence): harden clipboard and file transfer gates (#650)

@@ -1,0 +1,13 @@
+[
+  {
+    "baseRefName": "main",
+    "headRefName": "codex/phase0-aggregate-after-658",
+    "headRefOid": "cef719819797e79f4cce73c10da3113015167e24",
+    "isDraft": false,
+    "mergeStateStatus": "BEHIND",
+    "number": 662,
+    "title": "docs: refresh phase0 aggregate after PR 658",
+    "updatedAt": "2026-09-07T08:42:40Z",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/662"
+  }
+]
