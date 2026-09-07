@@ -28,10 +28,10 @@ diff digest at collection time.
 
 ## Device
 
-Recorded in `metadata/device-identity.txt` with the ADB serial retained:
+Recorded in `metadata/device-identity.txt` with the ADB serial redacted:
 
 ```text
-serial=EP0110PZ0B9110300B
+serial=<redacted-adb-serial>
 manufacturer=nubia
 model=P0110
 device=pacific
@@ -52,14 +52,14 @@ layout runs and the post-run reverse sample are retained in this evidence
 package.
 
 ```bash
-ANDROID_SERIAL=EP0110PZ0B9110300B ./gradlew --no-daemon connectedDebugAndroidTest \
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s EP0110PZ0B9110300B shell am instrument -w -r \
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <redacted-adb-serial> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <redacted-adb-serial> shell am instrument -w -r \
   -e class dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest \
   dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
-adb -s EP0110PZ0B9110300B reverse --list
+adb -s <redacted-adb-serial> reverse --list
 ```
 
 ## Results

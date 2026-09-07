@@ -1,6 +1,6 @@
 # device identity
 timestamp_utc=2026-09-07T01:58:01Z
-serial=EP0110PZ0B9110300B
+serial=<redacted-adb-serial>
 manufacturer=nubia
 model=P0110
 device=pacific

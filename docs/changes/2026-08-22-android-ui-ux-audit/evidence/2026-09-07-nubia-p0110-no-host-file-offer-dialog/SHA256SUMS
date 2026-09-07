@@ -16,6 +16,6 @@ faf36f85f585a84c93d6a089e431799d7ca69792ab384a8c0f6603ef9222bd3d  ./diagnostics/
 06fd3b42cba80c44486eeb1185b824a6442ab959b268f93bb93f40efd280f5d4  ./logs/adb-install-am-instrument-file-offer-dialog.log
 eecd4c55103f1e36f05077b5f4b6a67312dcf4caef99722874ff81b648178da0  ./logs/adb-reverse-after-tests.txt
 e17b884cc2494f7eb6154f0d5d73b65148e4f74579be5d2120f521cba13baec2  ./logs/connected-file-offer-dialog-instrumentation.log
-aa157b5620920fd188d346a43612c80215be567c2ec8e927c71baac022b4f91c  ./metadata/device-identity.txt
+025ceadfe80087b9472cab23edf4f5214f681e74500f50df0aa872290e2e98a2  ./metadata/device-identity.txt
 73eb28c382e2d34ec0ceb405afcb1e528f34f4bfa8f71829026a97dd3cc19e23  ./metadata/source-provenance.txt
-377223dd18a15a3f3b867865069fe175dee199670ac0a37857d1b529876b886d  ./README.md
+b5582f3551a8d863f5661016a9e9b4381346ebf3f0a94f86d1ba257a48dc403f  ./README.md
