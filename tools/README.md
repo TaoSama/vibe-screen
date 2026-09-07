@@ -608,16 +608,17 @@ smoke owner:
 make file-transfer-android-smoke EVIDENCE_DIR=.build/evidence/file-transfer-android-smoke
 ```
 
-The gate evaluates Host readiness, USB or trusted-LAN preflight, optional
-Android file-transfer instrumentation output, and retained product E2E evidence
-from both Android -> macOS and macOS -> Android directions. A pass requires a
-real Nubia P0110/pacific Android 16 run with a ready transport, observed
-file-transfer UI smoke class or method in the Android instrumentation log,
-file-offer/request/content packets, explicit sender action and receiver
-approval, remote file write, positive session epoch, final SHA-256 equality,
-and cancel/cleanup evidence. Summary-only, unrelated, failed, missing product,
-synthetic/offline-only, or P0110 evidence relabeled as Xiaomi/fuxi remains
-blocked or failed.
+The gate evaluates Host readiness, USB or trusted-LAN preflight, Android
+file-transfer instrumentation output, and retained product E2E evidence from
+both Android -> macOS and macOS -> Android directions. A pass requires a real
+Nubia P0110/pacific Android 16 run with a ready transport, an Android
+instrumentation log naming an expected file-transfer UI smoke class plus either
+expected file-transfer method passes or at least 2 successful tests from that
+same class, file-offer/request/content packets, explicit sender action and
+receiver approval, remote file write, positive session epoch, final SHA-256
+equality, and cancel/cleanup evidence. Summary-only, unrelated, skipped,
+ignored, failed, missing product, synthetic/offline-only, or P0110 evidence
+relabeled as Xiaomi/fuxi remains blocked or failed.
 
 ### Android USB current-base owner gate
 
