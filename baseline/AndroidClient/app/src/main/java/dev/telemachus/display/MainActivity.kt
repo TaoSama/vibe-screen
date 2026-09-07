@@ -5412,6 +5412,7 @@ class MainActivity : AppCompatActivity() {
                 populateHostActions(availableHostActions)
                 refreshClipboardControl()
                 refreshFileTransferControl()
+                refreshAudioReadinessInSettings()
                 mainDiag(
                     "managed policy updated: customGestures=" + customGestures +
                         " hostActions=" + capabilities.hostActions +

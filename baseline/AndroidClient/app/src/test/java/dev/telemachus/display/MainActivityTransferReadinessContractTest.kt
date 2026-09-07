@@ -358,7 +358,8 @@ class MainActivityTransferReadinessContractTest {
                 streamManagedCallback.contains("managedFileTransferAllowed = availability.fileTransferAllowed") &&
                 streamManagedCallback.contains("managedAudioAllowed = availability.audioAllowed") &&
                 streamManagedCallback.contains("managedWakeHostAllowed = availability.wakeHostAllowed") &&
-                streamManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed"),
+                streamManagedCallback.contains("managedFixedHostAllowed = availability.fixedHostAllowed") &&
+                streamManagedCallback.contains("refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Internet managed-policy updates should use the same Settings availability source",

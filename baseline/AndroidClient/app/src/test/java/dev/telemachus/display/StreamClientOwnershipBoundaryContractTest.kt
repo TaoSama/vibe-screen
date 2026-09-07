@@ -161,6 +161,39 @@ class StreamClientOwnershipBoundaryContractTest {
     }
 
     @Test
+    fun `audio stop readiness notification is owned by stop recorder`() {
+        val streamClient = source(PRODUCTION_STREAM_CLIENT)
+        val stopRecorder = streamClient.substringAfter("private fun recordProtocolAudioStopped(")
+
+        assertTrue(
+            "audio stop recorder must notify Settings readiness exactly once",
+            stopRecorder
+                .substringBefore("private fun notifyAudioReadinessChanged()")
+                .contains("notifyAudioReadinessChanged()"),
+        )
+        assertFalse(
+            "legacy fallback must not duplicate the recorder's readiness notification",
+            streamClient
+                .substringAfter("private fun configureLegacyMode")
+                .substringBefore("controllerConnectionAcks.reset()")
+                .contains(
+                    "recordProtocolAudioStopped(\"legacy_fallback\")" +
+                        "\n            notifyAudioReadinessChanged()",
+                ),
+        )
+        assertFalse(
+            "connection cleanup must not duplicate the recorder's readiness notification",
+            streamClient
+                .substringAfter("closeTransport()")
+                .substringBefore("wakeHostProductOwner.clearAuthorizationSecret()")
+                .contains(
+                    "recordProtocolAudioStopped(\"connection_cleanup\")" +
+                        "\n            notifyAudioReadinessChanged()",
+                ),
+        )
+    }
+
+    @Test
     fun `clipboard expiry completion is notified when queued batch loses its session`() {
         val streamClient = source(PRODUCTION_STREAM_CLIENT)
         val expireMethod = streamClient.indexOf("fun expireClipboardRequest(")

@@ -847,7 +847,6 @@ class StreamClient(
         }
         if (activeAudioFormat != null) {
             recordProtocolAudioStopped("legacy_fallback")
-            notifyAudioReadinessChanged()
         }
         controllerConnectionAcks.reset()
         peripheralInputAcks.reset()
@@ -2901,7 +2900,6 @@ class StreamClient(
         }
         if (activeAudioFormat != null) {
             recordProtocolAudioStopped("connection_cleanup")
-            notifyAudioReadinessChanged()
         }
         wakeHostProductOwner.clearAuthorizationSecret()
         fileTransferProductOwner.clear()
