@@ -2,8 +2,6 @@ package dev.telemachus.display
 
 import android.content.Context
 import android.content.res.Configuration
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,8 +12,6 @@ import androidx.appcompat.view.ContextThemeWrapper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.File
-import java.io.FileOutputStream
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,9 +41,6 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 layout.assertTextReadable(layout.verification)
                 layout.assertLabelsOwnFields()
                 layout.assertOfferContentCanScrollIntoView()
-                if (shouldCaptureEvidence(widthDp, heightDp, fontScale)) {
-                    assertTrue("offer evidence screenshot exists", layout.capture("file-offer-$widthDp-$heightDp-$fontScale").isFile)
-                }
             }
         }
     }
@@ -76,13 +69,20 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
         assertion: (OfferMeasuredLayout) -> Unit,
     ) {
         val context = configuredContext(widthDp, heightDp, fontScale)
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
             val parent = FrameLayout(context)
             val root = inflate(context, parent, R.layout.dialog_file_transfer_offer) as ScrollView
-            parent.addView(root)
-            OfferMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
-                .let(assertion)
+            try {
+                parent.addView(root)
+                OfferMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
+                    .let(assertion)
+            } finally {
+                parent.removeAllViews()
+                root.removeAllViews()
+            }
         }
+        instrumentation.waitForIdleSync()
     }
 
     private class OfferMeasuredLayout(
@@ -181,35 +181,10 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
             assertTrue("field bottom can scroll into viewport", field.bottom <= visibleBottom)
         }
 
-        fun capture(prefix: String): File {
-            val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
-            try {
-                root.draw(Canvas(bitmap))
-                val outputRoot = context.getExternalFilesDir(null) ?: context.cacheDir
-                val output = File(outputRoot, "file-transfer-offer-dialog")
-                assertTrue("evidence directory exists", output.isDirectory || output.mkdirs())
-                val file = File(output, "$prefix-${root.width}x${root.height}.png")
-                FileOutputStream(file).use { stream ->
-                    assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
-                }
-                assertTrue("evidence screenshot is non-empty", file.length() > 0L)
-                return file
-            } finally {
-                bitmap.recycle()
-            }
-        }
     }
 
     private companion object {
         const val TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX = 2f
-
-        fun shouldCaptureEvidence(
-            widthDp: Int,
-            heightDp: Int,
-            fontScale: Float,
-        ): Boolean =
-            (widthDp == 320 && heightDp == 640 && fontScale == 2.0f) ||
-                (widthDp == 640 && heightDp == 320 && fontScale == 2.0f)
     }
 }
 

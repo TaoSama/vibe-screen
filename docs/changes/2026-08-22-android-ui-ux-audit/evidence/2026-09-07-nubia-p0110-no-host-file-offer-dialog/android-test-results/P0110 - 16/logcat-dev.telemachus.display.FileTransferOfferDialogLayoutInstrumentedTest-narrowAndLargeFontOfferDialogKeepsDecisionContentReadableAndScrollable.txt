@@ -1,0 +1,6 @@
+09-07 09:57:30.692 19168 19191 I TestRunner: started: narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)
+09-07 09:57:30.695 19168 19191 I emachus.display: AssetManager2(0xb400007c725b7c98) locale list changing from [] to [zh-CN]
+09-07 09:57:30.699  4248  4248 D HidDeviceService: handleMessage(): msg.what=8
+09-07 09:57:30.700  6143  6305 V OsAgent : broadcastSystemEvent - 7
+09-07 09:57:30.720 19168 19191 I emachus.display: AssetManager2(0xb400007c725b5d58) locale list changing from [] to [zh-CN]
+09-07 09:57:30.734 19168 19191 I TestRunner: finished: narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)
