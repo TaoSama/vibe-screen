@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.832" timestamp="2026-09-07T19:26:46" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="narrowAndLargeFontClipboardConfirmationKeepsContentReadableAndScrollable" classname="dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest" time="0.031" />
+  <testcase name="clipboardConfirmationCoversSendReceiveAndOverwriteCopy" classname="dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest" time="0.001" />
+</testsuite>

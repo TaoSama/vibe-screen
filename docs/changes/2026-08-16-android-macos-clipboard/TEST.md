@@ -47,6 +47,22 @@ protection / size / preview 字段、bounded truncated preview、大字体、窄
 readiness，不证明真实 Android ClipboardManager <-> macOS NSPasteboard USB/LAN
 产品 E2E。
 
+2026-09-08 current-main 真机 no-Host Android baseline refresh 新增保留证据：
+[evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/](evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md)。
+该 run 在 Nubia P0110 / pacific / Android 16 / SDK 36 上运行
+`ClipboardManagerInstrumentedTest`，8 个测试通过，覆盖普通前台文本、
+instrumentation 参数 set/read、256 KiB UTF-8 Unicode 文本、扩展 320 KiB
+UTF-8 文本、空剪贴板清理、非文本 Intent `ClipData` 安全处理，以及首项
+非文本但后续项为文本的 multi-item `ClipData` 不被当作首个可发送文本。
+同一证据还重跑 `ClipboardConfirmationDialogLayoutInstrumentedTest`，2 个测试
+通过，确认 clipboard confirmation dialog 布局覆盖仍成立。验证中只读
+`adb reverse --list`，没有 `tcp:54321` 映射。探索性的 512 KiB 与 1 MiB
+本地 Android `ClipboardManager.setPrimaryClip` 写入在 P0110 上触发 Binder
+`TransactionTooLargeException`，因此不作为通过证据；Protocol v1 1 MiB 上限
+仍只由 JVM/协议离线测试覆盖。该 current-main no-Host refresh 不启动 Host，
+不读写 macOS `NSPasteboard`，不证明真实 Android ClipboardManager <-> macOS
+NSPasteboard USB/LAN 产品 E2E，gate 仍保持 blocked。
+
 命令：
 
 ```bash
