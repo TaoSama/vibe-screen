@@ -1,0 +1,5 @@
+./gradlew :app:testDebugUnitTest --tests dev.telemachus.display.ConnectionGuidanceTest --tests dev.telemachus.display.ConnectionPanelLayoutPolicyTest --tests dev.telemachus.display.ConnectionSubtitleDisclosurePolicyTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --tests dev.telemachus.display.SettingsDialogLayoutPolicyTest --tests dev.telemachus.display.MainActivitySettingsAccessibilityContractTest --tests dev.telemachus.display.ClientExperienceTest --tests dev.telemachus.display.DesignTokenContrastTest --tests dev.telemachus.display.ManagedPolicyUiAvailabilityPolicyTest --tests dev.telemachus.display.QRScannerAccessibilityContractTest --tests dev.telemachus.display.StatusOverlayLayoutPolicyTest
+
+Observed terminal summary:
+BUILD SUCCESSFUL in 17s
+39 actionable tasks: 10 executed, 29 up-to-date

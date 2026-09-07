@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.ConnectionGuidanceTest" tests="37" skipped="0" failures="0" errors="0" timestamp="2026-09-07T16:45:43" hostname="Mac.local" time="0.069">
+  <properties/>
+  <testcase name="transportFailureNetworkDownDetailsUseRouteGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.006"/>
+  <testcase name="withPortReplacesPortWhilePreservingModeAndTransport" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="lanErrorsProvideExecutableTrustedNetworkRecoveryWithoutAdb" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="rawHostUnreachableMessagesUseModeSpecificRouteGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.002"/>
+  <testcase name="explicitNetworkFailureWinsOverHandshakeText" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="staleEpochProtocolFailuresUseFreshSessionGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="lanWifiRouteDiscoveryFailureIsNetworkUnreachable" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="nestedSocketCauseIsClassifiedInsteadOfReducedToUnknown" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="rawNetworkDownMessagesUseModeSpecificRouteGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.001"/>
+  <testcase name="rawNetworkInterfaceUnavailableMessagesUseModeSpecificRouteGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.001"/>
+  <testcase name="genericCaptureAndHandshakeFailuresStayOnExistingGuidanceFamilies" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="sessionFailureKindsRouteToTheRightGuidanceFamily" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="heartbeatTransportAndWriteFailuresAreReclassifiedFromTheirDetail" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="rawAddressNotAvailableMessagesUseModeSpecificRouteGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.001"/>
+  <testcase name="usbRefusedConnectionsUseTheActiveAdbTransportRecoveryPathForMissingRoutes" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="hostPermissionDeniedMessagesUseTccRecoveryWithoutRawDetails" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="userGuidanceDoesNotExposeRawFailureDetails" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="usbAndUnavailableTransportsEachGetTheirOwnRecoveryMatrix" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="cyclicCauseChainTerminatesAndStillClassifiesKnownFailures" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="beforeDisplayConfigurationIsTreatedAsHostNotRunning" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="internetErrorsProvideExecutableRouteOrLeaseRecoveryWithoutAdb" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="rawTimedOutTransportMessagesUseModeSpecificTimeoutGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="genericPermissionDeniedDoesNotMasqueradeAsMacTccGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="overloadedAndDecoderGuidanceAvoidNarrowRecoveryClaims" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.037"/>
+  <testcase name="allTransportErrorClassesAreModeAware" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.001"/>
+  <testcase name="beforeDisplayConfigurationWrapperWinsOverRefusedCause" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="sessionMismatchDetailsUseRepairablePairingGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="withPortOnLanContextKeepsLanMode" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="usbUserFacingRecoveryCopyDoesNotExposeAdbCommands" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.006"/>
+  <testcase name="protocolProbeCloseIsTreatedAsHostNotRunning" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="protocolGuidanceRemainsModeIndependent" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="everySessionFailureKindHasActionableGuidanceWithoutRawDetails" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.001"/>
+  <testcase name="sessionProtocolExceptionUnwrapsToUnderlyingFailureGuidance" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="usbRecoveryCopyRoutesRepairThroughMacAppWithoutRawCommands" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.006"/>
+  <testcase name="nestedConnectNoRouteAndUnknownHostCausesAreClassified" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.0"/>
+  <testcase name="intentionalTerminalSessionGuidanceIncludesRecoveryAction" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.003"/>
+  <testcase name="networkUnreachableFailuresUseModeSpecificRouteTitles" classname="dev.telemachus.display.ConnectionGuidanceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
