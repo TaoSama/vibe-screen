@@ -179,8 +179,11 @@ The retained `file-transfer-product-e2e.json` must include both
 direction must include evidence-relative `retained_artifacts` entries for
 `sender_action`, `receiver_approval`, `protocol_packets`, `remote_file`, and
 `sha256_verification`; the files must exist under the same evidence bundle and
-be non-empty, with each role backed by a distinct file. Each direction must
-also record the exact source and destination endpoints:
+be non-empty, with each role backed by a distinct file. The `remote_file`
+artifact must retain the actual destination file bytes, not only a checksum or
+summary, and its byte length and SHA-256 digest must match the direction's
+`byte_length` and `sha256` fields. Each direction must also record the exact
+source and destination endpoints:
 `android_saf_selected_file` -> `macos_saved_file`, or
 `macos_selected_file` -> `android_downloads_file`.
 The `cancel_cleanup` block must similarly retain `cancel_request` and
@@ -196,8 +199,9 @@ action and layout path, not real file transfer. The log must include an `OK (N
 tests)` summary with `N > 0`; zero-test or summary-only Gradle output cannot
 pass. The real product closure remains the `bidirectional_product_e2e` evidence:
 two directions, user approval, remote file writes, distinct verified transfer
-IDs, exact file endpoints, progress, final SHA-256 equality, distinct file names
-and payload digests, positive session epoch, and cancel cleanup.
+IDs, exact file endpoints, progress, retained destination-file bytes whose
+length and SHA-256 match the manifest, distinct file names and payload digests,
+positive session epoch, and cancel cleanup.
 
 Current 2026-08-28 collection on clean `origin/main`-based branch
 `codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device

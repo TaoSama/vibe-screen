@@ -397,7 +397,8 @@ readiness pass; either USB or trusted-LAN real transport readiness; an Android
 file-transfer instrumentation log with `OK`; and `file-transfer-product-e2e.json`
 proving Android -> macOS and macOS -> Android product transfers with
 file-offer/request/content packets, explicit sender action, receiver approval,
-saved remote file, positive session epoch, final SHA-256 equality, and
+saved remote file bytes whose retained artifact size and SHA-256 match the
+direction manifest, positive session epoch, final SHA-256 equality, and
 cancel/cleanup evidence.
 
 Offline protocol/JVM tests, Android control-bar instrumentation, synthetic JSON,

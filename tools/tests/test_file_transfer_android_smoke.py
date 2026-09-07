@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -59,6 +60,8 @@ def lan_preflight(**overrides: object) -> dict[str, object]:
 
 
 def product_e2e(**overrides: object) -> dict[str, object]:
+    android_to_macos_payload = b"p0110 android-to-macos payload\n"
+    macos_to_android_payload = b"p0110 macos-to-android payload\n"
     direction = {
         "transport": "usb",
         "protocol_v1_session": True,
@@ -77,8 +80,8 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "source_endpoint_verified": True,
         "destination_endpoint_verified": True,
         "file_name": "vibe-screen-smoke.txt",
-        "byte_length": 32,
-        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "byte_length": len(android_to_macos_payload),
+        "sha256": hashlib.sha256(android_to_macos_payload).hexdigest(),
         "transfer_id_hex": "00112233445566778899aabbccddeeff",
         "session_epoch": 7,
         "source_endpoint": "android_saf_selected_file",
@@ -87,13 +90,14 @@ def product_e2e(**overrides: object) -> dict[str, object]:
             {"role": "sender_action", "path": "android-to-macos/sender-action.txt"},
             {"role": "receiver_approval", "path": "android-to-macos/receiver-approval.txt"},
             {"role": "protocol_packets", "path": "android-to-macos/protocol-packets.jsonl"},
-            {"role": "remote_file", "path": "android-to-macos/remote-file.sha256"},
+            {"role": "remote_file", "path": "android-to-macos/remote-file.bin"},
             {"role": "sha256_verification", "path": "android-to-macos/sha256-verification.txt"},
         ],
     }
     macos_to_android = dict(direction)
     macos_to_android["file_name"] = "vibe-screen-smoke-macos-to-android.txt"
-    macos_to_android["sha256"] = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+    macos_to_android["byte_length"] = len(macos_to_android_payload)
+    macos_to_android["sha256"] = hashlib.sha256(macos_to_android_payload).hexdigest()
     macos_to_android["transfer_id_hex"] = "ffeeddccbbaa99887766554433221100"
     macos_to_android["source_endpoint"] = "macos_selected_file"
     macos_to_android["destination_endpoint"] = "android_downloads_file"
@@ -101,7 +105,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         {"role": "sender_action", "path": "macos-to-android/sender-action.txt"},
         {"role": "receiver_approval", "path": "macos-to-android/receiver-approval.txt"},
         {"role": "protocol_packets", "path": "macos-to-android/protocol-packets.jsonl"},
-        {"role": "remote_file", "path": "macos-to-android/remote-file.sha256"},
+        {"role": "remote_file", "path": "macos-to-android/remote-file.bin"},
         {"role": "sha256_verification", "path": "macos-to-android/sha256-verification.txt"},
     ]
     document: dict[str, object] = {
@@ -153,12 +157,10 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         "android-to-macos/sender-action.txt",
         "android-to-macos/receiver-approval.txt",
         "android-to-macos/protocol-packets.jsonl",
-        "android-to-macos/remote-file.sha256",
         "android-to-macos/sha256-verification.txt",
         "macos-to-android/sender-action.txt",
         "macos-to-android/receiver-approval.txt",
         "macos-to-android/protocol-packets.jsonl",
-        "macos-to-android/remote-file.sha256",
         "macos-to-android/sha256-verification.txt",
         "cancel-cleanup/cancel-request.txt",
         "cancel-cleanup/cleanup-state.txt",
@@ -166,6 +168,8 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         path = root / artifact_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"retained product artifact: {artifact_path}\n", encoding="utf-8")
+    (root / "android-to-macos" / "remote-file.bin").write_bytes(b"p0110 android-to-macos payload\n")
+    (root / "macos-to-android" / "remote-file.bin").write_bytes(b"p0110 macos-to-android payload\n")
     return paths
 
 
@@ -662,6 +666,53 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].path retained artifact android-to-macos/protocol-packets.jsonl must be non-empty",
+            result["blockers"],
+        )
+
+    def test_remote_file_artifact_size_must_match_direction_byte_length(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "remote-file.bin").write_bytes(b"wrong-size")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any(
+                blocker.startswith(
+                    "bidirectional_product_e2e: android_to_macos_file_transfer.remote_file artifact size 10 must equal byte_length "
+                )
+                for blocker in result["blockers"]
+            ),
+            result["blockers"],
+        )
+
+    def test_remote_file_artifact_sha256_must_match_direction_sha256(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            payload = bytearray((root / "android-to-macos" / "remote-file.bin").read_bytes())
+            payload[-2] = ord("X")
+            (root / "android-to-macos" / "remote-file.bin").write_bytes(payload)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.remote_file artifact SHA-256 must equal direction.sha256",
             result["blockers"],
         )
 
