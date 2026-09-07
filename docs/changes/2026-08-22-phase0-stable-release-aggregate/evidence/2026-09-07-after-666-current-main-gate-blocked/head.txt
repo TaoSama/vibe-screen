@@ -1,0 +1,7 @@
+3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f
+3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f
+3c1ad9874 docs: add P0110 no-Host dialog layout evidence
+92ca2ab59 Harden file transfer smoke evidence gate (#665)
+98e07ddaa docs: refresh phase0 aggregate after PR 664 (#662)
+518f6f851 test(evidence): reject shared clipboard artifacts
+e1f55254d test(evidence): require exact file-transfer artifact roles (#663)

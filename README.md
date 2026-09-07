@@ -321,6 +321,8 @@ Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).
 The Phase 0 stable-release decision is owned by the aggregate manifest in
 [docs/changes/2026-08-22-phase0-stable-release-aggregate](docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md).
+The latest current-main refresh after PR #666 remains blocked in
+[2026-09-07-after-666-current-main-gate-blocked](docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/README.md).
 Do not use shipped, complete, closed, or stable wording for Phase 0 until
 `make phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1` reports
 `can_mark_phase0_stable_release=true`.

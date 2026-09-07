@@ -1,0 +1,50 @@
+# Command ledger
+
+git fetch origin --prune
+git switch -c codex/phase0-aggregate-after-666 origin/main
+git status --short --branch
+git remote get-url origin
+git rev-parse HEAD
+git rev-parse origin/main
+git log --oneline --decorate -8
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=666)'
+gh pr list --repo TaoSama/vibe-screen --state closed --base main --limit 200 --json number,title,closedAt,mergedAt,headRefName,baseRefName,url --jq '[.[] | select(.number>=568 and .number<=666 and .mergedAt == null)] | sort_by(.number)'
+gh pr view 662 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files
+gh pr view 665 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files
+gh pr view 666 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url --jq 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/open-prs.json
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=666)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/merged-prs-568-666.jsonl
+gh pr list --repo TaoSama/vibe-screen --state closed --base main --limit 200 --json number,title,closedAt,mergedAt,headRefName,baseRefName,url --jq '[.[] | select(.number>=568 and .number<=666 and .mergedAt == null)] | sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/closed-prs-568-666.json
+gh pr view 662 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/pr-662-merged.json
+gh pr view 665 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/pr-665-merged.json
+gh pr view 666 --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/pr-666-merged.json
+gh run list --repo TaoSama/vibe-screen --commit 3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f --limit 20 --json databaseId,name,displayTitle,event,status,conclusion,workflowName,headBranch,headSha,url,createdAt,updatedAt
+gh run view 34120456414 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs
+gh run view 34120456371 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs
+gh run view 34120456261 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs
+gh run view 34120456414 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-run-34120456414.json
+gh run view 34120456371 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-run-34120456371.json
+gh run view 34120456261 --repo TaoSama/vibe-screen --json databaseId,name,displayTitle,event,status,conclusion,workflowName,url,headBranch,headSha,number,createdAt,updatedAt,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-run-34120456261.json
+gh run list --repo TaoSama/vibe-screen --commit 3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f --limit 20 --json databaseId,name,displayTitle,event,status,conclusion,workflowName,headBranch,headSha,url,createdAt,updatedAt > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-runs-3c1ad987.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release tools.tests.test_phase0_module_ownership -v
+make phase0-module-ownership-gate PHASE0_MODULE_OWNERSHIP_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-module-ownership-summary.json
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-summary.json
+make phase0-stable-release-gate
+set +e
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 make phase0-stable-release-gate
+phase0_stable_release_exit=$?
+printf '%s\n' "$phase0_stable_release_exit" > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-exit.txt
+test "$phase0_stable_release_exit" -eq 2
+PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=3c1ad98748cb6e6834dc9a89c7b8e1de82d59e3f PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-summary.json make phase0-stable-release-gate
+phase0_stable_release_expected_source_exit=$?
+printf '%s\n' "$phase0_stable_release_expected_source_exit" > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-expected-source-exit.txt
+test "$phase0_stable_release_expected_source_exit" -eq 2
+set -e
+make evidence-tools-test
+shasum -a 256 docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/README.md docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/commands.txt docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/head.txt docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/open-prs.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/merged-prs-568-666.jsonl docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/closed-prs-568-666.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/pr-662-merged.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/pr-665-merged.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/pr-666-merged.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-run-34120456414.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-run-34120456371.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-run-34120456261.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/github-runs-3c1ad987.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-module-ownership-summary.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-summary.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-exit.txt docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/phase0-stable-release-expected-source-exit.txt > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/SHA256SUMS
+shasum -a 256 -c docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-07-after-666-current-main-gate-blocked/SHA256SUMS
+git diff --check
+
+# Expected release-claim result: exit 2 while aggregate_verdict=blocked and
+# can_mark_phase0_stable_release=false.
