@@ -1218,6 +1218,36 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_clipboard_retained_artifact_paths_must_be_distinct_across_directions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(macos_to_android, dict)
+            retained_artifacts = macos_to_android["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            source_artifact = retained_artifacts[0]
+            assert isinstance(source_artifact, dict)
+            source_artifact["path"] = "android-to-macos/source-clipboard-read.txt"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.retained_artifacts[0].path for source_clipboard_read must be distinct from android_clipboardmanager_to_macos_nspasteboard source_clipboard_read artifact path",
+            result["blockers"],
+        )
+
     def test_clipboard_retained_artifact_roles_must_be_exact_and_unique(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
