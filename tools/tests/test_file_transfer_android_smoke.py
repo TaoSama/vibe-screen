@@ -295,6 +295,64 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             "android_file_transfer_smoke: Android file-transfer instrumentation log does not show an OK result",
             result["blockers"],
         )
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log does not show any executed tests",
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_zero_executed_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "test session start\nOK (0 tests)\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log does not show any executed tests",
+            result["blockers"],
+        )
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log does not show an OK result",
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_missing_ok_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                "BUILD SUCCESSFUL in 1s\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log does not show any executed tests",
+            result["blockers"],
+        )
+        self.assertIn(
+            "android_file_transfer_smoke: Android file-transfer instrumentation log does not show an OK result",
+            result["blockers"],
+        )
 
     def test_android_log_accepts_crlf_ok_summary_line(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -634,6 +692,64 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[1].path must be distinct from sender_action artifact path",
+            result["blockers"],
+        )
+
+    def test_retained_artifact_paths_must_be_distinct_across_directions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(macos_to_android, dict)
+            retained_artifacts = macos_to_android["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            sender_artifact = retained_artifacts[0]
+            assert isinstance(sender_artifact, dict)
+            sender_artifact["path"] = "android-to-macos/sender-action.txt"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: macos_to_android_file_transfer.retained_artifacts[0].path for sender_action must be distinct from android_to_macos_file_transfer sender_action artifact path",
+            result["blockers"],
+        )
+
+    def test_cancel_cleanup_artifacts_must_be_distinct_from_direction_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            cancel_cleanup = document["cancel_cleanup"]
+            assert isinstance(cancel_cleanup, dict)
+            retained_artifacts = cancel_cleanup["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            cleanup_artifact = retained_artifacts[1]
+            assert isinstance(cleanup_artifact, dict)
+            cleanup_artifact["path"] = "android-to-macos/sender-action.txt"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.retained_artifacts[1].path for cleanup_state must be distinct from android_to_macos_file_transfer sender_action artifact path",
             result["blockers"],
         )
 

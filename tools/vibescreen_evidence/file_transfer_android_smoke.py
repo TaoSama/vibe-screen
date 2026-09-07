@@ -115,6 +115,7 @@ def _retained_artifact_reasons(
     label: str,
     required_roles: Sequence[str],
     evidence_dir: Path | None,
+    cross_product_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
 ) -> list[str]:
     artifacts = document.get(RETAINED_ARTIFACTS_FIELD)
     if not isinstance(artifacts, list) or not artifacts:
@@ -135,11 +136,16 @@ def _retained_artifact_reasons(
             role_name = role.strip()
             if role_name not in required_role_names:
                 reasons.append(f"{artifact_label}.role must be one of {', '.join(required_roles)}")
+                role_is_required = False
             elif role_name in seen_roles:
                 reasons.append(f"{artifact_label}.role duplicates {role_name} artifact")
+                role_is_required = True
+            else:
+                role_is_required = True
             seen_roles.add(role_name)
         else:
             role_name = f"entry {index}"
+            role_is_required = False
             reasons.append(f"{artifact_label}.role must be present")
 
         path_value = artifact.get("path")
@@ -184,6 +190,16 @@ def _retained_artifact_reasons(
                 reasons.append(f"{artifact_label}.path must be distinct from {previous_role} artifact path")
             else:
                 seen_artifact_paths[artifact_key] = role_name
+            if cross_product_artifact_paths is not None and role_is_required:
+                previous_artifact = cross_product_artifact_paths.get(artifact_key)
+                if previous_artifact is not None and previous_artifact[0] != label:
+                    previous_label, previous_role = previous_artifact
+                    reasons.append(
+                        f"{artifact_label}.path for {role_name} must be distinct from "
+                        f"{previous_label} {previous_role} artifact path"
+                    )
+                elif previous_artifact is None:
+                    cross_product_artifact_paths[artifact_key] = (label, role_name)
 
     missing_roles = [role for role in required_roles if role not in seen_roles]
     reasons.extend(
@@ -312,13 +328,28 @@ def _android_file_transfer_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android file-transfer instrumentation log is missing"],
         )
     text = sanitize_text(log_path.read_text(encoding="utf-8", errors="replace"))
-    passed = re.search(r"^OK \(\d+ tests?\)\r?$", text, re.MULTILINE) is not None
-    reasons = [] if passed else ["Android file-transfer instrumentation log does not show an OK result"]
+    executed_tests = _android_file_transfer_test_count(text)
+    passed = executed_tests > 0
+    reasons = []
+    if executed_tests <= 0:
+        reasons.append("Android file-transfer instrumentation log does not show any executed tests")
+    if not passed:
+        reasons.append("Android file-transfer instrumentation log does not show an OK result")
     return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
 
 
+def _android_file_transfer_test_count(text: str) -> int:
+    match = re.search(r"^OK \((\d+) tests?\)\r?$", text, re.MULTILINE)
+    if match is None:
+        return 0
+    return int(match.group(1))
+
+
 def _direction_reasons(
-    direction: dict[str, Any], label: str, evidence_dir: Path | None
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+    cross_product_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
 ) -> list[str]:
     required_true = (
         "protocol_v1_session",
@@ -372,6 +403,7 @@ def _direction_reasons(
             label,
             REQUIRED_DIRECTION_ARTIFACT_ROLES,
             evidence_dir,
+            cross_product_artifact_paths,
         )
     )
     return reasons
@@ -382,6 +414,7 @@ def _product_e2e_gate(
     missing: Sequence[str],
     available_transports: set[str],
     evidence_dir: Path | None,
+    retained_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     reasons = list(missing)
     evidence = ["file-transfer-product-e2e.json"] if product is not None else []
@@ -396,8 +429,17 @@ def _product_e2e_gate(
         transfer_ids: dict[str, str] = {}
         digests: dict[str, str] = {}
         file_names: dict[str, str] = {}
+        if retained_artifact_paths is None:
+            retained_artifact_paths = {}
         if isinstance(android_to_macos, dict):
-            reasons.extend(_direction_reasons(android_to_macos, "android_to_macos_file_transfer", evidence_dir))
+            reasons.extend(
+                _direction_reasons(
+                    android_to_macos,
+                    "android_to_macos_file_transfer",
+                    evidence_dir,
+                    retained_artifact_paths,
+                )
+            )
             transport = android_to_macos.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"android_to_macos_file_transfer.transport {transport} is not ready")
@@ -413,7 +455,14 @@ def _product_e2e_gate(
         else:
             reasons.append("missing android_to_macos_file_transfer direction evidence")
         if isinstance(macos_to_android, dict):
-            reasons.extend(_direction_reasons(macos_to_android, "macos_to_android_file_transfer", evidence_dir))
+            reasons.extend(
+                _direction_reasons(
+                    macos_to_android,
+                    "macos_to_android_file_transfer",
+                    evidence_dir,
+                    retained_artifact_paths,
+                )
+            )
             transport = macos_to_android.get("transport")
             if transport in {"usb", "trusted_lan"} and transport not in available_transports:
                 reasons.append(f"macos_to_android_file_transfer.transport {transport} is not ready")
@@ -449,7 +498,11 @@ def _product_e2e_gate(
     return _gate("bidirectional_product_e2e", PASS if not reasons else BLOCKED, reasons, evidence)
 
 
-def _cancel_cleanup_gate(product: dict[str, Any] | None, evidence_dir: Path | None) -> dict[str, Any]:
+def _cancel_cleanup_gate(
+    product: dict[str, Any] | None,
+    evidence_dir: Path | None,
+    retained_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
+) -> dict[str, Any]:
     reasons: list[str] = []
     evidence = ["file-transfer-product-e2e.json"] if product is not None else []
     if product is None:
@@ -477,6 +530,7 @@ def _cancel_cleanup_gate(product: dict[str, Any] | None, evidence_dir: Path | No
                     "cancel_cleanup",
                     REQUIRED_CANCEL_ARTIFACT_ROLES,
                     evidence_dir,
+                    retained_artifact_paths,
                 )
             )
     return _gate("cancel_cleanup", PASS if not reasons else BLOCKED, reasons, evidence)
@@ -530,6 +584,7 @@ def derive_gate(
         for transport, gate in (("usb", usb_gate), ("trusted_lan", lan_gate))
         if gate["status"] == PASS
     }
+    retained_artifact_paths: dict[Path | str, tuple[str, str]] = {}
     gates = [
         _device_gate(usb, lan, product),
         _host_gate(host, host_missing),
@@ -537,8 +592,8 @@ def derive_gate(
         lan_gate,
         _transport_gate(usb_gate, lan_gate),
         _android_file_transfer_gate(android_file_transfer_instrumentation_log),
-        _product_e2e_gate(product, product_missing, available_transports, evidence_dir),
-        _cancel_cleanup_gate(product, evidence_dir),
+        _product_e2e_gate(product, product_missing, available_transports, evidence_dir, retained_artifact_paths),
+        _cancel_cleanup_gate(product, evidence_dir, retained_artifact_paths),
     ]
     required_gate_names = {
         "device_identity",
