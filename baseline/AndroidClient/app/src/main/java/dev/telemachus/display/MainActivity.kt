@@ -94,6 +94,7 @@ import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -2991,7 +2992,14 @@ class MainActivity : AppCompatActivity() {
                         }
                         pendingOutgoingFileSubmissionInFlight = true
                         lifecycleScope.launch(Dispatchers.IO) {
-                            val outgoingValue = session.offerFile(pending.file, pending.mimeType)
+                            val outgoingValue =
+                                try {
+                                    session.offerFile(pending.file, pending.mimeType)
+                                } catch (exception: CancellationException) {
+                                    throw exception
+                                } catch (_: Exception) {
+                                    null
+                                }
                             withContext(Dispatchers.Main) {
                                 finishConfirmedOutgoingFileTransfer(session, outgoingValue)
                             }
@@ -5495,8 +5503,10 @@ class MainActivity : AppCompatActivity() {
                 mainDiag("onFileTransferResult: accepted=$accepted reason=$reason")
                 if (accepted) {
                     showDedupedToast(message)
-                } else {
+                } else if (activeOutgoingFileTransfer != null) {
                     showFileTransferRecoverableError(message = message)
+                } else {
+                    showDedupedToast(message)
                 }
             }
         }
@@ -5827,8 +5837,10 @@ class MainActivity : AppCompatActivity() {
                             }
                         if (accepted) {
                             showDedupedToast(message)
-                        } else {
+                        } else if (activeOutgoingFileTransfer != null) {
                             showFileTransferRecoverableError(message = message)
+                        } else {
+                            showDedupedToast(message)
                         }
                     }
                 }

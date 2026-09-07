@@ -204,7 +204,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "Starting an outgoing offer should register active sending state from the returned transfer handle",
             promptOutgoing.contains(".setPositiveButton(R.string.file_transfer_outgoing_send)") &&
-                promptOutgoing.contains("val outgoingValue = session.offerFile(pending.file, pending.mimeType)") &&
+                promptOutgoing.contains("val outgoingValue =") &&
+                promptOutgoing.contains("session.offerFile(pending.file, pending.mimeType)") &&
                 promptOutgoing.contains("finishConfirmedOutgoingFileTransfer(session, outgoingValue)") &&
                 finishConfirmed.contains("beginOutgoingFileTransferState(") &&
                 finishConfirmed.contains("transferId = outgoingValue.transferId"),
@@ -221,7 +222,10 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 assertBeforeValue(handlePicker, "PendingOutgoingFileTransfer(", "promptOutgoingFileTransfer(") &&
                 !handlePicker.contains("session.offerFile(file, mimeType)") &&
                 promptOutgoing.contains("lifecycleScope.launch(Dispatchers.IO)") &&
-                promptOutgoing.contains("val outgoingValue = session.offerFile(pending.file, pending.mimeType)"),
+                promptOutgoing.contains("try {") &&
+                promptOutgoing.contains("catch (exception: CancellationException)") &&
+                promptOutgoing.contains("catch (_: Exception)") &&
+                promptOutgoing.contains("session.offerFile(pending.file, pending.mimeType)"),
         )
         assertTrue(
             "Started toast should only show when the outgoing progress state is actually displayed",
@@ -268,7 +272,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "Outgoing confirmation must re-check session validity and mutual exclusion immediately before sending",
             promptOutgoing.contains("if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())") &&
-                assertBeforeValue(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue = session.offerFile"),
+                assertBeforeValue(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue ="),
         )
         assertTrue(
             "The file-transfer button should switch between picker and cancellation behavior",
@@ -386,8 +390,12 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             "Recoverable outgoing errors should use a durable retry dialog instead of Toast-only failures",
             handlePicker.contains("showFileTransferRecoverableError(") &&
                 promptOutgoing.contains("showFileTransferRecoverableError(") &&
+                resultCallback.contains("else if (activeOutgoingFileTransfer != null)") &&
                 resultCallback.contains("showFileTransferRecoverableError(message = message)") &&
-                internetResult.contains("showFileTransferRecoverableError(message = message)"),
+                resultCallback.contains("showDedupedToast(message)") &&
+                internetResult.contains("else if (activeOutgoingFileTransfer != null)") &&
+                internetResult.contains("showFileTransferRecoverableError(message = message)") &&
+                internetResult.contains("showDedupedToast(message)"),
         )
         assertTrue(
             "File-transfer result callbacks have no transfer id and must not clear active send UI",

@@ -276,9 +276,13 @@ class MainActivityControllerForwardingContractTest {
         assertContains(handlePicker, "session.stageOutgoingFile(file)")
         assertContains(handlePicker, "PendingOutgoingFileTransfer(")
         assertContains(handlePicker, "promptOutgoingFileTransfer(")
-        assertContains(promptOutgoing, "val outgoingValue = session.offerFile(pending.file, pending.mimeType)")
+        assertContains(promptOutgoing, "val outgoingValue =")
+        assertContains(promptOutgoing, "try {")
+        assertContains(promptOutgoing, "catch (exception: CancellationException)")
+        assertContains(promptOutgoing, "catch (_: Exception)")
+        assertContains(promptOutgoing, "session.offerFile(pending.file, pending.mimeType)")
         assertContains(promptOutgoing, "pendingOutgoingFileSubmissionInFlight = true")
-        assertBefore(promptOutgoing, "pendingOutgoingFileSubmissionInFlight = true", "val outgoingValue = session.offerFile")
+        assertBefore(promptOutgoing, "pendingOutgoingFileSubmissionInFlight = true", "val outgoingValue =")
         assertContains(promptOutgoing, "finishConfirmedOutgoingFileTransfer(session, outgoingValue)")
         assertContains(finishConfirmed, "pendingOutgoingFileSubmissionInFlight = false")
         assertContains(finishConfirmed, "beginOutgoingFileTransferState(")
@@ -300,7 +304,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(onStop, "clearStagedFile = activeOutgoingFileTransfer == null && !pendingOutgoingFileSubmissionInFlight")
         assertBefore(streamSession, "val staged = productSessionCoordinator.stageOutgoingFileTransfer", "if (!staged) file.deleteRecursivelyBestEffort()")
         assertBefore(handlePicker, "session.stageOutgoingFile(file)", "PendingOutgoingFileTransfer(")
-        assertBefore(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue = session.offerFile")
+        assertBefore(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue =")
     }
 
     @Test
