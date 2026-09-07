@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.ClipboardManagerInstrumentedTest" tests="8" failures="0" errors="0" skipped="0" time="364.788" timestamp="2026-09-07T19:26:14" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="foregroundActivityDoesNotTreatLaterTextItemAsFirstClipboardText" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.651" />
+  <testcase name="assertForegroundClipboardMatchesInstrumentationArgument" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.405" />
+  <testcase name="foregroundActivityHandlesNonTextClipboardItemSafely" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.445" />
+  <testcase name="foregroundActivityCanUseAndroidSystemClipboardLocally" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.547" />
+  <testcase name="setForegroundClipboardFromInstrumentationArgument" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.402" />
+  <testcase name="foregroundActivityCanRoundTripExpandedLargePlainTextLocally" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.534" />
+  <testcase name="foregroundActivityCanRoundTripUnicodeAndLargePlainTextLocally" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.448" />
+  <testcase name="foregroundActivitySeesEmptyClipboardAsNoPrimaryClip" classname="dev.telemachus.display.ClipboardManagerInstrumentedTest" time="45.525" />
+</testsuite>

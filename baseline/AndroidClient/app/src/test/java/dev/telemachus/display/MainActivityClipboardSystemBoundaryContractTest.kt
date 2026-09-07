@@ -36,6 +36,17 @@ class MainActivityClipboardSystemBoundaryContractTest {
         )
         assertBefore(send, "isCurrentSession(client, generation)", "getSystemService(ClipboardManager::class.java)")
         assertBefore(send, "client.canSendClipboard", "getSystemService(ClipboardManager::class.java)")
+        assertTrue(
+            "Send path should read only the first ClipData item raw text after user approval",
+            send.contains("?.takeIf { it.itemCount > 0 }") &&
+                send.contains("?.getItemAt(0)") &&
+                send.contains("?.text") &&
+                send.contains("?.toString()"),
+        )
+        assertFalse(
+            "Send path must not coerce non-text ClipData into text for transfer",
+            send.contains("coerceToText"),
+        )
         assertBefore(send, "ClipboardMenuPolicy.canSend(text)", "client.offerClipboard(clipboardText)")
         assertBefore(send, "ClipboardMenuPolicy.isWithinSizeLimit", "client.offerClipboard(clipboardText)")
         assertTrue(

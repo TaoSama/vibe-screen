@@ -10,6 +10,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -76,6 +77,68 @@ class ClipboardManagerInstrumentedTest {
             assertNull(item.text)
             assertTrue(item.coerceToText(activity).toString().contains("dev.telemachus.display.CLIPBOARD_NON_TEXT_SMOKE"))
             Log.i(TAG, "clipboard_manager_non_text_safe")
+
+            clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
+        }
+    }
+
+    @Test
+    fun foregroundActivitySeesEmptyClipboardAsNoPrimaryClip() {
+        withForegroundActivity { activity, clipboard ->
+            clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                assertFalse("clipboard should report no primary clip after clear", clipboard.hasPrimaryClip())
+                assertNull("cleared clipboard must not expose text to send", clipboard.primaryClip)
+            } else {
+                val primaryClip = clipboard.primaryClip
+                assertNotNull("pre-P clear fallback should leave an empty primary clip", primaryClip)
+                assertEquals(1, primaryClip!!.itemCount)
+                assertEquals("", primaryClip.getItemAt(0).coerceToText(activity).toString())
+            }
+            Log.i(TAG, "clipboard_manager_empty_safe")
+        }
+    }
+
+    @Test
+    fun foregroundActivityDoesNotTreatLaterTextItemAsFirstClipboardText() {
+        withForegroundActivity { activity, clipboard ->
+            val intent = Intent("dev.telemachus.display.CLIPBOARD_MULTI_ITEM_INTENT")
+            val laterText = "vs-clipboard-later-text-${System.currentTimeMillis()}"
+            val clip = ClipData.newIntent("Vibe Screen multi item smoke", intent)
+            clip.addItem(ClipData.Item(laterText))
+            clipboard.setPrimaryClip(clip)
+
+            val primaryClip = clipboard.primaryClip
+            assertNotNull("multi-item primaryClip should be visible to the foreground app", primaryClip)
+            assertEquals(2, primaryClip!!.itemCount)
+            assertNull("first item text should remain null for non-text ClipData", primaryClip.getItemAt(0).text)
+            assertEquals(laterText, primaryClip.getItemAt(1).text.toString())
+            Log.i(TAG, "clipboard_manager_multi_item_first_non_text_safe")
+
+            clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
+        }
+    }
+
+    @Test
+    fun foregroundActivityCanRoundTripExpandedLargePlainTextLocally() {
+        val prefix = "vs-clipboard-expanded-large-${System.currentTimeMillis()}\n剪贴板=ok\n"
+        val marker = prefix + "z".repeat(EXPANDED_LARGE_CLIPBOARD_BYTES - prefix.toByteArray(Charsets.UTF_8).size)
+        assertEquals(EXPANDED_LARGE_CLIPBOARD_BYTES, marker.toByteArray(Charsets.UTF_8).size)
+
+        withForegroundActivity { activity, clipboard ->
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText(
+                    activity.getString(R.string.clipboard_plain_text_label),
+                    marker,
+                ),
+            )
+
+            val primaryClip = clipboard.primaryClip
+            assertNotNull("expanded large primaryClip should be visible to the foreground app", primaryClip)
+            assertEquals(1, primaryClip!!.itemCount)
+            assertEquals(marker, primaryClip.getItemAt(0).coerceToText(activity).toString())
+            Log.i(TAG, "clipboard_manager_expanded_large bytes=${marker.toByteArray(Charsets.UTF_8).size}")
 
             clearClipboard(clipboard, activity.getString(R.string.clipboard_plain_text_label))
         }
@@ -150,6 +213,7 @@ class ClipboardManagerInstrumentedTest {
     private companion object {
         private const val ARG_CLIPBOARD_MARKER = "clipboard_marker"
         private const val LARGE_SMOKE_CLIPBOARD_BYTES = 256 * 1024
+        private const val EXPANDED_LARGE_CLIPBOARD_BYTES = 320 * 1024
         private const val TAG = "ClipboardDeviceTest"
 
         private fun clearClipboard(clipboard: ClipboardManager, label: String) {
