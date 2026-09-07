@@ -102,4 +102,7 @@ producing a runner-not-found or zero-test failure. Failed UTP summaries from
 that diagnosis are retained under `diagnostics/` and are not used as pass
 evidence. The retained pass evidence comes from the latest Gradle/UTP run above;
 the direct `adb install -r` plus `am instrument` confirmation independently
-returned `OK (2 tests)`.
+returned `OK (2 tests)`. UTP device-info artifacts referenced inside the
+textproto were intentionally omitted from the retained package because they
+include the raw ADB serial; `metadata/device-identity.txt` records the same
+device identity with the serial redacted.
