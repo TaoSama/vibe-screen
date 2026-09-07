@@ -134,6 +134,7 @@ def _retained_artifact_reasons(
 
     reasons: list[str] = []
     resolved_evidence_dir = evidence_dir.resolve() if evidence_dir is not None else None
+    required_role_names = set(required_roles)
     seen_roles: set[str] = set()
     seen_artifact_paths: dict[Path | str, str] = {}
     for index, artifact in enumerate(artifacts):
@@ -144,6 +145,10 @@ def _retained_artifact_reasons(
         role = artifact.get("role")
         if isinstance(role, str) and role.strip():
             role_name = role.strip()
+            if role_name not in required_role_names:
+                reasons.append(f"{artifact_label}.role must be one of {', '.join(required_roles)}")
+            elif role_name in seen_roles:
+                reasons.append(f"{artifact_label}.role duplicates {role_name} artifact")
             seen_roles.add(role_name)
         else:
             role_name = f"entry {index}"

@@ -1218,6 +1218,51 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_clipboard_retained_artifact_roles_must_be_exact_and_unique(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            retained_artifacts = android_to_macos["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            unknown_artifact = retained_artifacts[0]
+            duplicate_artifact = retained_artifacts[2]
+            assert isinstance(unknown_artifact, dict)
+            assert isinstance(duplicate_artifact, dict)
+            unknown_artifact["role"] = "clipboard_summary"
+            duplicate_artifact["role"] = "sender_action"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[0].role must be one of source_clipboard_read, sender_action, receiver_approval, protocol_packets, destination_clipboard_write, final_verification, negative_boundary_verification",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[2].role duplicates sender_action artifact",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts missing source_clipboard_read artifact",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts missing receiver_approval artifact",
+            result["blockers"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
