@@ -3742,20 +3742,9 @@ class MainActivity : AppCompatActivity() {
         )
 
     private fun clipboardPreview(text: String): String =
-        if (text.length <= MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS) {
-            wrapClipboardPreview(text)
-        } else {
-            getString(
-                R.string.clipboard_confirmation_preview_truncated,
-                wrapClipboardPreview(text.take(MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS)),
-            )
+        ClipboardPreviewPolicy.preview(text) { preview ->
+            getString(R.string.clipboard_confirmation_preview_truncated, preview)
         }
-
-    private fun wrapClipboardPreview(text: String): String =
-        text.lineSequence()
-            .joinToString("\n") { line ->
-                line.chunked(CLIPBOARD_CONFIRMATION_PREVIEW_LINE_CHARS).joinToString("\n")
-            }
 
     private fun writeRemoteClipboard(content: ClipboardContentData) {
         val text = content.content.toString(Charsets.UTF_8)
@@ -7648,8 +7637,6 @@ class MainActivity : AppCompatActivity() {
         private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1
         private const val CLIPBOARD_MENU_RECEIVE = 2
-        private const val MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS = 280
-        private const val CLIPBOARD_CONFIRMATION_PREVIEW_LINE_CHARS = 36
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120

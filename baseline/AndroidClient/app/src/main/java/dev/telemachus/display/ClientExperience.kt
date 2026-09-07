@@ -1297,6 +1297,27 @@ internal object ClipboardMenuPolicy {
     fun canFetch(offer: PendingClipboardOffer?): Boolean = offer != null
 }
 
+internal object ClipboardPreviewPolicy {
+    const val MAX_PREVIEW_CHARS: Int = 280
+    const val PREVIEW_LINE_CHARS: Int = 36
+
+    fun preview(
+        text: String,
+        truncatedFormatter: (String) -> String,
+    ): String =
+        if (text.length <= MAX_PREVIEW_CHARS) {
+            wrap(text)
+        } else {
+            truncatedFormatter(wrap(text.take(MAX_PREVIEW_CHARS)))
+        }
+
+    fun wrap(text: String): String =
+        text.lineSequence()
+            .joinToString("\n") { line ->
+                line.chunked(PREVIEW_LINE_CHARS).joinToString("\n")
+            }
+}
+
 /**
  * Pure layout policy for the connection panel's header/actions split. The
  * panel stacks the brand/title header above the connection actions in a single
