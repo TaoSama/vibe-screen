@@ -134,6 +134,7 @@ def _inconsistent_observations(field_values: dict[str, bool]) -> list[dict[str, 
 
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
+    artifact_paths = _string_list(record, "artifact_paths")
     missing = [
         {"field": field, "requirement": requirement}
         for field, requirement in REQUIRED_FIELDS
@@ -143,6 +144,16 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
     inconsistencies = _inconsistent_observations(field_values)
+    if not artifact_paths:
+        missing.append(
+            {
+                "field": "artifact_paths",
+                "requirement": (
+                    "retain raw or focused artifacts proving every true controller "
+                    "runtime observation"
+                ),
+            }
+        )
     if not missing and not inconsistencies:
         verdict = STATUS_PASS
     elif blocking_reasons:
@@ -163,7 +174,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "missing_requirements": missing,
         "inconsistent_observations": inconsistencies,
         "blocking_reasons": blocking_reasons,
-        "artifact_paths": _string_list(record, "artifact_paths"),
+        "artifact_paths": artifact_paths,
         "notes": record.get("notes", "") if isinstance(record.get("notes", ""), str) else "",
     }
 

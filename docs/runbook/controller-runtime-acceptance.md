@@ -109,6 +109,8 @@ focused artifact that proves it in the same bundle: Android controller source
 and production forwarding logs, Protocol v1 capability and lifecycle logs, Host
 codesign/entitlement output, Host availability and injection logs, Mac-side
 observer output, and disconnect neutral-release proof.
+`artifact_paths` is mandatory for a passing summary; an all-true observation
+record without retained artifact paths must remain `insufficient`.
 
 The gate closes only when `controller-runtime-summary.json` reports
 `can_close_runtime_gate=true`. A `blocked` or `insufficient` verdict documents
