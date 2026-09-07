@@ -1946,6 +1946,14 @@ class Phase0StableReleaseTest(unittest.TestCase):
             summary["merged_pr_guard"]["excluded_pr_numbers"],
             [568, 576, 627, 646, 655],
         )
+        self.assertEqual(
+            summary["source_guard"]["manifest_base_commit"],
+            manifest["source"]["base_commit"],
+        )
+        self.assertEqual(
+            summary["merged_pr_guard"]["range"],
+            manifest["merged_pr_snapshot"]["range"],
+        )
         self.assertEqual(summary["merged_pr_guard"]["non_ancestor_prs"], [])
         macos_gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
         self.assertEqual(macos_gate["verdict"], "open")

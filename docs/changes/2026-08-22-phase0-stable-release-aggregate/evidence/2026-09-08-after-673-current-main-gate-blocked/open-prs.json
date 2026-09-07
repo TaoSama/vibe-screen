@@ -1,0 +1,24 @@
+[
+  {
+    "baseRefName": "main",
+    "headRefName": "codex/refresh-phase0-aggregate-after-672",
+    "headRefOid": "b78efb48ac8ececf1b9a8d45c0c921ca5907de6b",
+    "isDraft": false,
+    "mergeStateStatus": "BLOCKED",
+    "number": 674,
+    "title": "docs: refresh phase0 aggregate after PR 673",
+    "updatedAt": "2026-09-07T17:37:03Z",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/674"
+  },
+  {
+    "baseRefName": "main",
+    "headRefName": "codex/android-nohost-uiux-p0110",
+    "headRefOid": "cefc1dba75a7493b9b11b0d87cb7bdc736227de6",
+    "isDraft": false,
+    "mergeStateStatus": "BLOCKED",
+    "number": 675,
+    "title": "test(evidence): refresh P0110 no-Host UI/UX",
+    "updatedAt": "2026-09-07T17:29:27Z",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/675"
+  }
+]
