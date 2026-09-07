@@ -113,6 +113,15 @@ import java.util.concurrent.atomic.AtomicReference
 
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
+private data class ClipboardConfirmationDetails(
+    @StringRes val introResource: Int,
+    @StringRes val directionResource: Int,
+    @StringRes val protectionResource: Int,
+    val sizeText: String,
+    val preview: String,
+    @StringRes val noteResource: Int,
+)
+
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
@@ -3283,7 +3292,21 @@ class MainActivity : AppCompatActivity() {
             showImmersiveDialog(
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.clipboard_lan_confirm_title)
-                    .setMessage(LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState))
+                    .setView(
+                        clipboardConfirmationView(
+                            ClipboardConfirmationDetails(
+                                introResource = LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState),
+                                directionResource = R.string.clipboard_confirmation_send_direction,
+                                protectionResource = clipboardProtectionResource(client),
+                                sizeText = getString(
+                                    R.string.clipboard_confirmation_send_size_pending,
+                                    readableByteCount(effectiveClipboardLimit(client.negotiatedMaxClipboardBytes)),
+                                ),
+                                preview = getString(R.string.clipboard_confirmation_send_preview_unavailable),
+                                noteResource = R.string.clipboard_confirmation_send_note,
+                            ),
+                        ),
+                    )
                     .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
                         sendLocalClipboard(client, generation)
                     }
@@ -3362,7 +3385,18 @@ class MainActivity : AppCompatActivity() {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_lan_receive_confirm_title)
-                .setMessage(LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState))
+                .setView(
+                    clipboardConfirmationView(
+                        ClipboardConfirmationDetails(
+                            introResource = LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState),
+                            directionResource = R.string.clipboard_confirmation_receive_direction,
+                            protectionResource = clipboardProtectionResource(client),
+                            sizeText = pendingClipboardOfferSize(client, generation),
+                            preview = getString(R.string.clipboard_confirmation_receive_preview_unavailable),
+                            noteResource = R.string.clipboard_confirmation_receive_note,
+                        ),
+                    ),
+                )
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     receiveRemoteClipboard(client, generation)
                 }
@@ -3389,6 +3423,7 @@ class MainActivity : AppCompatActivity() {
             discardContent = {
                 productSessionCoordinator.discardDirectClipboardContent(client, generation, content.changeId)
             },
+            previewContent = content,
         )
     }
 
@@ -3397,16 +3432,15 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
         approvedContent: () -> ClipboardContentData?,
         discardContent: () -> Unit,
+        previewContent: ClipboardContentData?,
     ) {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_receive_confirm_title)
-                .setMessage(
-                    if (prefs.connectionMode == ConnectionMode.WIRELESS) {
-                        LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
-                    } else {
-                        R.string.clipboard_receive_confirm_message
-                    },
+                .setView(
+                    clipboardConfirmationView(
+                        clipboardOverwriteConfirmationDetails(client, previewContent),
+                    ),
                 )
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     if (!isCurrentSession(client, generation) || !client.canSendClipboard) return@setPositiveButton
@@ -3420,6 +3454,100 @@ class MainActivity : AppCompatActivity() {
                 },
         )
     }
+
+    private fun clipboardOverwriteConfirmationDetails(
+        client: StreamClient,
+        content: ClipboardContentData?,
+    ): ClipboardConfirmationDetails {
+        val text = content?.content?.toString(Charsets.UTF_8).orEmpty()
+        val textBytes = content?.content?.size?.toLong() ?: 0L
+        val introResource =
+            if (prefs.connectionMode == ConnectionMode.WIRELESS) {
+                LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
+            } else {
+                R.string.clipboard_receive_confirm_message
+            }
+        return ClipboardConfirmationDetails(
+            introResource = introResource,
+            directionResource = R.string.clipboard_confirmation_receive_direction,
+            protectionResource = clipboardProtectionResource(client),
+            sizeText = getString(
+                R.string.clipboard_confirmation_size_format,
+                text.length.toString(),
+                readableByteCount(textBytes),
+            ),
+            preview = clipboardPreview(text),
+            noteResource =
+                if (content?.pending == true) {
+                    R.string.clipboard_confirmation_direct_receive_note
+                } else {
+                    R.string.clipboard_confirmation_receive_note
+                },
+        )
+    }
+
+    private fun pendingClipboardOfferSize(
+        client: StreamClient,
+        generation: Long,
+    ): String {
+        val offer = productSessionCoordinator.clipboardOfferForRequest(client, generation)
+        return if (offer != null) {
+            readableByteCount(offer.byteLength)
+        } else {
+            getString(
+                R.string.clipboard_confirmation_send_size_pending,
+                readableByteCount(effectiveClipboardLimit(client.negotiatedMaxClipboardBytes)),
+            )
+        }
+    }
+
+    @StringRes
+    private fun clipboardProtectionResource(client: StreamClient): Int =
+        when (prefs.connectionMode) {
+            ConnectionMode.USB -> R.string.clipboard_confirmation_usb_protection
+            ConnectionMode.INTERNET -> R.string.clipboard_confirmation_internet_protection
+            ConnectionMode.WIRELESS ->
+                when (client.currentLanProtectionState) {
+                    LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_confirmation_lan_encrypted_protection
+                    LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_confirmation_lan_legacy_protection
+                    LanRecordProtectionState.NEGOTIATING,
+                    LanRecordProtectionState.NOT_APPLICABLE,
+                    -> R.string.clipboard_confirmation_lan_unknown_protection
+                }
+        }
+
+    private fun clipboardConfirmationView(details: ClipboardConfirmationDetails): ScrollView {
+        val root = layoutInflater.inflate(R.layout.dialog_clipboard_confirmation, null, false) as ScrollView
+        root.findViewById<TextView>(R.id.clipboardConfirmationIntro).text = getString(details.introResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationDirection).text = getString(details.directionResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationProtection).text = getString(details.protectionResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationSize).text = details.sizeText
+        root.findViewById<TextView>(R.id.clipboardConfirmationPreview).text = details.preview
+        root.findViewById<TextView>(R.id.clipboardConfirmationNote).text = getString(details.noteResource)
+        return root
+    }
+
+    private fun effectiveClipboardLimit(maximumClipboardBytes: Long): Long =
+        minOf(
+            ClipboardMenuPolicy.DEFAULT_CLIPBOARD_BYTES,
+            if (maximumClipboardBytes > 0L) maximumClipboardBytes else ClipboardMenuPolicy.DEFAULT_CLIPBOARD_BYTES,
+        )
+
+    private fun clipboardPreview(text: String): String =
+        if (text.length <= MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS) {
+            wrapClipboardPreview(text)
+        } else {
+            getString(
+                R.string.clipboard_confirmation_preview_truncated,
+                wrapClipboardPreview(text.take(MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS)),
+            )
+        }
+
+    private fun wrapClipboardPreview(text: String): String =
+        text.lineSequence()
+            .joinToString("\n") { line ->
+                line.chunked(CLIPBOARD_CONFIRMATION_PREVIEW_LINE_CHARS).joinToString("\n")
+            }
 
     private fun writeRemoteClipboard(content: ClipboardContentData) {
         val text = content.content.toString(Charsets.UTF_8)
@@ -5082,6 +5210,7 @@ class MainActivity : AppCompatActivity() {
                         generation = callbackGeneration,
                         approvedContent = { approved },
                         discardContent = {},
+                        previewContent = approved,
                     )
                     refreshClipboardControl()
                 }
@@ -7186,6 +7315,8 @@ class MainActivity : AppCompatActivity() {
         private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1
         private const val CLIPBOARD_MENU_RECEIVE = 2
+        private const val MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS = 280
+        private const val CLIPBOARD_CONFIRMATION_PREVIEW_LINE_CHARS = 36
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
