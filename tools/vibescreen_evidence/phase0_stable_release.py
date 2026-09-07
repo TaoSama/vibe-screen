@@ -21,6 +21,13 @@ from typing import Any, Sequence, TextIO
 from . import SCHEMA_VERSION
 from .latency import GATE_PROFILES, MIN_GATE_SAMPLE_COUNT
 from .latency_evidence import LatencyEvidenceError, build_latency_evidence_report
+from .host_rss_gate import (
+    GATE_KIND as HOST_RSS_GATE_KIND,
+    MINIMUM_DURATION_SECONDS as HOST_RSS_MINIMUM_DURATION_SECONDS,
+    MINIMUM_SAMPLE_COUNT as HOST_RSS_MINIMUM_SAMPLE_COUNT,
+    derive_gate as derive_host_rss_gate,
+)
+from .soak_public_report import EvidenceInputError
 
 KIND = "phase0_stable_release_closure"
 STATUS_PASS = "pass"
@@ -30,6 +37,7 @@ STATUS_INSUFFICIENT = "insufficient"
 STATUS_OPEN = "open"
 EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID = "telemetry_and_latency_archive"
+HOST_RSS_2H_NO_GROWTH_GATE_ID = "host_rss_2h_no_growth"
 LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
 ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
 LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
@@ -225,6 +233,12 @@ def _gate_summary(
                     evidence_paths=evidence_paths, repo_root=repo_root
                 )
             )
+        elif gate_id == HOST_RSS_2H_NO_GROWTH_GATE_ID:
+            issues.extend(
+                _host_rss_2h_no_growth_issues(
+                    evidence_paths=evidence_paths, repo_root=repo_root
+                )
+            )
     elif required and not blockers:
         issues.append("non-pass required gate must list at least one blocker")
     can_close = required and verdict == STATUS_PASS and not issues
@@ -306,7 +320,7 @@ def _telemetry_and_latency_archive_issues(
 
 
 def _repo_relative_evidence_path(
-    repo_root: Path, raw_path: str
+    repo_root: Path, raw_path: str, *, gate_id: str = TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID
 ) -> tuple[Path | None, str | None]:
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", raw_path):
         return None, None
@@ -314,7 +328,7 @@ def _repo_relative_evidence_path(
     if path.is_absolute() or ".." in path.parts:
         return (
             None,
-            f"telemetry_and_latency_archive evidence path {raw_path!r} must be "
+            f"{gate_id} evidence path {raw_path!r} must be "
             "repo-relative",
         )
     candidate = repo_root / path
@@ -323,33 +337,242 @@ def _repo_relative_evidence_path(
     except ValueError:
         return (
             None,
-            f"telemetry_and_latency_archive evidence path {raw_path!r} must stay "
+            f"{gate_id} evidence path {raw_path!r} must stay "
             "inside repo_root",
         )
     return candidate, None
 
 
 def _load_evidence_json(
-    evidence_path: Path, raw_path: str
+    evidence_path: Path, raw_path: str, *, gate_id: str = TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID
 ) -> tuple[dict[str, Any], str | None]:
     try:
         record = json.loads(evidence_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError) as error:
         return {}, (
-            f"could not read telemetry_and_latency_archive evidence {raw_path}: "
+            f"could not read {gate_id} evidence {raw_path}: "
             f"{error}"
         )
     except json.JSONDecodeError as error:
         return {}, (
-            f"telemetry_and_latency_archive evidence {raw_path} has invalid "
+            f"{gate_id} evidence {raw_path} has invalid "
             f"JSON: {error}"
         )
     if not isinstance(record, dict):
         return (
             {},
-            f"telemetry_and_latency_archive evidence {raw_path} must be a JSON object",
+            f"{gate_id} evidence {raw_path} must be a JSON object",
         )
     return record, None
+
+
+def _host_rss_2h_no_growth_issues(
+    *, evidence_paths: Sequence[str], repo_root: Path | None
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "host_rss_2h_no_growth pass requires repo_root to verify "
+            "structured evidence paths"
+        ]
+
+    valid_host_rss_report = False
+    issues: list[str] = []
+    candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(
+            repository,
+            raw_path,
+            gate_id=HOST_RSS_2H_NO_GROWTH_GATE_ID,
+        )
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                f"host_rss_2h_no_growth evidence path {raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(
+            evidence_path,
+            raw_path,
+            gate_id=HOST_RSS_2H_NO_GROWTH_GATE_ID,
+        )
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        if record.get("kind") != HOST_RSS_GATE_KIND:
+            candidate_issues.append(
+                f"{raw_path}: formal Host RSS report kind must be {HOST_RSS_GATE_KIND}"
+            )
+        else:
+            report_issues = _formal_host_rss_report_issues(
+                record, raw_path, repo_root=repository
+            )
+            if report_issues:
+                candidate_issues.extend(report_issues)
+            else:
+                valid_host_rss_report = True
+
+    if not valid_host_rss_report:
+        issues.append(
+            "host_rss_2h_no_growth pass requires at least one passing formal "
+            "host_rss_no_growth_gate report in evidence_paths"
+        )
+        issues.extend(candidate_issues)
+    return issues
+
+
+def _formal_host_rss_report_issues(
+    record: dict[str, Any], path: str, *, repo_root: Path
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("kind") != HOST_RSS_GATE_KIND:
+        issues.append(f"{path}: formal Host RSS report kind must be {HOST_RSS_GATE_KIND}")
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{path}: formal Host RSS report schema_version must be {SCHEMA_VERSION}")
+    if record.get("derivation_status") != "complete":
+        issues.append(f"{path}: formal Host RSS report derivation_status must be complete")
+    if record.get("verdict") != STATUS_PASS:
+        issues.append(f"{path}: formal Host RSS report verdict must be pass")
+
+    window = record.get("window")
+    if not isinstance(window, dict):
+        issues.append(f"{path}: formal Host RSS report window must be an object")
+    else:
+        duration_seconds = window.get("duration_seconds")
+        elapsed_span_seconds = window.get("elapsed_span_seconds")
+        sample_count = window.get("host_rss_sample_count")
+        if (
+            not _is_non_negative_number(duration_seconds)
+            or duration_seconds < HOST_RSS_MINIMUM_DURATION_SECONDS
+        ):
+            issues.append(
+                f"{path}: formal Host RSS report window.duration_seconds must be at least {HOST_RSS_MINIMUM_DURATION_SECONDS:g}"
+            )
+        if (
+            not _is_non_negative_number(elapsed_span_seconds)
+            or elapsed_span_seconds < HOST_RSS_MINIMUM_DURATION_SECONDS
+        ):
+            issues.append(
+                f"{path}: formal Host RSS report window.elapsed_span_seconds must be at least {HOST_RSS_MINIMUM_DURATION_SECONDS:g}"
+            )
+        if (
+            not _is_positive_integer(sample_count)
+            or sample_count < HOST_RSS_MINIMUM_SAMPLE_COUNT
+        ):
+            issues.append(
+                f"{path}: formal Host RSS report window.host_rss_sample_count must be at least {HOST_RSS_MINIMUM_SAMPLE_COUNT}"
+            )
+
+    source_summary = record.get("source_summary")
+    if not isinstance(source_summary, dict):
+        issues.append(f"{path}: formal Host RSS report source_summary must be an object")
+    else:
+        if source_summary.get("status") != "complete":
+            issues.append(f"{path}: formal Host RSS report source_summary.status must be complete")
+        error_count = source_summary.get("error_count")
+        if not _is_non_negative_integer(error_count) or error_count != 0:
+            issues.append(f"{path}: formal Host RSS report source_summary.error_count must be 0")
+        source_errors = source_summary.get("errors", [])
+        if not isinstance(source_errors, list) or any(
+            not isinstance(error, str) for error in source_errors
+        ):
+            issues.append(
+                f"{path}: formal Host RSS report source_summary.errors must be a list of strings"
+            )
+        elif any(error.strip() for error in source_errors):
+            issues.append(f"{path}: formal Host RSS report source_summary.errors must be empty")
+
+    for section_name in (
+        "sufficiency",
+        "criteria",
+        "telemetry_sufficiency",
+        "telemetry_criteria",
+    ):
+        issues.extend(_all_gate_section_checks_pass(record, path, section_name))
+
+    reasons = record.get("reasons", [])
+    if not isinstance(reasons, list) or any(
+        not isinstance(reason, str) for reason in reasons
+    ):
+        issues.append(f"{path}: formal Host RSS report reasons must be a list of strings")
+    elif any(reason.strip() for reason in reasons):
+        issues.append(f"{path}: formal Host RSS report pass must not include unresolved reasons")
+
+    source = record.get("source")
+    if not isinstance(source, dict):
+        issues.append(f"{path}: formal Host RSS report source must be an object")
+        return issues
+
+    source_paths: dict[str, Path] = {}
+    for field in ("summary", "samples", "exact_window_report"):
+        value = source.get(field)
+        if not isinstance(value, str) or not value.strip():
+            issues.append(f"{path}: formal Host RSS report source.{field} must be present")
+            continue
+        source_path, path_issue = _repo_relative_evidence_path(
+            repo_root,
+            value.strip(),
+            gate_id=HOST_RSS_2H_NO_GROWTH_GATE_ID,
+        )
+        if path_issue is not None or source_path is None:
+            issues.append(
+                f"{path}: formal Host RSS report source.{field} must be a repo-relative path inside repo_root"
+            )
+            continue
+        if not source_path.exists():
+            issues.append(
+                f"{path}: formal Host RSS report source.{field} {value.strip()} must exist"
+            )
+            continue
+        source_paths[field] = source_path
+
+    if set(source_paths) == {"summary", "samples", "exact_window_report"}:
+        try:
+            rebuilt_report = derive_host_rss_gate(
+                source_paths["summary"],
+                source_paths["samples"],
+                source_paths["exact_window_report"],
+            )
+        except (EvidenceInputError, OSError, TypeError, ValueError) as error:
+            issues.append(
+                f"{path}: formal Host RSS report source inputs could not be revalidated: {error}"
+            )
+        else:
+            if rebuilt_report.get("verdict") != STATUS_PASS:
+                rebuilt_reasons = rebuilt_report.get("reasons", [])
+                detail = "; ".join(
+                    str(reason)
+                    for reason in rebuilt_reasons
+                    if str(reason).strip()
+                )
+                suffix = f": {detail}" if detail else ""
+                issues.append(
+                    f"{path}: formal Host RSS report source inputs must rederive as a passing host_rss_gate report{suffix}"
+                )
+    return issues
+
+
+def _all_gate_section_checks_pass(
+    record: dict[str, Any], path: str, section_name: str
+) -> list[str]:
+    section = record.get(section_name)
+    if not isinstance(section, dict) or not section:
+        return [f"{path}: formal Host RSS report {section_name} must be a non-empty object"]
+    failing = [
+        name
+        for name, item in section.items()
+        if not isinstance(item, dict) or item.get("passed") is not True
+    ]
+    if failing:
+        return [
+            f"{path}: formal Host RSS report {section_name} must have all checks passed: "
+            + ", ".join(failing)
+        ]
+    return []
 
 
 def _formal_latency_report_issues(
@@ -482,6 +705,7 @@ def _android_usb_live_smoke_report_issues(record: dict[str, Any], path: str) -> 
         issues.append(
             f"{path}: Android USB live smoke must claim live_usb_stream_observed=true"
         )
+    issues.extend(_android_usb_live_smoke_device_issues(record, path))
     logs = record.get("logs")
     if not isinstance(logs, dict):
         issues.append(f"{path}: Android USB live smoke logs must be an object")
@@ -497,6 +721,28 @@ def _android_usb_live_smoke_report_issues(record: dict[str, Any], path: str) -> 
     else:
         _extend_android_decoder_issues(issues, decoder, path)
     return issues
+
+
+def _android_usb_live_smoke_device_issues(
+    record: dict[str, Any], path: str
+) -> list[str]:
+    device = record.get("device")
+    if not isinstance(device, dict):
+        return [f"{path}: Android USB live smoke device must be an object"]
+    identity = device.get("identity")
+    if not isinstance(identity, dict):
+        return [f"{path}: Android USB live smoke device.identity must be an object"]
+    missing_fields = [
+        field
+        for field in ("manufacturer", "model", "device")
+        if not isinstance(identity.get(field), str) or not identity.get(field, "").strip()
+    ]
+    if missing_fields:
+        return [
+            f"{path}: Android USB live smoke device.identity must include non-empty "
+            + ", ".join(missing_fields)
+        ]
+    return []
 
 
 def _extend_android_telemetry_issues(
@@ -517,13 +763,19 @@ def _extend_android_telemetry_issues(
             f"{path}: Android USB live smoke telemetry.stream_stats must be an object"
         )
         return
-    if not _is_positive_integer(stream_stats.get("count")):
+    stream_stats_count = stream_stats.get("count")
+    positive_fps_count = stream_stats.get("positive_fps_count")
+    if not _is_positive_integer(stream_stats_count):
         issues.append(
             f"{path}: Android USB live smoke telemetry.stream_stats.count must be a positive integer"
         )
-    if not _is_positive_integer(stream_stats.get("positive_fps_count")):
+    if not _is_positive_integer(positive_fps_count):
         issues.append(
             f"{path}: Android USB live smoke telemetry must include positive integer FPS stream_stats"
+        )
+    elif _is_positive_integer(stream_stats_count) and positive_fps_count > stream_stats_count:
+        issues.append(
+            f"{path}: Android USB live smoke telemetry.stream_stats.positive_fps_count must not exceed stream_stats.count"
         )
     frame_drops = telemetry.get("frame_drops")
     latest = stream_stats.get("latest")
@@ -584,6 +836,10 @@ def _extend_android_decoder_issues(
     ):
         issues.append(
             f"{path}: Android USB live smoke decoder latency metrics must be present"
+        )
+    elif latency["avg_ms"] > latency["max_ms"]:
+        issues.append(
+            f"{path}: Android USB live smoke decoder latest_output_latency.avg_ms must not exceed max_ms"
         )
 
 
