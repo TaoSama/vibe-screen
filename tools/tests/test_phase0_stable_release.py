@@ -17,6 +17,11 @@ from vibescreen_evidence.phase0_stable_release import (
     evaluate_manifest,
 )
 from tools.tests.latency_test_helpers import minimal_mov
+from tools.tests.test_host_rss_gate import (
+    write_exact_window_report,
+    write_inputs as write_host_rss_inputs,
+)
+from vibescreen_evidence.host_rss_gate import derive_gate as derive_host_rss_gate
 
 
 MODULE = "vibescreen_evidence.phase0_stable_release"
@@ -315,6 +320,13 @@ def write_latency_archive_evidence(
                 "schema_version": "vibescreen.evidence/v1",
                 "kind": "android_usb_live_smoke",
                 "verdict": "pass",
+                "device": {
+                    "identity": {
+                        "manufacturer": "nubia",
+                        "model": "P0110",
+                        "device": "pacific",
+                    }
+                },
                 "claims": {"live_usb_stream_observed": True},
                 "logs": {
                     "telemetry": {
@@ -347,12 +359,41 @@ def write_latency_archive_evidence(
     return [latency_path, live_smoke_path]
 
 
+def write_host_rss_gate_evidence(
+    repo: Path,
+    *,
+    output_path: str = "docs/evidence/host-rss-gate.json",
+    source_directory: str = "docs/evidence/host-rss",
+) -> str:
+    source_dir = repo / source_directory
+    source_dir.mkdir(parents=True, exist_ok=True)
+    summary_path, samples_path = write_host_rss_inputs(
+        source_dir,
+        rss_at_minute=lambda minute: 120_000.0
+        + (128.0 if int(minute * 2) % 2 else -128.0),
+    )
+    exact_window_path = write_exact_window_report(source_dir)
+    report = derive_host_rss_gate(summary_path, samples_path, exact_window_path)
+    report["source"] = {
+        "summary": f"{source_directory}/summary.json",
+        "samples": f"{source_directory}/samples.jsonl",
+        "exact_window_report": f"{source_directory}/exact-window-report.json",
+    }
+    output_file = repo / output_path
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(json.dumps(report), encoding="utf-8")
+    return output_path
+
+
 def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[str, object]:
     manifest = complete_manifest()
     manifest["source"]["base_commit"] = audited_source_commit
     gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
         write_latency_archive_evidence(repo)
     )
+    gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
+        write_host_rss_gate_evidence(repo)
+    ]
     add_merged_pr_snapshot(manifest, repo, audited_source_commit)
     return manifest
 
@@ -785,6 +826,12 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 "telemetry must include positive integer FPS stream_stats",
             ),
             (
+                "positive_fps_count_exceeds_count",
+                ("logs", "telemetry", "stream_stats", "positive_fps_count"),
+                4,
+                "telemetry.stream_stats.positive_fps_count must not exceed stream_stats.count",
+            ),
+            (
                 "negative_frame_drop_summary",
                 ("logs", "telemetry", "frame_drops", "max_dropped_total"),
                 -1,
@@ -807,6 +854,12 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 ("logs", "decoder", "latest_output_latency", "avg_ms"),
                 -0.1,
                 "decoder latency metrics must be present",
+            ),
+            (
+                "decoder_latency_average_above_maximum",
+                ("logs", "decoder", "latest_output_latency", "avg_ms"),
+                12.0,
+                "decoder latest_output_latency.avg_ms must not exceed max_ms",
             ),
         )
         for _name, path, value, expected_issue in cases:
@@ -833,6 +886,30 @@ class Phase0StableReleaseTest(unittest.TestCase):
                     )
 
                 with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_requires_android_device_identity(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            smoke_path = Path("docs/evidence/android-usb-live-smoke.json")
+            smoke_file = repo / smoke_path
+            record = json.loads(smoke_file.read_text(encoding="utf-8"))
+            record.pop("device")
+            smoke_file.write_text(json.dumps(record), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/android-usb-live-smoke.json: Android USB live smoke device must be an object",
+                issues,
+            )
+
+        with_temporary_repo(run)
 
     def test_telemetry_latency_archive_accepts_structured_latency_and_stream_reports(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
@@ -863,6 +940,175 @@ class Phase0StableReleaseTest(unittest.TestCase):
             self.assertTrue(telemetry_gate["can_close"])
 
         with_temporary_repo(run)
+
+    def test_host_rss_pass_requires_structured_formal_gate_report(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "host_rss_2h_no_growth")
+            gate["evidence_paths"] = ["README.md"]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            self.assertEqual(
+                [gate["id"] for gate in summary["blocking_required_gates"]],
+                ["host_rss_2h_no_growth"],
+            )
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "host_rss_2h_no_growth pass requires at least one passing formal "
+                "host_rss_no_growth_gate report in evidence_paths",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_host_rss_pass_revalidates_source_inputs(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            samples_path = repo / "docs/evidence/host-rss/samples.jsonl"
+            rows = [
+                json.loads(line)
+                for line in samples_path.read_text(encoding="utf-8").splitlines()
+            ]
+            for row in rows:
+                elapsed_minutes = row["elapsed_seconds"] / 60.0
+                row["host"]["rss_kb"] = 120_000.0 + 96.5 * elapsed_minutes
+            samples_path.write_text(
+                "\n".join(json.dumps(row) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "source inputs must rederive as a passing host_rss_gate report"
+                    in issue
+                    and "criterion failed: second_half_ols_slope_ci_upper_kib_per_minute"
+                    in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_host_rss_pass_rejects_old_report_without_source_inputs(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = repo / "docs/evidence/host-rss-gate.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report.pop("source")
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/host-rss-gate.json: formal Host RSS report source must be an object",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_host_rss_pass_rejects_malformed_report_sections(self) -> None:
+        cases = (
+            (
+                "wrong_kind",
+                lambda record: record.__setitem__("kind", "soak"),
+                "formal Host RSS report kind must be host_rss_no_growth_gate",
+            ),
+            (
+                "failed_verdict",
+                lambda record: record.__setitem__("verdict", "fail"),
+                "formal Host RSS report verdict must be pass",
+            ),
+            (
+                "short_window",
+                lambda record: record["window"].__setitem__("duration_seconds", 900),
+                "formal Host RSS report window.duration_seconds must be at least 7056",
+            ),
+            (
+                "sparse_samples",
+                lambda record: record["window"].__setitem__("host_rss_sample_count", 12),
+                "formal Host RSS report window.host_rss_sample_count must be at least 230",
+            ),
+            (
+                "failed_sufficiency",
+                lambda record: record["sufficiency"]["duration"].__setitem__("passed", False),
+                "formal Host RSS report sufficiency must have all checks passed: duration",
+            ),
+            (
+                "failed_telemetry_criterion",
+                lambda record: record["telemetry_criteria"]["encoder_present_through_window"].__setitem__("passed", False),
+                "formal Host RSS report telemetry_criteria must have all checks passed: encoder_present_through_window",
+            ),
+            (
+                "unresolved_reason",
+                lambda record: record.__setitem__("reasons", ["still growing"]),
+                "formal Host RSS report pass must not include unresolved reasons",
+            ),
+            (
+                "source_summary_error",
+                lambda record: record["source_summary"].__setitem__(
+                    "errors", ["collector stopped"]
+                ),
+                "formal Host RSS report source_summary.errors must be empty",
+            ),
+            (
+                "boolean_error_count",
+                lambda record: record["source_summary"].__setitem__(
+                    "error_count", False
+                ),
+                "formal Host RSS report source_summary.error_count must be 0",
+            ),
+            (
+                "float_error_count",
+                lambda record: record["source_summary"].__setitem__(
+                    "error_count", 0.0
+                ),
+                "formal Host RSS report source_summary.error_count must be 0",
+            ),
+        )
+        for name, mutate, expected_issue in cases:
+            with self.subTest(name):
+                def run(repo: Path, base_commit: str) -> None:
+                    manifest = complete_manifest_for_repo(repo, base_commit)
+                    report_path = repo / "docs/evidence/host-rss-gate.json"
+                    report = json.loads(report_path.read_text(encoding="utf-8"))
+                    mutate(report)
+                    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+                    summary = evaluate_manifest(
+                        manifest,
+                        readme_text=GUARDED_README_TEXT,
+                        repo_root=repo,
+                    )
+
+                    self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                    issues = summary["blocking_required_gates"][0]["issues"]
+                    self.assertTrue(
+                        any(expected_issue in issue for issue in issues),
+                        issues,
+                    )
+
+                with_temporary_repo(run)
 
     def test_pass_gate_with_blockers_is_insufficient(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
@@ -1014,6 +1260,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
+                write_host_rss_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(manifest, repo, merge_commit)
 
             summary = evaluate_manifest(
@@ -1203,6 +1452,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
+                write_host_rss_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(
                 manifest, repo, merge_commit, excluded_pr_numbers=[159, 160], maximum=160
             )
@@ -1387,6 +1639,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
+                write_host_rss_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(manifest, repo, base_commit)
             gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
             gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
@@ -1422,6 +1677,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
+                write_host_rss_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(manifest, repo, base_commit)
 
             summary = evaluate_manifest(
