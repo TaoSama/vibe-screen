@@ -7,8 +7,9 @@ row on the connected Nubia P0110. This refresh covers large-text stacking,
 default-font horizontal layout, hidden Settings/Disconnect visibility mixes,
 and the surrounding no-Host UI/UX regression set. No macOS Vibe Screen,
 MacHost, or Telemachus GUI was launched. No `swift run`, macOS TCC, Screen
-Recording, Accessibility, Keychain, System Settings, signing/re-signing, or
-`adb reverse tcp:54321` creation/removal was used.
+Recording, Accessibility, Keychain, System Settings, or signing/re-signing was
+used. The retained command transcript records only Gradle test invocations, and
+post-run checks showed no Host listener or `tcp:54321` ADB reverse mapping.
 
 ## Source
 
@@ -87,10 +88,12 @@ preferences in no-Host instrumentation.
 
 ## No-Host Boundaries
 
-This run did not start or require a macOS Host, did not negotiate Protocol v1,
-and did not create or remove any ADB reverse mapping. The only retained
-`adb reverse --list` entry after the run is the pre-existing unrelated
-`UsbFfs tcp:8908 tcp:8908`; no `tcp:54321` mapping was present.
+This run did not start or require a macOS Host and did not negotiate Protocol
+v1. The recorded command set contains only Gradle unit/build/instrumentation
+invocations; post-run checks verified that no local TCP `54321` Host listener
+was retained and that the only retained `adb reverse --list` entry was the
+pre-existing unrelated `UsbFfs tcp:8908 tcp:8908`, with no `tcp:54321` mapping
+present.
 
 This package does not prove Host-backed bytes landing, Android ClipboardManager
 <-> macOS NSPasteboard E2E, real file-transfer E2E, LAN streaming, real Internet

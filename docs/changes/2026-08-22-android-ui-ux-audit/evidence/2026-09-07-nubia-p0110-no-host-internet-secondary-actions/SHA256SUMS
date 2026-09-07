@@ -22,6 +22,6 @@ c41c7b2d5a99344c8b448912190b2f904e495a2ca8ca3bacbde340d040acf5c5  ./logs/connect
 bd7f2f44ed56d35af9c9bcd6a3daf7a4442e98e92979468beba842f84dc2c439  ./logs/no-host-boundary.txt
 a1b52596ad90801102e7f2f6b73a5ac9eefa401d17152fe25dc9a73aa36dac67  ./metadata/device-identity.txt
 f731dee1dc84ad77070a4ac12729ce7f8cef2b12890bab73773b9eebc36e0b00  ./metadata/source-provenance.txt
-a602c154ee9ca2f726def51fab3bdbfea6e0d0ff986905ddb7a38c751fe18a2f  ./README.md
+8fe0939d07f6299cd5371b60b67452b64e433bde13a08251a725b1359680148d  ./README.md
 5105c521d29658b3c5e4f1a25b02ce46a601225c9998047964ed62b9b74025c9  ./unit-test-results/TEST-dev.telemachus.display.ConnectionPanelLayoutPolicyTest.xml
 31cae9282aad6e5fbdce43e2796de0e7163e622bc75382a491dd12b160080a9c  ./unit-test-results/TEST-dev.telemachus.display.MainActivityTerminalGuidanceContractTest.xml
