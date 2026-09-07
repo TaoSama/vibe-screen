@@ -1,0 +1,5 @@
+09-07 19:45:49.617 23580 23605 I TestRunner: started: offerLayoutKeepsDecisionCopyStructuredForDialogButtons(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)
+09-07 19:45:49.621 23580 23605 I emachus.display: AssetManager2(0xb400007c725b69d8) locale list changing from [] to [zh-CN]
+09-07 19:45:49.651  6143  6305 V OsAgent : broadcastSystemEvent - 7
+09-07 19:45:49.651  4248  4248 D HidDeviceService: handleMessage(): msg.what=8
+09-07 19:45:49.658 23580 23605 I TestRunner: finished: offerLayoutKeepsDecisionCopyStructuredForDialogButtons(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)

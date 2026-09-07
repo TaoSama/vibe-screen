@@ -1,0 +1,4 @@
+command=adb -s <redacted-adb-serial> devices -l
+List of devices attached
+<redacted-adb-serial>     device usb:0-1 product:pacific model:P0110 device:pacific transport_id:30
+

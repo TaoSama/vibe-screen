@@ -1,0 +1,2 @@
+09-07 19:45:49.715 23580 23605 I TestRunner: started: outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)
+09-07 19:45:49.759 23580 23605 I TestRunner: finished: outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable(dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest)

@@ -380,3 +380,25 @@ v1 product session, TCC state, sender file selection, receiver approval in a
 real session, saved remote file, cancel cleanup, or SHA-256 endpoint equality
 was exercised. This evidence improves Android no-Host UI readiness only and
 does not close `file_transfer_android_product_e2e`.
+
+## 2026-09-07 Nubia P0110 no-Host dialog current-main refresh
+
+Evidence:
+[../2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-dialog-refresh-current-main/](../2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-dialog-refresh-current-main/README.md).
+
+Status remains open. This current-main run keeps the exact Nubia P0110 /
+pacific / Android 16 / SDK 36 identity and reruns
+FileTransferOfferDialogLayoutInstrumentedTest together with the clipboard
+dialog layout class on a real Android device without a Host. The file-transfer
+coverage includes the incoming offer dialog and outgoing preflight confirmation
+for long filenames, large text, narrow portrait, landscape, field labels,
+scroll reachability, and Receive/Reject/Send decision labels.
+
+The retained command evidence reports 5 passing focused dialog tests overall;
+the file-transfer class contributes 3 of those methods. Pre-run and post-run
+adb reverse --list samples contain only UsbFfs tcp:8908 tcp:8908 and no
+tcp:54321 mapping. No macOS Host, Protocol v1 product session, sender file
+selection in a real session, receiver approval in a real session, saved remote
+file, cancel cleanup, or SHA-256 endpoint equality was exercised. This improves
+Android no-Host UI readiness only and does not close
+file_transfer_android_product_e2e.

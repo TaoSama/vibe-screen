@@ -34,6 +34,19 @@ MacHost 可执行自测。它不证明真实 Android `ClipboardManager`、真实
 `synthetic: true` 和 `offline_only: true`，只能用于 schema/诊断测试，不能关闭
 真实 clipboard E2E gate。
 
+2026-09-07 current-main 真机 no-Host UI/layout refresh 新增保留证据：
+[../2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-dialog-refresh-current-main/](../2026-08-22-android-ui-ux-audit/evidence/2026-09-07-nubia-p0110-no-host-dialog-refresh-current-main/README.md)。
+该 run 在 Nubia P0110 / pacific / Android 16 / SDK 36 上运行
+`ClipboardConfirmationDialogLayoutInstrumentedTest` 和 file-transfer dialog
+layout class，合计 5 个 focused dialog instrumentation tests 通过。Clipboard
+coverage 覆盖 send、receive、overwrite confirmation copy、direction /
+protection / size / preview 字段、bounded truncated preview、大字体、窄屏竖屏、
+横屏、字段 label、可选择且非横向滚动的 preview text，以及 scroll reachability。
+验证前后 `adb reverse --list` 均只显示 `UsbFfs tcp:8908 tcp:8908`，没有
+`tcp:54321`。该证据只证明 Android no-Host clipboard confirmation dialog
+readiness，不证明真实 Android ClipboardManager <-> macOS NSPasteboard USB/LAN
+产品 E2E。
+
 命令：
 
 ```bash
