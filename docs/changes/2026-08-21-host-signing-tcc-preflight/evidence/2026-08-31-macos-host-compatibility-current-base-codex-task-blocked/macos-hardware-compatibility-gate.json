@@ -18,6 +18,8 @@
     "The configured Vibe Screen Dev signing identity was not found in the keychain lookup used for rebuild/install readiness.",
     "codesign inspection of the installed Host failed with sealing errors, so the run could not record binary SHA-256, designated requirement, or installed Host source commit/tree provenance.",
     "Screen Recording and Accessibility TCC states are unverified from read-only evidence.",
+    "Microphone TCC state is unverified from read-only evidence.",
+    "No decoded Screen Recording, Accessibility, or Microphone TCC csreq row matched an inspected Host designated requirement because Host codesign inspection failed.",
     "The Host listener was not observed on TCP port 54321.",
     "The installed Host does not expose the virtual HID entitlement.",
     "Launch-at-login/headless readiness is blocked because Launch at Login is unverified in the default no-sfltool path.",
@@ -31,7 +33,7 @@
     },
     {
       "field": "signing_and_tcc_state_recorded",
-      "requirement": "record signing stability plus Screen Recording and Accessibility state"
+      "requirement": "record signing stability plus Screen Recording, Accessibility, and Microphone state"
     },
     {
       "field": "source_bound_host_recorded",
@@ -54,6 +56,14 @@
       "requirement": "observe a Protocol v1 USB or trusted-LAN stream on this Host row"
     },
     {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the pinned Host signing leaf SHA-1"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the canonical Host designated requirement used by TCC csreq matching"
+    },
+    {
       "field": "source_bound_host_recorded",
       "requirement": "record the source commit embedded in the installed Host bundle"
     },
@@ -71,11 +81,39 @@
     },
     {
       "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC row csreq must match the packaged Host designated requirement"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC row csreq must match the packaged Host designated requirement"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Microphone TCC row csreq must match the packaged Host designated requirement"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC row must record an accepted user-consent auth_reason"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC row must record an accepted user-consent auth_reason"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Microphone TCC row must record an accepted user-consent auth_reason"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
       "requirement": "Screen Recording TCC must be authorized for the packaged Host"
     },
     {
       "field": "signing_and_tcc_state_recorded",
       "requirement": "Accessibility TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Microphone TCC must be authorized for the packaged Host"
     }
   ],
   "can_close_macos_host_compatibility_row": false,
@@ -92,15 +130,24 @@
       "next_steps": [
         "record Xcode and Swift versions used for local build/test evidence",
         "record Host app commit, binary SHA-256, bundle id, and signing identity",
-        "record signing stability plus Screen Recording and Accessibility state",
+        "record signing stability plus Screen Recording, Accessibility, and Microphone state",
         "record installed Host source commit/tree provenance and require it to match this current-base row",
         "record Host self-test provenance from the same current-base source revision",
+        "record the pinned Host signing leaf SHA-1",
+        "record the canonical Host designated requirement used by TCC csreq matching",
         "record the source commit embedded in the installed Host bundle",
         "record the source tree embedded in the installed Host bundle",
         "record whether the installed Host was packaged from a clean source tree",
         "record the commit used for Host self-test output",
+        "Screen Recording TCC row csreq must match the packaged Host designated requirement",
+        "Accessibility TCC row csreq must match the packaged Host designated requirement",
+        "Microphone TCC row csreq must match the packaged Host designated requirement",
+        "Screen Recording TCC row must record an accepted user-consent auth_reason",
+        "Accessibility TCC row must record an accepted user-consent auth_reason",
+        "Microphone TCC row must record an accepted user-consent auth_reason",
         "Screen Recording TCC must be authorized for the packaged Host",
-        "Accessibility TCC must be authorized for the packaged Host"
+        "Accessibility TCC must be authorized for the packaged Host",
+        "Microphone TCC must be authorized for the packaged Host"
       ],
       "status": "blocked",
       "title": "Source and Host identity"
@@ -174,7 +221,7 @@
     },
     {
       "field": "signing_and_tcc_state_recorded",
-      "requirement": "record signing stability plus Screen Recording and Accessibility state"
+      "requirement": "record signing stability plus Screen Recording, Accessibility, and Microphone state"
     },
     {
       "field": "source_bound_host_recorded",
@@ -213,6 +260,14 @@
       "requirement": "observe a client/process reconnect while the Host PID survives"
     },
     {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the pinned Host signing leaf SHA-1"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record the canonical Host designated requirement used by TCC csreq matching"
+    },
+    {
       "field": "source_bound_host_recorded",
       "requirement": "record the source commit embedded in the installed Host bundle"
     },
@@ -230,11 +285,39 @@
     },
     {
       "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC row csreq must match the packaged Host designated requirement"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC row csreq must match the packaged Host designated requirement"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Microphone TCC row csreq must match the packaged Host designated requirement"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Screen Recording TCC row must record an accepted user-consent auth_reason"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Accessibility TCC row must record an accepted user-consent auth_reason"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Microphone TCC row must record an accepted user-consent auth_reason"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
       "requirement": "Screen Recording TCC must be authorized for the packaged Host"
     },
     {
       "field": "signing_and_tcc_state_recorded",
       "requirement": "Accessibility TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "signing_and_tcc_state_recorded",
+      "requirement": "Microphone TCC must be authorized for the packaged Host"
     }
   ],
   "notes": "Fail-closed current-base readiness package for the macOS Host compatibility matrix owner refreshed on branch codex/macos-host-compat-codex-task-20260831 from origin/main 28b9d1a59ef026b45ada3cd7e665ef09ea9a7523. This row remains blocked before runtime probes and does not claim macOS Host compatibility support.",
@@ -268,31 +351,43 @@
   "profile": "macos-host-compatibility-row",
   "row_scope": {
     "accessibility_tcc": "unverified",
+    "accessibility_tcc_auth_reason": null,
+    "accessibility_tcc_identity_bound": false,
     "android_counterpart": "nubia P0110 / pacific / Android 16 / SDK 36 (not exercised in this blocked readiness run)",
     "capture_backend": "unavailable",
     "cgdisplaystream_result": "unavailable_terminal",
     "compatibility_scope": "blocked readiness for one Apple silicon Mac16,8 / macOS 26.4.1 build 25E253 / multi-display setup with built-in Color LCD plus external DELL U2723QE over intended USB; no compatibility row is closed",
     "cpu_architecture": "apple_silicon",
     "current_base_commit": "28b9d1a59ef026b45ada3cd7e665ef09ea9a7523",
+    "current_base_tree": "2a037ac18e1738693d0bdb5068f7027bad112011",
     "display_topology": "multi_display",
     "host_build_identity": "installed /Applications/Vibe Screen.app is not a current-source source-bound package for this run; readiness could not inspect codesign metadata because the configured Vibe Screen Dev identity is unavailable and codesign inspection reported sealing errors",
     "host_bundle_id": "dev.telemachus.display",
     "host_cpu_name": "Apple M4 Pro",
+    "host_designated_requirement": "",
+    "host_install_path": "/Applications/Vibe Screen.app",
     "host_model_identifier": "Mac16,8",
     "host_self_test_commit": "",
     "host_signing_identity": "Vibe Screen Dev",
+    "host_signing_leaf_sha1": "",
     "host_source_commit": "",
     "host_source_dirty_state": "",
     "host_source_tree": "",
     "implementation_path": "blocked readiness: stable source-bound Host/TCC prerequisites must pass before runtime compatibility row collection",
     "macos_build": "25E253",
     "macos_version": "26.4.1",
+    "microphone_tcc": "unverified",
+    "microphone_tcc_auth_reason": null,
+    "microphone_tcc_identity_bound": false,
     "mirror_result": "unavailable",
     "owner": "Vibe Screen macOS Host compatibility matrix owner",
     "repository_commit": "28b9d1a59ef026b45ada3cd7e665ef09ea9a7523",
     "repository_dirty_state": "clean",
+    "repository_tree": "2a037ac18e1738693d0bdb5068f7027bad112011",
     "screen_capturekit_result": "unavailable_terminal",
     "screen_recording_tcc": "unverified",
+    "screen_recording_tcc_auth_reason": null,
+    "screen_recording_tcc_identity_bound": false,
     "stream_transport": "usb",
     "swift_version": "Apple Swift version 6.3.3",
     "videotoolbox_result": "unavailable",

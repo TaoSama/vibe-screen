@@ -17,6 +17,12 @@ from typing import Any, Sequence, TextIO
 
 from . import SCHEMA_VERSION
 
+SCRIPT_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import package_macos  # noqa: E402
+
 GATE_PROFILE = "macos-host-compatibility-row"
 STATUS_PASS = "pass"
 STATUS_BLOCKED = "blocked"
@@ -67,7 +73,10 @@ VIDEOTOOLBOX_RESULTS = frozenset((
 ))
 REPOSITORY_DIRTY_STATES = frozenset(("clean", "dirty"))
 TCC_STATES = frozenset(("authorized", "not_authorized", "unverified"))
-EXPECTED_HOST_BUNDLE_ID = "dev.telemachus.display"
+USER_CONSENT_TCC_AUTH_REASONS = package_macos.USER_CONSENT_TCC_AUTH_REASONS
+EXPECTED_HOST_BUNDLE_ID = package_macos.EXPECTED_BUNDLE_ID
+EXPECTED_HOST_INSTALL_PATH = str(package_macos.EXPECTED_INSTALL_PATH)
+EXPECTED_SIGNING_LEAF_SHA1 = package_macos.EXPECTED_SIGNING_LEAF_SHA1
 COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 REQUIRED_FIELDS = (
@@ -79,7 +88,7 @@ REQUIRED_FIELDS = (
     ("macos_version_build_recorded", "record macOS product version and build number"),
     ("xcode_swift_recorded", "record Xcode and Swift versions used for local build/test evidence"),
     ("host_build_identity_recorded", "record Host app commit, binary SHA-256, bundle id, and signing identity"),
-    ("signing_and_tcc_state_recorded", "record signing stability plus Screen Recording and Accessibility state"),
+    ("signing_and_tcc_state_recorded", "record signing stability plus Screen Recording, Accessibility, and Microphone state"),
     ("source_bound_host_recorded", "record installed Host source commit/tree provenance and require it to match this current-base row"),
     ("host_self_test_provenance_recorded", "record Host self-test provenance from the same current-base source revision"),
     ("display_topology_recorded", "record built-in, external, multi-display, dummy/headless, or Screen Sharing topology"),
@@ -135,6 +144,7 @@ REQUIRED_METADATA_FIELDS = (
     ("owner", "owner_recorded", "record a non-empty macOS Host compatibility gate owner"),
     ("implementation_path", "implementation_path_recorded", "record a non-empty implementation path or follow-up path"),
     ("repository_commit", "repository_commit_recorded", "record the exact repository commit used for the row"),
+    ("repository_tree", "repository_commit_recorded", "record the exact repository tree used for the row"),
     ("repository_dirty_state", "repository_commit_recorded", "record whether the repository was clean or dirty"),
     ("host_model_identifier", "host_model_recorded", "record a non-empty Mac model identifier"),
     ("cpu_architecture", "cpu_architecture_recorded", "record apple_silicon or intel CPU architecture"),
@@ -143,15 +153,20 @@ REQUIRED_METADATA_FIELDS = (
     ("xcode_version", "xcode_swift_recorded", "record a non-empty Xcode version"),
     ("swift_version", "xcode_swift_recorded", "record a non-empty Swift version"),
     ("host_build_identity", "host_build_identity_recorded", "record a non-empty Host build identity"),
+    ("host_install_path", "host_build_identity_recorded", "record the packaged Host install path used for TCC binding"),
     ("host_bundle_id", "host_build_identity_recorded", "record the packaged Host bundle identifier"),
     ("host_signing_identity", "host_build_identity_recorded", "record the concrete non-ad-hoc Host signing identity"),
+    ("host_signing_leaf_sha1", "host_build_identity_recorded", "record the pinned Host signing leaf SHA-1"),
+    ("host_designated_requirement", "host_build_identity_recorded", "record the canonical Host designated requirement used by TCC csreq matching"),
     ("screen_recording_tcc", "signing_and_tcc_state_recorded", "record Screen Recording TCC authorization state for the packaged Host"),
     ("accessibility_tcc", "signing_and_tcc_state_recorded", "record Accessibility TCC authorization state for the packaged Host"),
+    ("microphone_tcc", "signing_and_tcc_state_recorded", "record Microphone TCC authorization state for the packaged Host"),
     ("host_source_commit", "source_bound_host_recorded", "record the source commit embedded in the installed Host bundle"),
     ("host_source_tree", "source_bound_host_recorded", "record the source tree embedded in the installed Host bundle"),
     ("host_source_dirty_state", "source_bound_host_recorded", "record whether the installed Host was packaged from a clean source tree"),
     ("host_self_test_commit", "host_self_test_provenance_recorded", "record the commit used for Host self-test output"),
     ("current_base_commit", "host_self_test_provenance_recorded", "record the origin/main commit used as the current-base comparison point"),
+    ("current_base_tree", "host_self_test_provenance_recorded", "record the origin/main tree used as the current-base comparison point"),
     ("display_topology", "display_topology_recorded", "record a concrete display topology"),
     ("capture_backend", "capture_backend_recorded", "record a non-empty capture backend or unavailable result"),
     ("screen_capturekit_result", "capture_backend_recorded", "record ScreenCaptureKit first-frame, fallback, or terminal-unavailable result"),
@@ -162,6 +177,42 @@ REQUIRED_METADATA_FIELDS = (
     ("stream_transport", "protocol_v1_stream_observed", "record a non-empty stream transport"),
     ("android_counterpart", "protocol_v1_stream_observed", "record the Android counterpart used for the stream"),
     ("compatibility_scope", "claim_scoped_to_exact_row", "record a non-empty exact-row compatibility scope"),
+)
+
+REQUIRED_TRUE_METADATA_FIELDS = (
+    (
+        "screen_recording_tcc_identity_bound",
+        "signing_and_tcc_state_recorded",
+        "Screen Recording TCC row csreq must match the packaged Host designated requirement",
+    ),
+    (
+        "accessibility_tcc_identity_bound",
+        "signing_and_tcc_state_recorded",
+        "Accessibility TCC row csreq must match the packaged Host designated requirement",
+    ),
+    (
+        "microphone_tcc_identity_bound",
+        "signing_and_tcc_state_recorded",
+        "Microphone TCC row csreq must match the packaged Host designated requirement",
+    ),
+)
+
+REQUIRED_TCC_AUTH_REASON_FIELDS = (
+    (
+        "screen_recording_tcc_auth_reason",
+        "signing_and_tcc_state_recorded",
+        "Screen Recording TCC row must record an accepted user-consent auth_reason",
+    ),
+    (
+        "accessibility_tcc_auth_reason",
+        "signing_and_tcc_state_recorded",
+        "Accessibility TCC row must record an accepted user-consent auth_reason",
+    ),
+    (
+        "microphone_tcc_auth_reason",
+        "signing_and_tcc_state_recorded",
+        "Microphone TCC row must record an accepted user-consent auth_reason",
+    ),
 )
 
 CLOSURE_CHECKLIST_GROUPS = (
@@ -247,6 +298,15 @@ def _string_value(record: dict[str, Any], field: str) -> str:
     raise MacOSHardwareCompatibilityError(f"{field} must be a string")
 
 
+def _optional_int_value(record: dict[str, Any], field: str) -> int | None:
+    value = record.get(field)
+    if value is None or value == "":
+        return None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    raise MacOSHardwareCompatibilityError(f"{field} must be an integer or null")
+
+
 def _optional_run_id(record: dict[str, Any]) -> str | None:
     value = record.get("run_id")
     if value is None:
@@ -305,13 +365,18 @@ def _enum_value(record: dict[str, Any], field: str, allowed: frozenset[str]) -> 
 
 
 def _full_sha_or_missing(
-    missing: list[dict[str, str]], field: str, observation_field: str, value: str
+    missing: list[dict[str, str]],
+    field: str,
+    observation_field: str,
+    value: str,
+    *,
+    object_name: str = "git commit",
 ) -> None:
     if value and COMMIT_SHA_RE.fullmatch(value) is None:
         _append_missing_once(
             missing,
             observation_field,
-            f"record {field} as a 40-character hexadecimal git commit",
+            f"record {field} as a 40-character hexadecimal {object_name}",
         )
 
 
@@ -461,11 +526,30 @@ def summarize(
     for metadata_field, observation_field, requirement in REQUIRED_METADATA_FIELDS:
         if not _string_value(record, metadata_field).strip():
             _append_missing_once(missing, observation_field, requirement)
+    for metadata_field, observation_field, requirement in REQUIRED_TRUE_METADATA_FIELDS:
+        if not _bool_value(record, metadata_field):
+            _append_missing_once(missing, observation_field, requirement)
+    tcc_auth_reasons = {
+        metadata_field: _optional_int_value(record, metadata_field)
+        for metadata_field, _, _ in REQUIRED_TCC_AUTH_REASON_FIELDS
+    }
+    for metadata_field, observation_field, requirement in REQUIRED_TCC_AUTH_REASON_FIELDS:
+        auth_reason = tcc_auth_reasons[metadata_field]
+        if auth_reason is None:
+            _append_missing_once(missing, observation_field, requirement)
+        elif auth_reason not in USER_CONSENT_TCC_AUTH_REASONS:
+            _append_missing_once(
+                missing,
+                observation_field,
+                f"{requirement}; got auth_reason={auth_reason}",
+            )
     repository_commit = _string_value(record, "repository_commit")
+    repository_tree = _string_value(record, "repository_tree")
     host_source_commit = _string_value(record, "host_source_commit")
     host_source_tree = _string_value(record, "host_source_tree")
     host_self_test_commit = _string_value(record, "host_self_test_commit")
     current_base_commit = _string_value(record, "current_base_commit")
+    current_base_tree = _string_value(record, "current_base_tree")
     repository_dirty_state = _enum_value(
         record, "repository_dirty_state", REPOSITORY_DIRTY_STATES
     )
@@ -479,9 +563,29 @@ def summarize(
             "record repository_commit as a 40-character hexadecimal git commit",
         )
     _full_sha_or_missing(missing, "host_source_commit", "source_bound_host_recorded", host_source_commit)
-    _full_sha_or_missing(missing, "host_source_tree", "source_bound_host_recorded", host_source_tree)
+    _full_sha_or_missing(
+        missing,
+        "host_source_tree",
+        "source_bound_host_recorded",
+        host_source_tree,
+        object_name="git tree",
+    )
     _full_sha_or_missing(missing, "host_self_test_commit", "host_self_test_provenance_recorded", host_self_test_commit)
     _full_sha_or_missing(missing, "current_base_commit", "host_self_test_provenance_recorded", current_base_commit)
+    _full_sha_or_missing(
+        missing,
+        "repository_tree",
+        "repository_commit_recorded",
+        repository_tree,
+        object_name="git tree",
+    )
+    _full_sha_or_missing(
+        missing,
+        "current_base_tree",
+        "host_self_test_provenance_recorded",
+        current_base_tree,
+        object_name="git tree",
+    )
     if repository_dirty_state == "dirty":
         _append_missing_once(
             missing,
@@ -500,6 +604,12 @@ def summarize(
             "source_bound_host_recorded",
             "installed Host source commit must match repository_commit for this row",
         )
+    if host_source_tree and repository_tree and host_source_tree != repository_tree:
+        _append_missing_once(
+            missing,
+            "source_bound_host_recorded",
+            "installed Host source tree must match repository_tree for this row",
+        )
     if host_self_test_commit and repository_commit and host_self_test_commit != repository_commit:
         _append_missing_once(
             missing,
@@ -512,12 +622,34 @@ def summarize(
             "host_self_test_provenance_recorded",
             "current_base_commit must match repository_commit for this current-base row",
         )
+    if current_base_tree and repository_tree and current_base_tree != repository_tree:
+        _append_missing_once(
+            missing,
+            "host_self_test_provenance_recorded",
+            "current_base_tree must match repository_tree for this current-base row",
+        )
+    host_install_path = _string_value(record, "host_install_path")
+    if host_install_path and host_install_path != EXPECTED_HOST_INSTALL_PATH:
+        _append_missing_once(
+            missing,
+            "host_build_identity_recorded",
+            f"Host install path must be {EXPECTED_HOST_INSTALL_PATH}",
+        )
     host_bundle_id = _string_value(record, "host_bundle_id")
     if host_bundle_id and host_bundle_id != EXPECTED_HOST_BUNDLE_ID:
         _append_missing_once(
             missing,
             "host_build_identity_recorded",
             f"Host bundle id must be {EXPECTED_HOST_BUNDLE_ID}",
+        )
+    host_signing_leaf_sha1 = package_macos.normalize_sha1(
+        _string_value(record, "host_signing_leaf_sha1")
+    )
+    if host_signing_leaf_sha1 and host_signing_leaf_sha1 != EXPECTED_SIGNING_LEAF_SHA1:
+        _append_missing_once(
+            missing,
+            "host_build_identity_recorded",
+            f"Host signing leaf SHA-1 must be {EXPECTED_SIGNING_LEAF_SHA1}",
         )
     host_signing_identity = _string_value(record, "host_signing_identity").strip().lower()
     if host_signing_identity in {"-", "ad-hoc", "adhoc"}:
@@ -526,8 +658,22 @@ def summarize(
             "host_build_identity_recorded",
             "Host signing identity must be a stable non-ad-hoc identity",
         )
+    host_designated_requirement = _string_value(record, "host_designated_requirement")
+    if host_designated_requirement:
+        requirement_error = package_macos.canonical_designated_requirement_contract_error(
+            host_designated_requirement,
+            expected_identifier=EXPECTED_HOST_BUNDLE_ID,
+            expected_leaf_sha1=EXPECTED_SIGNING_LEAF_SHA1,
+        )
+        if requirement_error is not None:
+            _append_missing_once(
+                missing,
+                "host_build_identity_recorded",
+                f"Host designated requirement must bind exact Host identity: {requirement_error}",
+            )
     screen_recording_tcc = _enum_value(record, "screen_recording_tcc", TCC_STATES)
     accessibility_tcc = _enum_value(record, "accessibility_tcc", TCC_STATES)
+    microphone_tcc = _enum_value(record, "microphone_tcc", TCC_STATES)
     if screen_recording_tcc and screen_recording_tcc != "authorized":
         _append_missing_once(
             missing,
@@ -539,6 +685,12 @@ def summarize(
             missing,
             "signing_and_tcc_state_recorded",
             "Accessibility TCC must be authorized for the packaged Host",
+        )
+    if microphone_tcc and microphone_tcc != "authorized":
+        _append_missing_once(
+            missing,
+            "signing_and_tcc_state_recorded",
+            "Microphone TCC must be authorized for the packaged Host",
         )
     if field_values["artifacts_retained"] and not artifact_paths:
         _append_missing_once(
@@ -599,6 +751,7 @@ def summarize(
             "owner": _string_value(record, "owner"),
             "implementation_path": _string_value(record, "implementation_path"),
             "repository_commit": repository_commit,
+            "repository_tree": repository_tree,
             "repository_dirty_state": repository_dirty_state,
             "cpu_architecture": _cpu_architecture(record),
             "host_model_identifier": _string_value(record, "host_model_identifier"),
@@ -608,15 +761,32 @@ def summarize(
             "xcode_version": _string_value(record, "xcode_version"),
             "swift_version": _string_value(record, "swift_version"),
             "host_build_identity": _string_value(record, "host_build_identity"),
+            "host_install_path": host_install_path,
             "host_bundle_id": host_bundle_id,
             "host_signing_identity": _string_value(record, "host_signing_identity"),
+            "host_signing_leaf_sha1": host_signing_leaf_sha1,
+            "host_designated_requirement": host_designated_requirement,
             "screen_recording_tcc": screen_recording_tcc,
+            "screen_recording_tcc_auth_reason": tcc_auth_reasons["screen_recording_tcc_auth_reason"],
             "accessibility_tcc": accessibility_tcc,
+            "accessibility_tcc_auth_reason": tcc_auth_reasons["accessibility_tcc_auth_reason"],
+            "microphone_tcc": microphone_tcc,
+            "microphone_tcc_auth_reason": tcc_auth_reasons["microphone_tcc_auth_reason"],
+            "screen_recording_tcc_identity_bound": _bool_value(
+                record, "screen_recording_tcc_identity_bound"
+            ),
+            "accessibility_tcc_identity_bound": _bool_value(
+                record, "accessibility_tcc_identity_bound"
+            ),
+            "microphone_tcc_identity_bound": _bool_value(
+                record, "microphone_tcc_identity_bound"
+            ),
             "host_source_commit": host_source_commit,
             "host_source_tree": host_source_tree,
             "host_source_dirty_state": host_source_dirty_state,
             "host_self_test_commit": host_self_test_commit,
             "current_base_commit": current_base_commit,
+            "current_base_tree": current_base_tree,
             "display_topology": _display_topology(record),
             "capture_backend": _enum_value(record, "capture_backend", CAPTURE_BACKENDS),
             "screen_capturekit_result": _enum_value(

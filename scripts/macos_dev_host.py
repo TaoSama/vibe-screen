@@ -26,7 +26,7 @@ import package_macos
 
 APP_NAME = package_macos.PRODUCT_NAME
 EXECUTABLE_NAME = package_macos.EXECUTABLE_NAME
-DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
+DEFAULT_INSTALL_PATH = package_macos.EXPECTED_INSTALL_PATH
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 DEFAULT_XCTEST_PREFLIGHT_JSON = DEFAULT_OUTPUT_DIR / "xctest-preflight.json"
@@ -49,11 +49,21 @@ ACCESSIBILITY_SERVICES = (ACCESSIBILITY_SERVICE,)
 MICROPHONE_SERVICE = "kTCCServiceMicrophone"
 MICROPHONE_SERVICES = (MICROPHONE_SERVICE,)
 ALLOWED_AUTH_VALUE = 2
+USER_CONSENT_TCC_AUTH_REASONS = package_macos.USER_CONSENT_TCC_AUTH_REASONS
 DEFAULT_LISTENER_PORT = 54321
+HOST_LISTENER_COMMAND_NAMES = frozenset(
+    (EXECUTABLE_NAME, EXECUTABLE_NAME.replace(" ", ""), EXECUTABLE_NAME.replace(" ", r"\x20"))
+)
+LSOF_HOST_COMMAND_PATTERN = "|".join(
+    re.escape(command) for command in sorted(HOST_LISTENER_COMMAND_NAMES, key=len, reverse=True)
+)
+LSOF_HOST_COMMAND_RE = re.compile(rf"^({LSOF_HOST_COMMAND_PATTERN})\s+\d+\s+")
+LSOF_HOST_USER_COLUMN_RE = re.compile(rf"^({LSOF_HOST_COMMAND_PATTERN})(\s+\d+\s+)(\S+)(\s+)")
+LSOF_USER_COLUMN_RE = re.compile(r"^(\S+\s+\d+\s+)(\S+)(\s+)")
 VIRTUAL_HID_ENTITLEMENT = "com.apple.developer.hid.virtual.device"
 SYSTEM_SETTINGS_PATH = (
     "System Settings -> Privacy & Security -> Screen & System Audio Recording "
-    "and Accessibility"
+    "and Accessibility; System Settings -> Privacy & Security -> Microphone"
 )
 TCC_IDENTITY_BINDING_NOTE = (
     "macOS TCC grants are identity-bound. Screen Recording, Accessibility, "
@@ -907,8 +917,30 @@ def redact_lsof_user_columns(output: str) -> str:
         if line.startswith("COMMAND"):
             redacted_lines.append(line)
             continue
-        redacted_lines.append(re.sub(r"^(\S+\s+\d+\s+)(\S+)(\s+)", r"\1<redacted-user>\3", line))
+        redacted_line = LSOF_HOST_USER_COLUMN_RE.sub(r"\1\2<redacted-user>\4", line)
+        if redacted_line == line:
+            redacted_line = LSOF_USER_COLUMN_RE.sub(r"\1<redacted-user>\3", line)
+        redacted_lines.append(redacted_line)
     return redact_network_endpoints("\n".join(redacted_lines))
+
+
+def lsof_listener_line_has_port(line: str, port: int) -> bool:
+    return f":{port}" in line and "LISTEN" in line
+
+
+def lsof_listener_line_has_host_command(line: str) -> bool:
+    stripped = line.lstrip()
+    if not stripped or stripped.startswith("COMMAND"):
+        return False
+    return LSOF_HOST_COMMAND_RE.match(stripped) is not None
+
+
+def tcc_auth_reason_label(auth_reason: int | None) -> str:
+    return "missing" if auth_reason is None else str(auth_reason)
+
+
+def tcc_row_has_user_consent(row: TCCRow) -> bool:
+    return row.auth_reason in USER_CONSENT_TCC_AUTH_REASONS
 
 
 def inspect_entitlements(app_path: Path) -> EntitlementStatus:
@@ -1192,14 +1224,22 @@ def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> Permissio
 
 def inspect_listener(port: int) -> ListenerStatus:
     try:
-        output = run("/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN")
+        output = run("/usr/sbin/lsof", "-nP", "+c", "0", f"-iTCP:{port}", "-sTCP:LISTEN")
     except subprocess.CalledProcessError as error:
         detail = (error.stdout or "").strip()
         return ListenerStatus(port=port, observed=False, output=detail, error="listener not observed")
     lines = [line for line in output.splitlines() if line.strip()]
-    observed = any(f":{port}" in line and "LISTEN" in line for line in lines)
+    listening_lines = [line for line in lines if lsof_listener_line_has_port(line, port)]
+    observed = any(lsof_listener_line_has_host_command(line) for line in listening_lines)
     output = redact_lsof_user_columns(output)
-    return ListenerStatus(port=port, observed=observed, output=output, error=None if observed else "listener not observed")
+    if observed:
+        return ListenerStatus(port=port, observed=True, output=output)
+    error = (
+        f"listener on TCP port {port} is not {EXECUTABLE_NAME}"
+        if listening_lines
+        else "listener not observed"
+    )
+    return ListenerStatus(port=port, observed=False, output=output, error=error)
 
 
 def validate_preflight(
@@ -1240,6 +1280,11 @@ def validate_preflight(
             if row is None or row.auth_value != ALLOWED_AUTH_VALUE:
                 errors.append(f"{label} is not authorized for the installed Host")
                 continue
+            if not tcc_row_has_user_consent(row):
+                errors.append(
+                    f"{label} TCC authorization was not granted by an accepted user-consent reason: "
+                    f"auth_reason={tcc_auth_reason_label(row.auth_reason)}"
+                )
             identity_state = tcc_service_identity_state(permissions, services, metadata.designated_requirement)
             if identity_state != "authorized_current_host_identity":
                 if identity_state == "authorized_host_identity_not_inspected":
@@ -1763,13 +1808,19 @@ def inspect_host_without_throwing(
 
 
 def permission_record(permissions: PermissionStatus, host_requirement: str | None = None) -> dict[str, Any]:
+    screen_recording_row = permissions.latest_row(SCREEN_CAPTURE_SERVICES)
+    accessibility_row = permissions.latest_row(ACCESSIBILITY_SERVICES)
+    microphone_row = permissions.latest_row(MICROPHONE_SERVICES)
     return {
         "database_path": str(permissions.database_path),
         "readable": permissions.readable,
         "error": permissions.error,
         "screen_recording_granted": permissions.allowed_state(SCREEN_CAPTURE_SERVICES),
+        "screen_recording_auth_reason": (screen_recording_row.auth_reason if screen_recording_row else None),
         "accessibility_granted": permissions.allowed_state(ACCESSIBILITY_SERVICES),
+        "accessibility_auth_reason": (accessibility_row.auth_reason if accessibility_row else None),
         "microphone_granted": permissions.allowed_state(MICROPHONE_SERVICES),
+        "microphone_auth_reason": (microphone_row.auth_reason if microphone_row else None),
         "screen_recording_state": tcc_service_identity_state(
             permissions,
             SCREEN_CAPTURE_SERVICES,

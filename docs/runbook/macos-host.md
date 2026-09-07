@@ -13,7 +13,7 @@ exists today, not the complete product vision in the root README.
 - Android device with the Vibe Screen client installed.
 - Android Platform Tools (`adb`) for USB mode.
 - A monitor attached during first setup. A headless Mac cannot grant its own
-  Screen Recording or Accessibility permissions.
+  Screen Recording, Accessibility, or Microphone permissions.
 
 The virtual extension path uses private `CGVirtualDisplay` APIs. It may stop
 working after a macOS update and is not suitable for Mac App Store delivery.
@@ -302,7 +302,7 @@ streaming.
 
 Perform these steps once with a monitor attached:
 
-1. Grant Screen Recording and Accessibility.
+1. Grant Screen Recording, Accessibility, and Microphone.
 2. Enable **Launch at Login**.
 3. Enable **Start streaming automatically** and choose USB or Wireless startup.
 4. Start a stream once and verify the Android client renders it.
@@ -344,7 +344,7 @@ that a headless machine still exposes a capturable display.
 
 | Gate | Covered by offline checks | Required integration evidence | Blocking conditions |
 | --- | --- | --- | --- |
-| Host identity and source provenance | `scripts/package_macos.py` embeds source commit/tree metadata and `baseline-macos-host-readiness` records signing/TCC state. | Identity-signed installed Host whose retained source commit/tree match the evidence `source_commit`, with `source_dirty=false`, current Screen Recording, and Accessibility grants. | Missing stable signing identity, missing source provenance, dirty or mismatched source, stale TCC grant, unreadable TCC stores. |
+| Host identity and source provenance | `scripts/package_macos.py` embeds source commit/tree metadata and `baseline-macos-host-readiness` records signing/TCC state. | Identity-signed installed Host whose retained source commit/tree match the evidence `source_commit`, with `source_dirty=false`, current Screen Recording, Accessibility, and Microphone grants. | Missing stable signing identity, missing source provenance, dirty or mismatched source, stale TCC grant, unreadable TCC stores. |
 | Login item registration state | `DaemonManager` distinguishes enabled, approval-required, unavailable, and unregistered states. | Reboot after enabling **Launch at Login**; capture a timestamped app launch log and System Settings state showing the item is enabled, not approval-required. | Login item awaiting approval, app moved to a different path, ad-hoc rebuild/resign changing macOS privacy identity. |
 | Automatic startup policy | `HostStartupPolicy` and `AutomaticLaunchCoordinator` prove auto-start waits for Screen Recording/onboarding and consumes one launch intent once. | After login launch, verify the configured Startup mode starts without user interaction and the Android client can connect/render. | Screen Recording missing or stale, onboarding incomplete outside explicit benchmark mode, no reachable USB/LAN client path. |
 | Unattended listener recovery | `UnattendedRecoveryPolicy` proves retry delays of 1, 2, 4, 8, 16, 30, 30, and 30 seconds, and stops after eight attempts. | Force a listener/capture failure during an unattended run; preserve logs showing scheduled retries, no full-speed loop, and either successful restart or bounded exhaustion. | Auto-start disabled, Screen Recording unavailable, interactive/manual run, repeated port conflict, ADB/LAN unavailable. |
@@ -359,7 +359,7 @@ exhaustion log. Do not count a manual Finder/Dock launch as login-startup
 evidence.
 
 Before a headless run, complete onboarding while a monitor is attached. Record
-that Screen Recording is granted, whether Accessibility is granted, and that
+that Screen Recording, Accessibility, and Microphone are granted, and that
 `hasCompletedOnboarding` has been set by completing the app onboarding flow.
 Then record the exact display setup used for the headless pass: physical
 display, dummy plug, or Screen Sharing virtual display, including display UUID
@@ -426,7 +426,7 @@ This gate validates exact retained artifacts and prevents blocked or not-run
 states from being counted as a real-device matrix pass; it exits non-zero unless
 the report is a pass. Use `make actionable-error-current-base-owner-record
 EVIDENCE_DIR=<evidence-dir>` to refresh a blocked current-base owner report. Do
-not induce Screen Recording or Accessibility denial by modifying TCC on a shared
+not induce Screen Recording, Accessibility, or Microphone denial by modifying TCC on a shared
 machine; record the environment as blocked unless a safe, stable-signed
 denied-permission run is already available.
 
@@ -529,7 +529,7 @@ make evidence-touch-rerun-preflight \
 ```
 
 The preflight must report the expected Host binary SHA-256 and authorized
-Screen Recording plus Accessibility for `dev.telemachus.display`. If it reports
+Screen Recording, Accessibility, and Microphone for `dev.telemachus.display`. If it reports
 `blocked`, keep that JSON as the evidence output and do not reset TCC, reset
 Keychain state, clear Android app data, or run a long soak to force the gate.
 After a rerun, use `make evidence-touch-rerun-summary EVIDENCE_DIR=<evidence-dir>`

@@ -55,17 +55,21 @@ Keep these artifacts in that directory:
 - `host-identity.txt`: `sw_vers`, `uname -m`, `sysctl -n hw.model`, relevant
   `sysctl machdep.cpu.brand_string` or Apple chip output, and Xcode/Swift
   versions.
-- `host-build.txt`: repository commit and dirty state, Host binary SHA-256,
-  bundle id, signing identity, designated requirement, install path, embedded
-  `VibeScreenSourceCommit`, embedded `VibeScreenSourceTree`, and embedded
-  `VibeScreenSourceDirty`.
+- `host-build.txt`: repository commit/tree and dirty state, Host binary
+  SHA-256, bundle id, signing identity, signing leaf SHA-1, canonical
+  designated requirement, install path, embedded `VibeScreenSourceCommit`,
+  embedded `VibeScreenSourceTree`, and embedded `VibeScreenSourceDirty`.
 - `host-readiness.json` and `host-signing-and-permissions.txt`: output from
   `make baseline-macos-host-readiness`, plus the strict
   `scripts/macos_dev_host.py preflight` report when retained separately. A
-  passing row requires the stable signing identity, bundle id
-  `dev.telemachus.display`, Screen Recording authorization, Accessibility
-  authorization, source provenance matching the clean current-base checkout,
-  and the row-relevant `can_start_*` prerequisite in `host-readiness.json`.
+  passing row requires the stable signing identity, install path
+  `/Applications/Vibe Screen.app`, bundle id `dev.telemachus.display`,
+  canonical designated requirement with the pinned signing leaf, Screen
+  Recording, Accessibility, and Microphone authorization, accepted
+  user-consent TCC `auth_reason` values, TCC `csreq` rows matching the
+  packaged Host designated requirement, source provenance matching the clean
+  current-base checkout, and the row-relevant `can_start_*` prerequisite in
+  `host-readiness.json`.
 - `display-topology.txt`: display UUIDs, online display IDs, logical and
   physical sizes, scale, refresh rate, rotation, and which display is built-in,
   external, dummy, virtual, or Screen Sharing.
@@ -140,8 +144,8 @@ accepted only when the summary contains `verdict=pass` and
 Use the generated `closure_checklist` to continue a blocked current-base row in
 order. `source_and_host_identity` must pass before runtime evidence can be used
 for support claims: it covers clean-source provenance, stable non-ad-hoc Host
-signing, the expected bundle id, authorized Screen Recording and Accessibility
-TCC states, and same-commit Host self-test provenance. `runtime_acceptance` then
+signing, the expected bundle id, authorized Screen Recording, Accessibility,
+and Microphone TCC states, and same-commit Host self-test provenance. `runtime_acceptance` then
 tracks packaged Host launch, Protocol v1 stream, display selection, physical or
 current-main capture, input smoke, and reconnect. `display_and_encoder_capability`
 and `scope_and_artifacts` are still exact-row checks; a pass in those groups does
@@ -159,6 +163,7 @@ artifact exists:
   "owner": "Vibe Screen core team / macOS Host maintainer",
   "implementation_path": "support as accepted for this exact row",
   "repository_commit": "<40-character hexadecimal git commit>",
+  "repository_tree": "<40-character hexadecimal git tree>",
   "repository_dirty_state": "clean",
   "cpu_architecture": "apple_silicon",
   "host_model_identifier": "Mac14,10",
@@ -168,15 +173,26 @@ artifact exists:
   "xcode_version": "Xcode 16.x",
   "swift_version": "Swift 6.x",
   "host_build_identity": "Vibe Screen Dev, bundle id, SHA-256, signing identity",
+  "host_install_path": "/Applications/Vibe Screen.app",
   "host_bundle_id": "dev.telemachus.display",
   "host_signing_identity": "Vibe Screen Dev",
+  "host_signing_leaf_sha1": "9AAE572BF6D764E3436A6109197D345B5A87998C",
+  "host_designated_requirement": "identifier dev.telemachus.display and pinned signing leaf requirement",
   "screen_recording_tcc": "authorized",
+  "screen_recording_tcc_auth_reason": 2,
   "accessibility_tcc": "authorized",
+  "accessibility_tcc_auth_reason": 2,
+  "microphone_tcc": "authorized",
+  "microphone_tcc_auth_reason": 2,
+  "screen_recording_tcc_identity_bound": true,
+  "accessibility_tcc_identity_bound": true,
+  "microphone_tcc_identity_bound": true,
   "host_source_commit": "<40-character hexadecimal git commit from installed Host>",
   "host_source_tree": "<40-character hexadecimal git tree from installed Host>",
   "host_source_dirty_state": "clean",
   "host_self_test_commit": "<40-character hexadecimal git commit>",
   "current_base_commit": "<40-character hexadecimal origin/main commit>",
+  "current_base_tree": "<40-character hexadecimal origin/main tree>",
   "display_topology": "built_in",
   "capture_backend": "screencapturekit",
   "screen_capturekit_result": "selected_display_first_frame",
@@ -227,14 +243,20 @@ artifact exists:
 }
 ```
 
-Missing observations default to `false`. If any `claims_*` or `ci_runner_only`
+Missing observations default to `false`. Missing TCC identity-bound booleans
+also default to `false`, so Screen Recording, Accessibility, or Microphone rows
+without a decoded `csreq` match to the packaged Host designated requirement keep
+the source/Host identity checklist blocked. Missing or non-user-consent TCC
+`auth_reason` values also keep the row blocked; accepted user-consent reasons
+are `1` and `2`. If any `claims_*` or `ci_runner_only`
 field is `true`, or the capture backend contradicts the recorded first-frame or
 fallback result, the summary is `failed` because the evidence attempts to close
 a row from another environment or implementation path. Missing owner,
 implementation path, a clean 40-character repository commit, stable Host bundle
-id/signing identity, authorized Screen Recording and Accessibility TCC rows,
-source-bound installed Host provenance, Host self-test/current-base provenance,
-architecture, OS build, topology, automated macOS checks, packaged launch,
+id/install path/signing leaf/designated requirement, authorized Screen
+Recording, Accessibility, and Microphone TCC rows with accepted `auth_reason`
+values, source-bound installed Host provenance, Host self-test/current-base
+provenance, architecture, OS build, topology, automated macOS checks, packaged launch,
 Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`. Other
 missing runtime probes are `insufficient`. Artifact paths must be existing
 non-empty relative paths under the evidence directory; absolute paths, `..`

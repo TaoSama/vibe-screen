@@ -54,8 +54,11 @@ Observed blockers:
 - `codesign` inspection of `/Applications/Vibe Screen.app` failed with sealing
   errors, so installed binary identity, source commit/tree provenance, and
   permitted TCC state could not be recorded for this run.
-- Screen Recording and Accessibility authorization could not be verified from
-  the read-only TCC evidence path.
+- Screen Recording, Accessibility, and Microphone authorization could not be
+  verified from the read-only TCC evidence path, and no decoded TCC `csreq` row
+  could be matched to an inspected Host designated requirement because Host
+  codesign inspection failed. The retained compatibility row also records no
+  accepted user-consent `auth_reason` for those TCC rows.
 - The Host listener was not observed on TCP port `54321`.
 - The installed Host does not expose the virtual HID entitlement.
 - Login/headless readiness is blocked because Launch at Login remains
@@ -67,9 +70,10 @@ Observed blockers:
 The retained compatibility summary reports `verdict=blocked`,
 `invalid_claims=[]`, and `can_close_macos_host_compatibility_row=false`. Its
 generated `closure_checklist` keeps the next work fail-closed:
-`source_and_host_identity` is blocked by missing stable signing/TCC,
-source/self-test provenance, full Xcode/Swift build evidence, and installed
-Host identity; `runtime_acceptance` is blocked because no packaged Host launch,
+`source_and_host_identity` is blocked by missing stable signing/TCC, TCC
+`csreq` identity binding, Microphone readiness, source/self-test provenance,
+full Xcode/Swift build evidence, and installed Host identity;
+`runtime_acceptance` is blocked because no packaged Host launch,
 Protocol v1 stream, display-selection, input, or reconnect probe ran;
 `display_and_encoder_capability` and `scope_and_artifacts` are satisfied only as
 recorded-readiness fields for this blocked package; and `extrapolation_guard`
@@ -88,8 +92,10 @@ HID, stylus, controller, or trusted-LAN behavior.
 The exact next prerequisites are: install or expose the stable `Vibe Screen Dev`
 codesign identity; rebuild/package the Host from clean current-base source so
 source commit/tree provenance is embedded and the installed app passes strict
-codesign inspection; grant and verify Screen Recording and Accessibility for
-that exact installed Host identity; retain full Xcode build/test/self-test
-output from the same commit; then collect a Host listener/runtime snapshot and
-run the real USB or trusted-LAN Android Protocol v1 stream, display, input, and
-reconnect probes for this exact row.
+codesign inspection; grant and verify Screen Recording, Accessibility, and
+Microphone for that exact installed Host identity, including decoded TCC `csreq`
+rows matching the Host designated requirement and an accepted user-consent
+`auth_reason`; retain full Xcode
+build/test/self-test output from the same commit; then collect a Host
+listener/runtime snapshot and run the real USB or trusted-LAN Android Protocol
+v1 stream, display, input, and reconnect probes for this exact row.
