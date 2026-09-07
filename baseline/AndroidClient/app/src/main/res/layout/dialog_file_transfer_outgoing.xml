@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/fileTransferOutgoingScroll"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fadeScrollbars="true"
+    android:fillViewport="true"
+    android:overScrollMode="ifContentScrolls"
+    android:paddingStart="8dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="16dp"
+    android:scrollIndicators="bottom">
+
+    <LinearLayout
+        android:id="@+id/fileTransferOutgoingContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingIntro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="normal"
+            android:lineSpacingExtra="2dp"
+            android:text="@string/file_transfer_outgoing_intro"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingFileLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOutgoingFileName"
+            android:text="@string/file_transfer_offer_file_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingFileName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/dialog_field_bg"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="normal"
+            android:padding="12dp"
+            android:scrollHorizontally="false"
+            android:textColor="?attr/colorOnSurface"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingSizeLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOutgoingSize"
+            android:text="@string/file_transfer_offer_size_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingSize"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="normal"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingLimitLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOutgoingLimit"
+            android:text="@string/file_transfer_outgoing_limit_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingLimit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="normal"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingTargetLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/fileTransferOutgoingTarget"
+            android:text="@string/file_transfer_outgoing_target_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingTarget"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="normal"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fileTransferOutgoingVerification"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="normal"
+            android:lineSpacingExtra="2dp"
+            android:text="@string/file_transfer_outgoing_verification_note"
+            android:textColor="@color/on_surface_muted"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

@@ -94,6 +94,7 @@ import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -112,6 +113,15 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
+
+private data class ClipboardConfirmationDetails(
+    @StringRes val introResource: Int,
+    @StringRes val directionResource: Int,
+    @StringRes val protectionResource: Int,
+    val sizeText: String,
+    val preview: String,
+    @StringRes val noteResource: Int,
+)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
@@ -290,6 +300,10 @@ class MainActivity : AppCompatActivity() {
     private var localFixedHostAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var pendingOutgoingFileTimeout: Runnable? = null
+    private var pendingOutgoingFileSubmissionInFlight = false
+    private var fileTransferErrorDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
@@ -431,6 +445,12 @@ class MainActivity : AppCompatActivity() {
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
         rejectPendingIncomingFileOffer()
+        clearPendingOutgoingFileTransfer(
+            refreshControl = false,
+            clearStagedFile = activeOutgoingFileTransfer == null && !pendingOutgoingFileSubmissionInFlight,
+        )
+        fileTransferErrorDialog?.dismiss()
+        fileTransferErrorDialog = null
         applyStreamingWindowState(connected = isConnected, foreground = false)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         clearPendingUsbReconnectCountdown()
@@ -2594,7 +2614,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun beginChooseFileForTransfer() {
         if (activeFileTransferSession() == null) {
-            showDedupedToast(R.string.file_transfer_unavailable)
+            showFileTransferRecoverableError(
+                title = R.string.file_transfer_unavailable_title,
+                message = R.string.file_transfer_unavailable,
+            )
             return
         }
         val intent =
@@ -2604,7 +2627,10 @@ class MainActivity : AppCompatActivity() {
         runCatching { startActivityForResult(intent, REQ_FILE_TRANSFER_OPEN) }
             .onFailure { failure ->
                 mainDiag("file transfer picker failed: " + failure.javaClass.simpleName)
-                showDedupedToast(R.string.file_transfer_pick_failed)
+                showFileTransferRecoverableError(
+                    title = R.string.file_transfer_pick_failed_title,
+                    message = R.string.file_transfer_pick_failed,
+                )
             }
     }
 
@@ -2616,13 +2642,16 @@ class MainActivity : AppCompatActivity() {
         val uri = data?.data ?: return
         val session = activeFileTransferSession()
         if (session == null) {
-            showDedupedToast(R.string.file_transfer_unavailable)
+            showFileTransferRecoverableError(
+                title = R.string.file_transfer_unavailable_title,
+                message = R.string.file_transfer_unavailable,
+            )
             return
         }
         val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
             val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-            val outgoing =
+            val staged =
                 runCatching {
                     val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
                     val registered = withContext(Dispatchers.Main) {
@@ -2633,33 +2662,48 @@ class MainActivity : AppCompatActivity() {
                             false
                         }
                     }
-                    if (registered) session.offerFile(file, mimeType) else null
+                    if (registered) {
+                        PendingOutgoingFileTransfer(
+                            file = file,
+                            mimeType = mimeType,
+                            displayName = safeOutgoingFileName(file.name),
+                            byteLength = file.length(),
+                            maximumFileBytes = maximumFileBytes,
+                        )
+                    } else {
+                        null
+                    }
             }
             withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed || !session.isCurrent()) return@withContext
-                val outgoingValue =
-                    outgoing.getOrElse { failure ->
+                if (isFinishing || isDestroyed || !session.isCurrent()) {
+                    discardPendingOutgoingFileTransfer(refreshControl = true)
+                    return@withContext
+                }
+                val stagedValue =
+                    staged.getOrElse { failure ->
                         mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
-                        showDedupedToast(R.string.file_transfer_pick_failed)
+                        showFileTransferRecoverableError(
+                            title = R.string.file_transfer_pick_failed_title,
+                            message = if (failure is SelectedFileTooLargeException) {
+                                R.string.file_transfer_failed_too_large
+                            } else {
+                                R.string.file_transfer_pick_failed
+                            },
+                        )
                         return@withContext
                     }
-                if (outgoingValue != null) {
-                    val started =
-                        beginOutgoingFileTransferState(
-                            transferId = outgoingValue.transferId,
-                            displayName = safeOutgoingFileName(outgoingValue.fileName),
-                            byteLength = outgoingValue.byteLength,
-                            cancel = session.cancelOutgoingFile,
-                        )
-                    if (started) {
-                        showDedupedToast(R.string.file_transfer_sent_to_mac)
-                    } else {
-                        discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)
-                    }
+                if (stagedValue != null) {
+                    promptOutgoingFileTransfer(
+                        pending = stagedValue,
+                        session = session,
+                    )
                 } else {
                     discardPendingOutgoingFileTransfer(refreshControl = true)
-                    showDedupedToast(R.string.file_transfer_send_failed)
+                    showFileTransferRecoverableError(
+                        title = R.string.file_transfer_send_failed_title,
+                        message = R.string.file_transfer_failed_temporary_limit,
+                    )
                 }
             }
         }
@@ -2684,7 +2728,7 @@ class MainActivity : AppCompatActivity() {
                         if (read < 0) break
                         total += read.toLong()
                         if (total > maximumFileBytes) {
-                            throw IOException("Selected file exceeds the file transfer limit")
+                            throw SelectedFileTooLargeException()
                         }
                         output.write(buffer, 0, read)
                     }
@@ -2738,6 +2782,16 @@ class MainActivity : AppCompatActivity() {
         val acknowledgedBytes: Long = 0L,
         val cancelling: Boolean = false,
     )
+
+    private data class PendingOutgoingFileTransfer(
+        val file: File,
+        val mimeType: String,
+        val displayName: String,
+        val byteLength: Long,
+        val maximumFileBytes: Long,
+    )
+
+    private class SelectedFileTooLargeException : IOException("selected_file_exceeds_transfer_limit")
 
     private fun promptIncomingFileOffer(
         client: StreamClient,
@@ -2870,6 +2924,143 @@ class MainActivity : AppCompatActivity() {
         root.findViewById<TextView>(R.id.fileTransferOfferSize).text = readableByteCount(offer.byteLength)
         root.findViewById<TextView>(R.id.fileTransferOfferDestination).text = fileTransferDestinationLabel()
         return root
+    }
+
+    private fun promptOutgoingFileTransfer(
+        pending: PendingOutgoingFileTransfer,
+        session: ActiveFileTransferSession,
+    ) {
+        runOnUiThread {
+            if (!isInForeground ||
+                isFinishing ||
+                isDestroyed ||
+                !session.isCurrent() ||
+                hasActiveFileTransfer()
+            ) {
+                discardPendingOutgoingFileTransfer(refreshControl = true)
+                showFileTransferRecoverableError(
+                    title = R.string.file_transfer_send_failed_title,
+                    message = R.string.file_transfer_failed_temporary_limit,
+                )
+                return@runOnUiThread
+            }
+            if (pendingOutgoingFileDialog != null) {
+                discardPendingOutgoingFileTransfer(refreshControl = true)
+                showFileTransferRecoverableError(
+                    title = R.string.file_transfer_send_failed_title,
+                    message = R.string.file_transfer_failed_temporary_limit,
+                )
+                return@runOnUiThread
+            }
+
+            var decided = false
+            fun clearPendingDialog(
+                dialog: Dialog? = pendingOutgoingFileDialog,
+                dismiss: Boolean = false,
+            ) {
+                pendingOutgoingFileTimeout?.let(fileTransferApprovalHandler::removeCallbacks)
+                pendingOutgoingFileTimeout = null
+                dialog?.setOnCancelListener(null)
+                if (dismiss) dialog?.dismiss()
+                pendingOutgoingFileDialog = null
+            }
+            fun cancelPending() {
+                if (decided) return
+                decided = true
+                clearPendingDialog()
+                discardPendingOutgoingFileTransfer(refreshControl = true)
+            }
+            val timeout =
+                object : Runnable {
+                    override fun run() {
+                        if (pendingOutgoingFileTimeout !== this) return
+                        if (pendingOutgoingFileDialog == null || decided) return
+                        decided = true
+                        clearPendingDialog(dismiss = true)
+                        discardPendingOutgoingFileTransfer(refreshControl = true)
+                        showFileTransferRecoverableError(
+                            title = R.string.file_transfer_send_failed_title,
+                            message = R.string.file_transfer_outgoing_expired,
+                        )
+                    }
+                }
+            val dialog =
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.file_transfer_outgoing_title)
+                    .setView(outgoingFileTransferView(pending))
+                    .setPositiveButton(R.string.file_transfer_outgoing_send) { _, _ ->
+                        if (decided) return@setPositiveButton
+                        decided = true
+                        clearPendingDialog()
+                        if (!session.isCurrentAndAllowed() || hasActiveFileTransfer()) {
+                            discardPendingOutgoingFileTransfer(refreshControl = true)
+                            showFileTransferRecoverableError(
+                                title = R.string.file_transfer_send_failed_title,
+                                message = R.string.file_transfer_failed_temporary_limit,
+                            )
+                            return@setPositiveButton
+                        }
+                        pendingOutgoingFileSubmissionInFlight = true
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            val outgoingValue =
+                                try {
+                                    session.offerFile(pending.file, pending.mimeType)
+                                } catch (exception: CancellationException) {
+                                    throw exception
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            withContext(Dispatchers.Main) {
+                                finishConfirmedOutgoingFileTransfer(session, outgoingValue)
+                            }
+                        }
+                    }
+                    .setNegativeButton(R.string.cancel) { _, _ -> cancelPending() }
+                    .setOnCancelListener { cancelPending() }
+            pendingOutgoingFileDialog = showImmersiveDialog(dialog)
+            pendingOutgoingFileTimeout = timeout
+            fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
+        }
+    }
+
+    private fun outgoingFileTransferView(pending: PendingOutgoingFileTransfer): ScrollView {
+        val root = layoutInflater.inflate(R.layout.dialog_file_transfer_outgoing, null, false) as ScrollView
+        root.findViewById<TextView>(R.id.fileTransferOutgoingFileName).text = pending.displayName
+        root.findViewById<TextView>(R.id.fileTransferOutgoingSize).text = readableByteCount(pending.byteLength)
+        root.findViewById<TextView>(R.id.fileTransferOutgoingLimit).text = readableByteCount(pending.maximumFileBytes)
+        root.findViewById<TextView>(R.id.fileTransferOutgoingTarget).text = getString(R.string.file_transfer_outgoing_target_mac)
+        return root
+    }
+
+    private fun finishConfirmedOutgoingFileTransfer(
+        session: ActiveFileTransferSession,
+        outgoingValue: OutgoingFileTransferHandle?,
+    ) {
+        pendingOutgoingFileSubmissionInFlight = false
+        if (isFinishing || isDestroyed || !session.isCurrent()) {
+            discardPendingOutgoingFileTransfer(refreshControl = true)
+            return
+        }
+        if (outgoingValue != null) {
+            val started =
+                beginOutgoingFileTransferState(
+                    transferId = outgoingValue.transferId,
+                    displayName = safeOutgoingFileName(outgoingValue.fileName),
+                    byteLength = outgoingValue.byteLength,
+                    cancel = session.cancelOutgoingFile,
+                )
+            if (started) {
+                showDedupedToast(R.string.file_transfer_sent_to_mac)
+            } else {
+                discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)
+            }
+        } else {
+            discardPendingOutgoingFileTransfer(refreshControl = true)
+            showFileTransferRecoverableError(
+                title = R.string.file_transfer_send_failed_title,
+                message = R.string.file_transfer_send_failed,
+            )
+        }
     }
 
     private fun beginIncomingFileTransferState(
@@ -3218,11 +3409,27 @@ class MainActivity : AppCompatActivity() {
         clearActiveTransfer: Boolean = true,
         refreshControl: Boolean = false,
     ) {
+        clearPendingOutgoingFileTransfer(refreshControl = false)
         if (clearActiveTransfer) finishOutgoingFileTransferState(null)
         if (clearFinishedTransferMarkers) recentlyFinishedOutgoingTransferIds.clear()
-        (productSessionCoordinator.takePendingOutgoingFileTransfer() as? File)?.deleteRecursivelyBestEffort()
-        pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()
-        pendingInternetOutgoingFileTransfer = null
+        if (refreshControl) refreshFileTransferControl()
+    }
+
+    private fun clearPendingOutgoingFileTransfer(
+        refreshControl: Boolean = false,
+        clearStagedFile: Boolean = true,
+    ) {
+        pendingOutgoingFileTimeout?.let(fileTransferApprovalHandler::removeCallbacks)
+        pendingOutgoingFileTimeout = null
+        pendingOutgoingFileDialog?.setOnCancelListener(null)
+        pendingOutgoingFileDialog?.dismiss()
+        pendingOutgoingFileDialog = null
+        if (clearStagedFile) {
+            pendingOutgoingFileSubmissionInFlight = false
+            (productSessionCoordinator.takePendingOutgoingFileTransfer() as? File)?.deleteRecursivelyBestEffort()
+            pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()
+            pendingInternetOutgoingFileTransfer = null
+        }
         if (refreshControl) refreshFileTransferControl()
     }
 
@@ -3293,7 +3500,21 @@ class MainActivity : AppCompatActivity() {
             showImmersiveDialog(
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.clipboard_lan_confirm_title)
-                    .setMessage(LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState))
+                    .setView(
+                        clipboardConfirmationView(
+                            ClipboardConfirmationDetails(
+                                introResource = LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState),
+                                directionResource = R.string.clipboard_confirmation_send_direction,
+                                protectionResource = clipboardProtectionResource(client),
+                                sizeText = getString(
+                                    R.string.clipboard_confirmation_send_size_pending,
+                                    readableByteCount(effectiveClipboardLimit(client.negotiatedMaxClipboardBytes)),
+                                ),
+                                preview = getString(R.string.clipboard_confirmation_send_preview_unavailable),
+                                noteResource = R.string.clipboard_confirmation_send_note,
+                            ),
+                        ),
+                    )
                     .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
                         sendLocalClipboard(client, generation)
                     }
@@ -3372,7 +3593,18 @@ class MainActivity : AppCompatActivity() {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_lan_receive_confirm_title)
-                .setMessage(LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState))
+                .setView(
+                    clipboardConfirmationView(
+                        ClipboardConfirmationDetails(
+                            introResource = LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState),
+                            directionResource = R.string.clipboard_confirmation_receive_direction,
+                            protectionResource = clipboardProtectionResource(client),
+                            sizeText = pendingClipboardOfferSize(client, generation),
+                            preview = getString(R.string.clipboard_confirmation_receive_preview_unavailable),
+                            noteResource = R.string.clipboard_confirmation_receive_note,
+                        ),
+                    ),
+                )
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     receiveRemoteClipboard(client, generation)
                 }
@@ -3399,6 +3631,7 @@ class MainActivity : AppCompatActivity() {
             discardContent = {
                 productSessionCoordinator.discardDirectClipboardContent(client, generation, content.changeId)
             },
+            previewContent = content,
         )
     }
 
@@ -3407,16 +3640,15 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
         approvedContent: () -> ClipboardContentData?,
         discardContent: () -> Unit,
+        previewContent: ClipboardContentData?,
     ) {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_receive_confirm_title)
-                .setMessage(
-                    if (prefs.connectionMode == ConnectionMode.WIRELESS) {
-                        LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
-                    } else {
-                        R.string.clipboard_receive_confirm_message
-                    },
+                .setView(
+                    clipboardConfirmationView(
+                        clipboardOverwriteConfirmationDetails(client, previewContent),
+                    ),
                 )
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     if (!isCurrentSession(client, generation) || !client.canSendClipboard) return@setPositiveButton
@@ -3430,6 +3662,100 @@ class MainActivity : AppCompatActivity() {
                 },
         )
     }
+
+    private fun clipboardOverwriteConfirmationDetails(
+        client: StreamClient,
+        content: ClipboardContentData?,
+    ): ClipboardConfirmationDetails {
+        val text = content?.content?.toString(Charsets.UTF_8).orEmpty()
+        val textBytes = content?.content?.size?.toLong() ?: 0L
+        val introResource =
+            if (prefs.connectionMode == ConnectionMode.WIRELESS) {
+                LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
+            } else {
+                R.string.clipboard_receive_confirm_message
+            }
+        return ClipboardConfirmationDetails(
+            introResource = introResource,
+            directionResource = R.string.clipboard_confirmation_receive_direction,
+            protectionResource = clipboardProtectionResource(client),
+            sizeText = getString(
+                R.string.clipboard_confirmation_size_format,
+                text.length.toString(),
+                readableByteCount(textBytes),
+            ),
+            preview = clipboardPreview(text),
+            noteResource =
+                if (content?.pending == true) {
+                    R.string.clipboard_confirmation_direct_receive_note
+                } else {
+                    R.string.clipboard_confirmation_receive_note
+                },
+        )
+    }
+
+    private fun pendingClipboardOfferSize(
+        client: StreamClient,
+        generation: Long,
+    ): String {
+        val offer = productSessionCoordinator.clipboardOfferForRequest(client, generation)
+        return if (offer != null) {
+            readableByteCount(offer.byteLength)
+        } else {
+            getString(
+                R.string.clipboard_confirmation_send_size_pending,
+                readableByteCount(effectiveClipboardLimit(client.negotiatedMaxClipboardBytes)),
+            )
+        }
+    }
+
+    @StringRes
+    private fun clipboardProtectionResource(client: StreamClient): Int =
+        when (prefs.connectionMode) {
+            ConnectionMode.USB -> R.string.clipboard_confirmation_usb_protection
+            ConnectionMode.INTERNET -> R.string.clipboard_confirmation_internet_protection
+            ConnectionMode.WIRELESS ->
+                when (client.currentLanProtectionState) {
+                    LanRecordProtectionState.ENCRYPTED -> R.string.clipboard_confirmation_lan_encrypted_protection
+                    LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK -> R.string.clipboard_confirmation_lan_legacy_protection
+                    LanRecordProtectionState.NEGOTIATING,
+                    LanRecordProtectionState.NOT_APPLICABLE,
+                    -> R.string.clipboard_confirmation_lan_unknown_protection
+                }
+        }
+
+    private fun clipboardConfirmationView(details: ClipboardConfirmationDetails): ScrollView {
+        val root = layoutInflater.inflate(R.layout.dialog_clipboard_confirmation, null, false) as ScrollView
+        root.findViewById<TextView>(R.id.clipboardConfirmationIntro).text = getString(details.introResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationDirection).text = getString(details.directionResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationProtection).text = getString(details.protectionResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationSize).text = details.sizeText
+        root.findViewById<TextView>(R.id.clipboardConfirmationPreview).text = details.preview
+        root.findViewById<TextView>(R.id.clipboardConfirmationNote).text = getString(details.noteResource)
+        return root
+    }
+
+    private fun effectiveClipboardLimit(maximumClipboardBytes: Long): Long =
+        minOf(
+            ClipboardMenuPolicy.DEFAULT_CLIPBOARD_BYTES,
+            if (maximumClipboardBytes > 0L) maximumClipboardBytes else ClipboardMenuPolicy.DEFAULT_CLIPBOARD_BYTES,
+        )
+
+    private fun clipboardPreview(text: String): String =
+        if (text.length <= MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS) {
+            wrapClipboardPreview(text)
+        } else {
+            getString(
+                R.string.clipboard_confirmation_preview_truncated,
+                wrapClipboardPreview(text.take(MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS)),
+            )
+        }
+
+    private fun wrapClipboardPreview(text: String): String =
+        text.lineSequence()
+            .joinToString("\n") { line ->
+                line.chunked(CLIPBOARD_CONFIRMATION_PREVIEW_LINE_CHARS).joinToString("\n")
+            }
 
     private fun writeRemoteClipboard(content: ClipboardContentData) {
         val text = content.content.toString(Charsets.UTF_8)
@@ -3470,6 +3796,27 @@ class MainActivity : AppCompatActivity() {
             "host_shutdown" -> R.string.file_transfer_failed_host_closed
             else -> R.string.file_transfer_failed
         }
+
+    private fun showFileTransferRecoverableError(
+        @StringRes title: Int = R.string.file_transfer_failed_title,
+        @StringRes message: Int,
+    ) {
+        if (isFinishing || isDestroyed) return
+        fileTransferErrorDialog?.dismiss()
+        fileTransferErrorDialog = null
+        fileTransferErrorDialog =
+            showImmersiveDialog(
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(title)
+                    .setMessage(message)
+                    .setPositiveButton(R.string.file_transfer_error_retry) { _, _ ->
+                        fileTransferErrorDialog = null
+                        beginChooseFileForTransfer()
+                    }
+                    .setNegativeButton(R.string.cancel) { _, _ -> fileTransferErrorDialog = null }
+                    .setOnCancelListener { fileTransferErrorDialog = null },
+            )
+    }
 
     private fun hostActionFailureMessageId(rejectionReason: String): Int =
         when {
@@ -5173,6 +5520,7 @@ class MainActivity : AppCompatActivity() {
                         generation = callbackGeneration,
                         approvedContent = { approved },
                         discardContent = {},
+                        previewContent = approved,
                     )
                     refreshClipboardControl()
                 }
@@ -5244,7 +5592,13 @@ class MainActivity : AppCompatActivity() {
                         fileTransferFailureMessageId(reason)
                     }
                 mainDiag("onFileTransferResult: accepted=$accepted reason=$reason")
-                showDedupedToast(message)
+                if (accepted) {
+                    showDedupedToast(message)
+                } else if (activeOutgoingFileTransfer != null) {
+                    showFileTransferRecoverableError(message = message)
+                } else {
+                    showDedupedToast(message)
+                }
             }
         }
 
@@ -5569,13 +5923,19 @@ class MainActivity : AppCompatActivity() {
                         refreshFileTransferControl()
                         revealControlBar()
                         mainDiag("internet onFileTransferResult: accepted=$accepted reason=$reason")
-                        showDedupedToast(
+                        val message =
                             if (accepted) {
                                 R.string.file_transfer_completed
                             } else {
                                 fileTransferFailureMessageId(reason)
-                            },
-                        )
+                            }
+                        if (accepted) {
+                            showDedupedToast(message)
+                        } else if (activeOutgoingFileTransfer != null) {
+                            showFileTransferRecoverableError(message = message)
+                        } else {
+                            showDedupedToast(message)
+                        }
                     }
                 }
 
@@ -7250,6 +7610,8 @@ class MainActivity : AppCompatActivity() {
         clearActiveIncomingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
+        fileTransferErrorDialog?.dismiss()
+        fileTransferErrorDialog = null
         runCatching(::discardPendingInternetPairing).onFailure { failure ->
             android.util.Log.e(INTERNET_LOG_TAG, "Could not delete pending pairing identity", failure)
         }
@@ -7285,6 +7647,8 @@ class MainActivity : AppCompatActivity() {
         private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1
         private const val CLIPBOARD_MENU_RECEIVE = 2
+        private const val MAX_CLIPBOARD_CONFIRMATION_PREVIEW_CHARS = 280
+        private const val CLIPBOARD_CONFIRMATION_PREVIEW_LINE_CHARS = 36
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
         private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
