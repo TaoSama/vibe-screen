@@ -239,6 +239,42 @@ class MainActivityClipboardSystemBoundaryContractTest {
         )
     }
 
+    @Test
+    fun noHostClipboardControlSurfaceRefreshDoesNotTouchAndroidClipboardBoundary() {
+        val source = mainActivitySource()
+        val refreshClipboard = extractMethod(source, "private fun refreshClipboardControl")
+        val updateClipboardLabel = extractMethod(source, "private fun updateClipboardAccessibilityLabel")
+        val refreshClipboardStatus = extractMethod(source, "private fun refreshClipboardStatusText")
+        val resetClipboard = extractMethod(source, "private fun resetClipboardControlToDefault")
+        val disconnectedUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+
+        val noHostControlSurfaceRefresh =
+            listOf(
+                refreshClipboard,
+                updateClipboardLabel,
+                refreshClipboardStatus,
+                resetClipboard,
+                disconnectedUi,
+            ).joinToString("\n")
+
+        assertFalse(
+            "No-Host clipboard/control-surface refresh must not read or write Android ClipboardManager",
+            noHostControlSurfaceRefresh.contains("ClipboardManager") ||
+                noHostControlSurfaceRefresh.contains("primaryClip") ||
+                noHostControlSurfaceRefresh.contains("setPrimaryClip") ||
+                noHostControlSurfaceRefresh.contains("ClipData.newPlainText"),
+        )
+        assertTrue(
+            "Clipboard system read remains isolated to the explicit Send to Mac path",
+            extractMethod(source, "private fun sendLocalClipboard").contains("getSystemService(ClipboardManager::class.java)") &&
+                extractMethod(source, "private fun sendLocalClipboard").contains(".primaryClip"),
+        )
+        assertTrue(
+            "Clipboard system write remains isolated to the explicit approved receive path",
+            extractMethod(source, "private fun writeRemoteClipboard").contains("setPrimaryClip"),
+        )
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {

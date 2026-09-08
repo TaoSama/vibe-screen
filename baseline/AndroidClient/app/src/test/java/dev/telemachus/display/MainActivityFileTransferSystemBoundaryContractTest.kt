@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -552,6 +553,66 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 currentRevealReason.contains("ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER") &&
                 currentRevealReason.contains("requested") &&
                 hasActiveFileTransfer.contains("activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null"),
+        )
+    }
+
+    @Test
+    fun noHostFileTransferControlSurfaceRefreshDoesNotTouchPickerOrFileBoundaries() {
+        val source = mainActivitySource()
+        val refreshControl = extractMethod(source, "private fun refreshFileTransferControl")
+        val refreshClipboardStatus = extractMethod(source, "private fun refreshClipboardStatusText")
+        val disconnectedUi = extractMethod(source, "private fun applyDisconnectedSessionUi")
+        val rejectPendingOffer = extractMethod(source, "private fun rejectPendingIncomingFileOffer")
+        val discardPendingOutgoing = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
+        val clearPendingOutgoing = extractMethod(source, "private fun clearPendingOutgoingFileTransfer")
+        val clearActiveIncoming = extractMethod(source, "private fun clearActiveIncomingFileTransfer")
+
+        val noHostControlSurfaceRefresh =
+            listOf(
+                refreshControl,
+                refreshClipboardStatus,
+                disconnectedUi,
+                rejectPendingOffer,
+                discardPendingOutgoing,
+                clearPendingOutgoing,
+                clearActiveIncoming,
+            ).joinToString("\n")
+
+        assertTrue(
+            "No-Host file-transfer/control-surface refresh should still repaint availability and stale state",
+            refreshControl.contains("ManagedPolicyControlAvailabilityPolicy.presentation(") &&
+                refreshControl.contains("rejectPendingIncomingFileOffer()") &&
+                refreshControl.contains("discardPendingOutgoingFileTransfer(refreshControl = false)") &&
+                refreshControl.contains("clearActiveIncomingFileTransfer(refreshControl = false)") &&
+                refreshControl.contains("refreshClipboardStatusText(client, activeSessionGeneration)"),
+        )
+        assertTrue(
+            "No-Host disconnected UI should hide the shared file-transfer/clipboard status row",
+            disconnectedUi.contains("binding.controlFileTransferProgressText.visibility = View.GONE") &&
+                disconnectedUi.contains("binding.controlFileTransferProgressText.text = \"\"") &&
+                disconnectedUi.contains("binding.controlFileTransferProgressText.contentDescription = \"\""),
+        )
+        assertFalse(
+            "No-Host file-transfer/control-surface refresh must not launch picker, read source files, or publish Downloads",
+            noHostControlSurfaceRefresh.contains("ACTION_OPEN_DOCUMENT") ||
+                noHostControlSurfaceRefresh.contains("startActivityForResult") ||
+                noHostControlSurfaceRefresh.contains("contentResolver.openInputStream") ||
+                noHostControlSurfaceRefresh.contains("MediaStore.Downloads") ||
+                noHostControlSurfaceRefresh.contains("saveIncomingFileToDownloads"),
+        )
+        assertTrue(
+            "File picker remains isolated to the explicit file-transfer button path",
+            extractMethod(source, "private fun handleFileTransferControlClick").contains("beginChooseFileForTransfer()") &&
+                extractMethod(source, "private fun beginChooseFileForTransfer").contains("Intent(Intent.ACTION_OPEN_DOCUMENT)") &&
+                extractMethod(source, "private fun beginChooseFileForTransfer").contains("startActivityForResult(intent, REQ_FILE_TRANSFER_OPEN)"),
+        )
+        assertTrue(
+            "Protocol file offer submission remains isolated to the explicit outgoing confirmation path",
+            extractMethod(source, "private fun promptOutgoingFileTransfer").contains("session.offerFile(pending.file, pending.mimeType)"),
+        )
+        assertTrue(
+            "Saved incoming bytes remain isolated to the completed-transfer handler, not the no-Host control refresh path",
+            extractMethod(source, "private fun onIncomingFileCompleted").contains("saveIncomingFileToDownloads(completed, displayName)"),
         )
     }
 

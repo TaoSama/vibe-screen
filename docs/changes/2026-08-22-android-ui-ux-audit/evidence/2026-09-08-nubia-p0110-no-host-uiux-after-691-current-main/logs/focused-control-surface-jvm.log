@@ -1,0 +1,69 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.6/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :transport:checkKotlinGradlePluginConfigurationErrors
+> Task :transport:processResources NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateReleaseDependencyLicenses
+> Task :app:generateReleaseSbom
+> Task :app:syncOpenSourceNotices
+> Task :app:preBuild
+> Task :app:preDebugBuild
+> Task :app:dataBindingMergeDependencyArtifactsDebug
+> Task :app:generateDebugResValues
+> Task :app:generateDebugResources
+> Task :transport:compileKotlin
+> Task :transport:compileJava NO-SOURCE
+> Task :transport:classes UP-TO-DATE
+> Task :transport:jar
+> Task :app:packageDebugResources
+> Task :app:mergeDebugResources
+> Task :app:extractDebugProto
+> Task :app:parseDebugLocalResources
+> Task :app:extractIncludeDebugProto
+> Task :app:dataBindingGenBaseClassesDebug
+> Task :app:extractProto
+> Task :app:generateDebugProto
+> Task :app:mapDebugSourceSetPaths
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:checkDebugAarMetadata
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:javaPreCompileDebug
+> Task :app:extractTestDebugProto
+> Task :app:extractTestProto
+> Task :app:preDebugUnitTestBuild
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+
+> Task :app:compileDebugKotlin
+w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/036c/vibe-screen/.claude/worktrees/p0110-no-host-uiux-current-main-20260908/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:1917:9 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
+w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/036c/vibe-screen/.claude/worktrees/p0110-no-host-uiux-current-main-20260908/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt:2627:23 'startActivityForResult(Intent, Int): Unit' is deprecated. Deprecated in Java
+w: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/036c/vibe-screen/.claude/worktrees/p0110-no-host-uiux-current-main-20260908/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ManagedConfigurationProvider.kt:160:37 'get(String!): Any?' is deprecated. Deprecated in Java
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:extractIncludeDebugUnitTestProto
+> Task :app:generateDebugUnitTestProto NO-SOURCE
+
+> Task :app:compileDebugUnitTestKotlin FAILED
+e: file:///Users/luwentao/Workspaces/dotfiles/codex/worktrees/036c/vibe-screen/.claude/worktrees/p0110-no-host-uiux-current-main-20260908/baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt:594:9 Unresolved reference: assertFalse
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugUnitTestKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 30s
+37 actionable tasks: 37 executed
