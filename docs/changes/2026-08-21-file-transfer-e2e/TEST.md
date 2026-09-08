@@ -174,7 +174,8 @@ SHA-256 equality, a distinct file name and payload digest per direction, and
 cancel/cleanup evidence. Nubia P0110 evidence must remain labeled as nubia
 P0110 / pacific / Android 16 / SDK 36 and must not be relabeled as Xiaomi/fuxi.
 
-The retained `file-transfer-product-e2e.json` must include both
+The retained `file-transfer-product-e2e.json` must use
+`schema_version=vibescreen.evidence/v1` and include both
 `android_to_macos_file_transfer` and `macos_to_android_file_transfer`. Each
 direction must include evidence-relative `retained_artifacts` entries for
 `sender_action`, `receiver_approval`, `protocol_packets`, `remote_file`, and
@@ -410,3 +411,31 @@ selection in a real session, receiver approval in a real session, saved remote
 file, cancel cleanup, or SHA-256 endpoint equality was exercised. This improves
 Android no-Host UI readiness only and does not close
 file_transfer_android_product_e2e.
+
+## 2026-09-08 file-transfer product evidence schema hardening
+
+Status remains open. The fail-closed Android/macOS file-transfer gate now
+requires retained `file-transfer-product-e2e.json` input to declare the current
+`schema_version=vibescreen.evidence/v1` evidence contract before the
+bidirectional product E2E subcheck can pass. Older, missing, or ambiguous schema
+markers stay blocked even if the remaining product fields are pass-like.
+
+This is evidence-tool hardening only. It does not start the Host, launch the
+Vibe Screen GUI, create `adb reverse tcp:54321 tcp:54321`, inspect or modify
+TCC/Keychain state, or prove Android/macOS file bytes landing. The real product
+gate still requires the same retained Host-backed bidirectional transfer bundle
+with sender action, receiver approval, protocol packets, remote-file bytes,
+SHA-256 equality, progress, positive session epoch, distinct transfer IDs, and
+cancel cleanup.
+
+Verification:
+
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_file_transfer_android_smoke -v
+    make file-transfer-android-smoke EVIDENCE_DIR=.build/evidence/file-transfer-schema-version-gate
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_file_transfer_android_smoke tools.tests.test_file_transfer_bulk_current_base_manifest tools.tests.test_file_transfer_bulk_current_base_gate tools.tests.test_phase0_stable_release -v
+    make evidence-tools-test
+
+Result: the focused file-transfer gate suite passed 37 tests, the related
+aggregate/Phase 0 suite passed 146 tests, and the full evidence-tool suite
+passed 1440 tests. The default `file-transfer-android-smoke` invocation still
+generated a blocked report because real Host/product evidence is absent.

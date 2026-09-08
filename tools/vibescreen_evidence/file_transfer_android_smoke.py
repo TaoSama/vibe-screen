@@ -289,6 +289,12 @@ def _remote_file_artifact_reasons(
     return reasons
 
 
+def _product_schema_reasons(product: dict[str, Any]) -> list[str]:
+    if product.get("schema_version") == SCHEMA_VERSION:
+        return []
+    return [f"product evidence schema_version must be {SCHEMA_VERSION}"]
+
+
 def _gate(
     name: str, status: str, reasons: Sequence[str], evidence: Sequence[str] = ()
 ) -> dict[str, Any]:
@@ -588,6 +594,7 @@ def _product_e2e_gate(
     reasons = list(missing)
     evidence = ["file-transfer-product-e2e.json"] if product is not None else []
     if product is not None:
+        reasons.extend(_product_schema_reasons(product))
         if product.get("kind") != "android_macos_file_transfer_product_e2e":
             reasons.append("product evidence kind must be android_macos_file_transfer_product_e2e")
         if product.get("synthetic") is True or product.get("offline_only") is True:
@@ -677,6 +684,7 @@ def _cancel_cleanup_gate(
     if product is None:
         reasons.append("missing product E2E evidence: file-transfer-product-e2e.json")
     else:
+        reasons.extend(_product_schema_reasons(product))
         cancel_cleanup = product.get("cancel_cleanup")
         if not isinstance(cancel_cleanup, dict):
             reasons.append("missing cancel_cleanup evidence")
