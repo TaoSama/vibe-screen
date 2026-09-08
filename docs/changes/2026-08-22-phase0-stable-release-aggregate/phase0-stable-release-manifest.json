@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "6fb5914029c24d1d78d3d0dd3dfbda3ac37455aa",
+    "base_commit": "a11d91d8256bc10beb2e6ca3dc005a15f438bf01",
     "base_ref": "origin/main",
     "audit_date": "2026-09-08",
     "owner": "Vibe Screen core team",
@@ -18,15 +18,15 @@
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=681)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=697)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 681
+      "max": 697
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-676-current-main-gate-blocked/merged-prs-568-681.jsonl",
-    "audited_source_commit": "6fb5914029c24d1d78d3d0dd3dfbda3ac37455aa",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-697-current-main-gate-blocked/merged-prs-568-697.jsonl",
+    "audited_source_commit": "a11d91d8256bc10beb2e6ca3dc005a15f438bf01",
     "excluded_pr_numbers": [
       568,
       576,
