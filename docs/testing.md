@@ -596,6 +596,12 @@ for the controller runtime gate summary. The tool treats missing physical
 controller or entitled Host runtime observations as `blocked`, not `pass`; its
 CLI exits `0` only for `pass`, `2` for `blocked`, and `1` for `insufficient`
 or malformed evidence.
+For a pass, `controller-runtime-observations.json` must include both retained
+`artifact_paths` and an `observation_artifacts` mapping from every true runtime
+observation to one or more retained paths. Offline mapper/protocol logs, source
+files, no-device readiness bundles, or a single generic artifact cannot satisfy
+the physical controller, entitled Host, visible Mac-side response, and neutral
+release requirements.
 
 Use the read-only readiness collector before attempting the interactive gate so
 missing hardware, APK identity, Host signing, entitlement, or Host availability

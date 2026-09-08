@@ -38,6 +38,18 @@ DEVICE_LOCKS = (
     Path("/tmp/vibe-screen-device-android.lock"),
 )
 REDACTED_DEVICE_SERIAL = "<device-serial>"
+READINESS_ARTIFACT_PATHS = [
+    "README.md",
+    "controller-runtime-readiness.json",
+    "controller-runtime-observations.json",
+    "device-info.json",
+    "adb-devices.txt",
+    "dumpsys-input.txt",
+    "dumpsys-package.txt",
+    "host-codesign.txt",
+    "host-controller-availability.txt",
+    "host-readiness.json",
+]
 
 
 class ReadinessError(Exception):
@@ -630,9 +642,33 @@ def build_result(
     host_availability: HostAvailabilityStatus,
     source_commit: str = "",
     host_readiness: dict[str, Any] | None = None,
+    retain_runtime_artifacts: bool = True,
 ) -> ReadinessResult:
     host_readiness_state = host_readiness or {"present": False, "readable": False, "document": {}}
     shared_observations, shared_blockers, shared_notes = host_readiness_observations(host_readiness_state)
+    runtime_artifact_paths = (
+        READINESS_ARTIFACT_PATHS
+        if retain_runtime_artifacts
+        else [
+            "README.md",
+            "controller-runtime-readiness.json",
+            "controller-runtime-observations.json",
+            "controller-runtime-summary.json",
+        ]
+    )
+    runtime_observation_artifacts = (
+        {
+            "device_identity_recorded": ["device-info.json", "adb-devices.txt"],
+            "apk_identity_recorded": ["dumpsys-package.txt"],
+            "physical_controller_attached": ["dumpsys-input.txt"],
+            "android_controller_source_observed": ["dumpsys-input.txt"],
+            "host_identity_signed": ["host-codesign.txt", "host-readiness.json"],
+            "host_virtual_hid_entitlement_present": ["host-codesign.txt", "host-readiness.json"],
+            "host_virtual_gamepad_available": ["host-controller-availability.txt", "host-readiness.json"],
+        }
+        if retain_runtime_artifacts
+        else {}
+    )
     observations = {
         "device_identity_recorded": True,
         "apk_identity_recorded": package_identity_recorded(package),
@@ -658,17 +694,8 @@ def build_result(
         ),
         "mac_side_controller_response_observed": False,
         "neutral_release_on_disconnect_observed": False,
-        "artifact_paths": [
-            "README.md",
-            "docs/testing.md",
-            "docs/runbook/android-client.md",
-            "docs/runbook/macos-host.md",
-            "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
-            "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt",
-            "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
-            "baseline/MacHost/Sources/GameControllerVirtualHID.swift",
-            "baseline/MacHost/Sources/GameControllerInput.swift",
-        ],
+        "artifact_paths": runtime_artifact_paths,
+        "observation_artifacts": runtime_observation_artifacts,
     }
     notes = []
     if shared_notes:
@@ -966,27 +993,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             host_signing=evidence_host_signing,
             host_availability=evidence_host_availability,
             host_readiness=host_readiness,
+            retain_runtime_artifacts=not args.redact_identifiers,
         )
 
         args.evidence_dir.mkdir(parents=True, exist_ok=True)
         write_json(args.evidence_dir / "controller-runtime-readiness.json", asdict(result))
         write_json(args.evidence_dir / "device-info.json", asdict(result.device))
+        write_json(args.evidence_dir / "host-readiness.json", host_readiness)
         observation_record = dict(result.observations)
         observation_record["notes"] = result.summary["notes"]
         observation_record["artifact_paths"] = result.summary["artifact_paths"]
+        observation_record["observation_artifacts"] = result.summary["observation_artifacts"]
         write_json(args.evidence_dir / "controller-runtime-observations.json", observation_record)
         write_json(args.evidence_dir / "controller-runtime-summary.json", result.summary)
         if not args.redact_identifiers:
-            (args.evidence_dir / "adb-devices.txt").write_text(
-                adb_devices_text, encoding="utf-8"
-            )
+            (args.evidence_dir / "adb-devices.txt").write_text(adb_devices_text, encoding="utf-8")
             (args.evidence_dir / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
             (args.evidence_dir / "dumpsys-package.txt").write_text(package_raw, encoding="utf-8")
             (args.evidence_dir / "host-controller-availability.txt").write_text(
                 (host_availability.last_controller_line or "no controller availability line found") + "\n",
                 encoding="utf-8",
             )
-        if not args.redact_identifiers and (host_signing.codesign_summary or host_signing.entitlement_summary):
             (args.evidence_dir / "host-codesign.txt").write_text(
                 host_signing.codesign_summary
                 + "\n\n--- entitlements ---\n"
