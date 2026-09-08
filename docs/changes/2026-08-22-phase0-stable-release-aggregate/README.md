@@ -2,25 +2,25 @@
 
 Date: 2026-08-29
 Last refreshed: 2026-09-08 local
-Base: origin/main at a11d91d8256bc10beb2e6ca3dc005a15f438bf01
+Base: origin/main at be950a5e4e6c7415800f284b368d4b8cf6db3be8
 Status: open. Phase 0 remains in progress rather than a stable release. This
 document does not close Phase 0 and does not change product status. Do not
 treat roadmap items below as shipped features.
 Open PR input: `gh pr list --repo TaoSama/vibe-screen --state open --limit 200
 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'`
 returned no open PRs at refresh time. No required Phase 0 aggregate gate lists
-an active owner PR in this refresh. PR #682 through PR #697 are now merged into
-the audited mainline input after the previous aggregate refresh. PR #682 is the
-aggregate refresh after PR #676; PR #697 is the file-transfer product E2E gate
-hardening merge commit that matches this audited base.
-Merged PR #569 through PR #575, PR #577 through PR #626, and PR #628 through PR #697
+an active owner PR in this refresh. PR #698 through PR #700 are now merged into
+the audited mainline input after the previous aggregate refresh. PR #698 is the
+aggregate refresh after PR #697; PR #700 is the macOS Host compatibility row
+requirement merge commit that matches this audited base.
+Merged PR #569 through PR #575, PR #577 through PR #626, and PR #628 through PR #700
 were collected with `--base main`,
 `baseRefName`, and `mergeCommit`; the checker verifies each recorded merge
 commit is an ancestor of the audited mainline base before treating it as an
 audited input. PR #568, PR #576, PR #627, PR #646, and PR #655 were closed
 without merging, so they are explicitly excluded from the audited merged range.
 Merged
-PR #569 through PR #575, PR #577 through PR #626, and PR #628 through PR #697
+PR #569 through PR #575, PR #577 through PR #626, and PR #628 through PR #700
 include additional Android no-Host
 UI/layout evidence,
 clipboard baseline/control hardening, keyboard boundary coverage, AV1 and
@@ -54,8 +54,8 @@ Android clipboard no-Host baseline hardening, additional no-Host UI/UX and
 audio readiness evidence, README capability-gap audit records, Settings
 accessibility source coverage, and further fail-closed hardening for
 file-transfer product E2E, clipboard E2E, native pointer HID, macOS Host
-compatibility, controller runtime, Host RSS, and telemetry latency archive
-evidence gates.
+compatibility, controller runtime, Host RSS, telemetry latency archive evidence
+gates, and a formal macOS Host compatibility passing-row requirement.
 These are recorded as source/unit/offline or no-Host readiness only. They
 do not close any blocked
 Host-backed real-device gate, bidirectional clipboard product E2E gate,
@@ -85,11 +85,11 @@ stable-release claim is allowed:
 | Gate | Current manifest status | Active owner PRs | Why it cannot close today |
 | --- | --- | --- | --- |
 | Upstream provenance and license pin | pass | none | Closed by the Phase 0 provenance record. |
-| Protocol v1 contract and CI gates | pass | none | Current main at `a11d91d8256bc10beb2e6ca3dc005a15f438bf01` is bound by this source audit. Previously retained successful CI snapshots remain source/build evidence; the after-697 evidence bundle also records current-main workflow metadata for this audited source. These CI snapshots are not counted as new Host-backed product evidence. |
-| Android tests and debug APK clean build | pass | none | Current main at `a11d91d8256bc10beb2e6ca3dc005a15f438bf01` includes the earlier source/unit/offline/tooling and no-Host readiness updates plus PR #682 through PR #697. The new PR range contributes aggregate refreshes, no-Host UI/UX and audio readiness evidence, README capability-gap audit records, Android Settings accessibility source coverage, and fail-closed hardening for file-transfer product E2E, clipboard E2E, native pointer HID, macOS Host compatibility, controller runtime, Host RSS, and telemetry latency archive gates. These updates are not treated as Host-backed product evidence. |
-| macOS release build and full-Xcode unit tests | pass | none | Current main at `a11d91d8256bc10beb2e6ca3dc005a15f438bf01` is bound by this source audit. Previously retained successful CI snapshots remain source/build evidence, while local 2026-08-28 full-Xcode readiness remains blocked because that machine had Command Line Tools selected and is not a replacement XCTest pass. |
-| macOS Host hardware compatibility matrix | open | none | Published current-base `macos-hardware-compatibility-gate` summaries exist for Mac16,8 readiness, but they are `blocked`. PR #546 strengthened the preflight so Host readiness now fails closed without read-only Screen Recording, Accessibility, and Microphone TCC rows bound by `csreq` to the stable signing requirement, bundle id, install path, and source provenance. Merged PR #625 tightens Host TCC identity preflight and PR #672 further hardens the macOS Host readiness gate with source tree, install path, pinned signing leaf, canonical designated requirement, Microphone TCC, TCC auth_reason, TCC csreq identity-bound checks, and TCP listener process identity; these are fail-closed validation updates only. Closed-unmerged PR #627 does not provide passing hardware compatibility matrix evidence. A real packaged Host launch, Protocol v1 stream, input, reconnect evidence, Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence. |
-| Android USB stream, reconnect, stale epoch, and codec fallback | pass | none | Closed by retained historical real-device baseline evidence; current-base insufficient attempts remain boundary records and do not claim a fresh USB pass. Merged PR #569 through PR #575, PR #577 through PR #626, and PR #628 through PR #697 add source/unit/offline, tooling, aggregate, or no-Host readiness evidence, but those records are not counted as stream/reconnect, LAN route, TCP 54321, Host-backed product, physical HID pointer, controller, or retained device evidence. |
+| Protocol v1 contract and CI gates | pass | none | Current main at `be950a5e4e6c7415800f284b368d4b8cf6db3be8` is bound by this source audit. Previously retained successful CI snapshots remain source/build evidence; the after-700 evidence bundle also records current-main workflow metadata for this audited source. These CI snapshots are not counted as new Host-backed product evidence. |
+| Android tests and debug APK clean build | pass | none | Current main at `be950a5e4e6c7415800f284b368d4b8cf6db3be8` includes the earlier source/unit/offline/tooling and no-Host readiness updates plus PR #698 through PR #700. The new PR range contributes aggregate refresh evidence plus fail-closed macOS Host compatibility artifact and formal passing-row gate hardening. These updates are not treated as Host-backed product evidence. |
+| macOS release build and full-Xcode unit tests | pass | none | Current main at `be950a5e4e6c7415800f284b368d4b8cf6db3be8` is bound by this source audit. Previously retained successful CI snapshots remain source/build evidence, while local 2026-08-28 full-Xcode readiness remains blocked because that machine had Command Line Tools selected and is not a replacement XCTest pass. |
+| macOS Host hardware compatibility matrix | open | none | Published current-base `macos-hardware-compatibility-gate` summaries exist for Mac16,8 readiness, but they are `blocked`. PR #546 strengthened the preflight so Host readiness now fails closed without read-only Screen Recording, Accessibility, and Microphone TCC rows bound by `csreq` to the stable signing requirement, bundle id, install path, and source provenance. Merged PR #625 tightens Host TCC identity preflight, PR #672 further hardens the macOS Host readiness gate with source tree, install path, pinned signing leaf, canonical designated requirement, Microphone TCC, TCC auth_reason, TCC csreq identity-bound checks, and TCP listener process identity, PR #699 requires retained artifact roles, and PR #700 requires the Phase 0 aggregate to cite a formal passing macOS Host compatibility matrix row before closing this gate; these are fail-closed validation updates only. Closed-unmerged PR #627 does not provide passing hardware compatibility matrix evidence. A real packaged Host launch, Protocol v1 stream, input, reconnect evidence, Intel Macs, additional Apple silicon models, macOS builds, and display topologies still need exact-row passing evidence. |
+| Android USB stream, reconnect, stale epoch, and codec fallback | pass | none | Closed by retained historical real-device baseline evidence; current-base insufficient attempts remain boundary records and do not claim a fresh USB pass. Merged PR #569 through PR #575, PR #577 through PR #626, and PR #628 through PR #700 add source/unit/offline, tooling, aggregate, or no-Host readiness evidence, but those records are not counted as stream/reconnect, LAN route, TCP 54321, Host-backed product, physical HID pointer, controller, or retained device evidence. |
 | Telemetry and external latency artifact archive | insufficient | none | PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but those counters are diagnostic/source readiness only. PR #545 tightened the latency evidence gate, and PR #656 plus PR #671 further harden formal latency/telemetry archive validation so malformed, insufficient, or non-revalidating packages fail closed; raw telemetry plus the latest current-base latency preflight remain insufficient. No external-camera latency sample package, raw camera media, or synchronized-clock physical-input proof is archived for this aggregate. The aggregate checker fails closed if this gate is marked `pass` without repo-local structured JSON evidence containing both a passing formal `latency_evidence_gate` report and a passing `android_usb_live_smoke` report with stream telemetry and decoder counters. The formal report must revalidate its `source.manifest`; summary-only latency JSON, telemetry-stage diagnostics, preflight JSON, screenshots, screen recordings, decoder counters, and prose-only artifacts cannot substitute for retained raw external-camera media or a synchronized-clock physical-input package with sub-5 ms synchronization error budget, physical actuation proof, visible Mac-side result proof, and a retained synchronization record. Former tooling PR references are merged or stale baselines, not active open owners. |
 | Host RSS two-hour no-growth | blocked | none | The retained two-hour Xiaomi 13 run grew about 18.3 MB. The latest 2026-08-31 current-base readiness record proves fail-closed diagnostics only and is still blocked before a stable-signed, read-only TCC-proven, listener-observed current-source Host can produce native telemetry and a current-source two-hour `host_rss_gate` pass. Former Host RSS/readiness PR references are merged or closed baseline records, not active open owners. |
 | Native pointer HID mouse move/click acceptance | blocked | none | PR #558 adds Android native pointer hover enter/exit mapping and fail-closed unsupported-button filtering with focused JVM coverage, but physical HID acceptance remains blocked because no physical Android mouse/touchpad/trackball pass retains Android forwarding logs, Host pointer-injection logs, and visible Mac evidence from one run. Former native-pointer owner PR references are no longer active open owners. |
@@ -124,7 +124,9 @@ hardening only. PR #689 and PR #695 contribute native pointer HID fail-closed
 evidence-tool hardening only. PR #690 contributes macOS Host compatibility
 runtime gate hardening only. PR #691 contributes controller runtime evidence
 mapping hardening only. PR #693 contributes Host RSS readiness evidence binding
-hardening only.
+hardening only. PR #698 contributes aggregate refresh evidence only. PR #699
+contributes macOS Host compatibility artifact-role gate hardening only. PR #700
+contributes Phase 0 aggregate macOS compatibility passing-row gate hardening only.
 These updates do not convert any
 Host-backed, physical HID, controller, clipboard, file-transfer, Host RSS,
 compatibility-matrix, or external-latency gate to pass.
@@ -187,9 +189,9 @@ make phase0-stable-release-gate \
 ```
 
 The 2026-09-08 local manifest refresh binds the aggregate source guard to
-`a11d91d8256bc10beb2e6ca3dc005a15f438bf01`, records no open non-owner PRs, records merged
+`be950a5e4e6c7415800f284b368d4b8cf6db3be8`, records no open non-owner PRs, records merged
 PR #569 through PR #575, PR #577 through PR #626, and
-PR #628 through PR #697 as `main`-targeted source/unit/offline, tooling,
+PR #628 through PR #700 as `main`-targeted source/unit/offline, tooling,
 aggregate, or no-Host readiness after validating each recorded `mergeCommit.oid`
 is reachable from the audited main commit, and keeps the Android/macOS clipboard
 and file-transfer product E2E gates as required Phase 0 gates that are blocked.
@@ -204,15 +206,15 @@ evidence only, PR #676 contributes aggregate refresh evidence only, PR #677 cont
 hardening only, PR #678 contributes Android clipboard preview policy hardening
 only, PR #679 contributes Android file-transfer cleanup recovery hardening only,
 PR #680 contributes Android clipboard no-Host baseline hardening only, and PR
-#681 through PR #697 contribute only aggregate, README, source, tooling,
+#681 through PR #700 contribute only aggregate, README, source, tooling,
 fail-closed validation, or no-Host readiness evidence. They
 do not close Host/TCC, Host RSS, native pointer HID, controller runtime,
 clipboard product E2E, file-transfer product E2E, or real Android/macOS audio
 E2E gates. PR #568, PR #576, PR #627, PR #646, and PR #655 are explicitly
-excluded from the complete audited PR #568 through PR #697 range because they
+excluded from the complete audited PR #568 through PR #700 range because they
 are closed without merging in the audited mainline base. The retained current
 refresh summary bundle is under
-`evidence/2026-09-08-after-697-current-main-gate-blocked/`; local verification
+`evidence/2026-09-08-after-700-current-main-gate-blocked/`; local verification
 also writes the current summary under `.build/evidence/phase0-stable-release/`.
 
 ## Update rules
