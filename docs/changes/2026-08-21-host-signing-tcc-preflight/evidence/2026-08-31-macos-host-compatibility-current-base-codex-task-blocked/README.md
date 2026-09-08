@@ -75,9 +75,11 @@ generated `closure_checklist` keeps the next work fail-closed:
 full Xcode/Swift build evidence, and installed Host identity;
 `runtime_acceptance` is blocked because no packaged Host launch,
 Protocol v1 stream, display-selection, input, or reconnect probe ran;
-`display_and_encoder_capability` and `scope_and_artifacts` are satisfied only as
-recorded-readiness fields for this blocked package; and `extrapolation_guard`
-passes with no invalid support claim.
+`scope_and_artifacts` is blocked because this readiness package retains only
+setup artifacts and lacks distinct Host runtime log, Android device identity,
+Android runtime log, and visual stream evidence roles;
+`display_and_encoder_capability` remains recorded readiness only for this
+blocked package; and `extrapolation_guard` passes with no invalid support claim.
 
 ## Boundaries
 

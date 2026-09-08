@@ -1243,11 +1243,16 @@ The target consumes `macos-hardware-compatibility.json` and writes
 `macos-hardware-compatibility-gate.json`. A `pass` closes only the exact row
 recorded in the input: CPU architecture, Mac model, macOS build, display
 topology, transport, Android counterpart, source-bound Host build/signing/TCC
-state, capture backend, and retained artifacts. Missing row identity, clean
+state, capture backend, and retained artifacts. A passing row must also map
+retained files to the required artifact roles: Host identity, Host build
+identity, Host TCC readiness, display topology, Host runtime log, Android
+device identity, Android runtime log, visual stream evidence, and gate input.
+Each required role must be backed by a distinct retained file; a single artifact
+cannot satisfy multiple closing roles. Missing row identity, clean
 40-character repository commit, stable bundle id, non-ad-hoc signing identity,
 authorized Screen Recording or Accessibility TCC state, installed Host source
 commit/tree provenance, Host self-test/current-base provenance, packaged Host
-launch, Protocol v1 stream, artifact retention, or exact-row scoping is
+launch, Protocol v1 stream, required artifact roles, or exact-row scoping is
 `blocked`; missing runtime probes are `insufficient`.
 Marking CI-only evidence, extrapolating Apple silicon, OS-version,
 display-topology, capture-backend, or virtual-display claims across rows, or

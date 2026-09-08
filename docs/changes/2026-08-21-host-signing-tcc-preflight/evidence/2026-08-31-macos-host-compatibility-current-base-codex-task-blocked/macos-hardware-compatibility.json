@@ -77,11 +77,29 @@
   "claims_dummy_headless_from_attached_monitor": false,
   "artifact_paths": [
     "README.md",
+    "macos-hardware-compatibility.json",
     "host-identity.txt",
     "display-topology.txt",
     "host-readiness.json",
     "host-signing-and-permissions.txt"
   ],
+  "artifact_roles": {
+    "macos-hardware-compatibility.json": [
+      "gate_input"
+    ],
+    "host-identity.txt": [
+      "host_identity"
+    ],
+    "display-topology.txt": [
+      "display_topology"
+    ],
+    "host-readiness.json": [
+      "host_tcc_readiness"
+    ],
+    "host-signing-and-permissions.txt": [
+      "host_build_identity"
+    ]
+  },
   "blocking_notes": [
     "Host readiness exited 2 with status=blocked; runtime compatibility probes were not started.",
     "The configured Vibe Screen Dev signing identity was not found in the keychain lookup used for rebuild/install readiness.",

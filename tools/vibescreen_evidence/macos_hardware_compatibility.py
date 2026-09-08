@@ -71,6 +71,17 @@ VIDEOTOOLBOX_RESULTS = frozenset((
     "hevc_only",
     "unavailable",
 ))
+REQUIRED_ARTIFACT_ROLES = frozenset((
+    "host_identity",
+    "host_build_identity",
+    "host_tcc_readiness",
+    "display_topology",
+    "host_runtime_log",
+    "android_device_identity",
+    "android_runtime_log",
+    "visual_stream_evidence",
+    "gate_input",
+))
 REPOSITORY_DIRTY_STATES = frozenset(("clean", "dirty"))
 TCC_STATES = frozenset(("authorized", "not_authorized", "unverified"))
 USER_CONSENT_TCC_AUTH_REASONS = package_macos.USER_CONSENT_TCC_AUTH_REASONS
@@ -428,6 +439,67 @@ def _artifact_path_report(
     }
 
 
+def _artifact_role_report(
+    record: dict[str, Any], artifact_paths: Sequence[str]
+) -> dict[str, Any]:
+    value = record.get("artifact_roles", {})
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise MacOSHardwareCompatibilityError(
+            "artifact_roles must be an object mapping artifact paths to roles"
+        )
+    artifact_path_set = set(artifact_paths)
+    invalid_paths: list[str] = []
+    duplicate_roles: list[str] = []
+    multi_role_paths: list[str] = []
+    unknown_roles: list[str] = []
+    roles_by_path: dict[str, list[str]] = {}
+    observed_roles: set[str] = set()
+    for artifact_path, raw_roles in value.items():
+        if not isinstance(artifact_path, str) or not artifact_path.strip():
+            raise MacOSHardwareCompatibilityError(
+                "artifact_roles keys must be non-empty artifact path strings"
+            )
+        path_is_valid = artifact_path in artifact_path_set
+        if not path_is_valid:
+            invalid_paths.append(artifact_path)
+        if (
+            not isinstance(raw_roles, list)
+            or not raw_roles
+            or not all(isinstance(role, str) and role.strip() for role in raw_roles)
+        ):
+            raise MacOSHardwareCompatibilityError(
+                f"artifact_roles[{artifact_path!r}] must be a non-empty list of roles"
+            )
+        normalized_roles = [role.strip() for role in raw_roles]
+        roles_by_path[artifact_path] = normalized_roles
+        seen_for_path: set[str] = set()
+        required_roles_for_path: set[str] = set()
+        for role in normalized_roles:
+            if role in seen_for_path:
+                duplicate_roles.append(f"{artifact_path}:{role}")
+            seen_for_path.add(role)
+            if role not in REQUIRED_ARTIFACT_ROLES:
+                unknown_roles.append(role)
+            elif path_is_valid:
+                observed_roles.add(role)
+                required_roles_for_path.add(role)
+        if len(required_roles_for_path) > 1:
+            multi_role_paths.append(artifact_path)
+    missing_roles = sorted(REQUIRED_ARTIFACT_ROLES - observed_roles)
+    return {
+        "required_roles": sorted(REQUIRED_ARTIFACT_ROLES),
+        "observed_roles": sorted(observed_roles),
+        "missing_roles": missing_roles,
+        "invalid_paths": sorted(invalid_paths),
+        "unknown_roles": sorted(set(unknown_roles)),
+        "duplicate_roles": sorted(set(duplicate_roles)),
+        "multi_role_paths": sorted(set(multi_role_paths)),
+        "roles_by_path": roles_by_path,
+    }
+
+
 def _capture_backend_failures(record: dict[str, Any]) -> list[dict[str, str]]:
     capture_backend = _enum_value(record, "capture_backend", CAPTURE_BACKENDS)
     screen_capturekit_result = _enum_value(
@@ -523,6 +595,7 @@ def summarize(
         field: _bool_value(record, field) for field in INVALID_BOOLEAN_FIELDS
     }
     artifact_paths = _string_list(record, "artifact_paths")
+    artifact_role_check = _artifact_role_report(record, artifact_paths)
     missing = [
         {"field": field, "requirement": requirement}
         for field, requirement in REQUIRED_FIELDS
@@ -724,6 +797,21 @@ def summarize(
             "artifacts_retained",
             "retain artifact paths as existing relative files inside the evidence directory",
         )
+    if (
+        field_values["artifacts_retained"]
+        and (
+            artifact_role_check["missing_roles"]
+            or artifact_role_check["invalid_paths"]
+            or artifact_role_check["unknown_roles"]
+            or artifact_role_check["duplicate_roles"]
+            or artifact_role_check["multi_role_paths"]
+        )
+    ):
+        _append_missing_once(
+            missing,
+            "artifacts_retained",
+            "record distinct retained artifact roles for Host identity, Host build/TCC readiness, display topology, Host and Android runtime logs, visual stream evidence, and gate input",
+        )
     blocking_reasons = [
         item for item in missing if item["field"] in BLOCKING_FIELDS
     ]
@@ -822,6 +910,7 @@ def summarize(
         "blocking_reasons": blocking_reasons,
         "artifact_paths": artifact_paths,
         "artifact_file_check": artifact_file_check,
+        "artifact_role_check": artifact_role_check,
         "blocking_notes": _string_list(record, "blocking_notes"),
         "notes": _string_value(record, "notes"),
     }
