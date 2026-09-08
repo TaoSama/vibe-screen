@@ -276,6 +276,12 @@ make evidence-latency-gate \
   LATENCY_GATE_PROFILE="$GATE_PROFILE"
 ```
 
+The retained profile artifact must be closing evidence for that exact run. The
+checker rejects artifacts that explicitly describe no-Host, preflight-only,
+read-only observation, summary-only, informational-only, diagnostic-only, or
+otherwise non-closing context even when the text also contains the expected
+transport keywords.
+
 See [External-camera latency measurement](runbook/latency-measurement.md). For
 external-camera packages, the checker requires the raw camera file, sample
 annotations, device/build metadata, matching gate profile, and the matching

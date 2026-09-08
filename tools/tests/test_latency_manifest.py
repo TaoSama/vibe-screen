@@ -697,6 +697,37 @@ class LatencyManifestCliTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("synchronization artifact is required", result.stderr)
 
+    def test_cli_rejects_non_closing_gate_artifact_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            artifact = root / "usb-connection.txt"
+            artifact.write_text(
+                "USB stream note from a read-only USB transport observation; diagnostic only.\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_cli(
+                *arguments,
+                "--device-manufacturer",
+                "nubia",
+                "--device-model",
+                "P0110",
+                "--device-codename",
+                "pacific",
+                "--device-os-version",
+                "Android 16 / SDK 36",
+                "--device-sdk",
+                "36",
+                "--device-build-fingerprint",
+                "nubia/pacific/pacific:16/test-keys",
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("diagnostic-only evidence", result.stderr)
+        self.assertFalse((root / "manifest.json").exists())
+
     def test_cli_writes_schema_compatible_internet_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

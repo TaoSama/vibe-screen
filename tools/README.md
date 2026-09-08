@@ -1301,6 +1301,10 @@ sample annotations, artifact hashes, device/build identity, and profile-specific
 transport proof. For synchronized-clock input claims, it must retain physical
 input actuation proof, visible Mac-side result proof, the synchronization record,
 and a total synchronization error budget below 5 ms.
+Profile-specific retained artifact files must describe closing evidence. Files
+that explicitly describe no-Host, preflight-only, read-only observation,
+summary-only, informational-only, diagnostic-only, or otherwise non-closing
+context are rejected even when they contain the expected transport keywords.
 
 For glass-to-glass, prepare a CSV with either `latency_ms`, or
 `start_frame,end_frame,camera_fps` from one external-camera recording, then
@@ -1463,8 +1467,9 @@ physical touch acquisition uncertainty when using Android `MotionEvent`
 timestamps, sub-5 ms total error budget, and a retained
 `synchronization_record` artifact. The checker exits `0` only when the profile
 verdict is `pass` and provenance is complete; missing raw video, missing
-profile artifacts, dirty source provenance, mismatched metadata, or incomplete
-synchronization proof stays `insufficient`. The step-by-step method is in
+profile artifacts, non-closing artifact text, dirty source provenance,
+mismatched metadata, or incomplete synchronization proof stays `insufficient`.
+The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
 
 Before spending device time on a full capture, record a fail-closed readiness

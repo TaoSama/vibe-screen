@@ -32,6 +32,10 @@ from .latency import (
     load_samples,
     summarize,
 )
+from .latency_artifact_text import (
+    latency_artifact_blocking_reason,
+    read_latency_artifact_text,
+)
 
 
 FORMAL_LATENCY_PROFILES = (
@@ -624,7 +628,7 @@ def _validate_artifact_content(
     if required_tokens is None or path is None or not path.is_file():
         return
     try:
-        text = path.read_text(encoding="utf-8")
+        text = read_latency_artifact_text(path)
     except UnicodeDecodeError:
         errors.append(f"{field}.file must be UTF-8 text evidence")
         return
@@ -632,6 +636,12 @@ def _validate_artifact_content(
         errors.append(f"cannot read {path}: {error}")
         return
     normalized = text.lower()
+    blocking_reason = latency_artifact_blocking_reason(text)
+    if blocking_reason is not None:
+        errors.append(
+            f"{field}.file describes {blocking_reason}; retained latency artifacts must "
+            "be closing evidence, not blocked readiness or diagnostic-only context"
+        )
     missing = [token for token in required_tokens if token not in normalized]
     if missing:
         errors.append(

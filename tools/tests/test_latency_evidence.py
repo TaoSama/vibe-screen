@@ -933,6 +933,81 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_gate_artifact_that_declares_diagnostic_only_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            (root / "usb-connection.txt").write_text(
+                "USB stream observed, but this is diagnostic only and cannot close the latency gate.\n",
+                encoding="utf-8",
+            )
+            artifacts = manifest["gate_artifacts"]
+            assert isinstance(artifacts, dict)
+            usb_connection = artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["sha256"] = hashlib.sha256((root / "usb-connection.txt").read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.usb_connection.file describes diagnostic-only evidence; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
+            report["gate"]["reasons"],
+        )
+
+    def test_gate_artifact_that_declares_no_host_context_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            (root / "usb-connection.txt").write_text(
+                "USB stream notes from a no-Host readiness run.\n",
+                encoding="utf-8",
+            )
+            artifacts = manifest["gate_artifacts"]
+            assert isinstance(artifacts, dict)
+            usb_connection = artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["sha256"] = hashlib.sha256((root / "usb-connection.txt").read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.usb_connection.file describes no-Host diagnostic evidence; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
+            report["gate"]["reasons"],
+        )
+
+    def test_gate_artifact_allows_no_host_restart_phrase(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            (root / "usb-connection.txt").write_text(
+                "USB stream remained active with no Host restart during the sample window.\n",
+                encoding="utf-8",
+            )
+            artifacts = manifest["gate_artifacts"]
+            assert isinstance(artifacts, dict)
+            usb_connection = artifacts["usb_connection"]
+            assert isinstance(usb_connection, dict)
+            usb_connection["sha256"] = hashlib.sha256((root / "usb-connection.txt").read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
+
     def test_real_capture_free_text_fixture_term_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

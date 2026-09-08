@@ -31,6 +31,10 @@ from .latency import (
     TRANSPORT_LAN,
     TRANSPORT_USB,
 )
+from .latency_artifact_text import (
+    latency_artifact_blocking_reason,
+    read_latency_artifact_text,
+)
 
 ANNOTATION_DIRECT_LATENCY_MS = "direct-latency-ms"
 ANNOTATION_MANUAL_FRAME_COUNT = "manual-frame-count"
@@ -111,11 +115,27 @@ def _package_relative_path(path: Path, evidence_dir: Path, field: str) -> str:
 
 def _artifact_reference(path: Path, evidence_dir: Path, field: str, description: str) -> dict[str, str]:
     relative = _package_relative_path(path, evidence_dir, field)
+    _validate_closing_artifact_text(evidence_dir.resolve() / relative, field)
     return {
         "file": relative,
         "sha256": _sha256(evidence_dir.resolve() / relative),
         "description": _non_empty(description, f"{field}.description"),
     }
+
+
+def _validate_closing_artifact_text(path: Path, field: str) -> None:
+    try:
+        text = read_latency_artifact_text(path)
+    except UnicodeDecodeError as error:
+        raise LatencyManifestError(f"{field}.file must be UTF-8 text evidence") from error
+    except OSError as error:
+        raise LatencyManifestError(f"cannot read {path}: {error}") from error
+    blocking_reason = latency_artifact_blocking_reason(text)
+    if blocking_reason is not None:
+        raise LatencyManifestError(
+            f"{field}.file describes {blocking_reason}; retained latency artifacts must "
+            "be closing evidence, not blocked readiness or diagnostic-only context"
+        )
 
 
 def _external_camera_container(path: Path) -> str:
