@@ -211,8 +211,9 @@ evidence only, PR #676 contributes aggregate refresh evidence only, PR #677 cont
 hardening only, PR #678 contributes Android clipboard preview policy hardening
 only, PR #679 contributes Android file-transfer cleanup recovery hardening only,
 PR #680 contributes Android clipboard no-Host baseline hardening only, PR #681
-through PR #702 contribute only aggregate, README, source, tooling,
-fail-closed validation, or no-Host readiness evidence, and PR #703 contributes
+through PR #701 contribute only aggregate, README, source, tooling,
+fail-closed validation, or no-Host readiness evidence, PR #702 remained open
+and excluded from this audited mainline base, and PR #703 contributes
 Nubia P0110/pacific no-Host UI/UX current-main evidence only. They
 do not close Host/TCC, Host RSS, native pointer HID, controller runtime,
 clipboard product E2E, file-transfer product E2E, or real Android/macOS audio
