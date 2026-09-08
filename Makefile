@@ -1163,6 +1163,7 @@ file-transfer-android-smoke:
 		--android-file-transfer-instrumentation-log "$(FILE_TRANSFER_ANDROID_SMOKE_ANDROID_INSTRUMENTATION_LOG)" \
 		--product-e2e "$(FILE_TRANSFER_ANDROID_SMOKE_PRODUCT_JSON)" \
 		--serial-label "REDACTED_P0110_USB_SERIAL" \
+		--repo-root . \
 		--output "$(FILE_TRANSFER_ANDROID_SMOKE_GATE_JSON)" \
 		$(if $(filter 1 true yes,$(FILE_TRANSFER_ANDROID_SMOKE_REQUIRE_PASS)),--require-pass,); \
 	status=$$?; \

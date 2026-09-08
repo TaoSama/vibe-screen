@@ -29,6 +29,8 @@ from .host_rss_gate import (
 )
 from .file_transfer_android_smoke import (
     EXPECTED_DIRECTION_ENDPOINTS as FILE_TRANSFER_EXPECTED_DIRECTION_ENDPOINTS,
+    REQUIRED_CANCEL_ARTIFACT_ROLES as FILE_TRANSFER_REQUIRED_CANCEL_ARTIFACT_ROLES,
+    REQUIRED_DIRECTION_ARTIFACT_ROLES as FILE_TRANSFER_REQUIRED_DIRECTION_ARTIFACT_ROLES,
     REQUIRED_PRODUCT_CONTEXT_FALSE as FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_FALSE,
     REQUIRED_PRODUCT_CONTEXT_TRUE as FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_TRUE,
 )
@@ -731,12 +733,18 @@ def _formal_file_transfer_android_product_e2e_report_issues(
         _file_transfer_product_e2e_source_issues(
             product_record,
             f"{path}: source.product_e2e {product_e2e_ref.strip()}",
+            evidence_dir=product_path.parent,
         )
     )
     return issues
 
 
-def _file_transfer_product_e2e_source_issues(record: dict[str, Any], label: str) -> list[str]:
+def _file_transfer_product_e2e_source_issues(
+    record: dict[str, Any],
+    label: str,
+    *,
+    evidence_dir: Path | None,
+) -> list[str]:
     issues: list[str] = []
     if record.get("schema_version") != SCHEMA_VERSION:
         issues.append(f"{label} schema_version must be {SCHEMA_VERSION}")
@@ -766,6 +774,14 @@ def _file_transfer_product_e2e_source_issues(record: dict[str, Any], label: str)
         if not isinstance(direction, dict):
             issues.append(f"{label} missing {direction_name} direction evidence")
             continue
+        issues.extend(
+            _file_transfer_retained_artifact_issues(
+                direction,
+                f"{label} {direction_name}",
+                FILE_TRANSFER_REQUIRED_DIRECTION_ARTIFACT_ROLES,
+                evidence_dir,
+            )
+        )
         source_endpoint, destination_endpoint = endpoints
         if direction.get("source_endpoint") != source_endpoint:
             issues.append(f"{label} {direction_name}.source_endpoint must be {source_endpoint}")
@@ -821,6 +837,14 @@ def _file_transfer_product_e2e_source_issues(record: dict[str, Any], label: str)
     if not isinstance(cancel_cleanup, dict):
         issues.append(f"{label} missing cancel_cleanup evidence")
     else:
+        issues.extend(
+            _file_transfer_retained_artifact_issues(
+                cancel_cleanup,
+                f"{label} cancel_cleanup",
+                FILE_TRANSFER_REQUIRED_CANCEL_ARTIFACT_ROLES,
+                evidence_dir,
+            )
+        )
         for field in (
             "cancel_requested",
             "cancel_acknowledged",
@@ -830,6 +854,83 @@ def _file_transfer_product_e2e_source_issues(record: dict[str, Any], label: str)
         ):
             if cancel_cleanup.get(field) is not True:
                 issues.append(f"{label} cancel_cleanup.{field} must be true")
+    return issues
+
+
+def _file_transfer_retained_artifact_issues(
+    record: dict[str, Any],
+    label: str,
+    required_roles: Sequence[str],
+    evidence_dir: Path | None,
+) -> list[str]:
+    artifacts = record.get("retained_artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        return [f"{label}.retained_artifacts must retain product evidence artifacts"]
+
+    issues: list[str] = []
+    seen_roles: set[str] = set()
+    seen_paths: set[str] = set()
+    required_role_names = set(required_roles)
+    resolved_evidence_dir: Path | None = None
+    if evidence_dir is not None:
+        try:
+            resolved_evidence_dir = evidence_dir.resolve()
+        except OSError as error:
+            return [f"{label}.retained_artifacts evidence directory cannot be read: {error}"]
+
+    for index, artifact in enumerate(artifacts):
+        artifact_label = f"{label}.retained_artifacts[{index}]"
+        if not isinstance(artifact, dict):
+            issues.append(f"{artifact_label} must be an object")
+            continue
+        role = artifact.get("role")
+        if not isinstance(role, str) or not role.strip():
+            issues.append(f"{artifact_label}.role must be present")
+        else:
+            role_name = role.strip()
+            if role_name not in required_role_names:
+                issues.append(f"{artifact_label}.role must be one of {', '.join(required_roles)}")
+            elif role_name in seen_roles:
+                issues.append(f"{artifact_label}.role duplicates {role_name} artifact")
+            seen_roles.add(role_name)
+
+        path_value = artifact.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            issues.append(f"{artifact_label}.path must be present")
+            continue
+        artifact_path = Path(path_value)
+        if artifact_path.is_absolute():
+            issues.append(f"{artifact_label}.path must be evidence-relative")
+            continue
+        if ".." in artifact_path.parts:
+            issues.append(f"{artifact_label}.path must stay inside the evidence bundle")
+            continue
+        normalized_path = artifact_path.as_posix()
+        if normalized_path in seen_paths:
+            issues.append(f"{artifact_label}.path must be distinct")
+        seen_paths.add(normalized_path)
+        if resolved_evidence_dir is None:
+            continue
+        try:
+            resolved_artifact = (resolved_evidence_dir / artifact_path).resolve(strict=True)
+            resolved_artifact.relative_to(resolved_evidence_dir)
+        except FileNotFoundError:
+            issues.append(f"{artifact_label}.path missing retained artifact {path_value}")
+            continue
+        except (OSError, RuntimeError, ValueError) as error:
+            issues.append(f"{artifact_label}.path cannot access retained artifact {path_value}: {error}")
+            continue
+        if not resolved_artifact.is_file():
+            issues.append(f"{artifact_label}.path missing retained artifact {path_value}")
+            continue
+        try:
+            if resolved_artifact.stat().st_size <= 0:
+                issues.append(f"{artifact_label}.path retained artifact {path_value} must be non-empty")
+        except OSError as error:
+            issues.append(f"{artifact_label}.path cannot stat retained artifact {path_value}: {error}")
+
+    missing_roles = [role for role in required_roles if role not in seen_roles]
+    issues.extend(f"{label}.retained_artifacts missing {role} artifact" for role in missing_roles)
     return issues
 
 

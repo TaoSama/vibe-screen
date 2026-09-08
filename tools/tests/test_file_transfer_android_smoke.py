@@ -286,6 +286,16 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
 
 
 class FileTransferAndroidSmokeGateTests(unittest.TestCase):
+    def test_make_target_records_repo_relative_source_paths(self) -> None:
+        makefile = Path(__file__).parents[2] / "Makefile"
+        recipe = makefile.read_text(encoding="utf-8").split(
+            "file-transfer-android-smoke:",
+            1,
+        )[1]
+        recipe = recipe.split("\n\n", 1)[0]
+
+        self.assertIn("--repo-root .", recipe)
+
     def test_missing_product_e2e_keeps_gate_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)

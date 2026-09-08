@@ -1112,6 +1112,86 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_file_transfer_product_e2e_source_requires_direction_retained_artifacts(self) -> None:
+        def remove_direction_artifacts(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos.pop("retained_artifacts")
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-direction-artifacts-gate.json",
+            )
+            mutate_file_transfer_product_source(repo, report_path, remove_direction_artifacts)
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any(
+                    "android_to_macos_file_transfer.retained_artifacts must retain product evidence artifacts"
+                    in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_requires_cancel_cleanup_artifacts(self) -> None:
+        def remove_cancel_artifacts(product: dict[str, object]) -> None:
+            cancel_cleanup = product["cancel_cleanup"]
+            assert isinstance(cancel_cleanup, dict)
+            cancel_cleanup["retained_artifacts"] = [
+                {"role": "cancel_request", "path": "cancel-cleanup/missing-cancel-request.txt"}
+            ]
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-cancel-artifacts-gate.json",
+            )
+            mutate_file_transfer_product_source(repo, report_path, remove_cancel_artifacts)
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any(
+                    "cancel_cleanup.retained_artifacts[0].path missing retained artifact "
+                    "cancel-cleanup/missing-cancel-request.txt" in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+            self.assertTrue(
+                any("cancel_cleanup.retained_artifacts missing cleanup_state artifact" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
     def test_telemetry_latency_archive_pass_requires_structured_reports(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
             manifest = complete_manifest_for_repo(repo, base_commit)
