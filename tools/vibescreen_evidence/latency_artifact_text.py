@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ARTIFACT_BLOCKING_PATTERNS = (
-    (re.compile(r"\bno-host\b"), "no-Host diagnostic evidence"),
+    (re.compile(r"\bno[- ]host\b(?!\s+restart\b)"), "no-Host diagnostic evidence"),
     (re.compile(r"\bdiagnostic(?:s)?\s+only\b"), "diagnostic-only evidence"),
     (re.compile(r"\binformational\s+only\b"), "informational-only evidence"),
     (re.compile(r"\bsummary[- ]only\b"), "summary-only evidence"),
@@ -19,7 +19,8 @@ ARTIFACT_BLOCKING_PATTERNS = (
     (
         re.compile(
             r"\b(?:cannot|can\s*not|must\s+not|does\s+not|do\s+not)\s+"
-            r"(?:close|replace|prove)\b"
+            r"(?:close|replace|prove)\s+(?:the\s+)?(?:latency\s+|performance\s+)?"
+            r"(?:gate|evidence|closure|proof)\b"
         ),
         "explicit non-closing evidence",
     ),
