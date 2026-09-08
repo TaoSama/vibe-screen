@@ -724,9 +724,10 @@ class LatencyManifestCliTest(unittest.TestCase):
                 "nubia/pacific/pacific:16/test-keys",
             )
 
+            self.assertFalse((root / "manifest.json").exists())
+
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("diagnostic-only evidence", result.stderr)
-        self.assertFalse((root / "manifest.json").exists())
 
     def test_cli_allows_no_host_restart_gate_artifact_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

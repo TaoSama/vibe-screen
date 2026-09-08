@@ -984,6 +984,20 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                     expected_reason,
                 )
 
+    def test_latency_artifact_blocking_patterns_cover_hyphenated_only_terms(self) -> None:
+        examples = {
+            "diagnostic-only evidence": "USB stream evidence retained for diagnostic-only review.",
+            "informational-only evidence": "USB stream package is informational-only material.",
+            "preflight-only evidence": "USB stream material came from a preflight-only run.",
+        }
+
+        for expected_reason, text in examples.items():
+            with self.subTest(expected_reason=expected_reason):
+                self.assertEqual(
+                    latency_artifact_blocking_reason(text),
+                    expected_reason,
+                )
+
     def test_latency_artifact_blocking_patterns_allow_runtime_nonclosure_terms(self) -> None:
         allowed_texts = (
             "USB stream remained active with no Host restart during the sample window.",

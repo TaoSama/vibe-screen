@@ -8,10 +8,10 @@ from pathlib import Path
 
 ARTIFACT_BLOCKING_PATTERNS = (
     (re.compile(r"\bno[- ]host\b(?!\s+restart\b)"), "no-Host diagnostic evidence"),
-    (re.compile(r"\bdiagnostic(?:s)?\s+only\b"), "diagnostic-only evidence"),
-    (re.compile(r"\binformational\s+only\b"), "informational-only evidence"),
+    (re.compile(r"\bdiagnostic(?:s)?[-\s]+only\b"), "diagnostic-only evidence"),
+    (re.compile(r"\binformational[-\s]+only\b"), "informational-only evidence"),
     (re.compile(r"\bsummary[- ]only\b"), "summary-only evidence"),
-    (re.compile(r"\bpreflight\s+only\b"), "preflight-only evidence"),
+    (re.compile(r"\bpreflight[-\s]+only\b"), "preflight-only evidence"),
     (
         re.compile(r"\bread[- ]only\s+(?:usb\s+)?(?:transport\s+)?observation\b"),
         "read-only observation",
