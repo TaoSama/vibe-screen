@@ -1,6 +1,9 @@
-be950a5e4e6c7415800f284b368d4b8cf6db3be8
-be950a5e4e6c7415800f284b368d4b8cf6db3be8
-be950a5e4e6c7415800f284b368d4b8cf6db3be8 is ancestor of HEAD
+aae3f5f80b114847fb7593a0ca2389702bb39922
+0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3
+0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3 is ancestor of HEAD
+aae3f5f80 docs: redact retained PR 699 serial in aggregate evidence
+97490ec04 docs: refresh phase0 aggregate after PR 700
+0fbe6e7fc test: refresh P0110 no-Host UI/UX evidence after 700 (#703)
 be950a5e4 test: require macOS compatibility row for phase0 aggregate (#700)
 aec6c27d9 test(evidence): require macos compatibility artifact roles (#699)
 6132bbad8 docs: refresh phase0 aggregate after PR 697 (#698)
@@ -16,4 +19,3 @@ f80fb8077 docs: refresh P0110 no-host UIUX evidence after 691 (#692)
 4f2cb869f Harden clipboard E2E Android smoke gate
 0785111b6 test(evidence): require file-transfer product schema
 8c444d3a8 Improve Android settings accessibility headings
-a16271d34 docs: audit readme capability gaps (#684)

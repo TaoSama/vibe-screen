@@ -531,20 +531,22 @@
   "manifest_source": {
     "audit_date": "2026-09-08",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md",
-    "base_commit": "be950a5e4e6c7415800f284b368d4b8cf6db3be8",
+    "base_commit": "0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3",
     "base_ref": "origin/main",
     "owner": "Vibe Screen core team"
   },
   "merged_pr_guard": {
-    "audited_source_commit": "be950a5e4e6c7415800f284b368d4b8cf6db3be8",
+    "audited_source_commit": "0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3",
     "base": "main",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=700)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=703)'",
     "excluded_pr_numbers": [
       568,
       576,
       627,
       646,
-      655
+      655,
+      701,
+      702
     ],
     "merged_pr_numbers": [
       569,
@@ -674,12 +676,13 @@
       697,
       698,
       699,
-      700
+      700,
+      703
     ],
     "non_ancestor_prs": [],
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-700-current-main-gate-blocked/merged-prs-568-700.jsonl",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-703-current-main-gate-blocked/merged-prs-568-703.jsonl",
     "range": {
-      "max": 700,
+      "max": 703,
       "min": 568
     },
     "reasons": [],
@@ -690,7 +693,10 @@
   "missing_required_gate_ids": [],
   "owner_pr_guard": {
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'",
-    "open_pr_numbers": [],
+    "open_pr_numbers": [
+      701,
+      702
+    ],
     "owner_prs": [],
     "queried_at": "2026-09-08",
     "reasons": [],
@@ -743,8 +749,8 @@
   "schema_version": "vibescreen.evidence/v1",
   "source_guard": {
     "accepted_aggregate_only_successor": false,
-    "expected_source_commit": "be950a5e4e6c7415800f284b368d4b8cf6db3be8",
-    "manifest_base_commit": "be950a5e4e6c7415800f284b368d4b8cf6db3be8",
+    "expected_source_commit": "0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3",
+    "manifest_base_commit": "0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3",
     "reasons": [],
     "verdict": "pass"
   }

@@ -1,14 +1,15 @@
-# Phase 0 aggregate refresh after PR #700
+# Phase 0 aggregate refresh after PR #703
 
 Date: 2026-09-08 local
-Audited source: origin/main / be950a5e4e6c7415800f284b368d4b8cf6db3be8
+Audited source: origin/main / 0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3
 Device evidence scope: no new Host-backed product run. Existing Nubia records
 remain Nubia P0110 / pacific / Android 16 / API 36 only.
 
 This refresh updates the Phase 0 stable-release aggregate source guard, owner PR
-guard, merged PR guard, and module-ownership source guard after PR #700 was
-merged. It records PR #698 through PR #700 as newly audited main merges after
-the previous aggregate refresh.
+guard, merged PR guard, and module-ownership source guard after PR #703 was
+merged. It records PR #698, PR #699, PR #700, and PR #703 as newly audited
+main merges after the previous aggregate refresh, while PR #701 and PR #702
+remained open non-owner PRs at refresh time.
 
 ## Result
 
@@ -19,11 +20,11 @@ reports:
 - can_mark_phase0_stable_release=false
 - closed_required_gate_count=6
 - required_gate_count=13
-- source_guard.verdict=pass for be950a5e4e6c7415800f284b368d4b8cf6db3be8
-- owner_pr_guard.verdict=pass with no open owner PRs
+- source_guard.verdict=pass for 0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3
+- owner_pr_guard.verdict=pass with open non-owner PR #701 and PR #702 recorded
 - merged_pr_guard.verdict=pass for PR #569 through #575, PR #577 through
-  #626, and PR #628 through #700, excluding closed-unmerged PR #568, PR #576,
-  PR #627, PR #646, and PR #655
+  #626, and PR #628 through #703, excluding closed-unmerged PR #568, PR #576,
+  PR #627, PR #646, and PR #655 plus open non-owner PR #701 and PR #702
 
 The strict release-claim invocation still exits nonzero, captured in
 phase0-stable-release-expected-source-exit.txt, because the seven required
@@ -38,23 +39,25 @@ caused by stale source, owner PR, or merged PR metadata.
 - PR #700 requires the Phase 0 stable-release aggregate to cite at least one
   formal passing macOS Host compatibility matrix row before closing the macOS
   compatibility gate.
+- PR #703 records the Nubia P0110/pacific no-Host UI/UX current-main refresh
+  after PR #700.
 
-These are aggregate/source or fail-closed validation changes. They do not close
-the macOS Host hardware compatibility matrix, telemetry/external latency
-archive, Host RSS no-growth, native pointer HID, controller runtime,
-Android/macOS clipboard product E2E, or Android/macOS file-transfer product E2E
-gates.
+These are aggregate/source, fail-closed validation, or no-Host UI/UX evidence
+changes. They do not close the macOS Host hardware compatibility matrix,
+telemetry/external latency archive, Host RSS no-growth, native pointer HID,
+controller runtime, Android/macOS clipboard product E2E, or Android/macOS
+file-transfer product E2E gates.
 
 ## Current workflow snapshot
 
-The current be950a5e4e6c7415800f284b368d4b8cf6db3be8 main push workflow
+The current 0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3 main push workflow
 metadata was retained as observed during this refresh:
 
-- github-run-34236119650.json: Phase 0 checks, status=in_progress, no
+- github-run-34242680778.json: Phase 0 checks, status=in_progress, no
   conclusion at capture time.
-- github-run-34236119745.json: HarmonyOS portable checks, status=completed,
+- github-run-34242680793.json: iOS engineering gates, status=completed,
   conclusion=success.
-- github-run-34236119755.json: iOS engineering gates, status=completed,
+- github-run-34242680813.json: HarmonyOS portable checks, status=completed,
   conclusion=success.
 
 The in-progress Phase 0 checks snapshot is current-state metadata only. It is
@@ -80,14 +83,15 @@ gate and keep it open.
 
 - head.txt: remote main commit, audited commit assertion, and recent log
   context.
-- open-prs.json: open PR snapshot.
-- merged-prs-568-700.jsonl: audited merged PR range.
-- closed-prs-568-700.json: closed-unmerged PRs in the audited range.
-- pr-698-merged.json through pr-700-merged.json: detailed merged PR snapshots
-  for the newly audited range.
-- github-run-34236119650.json, github-run-34236119745.json, and
-  github-run-34236119755.json: current-source workflow snapshots for the audited
-  be950a5e4e6c7415800f284b368d4b8cf6db3be8 main push as observed during this
+- open-prs.json: open PR snapshot, including only non-owner PR #701 and PR
+  #702 at refresh time.
+- merged-prs-568-703.jsonl: audited merged PR range.
+- closed-prs-568-703.json: closed-unmerged PRs in the audited range.
+- pr-698-merged.json, pr-699-merged.json, pr-700-merged.json, and
+  pr-703-merged.json: detailed merged PR snapshots for the newly audited range.
+- github-run-34242680778.json, github-run-34242680793.json, and
+  github-run-34242680813.json: current-source workflow snapshots for the audited
+  0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3 main push as observed during this
   refresh.
 - phase0-module-ownership-summary.json: module ownership sub-gate summary.
 - phase0-stable-release-summary.json: aggregate summary.
