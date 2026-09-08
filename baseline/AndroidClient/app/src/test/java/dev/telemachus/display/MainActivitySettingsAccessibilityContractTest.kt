@@ -87,6 +87,25 @@ class MainActivitySettingsAccessibilityContractTest {
     }
 
     @Test
+    fun settingsSectionTitlesRemainAccessibilityHeadings() {
+        val layout = settingsLayoutSource()
+        listOf(
+            xmlAttribute("android:id", "@+id/settingsDialogTitle") to xmlAttribute("android:text", "@string/display_settings"),
+            xmlAttribute("android:id", "@+id/deviceHealthTitle") to xmlAttribute("android:text", "@string/device_health_title"),
+            xmlAttribute("android:id", "@+id/transferReadinessTitle") to xmlAttribute("android:text", "@string/transfer_readiness_title"),
+            xmlAttribute("android:id", "@+id/audioReadinessTitle") to xmlAttribute("android:text", "@string/audio_readiness_title"),
+            xmlAttribute("android:id", "@+id/viewportTitle") to xmlAttribute("android:text", "@string/viewport"),
+            xmlAttribute("android:id", "@+id/videoSectionTitle") to xmlAttribute("android:text", "@string/video_section_title"),
+            xmlAttribute("android:id", "@+id/gestureShortcutsTitle") to xmlAttribute("android:text", "@string/gesture_shortcuts_title"),
+            xmlAttribute("android:id", "@+id/opacityLabel") to xmlAttribute("android:text", "@string/overlay_opacity"),
+        ).forEach { (idAttribute, expectedText) ->
+            val element = extractXmlElement(layout, idAttribute)
+            assertTrue("$idAttribute keeps its title text", element.contains(expectedText))
+            assertTrue("$idAttribute is available as a screen-reader heading", element.contains(xmlAttribute("android:accessibilityHeading", "true")))
+        }
+    }
+
+    @Test
     fun controlBarManagedPolicyDenialKeepsDisabledControlsExplainable() {
         val source = mainActivitySource()
         val strings = stringsSource()
@@ -219,6 +238,11 @@ class MainActivitySettingsAccessibilityContractTest {
         require(openTagEnd >= 0) { "XML element open tag end not found: $idAttribute" }
         return source.substring(openStart, openTagEnd + 1)
     }
+
+    private fun xmlAttribute(
+        name: String,
+        value: String,
+    ): String = name + "=\"" + value + "\""
 
     private companion object {
         val MAIN_ACTIVITY_PATHS =
