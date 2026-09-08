@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "939472bf2bb59e76fce46e4ac176aefd05e61d7c",
+    "base_commit": "d8f108aaded3a05708587c721186cf0737bc4dfa",
     "base_ref": "origin/main",
     "audit_date": "2026-09-08",
     "owner": "Vibe Screen core team",
@@ -15,27 +15,27 @@
     "queried_at": "2026-09-08",
     "state": "open",
     "open_pr_numbers": [
-      702
+      708
     ]
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=703)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=707)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 703
+      "max": 707
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-701-current-main-gate-blocked/merged-prs-568-703.jsonl",
-    "audited_source_commit": "939472bf2bb59e76fce46e4ac176aefd05e61d7c",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-707-current-main-gate-blocked/merged-prs-568-707.jsonl",
+    "audited_source_commit": "d8f108aaded3a05708587c721186cf0737bc4dfa",
     "excluded_pr_numbers": [
       568,
       576,
       627,
       646,
       655,
-      702
+      704
     ]
   },
   "readme_guard": {
@@ -73,7 +73,9 @@
       "evidence_paths": [
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34170285701",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34171279974"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34171279974",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811139",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811156"
       ],
       "owner_prs": [],
       "blockers": []
@@ -97,7 +99,9 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTransferReadinessContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
-        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md"
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811139",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811156"
       ],
       "owner_prs": [],
       "blockers": []
@@ -112,7 +116,9 @@
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34170285701",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34171279974",
-        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md"
+        "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811139",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811156"
       ],
       "owner_prs": [],
       "blockers": []
@@ -191,7 +197,7 @@
       ],
       "owner_prs": [],
       "blockers": [
-        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656, PR #671, and PR #701 further harden the formal latency/telemetry archive validators so malformed, insufficient, non-revalidating, or textually non-closing latency packages fail closed; this is evidence-tool hardening only.",
+        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656, PR #671, and PR #701 further harden the formal latency/telemetry archive validators so malformed, insufficient, non-revalidating, or textually non-closing latency packages fail closed; this is evidence-tool hardening only. PR #706 hardens Host RSS readiness safety checks only, PR #707 clarifies macOS compatibility TCC documentation/source-guard behavior only, and neither adds external latency closure evidence.",
         "The tightened current-base latency gate remains blocked readiness; no external-camera latency sample package, raw camera media, annotated sample set, or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },
@@ -209,13 +215,16 @@
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-28-current-base-host-rss-failclosed-readiness/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-29-current-base-host-rss-failclosed-readiness/README.md",
         "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-30-current-base-host-rss-failclosed-readiness/README.md",
-        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-31-current-base-host-rss-failclosed-readiness/README.md"
+        "docs/changes/2026-08-10-host-rss-growth/evidence/2026-08-31-current-base-host-rss-failclosed-readiness/README.md",
+        "tools/vibescreen_evidence/host_rss_gate.py",
+        "tools/tests/test_host_rss_gate.py"
       ],
       "owner_prs": [],
       "blockers": [
         "The retained two-hour Xiaomi 13 stream was stable but Host RSS grew about 18.3 MB with a positive second-half slope.",
         "No current-source host_rss_gate pass exists.",
-        "The latest current-base readiness records are blocked before a stable-signed, read-only TCC-proven, listener-observed current-source Host can be launched with native VIBE_SCREEN_TELEMETRY_PATH coverage and a USB/LAN stream window."
+        "The latest current-base readiness records are blocked before a stable-signed, read-only TCC-proven, listener-observed current-source Host can be launched with native VIBE_SCREEN_TELEMETRY_PATH coverage and a USB/LAN stream window.",
+        "PR #706 hardens Host RSS readiness safety metadata validation so readiness packages that install or replace the Host, claim to close runtime gates, or omit required structured source paths fail closed; PR #707 only clarifies macOS compatibility TCC documentation/source-guard behavior. These changes do not provide a current-source two-hour no-growth pass."
       ]
     },
     {

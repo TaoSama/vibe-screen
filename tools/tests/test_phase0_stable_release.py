@@ -3355,7 +3355,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
         self.assertEqual(summary["merged_pr_guard"]["verdict"], "pass")
         self.assertEqual(
             summary["merged_pr_guard"]["excluded_pr_numbers"],
-            [568, 576, 627, 646, 655, 702],
+            [568, 576, 627, 646, 655, 704],
         )
         self.assertEqual(
             summary["source_guard"]["manifest_base_commit"],
