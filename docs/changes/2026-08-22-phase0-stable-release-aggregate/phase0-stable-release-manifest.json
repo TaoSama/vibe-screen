@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3",
+    "base_commit": "939472bf2bb59e76fce46e4ac176aefd05e61d7c",
     "base_ref": "origin/main",
     "audit_date": "2026-09-08",
     "owner": "Vibe Screen core team",
@@ -15,7 +15,6 @@
     "queried_at": "2026-09-08",
     "state": "open",
     "open_pr_numbers": [
-      701,
       702
     ]
   },
@@ -28,15 +27,14 @@
       "min": 568,
       "max": 703
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-703-current-main-gate-blocked/merged-prs-568-703.jsonl",
-    "audited_source_commit": "0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-701-current-main-gate-blocked/merged-prs-568-703.jsonl",
+    "audited_source_commit": "939472bf2bb59e76fce46e4ac176aefd05e61d7c",
     "excluded_pr_numbers": [
       568,
       576,
       627,
       646,
       655,
-      701,
       702
     ]
   },
@@ -187,12 +185,13 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/HeartbeatTelemetryReporter.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderTelemetryAccumulatorTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/HeartbeatTelemetryReporterTest.kt",
+        "tools/vibescreen_evidence/latency_artifact_text.py",
         "tools/vibescreen_evidence/latency_evidence.py",
         "tools/vibescreen_evidence/latency_manifest.py"
       ],
       "owner_prs": [],
       "blockers": [
-        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656 and PR #671 further harden the formal latency/telemetry archive validators so malformed, insufficient, or non-revalidating latency packages fail closed; this is evidence-tool hardening only.",
+        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656, PR #671, and PR #701 further harden the formal latency/telemetry archive validators so malformed, insufficient, non-revalidating, or textually non-closing latency packages fail closed; this is evidence-tool hardening only.",
         "The tightened current-base latency gate remains blocked readiness; no external-camera latency sample package, raw camera media, annotated sample set, or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },

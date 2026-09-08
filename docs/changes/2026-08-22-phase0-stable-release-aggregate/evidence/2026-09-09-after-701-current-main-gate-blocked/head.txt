@@ -1,8 +1,10 @@
-aae3f5f80b114847fb7593a0ca2389702bb39922
-0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3
-0fbe6e7fced0fdabd4ba667fe7715dc20057e1e3 is ancestor of HEAD
-aae3f5f80 docs: redact retained PR 699 serial in aggregate evidence
-97490ec04 docs: refresh phase0 aggregate after PR 700
+1580d23c812ac74f7f49754b62f4622a779f3d31
+939472bf2bb59e76fce46e4ac176aefd05e61d7c
+939472bf2bb59e76fce46e4ac176aefd05e61d7c is ancestor of HEAD
+1580d23c8 docs: refresh phase0 aggregate after PR 703
+4b306f463 docs: redact retained PR 699 serial in aggregate evidence
+343837b47 docs: refresh phase0 aggregate after PR 700
+939472bf2 Harden latency artifact closure checks (#701)
 0fbe6e7fc test: refresh P0110 no-Host UI/UX evidence after 700 (#703)
 be950a5e4 test: require macOS compatibility row for phase0 aggregate (#700)
 aec6c27d9 test(evidence): require macos compatibility artifact roles (#699)
@@ -15,7 +17,3 @@ d27a9dddb Harden Host RSS readiness gate evidence binding
 f80fb8077 docs: refresh P0110 no-host UIUX evidence after 691 (#692)
 693b90a19 Harden controller runtime evidence gate (#691)
 2acb60fe1 Harden macOS Host compatibility runtime gate (#690)
-1d6981bd6 Harden native pointer HID gate tests (#689)
-4f2cb869f Harden clipboard E2E Android smoke gate
-0785111b6 test(evidence): require file-transfer product schema
-8c444d3a8 Improve Android settings accessibility headings
