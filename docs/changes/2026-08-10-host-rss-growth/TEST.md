@@ -11,7 +11,10 @@ graph over long sessions.
 The gate is intentionally offline and does not start the macOS Host, run a
 memory soak, inspect TCC state, use ADB, or sample private heap internals. It
 does not close the formal Host RSS no-growth gate. That gate still requires a
-complete current-source two-hour run and `host_rss_gate` with `verdict=pass`.
+complete current-source two-hour run and `host_rss_gate` with `verdict=pass`,
+including the same-session `host-readiness.json` proving stable signing,
+current-source provenance, identity-bound TCC, observed listener, and read-only
+readiness collection.
 
 ## Regression Invariants
 
@@ -108,4 +111,6 @@ Result: pass.
 - This is not a short Host memory diagnostic.
 - This is not a two-hour Host RSS no-growth result.
 - The formal Host RSS gate remains open until `host_rss_gate` reports `pass` on
-  a complete current-source telemetry-backed two-hour run.
+  a complete current-source telemetry-backed two-hour run with a passing shared
+  Host readiness report. Readiness-only, short-window, old-Host, non-stable
+  signing, missing/incorrect TCC, or source-mismatched evidence cannot close it.

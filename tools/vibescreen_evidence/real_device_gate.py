@@ -586,6 +586,7 @@ def summarize_requested_gates(
     host_rss_gate_output: Path | None,
     latency_reports: Sequence[Path],
     input_summaries: Sequence[Path],
+    host_readiness: Path | None = None,
     host_rss_exact_window_report: Path | None = None,
     required_latency_report_count: int = 0,
     required_input_summary_count: int = 0,
@@ -607,15 +608,23 @@ def summarize_requested_gates(
         insufficiencies.append("soak summary is required but --soak-summary was not provided")
 
     if require_host_rss_gate:
-        if soak_summary is None or soak_samples is None or host_rss_exact_window_report is None:
+        if (
+            soak_summary is None
+            or soak_samples is None
+            or host_rss_exact_window_report is None
+            or host_readiness is None
+        ):
             insufficiencies.append(
                 "Host RSS gate requires --soak-summary, --soak-samples, "
-                "and --host-rss-exact-window-report"
+                "--host-rss-exact-window-report, and --host-readiness"
             )
         else:
             try:
                 report = derive_host_rss_gate(
-                    soak_summary, soak_samples, host_rss_exact_window_report
+                    soak_summary,
+                    soak_samples,
+                    host_rss_exact_window_report,
+                    host_readiness,
                 )
                 requested["host_rss"]["report"] = report
                 if host_rss_gate_output is not None:
@@ -710,6 +719,7 @@ def build_document(
     require_host_rss_gate: bool = False,
     soak_summary: Path | None = None,
     soak_samples: Path | None = None,
+    host_readiness: Path | None = None,
     host_rss_exact_window_report: Path | None = None,
     host_rss_gate_output: Path | None = None,
     latency_reports: Sequence[Path] = (),
@@ -817,6 +827,7 @@ def build_document(
         require_host_rss_gate=require_host_rss_gate,
         soak_summary=soak_summary,
         soak_samples=soak_samples,
+        host_readiness=host_readiness,
         host_rss_exact_window_report=host_rss_exact_window_report,
         host_rss_gate_output=host_rss_gate_output,
         latency_reports=latency_reports,
@@ -914,6 +925,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-host-rss-gate", action="store_true")
     parser.add_argument("--soak-summary", type=Path)
     parser.add_argument("--soak-samples", type=Path)
+    parser.add_argument("--host-readiness", type=Path)
     parser.add_argument("--host-rss-exact-window-report", type=Path)
     parser.add_argument("--host-rss-gate-output", type=Path)
     parser.add_argument("--latency-report", action="append", default=[])
@@ -973,6 +985,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_host_rss_gate=args.require_host_rss_gate,
         soak_summary=args.soak_summary,
         soak_samples=args.soak_samples,
+        host_readiness=args.host_readiness,
         host_rss_exact_window_report=args.host_rss_exact_window_report,
         host_rss_gate_output=args.host_rss_gate_output,
         latency_reports=_append_path(args.latency_report),

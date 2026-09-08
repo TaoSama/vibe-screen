@@ -101,6 +101,7 @@ FILE_TRANSFER_BULK_CURRENT_BASE_ANDROID_GATE_JSON ?= $(FILE_TRANSFER_ANDROID_SMO
 FILE_TRANSFER_BULK_CURRENT_BASE_WEBRTC_GATE_JSON ?= $(PHASE3_WEBRTC_BULK_GATE_JSON)
 FILE_TRANSFER_BULK_CURRENT_BASE_REQUIRE_PASS ?=
 HOST_PID ?=
+HOST_RSS_HOST_READINESS_JSON ?= $(EVIDENCE_DIR)/host-readiness.json
 PHASE2_SOAK_DURATION ?= 8h
 PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
 PHASE2_SOAK_INTERVAL ?= 30s
@@ -987,8 +988,9 @@ soak-2h: require-evidence-serial require-host-pid
 	$(SOAK_RECIPE)
 
 host-rss-gate:
+	@test -f "$(HOST_RSS_HOST_READINESS_JSON)" || (echo "error: collect Host readiness JSON first with scripts/macos_dev_host.py readiness; set HOST_RSS_HOST_READINESS_JSON if stored elsewhere" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-2h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-2h/exact-window-report.json
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --exact-window-report $(EVIDENCE_DIR)/soak-2h/exact-window-report.json --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json --repo-root .
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --exact-window-report $(EVIDENCE_DIR)/soak-2h/exact-window-report.json --host-readiness $(HOST_RSS_HOST_READINESS_JSON) --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json --repo-root .
 
 soak-2h-host-rss-gate: require-evidence-serial require-host-pid
 	$(MAKE) soak-2h EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)" EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_PACKAGE="$(EVIDENCE_PACKAGE)" HOST_PID="$(HOST_PID)" EVIDENCE_HOST_PID="$(EVIDENCE_HOST_PID)"

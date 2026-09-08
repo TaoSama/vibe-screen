@@ -585,8 +585,9 @@ state, or clears Android app data. A `ready` result means the session is ready
 for a formal run; it does not close USB/LAN stream, latency, soak, Host RSS, or
 physical-input gates by itself. Use `--require-soak-summary` to require a
 complete soak summary. Use `--require-host-rss-gate` only with
-`--soak-summary`, `--soak-samples`, and `--host-rss-exact-window-report`; the
-Host RSS gate must consume the same exact-window telemetry report used by the
+`--soak-summary`, `--soak-samples`, `--host-rss-exact-window-report`, and
+`--host-readiness`; the Host RSS gate must consume the same exact-window
+telemetry report and the same current-source Host readiness JSON used by the
 formal `host-rss-gate` target. Pass
 `--require-latency-report <count>` or `--require-input-summary <count>` to make
 missing retained latency/input evidence explicit in the same JSON report.
@@ -714,8 +715,10 @@ make host-rss-gate EVIDENCE_DIR=.build/evidence
 ```
 
 This derives `.build/evidence/soak-2h/exact-window-report.json` first, then
-writes `.build/evidence/soak-2h/host-rss-gate.json`. It exits zero only when
-`host_rss_gate` reports `pass`.
+writes `.build/evidence/soak-2h/host-rss-gate.json`. It also requires
+`$(EVIDENCE_DIR)/host-readiness.json` by default; set
+`HOST_RSS_HOST_READINESS_JSON` only when the readiness report is retained
+elsewhere. It exits zero only when `host_rss_gate` reports `pass`.
 
 The evaluator requires an error-free source soak of at least 7,056 seconds,
 230 Host RSS samples, 115 second-half samples, samples within 90 seconds of
@@ -723,8 +726,13 @@ both window boundaries, and no internal sampling gap above 90 seconds. It also
 requires a matching exact-window report derived from native
 `VIBE_SCREEN_TELEMETRY_PATH` JSONL for the same summary window. Legacy
 log-reencoded telemetry or a missing exact-window report is descriptive only and
-cannot pass the formal Host RSS gate. A pass requires all of these steady-state
-RSS limits:
+cannot pass the formal Host RSS gate. It also requires a passing shared Host
+readiness report for the same current-source Host: `can_start_host_rss_gate`
+must be true, the installed Host source commit/tree must match the clean current
+checkout, stable signing must use the expected certificate leaf, Screen
+Recording/Accessibility/Microphone TCC rows must be readable and bound to that
+Host identity, the listener must be observed, and the readiness probe must
+remain read-only. A pass requires all of these steady-state RSS limits:
 
 - second-half OLS slope 95% upper bound no greater than 40 KiB/min;
 - second-half Theil-Sen slope no greater than 40 KiB/min;
