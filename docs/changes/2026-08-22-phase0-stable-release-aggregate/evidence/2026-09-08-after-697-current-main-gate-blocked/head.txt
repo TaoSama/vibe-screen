@@ -1,0 +1,18 @@
+a11d91d8256bc10beb2e6ca3dc005a15f438bf01
+a11d91d8256bc10beb2e6ca3dc005a15f438bf01
+a11d91d82 Harden file-transfer product E2E evidence gates (#697)
+88e632f95 test(evidence): harden clipboard product e2e gate (#696)
+6c5bcaf8e test(evidence): harden native pointer HID gate
+a02cf7cae test(evidence): harden telemetry latency archive gate (#694)
+d27a9dddb Harden Host RSS readiness gate evidence binding
+f80fb8077 docs: refresh P0110 no-host UIUX evidence after 691 (#692)
+693b90a19 Harden controller runtime evidence gate (#691)
+2acb60fe1 Harden macOS Host compatibility runtime gate (#690)
+1d6981bd6 Harden native pointer HID gate tests (#689)
+4f2cb869f Harden clipboard E2E Android smoke gate
+0785111b6 test(evidence): require file-transfer product schema
+8c444d3a8 Improve Android settings accessibility headings
+a16271d34 docs: audit readme capability gaps (#684)
+043e1f5d8 docs: add p0110 audio no-host current-main evidence (#685)
+47d139cba docs: add p0110 no-host uiux rerun evidence (#683)
+1649f5ff0 docs: refresh phase0 aggregate after PR 676 (#682)
