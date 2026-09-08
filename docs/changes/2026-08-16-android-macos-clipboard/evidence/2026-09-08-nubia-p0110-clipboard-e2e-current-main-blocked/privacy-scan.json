@@ -1,0 +1,178 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4933,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "0313c0e1cf354125886b60e47e4f77b7da375e684e567fe9454cb94a7397adab"
+    },
+    {
+      "bytes": 9831,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate-raw-rerun.json",
+      "result": "pass",
+      "sha256": "8cbb6bf5a4caf75689b66e5f92cf3b4a6198fe37fe08edaa5801601864bca75c"
+    },
+    {
+      "bytes": 8395,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "clipboard-e2e-gate.json",
+      "result": "pass",
+      "sha256": "aaf5537395eff054d83453910e3f902470e59420fe9b1848ec320b89ea70f3a6"
+    },
+    {
+      "bytes": 6188,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "ad9d9b5b24f1fd6cefd2a2d40a24869d08bcfb46facb2f85a2e3841791ad74aa"
+    },
+    {
+      "bytes": 7958,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-readiness.json",
+      "result": "pass",
+      "sha256": "3cd03091d2c4979fe6561e0ed520a4a6a68e7f5f57d1f0efc655a5443396ef9f"
+    },
+    {
+      "bytes": 1927,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "10e6e7d5a1fb90ee3b3b41a82807503e726b95d6d37492afa745e574b22d5a81"
+    },
+    {
+      "bytes": 1,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/adb-reverse-list-after.txt",
+      "result": "pass",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 1,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/adb-reverse-list-before.txt",
+      "result": "pass",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 5741,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/clipboard-manager-instrumentation.log",
+      "result": "pass",
+      "sha256": "a33d905d40d6cf13ab39f307c4564c06bb129249bab54b64b807a70b1b2223e5"
+    },
+    {
+      "bytes": 3971,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/clipboard-manager-raw-am-instrumentation.log",
+      "result": "pass",
+      "sha256": "b52302e0fe0d9be2f8d5ba51e107805af58c139ec45600d5bd4a361421421b96"
+    },
+    {
+      "bytes": 11241,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "trusted-lan-preflight.json",
+      "result": "pass",
+      "sha256": "f94db3485ae8b31d2828a17af6d05359ad9bbc62e02561f09d4e24344861ea8d"
+    },
+    {
+      "bytes": 9314,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "usb-smoke-preflight.json",
+      "result": "pass",
+      "sha256": "7e8163605573e9a4e2c3c072e6e7acf13052be3d50bec97070a794adabfeed25"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

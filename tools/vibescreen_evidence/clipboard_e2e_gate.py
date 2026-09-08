@@ -32,14 +32,18 @@ DEFAULT_DEVICE_IDENTITY = {
     "sdk": 36,
 }
 LOCAL_MAXIMUM_CLIPBOARD_BYTES = 1_048_576
-REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS = 5
+REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS = 8
 REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS = (
     "foregroundActivityCanUseAndroidSystemClipboardLocally",
     "foregroundActivityCanRoundTripUnicodeAndLargePlainTextLocally",
     "foregroundActivityHandlesNonTextClipboardItemSafely",
+    "foregroundActivitySeesEmptyClipboardAsNoPrimaryClip",
+    "foregroundActivityDoesNotTreatLaterTextItemAsFirstClipboardText",
+    "foregroundActivityCanRoundTripExpandedLargePlainTextLocally",
     "setForegroundClipboardFromInstrumentationArgument",
     "assertForegroundClipboardMatchesInstrumentationArgument",
 )
+ANDROID_CLIPBOARD_SMOKE_CLASS = "dev.telemachus.display.ClipboardManagerInstrumentedTest"
 SAFE_SERIAL_LABEL = "REDACTED_P0110_USB_SERIAL"
 RETAINED_ARTIFACTS_FIELD = "retained_artifacts"
 REQUIRED_DIRECTION_ARTIFACT_ROLES = (
@@ -55,7 +59,7 @@ TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TC
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
 TCC_DATABASE_COMPONENT = "TCC" + r"\.db"
 SENSITIVE_TEXT_PATTERNS = (
-    re.compile(r"EP[0-9A-Z]{14,}", re.IGNORECASE),
+    re.compile(r"\bEP[0-9A-Z]{14,}\b"),
     re.compile(TCC_PATH_COMPONENT, re.IGNORECASE),
     re.compile(TCC_BUNDLE_COMPONENT, re.IGNORECASE),
     re.compile(TCC_DATABASE_COMPONENT, re.IGNORECASE),
@@ -97,7 +101,7 @@ def sanitize_text(value: Any) -> str:
 
 def _replacement_for_pattern(pattern: re.Pattern[str]) -> str:
     pattern_text = pattern.pattern.lower()
-    if pattern_text.startswith("ep"):
+    if "ep[0-9a-z]" in pattern_text:
         return SAFE_SERIAL_LABEL
     if "users" in pattern_text or "home" in pattern_text:
         return "<redacted-local-path>"
@@ -341,16 +345,19 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android ClipboardManager instrumentation log is missing"],
         )
     raw_text = log_path.read_text(encoding="utf-8", errors="replace")
-    text = sanitize_text(raw_text)
     executed_tests = _android_clipboard_test_count(raw_text)
+    passed_methods, failed_methods = _android_clipboard_method_results(raw_text)
     missing_methods = [
-        method for method in REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS if method not in raw_text
+        method for method in REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS if method not in passed_methods
     ]
     junit_summary = re.search(r"Tests run:\s*\d+,\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)", raw_text)
     has_junit_failures = bool(junit_summary and (int(junit_summary.group(1)) > 0 or int(junit_summary.group(2)) > 0))
+    instrumentation_reasons = _android_instrumentation_reasons(raw_text, executed_tests)
     passed = (
         executed_tests >= REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS
         and not missing_methods
+        and not failed_methods
+        and not instrumentation_reasons
         and ("OK (" in raw_text or ("Finished " in raw_text and " tests on " in raw_text and "BUILD SUCCESSFUL" in raw_text))
         and "FAILURES!!!" not in raw_text
         and "BUILD FAILED" not in raw_text
@@ -364,12 +371,74 @@ def _android_clipboard_gate(log_path: Path | None) -> dict[str, Any]:
         )
     if missing_methods:
         reasons.append(
-            "Android ClipboardManager instrumentation log must show expected test methods: "
+            "Android ClipboardManager instrumentation log must show passed expected test methods: "
             + ", ".join(missing_methods)
         )
+    if failed_methods:
+        reasons.append(
+            "Android ClipboardManager instrumentation log must not show failed expected test methods: "
+            + ", ".join(f"{method}={code}" for method, code in sorted(failed_methods.items()))
+        )
+    reasons.extend(instrumentation_reasons)
     if not passed:
         reasons.append("Android ClipboardManager instrumentation log does not show an OK result")
     return _gate("android_clipboardmanager_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
+
+
+def _android_clipboard_method_results(text: str) -> tuple[set[str], dict[str, int]]:
+    passed: set[str] = set()
+    failed: dict[str, int] = {}
+    for method in REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS:
+        escaped_class = re.escape(ANDROID_CLIPBOARD_SMOKE_CLASS)
+        escaped_method = re.escape(method)
+        if re.search(rf"{escaped_class}#{escaped_method}:\s*PASSED\b", text):
+            passed.add(method)
+        if re.search(rf"{escaped_class}#{escaped_method}:\s*(FAILED|ERROR)\b", text):
+            failed[method] = -2
+
+    current_class: str | None = None
+    current_test: str | None = None
+    for line in text.splitlines():
+        class_match = re.fullmatch(r"INSTRUMENTATION_STATUS:\s+class=(.+)", line.strip())
+        if class_match:
+            current_class = class_match.group(1).strip()
+            continue
+        test_match = re.fullmatch(r"INSTRUMENTATION_STATUS:\s+test=(.+)", line.strip())
+        if test_match:
+            current_test = test_match.group(1).strip()
+            continue
+        code_match = re.fullmatch(r"INSTRUMENTATION_STATUS_CODE:\s+(-?\d+)", line.strip())
+        if not code_match:
+            continue
+        code = int(code_match.group(1))
+        if current_class != ANDROID_CLIPBOARD_SMOKE_CLASS or current_test not in REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS:
+            continue
+        if code == 0:
+            passed.add(current_test)
+        elif code not in {1}:
+            failed[current_test] = code
+    return passed, failed
+
+
+def _android_instrumentation_reasons(text: str, executed_tests: int) -> list[str]:
+    reasons: list[str] = []
+    if "INSTRUMENTATION_STATUS:" in text:
+        instrumentation_code_match = re.search(r"INSTRUMENTATION_CODE:\s+(-?\d+)", text)
+        if instrumentation_code_match is None:
+            reasons.append("Android ClipboardManager instrumentation log must show final INSTRUMENTATION_CODE")
+        elif int(instrumentation_code_match.group(1)) != -1:
+            reasons.append("Android ClipboardManager instrumentation log must finish with INSTRUMENTATION_CODE -1")
+        numtests = [int(match) for match in re.findall(r"INSTRUMENTATION_STATUS:\s+numtests=(\d+)", text)]
+        if not numtests:
+            reasons.append("Android ClipboardManager instrumentation log must report numtests for raw instrumentation output")
+        elif any(count != executed_tests for count in numtests):
+            reasons.append("Android ClipboardManager instrumentation numtests must match the executed test count")
+        if numtests and any(count < REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS for count in numtests):
+            reasons.append(
+                "Android ClipboardManager instrumentation numtests must be at least "
+                f"{REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS}"
+            )
+    return reasons
 
 
 def _android_clipboard_test_count(text: str) -> int:
