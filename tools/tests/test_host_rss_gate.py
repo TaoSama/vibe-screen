@@ -828,6 +828,50 @@ class HostRSSGateTest(unittest.TestCase):
                 self.assertEqual(report["verdict"], "insufficient")
                 self.assertFalse(report["host_readiness_criteria"][failing_key]["passed"])
 
+    def test_host_readiness_safety_must_not_install_or_close_runtime_gates(self):
+        cases = (
+            "installs_or_replaces_host",
+            "closes_runtime_gates",
+        )
+        for field in cases:
+            with self.subTest(field), tempfile.TemporaryDirectory() as raw_directory:
+                directory = Path(raw_directory)
+                summary, samples = write_inputs(directory)
+                exact_window = write_exact_window_report(directory)
+                host_readiness = directory / "host-readiness.json"
+                payload = host_readiness_payload()
+                payload["safety"][field] = True
+                host_readiness.write_text(json.dumps(payload), encoding="utf-8")
+
+                report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertFalse(
+                    report["host_readiness_criteria"][f"safety_{field}"]["passed"]
+                )
+
+    def test_host_readiness_safety_missing_runtime_closure_fields_is_insufficient(self):
+        cases = (
+            "installs_or_replaces_host",
+            "closes_runtime_gates",
+        )
+        for field in cases:
+            with self.subTest(field), tempfile.TemporaryDirectory() as raw_directory:
+                directory = Path(raw_directory)
+                summary, samples = write_inputs(directory)
+                exact_window = write_exact_window_report(directory)
+                host_readiness = directory / "host-readiness.json"
+                payload = host_readiness_payload()
+                payload["safety"].pop(field)
+                host_readiness.write_text(json.dumps(payload), encoding="utf-8")
+
+                report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertFalse(
+                    report["host_readiness_criteria"][f"safety_{field}"]["passed"]
+                )
+
     def test_exact_window_queue_over_capacity_fails(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)

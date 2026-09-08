@@ -740,7 +740,8 @@ must be true, the installed Host source commit/tree must match the clean current
 checkout, stable signing must use the expected certificate leaf, Screen
 Recording/Accessibility/Microphone TCC rows must be readable and bound to that
 Host identity, the listener must be observed, and the readiness probe must
-remain read-only. A pass requires all of these steady-state RSS limits:
+remain read-only without installing/replacing the Host or claiming runtime gate
+closure. A pass requires all of these steady-state RSS limits:
 
 - second-half OLS slope 95% upper bound no greater than 40 KiB/min;
 - second-half Theil-Sen slope no greater than 40 KiB/min;

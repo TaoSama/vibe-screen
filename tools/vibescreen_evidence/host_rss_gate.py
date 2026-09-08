@@ -489,7 +489,9 @@ def evaluate_host_readiness_report(record: Any) -> dict[str, Any]:
         "requests_microphone",
         "modifies_tcc",
         "modifies_keychain",
+        "installs_or_replaces_host",
         "modifies_android",
+        "closes_runtime_gates",
     ):
         expected = field == "read_only"
         add_criterion(
