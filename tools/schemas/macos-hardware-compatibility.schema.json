@@ -151,6 +151,7 @@
         "mirror_or_fallback_recorded",
         "input_smoke_observed",
         "reconnect_observed",
+        "runtime_session_coherence_recorded",
         "artifacts_retained",
         "claim_scoped_to_exact_row"
       ],
@@ -178,6 +179,7 @@
         "mirror_or_fallback_recorded": {"type": "boolean"},
         "input_smoke_observed": {"type": "boolean"},
         "reconnect_observed": {"type": "boolean"},
+        "runtime_session_coherence_recorded": {"type": "boolean"},
         "artifacts_retained": {"type": "boolean"},
         "claim_scoped_to_exact_row": {"type": "boolean"}
       }

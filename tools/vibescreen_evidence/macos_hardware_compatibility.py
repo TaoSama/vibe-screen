@@ -103,6 +103,10 @@ REQUIRED_FIELDS = (
     ("mirror_or_fallback_recorded", "record mirror success or explicit current-main fallback/unavailable behavior"),
     ("input_smoke_observed", "observe at least touch plus keyboard or scroll input through the Host path"),
     ("reconnect_observed", "observe a client/process reconnect while the Host PID survives"),
+    (
+        "runtime_session_coherence_recorded",
+        "record that stream, input, and reconnect observations came from the same packaged Host PID/session",
+    ),
     ("artifacts_retained", "retain logs, screenshots, display snapshots, command output, and the gate summary"),
     ("claim_scoped_to_exact_row", "scope the support claim to this exact architecture, Mac model, OS build, topology, transport, and Android counterpart"),
 )
@@ -255,6 +259,7 @@ CLOSURE_CHECKLIST_GROUPS = (
             "physical_display_capture_observed",
             "input_smoke_observed",
             "reconnect_observed",
+            "runtime_session_coherence_recorded",
         ),
     ),
     (

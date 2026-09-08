@@ -168,7 +168,8 @@
         "packaged_host_launch_observed",
         "physical_display_capture_observed",
         "protocol_v1_stream_observed",
-        "reconnect_observed"
+        "reconnect_observed",
+        "runtime_session_coherence_recorded"
       ],
       "next_steps": [
         "run baseline macOS build, XCTest, and self-test commands for this source",
@@ -177,7 +178,8 @@
         "exercise display list and selected-display start on this Host row",
         "observe physical or current-main display capture on this Host row",
         "observe at least touch plus keyboard or scroll input through the Host path",
-        "observe a client/process reconnect while the Host PID survives"
+        "observe a client/process reconnect while the Host PID survives",
+        "record that stream, input, and reconnect observations came from the same packaged Host PID/session"
       ],
       "status": "blocked",
       "title": "Runtime acceptance"
@@ -258,6 +260,10 @@
     {
       "field": "reconnect_observed",
       "requirement": "observe a client/process reconnect while the Host PID survives"
+    },
+    {
+      "field": "runtime_session_coherence_recorded",
+      "requirement": "record that stream, input, and reconnect observations came from the same packaged Host PID/session"
     },
     {
       "field": "host_build_identity_recorded",
@@ -342,6 +348,7 @@
     "protocol_v1_stream_observed": false,
     "reconnect_observed": false,
     "repository_commit_recorded": true,
+    "runtime_session_coherence_recorded": false,
     "signing_and_tcc_state_recorded": false,
     "source_bound_host_recorded": false,
     "video_encoder_path_recorded": true,

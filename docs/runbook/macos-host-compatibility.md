@@ -75,7 +75,9 @@ Keep these artifacts in that directory:
   external, dummy, virtual, or Screen Sharing.
 - Host logs proving capture backend, display list/selection, virtual-display
   success or fallback, mirror success or fallback, VideoToolbox encoder path,
-  Protocol v1 stream, input smoke, reconnect, and Host PID continuity.
+  Protocol v1 stream, input smoke, reconnect, Host PID continuity, and the
+  single packaged Host PID/session tying the stream, input, and reconnect
+  observations together.
 - Android device identity, APK identity, logcat, screenshots or external photos
   showing the stream and visible input result.
 - `macos-hardware-compatibility.json`: the boolean observations consumed by the
@@ -125,6 +127,12 @@ runtime probes:
 - mirror success, or explicit current-main fallback/unavailable result;
 - touch plus keyboard or scroll input through the Host path;
 - client or process reconnect while the Host PID survives.
+
+The runtime probes must be one coherent product session. Do not combine a stream
+from one Host launch, input from another, and reconnect from a third to close a
+single compatibility row. Retain the Host PID/session identifier or equivalent
+log correlation that proves the stream, input, and reconnect observations belong
+to the same packaged Host run.
 
 Summarize the row with:
 
@@ -226,6 +234,7 @@ artifact exists:
   "mirror_or_fallback_recorded": true,
   "input_smoke_observed": true,
   "reconnect_observed": true,
+  "runtime_session_coherence_recorded": true,
   "artifacts_retained": true,
   "claim_scoped_to_exact_row": true,
   "ci_runner_only": false,
@@ -258,7 +267,8 @@ Recording, Accessibility, and Microphone TCC rows with accepted `auth_reason`
 values, source-bound installed Host provenance, Host self-test/current-base
 provenance, architecture, OS build, topology, automated macOS checks, packaged launch,
 Protocol v1 stream, artifact retention, or exact-row scoping is `blocked`. Other
-missing runtime probes are `insufficient`. Artifact paths must be existing
+missing runtime probes, including same-session correlation for stream, input,
+and reconnect, are `insufficient`. Artifact paths must be existing
 non-empty relative paths under the evidence directory; absolute paths, `..`
 escapes, or stdin input without `--evidence-dir` keep the row blocked.
 
