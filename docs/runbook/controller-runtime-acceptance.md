@@ -111,9 +111,11 @@ codesign/entitlement output, Host availability and injection logs, Mac-side
 observer output, and disconnect neutral-release proof.
 `artifact_paths` is mandatory for a passing summary, and
 `observation_artifacts` must map every `true` observation to one or more paths
-already listed in `artifact_paths`. A single generic artifact, source file,
-offline test log, or all-true hand-authored observation record must remain
-`insufficient` when it does not prove each runtime observation separately.
+already listed in `artifact_paths`. Artifact paths must be non-empty relative
+paths inside the evidence bundle; absolute paths and `..` references are not
+accepted. A single generic artifact, source file, offline test log, or all-true
+hand-authored observation record must remain `insufficient` when it does not
+prove each runtime observation separately.
 
 The gate closes only when `controller-runtime-summary.json` reports
 `can_close_runtime_gate=true`. A `blocked` or `insufficient` verdict documents

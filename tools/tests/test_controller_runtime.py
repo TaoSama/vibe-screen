@@ -196,6 +196,24 @@ class ControllerRuntimeEvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(ControllerRuntimeEvidenceError, "unknown observation_artifacts field"):
             summarize(record)
 
+    def test_rejects_empty_or_out_of_bundle_artifact_paths(self) -> None:
+        for artifact in ("", "/tmp/controller.log", "../controller.log", "logs/../controller.log"):
+            with self.subTest(artifact=artifact):
+                record: dict[str, object] = dict(self.complete_record_with_artifacts())
+                record["artifact_paths"] = [artifact]
+
+                with self.assertRaisesRegex(ControllerRuntimeEvidenceError, "artifact_paths"):
+                    summarize(record)
+
+    def test_rejects_empty_or_out_of_bundle_observation_artifacts(self) -> None:
+        for artifact in ("", "/tmp/controller.log", "../controller.log", "logs/../controller.log"):
+            with self.subTest(artifact=artifact):
+                record: dict[str, object] = dict(self.complete_record_with_artifacts())
+                record["observation_artifacts"]["physical_controller_attached"] = [artifact]
+
+                with self.assertRaisesRegex(ControllerRuntimeEvidenceError, "observation_artifacts.physical_controller_attached"):
+                    summarize(record)
+
 
 class ControllerRuntimeCliTest(unittest.TestCase):
     def complete_record(self) -> dict[str, bool]:
