@@ -244,6 +244,11 @@ as the device identity and soak artifacts:
   is spent, but their summary must retain
   `gate.can_close_performance_gate=false` and cannot replace the camera/input
   evidence above.
+- The Phase 0 `telemetry_and_latency_archive` gate name refers to an archive
+  that keeps both diagnostic telemetry and required external latency evidence.
+  Only a formal `latency_evidence_gate` report that revalidates raw external-
+  camera media or synchronized-clock physical-input proof can close the latency
+  side of that gate; telemetry and summary-only artifacts cannot.
 
 The formal latency summaries should use the matching gate profile:
 `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, or `input-p95-sub50`.
