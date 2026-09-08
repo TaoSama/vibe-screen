@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -28,6 +29,20 @@ ANDROID_CLIPBOARD_METHODS = (
     "setForegroundClipboardFromInstrumentationArgument",
     "assertForegroundClipboardMatchesInstrumentationArgument",
 )
+
+
+def retained_artifact(role: str, path: str) -> dict[str, object]:
+    content = retained_artifact_content(path)
+    return {
+        "role": role,
+        "path": path,
+        "byte_length": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
+def retained_artifact_content(path: str) -> bytes:
+    return f"retained product artifact: {path}\n".encode("utf-8")
 
 
 def android_clipboard_success_log() -> str:
@@ -75,7 +90,18 @@ def host_readiness(**overrides: object) -> dict[str, object]:
         "schema_version": "vibescreen.host-readiness/v1",
         "kind": "macos_host_shared_prerequisite_readiness",
         "status": "pass",
+        "signing_tcc_status": "ready",
         "can_close_runtime_gates": True,
+        "permissions": {
+            "readable": True,
+            "screen_recording_granted": True,
+            "accessibility_granted": True,
+            "microphone_granted": True,
+            "screen_recording_identity_bound": True,
+            "accessibility_identity_bound": True,
+            "microphone_identity_bound": True,
+        },
+        "listener": {"port": 54321, "observed": True},
         "blockers": [],
     }
     document.update(overrides)
@@ -116,22 +142,22 @@ def lan_preflight(**overrides: object) -> dict[str, object]:
 
 def product_e2e(**overrides: object) -> dict[str, object]:
     android_artifacts = [
-        {"role": "source_clipboard_read", "path": "android-to-macos/source-clipboard-read.txt"},
-        {"role": "sender_action", "path": "android-to-macos/sender-action.txt"},
-        {"role": "receiver_approval", "path": "android-to-macos/receiver-approval.txt"},
-        {"role": "protocol_packets", "path": "android-to-macos/protocol-packets.jsonl"},
-        {"role": "destination_clipboard_write", "path": "android-to-macos/destination-clipboard-write.txt"},
-        {"role": "final_verification", "path": "android-to-macos/final-verification.txt"},
-        {"role": "negative_boundary_verification", "path": "android-to-macos/negative-boundary.txt"},
+        retained_artifact("source_clipboard_read", "android-to-macos/source-clipboard-read.txt"),
+        retained_artifact("sender_action", "android-to-macos/sender-action.txt"),
+        retained_artifact("receiver_approval", "android-to-macos/receiver-approval.txt"),
+        retained_artifact("protocol_packets", "android-to-macos/protocol-packets.jsonl"),
+        retained_artifact("destination_clipboard_write", "android-to-macos/destination-clipboard-write.txt"),
+        retained_artifact("final_verification", "android-to-macos/final-verification.txt"),
+        retained_artifact("negative_boundary_verification", "android-to-macos/negative-boundary.txt"),
     ]
     macos_artifacts = [
-        {"role": "source_clipboard_read", "path": "macos-to-android/source-clipboard-read.txt"},
-        {"role": "sender_action", "path": "macos-to-android/sender-action.txt"},
-        {"role": "receiver_approval", "path": "macos-to-android/receiver-approval.txt"},
-        {"role": "protocol_packets", "path": "macos-to-android/protocol-packets.jsonl"},
-        {"role": "destination_clipboard_write", "path": "macos-to-android/destination-clipboard-write.txt"},
-        {"role": "final_verification", "path": "macos-to-android/final-verification.txt"},
-        {"role": "negative_boundary_verification", "path": "macos-to-android/negative-boundary.txt"},
+        retained_artifact("source_clipboard_read", "macos-to-android/source-clipboard-read.txt"),
+        retained_artifact("sender_action", "macos-to-android/sender-action.txt"),
+        retained_artifact("receiver_approval", "macos-to-android/receiver-approval.txt"),
+        retained_artifact("protocol_packets", "macos-to-android/protocol-packets.jsonl"),
+        retained_artifact("destination_clipboard_write", "macos-to-android/destination-clipboard-write.txt"),
+        retained_artifact("final_verification", "macos-to-android/final-verification.txt"),
+        retained_artifact("negative_boundary_verification", "macos-to-android/negative-boundary.txt"),
     ]
     android_to_macos = {
         "transport": "usb",
@@ -257,7 +283,7 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
     ):
         path = root / artifact_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"retained product artifact: {artifact_path}\n", encoding="utf-8")
+        path.write_bytes(retained_artifact_content(artifact_path))
     return paths
 
 
@@ -428,6 +454,43 @@ class ClipboardE2EGateTests(unittest.TestCase):
         lan_gate = next(item for item in result["checks"] if item["name"] == "trusted_lan_preflight")
         self.assertIn("android_wifi_association: Wi-Fi is not associated", lan_gate["reasons"])
 
+    def test_host_readiness_requires_structured_signing_tcc_listener_and_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["host"],
+                {
+                    "schema_version": "vibescreen.host-readiness/v1",
+                    "kind": "macos_host_shared_prerequisite_readiness",
+                    "status": "pass",
+                    "can_close_runtime_gates": True,
+                    "blockers": [],
+                },
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "host_readiness: Host readiness signing_tcc_status must be ready, got None",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness listener must be present",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness permissions must be present",
+            result["blockers"],
+        )
+
     def test_one_ready_real_transport_is_enough_for_transport_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -514,6 +577,39 @@ class ClipboardE2EGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn("bidirectional_product_e2e: synthetic or offline-only clipboard evidence cannot close this gate", result["blockers"])
+
+    def test_non_boolean_synthetic_or_offline_only_product_evidence_cannot_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(paths["product"], product_e2e(synthetic="true", offline_only=1))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn("bidirectional_product_e2e: synthetic or offline-only clipboard evidence cannot close this gate", result["blockers"])
+
+    def test_false_like_synthetic_or_offline_only_product_evidence_can_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(paths["product"], product_e2e(synthetic=0, offline_only="false"))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "pass")
 
     def test_wrong_product_evidence_kind_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -924,6 +1020,89 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_product_e2e_requires_retained_artifact_hash_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_artifacts = android_to_macos["retained_artifacts"]
+            macos_artifacts = macos_to_android["retained_artifacts"]
+            assert isinstance(android_artifacts, list)
+            assert isinstance(macos_artifacts, list)
+            first_android_artifact = android_artifacts[0]
+            first_macos_artifact = macos_artifacts[0]
+            assert isinstance(first_android_artifact, dict)
+            assert isinstance(first_macos_artifact, dict)
+            first_android_artifact.pop("byte_length")
+            first_macos_artifact["sha256"] = "not-a-sha"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[0].byte_length must record the retained artifact byte length",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.retained_artifacts[0].sha256 must record the retained artifact SHA-256 digest",
+            result["blockers"],
+        )
+
+    def test_product_e2e_rejects_retained_artifact_hash_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_artifacts = android_to_macos["retained_artifacts"]
+            macos_artifacts = macos_to_android["retained_artifacts"]
+            assert isinstance(android_artifacts, list)
+            assert isinstance(macos_artifacts, list)
+            android_sender_artifact = android_artifacts[1]
+            macos_sender_artifact = macos_artifacts[1]
+            assert isinstance(android_sender_artifact, dict)
+            assert isinstance(macos_sender_artifact, dict)
+            android_sender_artifact["byte_length"] = 1
+            macos_sender_artifact["sha256"] = "0" * 64
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[1].byte_length 1 must equal retained artifact size "
+            f"{len(retained_artifact_content('android-to-macos/sender-action.txt'))}",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.retained_artifacts[1].sha256 must equal retained artifact SHA-256",
+            result["blockers"],
+        )
+
     def test_product_e2e_rejects_boolean_integer_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -1281,6 +1460,122 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "fail")
         identity_gate = next(item for item in result["checks"] if item["name"] == "device_identity")
         self.assertIn("clipboard E2E evidence for this run must identify nubia P0110 / pacific", identity_gate["reasons"])
+
+    def test_device_identity_sources_must_match_product_device(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["usb"],
+                usb_preflight(
+                    device={
+                        "identity": {
+                            "manufacturer": "xiaomi",
+                            "model": "2211133C",
+                            "device": "fuxi",
+                            "android_release": "16",
+                            "sdk": 36,
+                        }
+                    }
+                ),
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "device_identity: usb device identity must match product device identity",
+            result["blockers"],
+        )
+        self.assertIn(
+            "device_identity: clipboard E2E evidence for this run must identify nubia P0110 / pacific",
+            result["blockers"],
+        )
+
+    def test_android_origin_device_id_must_identify_product_device(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["origin_device_id"] = "xiaomi-fuxi-wrong-device"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.origin_device_id must not include a non-P0110 Android device identity",
+            result["blockers"],
+        )
+
+    def test_android_origin_device_id_must_match_verified_usb_device_when_product_device_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            document.pop("device")
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["origin_device_id"] = "xiaomi-fuxi-wrong-device"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.origin_device_id must not include a non-P0110 Android device identity",
+            result["blockers"],
+        )
+
+    def test_android_origin_device_id_rejects_mixed_device_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos["origin_device_id"] = "p0110-pacific-xiaomi-fuxi-mixed"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.origin_device_id must not include a non-P0110 Android device identity",
+            result["blockers"],
+        )
 
     def test_output_redacts_serial_home_and_tcc_terms(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

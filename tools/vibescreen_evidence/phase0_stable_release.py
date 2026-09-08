@@ -38,8 +38,17 @@ STATUS_OPEN = "open"
 EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID = "telemetry_and_latency_archive"
 HOST_RSS_2H_NO_GROWTH_GATE_ID = "host_rss_2h_no_growth"
+CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID = "clipboard_android_macos_product_e2e"
 LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
 ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
+CLIPBOARD_E2E_GATE_KIND = "android_macos_clipboard_e2e_gate"
+CLIPBOARD_E2E_REQUIRED_CHECKS = (
+    "device_identity",
+    "host_readiness",
+    "real_transport_ready",
+    "android_clipboardmanager_smoke",
+    "bidirectional_product_e2e",
+)
 LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
 LATENCY_SUMMARY_ONLY_KINDS = {"glass_to_glass", "input_latency"}
 LATENCY_DIAGNOSTIC_ONLY_KINDS = {"telemetry_stage_latency"}
@@ -243,6 +252,12 @@ def _gate_summary(
                     evidence_paths=evidence_paths, repo_root=repo_root
                 )
             )
+        elif gate_id == CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID:
+            issues.extend(
+                _clipboard_android_macos_product_e2e_issues(
+                    evidence_paths=evidence_paths, repo_root=repo_root
+                )
+            )
     elif required and not blockers:
         issues.append("non-pass required gate must list at least one blocker")
     can_close = required and verdict == STATUS_PASS and not issues
@@ -326,6 +341,117 @@ def _telemetry_and_latency_archive_issues(
             "counters in evidence_paths"
         )
         issues.extend(android_candidate_issues)
+    return issues
+
+
+def _clipboard_android_macos_product_e2e_issues(
+    *, evidence_paths: Sequence[str], repo_root: Path | None
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "clipboard_android_macos_product_e2e pass requires repo_root to verify "
+            "formal clipboard gate evidence paths"
+        ]
+
+    valid_clipboard_report = False
+    issues: list[str] = []
+    candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(
+            repository,
+            raw_path,
+            gate_id=CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID,
+        )
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                f"clipboard_android_macos_product_e2e evidence path {raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(
+            evidence_path,
+            raw_path,
+            gate_id=CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID,
+        )
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        if record.get("kind") != CLIPBOARD_E2E_GATE_KIND:
+            candidate_issues.append(
+                f"{raw_path}: formal clipboard report kind must be {CLIPBOARD_E2E_GATE_KIND}"
+            )
+            continue
+        report_issues = _formal_clipboard_e2e_report_issues(record, raw_path)
+        if report_issues:
+            candidate_issues.extend(report_issues)
+        else:
+            valid_clipboard_report = True
+
+    if not valid_clipboard_report:
+        issues.append(
+            "clipboard_android_macos_product_e2e pass requires at least one passing "
+            "formal android_macos_clipboard_e2e_gate report in evidence_paths"
+        )
+        issues.extend(candidate_issues)
+    return issues
+
+
+def _formal_clipboard_e2e_report_issues(record: dict[str, Any], path: str) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{path}: formal clipboard report schema_version must be {SCHEMA_VERSION}")
+    if record.get("kind") != CLIPBOARD_E2E_GATE_KIND:
+        issues.append(f"{path}: formal clipboard report kind must be {CLIPBOARD_E2E_GATE_KIND}")
+    if record.get("verdict") != STATUS_PASS or record.get("result") != STATUS_PASS:
+        issues.append(f"{path}: formal clipboard report verdict and result must be pass")
+    if record.get("gate_closed") is not True:
+        issues.append(f"{path}: formal clipboard report gate_closed must be true")
+    if record.get("can_close_android_macos_clipboard_e2e_gate") is not True:
+        issues.append(
+            f"{path}: formal clipboard report can_close_android_macos_clipboard_e2e_gate must be true"
+        )
+    blockers = record.get("blockers", [])
+    if not isinstance(blockers, list) or any(not isinstance(blocker, str) for blocker in blockers):
+        issues.append(f"{path}: formal clipboard report blockers must be a list of strings")
+    elif any(blocker.strip() for blocker in blockers):
+        issues.append(f"{path}: formal clipboard report pass must not include unresolved blockers")
+    not_proven = record.get("not_proven", [])
+    if not isinstance(not_proven, list) or any(not isinstance(item, str) for item in not_proven):
+        issues.append(f"{path}: formal clipboard report not_proven must be a list of strings")
+    elif any(item.strip() for item in not_proven):
+        issues.append(f"{path}: formal clipboard report pass must not list unproven product paths")
+    safety = record.get("safety")
+    if not isinstance(safety, dict):
+        issues.append(f"{path}: formal clipboard report safety must be an object")
+    else:
+        for field in (
+            "offline_tests_do_not_close_gate",
+            "synthetic_evidence_do_not_close_gate",
+            "public_output_sanitized",
+            "raw_serial_redacted",
+        ):
+            if safety.get(field) is not True:
+                issues.append(f"{path}: formal clipboard report safety.{field} must be true")
+    checks = record.get("checks")
+    if not isinstance(checks, list):
+        issues.append(f"{path}: formal clipboard report checks must be a list")
+    else:
+        check_by_name = {
+            item.get("name"): item
+            for item in checks
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        }
+        for check_name in CLIPBOARD_E2E_REQUIRED_CHECKS:
+            check = check_by_name.get(check_name)
+            if check is None:
+                issues.append(f"{path}: formal clipboard report checks missing {check_name}")
+            elif check.get("status") != STATUS_PASS:
+                issues.append(f"{path}: formal clipboard report check {check_name} must be pass")
     return issues
 
 
