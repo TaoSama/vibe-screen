@@ -146,6 +146,7 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         record = self.complete_record()
         record["video_encoder_path_recorded"] = False
         record["input_smoke_observed"] = False
+        record["runtime_session_coherence_recorded"] = False
 
         summary = self.summarize_with_artifacts(record)
 
@@ -162,6 +163,30 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertIn(
             "input_smoke_observed",
             checklist["runtime_acceptance"]["missing_fields"],
+        )
+        self.assertIn(
+            "runtime_session_coherence_recorded",
+            checklist["runtime_acceptance"]["missing_fields"],
+        )
+
+    def test_insufficient_when_runtime_evidence_is_not_tied_to_one_host_session(self) -> None:
+        record = self.complete_record()
+        record["runtime_session_coherence_recorded"] = False
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_macos_host_compatibility_row"])
+        self.assertEqual(summary["blocking_reasons"], [])
+        self.assertIn(
+            {
+                "field": "runtime_session_coherence_recorded",
+                "requirement": (
+                    "record that stream, input, and reconnect observations came from "
+                    "the same packaged Host PID/session"
+                ),
+            },
+            summary["missing_requirements"],
         )
 
     def test_required_metadata_must_be_non_empty_even_when_boolean_is_true(self) -> None:

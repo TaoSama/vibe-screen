@@ -63,6 +63,7 @@
   "mirror_or_fallback_recorded": true,
   "input_smoke_observed": false,
   "reconnect_observed": false,
+  "runtime_session_coherence_recorded": false,
   "artifacts_retained": true,
   "claim_scoped_to_exact_row": true,
   "ci_runner_only": false,

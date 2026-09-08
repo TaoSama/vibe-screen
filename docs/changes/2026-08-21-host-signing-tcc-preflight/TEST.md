@@ -32,7 +32,10 @@ prerequisites blocked packaged runtime collection before any Protocol v1 stream,
 input, or reconnect probe could start. The retained matrix summary is under
 [`evidence/2026-08-27-macos-host-compatibility-readiness-blocked`](evidence/2026-08-27-macos-host-compatibility-readiness-blocked/README.md)
 and reports `verdict=blocked` with
-`can_close_macos_host_compatibility_row=false`.
+`can_close_macos_host_compatibility_row=false`. The gate also now requires
+`runtime_session_coherence_recorded=true` before a passing compatibility row can
+be closed; this proves stream, input, and reconnect observations came from the
+same packaged Host PID/session instead of separate launches.
 
 The 2026-08-29 macOS Host compatibility owner pass refreshed that result on
 current `origin/main` commit `b54ee0e929c53459e6ba7e060f2c9de0c846f408` from a
