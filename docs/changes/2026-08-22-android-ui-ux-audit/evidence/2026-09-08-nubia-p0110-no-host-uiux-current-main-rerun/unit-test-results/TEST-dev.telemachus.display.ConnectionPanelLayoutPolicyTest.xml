@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-09-08T00:12:53" hostname="Mac.local" time="0.002">
+  <properties/>
+  <testcase name="narrow landscape falling back to single column matches the stacked contract" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet profile action gap is clamped to zero" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.001"/>
+  <testcase name="internet secondary actions stack for large-font single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet secondary actions stay side by side outside single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet profile actions stay side by side for default font" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="mode toggle stays segmented outside single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet profile actions stack for large-font single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="diagnostic card keeps compact padding at default font scale" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="diagnostic card adds breathing room at large font scale" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="diagnostic card clamps negative dimensions" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.001"/>
+  <testcase name="stacked layout keeps a single full-width column" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="mode toggle stays segmented for default font single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="negative gap is clamped to zero" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="actions column gets the larger share so tall content is not cramped" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet secondary actions stay side by side for default font" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet secondary action gap is clamped to zero" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="two-column layout splits into weighted columns with a gap" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="internet profile actions stay side by side outside single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <testcase name="mode toggle stacks for large-font single-column layout" classname="dev.telemachus.display.ConnectionPanelLayoutPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

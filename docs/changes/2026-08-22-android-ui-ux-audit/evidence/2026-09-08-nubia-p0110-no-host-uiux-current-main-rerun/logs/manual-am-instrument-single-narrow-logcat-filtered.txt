@@ -1,0 +1,291 @@
+09-08 08:01:58.164  4726  5197 D O_MATRIX: DefaultDispatcher-worker-5|[BaseInstalledPkgMgr], onInstallApp() with ThirdXrPkgInfo = ThirdXrPkgInfo(packageName=dev.telemachus.display.test, versionCode=0, signSha256=C52BA582FAFA4E36D8E5A07FA228B13C6D758BC0ED78DEBBF1DB158B6799820E, xrSdkVer=, appId=)
+09-08 08:01:58.166  8363  8363 E AppStore: [AppStatus][InstalledPkgs] getPackageInfo err, pkg=dev.telemachus.display.test
+09-08 08:01:58.166  8363  8363 D AppStore: [AppStatus][AppInstallActor] packageChanges, event=Event(pkg=dev.telemachus.display.test, isAdded=true, isReplacing=false)
+09-08 08:01:58.167  3199  4076 I SdkSandboxManager: No SDKs used. Skipping SDK data reconcilation for CallingInfo{mUid=10925, mPackageName='dev.telemachus.display.test, mAppProcessToken='null'}
+09-08 08:01:58.169 24500 24563 D LauncherAppsCallbackImpl: onPackageAdded triggered for packageName=dev.telemachus.display.test, user=UserHandle{0}
+09-08 08:01:58.169 24500 24563 D PackageUpdatedTask: Package updated: mOp=ADD packages=[dev.telemachus.display.test], user=UserHandle{0}
+09-08 08:01:58.177  3199  3418 D LauncherAppsService: onPackageAdded: triggering onPackageAdded for user=UserHandle{0}, packageName=dev.telemachus.display.test
+09-08 08:01:58.181  9260  9260 I PackageInfoCache: added app-info entry: dev.telemachus.display.test
+09-08 08:01:58.181  9260 10642 D ao_StdPkgTools: [PackageTools] triggered added for `dev.telemachus.display.test`
+09-08 08:01:58.181 24500 24542 D BadgeInfoProvider: onPermissionsChanged 10925 name:dev.telemachus.display.test false
+09-08 08:01:58.184 24500 24563 D BaseIconCache: Default icon returned for dev.telemachus.display.test
+09-08 08:01:58.190 23243 23304 W SQLiteLog: (28) double-quoted string literal: "dev.telemachus.display"
+09-08 08:01:58.191  9260 10642 D LauncherAppsClient: the package dev.telemachus.display.test has been added
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{7d5af51 com.obric.aivoice/10045} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{939b8b7 com.obric.account/10106} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{8659824 com.obric.securitymanager/10205} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{774ef8d com.obric.numberassistant/10062} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{1d52542 com.bytedance.android.doubaoime/10057} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{c272953 com.obric.systemui.plugin/10121} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{4761290 com.bytedance.android.securityinput/10116} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{b4df789 com.android.email/10124} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.194  3199  3199 I AppsFilter: interaction: PackageSetting{e94538e com.custom.leakcanary/10157} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{47107af com.android.microdroid.empty_payload/10185} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{4d1c7bc com.obric.smsparser/10077} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{f958345 com.obric.wallpaper/10123} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{d061a9a com.android.providers.weather/10073} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{4d06fcb com.obric.videoplayer/10070} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{d1a3a8 com.bytedance.obric.airecordassistant/10197} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{5100ec1 com.datacenter.volumecollect/10080} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{69b4666 com.openomni.mockbot/10216} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{8743da7 com.obric.notes/10201} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{a715254 com.obric.music/10060} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{a4dd5fd com.obric.clock/10202} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{2f76223 com.obric.systemui.overlays.system/10000} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{90562f2 com.obric.screenrecorder/10068} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{5bb3fc0 com.obric.calculator/10198} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{982bc3e com.obric.weather/10206} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{7f93a9f com.obric.calendar/10200} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.195  3199  3199 I AppsFilter: interaction: PackageSetting{af497ec com.android.incallui/10054} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{cf6c7b5 com.obric.compass/10204} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{ea5e4a com.obric.ottsengine/10072} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{3c0e1bb com.bytedance.os.slardar/10076} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{f8946d8 com.android.provision/10067} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{4192a31 com.obric.recorder/10208} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{c781516 com.obric.camera2/10066} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{a91de97 com.android.mms/10061} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{1b7f884 com.obric.aikernel/10091} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{f586ca2 com.android.contacts/10052} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{10bcd33 com.obric.smartnotification/10120} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{b69ee69 com.obric.lifelog/10207} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  8363  8363 D AppStore: AppInfoCache UPDATE_THREAD remove dev.telemachus.display.test
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{c2c098f com.obric.memorydata/10104} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  8363  8363 D AppStore: dev.telemachus.display.test|null
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{492a6aa com.obric.systemui.overlays/10001} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{d43d41c com.obric.feedbackserviceproject/10203} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.196  3199  3199 I AppsFilter: interaction: PackageSetting{a2a0825 com.obric.health/10108} -> PackageSetting{b0c83b6 dev.telemachus.display.test/10925} BLOCKED
+09-08 08:01:58.199  4572  5078 D ImsResolver: maybeAddedImsService, packageName: dev.telemachus.display.test
+09-08 08:01:58.200  8363 23306 I AppStore: PackageAddAndRemoveService [action]:android.intent.action.PACKAGE_ADDED,[packageName]:dev.telemachus.display.test
+09-08 08:01:58.200  8363 23306 I AppStore: unkown download task,dev.telemachus.display.test
+09-08 08:01:58.201  8363  8363 D AppStore: [AppStatus][AppInstallActor] packageChanges added, pkg=dev.telemachus.display.test, toCancel=false, ver=0/null
+09-08 08:01:58.201  4572  5078 V ImsResolver: searchForImsServices: package=dev.telemachus.display.test, users=[UserHandle{0}]
+09-08 08:01:58.201  8363 23306 D AppStore: AppInfoCache DOWNLOAD_THREAD remove dev.telemachus.display.test
+09-08 08:01:58.201  8363 23306 D AppStore: AppInfoCache UPDATE_THREAD remove dev.telemachus.display.test
+09-08 08:01:58.201  8363 23306 D AppStore: AppInfoCache INSTALLED_THREAD put dev.telemachus.display.test
+09-08 08:01:58.205  4157  4830 D PackageChangeRepoLog: Package dev.telemachus.display.test (10925) changed on user UserHandle{0}
+09-08 08:01:58.205  4572  5078 V ImsResolver: searchForImsServices: package=dev.telemachus.display.test, users=[UserHandle{0}]
+09-08 08:01:58.206  4157  4824 D PackageChangeRepoLog: Package dev.telemachus.display.test (10925) changed on user UserHandle{0}
+09-08 08:01:58.206  8363  9430 D AppStore: sync app:dev.telemachus.display.test, appInfo: 0
+09-08 08:01:58.207  8363  9620 I AppStore: doLocalAppsRequest: [{"package":"dev.telemachus.display"},{"package":"dev.telemachus.display.test"}]
+09-08 08:01:58.208  8363 19766 D AppStore: [Retrofit] {"common":{"android_id":"9c532e6b9b0874be","androidver":"16","app_id":"ocean_store","app_version":"1.0.1","app_version_code":100001066,"device_id":"004401784471704","imei_1":"004401784471704","imei_2":"004401784474468","model":"P0110","os_version":"1.11.2.0","terminal":"mobile","udid":"004401784471704","udid_type":"sn"},"params":{"packages":["dev.telemachus.display","dev.telemachus.display.test"]}}
+09-08 08:01:58.208 25866 25866 I PackageInstallReceiver: 收到包变更广播: action=android.intent.action.PACKAGE_ADDED, packageName=dev.telemachus.display.test
+09-08 08:01:58.208 25866 25866 I PackageInstallReceiver: 检测到新包安装: dev.telemachus.display.test
+09-08 08:01:58.208 25866 25866 I AILabAccessControlLogic: Handle package install: dev.telemachus.display.test
+09-08 08:01:58.209  4140  4140 I SafetyLabelChangedBroadcastReceiver: received broadcast packageName: dev.telemachus.display.test, current user: UserHandle{0}, packageChangeEvent: NEW_INSTALL, intent user: UserHandle{0}
+09-08 08:01:58.210  9260  9260 I PackageInfoCache: added app-info entry: dev.telemachus.display.test
+09-08 08:01:58.210  9260 10642 D ao_StdPkgTools: [PackageTools] triggered change for `dev.telemachus.display.test`
+09-08 08:01:58.214  4572  4572 D CarrierSvcBindHelper: onPackageModified: dev.telemachus.display.test
+09-08 08:01:58.215  3199  4070 D ShortcutService: changing package: dev.telemachus.display.test userId=0
+09-08 08:01:58.216  4572  5083 I SatelliteAppTracker: onPackageModified : dev.telemachus.display.test
+09-08 08:01:58.223  8311 30825 I AppChangeListener: onReceive: changedComponents = [dev.telemachus.display.test], changedPackage = dev.telemachus.display.test,repacing = false, intent = Intent { act=android.intent.action.PACKAGE_CHANGED dat=package: flg=0x5000010 cmp=com.larus.nova/com.obric.assistant.remote_card_container.appchange.AppChangeListener (has extras) }
+09-08 08:01:58.223  8311 30825 I card_AppChangeHandler: onAppChanged: dev.telemachus.display.test
+09-08 08:01:58.227 12331 23231 I MeD_AppInfoManager: queryAppInfo: pkgName = dev.telemachus.display.test
+09-08 08:01:58.227 25866 23309 D AppStatusReceiver: action = android.intent.action.PACKAGE_ADDED , packageName = dev.telemachus.display.test , isReplacing false
+09-08 08:01:58.227 25866 23309 D AppStatusReceiver: onAppInstalled dev.telemachus.display.test
+09-08 08:01:58.228 12331 23231 D MeD_PackageEventAbility: Package add event -- package name:dev.telemachus.display.test
+09-08 08:01:58.228 12331 23231 D MeD_MonitorAppDataRemovedManager: new install package dev.telemachus.display.test
+09-08 08:01:58.229 24500 24563 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[dev.telemachus.display.test], user=UserHandle{0}
+09-08 08:01:58.229 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test, is replacing: false, newMemorySetting: 2 
+09-08 08:01:58.230 12331 12331 I MeD_ScreenObservationSettingsStore: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.230  8771  8771 D PackageReceiver:  onReceive packageName = dev.telemachus.display.test, SDK_INT = 36
+09-08 08:01:58.233 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test disable
+09-08 08:01:58.237 12331 12331 I MeD_ScreenObservationSettingsStore: enable app dev.telemachus.display.test: false
+09-08 08:01:58.237 12331 12331 I MeD_ScreenObservationSettingsStore: unableApps: [com.sdu.didi.psnger, com.larus.mcp, com.ss.android.lark, com.openomni.mockbot, com.openomni.bot.debug, com.tencent.mm, com.larus.nova, dev.telemachus.display, dev.telemachus.display.test]
+09-08 08:01:58.239 24500 24563 W AllAppsList: updatePackage: no Activities matched updated package, removing any AppInfo with package=dev.telemachus.display.test, user=UserHandle{0}
+09-08 08:01:58.242  4572  5078 D ImsResolver: maybeAddedImsService, packageName: dev.telemachus.display.test
+09-08 08:01:58.242  4572  5078 V ImsResolver: searchForImsServices: package=dev.telemachus.display.test, users=[UserHandle{0}]
+09-08 08:01:58.242  4572  5078 V ImsResolver: searchForImsServices: package=dev.telemachus.display.test, users=[UserHandle{0}]
+09-08 08:01:58.244  4572  4572 D SatelliteController: packageStateChanged: package:dev.telemachus.display.test DefaultSmsPackageName:com.android.mms
+09-08 08:01:58.246 23243 23304 W SQLiteLog: (28) double-quoted string literal: "dev.telemachus.display.test"
+09-08 08:01:58.248 12331 12331 D MeD_MemoryInitTask: packageName: dev.telemachus.display.test, is replacing: false 
+09-08 08:01:58.248 12331 12331 D MeD_MemoryInitTask: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.250 12331 23238 I MeD_AppInfoManager: queryAppInfo: pkgName = dev.telemachus.display.test
+09-08 08:01:58.250 12331 23238 D MeD_PackageEventAbility: Package add event -- package name:dev.telemachus.display.test
+09-08 08:01:58.250 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test, is replacing: false, newMemorySetting: 2 
+09-08 08:01:58.250 12331 23238 D MeD_MonitorAppDataRemovedManager: new install package dev.telemachus.display.test
+09-08 08:01:58.250 12331 12331 I MeD_ScreenObservationSettingsStore: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.251 23243 23304 I AndroidRuntime: VM exiting with result code 0, cleanup skipped.
+09-08 08:01:58.251 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test disable
+09-08 08:01:58.251 12331 12331 I MeD_ScreenObservationSettingsStore: enable app dev.telemachus.display.test: false
+09-08 08:01:58.252 12331 12331 I MeD_ScreenObservationSettingsStore: unableApps: [com.sdu.didi.psnger, com.larus.mcp, com.ss.android.lark, com.openomni.mockbot, com.openomni.bot.debug, com.tencent.mm, com.larus.nova, dev.telemachus.display, dev.telemachus.display.test]
+09-08 08:01:58.257 12331 12331 D MeD_MemoryInitTask: packageName: dev.telemachus.display.test, is replacing: false 
+09-08 08:01:58.257 12331 12331 D MeD_MemoryInitTask: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.258 12331 23227 I MeD_AppInfoManager: queryAppInfo: pkgName = dev.telemachus.display.test
+09-08 08:01:58.258 12331 23227 D MeD_PackageEventAbility: Package add event -- package name:dev.telemachus.display.test
+09-08 08:01:58.258 12331 23227 D MeD_MonitorAppDataRemovedManager: new install package dev.telemachus.display.test
+09-08 08:01:58.258 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test, is replacing: false, newMemorySetting: 2 
+09-08 08:01:58.258 12331 12331 I MeD_ScreenObservationSettingsStore: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.258 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test disable
+09-08 08:01:58.258 12331 12331 I MeD_ScreenObservationSettingsStore: enable app dev.telemachus.display.test: false
+09-08 08:01:58.259 12331 12331 I MeD_ScreenObservationSettingsStore: unableApps: [com.sdu.didi.psnger, com.larus.mcp, com.ss.android.lark, com.openomni.mockbot, com.openomni.bot.debug, com.tencent.mm, com.larus.nova, dev.telemachus.display, dev.telemachus.display.test]
+09-08 08:01:58.264 12331 12331 D MeD_MemoryInitTask: packageName: dev.telemachus.display.test, is replacing: false 
+09-08 08:01:58.264 12331 12331 D MeD_MemoryInitTask: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.265 12331 23231 I MeD_AppInfoManager: queryAppInfo: pkgName = dev.telemachus.display.test
+09-08 08:01:58.265 12331 23231 D MeD_PackageEventAbility: Package add event -- package name:dev.telemachus.display.test
+09-08 08:01:58.265 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test, is replacing: false, newMemorySetting: 2 
+09-08 08:01:58.265 12331 23231 D MeD_MonitorAppDataRemovedManager: new install package dev.telemachus.display.test
+09-08 08:01:58.265 12331 12331 I MeD_ScreenObservationSettingsStore: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.265 12331 12331 I MeD_ScreenObservationSettingsStore: packageName: dev.telemachus.display.test disable
+09-08 08:01:58.265 12331 12331 I MeD_ScreenObservationSettingsStore: enable app dev.telemachus.display.test: false
+09-08 08:01:58.266 12331 12331 I MeD_ScreenObservationSettingsStore: unableApps: [com.sdu.didi.psnger, com.larus.mcp, com.ss.android.lark, com.openomni.mockbot, com.openomni.bot.debug, com.tencent.mm, com.larus.nova, dev.telemachus.display, dev.telemachus.display.test]
+09-08 08:01:58.271 12331 12331 D MeD_MemoryInitTask: packageName: dev.telemachus.display.test, is replacing: false 
+09-08 08:01:58.271 12331 12331 D MeD_MemoryInitTask: ACTION_PACKAGE_ADDED, packageName: dev.telemachus.display.test ...
+09-08 08:01:58.271  8837  8837 D ApplicationsProvider: package changed, action=android.intent.action.PACKAGE_ADDED, packageName=dev.telemachus.display
+09-08 08:01:58.271 12331 12331 I PackageInstallReceiver: 收到包变更广播: action=android.intent.action.PACKAGE_ADDED, packageName=dev.telemachus.display.test
+09-08 08:01:58.272 12331 12331 I MeD_PackageInstallReceiver: 检测到新包安装: dev.telemachus.display.test
+09-08 08:01:58.272  8837  8837 D ApplicationsProvider: package changed, action=android.intent.action.PACKAGE_CHANGED, packageName=dev.telemachus.display
+09-08 08:01:58.272  8837  8837 D ApplicationsProvider: package changed, action=android.intent.action.PACKAGE_ADDED, packageName=dev.telemachus.display.test
+09-08 08:01:58.272 12331 23238 I MeD_AILabAccessControlLogic: Handle package install: dev.telemachus.display.test
+09-08 08:01:58.272  8837  9538 D ApplicationsProvider: Updating database (packageName = dev.telemachus.display)...
+09-08 08:01:58.273  8837  9538 D AppPhoneticTrieTree: delete: Are you sure that you inserted this package: dev.telemachus.display?
+09-08 08:01:58.273  8837  8837 D ApplicationsProvider: package changed, action=android.intent.action.PACKAGE_CHANGED, packageName=dev.telemachus.display.test
+09-08 08:01:58.276  8837  9538 D ApplicationsProvider:  search_keys =[Vibe, Screen],activity =dev.telemachus.display.MainActivity
+09-08 08:01:58.279  8837  9538 D ApplicationsProvider: Updating database (packageName = dev.telemachus.display)...
+09-08 08:01:58.280  8837  9538 D ApplicationsProvider:  search_keys =[Vibe, Screen],activity =dev.telemachus.display.MainActivity
+09-08 08:01:58.283  8837  9538 D ApplicationsProvider: Updating database (packageName = dev.telemachus.display.test)...
+09-08 08:01:58.283  8837  9538 D AppPhoneticTrieTree: delete: Are you sure that you inserted this package: dev.telemachus.display.test?
+09-08 08:01:58.286  8837  9538 D ApplicationsProvider: Updating database (packageName = dev.telemachus.display.test)...
+09-08 08:01:58.287  8837  9538 D AppPhoneticTrieTree: delete: Are you sure that you inserted this package: dev.telemachus.display.test?
+09-08 08:01:58.291  3199  8274 I AMS.Freeze: takeoutByProcessLocked app:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:905 usps:19 sps:19 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} pid:23243, at appDiedLocked
+09-08 08:01:58.291  3199  8274 I AMS.Freeze: takeoutByProcessLocked app:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:905 usps:19 sps:19 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}
+09-08 08:01:58.292  3199  8274 I AMS.Freeze: update mFrozenProcesses add:false pid:23243 ret:false app:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:905 usps:19 sps:19 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} old:null
+09-08 08:01:58.292  1695  1695 I Zygote  : Process 23243 exited cleanly (0)
+09-08 08:01:58.292  3199  8274 I ActivityManager: Process com.qualcomm.qti.workloadclassifier (pid 23243) has died: cch+5 CEM 
+09-08 08:01:58.292  3199  4111 I AppStartTrim: trackAbnormalKilledProcessByTime pr:com.qualcomm.qti.workloadclassifier pkg:com.qualcomm.qti.workloadclassifier count:5
+09-08 08:01:58.292  3199  4111 I AppStartTrim: trackAbnormalKilledProcessByOrder pr:com.qualcomm.qti.workloadclassifier pkg:com.qualcomm.qti.workloadclassifier count:2
+09-08 08:01:58.292  3199  8274 I BroadcastProxy: unProxy app:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:-10000 usps:19 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} reason=cleanup
+09-08 08:01:58.292  1982  1982 I vendor.qti.hardware.servicetrackeraidl-service: killProcess is called for pid : 23243
+09-08 08:01:58.293  3199  8274 I AMS.Freeze: takeoutByProcessLocked name:com.qualcomm.qti.workloadclassifier uid:10167 record:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:-10000 usps:19 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}, at removeProcessNameLocked
+09-08 08:01:58.293  3199  8274 I AMS.Freeze: takeoutByProcessLocked app:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:-10000 usps:19 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}
+09-08 08:01:58.293  3199  8274 I AMS.Freeze: update mFrozenProcesses add:false pid:23243 ret:false app:ProcessRecord{88c605a 23243:com.qualcomm.qti.workloadclassifier/u0a167 PRSmt{3ed2f18 p:0 rp:23243 t:null sa:-10000 usps:19 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} old:null
+09-08 08:01:58.293  3199  3387 D SysDataSyncServiceManager: onProcessDied uid: 10167 pid: 23243
+09-08 08:01:58.294  7814 15553 I CaeLog  : <SmartNetworkPolicyManager> onProcessDied pid=23243 uid=10167
+09-08 08:01:58.467  3199 15306 D ActivityManager: use cached meminfo
+09-08 08:01:58.528 23319 23319 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 0 <<<<<<
+09-08 08:01:58.542 23319 23319 I AndroidRuntime: Using default boot image
+09-08 08:01:58.543 23319 23319 I AndroidRuntime: Leaving lock profiling enabled
+09-08 08:01:58.544  1788  5261 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+09-08 08:01:58.545  1788  5261 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+09-08 08:01:58.546  4248  4852 V bluetooth: system/gd/hci/le_scanning_reassembler.cc:67 ProcessAdvertisingReport: Dropping repeated legacy advertising data
+09-08 08:01:58.546  4248  4852 V bluetooth: system/gd/hci/le_scanning_reassembler.cc:90 ProcessAdvertisingReport: Ignoring advertising report when scan response is expected or current data is marked incomplete
+09-08 08:01:58.546  3199  4287 I system_server: KillMonitor uid:1002, parent:1695:main, process: 4248:droid.bluetooth, thread: 4280:binder:4248_4 send signal 13:0 to target 4280:binder:4248_4
+09-08 08:01:58.546  3199  4287 I system_server: KillMonitor stack #0: Build ID: 0403f6b5, offset:  0x000000000e01cc
+09-08 08:01:58.546  3199  4287 I system_server: KillMonitor uid:1002, parent:1695:main, process: 4248:droid.bluetooth, thread: 4280:binder:4248_4 send signal 13:0 to target 4280:binder:4248_4
+09-08 08:01:58.546  3199  4287 I system_server: KillMonitor stack #0: Build ID: 0403f6b5, offset:  0x000000000e01cc
+09-08 08:01:58.585  1788  5261 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+09-08 08:01:58.747 23319 23319 D AndroidRuntime: Calling main entry com.android.commands.am.Am
+09-08 08:01:58.752 23319 23319 I AconfigPackage: android.crashrecovery.flags is mapped to system
+09-08 08:01:58.763  3199  8274 W ProcessIntercept: [FEAT_PROCESS_INTERCEPT][21] Start instrumentation dev.telemachus.display.test
+09-08 08:01:58.763  3199  8274 I ActivityManager: Force stopping dev.telemachus.display appid=10924 user=0: start instr
+09-08 08:01:58.765  3199  8274 I AMS.Freeze: takeoutByProcessLocked name:dev.telemachus.display uid:10924 record:null, at removeProcessNameLocked
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{7d5af51 com.obric.aivoice/10045} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{939b8b7 com.obric.account/10106} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{8659824 com.obric.securitymanager/10205} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{774ef8d com.obric.numberassistant/10062} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{1d52542 com.bytedance.android.doubaoime/10057} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{c272953 com.obric.systemui.plugin/10121} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{4761290 com.bytedance.android.securityinput/10116} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{b4df789 com.android.email/10124} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{e94538e com.custom.leakcanary/10157} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{47107af com.android.microdroid.empty_payload/10185} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{4d1c7bc com.obric.smsparser/10077} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{f958345 com.obric.wallpaper/10123} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{d061a9a com.android.providers.weather/10073} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{4d06fcb com.obric.videoplayer/10070} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{d1a3a8 com.bytedance.obric.airecordassistant/10197} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{5100ec1 com.datacenter.volumecollect/10080} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{69b4666 com.openomni.mockbot/10216} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{8743da7 com.obric.notes/10201} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.767  3199  8274 I AppsFilter: interaction: PackageSetting{a715254 com.obric.music/10060} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{a4dd5fd com.obric.clock/10202} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{2f76223 com.obric.systemui.overlays.system/10000} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{90562f2 com.obric.screenrecorder/10068} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{5bb3fc0 com.obric.calculator/10198} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{982bc3e com.obric.weather/10206} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{7f93a9f com.obric.calendar/10200} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{af497ec com.android.incallui/10054} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{cf6c7b5 com.obric.compass/10204} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{ea5e4a com.obric.ottsengine/10072} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{3c0e1bb com.bytedance.os.slardar/10076} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{f8946d8 com.android.provision/10067} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{4192a31 com.obric.recorder/10208} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{c781516 com.obric.camera2/10066} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{a91de97 com.android.mms/10061} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{1b7f884 com.obric.aikernel/10091} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{f586ca2 com.android.contacts/10052} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{10bcd33 com.obric.smartnotification/10120} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{b69ee69 com.obric.lifelog/10207} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{c2c098f com.obric.memorydata/10104} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{492a6aa com.obric.systemui.overlays/10001} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.768  3199  8274 I AppsFilter: interaction: PackageSetting{d43d41c com.obric.feedbackserviceproject/10203} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.769  3199  8274 I AppsFilter: interaction: PackageSetting{a2a0825 com.obric.health/10108} -> PackageSetting{b65f63 dev.telemachus.display/10924} BLOCKED
+09-08 08:01:58.772  3199  4111 I DynamicRefreshRateService: appStateInfo change: AppStateInfo[uid:10924 pkgName:dev.telemachus.display appState:2 uidFlag:0]
+09-08 08:01:58.775  3199  4050 I AppWidgetServiceImpl: Updating package stopped masked state for uid 10924 package dev.telemachus.display isStopped false
+09-08 08:01:58.807  3199  3438 I AUTO_FREEZE: createOrGetFreezeUidState new uid:10924 from:StartProcess
+09-08 08:01:58.807  3199  3438 I AUTO_FREEZE: makeQuickJudgment, uid:10924 to freeze for totalState:0 |isFrozen:false |procState:19 |reason:check start process pid:23342 processName:dev.telemachus.display
+09-08 08:01:58.808  3199  3438 I ActivityManager: Start proc 23342:dev.telemachus.display/u0a924 for added application dev.telemachus.display
+09-08 08:01:58.808  3199  3438 I AMS.FreezeStats: reportProcLifeState 10924 23342 dev.telemachus.display create
+09-08 08:01:58.808  3199  3438 I ActivityManager: ProcessObserver broadcast disabled
+09-08 08:01:58.811  3199  4114 I ProcessGuard: ProcessGuardService-keepAliveProcStartForTopN uid:10924 pkg:dev.telemachus.display
+09-08 08:01:58.819 23342 23342 E libprocessgroup: createProcessGroupForceMemcg
+09-08 08:01:58.834 23342 23342 D Zygote  : createProcessGroup:uid=10924, pid=23342, memcg_path: 
+09-08 08:01:58.907 23342 23342 W re-initialized>: type=1400 audit(0.0:439679): avc:  denied  { read } for  name="u:object_r:userdebug_or_eng_prop:s0" dev="tmpfs" ino=458 scontext=u:r:untrusted_app:s0:c156,c259,c512,c768 tcontext=u:object_r:userdebug_or_eng_prop:s0 tclass=file permissive=0 app=dev.telemachus.display
+09-08 08:01:58.915  3199  3437 I MemcgManager: proc:dev.telemachus.display, adj:0, score:100, appScorePath:/dev/memcg/apps/uid_10924/memory.app_score
+09-08 08:01:58.930 23342 23342 D ARTLockMonitor: dev.telemachus.display: isSystemApp=false
+09-08 08:01:58.932 23342 23342 D ExtTypefaceImpl: setCurPackageName() dev.telemachus.display mInTestProcess false
+09-08 08:01:58.941 23342 23342 W ActivityThread: Package uses different ABI(s) than its instrumentation: package[dev.telemachus.display]: arm64-v8a, null instrumentation[dev.telemachus.display.test]: null, null
+09-08 08:01:59.131 23342 23342 D nativeloader: Configuring clns-9 for other apk /system/framework/android.test.runner.jar:/system/framework/android.test.mock.jar:/system/framework/android.test.base.jar:/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/base.apk:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/base.apk. target_sdk_version=34, uses_libraries=, library_path=/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/lib/arm64:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/lib/arm64:/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/base.apk!/lib/arm64-v8a:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/dev.telemachus.display
+09-08 08:01:59.141 23342 23342 V GraphicsEnvironment: dev.telemachus.display is not listed in per-application setting
+09-08 08:01:59.141 23342 23342 V GraphicsEnvironment: dev.telemachus.display is not listed in ANGLE allowlist or settings, returning default
+09-08 08:01:59.145 23342 23342 D nativeloader: Configuring clns-10 for other apk /system/framework/android.test.mock.jar. target_sdk_version=34, uses_libraries=ALL, library_path=/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/lib/arm64:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/lib/arm64, permitted_path=/data:/mnt/expand
+09-08 08:01:59.147 23342 23342 D nativeloader: Configuring clns-11 for other apk /system/framework/android.test.runner.jar. target_sdk_version=34, uses_libraries=ALL, library_path=/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/lib/arm64:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/lib/arm64, permitted_path=/data:/mnt/expand
+09-08 08:01:59.148 23342 23342 W emachus.display: ClassLoaderContext shared library size mismatch. Expected=2, found=3 (PCL[]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]} | PCL[]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]#PCL[/system/framework/android.test.runner.jar*895143020]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]}};PCL[/system/framework/android.test.runner.jar*895143020:/system/framework/android.test.mock.jar*3361312393:/system/framework/android.test.base.jar*2789897741:/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/base.apk*1140871188:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/base.apk*3507838031])
+09-08 08:01:59.149 23342 23342 W emachus.display: ClassLoaderContext classpath size mismatch. expected=0, found=1 (PCL[] | PCL[/system/framework/android.test.runner.jar*895143020]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]#PCL[/system/framework/android.test.runner.jar*895143020]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]}};PCL[/system/framework/android.test.runner.jar*895143020:/system/framework/android.test.mock.jar*3361312393:/system/framework/android.test.base.jar*2789897741:/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/base.apk*1140871188:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/base.apk*3507838031])
+09-08 08:01:59.150 23342 23342 W emachus.display: ClassLoaderContext classpath size mismatch. expected=0, found=2 (PCL[] | PCL[/system/framework/android.test.runner.jar*895143020:/system/framework/android.test.mock.jar*3361312393]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]#PCL[/system/framework/android.test.runner.jar*895143020]{PCL[/system/framework/android.test.base.jar*2789897741]#PCL[/system/framework/android.test.mock.jar*3361312393]}};PCL[/system/framework/android.test.runner.jar*895143020:/system/framework/android.test.mock.jar*3361312393:/system/framework/android.test.base.jar*2789897741:/data/app/~~YXkEc9AgyV4F8OaRLIj6IQ==/dev.telemachus.display.test-ppVF1WOLRVS4y1qvWFGzRw==/base.apk*1140871188:/data/app/~~7bpb2-opZy2K1B6eO36rsg==/dev.telemachus.display-BW3aNN6fxGFb-vGxLw-U9Q==/base.apk*3507838031])
+09-08 08:01:59.314 23342 23342 I AndroidJUnitRunner: newApplication android.app.Application
+09-08 08:01:59.322 23342 23342 I AndroidJUnitRunner: onCreate Bundle[mParcelledData.dataSize=296]
+09-08 08:01:59.323 23342 23342 D AndroidJUnitRunner: Use the raw file system for managing file I/O.
+09-08 08:01:59.340 23342 23377 D AndroidJUnitRunner: onStart is called.
+09-08 08:01:59.341  1966  6051 E ANDR-PERF-LM: PrefAppsDB: get_total_pkg_bindapp_count() 667: App = (dev.telemachus.display) not found in LatData DB.
+09-08 08:01:59.348 23342 23377 I InstrConnection: Could not send broadcast or register receiver (isolatedProcess?)
+09-08 08:01:59.359 23342 23377 I TestRunner: run started: 1 tests
+09-08 08:01:59.360 23342 23377 I TestRunner: started: narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect(dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest)
+09-08 08:01:59.395  3199  4111 I DynamicRefreshRateService: appStateInfo change: AppStateInfo[uid:10924 pkgName:dev.telemachus.display appState:1 uidFlag:0]
+09-08 08:01:59.489 23342 23377 I TestRunner: finished: narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect(dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest)
+09-08 08:01:59.492 23342 23377 I TestRunner: run finished: 1 tests, 0 failed, 0 ignored
+09-08 08:01:59.496  3199  4966 I ActivityManager: Force stopping dev.telemachus.display appid=10924 user=0: finished inst
+09-08 08:01:59.496  3199  4966 E ActivityManager: Unable to freeze binder for 23342: -11
+09-08 08:01:59.497  3199  4966 I AMS.Freeze: takeoutByProcessLocked name:dev.telemachus.display uid:10924 record:ProcessRecord{6ffdea9 23342:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:23342 t:null sa:0 usps:4 sps:4 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}, at removeProcessNameLocked
+09-08 08:01:59.497  3199  4966 I AMS.Freeze: takeoutByProcessLocked app:ProcessRecord{6ffdea9 23342:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:23342 t:null sa:0 usps:4 sps:4 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}
+09-08 08:01:59.497  3199  4966 I AMS.Freeze: update mFrozenProcesses add:false pid:23342 ret:false app:ProcessRecord{6ffdea9 23342:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:23342 t:null sa:0 usps:4 sps:4 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} old:null
+09-08 08:01:59.498 23319 23319 I AndroidRuntime: VM exiting with result code 0.
+09-08 08:01:59.500  3199  4966 I ActivityManager: Killing 23342:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:23342 t:null sa:0 sps:4 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID} (adj 0): stop dev.telemachus.display due to finished inst
+09-08 08:01:59.502  3199  4287 I system_server: KillMonitor uid:1000, parent:1695:main, process: 3199:system_server, thread: 4966:binder:3199_D send signal 9:0 to target 23342:emachus.display
+09-08 08:01:59.502  3199  4287 I system_server: KillMonitor stack #0: Build ID: 0403f6b5, offset:  0x000000000ddfcc
+09-08 08:01:59.502  3199  4111 I DynamicRefreshRateService: appStateInfo change: AppStateInfo[uid:10924 pkgName:dev.telemachus.display appState:2 uidFlag:0]
+09-08 08:01:59.502  3199  4111 I VideoSceneRecord: updateScene reportId:2 sceneEvent:-1 uid:10924 pid:23342 pkg:dev.telemachus.display data:null
+09-08 08:01:59.503  3199  4966 I AMS.FreezeStats: reportProcLifeState 10924 23342 dev.telemachus.display died
+09-08 08:01:59.503  3199  4111 I DynamicRefreshRateService: appStateInfo change: AppStateInfo[uid:10924 pkgName:dev.telemachus.display appState:0 uidFlag:0]
+09-08 08:01:59.503  3199  4111 I VideoSceneRecord: updateScene reportId:1 sceneEvent:-1 uid:10924 pid:-1 pkg:dev.telemachus.display data:null
+09-08 08:01:59.504  3199  4111 I VibratorSceneRecord: updateScene reportId:1 sceneEvent:-1 uid:10924 pkg:dev.telemachus.display data:null
+09-08 08:01:59.504  3199  4287 I system_server: KillMonitor uid:1000, parent:1695:main, process: 3199:system_server, thread: 4966:binder:3199_D send signal 9:0 to target 23342:emachus.display
+09-08 08:01:59.504  3199  4966 I BroadcastProxy: unProxy app:ProcessRecord{6ffdea9 23342:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:23342 t:null sa:-10000 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} reason=cleanup
+09-08 08:01:59.504  1982  1982 I vendor.qti.hardware.servicetrackeraidl-service: killProcess is called for pid : 23342
+09-08 08:01:59.504  3199  4287 I system_server: KillMonitor stack #0: Build ID: 0403f6b5, offset:  0x000000000de50c
+09-08 08:01:59.504  3199  4287 I system_server: KillMonitor stack #1: Build ID: ba61d7ad, offset:  0x0000000002a58c
+09-08 08:01:59.504  3199  4287 I system_server: KillMonitor stack #2: Build ID: 2da77c05, offset:  0x00000000206294
+09-08 08:01:59.504  3199  4287 I system_server: KillMonitor uid:1000, parent:1695:main, process: 3199:system_server, thread: 3440:ActivityManager send signal 9:0 to target 23342:emachus.display
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor stack #0: Build ID: 0403f6b5, offset:  0x000000000de50c
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor stack #1: Build ID: ba61d7ad, offset:  0x0000000002a58c
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor stack #2: Build ID: ba61d7ad, offset:  0x0000000002b31c
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor uid:1000, parent:1695:main, process: 3199:system_server, thread: 3440:ActivityManager send signal 9:0 to target 23342:emachus.display
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor stack #0: Build ID: 0403f6b5, offset:  0x000000000de50c
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor stack #1: Build ID: ba61d7ad, offset:  0x0000000002a58c
+09-08 08:01:59.505  3199  4287 I system_server: KillMonitor stack #2: Build ID: ba61d7ad, offset:  0x0000000002b6f8
+09-08 08:01:59.505  3199  3387 D SysDataSyncServiceManager: onProcessDied uid: 10924 pid: 23342
+09-08 08:01:59.506  7814 15553 I CaeLog  : <SmartNetworkPolicyManager> onProcessDied pid=23342 uid=10924
+09-08 08:01:59.586  3199  4966 I AMS.Freeze: takeoutByProcessLocked app:ProcessRecord{6ffdea9 0:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:0 t:null sa:-10000 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} pid:23342, at appDiedLocked
+09-08 08:01:59.586  3199  4966 I AMS.Freeze: takeoutByProcessLocked app:ProcessRecord{6ffdea9 0:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:0 t:null sa:-10000 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}}
+09-08 08:01:59.586  3199  4966 I AMS.Freeze: update mFrozenProcesses add:false pid:0 ret:false app:ProcessRecord{6ffdea9 0:dev.telemachus.display/u0a924 PRSmt{980b168 p:0 rp:0 t:null sa:-10000 sps:20 kt:0 fs:0 inSfile:false freezeBlockFlags:0 pendingInstallProviderCount:0 fm:INVALID}} old:null
+09-08 08:01:59.586  3199  4966 V ActivityManager: Got obituary of 23342:dev.telemachus.display
+09-08 08:01:59.587  1695  1695 I Zygote  : Process 23342 exited due to signal 9 (Killed)

@@ -1,0 +1,9 @@
+repository=TaoSama/vibe-screen
+worktree=/Users/luwentao/.codex/worktrees/f7b1/vibe-screen
+branch=
+head=6fb5914029c24d1d78d3d0dd3dfbda3ac37455aa
+origin_main=6fb5914029c24d1d78d3d0dd3dfbda3ac37455aa
+head_subject=docs: refresh phase0 aggregate after PR 681 (#676)
+date=2026-09-08
+date_time=2026-09-08T07:58:35+0800
+timezone=Asia/Shanghai

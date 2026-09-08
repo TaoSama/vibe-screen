@@ -1,0 +1,15 @@
+dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest exit=0 passed_status_codes=17 ok=OK (17 tests) failures=147:INSTRUMENTATION_STATUS: test=xiaomi13LandscapeKeepsLongestUsbLanAndInternetErrorsReadable
+154:INSTRUMENTATION_STATUS: test=xiaomi13LandscapeKeepsLongestUsbLanAndInternetErrorsReadable
+dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest exit=0 passed_status_codes=18 ok=OK (18 tests) failures=63:INSTRUMENTATION_STATUS: test=hiddenLiveRegionMessageReannouncesTheSameErrorWhenShownAgain
+70:INSTRUMENTATION_STATUS: test=hiddenLiveRegionMessageReannouncesTheSameErrorWhenShownAgain
+203:INSTRUMENTATION_STATUS: test=p0110UsbErrorCopyKeepsChecklistReachableWithLargeText
+210:INSTRUMENTATION_STATUS: test=p0110UsbErrorCopyKeepsChecklistReachableWithLargeText
+dev.telemachus.display.ControlBarLayoutInstrumentedTest exit=0 passed_status_codes=17 ok=OK (17 tests) failures=none
+dev.telemachus.display.SettingsDialogLayoutInstrumentedTest exit=0 passed_status_codes=16 ok=OK (16 tests) failures=none
+dev.telemachus.display.InternetControlStateColorsInstrumentedTest exit=0 passed_status_codes=2 ok=OK (2 tests) failures=none
+dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest exit=0 passed_status_codes=4 ok=OK (4 tests) failures=none
+dev.telemachus.display.QRScannerLayoutInstrumentedTest exit=0 passed_status_codes=6 ok=OK (6 tests) failures=49:INSTRUMENTATION_STATUS: test=cameraErrorStateIsReadableAndRecoverable
+56:INSTRUMENTATION_STATUS: test=cameraErrorStateIsReadableAndRecoverable
+dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest exit=0 passed_status_codes=1 ok=OK (1 test) failures=none
+dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest exit=0 passed_status_codes=3 ok=OK (3 tests) failures=none
+dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest exit=0 passed_status_codes=2 ok=OK (2 tests) failures=none
