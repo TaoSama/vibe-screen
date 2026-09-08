@@ -2662,6 +2662,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             (aggregate_dir / "README.md").write_text(
                 "Aggregate refresh.\n", encoding="utf-8"
             )
+            test_path = repo / "tools/tests/test_phase0_stable_release.py"
+            test_path.parent.mkdir(parents=True)
+            test_path.write_text("# aggregate refresh fixture update\n", encoding="utf-8")
             successor_commit = commit_all(repo, "aggregate refresh")
             manifest = complete_manifest()
             manifest["source"]["base_commit"] = base_commit

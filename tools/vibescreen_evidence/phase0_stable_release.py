@@ -154,6 +154,7 @@ AGGREGATE_REFRESH_PATHS = (
     "README.md",
     "tools/README.md",
     "docs/changes/2026-08-22-phase0-stable-release-aggregate/",
+    "tools/tests/test_phase0_stable_release.py",
 )
 RELEASE_CLAIM_GUARD_PATHS = (
     "Makefile",
