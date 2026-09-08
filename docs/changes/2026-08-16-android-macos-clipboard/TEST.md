@@ -452,3 +452,47 @@ device has no Wi-Fi association or route, and no bidirectional
 No Android `ClipboardManager` -> macOS `NSPasteboard` or macOS `NSPasteboard` ->
 Android `ClipboardManager` product transfer was executed. The P0110 evidence
 must not be relabeled as Xiaomi 13/fuxi evidence.
+
+## 2026-09-08 Nubia P0110 Android clipboard baseline current-main
+
+Evidence:
+[evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main](evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md).
+
+Status remains open. The retained package records Nubia P0110 / pacific /
+Android 16 / SDK 36 no-Host evidence on current main. It uses only read-only
+`adb reverse --list` capture for reverse-state collection and records no
+`tcp:54321` mapping in the retained raw stdout snapshot.
+
+`ClipboardManagerInstrumentedTest` passed on device with `OK (8 tests)`. The
+current local Android smoke covers ordinary foreground text, instrumentation-
+argument set/read behavior, 256 KiB UTF-8 Unicode text, an expanded 320 KiB
+UTF-8 text round trip, empty clipboard clearing, safe handling of non-text
+Intent `ClipData`, and multi-item `ClipData` where the first item is non-text
+and later text is not treated as the first transferable value.
+`ClipboardConfirmationDialogLayoutInstrumentedTest` also passed with `OK (2
+tests)`, preserving focused send/receive/overwrite confirmation layout coverage.
+
+The Android no-Host evidence does not start Vibe Screen/MacHost/Telemachus GUI,
+does not run `swift run`, does not read or write macOS `NSPasteboard`, and does
+not prove Android `ClipboardManager` <-> macOS `NSPasteboard` USB/LAN product
+transfer. Exploratory 512 KiB and 1 MiB local Android `ClipboardManager` writes
+hit Binder `TransactionTooLargeException` on P0110 and are not counted as
+passing evidence; the Protocol v1 1 MiB negotiated ceiling remains JVM/protocol
+evidence only.
+
+This verifier update raises `clipboard-e2e-gate`'s current-run Android
+ClipboardManager smoke requirement from the older 5-test package to all 8
+current `ClipboardManagerInstrumentedTest` methods. The gate now rejects
+zero-test, summary-only, and legacy 5-test Android logs while keeping
+`gate_closed=false` without retained bidirectional product evidence.
+
+## 2026-09-08 Clipboard preview policy JVM evidence
+
+Evidence:
+[evidence/2026-09-08-clipboard-preview-policy-jvm](evidence/2026-09-08-clipboard-preview-policy-jvm/README.md).
+
+Status remains open. The run adds focused JVM coverage for the extracted
+Android clipboard confirmation preview policy used by send/receive overwrite
+dialogs. It improves Android UI/readiness confidence but does not start a Host
+session, does not touch macOS `NSPasteboard`, and cannot close the Android/macOS
+clipboard product E2E gate.
