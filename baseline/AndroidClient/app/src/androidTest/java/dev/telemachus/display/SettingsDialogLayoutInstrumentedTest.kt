@@ -307,10 +307,33 @@ class SettingsDialogLayoutInstrumentedTest {
             val label = layout.root.findViewById<TextView>(R.id.opacityLabel)
             val slider = layout.root.findViewById<Slider>(R.id.opacitySlider)
             assertEquals(slider.id, label.labelFor)
+            assertTrue(label.isAccessibilityHeading)
             assertEquals(0, layout.rootParams.leftMargin)
             assertEquals(0, layout.rootParams.rightMargin)
             assertEquals(0, layout.rootParams.topMargin)
             assertEquals(0, layout.rootParams.bottomMargin)
+        }
+    }
+
+    @Test
+    fun settingsSectionsExposeScreenReaderHeadings() {
+        withLayout(screenWidthDp = 360) { layout ->
+            listOf(
+                R.id.settingsDialogTitle,
+                R.id.deviceHealthTitle,
+                R.id.transferReadinessTitle,
+                R.id.audioReadinessTitle,
+                R.id.viewportTitle,
+                R.id.videoSectionTitle,
+                R.id.gestureShortcutsTitle,
+                R.id.opacityLabel,
+            ).forEach { viewId ->
+                val heading = layout.root.findViewById<TextView>(viewId)
+                assertTrue(
+                    "${heading.resources.getResourceEntryName(viewId)} is an accessibility heading",
+                    heading.isAccessibilityHeading,
+                )
+            }
         }
     }
 
