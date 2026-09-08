@@ -64,7 +64,11 @@ def child_summary(child_id: str, *, verdict: str, can_close: bool = False, **ove
         "product_e2e_closure": {
             "host_backed_product_session_required": True,
             "same_session_bidirectional_transfer_required": True,
+            "same_session_id_required": True,
+            "ordered_chunk_offsets_required": True,
+            "final_chunk_marker_required": True,
             "retained_remote_file_bytes_required": True,
+            "disconnect_cleanup_required": True,
             "summary_only_evidence_rejected": True,
             "no_host_ui_evidence_rejected": True,
         },

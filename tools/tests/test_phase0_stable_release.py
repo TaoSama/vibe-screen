@@ -914,7 +914,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 output_path="docs/evidence/file-transfer-mutated-gate.json",
                 mutate_report=lambda report: (
                     report["safety"].pop("no_host_ui_evidence_do_not_close_gate"),
-                    report["product_e2e_closure"].pop("same_session_bidirectional_transfer_required"),
+                    report["product_e2e_closure"].pop("same_session_id_required"),
                     next(
                         check for check in report["checks"] if check["name"] == "bidirectional_product_e2e"
                     ).update({"status": "blocked", "reasons": ["missing retained product bytes"]}),
@@ -938,7 +938,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 blocking_gate["issues"],
             )
             self.assertIn(
-                "docs/evidence/file-transfer-mutated-gate.json: formal file-transfer report product_e2e_closure.same_session_bidirectional_transfer_required must be true",
+                "docs/evidence/file-transfer-mutated-gate.json: formal file-transfer report product_e2e_closure.same_session_id_required must be true",
                 blocking_gate["issues"],
             )
             self.assertIn(

@@ -54,6 +54,7 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "sha256_verification",
 )
 REQUIRED_CANCEL_ARTIFACT_ROLES = ("cancel_request", "cleanup_state")
+REQUIRED_DISCONNECT_ARTIFACT_ROLES = ("disconnect_event", "cleanup_state")
 REQUIRED_PRODUCT_CONTEXT_TRUE = (
     "host_backed_product_session",
     "real_macos_host",
@@ -70,7 +71,11 @@ REQUIRED_PRODUCT_CONTEXT_FALSE = (
 PRODUCT_E2E_CLOSURE = {
     "host_backed_product_session_required": True,
     "same_session_bidirectional_transfer_required": True,
+    "same_session_id_required": True,
+    "ordered_chunk_offsets_required": True,
+    "final_chunk_marker_required": True,
     "retained_remote_file_bytes_required": True,
+    "disconnect_cleanup_required": True,
     "summary_only_evidence_rejected": True,
     "no_host_ui_evidence_rejected": True,
 }
@@ -366,7 +371,18 @@ def _contains_word_pair(text: str, first: str, second: str) -> bool:
 def _contains_key_value(text: str, key: str, value: Any) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
-    return re.search(rf"\b{re.escape(key)}={re.escape(value)}\b", text) is not None
+    return re.search(rf"\b{re.escape(key)}={re.escape(value)}\b", text, re.IGNORECASE) is not None
+
+
+def _is_hex(value: Any, *, bytes_length: int) -> bool:
+    return isinstance(value, str) and re.fullmatch(rf"[0-9a-fA-F]{{{bytes_length * 2}}}", value) is not None
+
+
+def _hex_field_reasons(value: Any, label: str, *, bytes_length: int, description: str) -> list[str]:
+    expected_length = bytes_length * 2
+    if not _is_hex(value, bytes_length=bytes_length):
+        return [f"{label} must be a {expected_length}-character hex {description}"]
+    return []
 
 
 def _role_content_reasons(direction: dict[str, Any], label: str, evidence_dir: Path | None) -> list[str]:
@@ -376,6 +392,7 @@ def _role_content_reasons(direction: dict[str, Any], label: str, evidence_dir: P
     source_endpoint = direction.get("source_endpoint")
     destination_endpoint = direction.get("destination_endpoint")
     transfer_id = direction.get("transfer_id_hex")
+    session_id = direction.get("session_id_hex")
     session_epoch = direction.get("session_epoch")
     sha256 = direction.get("sha256")
     for role in ("sender_action", "receiver_approval", "sha256_verification"):
@@ -394,6 +411,8 @@ def _role_content_reasons(direction: dict[str, Any], label: str, evidence_dir: P
                 reasons.append(f"{label}.sender_action artifact must contain source={source_endpoint}")
             if not _contains_key_value(text, "transfer_id_hex", transfer_id):
                 reasons.append(f"{label}.sender_action artifact must contain transfer_id_hex={transfer_id}")
+            if not _contains_key_value(text, "session_id_hex", session_id):
+                reasons.append(f"{label}.sender_action artifact must contain session_id_hex={session_id}")
         elif role == "receiver_approval":
             if not _contains_word_pair(text, "receiver_approval", "approved"):
                 reasons.append(f"{label}.receiver_approval artifact must record receiver_approval approved")
@@ -401,6 +420,8 @@ def _role_content_reasons(direction: dict[str, Any], label: str, evidence_dir: P
                 reasons.append(f"{label}.receiver_approval artifact must contain destination={destination_endpoint}")
             if not _contains_key_value(text, "transfer_id_hex", transfer_id):
                 reasons.append(f"{label}.receiver_approval artifact must contain transfer_id_hex={transfer_id}")
+            if not _contains_key_value(text, "session_id_hex", session_id):
+                reasons.append(f"{label}.receiver_approval artifact must contain session_id_hex={session_id}")
         elif role == "sha256_verification":
             if not isinstance(sha256, str) or not re.search(
                 rf"\bsha256\s+verified\s+{re.escape(sha256.lower())}\b",
@@ -410,15 +431,24 @@ def _role_content_reasons(direction: dict[str, Any], label: str, evidence_dir: P
 
     protocol_path = _resolved_artifact_path(direction, "protocol_packets", evidence_dir)
     if protocol_path is not None:
-        reasons.extend(_protocol_packets_artifact_reasons(protocol_path, label, transfer_id, session_epoch))
+        reasons.extend(_protocol_packets_artifact_reasons(protocol_path, label, transfer_id, session_id, session_epoch))
     return reasons
 
 
-def _protocol_packets_artifact_reasons(path: Path, label: str, transfer_id: Any, session_epoch: Any) -> list[str]:
+def _protocol_packets_artifact_reasons(
+    path: Path,
+    label: str,
+    transfer_id: Any,
+    session_id: Any,
+    session_epoch: Any,
+) -> list[str]:
     required_events = {"file_offer", "file_request", "file_chunk", "file_complete"}
     observed_events: set[str] = set()
     observed_transfer = False
+    observed_session = False
     observed_epoch = False
+    chunk_offsets: list[int] = []
+    final_chunk_offsets: list[int] = []
     malformed_lines: list[int] = []
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -441,20 +471,40 @@ def _protocol_packets_artifact_reasons(path: Path, label: str, transfer_id: Any,
             if str(record.get(key, "")).strip()
         }
         observed_events.update(required_events & event_names)
-        if isinstance(transfer_id, str) and transfer_id.lower() in json.dumps(record, sort_keys=True).lower():
+        record_json = json.dumps(record, sort_keys=True).lower()
+        if isinstance(transfer_id, str) and transfer_id.lower() in record_json:
             observed_transfer = True
+        if isinstance(session_id, str) and session_id.lower() in record_json:
+            observed_session = True
         if isinstance(session_epoch, int) and not isinstance(session_epoch, bool) and record.get("session_epoch") == session_epoch:
             observed_epoch = True
+        if "file_chunk" in event_names:
+            offset = record.get("offset")
+            if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+                malformed_lines.append(line_number)
+            else:
+                chunk_offsets.append(offset)
+                if record.get("final") is True or record.get("is_final") is True:
+                    final_chunk_offsets.append(offset)
     reasons: list[str] = []
     if malformed_lines:
         reasons.append(f"{label}.protocol_packets artifact must be JSONL; malformed line(s): {malformed_lines[:5]}")
     missing_events = sorted(required_events - observed_events)
     if missing_events:
         reasons.append(f"{label}.protocol_packets artifact missing event(s): {', '.join(missing_events)}")
-    if not observed_transfer:
+    if _is_hex(transfer_id, bytes_length=16) and not observed_transfer:
         reasons.append(f"{label}.protocol_packets artifact must include transfer_id_hex {transfer_id}")
-    if not observed_epoch:
+    if _is_hex(session_id, bytes_length=16) and not observed_session:
+        reasons.append(f"{label}.protocol_packets artifact must include session_id_hex {session_id}")
+    if isinstance(session_epoch, int) and not isinstance(session_epoch, bool) and session_epoch > 0 and not observed_epoch:
         reasons.append(f"{label}.protocol_packets artifact must include session_epoch {session_epoch}")
+    if "file_chunk" in observed_events:
+        if chunk_offsets != sorted(chunk_offsets) or len(chunk_offsets) != len(set(chunk_offsets)):
+            reasons.append(f"{label}.protocol_packets artifact must record strictly increasing chunk offsets")
+        if not final_chunk_offsets:
+            reasons.append(f"{label}.protocol_packets artifact must include a final file_chunk marker")
+        elif chunk_offsets and max(final_chunk_offsets) != max(chunk_offsets):
+            reasons.append(f"{label}.protocol_packets artifact final file_chunk marker must be on the last chunk offset")
 
     return reasons
 
@@ -773,8 +823,9 @@ def _direction_reasons(
     if isinstance(sha256, str) and not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         reasons.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
     transfer_id = direction.get("transfer_id_hex")
-    if not isinstance(transfer_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
-        reasons.append(f"{label}.transfer_id_hex must be a 32-character hex transfer ID")
+    reasons.extend(_hex_field_reasons(transfer_id, f"{label}.transfer_id_hex", bytes_length=16, description="transfer ID"))
+    session_id = direction.get("session_id_hex")
+    reasons.extend(_hex_field_reasons(session_id, f"{label}.session_id_hex", bytes_length=16, description="session ID"))
     byte_length = direction.get("byte_length")
     if not isinstance(byte_length, int) or isinstance(byte_length, bool) or byte_length <= 0:
         reasons.append(f"{label}.byte_length must be a positive integer")
@@ -824,6 +875,7 @@ def _product_e2e_gate(
         android_to_macos = directions.get("android_to_macos_file_transfer")
         macos_to_android = directions.get("macos_to_android_file_transfer")
         transfer_ids: dict[str, str] = {}
+        session_ids: dict[str, str] = {}
         digests: dict[str, str] = {}
         file_names: dict[str, str] = {}
         transports: dict[str, str] = {}
@@ -845,8 +897,11 @@ def _product_e2e_gate(
             if isinstance(transport, str) and transport in {"usb", "trusted_lan"}:
                 transports["android_to_macos_file_transfer"] = transport
             transfer_id = android_to_macos.get("transfer_id_hex")
-            if isinstance(transfer_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
+            if _is_hex(transfer_id, bytes_length=16):
                 transfer_ids["android_to_macos_file_transfer"] = transfer_id.lower()
+            session_id = android_to_macos.get("session_id_hex")
+            if _is_hex(session_id, bytes_length=16):
+                session_ids["android_to_macos_file_transfer"] = session_id.lower()
             digest = android_to_macos.get("sha256")
             if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
                 digests["android_to_macos_file_transfer"] = digest.lower()
@@ -873,8 +928,11 @@ def _product_e2e_gate(
             if isinstance(transport, str) and transport in {"usb", "trusted_lan"}:
                 transports["macos_to_android_file_transfer"] = transport
             transfer_id = macos_to_android.get("transfer_id_hex")
-            if isinstance(transfer_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
+            if _is_hex(transfer_id, bytes_length=16):
                 transfer_ids["macos_to_android_file_transfer"] = transfer_id.lower()
+            session_id = macos_to_android.get("session_id_hex")
+            if _is_hex(session_id, bytes_length=16):
+                session_ids["macos_to_android_file_transfer"] = session_id.lower()
             digest = macos_to_android.get("sha256")
             if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
                 digests["macos_to_android_file_transfer"] = digest.lower()
@@ -892,6 +950,12 @@ def _product_e2e_gate(
             == transfer_ids.get("macos_to_android_file_transfer")
         ):
             reasons.append("direction transfer IDs must be distinct so one file exchange cannot satisfy both directions")
+        if (
+            session_ids.get("android_to_macos_file_transfer")
+            and session_ids.get("macos_to_android_file_transfer")
+            and session_ids["android_to_macos_file_transfer"] != session_ids["macos_to_android_file_transfer"]
+        ):
+            reasons.append("direction session_id_hex values must match for same-session bidirectional product evidence")
         if (
             digests.get("android_to_macos_file_transfer")
             and digests.get("android_to_macos_file_transfer")
@@ -931,6 +995,7 @@ def _cancel_cleanup_gate(
     else:
         reasons.extend(_product_schema_reasons(product))
         cancel_cleanup = product.get("cancel_cleanup")
+        disconnect_cleanup = product.get("disconnect_cleanup")
         if not isinstance(cancel_cleanup, dict):
             reasons.append("missing cancel_cleanup evidence")
         else:
@@ -951,6 +1016,29 @@ def _cancel_cleanup_gate(
                     cancel_cleanup,
                     "cancel_cleanup",
                     REQUIRED_CANCEL_ARTIFACT_ROLES,
+                    evidence_dir,
+                    retained_artifact_paths,
+                )
+            )
+        if not isinstance(disconnect_cleanup, dict):
+            reasons.append("missing disconnect_cleanup evidence")
+        else:
+            required_true = (
+                "disconnect_observed",
+                "sender_state_cleared",
+                "receiver_state_cleared",
+                "temporary_files_removed_or_quarantined",
+            )
+            reasons.extend(
+                f"disconnect_cleanup.{field} must be true"
+                for field in required_true
+                if disconnect_cleanup.get(field) is not True
+            )
+            reasons.extend(
+                _retained_artifact_reasons(
+                    disconnect_cleanup,
+                    "disconnect_cleanup",
+                    REQUIRED_DISCONNECT_ARTIFACT_ROLES,
                     evidence_dir,
                     retained_artifact_paths,
                 )
@@ -1076,8 +1164,9 @@ def derive_gate(
                 "Android -> macOS single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
                 "macOS -> Android single-file transfer over Protocol v1 USB/LAN" if verdict != PASS else "",
                 "receiver approval, verified session ID and epoch, distinct verified 16-byte transfer IDs, "
-                "observed progress, exact file endpoints, retained destination-file bytes that match the "
-                "declared byte length and SHA-256, cancel cleanup, and end-to-end SHA-256 on retained "
+                "same session_id_hex, observed ordered chunks with final markers, observed progress, "
+                "exact file endpoints, retained destination-file bytes that match the "
+                "declared byte length and SHA-256, cancel/disconnect cleanup, and end-to-end SHA-256 on retained "
                 "product evidence" if verdict != PASS else "",
             )
             if item
@@ -1097,10 +1186,11 @@ def derive_gate(
             "a current Android file-transfer smoke log, and retained bidirectional product E2E evidence "
             "showing file offer/request/content packets, source file read, explicit user action, receiver "
             "approval, remote file write, verified session ID and session epoch, distinct transfer IDs, "
-            "distinct file names, distinct SHA-256 payload digests, observed progress, exact file endpoints, "
+            "same session_id_hex, distinct file names, distinct SHA-256 payload digests, observed ordered chunks "
+            "with final markers, observed progress, exact file endpoints, "
             "retained remote-file bytes whose size and SHA-256 match the direction manifest, "
             "retained non-empty product artifacts with exact required roles, no repeated roles, "
-            "distinct files per role, and cancel/cleanup behavior. "
+            "distinct files per role, and cancel/disconnect cleanup behavior. "
             "Offline or synthetic coverage alone remains readiness evidence."
         ),
     }

@@ -172,10 +172,11 @@ offline tests alone. A pass requires Host readiness, a ready USB or trusted-LAN
 real-device path, a current Android file-transfer smoke log, bidirectional
 Android -> macOS and macOS -> Android product evidence, observed
 file-offer/request/content packets, explicit sender action, receiver approval,
-saved remote file, verified session ID and session epoch, verified 16-byte
-transfer ID, observed progress, exact source/destination file endpoints, final
-SHA-256 equality, a distinct file name and payload digest per direction, and
-cancel/cleanup evidence. Device identity must match one of the accepted Android
+saved remote file, verified 16-byte session ID and session epoch, verified
+16-byte transfer ID, ordered chunk offsets with a final chunk marker, observed
+progress, exact source/destination file endpoints, final SHA-256 equality, a
+distinct file name and payload digest per direction, and cancel/disconnect
+cleanup evidence. Device identity must match one of the accepted Android
 evidence devices: nubia or ZTE P0110 / pacific / Android 16 / SDK 36, or Xiaomi
 13 / 2211133C / fuxi / Android 16 / SDK 36. Evidence must keep its actual
 device identity and must not relabel one device as the other.
@@ -192,16 +193,19 @@ destination file bytes, not only a checksum or summary, and their byte length
 and SHA-256 digest must match the direction's `byte_length` and `sha256`
 fields. The sender, receiver, and SHA-256 artifacts must record affirmative
 sender action, receiver approval, and `sha256 verified` entries that match the
-direction's endpoint, transfer ID, and digest fields. The `protocol_packets`
-artifact must be JSONL with distinct structured `file_offer`, `file_request`,
-`file_chunk`, and `file_complete` events for the matching transfer ID and
-session epoch. Each direction must also record the exact source and destination
-endpoints:
+direction's endpoint, session ID, transfer ID, and digest fields. The
+`protocol_packets` artifact must be JSONL with distinct structured
+`file_offer`, `file_request`, `file_chunk`, and `file_complete` events for the
+matching session ID, transfer ID, and session epoch; chunk records must carry
+strictly increasing non-negative offsets and at least one final chunk marker.
+Each direction must also record the exact source and destination endpoints:
 `android_saf_selected_file` -> `macos_saved_file`, or
 `macos_selected_file` -> `android_downloads_file`.
 The `cancel_cleanup` block must similarly retain `cancel_request` and
-`cleanup_state` artifacts. Every required role across both directions and
-`cancel_cleanup` must be backed by a distinct file. Absolute paths, `..`
+`cleanup_state` artifacts. The product record must also include
+`disconnect_cleanup` with retained `disconnect_event` and `cleanup_state`
+artifacts proving transport-loss cleanup. Every required role across both
+directions and cleanup blocks must be backed by a distinct file. Absolute paths, `..`
 escapes, symlink escapes outside the bundle, missing artifact files, duplicate
 role files, reused role files, no-Host UI-only records, summary-only records,
 offline fixtures, and synthetic logs cannot close the gate. The product record
@@ -209,7 +213,9 @@ must also set `host_backed_product_session`, `real_macos_host`,
 `real_android_device`, `same_session_bidirectional_transfer`,
 `host_readiness_bound_to_session`, `device_identity_bound_to_session`, and
 `destination_file_bytes_retained` to true, while setting `no_host_ui_only` and
-`summary_only` to false.
+`summary_only` to false. Both directions must share the same `session_id_hex`
+and session epoch so separate one-way runs cannot be combined into one closure
+claim.
 
 The `android_file_transfer_smoke` subcheck names the Android file-transfer UI
 instrumentation log only. A passing subcheck proves the visible file-transfer
@@ -223,7 +229,8 @@ output, unrelated instrumentation classes, JUnit failures, `FAILURES!!!`, and
 `bidirectional_product_e2e` evidence: two directions, user approval, remote file
 writes, distinct verified transfer IDs, exact file endpoints, progress, retained
 destination-file bytes whose length and SHA-256 match the manifest, distinct
-file names and payload digests, positive session epoch, and cancel cleanup.
+file names and payload digests, shared session ID, positive session epoch,
+ordered chunk offsets with a final marker, and cancel/disconnect cleanup.
 
 Current 2026-08-28 collection on clean `origin/main`-based branch
 `codex/file-transfer-android-smoke-readiness` remains blocked. The P0110 device
@@ -434,16 +441,21 @@ file_transfer_android_product_e2e.
 Status remains open. The fail-closed Android/macOS file-transfer gate now
 requires retained `file-transfer-product-e2e.json` input to declare the current
 `schema_version=vibescreen.evidence/v1` evidence contract before the
-bidirectional product E2E subcheck can pass. Older, missing, or ambiguous schema
-markers stay blocked even if the remaining product fields are pass-like.
+bidirectional product E2E subcheck can pass. It also rejects product records
+that do not bind both directions to the same `session_id_hex`, do not retain
+ordered chunk-offset evidence with a final chunk marker, or omit retained
+disconnect cleanup artifacts. Older, missing, ambiguous, summary-only, or
+one-way-composed evidence markers stay blocked even if the remaining product
+fields are pass-like.
 
 This is evidence-tool hardening only. It does not start the Host, launch the
 Vibe Screen GUI, create `adb reverse tcp:54321 tcp:54321`, inspect or modify
 TCC/Keychain state, or prove Android/macOS file bytes landing. The real product
 gate still requires the same retained Host-backed bidirectional transfer bundle
 with sender action, receiver approval, protocol packets, remote-file bytes,
-SHA-256 equality, progress, positive session epoch, distinct transfer IDs, and
-cancel cleanup.
+SHA-256 equality, progress, shared session ID, positive session epoch, ordered
+chunks with a final marker, distinct transfer IDs, cancel cleanup, and
+disconnect cleanup.
 
 Verification:
 

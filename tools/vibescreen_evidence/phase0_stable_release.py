@@ -129,7 +129,11 @@ FILE_TRANSFER_ANDROID_REQUIRED_SAFETY_TRUE = (
 FILE_TRANSFER_ANDROID_REQUIRED_CLOSURE_TRUE = (
     "host_backed_product_session_required",
     "same_session_bidirectional_transfer_required",
+    "same_session_id_required",
+    "ordered_chunk_offsets_required",
+    "final_chunk_marker_required",
     "retained_remote_file_bytes_required",
+    "disconnect_cleanup_required",
     "summary_only_evidence_rejected",
     "no_host_ui_evidence_rejected",
 )

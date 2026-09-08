@@ -131,6 +131,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "byte_length": len(android_to_macos_payload),
         "sha256": hashlib.sha256(android_to_macos_payload).hexdigest(),
         "transfer_id_hex": "00112233445566778899aabbccddeeff",
+        "session_id_hex": "0123456789abcdeffedcba9876543210",
         "session_epoch": 7,
         "source_endpoint": "android_saf_selected_file",
         "destination_endpoint": "macos_saved_file",
@@ -190,6 +191,16 @@ def product_e2e(**overrides: object) -> dict[str, object]:
                 {"role": "cleanup_state", "path": "cancel-cleanup/cleanup-state.txt"},
             ],
         },
+        "disconnect_cleanup": {
+            "disconnect_observed": True,
+            "sender_state_cleared": True,
+            "receiver_state_cleared": True,
+            "temporary_files_removed_or_quarantined": True,
+            "retained_artifacts": [
+                {"role": "disconnect_event", "path": "disconnect-cleanup/disconnect-event.txt"},
+                {"role": "cleanup_state", "path": "disconnect-cleanup/cleanup-state.txt"},
+            ],
+        },
         "directions": {
             "android_to_macos_file_transfer": dict(direction),
             "macos_to_android_file_transfer": macos_to_android,
@@ -207,6 +218,7 @@ def write_direction_artifacts(
     source_endpoint: str,
     destination_endpoint: str,
     transfer_id_hex: str,
+    session_id_hex: str,
     session_epoch: int,
     sha256: str,
 ) -> None:
@@ -215,25 +227,21 @@ def write_direction_artifacts(
     (direction_dir / "source-file.bin").write_bytes(payload)
     (direction_dir / "remote-file.bin").write_bytes(payload)
     (direction_dir / "sender-action.txt").write_text(
-        f"sender_action source={source_endpoint} transfer_id_hex={transfer_id_hex}\n",
+        f"sender_action source={source_endpoint} transfer_id_hex={transfer_id_hex} session_id_hex={session_id_hex}\n",
         encoding="utf-8",
     )
     (direction_dir / "receiver-approval.txt").write_text(
-        f"receiver_approval approved destination={destination_endpoint} transfer_id_hex={transfer_id_hex}\n",
+        f"receiver_approval approved destination={destination_endpoint} transfer_id_hex={transfer_id_hex} "
+        f"session_id_hex={session_id_hex}\n",
         encoding="utf-8",
     )
     (direction_dir / "protocol-packets.jsonl").write_text(
-        "".join(
-            json.dumps(
-                {
-                    "event": event,
-                    "transfer_id_hex": transfer_id_hex,
-                    "session_epoch": session_epoch,
-                }
-            )
-            + "\n"
-            for event in ("file_offer", "file_request", "file_chunk", "file_complete")
-        ),
+        "".join(json.dumps(record) + "\n" for record in (
+            {"event": "file_offer", "transfer_id_hex": transfer_id_hex, "session_id_hex": session_id_hex, "session_epoch": session_epoch},
+            {"event": "file_request", "transfer_id_hex": transfer_id_hex, "session_id_hex": session_id_hex, "session_epoch": session_epoch},
+            {"event": "file_chunk", "transfer_id_hex": transfer_id_hex, "session_id_hex": session_id_hex, "session_epoch": session_epoch, "offset": 0, "final": True},
+            {"event": "file_complete", "transfer_id_hex": transfer_id_hex, "session_id_hex": session_id_hex, "session_epoch": session_epoch},
+        )),
         encoding="utf-8",
     )
     (direction_dir / "sha256-verification.txt").write_text(
@@ -262,6 +270,7 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         source_endpoint="android_saf_selected_file",
         destination_endpoint="macos_saved_file",
         transfer_id_hex="00112233445566778899aabbccddeeff",
+        session_id_hex="0123456789abcdeffedcba9876543210",
         session_epoch=7,
         sha256=hashlib.sha256(b"p0110 android-to-macos payload\n").hexdigest(),
     )
@@ -272,12 +281,15 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         source_endpoint="macos_selected_file",
         destination_endpoint="android_downloads_file",
         transfer_id_hex="ffeeddccbbaa99887766554433221100",
+        session_id_hex="0123456789abcdeffedcba9876543210",
         session_epoch=7,
         sha256=hashlib.sha256(b"p0110 macos-to-android payload\n").hexdigest(),
     )
     for artifact_path in (
         "cancel-cleanup/cancel-request.txt",
         "cancel-cleanup/cleanup-state.txt",
+        "disconnect-cleanup/disconnect-event.txt",
+        "disconnect-cleanup/cleanup-state.txt",
     ):
         path = root / artifact_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -833,6 +845,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             android_to_macos["transfer_id_verified"] = False
             macos_to_android["byte_length"] = True
             macos_to_android["session_epoch"] = True
+            macos_to_android["session_id_hex"] = "not-a-session-id"
             write_json(paths["product"], document)
 
             result = derive_gate(
@@ -878,6 +891,36 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         )
         self.assertIn(
             "bidirectional_product_e2e: macos_to_android_file_transfer.session_epoch must be a positive integer",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_to_android_file_transfer.session_id_hex must be a 32-character hex session ID",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_same_session_id_for_both_directions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["session_id_hex"] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: direction session_id_hex values must match for same-session bidirectional product evidence",
             result["blockers"],
         )
 
@@ -1172,6 +1215,82 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_protocol_packets_artifact_requires_session_id_ordered_offsets_and_final_chunk(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            transfer_id = "00112233445566778899aabbccddeeff"
+            session_id = "0123456789abcdeffedcba9876543210"
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                "".join(json.dumps(record) + "\n" for record in (
+                    {"event": "file_offer", "transfer_id_hex": transfer_id, "session_epoch": 7},
+                    {"event": "file_request", "transfer_id_hex": transfer_id, "session_epoch": 7},
+                    {"event": "file_chunk", "transfer_id_hex": transfer_id, "session_epoch": 7, "offset": 4},
+                    {"event": "file_chunk", "transfer_id_hex": transfer_id, "session_epoch": 7, "offset": 2},
+                    {"event": "file_complete", "transfer_id_hex": transfer_id, "session_epoch": 7},
+                )),
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            f"bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact must include session_id_hex {session_id}",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact must record strictly increasing chunk offsets",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact must include a final file_chunk marker",
+            result["blockers"],
+        )
+
+    def test_protocol_packets_artifact_requires_final_marker_on_last_chunk(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            directions = product_e2e()["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            transfer_id = android_to_macos["transfer_id_hex"]
+            session_id = android_to_macos["session_id_hex"]
+            session_epoch = android_to_macos["session_epoch"]
+            records = [
+                {"event": "file_offer", "transfer_id_hex": transfer_id, "session_id_hex": session_id, "session_epoch": session_epoch},
+                {"event": "file_request", "transfer_id_hex": transfer_id, "session_id_hex": session_id, "session_epoch": session_epoch},
+                {"event": "file_chunk", "transfer_id_hex": transfer_id, "session_id_hex": session_id, "session_epoch": session_epoch, "offset": 0, "final": True},
+                {"event": "file_chunk", "transfer_id_hex": transfer_id, "session_id_hex": session_id, "session_epoch": session_epoch, "offset": 8},
+                {"event": "file_complete", "transfer_id_hex": transfer_id, "session_id_hex": session_id, "session_epoch": session_epoch},
+            ]
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact final file_chunk marker must be on the last chunk offset",
+            result["blockers"],
+        )
+
     def test_sha256_verification_artifact_must_include_direction_digest(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -1237,7 +1356,15 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
         self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.sender_action artifact must contain session_id_hex=0123456789abcdeffedcba9876543210",
+            result["blockers"],
+        )
+        self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.receiver_approval artifact must record receiver_approval approved",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.receiver_approval artifact must contain session_id_hex=0123456789abcdeffedcba9876543210",
             result["blockers"],
         )
         self.assertIn(
@@ -1325,6 +1452,66 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "cancel_cleanup: cancel_cleanup.retained_artifacts[1].path for cleanup_state must be distinct from android_to_macos_file_transfer sender_action artifact path",
+            result["blockers"],
+        )
+
+    def test_disconnect_cleanup_requires_state_and_distinct_retained_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            disconnect_cleanup = document["disconnect_cleanup"]
+            assert isinstance(disconnect_cleanup, dict)
+            disconnect_cleanup["disconnect_observed"] = False
+            disconnect_cleanup["temporary_files_removed_or_quarantined"] = False
+            retained_artifacts = disconnect_cleanup["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            cleanup_artifact = retained_artifacts[1]
+            assert isinstance(cleanup_artifact, dict)
+            cleanup_artifact["path"] = "android-to-macos/sender-action.txt"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.disconnect_observed must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.temporary_files_removed_or_quarantined must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.retained_artifacts[1].path for cleanup_state must be distinct from android_to_macos_file_transfer sender_action artifact path",
+            result["blockers"],
+        )
+
+    def test_disconnect_cleanup_root_is_required(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            document.pop("disconnect_cleanup")
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: missing disconnect_cleanup evidence",
             result["blockers"],
         )
 
