@@ -17,7 +17,8 @@
 > stable stream, but the macOS Host hardware compatibility matrix, host
 > resident-memory no-growth gate (tracked in
 > [the Host RSS investigation](docs/changes/2026-08-10-host-rss-growth/TECH.md)),
-> telemetry and external-latency archive gate, native-pointer HID confirmation,
+> external-latency archive gate (internal telemetry remains diagnostic only),
+> native-pointer HID confirmation,
 > controller runtime acceptance, clipboard product E2E, and file-transfer product
 > E2E remain open. Do not treat roadmap items below as shipped features.
 
@@ -285,8 +286,9 @@ An earlier 2026-08-06 CI run on `4c2e908fe31af4c187684991301e163371444eab`
 recorded a 202-test MacHost suite; the count has since grown as tests were
 added. Protocol v1 real-device interoperability is now verified on a Xiaomi 13,
 but the Phase 0 stable-release aggregate remains blocked by seven required gates:
-the macOS Host hardware compatibility matrix, telemetry and external-latency
-archive, Host RSS two-hour no-growth, native-pointer HID mouse acceptance,
+the macOS Host hardware compatibility matrix, external-latency archive
+(internal telemetry remains diagnostic only), Host RSS two-hour no-growth,
+native-pointer HID mouse acceptance,
 controller runtime acceptance, Android/macOS clipboard product E2E, and
 Android/macOS file-transfer product E2E.**
 

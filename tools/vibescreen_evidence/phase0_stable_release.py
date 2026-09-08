@@ -41,6 +41,10 @@ HOST_RSS_2H_NO_GROWTH_GATE_ID = "host_rss_2h_no_growth"
 LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
 ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
 LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
+LATENCY_SUMMARY_ONLY_KINDS = {"glass_to_glass", "input_latency"}
+LATENCY_DIAGNOSTIC_ONLY_KINDS = {"telemetry_stage_latency"}
+LATENCY_DIAGNOSTIC_ONLY_METHODS = {"host-telemetry", "client-telemetry"}
+LATENCY_PREFLIGHT_ONLY_KINDS = {"latency_gate_preflight", "latency_preflight"}
 ALLOWED_VERDICTS = {
     STATUS_PASS,
     STATUS_BLOCKED,
@@ -302,11 +306,17 @@ def _telemetry_and_latency_archive_issues(
                 android_candidate_issues.extend(report_issues)
             else:
                 valid_android_stream_report = True
+        else:
+            latency_candidate_issues.extend(
+                _non_formal_latency_artifact_issues(record, raw_path)
+            )
 
     if not valid_latency_report:
         issues.append(
             "telemetry_and_latency_archive pass requires at least one passing "
-            "formal latency_evidence_gate report in evidence_paths"
+            "formal latency_evidence_gate report whose source.manifest "
+            "revalidates retained raw external-camera media or synchronized-clock "
+            "physical-input proof"
         )
         issues.extend(latency_candidate_issues)
     if not valid_android_stream_report:
@@ -317,6 +327,37 @@ def _telemetry_and_latency_archive_issues(
         )
         issues.extend(android_candidate_issues)
     return issues
+
+
+def _non_formal_latency_artifact_issues(record: dict[str, Any], path: str) -> list[str]:
+    kind = record.get("kind")
+    measurement_method = record.get("measurement_method")
+    latency_kind = record.get("latency_kind")
+    if (
+        kind in LATENCY_DIAGNOSTIC_ONLY_KINDS
+        or measurement_method in LATENCY_DIAGNOSTIC_ONLY_METHODS
+        or latency_kind == "telemetry-stage"
+    ):
+        return [
+            f"{path}: telemetry diagnostic artifacts are informational only; "
+            "they may accompany but cannot replace a formal latency_evidence_gate "
+            "report with external measurement proof"
+        ]
+    if kind in LATENCY_SUMMARY_ONLY_KINDS:
+        return [
+            f"{path}: latency summary artifacts are summary-only; "
+            "telemetry_and_latency_archive pass requires the formal "
+            "latency_evidence_gate output that revalidates the source manifest, "
+            "raw external-camera media, sample annotations, and any synchronized-clock "
+            "physical-input proof"
+        ]
+    if kind in LATENCY_PREFLIGHT_ONLY_KINDS:
+        return [
+            f"{path}: latency preflight artifacts record readiness only; they do "
+            "not contain the formal raw-media or synchronized-clock physical-input "
+            "evidence needed to close telemetry_and_latency_archive"
+        ]
+    return []
 
 
 def _repo_relative_evidence_path(
@@ -609,9 +650,26 @@ def _formal_latency_report_issues(
     gate_profile = gate.get("profile")
     if not isinstance(gate_profile, str) or gate_profile not in GATE_PROFILES:
         issues.append(f"{path}: formal latency report gate.profile must be a known latency profile")
+    else:
+        expected_kind = GATE_PROFILES[gate_profile]["kind"]
+        if record.get("latency_kind") != expected_kind:
+            issues.append(
+                f"{path}: formal latency report latency_kind must match "
+                f"gate.profile kind {expected_kind}"
+            )
+        if measurement_method == "synchronized-clock" and expected_kind != "input":
+            issues.append(
+                f"{path}: synchronized-clock latency report must use an input "
+                "latency gate profile"
+            )
     if gate.get("can_close_performance_gate") is not True:
         issues.append(
             f"{path}: formal latency report gate.can_close_performance_gate "
+            "must be true"
+        )
+    if gate.get("requires_external_hardware") is not True:
+        issues.append(
+            f"{path}: formal latency report gate.requires_external_hardware "
             "must be true"
         )
     if gate.get("summary_verdict") != STATUS_PASS:
@@ -689,7 +747,10 @@ def _formal_latency_report_issues(
                     )
                     suffix = f": {detail}" if detail else ""
                     issues.append(
-                        f"{path}: formal latency report source.manifest must revalidate as a passing latency evidence package{suffix}"
+                        f"{path}: formal latency report source.manifest must revalidate "
+                        "as a passing latency evidence package with retained raw "
+                        "external-camera media or synchronized-clock physical-input "
+                        f"proof{suffix}"
                     )
     return issues
 

@@ -359,6 +359,153 @@ def write_latency_archive_evidence(
     return [latency_path, live_smoke_path]
 
 
+def write_synchronized_clock_latency_evidence(
+    repo: Path,
+    *,
+    include_sync_artifact: bool = True,
+    mutate_manifest: Callable[[dict[str, object]], None] | None = None,
+    latency_path: str = "docs/evidence/latency-evidence-usb.json",
+) -> str:
+    evidence_dir = repo / "docs" / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    samples_file = evidence_dir / "sync-samples.csv"
+    input_artifact_file = evidence_dir / "input-actuation.txt"
+    sync_artifact_file = evidence_dir / "synchronization-record.txt"
+    manifest_file = evidence_dir / "sync-latency-manifest.json"
+    samples_file.write_text(
+        "latency_ms\n13.1\n18.3\n15.1\n22.4\n19.7\n",
+        encoding="utf-8",
+    )
+    input_artifact_file.write_text(
+        "physical input actuation visible; visible mac-side result recorded\n",
+        encoding="utf-8",
+    )
+    sync_artifact_file.write_text(
+        "clock synchronization proof: before skew, after skew, drift, "
+        "input timestamp uncertainty, result timestamp uncertainty, "
+        "total error budget\n",
+        encoding="utf-8",
+    )
+    gate_artifacts: dict[str, object] = {
+        "input_actuation_record": {
+            "file": input_artifact_file.name,
+            "sha256": hashlib.sha256(input_artifact_file.read_bytes()).hexdigest(),
+            "description": "Physical input proof.",
+        }
+    }
+    if include_sync_artifact:
+        gate_artifacts["synchronization_record"] = {
+            "file": sync_artifact_file.name,
+            "sha256": hashlib.sha256(sync_artifact_file.read_bytes()).hexdigest(),
+            "description": "Clock synchronization proof.",
+        }
+    manifest_document: dict[str, object] = {
+        "schema_version": "vibescreen.evidence/v1",
+        "run_id": "phase0-sync-input-package",
+        "latency_kind": "input",
+        "transport": "usb",
+        "measurement_method": "synchronized-clock",
+        "gate_profile": "input-p95-sub50",
+        "evidence_provenance": {
+            "source": "real-device-capture",
+            "collection_context": "bench input capture with synchronized clocks",
+            "operator_assertion": "This package records retained physical input evidence.",
+            "current_base": {
+                "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+                "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+                "dirty": False,
+            },
+        },
+        "synchronization": {
+            "host_clock_source": "macOS monotonic clock",
+            "device_clock_source": "Android elapsedRealtimeNanos",
+            "sync_procedure": "retained round-trip calibration",
+            "before_skew_ms": 1.2,
+            "after_skew_ms": 1.5,
+            "max_drift_ms": 0.8,
+            "input_timestamp_uncertainty_ms": 0.4,
+            "result_timestamp_uncertainty_ms": 0.0,
+            "total_error_budget_ms": 4.5,
+            "input_timestamp_method": (
+                "Android MotionEvent eventTime plus physical acquisition bound"
+            ),
+            "result_timestamp_method": "macOS visible result timestamp",
+        },
+        "samples": {
+            "file": samples_file.name,
+            "format": "csv",
+            "sha256": hashlib.sha256(samples_file.read_bytes()).hexdigest(),
+            "annotation_method": "direct-latency-ms",
+            "annotator": "bench annotator",
+        },
+        "device": {
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "codename": "pacific",
+            "os_version": "Android 16 / SDK 36",
+            "sdk": 36,
+            "build_fingerprint": "nubia/pacific/pacific:16/test-keys",
+        },
+        "host": {"model": "Mac16,8", "macos_version": "26.4.1"},
+        "build": {
+            "repository_revision": "b9070c0b558aaf9dbe6f3e39a98359ea53f7ad71",
+            "source_tree": "c1a2b3c4d5e6f7890abcdeffedcba09876543210",
+            "source_dirty": False,
+            "host_artifact": "Vibe Screen.app sha256 retained in commands.txt",
+            "host_artifact_sha256": "a" * 64,
+            "host_artifact_provenance": "codesign and sha256 retained in commands.txt",
+            "client_artifact": "app-debug.apk sha256 retained in commands.txt",
+            "client_artifact_sha256": "b" * 64,
+            "client_artifact_provenance": "APK sha256 retained in commands.txt",
+        },
+        "measurement_setup": {
+            "stimulus": "physical touch on Android screen",
+            "start_event_definition": "Android physical input timestamp",
+            "end_event_definition": "visible Mac-side result timestamp",
+            "lighting": "n/a",
+            "mounting": "n/a",
+            "clock_domain": "synchronized-host-device-clocks",
+            "notes": "Synchronized-clock input package.",
+        },
+        "gate_artifacts": gate_artifacts,
+    }
+    if mutate_manifest is not None:
+        mutate_manifest(manifest_document)
+    manifest_file.write_text(json.dumps(manifest_document), encoding="utf-8")
+
+    latency_file = repo / latency_path
+    latency_file.parent.mkdir(parents=True, exist_ok=True)
+    latency_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "vibescreen.evidence/v1",
+                "kind": "latency_evidence_gate",
+                "status": "complete",
+                "derivation_status": "complete",
+                "verdict": "pass",
+                "latency_kind": "input",
+                "transport": "usb",
+                "measurement_method": "synchronized-clock",
+                "gate": {
+                    "profile": "input-p95-sub50",
+                    "can_close_performance_gate": True,
+                    "summary_verdict": "pass",
+                    "threshold_ms": 50.0,
+                    "observed_ms": 22.4,
+                    "observed_with_uncertainty_ms": 26.9,
+                    "sample_count": 5,
+                    "min_sample_count": 5,
+                    "requires_external_hardware": True,
+                    "reasons": [],
+                },
+                "source": {"manifest": "docs/evidence/sync-latency-manifest.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return latency_path
+
+
 def write_host_rss_gate_evidence(
     repo: Path,
     *,
@@ -558,12 +705,99 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 ["telemetry_and_latency_archive"],
             )
             issues = summary["blocking_required_gates"][0]["issues"]
-            self.assertIn(
-                "telemetry_and_latency_archive pass requires at least one passing formal latency_evidence_gate report in evidence_paths",
+            self.assertTrue(
+                any(
+                    "formal latency_evidence_gate report whose source.manifest "
+                    "revalidates retained raw external-camera media or "
+                    "synchronized-clock physical-input proof"
+                    in issue
+                    for issue in issues
+                ),
                 issues,
             )
             self.assertIn(
                 "telemetry_and_latency_archive pass requires at least one passing android_usb_live_smoke report with stream telemetry and decoder counters in evidence_paths",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_summary_only_latency_artifact(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            summary_path = Path("docs/evidence/latency-summary-only.json")
+            summary_file = repo / summary_path
+            summary_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "glass_to_glass",
+                        "status": "complete",
+                        "latency_kind": "glass-to-glass",
+                        "measurement_method": "external-camera",
+                        "gate": {"can_close_performance_gate": True},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            gate["evidence_paths"] = [
+                summary_path.as_posix(),
+                "docs/evidence/android-usb-live-smoke.json",
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any("latency summary artifacts are summary-only" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_diagnostic_only_telemetry(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            diagnostic_path = Path("docs/evidence/host-stage-telemetry.json")
+            diagnostic_file = repo / diagnostic_path
+            diagnostic_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "telemetry_stage_latency",
+                        "status": "informational",
+                        "latency_kind": "telemetry-stage",
+                        "measurement_method": "host-telemetry",
+                        "gate": {"can_close_performance_gate": False},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate = gate_by_id(manifest, "telemetry_and_latency_archive")
+            gate["evidence_paths"] = [
+                diagnostic_path.as_posix(),
+                "docs/evidence/android-usb-live-smoke.json",
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "telemetry diagnostic artifacts are informational only" in issue
+                    for issue in issues
+                ),
                 issues,
             )
 
@@ -579,7 +813,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 json.dumps(
                     {
                         "schema_version": "vibescreen.evidence/v1",
-                        "kind": "latency_preflight",
+                        "kind": "latency_gate_preflight",
                         "gate_profiles": [
                             {
                                 "profile": "usb-glass-to-glass-sub50",
@@ -603,6 +837,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
             issues = summary["blocking_required_gates"][0]["issues"]
             self.assertTrue(
                 any("formal latency_evidence_gate report" in issue for issue in issues)
+            )
+            self.assertTrue(
+                any(
+                    "latency preflight artifacts record readiness only" in issue
+                    for issue in issues
+                ),
+                issues,
             )
             self.assertTrue(
                 any("android_usb_live_smoke report" in issue for issue in issues)
@@ -722,6 +963,11 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 lambda record: record["gate"].__setitem__("observed_with_uncertainty_ms", 50.1),
                 "formal latency report gate.observed_with_uncertainty_ms must not exceed gate.threshold_ms",
             ),
+            (
+                "does_not_require_external_hardware",
+                lambda record: record["gate"].__setitem__("requires_external_hardware", False),
+                "formal latency report gate.requires_external_hardware must be true",
+            ),
         )
         for _name, mutate, expected_issue in cases:
             with self.subTest(_name):
@@ -762,7 +1008,138 @@ class Phase0StableReleaseTest(unittest.TestCase):
             self.assertEqual(summary["aggregate_verdict"], "insufficient")
             issues = summary["blocking_required_gates"][0]["issues"]
             self.assertIn(
-                "docs/evidence/latency-evidence-usb.json: formal latency report source.manifest docs/evidence/latency-manifest.json must exist",
+                "docs/evidence/latency-evidence-usb.json: formal latency report "
+                "source.manifest docs/evidence/latency-manifest.json must exist",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_missing_raw_camera_media(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            (repo / "docs/evidence/raw-camera-capture.mov").unlink()
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "retained raw external-camera media or synchronized-clock physical-input proof"
+                    in issue
+                    and "recording.raw_video does not exist" in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_missing_synchronized_clock_proof(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            write_synchronized_clock_latency_evidence(
+                repo,
+                include_sync_artifact=False,
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "synchronized-clock physical-input proof" in issue
+                    and "gate_artifacts.synchronization_record is required" in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_accepts_synchronized_clock_input_proof(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            write_synchronized_clock_latency_evidence(repo)
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            telemetry_gate = next(
+                gate
+                for gate in summary["gate_summaries"]
+                if gate["id"] == "telemetry_and_latency_archive"
+            )
+            self.assertEqual(telemetry_gate["issues"], [])
+            self.assertTrue(telemetry_gate["can_close"])
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_synchronized_clock_large_budget(self) -> None:
+        def set_large_budget(document: dict[str, object]) -> None:
+            synchronization = document["synchronization"]
+            assert isinstance(synchronization, dict)
+            synchronization["total_error_budget_ms"] = 5.0
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            write_synchronized_clock_latency_evidence(
+                repo,
+                mutate_manifest=set_large_budget,
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any("total_error_budget_ms must be less than 5 ms" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_telemetry_latency_archive_rejects_zero_motionevent_uncertainty(self) -> None:
+        def clear_motion_event_uncertainty(document: dict[str, object]) -> None:
+            synchronization = document["synchronization"]
+            assert isinstance(synchronization, dict)
+            synchronization["input_timestamp_uncertainty_ms"] = 0.0
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            write_synchronized_clock_latency_evidence(
+                repo,
+                mutate_manifest=clear_motion_event_uncertainty,
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any("non-zero physical touch acquisition uncertainty" in issue for issue in issues),
                 issues,
             )
 

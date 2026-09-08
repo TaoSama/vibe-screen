@@ -52,8 +52,9 @@ It must demonstrate:
 - HEVC rejection selects H.264 explicitly; it never silently changes codec.
 - A USB disconnect reconnects and no frame from the prior `session_epoch` is
   rendered afterward.
-- Raw telemetry and external-camera latency samples are archived with toolchain
-  versions and exact host/client commit.
+- Internal telemetry is archived for diagnosis, while external-latency closure
+  requires raw external-camera samples or synchronized-clock physical-input proof
+  with toolchain versions and exact host/client commit.
 
 ## Environment gates
 

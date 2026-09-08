@@ -1261,6 +1261,19 @@ Latency evidence is split by what the measurement can prove:
   latency is spent. These summaries are informational and cannot close
   glass-to-glass or input latency gates.
 
+The Phase 0 `telemetry_and_latency_archive` gate intentionally keeps diagnostic
+telemetry separate from external latency proof. A closing archive must cite a
+repo-local formal `latency_evidence_gate` JSON report whose `source.manifest`
+revalidates the retained package, plus the matching Android USB live-smoke
+telemetry report. Raw latency summaries, telemetry-stage summaries, preflight
+JSON, screenshots, screen recordings, decoder counters, or prose-only summaries
+can explain a run, but cannot replace the formal report. For external-camera
+claims, that revalidated package must retain the raw camera media, same-footage
+sample annotations, artifact hashes, device/build identity, and profile-specific
+transport proof. For synchronized-clock input claims, it must retain physical
+input actuation proof, visible Mac-side result proof, the synchronization record,
+and a total synchronization error budget below 5 ms.
+
 For glass-to-glass, prepare a CSV with either `latency_ms`, or
 `start_frame,end_frame,camera_fps` from one external-camera recording, then
 summarize it:
