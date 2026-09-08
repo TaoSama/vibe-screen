@@ -1,0 +1,2 @@
+command=lsof -nP -iTCP:54321 -sTCP:LISTEN
+status=1

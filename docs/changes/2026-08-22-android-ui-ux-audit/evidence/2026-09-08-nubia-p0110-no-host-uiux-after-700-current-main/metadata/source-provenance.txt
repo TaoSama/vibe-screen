@@ -1,0 +1,10 @@
+repository=TaoSama/vibe-screen
+worktree=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/006b/vibe-screen
+branch=codex/p0110-no-host-uiux-after-700-current-main
+base_head=be950a5e4e6c7415800f284b368d4b8cf6db3be8
+origin_main=be950a5e4e6c7415800f284b368d4b8cf6db3be8
+base_subject=test: require macOS compatibility row for phase0 aggregate (#700)
+date=2026-09-08
+date_time=2026-09-08T22:15:20+0800
+timezone=Asia/Shanghai
+local_change=Refreshes Nubia P0110 no-Host Android UI/UX instrumentation and focused control-surface JVM evidence after current main advanced through PR #700.

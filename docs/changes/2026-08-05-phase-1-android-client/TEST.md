@@ -1139,3 +1139,27 @@ controls appear.
 This does not claim a Host session, Protocol v1 negotiation, streaming/video
 decode, reconnect, clipboard/file-transfer product flow, TCC readiness, or
 Xiaomi 13/fuxi evidence. The device identity must remain Nubia P0110 / pacific.
+
+## 2026-09-08 Nubia P0110 no-Host UI/UX after-700 current-main refresh
+
+Evidence:
+[../2026-08-22-android-ui-ux-audit/evidence/2026-09-08-nubia-p0110-no-host-uiux-after-700-current-main/](../2026-08-22-android-ui-ux-audit/evidence/2026-09-08-nubia-p0110-no-host-uiux-after-700-current-main/README.md).
+
+Status remains Android-client UI/UX evidence only. The run refreshed from
+current origin/main at be950a5e4e6c7415800f284b368d4b8cf6db3be8, installed and
+ran focused Android instrumentation on the connected Nubia P0110 / pacific /
+Android 16 / SDK 36 while no product tcp:54321 ADB reverse or local Host
+listener was present.
+
+The retained instrumentation XML and HTML report cover 87/87 passing no-Host
+UI/UX tests for disconnected connection guidance, Settings, control bar,
+clipboard confirmation dialogs, file-transfer offer and outgoing preflight
+dialogs, Internet pairing/profile-import dialogs, QR scanner layout,
+connection-state accessibility, Internet control state colors, gesture
+preferences, narrow portrait, landscape, and large-text boundaries. Focused JVM
+contracts add 19/19 passing control-surface guard checks for clipboard and
+file-transfer side-effect boundaries.
+
+This does not claim a Host session, Protocol v1 negotiation, streaming/video
+decode, reconnect, clipboard/file-transfer product flow, TCC readiness, or
+Xiaomi 13/fuxi evidence. The device identity must remain Nubia P0110 / pacific.
