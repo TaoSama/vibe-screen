@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "a11d91d8256bc10beb2e6ca3dc005a15f438bf01",
+    "base_commit": "939472bf2bb59e76fce46e4ac176aefd05e61d7c",
     "base_ref": "origin/main",
     "audit_date": "2026-09-08",
     "owner": "Vibe Screen core team",
@@ -14,25 +14,28 @@
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'",
     "queried_at": "2026-09-08",
     "state": "open",
-    "open_pr_numbers": []
+    "open_pr_numbers": [
+      702
+    ]
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=697)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=703)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 697
+      "max": 703
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-08-after-697-current-main-gate-blocked/merged-prs-568-697.jsonl",
-    "audited_source_commit": "a11d91d8256bc10beb2e6ca3dc005a15f438bf01",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-701-current-main-gate-blocked/merged-prs-568-703.jsonl",
+    "audited_source_commit": "939472bf2bb59e76fce46e4ac176aefd05e61d7c",
     "excluded_pr_numbers": [
       568,
       576,
       627,
       646,
-      655
+      655,
+      702
     ]
   },
   "readme_guard": {
@@ -138,11 +141,14 @@
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-blocked/macos-hardware-compatibility-gate.json",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-blocked/README.md",
         "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/macos-hardware-compatibility-gate.json",
-        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md"
+        "docs/changes/2026-08-21-host-signing-tcc-preflight/evidence/2026-08-31-macos-host-compatibility-current-base-codex-task-blocked/README.md",
+        "tools/vibescreen_evidence/macos_hardware_compatibility.py",
+        "tools/vibescreen_evidence/phase0_stable_release.py"
       ],
       "owner_prs": [],
       "blockers": [
         "The published current-base macos-hardware-compatibility-gate summaries for Mac16,8 readiness are blocked, not passing.",
+        "The aggregate now requires at least one formal macOS Host compatibility row with verdict pass, a retained same-bundle gate_input artifact, required artifact roles, and repository_commit matching this manifest base before this gate can close.",
         "Read-only Screen Recording, Accessibility, and Microphone TCC rows are not proven for a stable signed Host whose csreq, TCC auth_reason, bundle id, install path, pinned signing leaf, canonical designated requirement, and source provenance satisfy the hardened current-source gate.",
         "Full macOS checks, packaged runtime launch, Protocol v1 stream, input smoke, and reconnect evidence are missing for that row.",
         "Intel Macs, additional Apple silicon models, macOS builds, and display topologies still require exact-row passing evidence before support claims."
@@ -179,12 +185,13 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/HeartbeatTelemetryReporter.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/DecoderTelemetryAccumulatorTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/HeartbeatTelemetryReporterTest.kt",
+        "tools/vibescreen_evidence/latency_artifact_text.py",
         "tools/vibescreen_evidence/latency_evidence.py",
         "tools/vibescreen_evidence/latency_manifest.py"
       ],
       "owner_prs": [],
       "blockers": [
-        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656 and PR #671 further harden the formal latency/telemetry archive validators so malformed, insufficient, or non-revalidating latency packages fail closed; this is evidence-tool hardening only.",
+        "PR #557 adds Android stream telemetry counters for dropped frames, decoder latency, session epoch, wire mode, and heartbeat source with focused JVM coverage, but these counters are diagnostic/source readiness only. PR #656, PR #671, and PR #701 further harden the formal latency/telemetry archive validators so malformed, insufficient, non-revalidating, or textually non-closing latency packages fail closed; this is evidence-tool hardening only.",
         "The tightened current-base latency gate remains blocked readiness; no external-camera latency sample package, raw camera media, annotated sample set, or synchronized-clock physical-input proof exists for the Phase 0 evidence archive."
       ]
     },

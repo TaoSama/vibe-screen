@@ -1,0 +1,19 @@
+1580d23c812ac74f7f49754b62f4622a779f3d31
+939472bf2bb59e76fce46e4ac176aefd05e61d7c
+939472bf2bb59e76fce46e4ac176aefd05e61d7c is ancestor of HEAD
+1580d23c8 docs: refresh phase0 aggregate after PR 703
+4b306f463 docs: redact retained PR 699 serial in aggregate evidence
+343837b47 docs: refresh phase0 aggregate after PR 700
+939472bf2 Harden latency artifact closure checks (#701)
+0fbe6e7fc test: refresh P0110 no-Host UI/UX evidence after 700 (#703)
+be950a5e4 test: require macOS compatibility row for phase0 aggregate (#700)
+aec6c27d9 test(evidence): require macos compatibility artifact roles (#699)
+6132bbad8 docs: refresh phase0 aggregate after PR 697 (#698)
+a11d91d82 Harden file-transfer product E2E evidence gates (#697)
+88e632f95 test(evidence): harden clipboard product e2e gate (#696)
+6c5bcaf8e test(evidence): harden native pointer HID gate
+a02cf7cae test(evidence): harden telemetry latency archive gate (#694)
+d27a9dddb Harden Host RSS readiness gate evidence binding
+f80fb8077 docs: refresh P0110 no-host UIUX evidence after 691 (#692)
+693b90a19 Harden controller runtime evidence gate (#691)
+2acb60fe1 Harden macOS Host compatibility runtime gate (#690)
