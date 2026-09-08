@@ -36,6 +36,12 @@ from tools.tests.test_macos_hardware_compatibility import (
 from vibescreen_evidence.macos_hardware_compatibility import (
     summarize as summarize_macos_hardware_compatibility,
 )
+from vibescreen_evidence.native_pointer_hid import (
+    summarize as summarize_native_pointer_hid,
+)
+from vibescreen_evidence.controller_runtime import (
+    summarize as summarize_controller_runtime,
+)
 
 
 MODULE = "vibescreen_evidence.phase0_stable_release"
@@ -664,9 +670,148 @@ def write_macos_hardware_compatibility_evidence(
     return output_path
 
 
+def write_native_pointer_hid_evidence(
+    repo: Path,
+    *,
+    output_path: str = "docs/evidence/native-pointer-hid/native-pointer-hid-summary.json",
+    mutate_report: Callable[[dict[str, object]], None] | None = None,
+) -> str:
+    evidence_dir = (repo / output_path).parent
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    for artifact_name in (
+        "result.json",
+        "dumpsys-input.txt",
+        "android-logcat-native-pointer.txt",
+        "host-log-appended.txt",
+    ):
+        (evidence_dir / artifact_name).write_text(
+            f"{artifact_name} evidence\n", encoding="utf-8"
+        )
+    record: dict[str, object] = {
+        "status": "passed",
+        "reason": "All required native pointer evidence was observed.",
+        "device": {
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "device": "pacific",
+            "android_release": "16",
+            "sdk": "36",
+        },
+        "external_mouse_devices": [
+            {
+                "device_id": 11,
+                "name": "USB Mouse",
+                "sources": "MOUSE",
+                "is_external": "true",
+            }
+        ],
+        "required_pointer_events": ["move", "press", "release"],
+        "observed_android_pointer_events": ["move", "press", "release"],
+        "observed_android_pointer_device_ids_by_event": {
+            "move": [11],
+            "press": [11],
+            "release": [11],
+        },
+        "observed_host_pointer_events": ["move", "press", "release"],
+        "host_stable_signed_tcc_ready": True,
+        "visible_mac_result": "Mac cursor moved and primary click focused TextEdit.",
+        "android_logcat_bytes": 200,
+        "host_log_appended_bytes": 180,
+        "host_log": "host-log-appended.txt",
+    }
+    report = summarize_native_pointer_hid(
+        record, run_id="phase0-native-pointer", source_path=Path("result.json")
+    )
+    if mutate_report is not None:
+        mutate_report(report)
+    output_file = repo / output_path
+    output_file.write_text(json.dumps(report), encoding="utf-8")
+    return output_path
+
+
+def write_controller_runtime_evidence(
+    repo: Path,
+    *,
+    output_path: str = "docs/evidence/controller-runtime/controller-runtime-summary.json",
+    mutate_report: Callable[[dict[str, object]], None] | None = None,
+) -> str:
+    evidence_dir = (repo / output_path).parent
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    artifact_paths = [
+        "device-info.json",
+        "adb-devices.txt",
+        "dumpsys-package-apk.txt",
+        "dumpsys-input.txt",
+        "android-controller-logcat.txt",
+        "protocol-controller-envelopes.jsonl",
+        "controller-lifecycle.jsonl",
+        "host-codesign.txt",
+        "host-controller-availability.txt",
+        "mac-controller-observer.txt",
+        "neutral-release.txt",
+    ]
+    for artifact_path in artifact_paths:
+        (evidence_dir / artifact_path).write_text(
+            f"{artifact_path} evidence\n", encoding="utf-8"
+        )
+    record: dict[str, object] = {field: True for field in (
+        "device_identity_recorded",
+        "apk_identity_recorded",
+        "physical_controller_attached",
+        "android_controller_source_observed",
+        "protocol_controller_capability_negotiated",
+        "android_production_forwarding_observed",
+        "controller_connected_state_disconnected_observed",
+        "host_identity_signed",
+        "host_virtual_hid_entitlement_present",
+        "host_virtual_gamepad_available",
+        "mac_side_controller_response_observed",
+        "neutral_release_on_disconnect_observed",
+    )}
+    record["artifact_paths"] = artifact_paths
+    record["observation_artifacts"] = {
+        "device_identity_recorded": ["device-info.json", "adb-devices.txt"],
+        "apk_identity_recorded": ["dumpsys-package-apk.txt"],
+        "physical_controller_attached": ["dumpsys-input.txt"],
+        "android_controller_source_observed": [
+            "dumpsys-input.txt",
+            "android-controller-logcat.txt",
+        ],
+        "protocol_controller_capability_negotiated": [
+            "protocol-controller-envelopes.jsonl"
+        ],
+        "android_production_forwarding_observed": ["android-controller-logcat.txt"],
+        "controller_connected_state_disconnected_observed": [
+            "controller-lifecycle.jsonl"
+        ],
+        "host_identity_signed": ["host-codesign.txt"],
+        "host_virtual_hid_entitlement_present": ["host-codesign.txt"],
+        "host_virtual_gamepad_available": ["host-controller-availability.txt"],
+        "mac_side_controller_response_observed": ["mac-controller-observer.txt"],
+        "neutral_release_on_disconnect_observed": ["neutral-release.txt"],
+    }
+    report = summarize_controller_runtime(
+        record, run_id="phase0-controller-runtime"
+    )
+    if mutate_report is not None:
+        mutate_report(report)
+    output_file = repo / output_path
+    output_file.write_text(json.dumps(report), encoding="utf-8")
+    return output_path
+
+
 def attach_file_transfer_android_gate_evidence(manifest: dict[str, object], repo: Path) -> None:
     gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
         write_file_transfer_android_gate_evidence(repo)
+    ]
+
+
+def attach_hardware_runtime_gate_evidence(manifest: dict[str, object], repo: Path) -> None:
+    gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+        write_native_pointer_hid_evidence(repo)
+    ]
+    gate_by_id(manifest, "controller_runtime_acceptance")["evidence_paths"] = [
+        write_controller_runtime_evidence(repo)
     ]
 
 
@@ -719,6 +864,7 @@ def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[s
     gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
         write_clipboard_gate_evidence(repo)
     ]
+    attach_hardware_runtime_gate_evidence(manifest, repo)
     attach_file_transfer_android_gate_evidence(manifest, repo)
     add_merged_pr_snapshot(manifest, repo, audited_source_commit)
     return manifest
@@ -2029,6 +2175,258 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_native_pointer_hid_pass_requires_formal_summary(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "native_pointer_hid_mouse")
+            gate["evidence_paths"] = ["README.md"]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            native_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "native_pointer_hid_mouse"
+            )
+            self.assertIn(
+                "native_pointer_hid_mouse pass requires at least one passing formal "
+                "native_pointer_hid_acceptance report in evidence_paths",
+                native_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_passing_report_and_retained_artifacts(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_native_pointer_hid_evidence(
+                repo,
+                output_path="docs/evidence/native-pointer-missing-artifact/native-pointer-hid-summary.json",
+                mutate_report=lambda report: (
+                    report.__setitem__("verdict", "blocked"),
+                    report.__setitem__("can_close_native_pointer_hid_gate", False),
+                    report.__setitem__(
+                        "artifact_paths",
+                        [
+                            "dumpsys-input.txt",
+                            "android-logcat-native-pointer.txt",
+                            "missing-host-log.txt",
+                        ],
+                    ),
+                ),
+            )
+            gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            native_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "native_pointer_hid_mouse"
+            )
+            self.assertIn(
+                f"{report_path}: formal native pointer HID report verdict must be pass",
+                native_gate["issues"],
+            )
+            self.assertIn(
+                f"{report_path}: formal native pointer HID report can_close_native_pointer_hid_gate must be true",
+                native_gate["issues"],
+            )
+            self.assertTrue(
+                any("missing retained artifact missing-host-log.txt" in issue for issue in native_gate["issues"]),
+                native_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_host_log_artifact(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_native_pointer_hid_evidence(
+                repo,
+                output_path="docs/evidence/native-pointer-no-host-log/native-pointer-hid-summary.json",
+                mutate_report=lambda report: report.__setitem__(
+                    "artifact_paths",
+                    ["result.json", "dumpsys-input.txt", "android-logcat-native-pointer.txt"],
+                ),
+            )
+            gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            native_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "native_pointer_hid_mouse"
+            )
+            self.assertIn(
+                f"{report_path}: formal native pointer HID report artifact_paths missing host-log-appended.txt",
+                native_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_complete_observations(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_native_pointer_hid_evidence(
+                repo,
+                output_path="docs/evidence/native-pointer-missing-observation/native-pointer-hid-summary.json",
+                mutate_report=lambda report: report.__setitem__("observations", {}),
+            )
+            gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            native_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "native_pointer_hid_mouse"
+            )
+            self.assertTrue(
+                any(
+                    "formal native pointer HID report observations missing required field(s):" in issue
+                    and "android_move_forwarded" in issue
+                    for issue in native_gate["issues"]
+                ),
+                native_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_controller_runtime_pass_requires_formal_summary(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "controller_runtime_acceptance")
+            gate["evidence_paths"] = ["README.md"]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            controller_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "controller_runtime_acceptance"
+            )
+            self.assertIn(
+                "controller_runtime_acceptance pass requires at least one passing "
+                "formal controller_runtime_acceptance report in evidence_paths",
+                controller_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_controller_runtime_pass_requires_passing_report_and_retained_artifacts(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_controller_runtime_evidence(
+                repo,
+                output_path="docs/evidence/controller-missing-artifact/controller-runtime-summary.json",
+                mutate_report=lambda report: (
+                    report.__setitem__("verdict", "insufficient"),
+                    report.__setitem__("can_close_runtime_gate", False),
+                    report.__setitem__("artifact_paths", ["device-info.json", "missing-controller-log.txt"]),
+                    report.__setitem__(
+                        "observation_artifacts",
+                        {"android_production_forwarding_observed": ["missing-controller-log.txt"]},
+                    ),
+                ),
+            )
+            gate_by_id(manifest, "controller_runtime_acceptance")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            controller_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "controller_runtime_acceptance"
+            )
+            self.assertIn(
+                f"{report_path}: formal controller runtime report verdict must be pass",
+                controller_gate["issues"],
+            )
+            self.assertIn(
+                f"{report_path}: formal controller runtime report can_close_runtime_gate must be true",
+                controller_gate["issues"],
+            )
+            self.assertTrue(
+                any("missing retained artifact missing-controller-log.txt" in issue for issue in controller_gate["issues"]),
+                controller_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_controller_runtime_pass_requires_observation_artifacts_to_be_retained(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_controller_runtime_evidence(
+                repo,
+                output_path="docs/evidence/controller-unretained-observation/controller-runtime-summary.json",
+                mutate_report=lambda report: report.__setitem__(
+                    "observation_artifacts",
+                    {"android_production_forwarding_observed": ["unretained-controller-log.txt"]},
+                ),
+            )
+            gate_by_id(manifest, "controller_runtime_acceptance")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            controller_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "controller_runtime_acceptance"
+            )
+            self.assertIn(
+                f"{report_path}: formal controller runtime report observation_artifacts.android_production_forwarding_observed must reference retained artifact_paths: unretained-controller-log.txt",
+                controller_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
     def test_host_rss_pass_rejects_malformed_report_sections(self) -> None:
         cases = (
             (
@@ -2280,6 +2678,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_hardware_runtime_gate_evidence(manifest, repo)
             attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(manifest, repo, merge_commit)
 
@@ -2483,6 +2882,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_hardware_runtime_gate_evidence(manifest, repo)
             attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(
                 manifest, repo, merge_commit, excluded_pr_numbers=[159, 160], maximum=160
@@ -2684,6 +3084,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_hardware_runtime_gate_evidence(manifest, repo)
             attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(manifest, repo, base_commit)
             gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
@@ -2733,6 +3134,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_hardware_runtime_gate_evidence(manifest, repo)
             attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(manifest, repo, base_commit)
 

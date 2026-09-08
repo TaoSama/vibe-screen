@@ -30,6 +30,13 @@ from .host_rss_gate import (
 from .macos_hardware_compatibility import (
     summarize as summarize_macos_hardware_compatibility,
 )
+from .controller_runtime import (
+    BOOLEAN_FIELDS as CONTROLLER_RUNTIME_BOOLEAN_FIELDS,
+)
+from .native_pointer_hid import (
+    BOOLEAN_FIELDS as NATIVE_POINTER_HID_BOOLEAN_FIELDS,
+    GATE_KIND as NATIVE_POINTER_HID_GATE_KIND,
+)
 from .file_transfer_android_smoke import (
     EXPECTED_DIRECTION_ENDPOINTS as FILE_TRANSFER_EXPECTED_DIRECTION_ENDPOINTS,
     REQUIRED_CANCEL_ARTIFACT_ROLES as FILE_TRANSFER_REQUIRED_CANCEL_ARTIFACT_ROLES,
@@ -48,6 +55,8 @@ STATUS_OPEN = "open"
 EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID = "telemetry_and_latency_archive"
 HOST_RSS_2H_NO_GROWTH_GATE_ID = "host_rss_2h_no_growth"
+NATIVE_POINTER_HID_MOUSE_GATE_ID = "native_pointer_hid_mouse"
+CONTROLLER_RUNTIME_ACCEPTANCE_GATE_ID = "controller_runtime_acceptance"
 MACOS_HOST_HARDWARE_COMPATIBILITY_MATRIX_GATE_ID = (
     "macos_host_hardware_compatibility_matrix"
 )
@@ -56,6 +65,7 @@ FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID = "file_transfer_android_product_e2e"
 LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
 ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
 MACOS_HOST_COMPATIBILITY_MATRIX_ROW_KIND = "macos_host_compatibility_matrix_row"
+CONTROLLER_RUNTIME_ACCEPTANCE_KIND = "controller_runtime_acceptance"
 CLIPBOARD_E2E_GATE_KIND = "android_macos_clipboard_e2e_gate"
 FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND = "android_macos_file_transfer_smoke"
 CLIPBOARD_E2E_REQUIRED_CHECKS = (
@@ -301,6 +311,18 @@ def _gate_summary(
                     evidence_paths=evidence_paths,
                     repo_root=repo_root,
                     manifest_source_commit=manifest_source_commit,
+                )
+            )
+        elif gate_id == NATIVE_POINTER_HID_MOUSE_GATE_ID:
+            issues.extend(
+                _native_pointer_hid_mouse_issues(
+                    evidence_paths=evidence_paths, repo_root=repo_root
+                )
+            )
+        elif gate_id == CONTROLLER_RUNTIME_ACCEPTANCE_GATE_ID:
+            issues.extend(
+                _controller_runtime_acceptance_issues(
+                    evidence_paths=evidence_paths, repo_root=repo_root
                 )
             )
         elif gate_id == CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID:
@@ -725,6 +747,347 @@ def _macos_host_compatibility_failure_details(record: dict[str, Any]) -> list[st
             if isinstance(detail, str) and detail.strip():
                 details.append(detail)
     return details
+
+
+def _native_pointer_hid_mouse_issues(
+    *, evidence_paths: Sequence[str], repo_root: Path | None
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "native_pointer_hid_mouse pass requires repo_root to verify "
+            "formal native pointer evidence paths"
+        ]
+
+    valid_native_pointer_report = False
+    issues: list[str] = []
+    candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(
+            repository,
+            raw_path,
+            gate_id=NATIVE_POINTER_HID_MOUSE_GATE_ID,
+        )
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                f"native_pointer_hid_mouse evidence path {raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(
+            evidence_path,
+            raw_path,
+            gate_id=NATIVE_POINTER_HID_MOUSE_GATE_ID,
+        )
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        if record.get("kind") != NATIVE_POINTER_HID_GATE_KIND:
+            candidate_issues.append(
+                f"{raw_path}: formal native pointer HID report kind must be "
+                f"{NATIVE_POINTER_HID_GATE_KIND}"
+            )
+            continue
+        report_issues = _formal_native_pointer_hid_report_issues(
+            record, raw_path, evidence_path=evidence_path
+        )
+        if report_issues:
+            candidate_issues.extend(report_issues)
+        else:
+            valid_native_pointer_report = True
+
+    if not valid_native_pointer_report:
+        issues.append(
+            "native_pointer_hid_mouse pass requires at least one passing formal "
+            "native_pointer_hid_acceptance report in evidence_paths"
+        )
+        issues.extend(candidate_issues)
+    return issues
+
+
+def _formal_native_pointer_hid_report_issues(
+    record: dict[str, Any], path: str, *, evidence_path: Path
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(
+            f"{path}: formal native pointer HID report schema_version must be {SCHEMA_VERSION}"
+        )
+    if record.get("kind") != NATIVE_POINTER_HID_GATE_KIND:
+        issues.append(
+            f"{path}: formal native pointer HID report kind must be {NATIVE_POINTER_HID_GATE_KIND}"
+        )
+    if record.get("profile") != "native-pointer-hid-mouse":
+        issues.append(
+            f"{path}: formal native pointer HID report profile must be native-pointer-hid-mouse"
+        )
+    if record.get("verdict") != STATUS_PASS:
+        issues.append(f"{path}: formal native pointer HID report verdict must be pass")
+    if record.get("can_close_native_pointer_hid_gate") is not True:
+        issues.append(
+            f"{path}: formal native pointer HID report can_close_native_pointer_hid_gate must be true"
+        )
+    if record.get("requires_physical_mouse") is not True:
+        issues.append(
+            f"{path}: formal native pointer HID report requires_physical_mouse must be true"
+        )
+    if record.get("synthetic_adb_pointer_is_not_physical_hid_evidence") is not True:
+        issues.append(
+            f"{path}: formal native pointer HID report synthetic_adb_pointer_is_not_physical_hid_evidence must be true"
+        )
+    issues.extend(
+        _required_observations_issues(
+            record.get("observations"),
+            NATIVE_POINTER_HID_BOOLEAN_FIELDS,
+            f"{path}: formal native pointer HID report observations",
+        )
+    )
+    for field in ("missing_requirements", "inconsistent_observations", "blocking_reasons"):
+        value = record.get(field, [])
+        if not isinstance(value, list):
+            issues.append(f"{path}: formal native pointer HID report {field} must be a list")
+        elif value:
+            issues.append(
+                f"{path}: formal native pointer HID report pass must not include {field}"
+            )
+    artifact_paths = record.get("artifact_paths", [])
+    if not isinstance(artifact_paths, list) or not all(isinstance(item, str) for item in artifact_paths):
+        issues.append(f"{path}: formal native pointer HID report artifact_paths must be a list of strings")
+    else:
+        issues.extend(
+            _evidence_relative_artifact_path_issues(
+                artifact_paths,
+                f"{path}: formal native pointer HID report artifact_paths",
+                evidence_dir=evidence_path.parent,
+            )
+        )
+        required_artifact_names = {
+            "dumpsys-input.txt",
+            "android-logcat-native-pointer.txt",
+            "host-log-appended.txt",
+        }
+        missing_artifacts = [
+            name for name in required_artifact_names if name not in artifact_paths
+        ]
+        if missing_artifacts:
+            issues.append(
+                f"{path}: formal native pointer HID report artifact_paths missing "
+                + ", ".join(sorted(missing_artifacts))
+            )
+    return issues
+
+
+def _controller_runtime_acceptance_issues(
+    *, evidence_paths: Sequence[str], repo_root: Path | None
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "controller_runtime_acceptance pass requires repo_root to verify "
+            "formal controller runtime evidence paths"
+        ]
+
+    valid_controller_report = False
+    issues: list[str] = []
+    candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(
+            repository,
+            raw_path,
+            gate_id=CONTROLLER_RUNTIME_ACCEPTANCE_GATE_ID,
+        )
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                f"controller_runtime_acceptance evidence path {raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(
+            evidence_path,
+            raw_path,
+            gate_id=CONTROLLER_RUNTIME_ACCEPTANCE_GATE_ID,
+        )
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        if record.get("kind") != CONTROLLER_RUNTIME_ACCEPTANCE_KIND:
+            candidate_issues.append(
+                f"{raw_path}: formal controller runtime report kind must be "
+                f"{CONTROLLER_RUNTIME_ACCEPTANCE_KIND}"
+            )
+            continue
+        report_issues = _formal_controller_runtime_report_issues(
+            record, raw_path, evidence_path=evidence_path
+        )
+        if report_issues:
+            candidate_issues.extend(report_issues)
+        else:
+            valid_controller_report = True
+
+    if not valid_controller_report:
+        issues.append(
+            "controller_runtime_acceptance pass requires at least one passing "
+            "formal controller_runtime_acceptance report in evidence_paths"
+        )
+        issues.extend(candidate_issues)
+    return issues
+
+
+def _formal_controller_runtime_report_issues(
+    record: dict[str, Any], path: str, *, evidence_path: Path
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(
+            f"{path}: formal controller runtime report schema_version must be {SCHEMA_VERSION}"
+        )
+    if record.get("kind") != CONTROLLER_RUNTIME_ACCEPTANCE_KIND:
+        issues.append(
+            f"{path}: formal controller runtime report kind must be {CONTROLLER_RUNTIME_ACCEPTANCE_KIND}"
+        )
+    if record.get("profile") != "controller-runtime-acceptance":
+        issues.append(
+            f"{path}: formal controller runtime report profile must be controller-runtime-acceptance"
+        )
+    if record.get("verdict") != STATUS_PASS:
+        issues.append(f"{path}: formal controller runtime report verdict must be pass")
+    if record.get("can_close_runtime_gate") is not True:
+        issues.append(
+            f"{path}: formal controller runtime report can_close_runtime_gate must be true"
+        )
+    if record.get("requires_external_hardware") is not True:
+        issues.append(
+            f"{path}: formal controller runtime report requires_external_hardware must be true"
+        )
+    if record.get("requires_entitled_host") is not True:
+        issues.append(
+            f"{path}: formal controller runtime report requires_entitled_host must be true"
+        )
+    issues.extend(
+        _required_observations_issues(
+            record.get("observations"),
+            CONTROLLER_RUNTIME_BOOLEAN_FIELDS,
+            f"{path}: formal controller runtime report observations",
+        )
+    )
+    for field in ("missing_requirements", "inconsistent_observations", "blocking_reasons"):
+        value = record.get(field, [])
+        if not isinstance(value, list):
+            issues.append(f"{path}: formal controller runtime report {field} must be a list")
+        elif value:
+            issues.append(
+                f"{path}: formal controller runtime report pass must not include {field}"
+            )
+    artifact_paths = record.get("artifact_paths", [])
+    if not isinstance(artifact_paths, list) or not all(isinstance(item, str) for item in artifact_paths):
+        issues.append(f"{path}: formal controller runtime report artifact_paths must be a list of strings")
+    elif not artifact_paths:
+        issues.append(f"{path}: formal controller runtime report artifact_paths must be non-empty")
+    else:
+        issues.extend(
+            _evidence_relative_artifact_path_issues(
+                artifact_paths,
+                f"{path}: formal controller runtime report artifact_paths",
+                evidence_dir=evidence_path.parent,
+            )
+        )
+    observation_artifacts = record.get("observation_artifacts")
+    if not isinstance(observation_artifacts, dict) or not observation_artifacts:
+        issues.append(
+            f"{path}: formal controller runtime report observation_artifacts must be a non-empty object"
+        )
+    elif isinstance(artifact_paths, list):
+        retained = {item for item in artifact_paths if isinstance(item, str)}
+        for field, paths in observation_artifacts.items():
+            if not isinstance(field, str):
+                issues.append(
+                    f"{path}: formal controller runtime report observation_artifacts keys must be strings"
+                )
+                continue
+            if not isinstance(paths, list) or not all(isinstance(item, str) for item in paths):
+                issues.append(
+                    f"{path}: formal controller runtime report observation_artifacts.{field} must be a list of strings"
+                )
+                continue
+            missing = sorted(set(paths) - retained)
+            if missing:
+                issues.append(
+                    f"{path}: formal controller runtime report observation_artifacts.{field} must reference retained artifact_paths: "
+                    + ", ".join(missing)
+                )
+    return issues
+
+
+def _required_observations_issues(
+    observations: Any, required_fields: Sequence[str], label: str
+) -> list[str]:
+    if not isinstance(observations, dict):
+        return [f"{label} must be an object"]
+    missing = [field for field in required_fields if field not in observations]
+    failing = [
+        field
+        for field in required_fields
+        if field in observations and observations.get(field) is not True
+    ]
+    issues: list[str] = []
+    if missing:
+        issues.append(f"{label} missing required field(s): " + ", ".join(missing))
+    if failing:
+        issues.append(f"{label} must all be true: " + ", ".join(failing))
+    return issues
+
+
+def _evidence_relative_artifact_path_issues(
+    artifact_paths: Sequence[str], label: str, *, evidence_dir: Path
+) -> list[str]:
+    issues: list[str] = []
+    seen_paths: set[str] = set()
+    try:
+        resolved_evidence_dir = evidence_dir.resolve()
+    except OSError as error:
+        return [f"{label} evidence directory cannot be read: {error}"]
+    for index, artifact in enumerate(artifact_paths):
+        artifact_label = f"{label}[{index}]"
+        if not artifact.strip():
+            issues.append(f"{artifact_label} must be non-empty")
+            continue
+        artifact_path = Path(artifact)
+        if artifact_path.is_absolute():
+            issues.append(f"{artifact_label} must be evidence-relative")
+            continue
+        if ".." in artifact_path.parts:
+            issues.append(f"{artifact_label} must stay inside the evidence bundle")
+            continue
+        normalized = artifact_path.as_posix()
+        if normalized in seen_paths:
+            issues.append(f"{artifact_label} must be distinct")
+        seen_paths.add(normalized)
+        try:
+            resolved_artifact = (resolved_evidence_dir / artifact_path).resolve(strict=True)
+            resolved_artifact.relative_to(resolved_evidence_dir)
+        except FileNotFoundError:
+            issues.append(f"{artifact_label} missing retained artifact {artifact}")
+            continue
+        except (OSError, RuntimeError, ValueError) as error:
+            issues.append(f"{artifact_label} cannot access retained artifact {artifact}: {error}")
+            continue
+        if not resolved_artifact.is_file():
+            issues.append(f"{artifact_label} missing retained artifact {artifact}")
+            continue
+        try:
+            if resolved_artifact.stat().st_size <= 0:
+                issues.append(f"{artifact_label} retained artifact {artifact} must be non-empty")
+        except OSError as error:
+            issues.append(f"{artifact_label} cannot stat retained artifact {artifact}: {error}")
+    return issues
 
 
 def _clipboard_android_macos_product_e2e_issues(
