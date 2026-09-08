@@ -29,11 +29,22 @@ ANDROID_CLIPBOARD_METHODS = (
     "setForegroundClipboardFromInstrumentationArgument",
     "assertForegroundClipboardMatchesInstrumentationArgument",
 )
+ANDROID_TO_MACOS_DIRECTION = "android_clipboardmanager_to_macos_nspasteboard"
+MACOS_TO_ANDROID_DIRECTION = "macos_nspasteboard_to_android_clipboardmanager"
+ANDROID_TO_MACOS_MARKER = "android-to-macos-marker-123"
+MACOS_TO_ANDROID_MARKER = "macos-to-android-marker-123"
+ANDROID_TO_MACOS_CHANGE_ID = "00112233445566778899aabbccddeeff"
+MACOS_TO_ANDROID_CHANGE_ID = "ffeeddccbbaa99887766554433221100"
+ANDROID_TO_MACOS_ORIGIN = "android-p0110-pacific"
+MACOS_TO_ANDROID_ORIGIN = "macos-host-current-source"
+ANDROID_TO_MACOS_EPOCH = 1
+MACOS_TO_ANDROID_EPOCH = 1
 
 
-def retained_artifact(role: str, path: str) -> dict[str, object]:
-    content = retained_artifact_content(path)
+def retained_artifact(direction: str, role: str, path: str) -> dict[str, object]:
+    content = retained_artifact_content(direction, role, path)
     return {
+        "direction": direction,
         "role": role,
         "path": path,
         "byte_length": len(content),
@@ -41,8 +52,67 @@ def retained_artifact(role: str, path: str) -> dict[str, object]:
     }
 
 
-def retained_artifact_content(path: str) -> bytes:
-    return f"retained product artifact: {path}\n".encode("utf-8")
+def retained_artifact_content(direction: str, role: str, path: str) -> bytes:
+    payload = direction_payload(direction)
+    if role == "destination_clipboard_write":
+        return str(payload["marker"]).encode("utf-8")
+    if role == "protocol_packets":
+        records = [
+            {
+                "event": "clipboard_offer",
+                "change_id_hex": payload["change_id_hex"],
+                "session_epoch": payload["session_epoch"],
+                "origin_device_id": payload["origin_device_id"],
+            },
+            {
+                "event": "clipboard_request",
+                "change_id_hex": payload["change_id_hex"],
+                "session_epoch": payload["session_epoch"],
+                "origin_device_id": payload["origin_device_id"],
+            },
+            {
+                "event": "clipboard_content",
+                "change_id_hex": payload["change_id_hex"],
+                "session_epoch": payload["session_epoch"],
+                "origin_device_id": payload["origin_device_id"],
+            },
+        ]
+        text = "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n"
+        return text.encode("utf-8")
+    return f"retained product artifact: direction={direction} role={role} path={path}\n".encode("utf-8")
+
+
+def direction_payload(direction: str) -> dict[str, object]:
+    if direction == ANDROID_TO_MACOS_DIRECTION:
+        marker = ANDROID_TO_MACOS_MARKER
+        return {
+            "marker": marker,
+            "change_id_hex": ANDROID_TO_MACOS_CHANGE_ID,
+            "origin_device_id": ANDROID_TO_MACOS_ORIGIN,
+            "session_epoch": ANDROID_TO_MACOS_EPOCH,
+            "sha256": hashlib.sha256(marker.encode("utf-8")).hexdigest(),
+            "byte_length": len(marker.encode("utf-8")),
+        }
+    marker = MACOS_TO_ANDROID_MARKER
+    return {
+        "marker": marker,
+        "change_id_hex": MACOS_TO_ANDROID_CHANGE_ID,
+        "origin_device_id": MACOS_TO_ANDROID_ORIGIN,
+        "session_epoch": MACOS_TO_ANDROID_EPOCH,
+        "sha256": hashlib.sha256(marker.encode("utf-8")).hexdigest(),
+        "byte_length": len(marker.encode("utf-8")),
+    }
+
+
+def retained_artifact_content_for_path(path: str) -> bytes:
+    if path.startswith("android-to-macos/"):
+        direction = ANDROID_TO_MACOS_DIRECTION
+    else:
+        direction = MACOS_TO_ANDROID_DIRECTION
+    role = Path(path).stem.replace("-", "_")
+    if role == "negative_boundary":
+        role = "negative_boundary_verification"
+    return retained_artifact_content(direction, role, path)
 
 
 def android_clipboard_success_log() -> str:
@@ -141,34 +211,36 @@ def lan_preflight(**overrides: object) -> dict[str, object]:
 
 
 def product_e2e(**overrides: object) -> dict[str, object]:
+    android_to_macos_payload = direction_payload(ANDROID_TO_MACOS_DIRECTION)
+    macos_to_android_payload = direction_payload(MACOS_TO_ANDROID_DIRECTION)
     android_artifacts = [
-        retained_artifact("source_clipboard_read", "android-to-macos/source-clipboard-read.txt"),
-        retained_artifact("sender_action", "android-to-macos/sender-action.txt"),
-        retained_artifact("receiver_approval", "android-to-macos/receiver-approval.txt"),
-        retained_artifact("protocol_packets", "android-to-macos/protocol-packets.jsonl"),
-        retained_artifact("destination_clipboard_write", "android-to-macos/destination-clipboard-write.txt"),
-        retained_artifact("final_verification", "android-to-macos/final-verification.txt"),
-        retained_artifact("negative_boundary_verification", "android-to-macos/negative-boundary.txt"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "source_clipboard_read", "android-to-macos/source-clipboard-read.txt"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "sender_action", "android-to-macos/sender-action.txt"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "receiver_approval", "android-to-macos/receiver-approval.txt"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "protocol_packets", "android-to-macos/protocol-packets.jsonl"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "destination_clipboard_write", "android-to-macos/destination-clipboard-write.txt"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "final_verification", "android-to-macos/final-verification.txt"),
+        retained_artifact(ANDROID_TO_MACOS_DIRECTION, "negative_boundary_verification", "android-to-macos/negative-boundary.txt"),
     ]
     macos_artifacts = [
-        retained_artifact("source_clipboard_read", "macos-to-android/source-clipboard-read.txt"),
-        retained_artifact("sender_action", "macos-to-android/sender-action.txt"),
-        retained_artifact("receiver_approval", "macos-to-android/receiver-approval.txt"),
-        retained_artifact("protocol_packets", "macos-to-android/protocol-packets.jsonl"),
-        retained_artifact("destination_clipboard_write", "macos-to-android/destination-clipboard-write.txt"),
-        retained_artifact("final_verification", "macos-to-android/final-verification.txt"),
-        retained_artifact("negative_boundary_verification", "macos-to-android/negative-boundary.txt"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "source_clipboard_read", "macos-to-android/source-clipboard-read.txt"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "sender_action", "macos-to-android/sender-action.txt"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "receiver_approval", "macos-to-android/receiver-approval.txt"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "protocol_packets", "macos-to-android/protocol-packets.jsonl"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "destination_clipboard_write", "macos-to-android/destination-clipboard-write.txt"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "final_verification", "macos-to-android/final-verification.txt"),
+        retained_artifact(MACOS_TO_ANDROID_DIRECTION, "negative_boundary_verification", "macos-to-android/negative-boundary.txt"),
     ]
     android_to_macos = {
         "transport": "usb",
-        "marker": "android-to-macos-marker-123",
-        "change_id_hex": "00112233445566778899aabbccddeeff",
-        "sha256": "a" * 64,
-        "origin_device_id": "android-p0110-pacific",
-        "byte_length": 28,
+        "marker": android_to_macos_payload["marker"],
+        "change_id_hex": android_to_macos_payload["change_id_hex"],
+        "sha256": android_to_macos_payload["sha256"],
+        "origin_device_id": android_to_macos_payload["origin_device_id"],
+        "byte_length": android_to_macos_payload["byte_length"],
         "mime_type": "text/plain",
-        "session_epoch": 1,
-        "final_marker": "android-to-macos-marker-123",
+        "session_epoch": android_to_macos_payload["session_epoch"],
+        "final_marker": android_to_macos_payload["marker"],
         "overwrite_marker": "android-to-macos-overwrite-123",
         "cancelled_marker": "android-to-macos-cancelled-123",
         "failed_marker": "android-to-macos-failed-123",
@@ -197,14 +269,14 @@ def product_e2e(**overrides: object) -> dict[str, object]:
     }
     macos_to_android = {
         "transport": "usb",
-        "marker": "macos-to-android-marker-123",
-        "change_id_hex": "ffeeddccbbaa99887766554433221100",
-        "sha256": "b" * 64,
-        "origin_device_id": "macos-host-current-source",
-        "byte_length": 28,
+        "marker": macos_to_android_payload["marker"],
+        "change_id_hex": macos_to_android_payload["change_id_hex"],
+        "sha256": macos_to_android_payload["sha256"],
+        "origin_device_id": macos_to_android_payload["origin_device_id"],
+        "byte_length": macos_to_android_payload["byte_length"],
         "mime_type": "text/plain",
-        "session_epoch": 1,
-        "final_marker": "macos-to-android-marker-123",
+        "session_epoch": macos_to_android_payload["session_epoch"],
+        "final_marker": macos_to_android_payload["marker"],
         "overwrite_marker": "macos-to-android-overwrite-123",
         "cancelled_marker": "macos-to-android-cancelled-123",
         "failed_marker": "macos-to-android-failed-123",
@@ -244,8 +316,8 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "synthetic": False,
         "offline_only": False,
         "directions": {
-            "android_clipboardmanager_to_macos_nspasteboard": dict(android_to_macos),
-            "macos_nspasteboard_to_android_clipboardmanager": dict(macos_to_android),
+            ANDROID_TO_MACOS_DIRECTION: dict(android_to_macos),
+            MACOS_TO_ANDROID_DIRECTION: dict(macos_to_android),
         },
     }
     document.update(overrides)
@@ -264,26 +336,24 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
     write_json(paths["usb"], usb_preflight())
     write_json(paths["lan"], lan_preflight())
     paths["android_log"].write_text(android_clipboard_success_log(), encoding="utf-8")
-    write_json(paths["product"], product_e2e())
-    for artifact_path in (
-        "android-to-macos/source-clipboard-read.txt",
-        "android-to-macos/sender-action.txt",
-        "android-to-macos/receiver-approval.txt",
-        "android-to-macos/protocol-packets.jsonl",
-        "android-to-macos/destination-clipboard-write.txt",
-        "android-to-macos/final-verification.txt",
-        "android-to-macos/negative-boundary.txt",
-        "macos-to-android/source-clipboard-read.txt",
-        "macos-to-android/sender-action.txt",
-        "macos-to-android/receiver-approval.txt",
-        "macos-to-android/protocol-packets.jsonl",
-        "macos-to-android/destination-clipboard-write.txt",
-        "macos-to-android/final-verification.txt",
-        "macos-to-android/negative-boundary.txt",
-    ):
-        path = root / artifact_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(retained_artifact_content(artifact_path))
+    product = product_e2e()
+    write_json(paths["product"], product)
+    directions = product["directions"]
+    assert isinstance(directions, dict)
+    for direction, direction_record in directions.items():
+        assert isinstance(direction, str)
+        assert isinstance(direction_record, dict)
+        retained_artifacts = direction_record["retained_artifacts"]
+        assert isinstance(retained_artifacts, list)
+        for artifact in retained_artifacts:
+            assert isinstance(artifact, dict)
+            role = artifact["role"]
+            artifact_path = artifact["path"]
+            assert isinstance(role, str)
+            assert isinstance(artifact_path, str)
+            path = root / artifact_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(retained_artifact_content(direction, role, artifact_path))
     return paths
 
 
@@ -1095,11 +1165,174 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[1].byte_length 1 must equal retained artifact size "
-            f"{len(retained_artifact_content('android-to-macos/sender-action.txt'))}",
+            f"{len(retained_artifact_content_for_path('android-to-macos/sender-action.txt'))}",
             result["blockers"],
         )
         self.assertIn(
             "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.retained_artifacts[1].sha256 must equal retained artifact SHA-256",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_destination_artifact_to_match_direction_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_to_macos["byte_length"] = 1
+            macos_to_android["sha256"] = "0" * 64
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.destination_clipboard_write artifact size "
+            f"{len(retained_artifact_content_for_path('android-to-macos/destination-clipboard-write.txt'))} must equal direction.byte_length 1",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.destination_clipboard_write artifact SHA-256 must equal direction.sha256",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_protocol_packets_to_match_direction_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                json.dumps(
+                    {
+                        "event": "clipboard_offer",
+                        "change_id_hex": "ffffffffffffffffffffffffffffffff",
+                        "session_epoch": 99,
+                        "origin_device_id": "other-origin",
+                    }
+                )
+                + "\nnot-json\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact must be JSONL; malformed line(s): [2]",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact missing event(s): clipboard_content, clipboard_request",
+            result["blockers"],
+        )
+        self.assertIn(
+            f"bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact must include change_id_hex {ANDROID_TO_MACOS_CHANGE_ID}",
+            result["blockers"],
+        )
+        self.assertIn(
+            f"bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact must include session_epoch {ANDROID_TO_MACOS_EPOCH}",
+            result["blockers"],
+        )
+        self.assertIn(
+            f"bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact must include origin_device_id {ANDROID_TO_MACOS_ORIGIN}",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_protocol_event_records_to_match_direction_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            records = [
+                {"event": "clipboard_offer"},
+                {"event": "clipboard_request"},
+                {"event": "clipboard_content"},
+                {
+                    "event": "unrelated_diagnostic",
+                    "change_id_hex": ANDROID_TO_MACOS_CHANGE_ID,
+                    "session_epoch": ANDROID_TO_MACOS_EPOCH,
+                    "origin_device_id": ANDROID_TO_MACOS_ORIGIN,
+                },
+            ]
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
+            "event record(s) must include matching change_id_hex, session_epoch, and origin_device_id: "
+            "clipboard_content, clipboard_offer, clipboard_request",
+            result["blockers"],
+        )
+
+    def test_product_e2e_rejects_boolean_protocol_event_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            payload = direction_payload(ANDROID_TO_MACOS_DIRECTION)
+            records = [
+                {
+                    "event": "clipboard_offer",
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                },
+                {
+                    "event": "clipboard_request",
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_epoch": True,
+                    "origin_device_id": payload["origin_device_id"],
+                },
+                {
+                    "event": "clipboard_content",
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                },
+            ]
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
+            "event record(s) must include matching change_id_hex, session_epoch, and origin_device_id: "
+            "clipboard_request",
             result["blockers"],
         )
 
@@ -1828,6 +2061,43 @@ class ClipboardE2EGateTests(unittest.TestCase):
         )
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts missing source_clipboard_read artifact",
+            result["blockers"],
+        )
+
+    def test_clipboard_retained_artifact_direction_must_match_parent_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(android_to_macos, dict)
+            retained_artifacts = android_to_macos["retained_artifacts"]
+            assert isinstance(retained_artifacts, list)
+            source_artifact = retained_artifacts[0]
+            receiver_artifact = retained_artifacts[2]
+            assert isinstance(source_artifact, dict)
+            assert isinstance(receiver_artifact, dict)
+            source_artifact.pop("direction")
+            receiver_artifact["direction"] = "macos_nspasteboard_to_android_clipboardmanager"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[0].direction must be android_clipboardmanager_to_macos_nspasteboard",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.retained_artifacts[2].direction must be android_clipboardmanager_to_macos_nspasteboard",
             result["blockers"],
         )
         self.assertIn(

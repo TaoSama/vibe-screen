@@ -222,14 +222,21 @@ Xcode / CI 环境执行后才能声称通过。
 
 ## E2E gate artifact hardening
 
-Current tooling requires each retained product artifact role to be backed by a
-distinct evidence-relative file, and each artifact entry must record a positive
+Current tooling requires each retained product artifact entry to name the exact
+transfer `direction`, name one required role, and back that role with a distinct
+evidence-relative file. Each artifact entry must also record a positive
 `byte_length` plus a 64-character SHA-256 digest that matches the retained file
-bytes. Summary-only placeholders, copied role files, missing artifact metadata,
-or edited artifact files therefore keep `clipboard-e2e-gate` blocked even when
-the surrounding JSON claims bidirectional product success. This is tooling
-hardening only; it does not create Host-backed Android `ClipboardManager` <->
-macOS `NSPasteboard` product evidence.
+bytes. The `destination_clipboard_write` artifact must also match the
+direction-level payload `byte_length` and SHA-256, so format-valid product JSON
+cannot point at unrelated retained bytes. The `protocol_packets` artifact is a
+session-aware evidence JSONL, not a raw protobuf JSON dump, and each
+clipboard offer/request/content record must include the direction's 32-character
+hex change ID, integer session epoch, and origin device ID. Summary-only placeholders, copied
+role files, missing direction/role metadata, mismatched destination payload
+metadata, malformed packet logs, or edited artifact files therefore keep
+`clipboard-e2e-gate` blocked even when the surrounding JSON claims bidirectional
+product success. This is tooling hardening only; it does not create Host-backed
+Android `ClipboardManager` <-> macOS `NSPasteboard` product evidence.
 
 ## 2026-08-22 Nubia P0110 readiness rerun
 
@@ -270,7 +277,11 @@ before it can close the gate:
   clipboard endpoints, verified session ID and session epoch, verified origin device ID,
   16-byte change ID, SHA-256 digest, exact `text/plain` MIME, strict UTF-8,
   bounded byte length, receiver approval, no send/write failure, cleanup
-  completion, final digest match, and distinct final marker matches.
+  completion, final digest match, distinct final marker matches, and per-role
+  retained artifacts whose declared direction matches the parent transfer
+  direction and whose destination-write bytes match the direction-level payload
+  size and digest. Retained protocol packet JSONL must include the same change
+  ID, session epoch, origin device ID, and clipboard offer/request/content events.
 
 The 2026-08-27 run confirmed the device identity as nubia P0110 / pacific /
 Android 16 / SDK 36 and reran the local Android ClipboardManager smoke on
