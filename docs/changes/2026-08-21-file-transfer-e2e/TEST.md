@@ -116,7 +116,11 @@ the existing `file-transfer-android-smoke` and
 `phase3-webrtc-bulk-product-flow` child gate reports when they exist, or records
 blocked placeholders when they do not. It does not run ADB, start the Host, or
 inspect TCC/Keychain state. Missing reports, wrong-kind child reports, and child
-reports that lack their required pass flag remain blocked.
+reports that lack their required pass flag remain blocked. The aggregate also
+revalidates child safety summaries: the Android child must explicitly reject
+no-Host UI, summary-only, synthetic, and offline-only closure and must mark
+retained destination-file bytes as required; the WebRTC child must explicitly
+reject USB/LAN substitution and relay-preflight-only closure.
 
 A pass requires both child gates to pass from retained product evidence. The
 Phase 0 local file-transfer boundary is the Android USB/LAN child gate. Nubia
@@ -171,28 +175,41 @@ file-offer/request/content packets, explicit sender action, receiver approval,
 saved remote file, verified session ID and session epoch, verified 16-byte
 transfer ID, observed progress, exact source/destination file endpoints, final
 SHA-256 equality, a distinct file name and payload digest per direction, and
-cancel/cleanup evidence. Nubia P0110 evidence must remain labeled as nubia
-P0110 / pacific / Android 16 / SDK 36 and must not be relabeled as Xiaomi/fuxi.
+cancel/cleanup evidence. Device identity must match one of the accepted Android
+evidence devices: nubia or ZTE P0110 / pacific / Android 16 / SDK 36, or Xiaomi
+13 / 2211133C / fuxi / Android 16 / SDK 36. Evidence must keep its actual
+device identity and must not relabel one device as the other.
 
 The retained `file-transfer-product-e2e.json` must use
 `schema_version=vibescreen.evidence/v1` and include both
 `android_to_macos_file_transfer` and `macos_to_android_file_transfer`. Each
 direction must include evidence-relative `retained_artifacts` entries for
-`sender_action`, `receiver_approval`, `protocol_packets`, `remote_file`, and
-`sha256_verification`; the files must exist under the same evidence bundle and
-be non-empty, with each role backed by a distinct file. The `remote_file`
-artifact must retain the actual destination file bytes, not only a checksum or
-summary, and its byte length and SHA-256 digest must match the direction's
-`byte_length` and `sha256` fields. Each direction must also record the exact
-source and destination endpoints:
+`source_file`, `sender_action`, `receiver_approval`, `protocol_packets`,
+`remote_file`, and `sha256_verification`; the files must exist under the same
+evidence bundle and be non-empty, with each role backed by a distinct file. The
+`source_file` and `remote_file` artifacts must retain the actual source and
+destination file bytes, not only a checksum or summary, and their byte length
+and SHA-256 digest must match the direction's `byte_length` and `sha256`
+fields. The sender, receiver, and SHA-256 artifacts must record affirmative
+sender action, receiver approval, and `sha256 verified` entries that match the
+direction's endpoint, transfer ID, and digest fields. The `protocol_packets`
+artifact must be JSONL with distinct structured `file_offer`, `file_request`,
+`file_chunk`, and `file_complete` events for the matching transfer ID and
+session epoch. Each direction must also record the exact source and destination
+endpoints:
 `android_saf_selected_file` -> `macos_saved_file`, or
 `macos_selected_file` -> `android_downloads_file`.
 The `cancel_cleanup` block must similarly retain `cancel_request` and
 `cleanup_state` artifacts. Every required role across both directions and
 `cancel_cleanup` must be backed by a distinct file. Absolute paths, `..`
 escapes, symlink escapes outside the bundle, missing artifact files, duplicate
-role files, reused role files, offline fixtures, and synthetic logs cannot close
-the gate.
+role files, reused role files, no-Host UI-only records, summary-only records,
+offline fixtures, and synthetic logs cannot close the gate. The product record
+must also set `host_backed_product_session`, `real_macos_host`,
+`real_android_device`, `same_session_bidirectional_transfer`,
+`host_readiness_bound_to_session`, `device_identity_bound_to_session`, and
+`destination_file_bytes_retained` to true, while setting `no_host_ui_only` and
+`summary_only` to false.
 
 The `android_file_transfer_smoke` subcheck names the Android file-transfer UI
 instrumentation log only. A passing subcheck proves the visible file-transfer

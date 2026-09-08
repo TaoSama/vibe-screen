@@ -53,6 +53,16 @@ def write_json(path: Path, document: dict[str, object]) -> None:
     path.write_text(json.dumps(document), encoding="utf-8")
 
 
+def artifact_by_role(direction: dict[str, object], role: str) -> dict[str, object]:
+    artifacts = direction["retained_artifacts"]
+    assert isinstance(artifacts, list)
+    for artifact in artifacts:
+        assert isinstance(artifact, dict)
+        if artifact.get("role") == role:
+            return artifact
+    raise AssertionError(f"missing artifact role {role}")
+
+
 def host_readiness(**overrides: object) -> dict[str, object]:
     document: dict[str, object] = {
         "schema_version": "vibescreen.host-readiness/v1",
@@ -125,6 +135,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "source_endpoint": "android_saf_selected_file",
         "destination_endpoint": "macos_saved_file",
         "retained_artifacts": [
+            {"role": "source_file", "path": "android-to-macos/source-file.bin"},
             {"role": "sender_action", "path": "android-to-macos/sender-action.txt"},
             {"role": "receiver_approval", "path": "android-to-macos/receiver-approval.txt"},
             {"role": "protocol_packets", "path": "android-to-macos/protocol-packets.jsonl"},
@@ -140,6 +151,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
     macos_to_android["source_endpoint"] = "macos_selected_file"
     macos_to_android["destination_endpoint"] = "android_downloads_file"
     macos_to_android["retained_artifacts"] = [
+        {"role": "source_file", "path": "macos-to-android/source-file.bin"},
         {"role": "sender_action", "path": "macos-to-android/sender-action.txt"},
         {"role": "receiver_approval", "path": "macos-to-android/receiver-approval.txt"},
         {"role": "protocol_packets", "path": "macos-to-android/protocol-packets.jsonl"},
@@ -149,6 +161,15 @@ def product_e2e(**overrides: object) -> dict[str, object]:
     document: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "kind": "android_macos_file_transfer_product_e2e",
+        "host_backed_product_session": True,
+        "real_macos_host": True,
+        "real_android_device": True,
+        "same_session_bidirectional_transfer": True,
+        "host_readiness_bound_to_session": True,
+        "device_identity_bound_to_session": True,
+        "destination_file_bytes_retained": True,
+        "no_host_ui_only": False,
+        "summary_only": False,
         "device": {
             "manufacturer": "nubia",
             "model": "P0110",
@@ -178,6 +199,49 @@ def product_e2e(**overrides: object) -> dict[str, object]:
     return document
 
 
+def write_direction_artifacts(
+    root: Path,
+    directory: str,
+    *,
+    payload: bytes,
+    source_endpoint: str,
+    destination_endpoint: str,
+    transfer_id_hex: str,
+    session_epoch: int,
+    sha256: str,
+) -> None:
+    direction_dir = root / directory
+    direction_dir.mkdir(parents=True, exist_ok=True)
+    (direction_dir / "source-file.bin").write_bytes(payload)
+    (direction_dir / "remote-file.bin").write_bytes(payload)
+    (direction_dir / "sender-action.txt").write_text(
+        f"sender_action source={source_endpoint} transfer_id_hex={transfer_id_hex}\n",
+        encoding="utf-8",
+    )
+    (direction_dir / "receiver-approval.txt").write_text(
+        f"receiver_approval approved destination={destination_endpoint} transfer_id_hex={transfer_id_hex}\n",
+        encoding="utf-8",
+    )
+    (direction_dir / "protocol-packets.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "event": event,
+                    "transfer_id_hex": transfer_id_hex,
+                    "session_epoch": session_epoch,
+                }
+            )
+            + "\n"
+            for event in ("file_offer", "file_request", "file_chunk", "file_complete")
+        ),
+        encoding="utf-8",
+    )
+    (direction_dir / "sha256-verification.txt").write_text(
+        f"sha256 verified {sha256}\n",
+        encoding="utf-8",
+    )
+
+
 def write_pass_inputs(root: Path) -> dict[str, Path]:
     paths = {
         "host": root / "host-readiness.json",
@@ -191,23 +255,33 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
     write_json(paths["lan"], lan_preflight())
     paths["android_log"].write_text(file_transfer_control_bar_success_log(), encoding="utf-8")
     write_json(paths["product"], product_e2e())
+    write_direction_artifacts(
+        root,
+        "android-to-macos",
+        payload=b"p0110 android-to-macos payload\n",
+        source_endpoint="android_saf_selected_file",
+        destination_endpoint="macos_saved_file",
+        transfer_id_hex="00112233445566778899aabbccddeeff",
+        session_epoch=7,
+        sha256=hashlib.sha256(b"p0110 android-to-macos payload\n").hexdigest(),
+    )
+    write_direction_artifacts(
+        root,
+        "macos-to-android",
+        payload=b"p0110 macos-to-android payload\n",
+        source_endpoint="macos_selected_file",
+        destination_endpoint="android_downloads_file",
+        transfer_id_hex="ffeeddccbbaa99887766554433221100",
+        session_epoch=7,
+        sha256=hashlib.sha256(b"p0110 macos-to-android payload\n").hexdigest(),
+    )
     for artifact_path in (
-        "android-to-macos/sender-action.txt",
-        "android-to-macos/receiver-approval.txt",
-        "android-to-macos/protocol-packets.jsonl",
-        "android-to-macos/sha256-verification.txt",
-        "macos-to-android/sender-action.txt",
-        "macos-to-android/receiver-approval.txt",
-        "macos-to-android/protocol-packets.jsonl",
-        "macos-to-android/sha256-verification.txt",
         "cancel-cleanup/cancel-request.txt",
         "cancel-cleanup/cleanup-state.txt",
     ):
         path = root / artifact_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"retained product artifact: {artifact_path}\n", encoding="utf-8")
-    (root / "android-to-macos" / "remote-file.bin").write_bytes(b"p0110 android-to-macos payload\n")
-    (root / "macos-to-android" / "remote-file.bin").write_bytes(b"p0110 macos-to-android payload\n")
     return paths
 
 
@@ -312,6 +386,37 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.transport trusted_lan is not ready",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_same_transport_and_session_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["transport"] = "trusted_lan"
+            macos_to_android["session_epoch"] = 8
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: direction transports must match for same-session bidirectional product evidence",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: direction session_epoch values must match for same-session bidirectional product evidence",
             result["blockers"],
         )
 
@@ -657,7 +762,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "device_identity: missing real P0110 device identity evidence from USB, trusted-LAN, or product evidence",
+            "device_identity: missing real Android device identity evidence from USB, trusted-LAN, or product evidence",
             result["blockers"],
         )
 
@@ -861,6 +966,10 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
         self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing source_file artifact",
+            result["blockers"],
+        )
+        self.assertIn(
             "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing remote_file artifact",
             result["blockers"],
         )
@@ -887,8 +996,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             assert isinstance(android_to_macos, dict)
             retained_artifacts = android_to_macos["retained_artifacts"]
             assert isinstance(retained_artifacts, list)
-            sender_artifact = retained_artifacts[0]
-            assert isinstance(sender_artifact, dict)
+            sender_artifact = artifact_by_role(android_to_macos, "sender_action")
             sender_artifact["path"] = "android-to-macos/sender-action-link.txt"
             write_json(paths["product"], document)
 
@@ -902,7 +1010,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].path must stay inside the evidence bundle",
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[1].path must stay inside the evidence bundle",
             result["blockers"],
         )
 
@@ -922,7 +1030,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].path retained artifact android-to-macos/protocol-packets.jsonl must be non-empty",
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[3].path retained artifact android-to-macos/protocol-packets.jsonl must be non-empty",
             result["blockers"],
         )
 
@@ -973,6 +1081,161 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_source_file_artifact_sha256_must_match_direction_sha256(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "source-file.bin").write_bytes(b"wrong-source")
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.source_file artifact size 12 must equal byte_length 31",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.source_file artifact SHA-256 must equal direction.sha256",
+            result["blockers"],
+        )
+
+    def test_protocol_packets_artifact_must_be_jsonl_with_transfer_events(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                "not json\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact must be JSONL; malformed line(s): [1]",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact missing event(s): file_chunk, file_complete, file_offer, file_request",
+            result["blockers"],
+        )
+
+    def test_protocol_packets_artifact_requires_distinct_structured_event_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+                json.dumps(
+                    {
+                        "event": "file_offer file_request file_chunk file_complete",
+                        "transfer_id_hex": "00112233445566778899aabbccddeeff",
+                        "session_epoch": 7,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.protocol_packets artifact missing event(s): file_chunk, file_complete, file_offer, file_request",
+            result["blockers"],
+        )
+
+    def test_sha256_verification_artifact_must_include_direction_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "sha256-verification.txt").write_text(
+                "sha256 verified another digest\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        directions = product_e2e()["directions"]
+        assert isinstance(directions, dict)
+        android_to_macos = directions["android_to_macos_file_transfer"]
+        assert isinstance(android_to_macos, dict)
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.sha256_verification artifact must record "
+            f"sha256 verified {android_to_macos['sha256']}",
+            result["blockers"],
+        )
+
+    def test_retained_role_artifacts_reject_contradictory_summary_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "android-to-macos" / "sender-action.txt").write_text(
+                "sender_action not performed source=android_saf_selected_file "
+                "transfer_id_hex=00112233445566778899aabbccddeeff\n",
+                encoding="utf-8",
+            )
+            (root / "android-to-macos" / "receiver-approval.txt").write_text(
+                "receiver_approval NOT approved destination=macos_saved_file "
+                "transfer_id_hex=00112233445566778899aabbccddeeff\n",
+                encoding="utf-8",
+            )
+            directions = product_e2e()["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            (root / "android-to-macos" / "sha256-verification.txt").write_text(
+                f"sha256 mismatch {android_to_macos['sha256']}\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.sender_action artifact must record an affirmative sender_action",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.receiver_approval artifact must record receiver_approval approved",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_to_macos_file_transfer.sha256_verification artifact must record "
+            f"sha256 verified {android_to_macos['sha256']}",
+            result["blockers"],
+        )
+
     def test_retained_artifact_paths_must_be_distinct_per_direction(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -982,10 +1245,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             assert isinstance(directions, dict)
             android_to_macos = directions["android_to_macos_file_transfer"]
             assert isinstance(android_to_macos, dict)
-            retained_artifacts = android_to_macos["retained_artifacts"]
-            assert isinstance(retained_artifacts, list)
-            receiver_artifact = retained_artifacts[1]
-            assert isinstance(receiver_artifact, dict)
+            receiver_artifact = artifact_by_role(android_to_macos, "receiver_approval")
             receiver_artifact["path"] = "android-to-macos/sender-action.txt"
             write_json(paths["product"], document)
 
@@ -999,7 +1259,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[1].path must be distinct from sender_action artifact path",
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].path must be distinct from sender_action artifact path",
             result["blockers"],
         )
 
@@ -1012,10 +1272,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             assert isinstance(directions, dict)
             macos_to_android = directions["macos_to_android_file_transfer"]
             assert isinstance(macos_to_android, dict)
-            retained_artifacts = macos_to_android["retained_artifacts"]
-            assert isinstance(retained_artifacts, list)
-            sender_artifact = retained_artifacts[0]
-            assert isinstance(sender_artifact, dict)
+            sender_artifact = artifact_by_role(macos_to_android, "sender_action")
             sender_artifact["path"] = "android-to-macos/sender-action.txt"
             write_json(paths["product"], document)
 
@@ -1029,7 +1286,7 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "bidirectional_product_e2e: macos_to_android_file_transfer.retained_artifacts[0].path for sender_action must be distinct from android_to_macos_file_transfer sender_action artifact path",
+            "bidirectional_product_e2e: macos_to_android_file_transfer.retained_artifacts[1].path for sender_action must be distinct from android_to_macos_file_transfer sender_action artifact path",
             result["blockers"],
         )
 
@@ -1072,10 +1329,8 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             assert isinstance(android_to_macos, dict)
             retained_artifacts = android_to_macos["retained_artifacts"]
             assert isinstance(retained_artifacts, list)
-            unknown_artifact = retained_artifacts[0]
-            duplicate_artifact = retained_artifacts[2]
-            assert isinstance(unknown_artifact, dict)
-            assert isinstance(duplicate_artifact, dict)
+            unknown_artifact = artifact_by_role(android_to_macos, "source_file")
+            duplicate_artifact = artifact_by_role(android_to_macos, "protocol_packets")
             unknown_artifact["role"] = "transfer_summary"
             duplicate_artifact["role"] = "receiver_approval"
             write_json(paths["product"], document)
@@ -1090,15 +1345,15 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
-            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].role must be one of sender_action, receiver_approval, protocol_packets, remote_file, sha256_verification",
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[0].role must be one of source_file, sender_action, receiver_approval, protocol_packets, remote_file, sha256_verification",
             result["blockers"],
         )
         self.assertIn(
-            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[2].role duplicates receiver_approval artifact",
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts[3].role duplicates receiver_approval artifact",
             result["blockers"],
         )
         self.assertIn(
-            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing sender_action artifact",
+            "bidirectional_product_e2e: android_to_macos_file_transfer.retained_artifacts missing source_file artifact",
             result["blockers"],
         )
 
@@ -1184,6 +1439,88 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn("bidirectional_product_e2e: synthetic or offline-only file-transfer evidence cannot close this gate", result["blockers"])
 
+    def test_product_e2e_requires_host_backed_context_not_no_host_or_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            document["host_backed_product_session"] = False
+            document["same_session_bidirectional_transfer"] = False
+            document["destination_file_bytes_retained"] = False
+            document["no_host_ui_only"] = True
+            document["summary_only"] = True
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence host_backed_product_session must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence same_session_bidirectional_transfer must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence destination_file_bytes_retained must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence no_host_ui_only must be false",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence summary_only must be false",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_all_product_context_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            for field in (
+                "real_macos_host",
+                "real_android_device",
+                "host_readiness_bound_to_session",
+                "device_identity_bound_to_session",
+            ):
+                document.pop(field)
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence real_macos_host must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence real_android_device must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence host_readiness_bound_to_session must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: product evidence device_identity_bound_to_session must be true",
+            result["blockers"],
+        )
+
     def test_product_e2e_requires_current_schema_version(self) -> None:
         for schema_version in (None, "vibescreen.evidence/v0"):
             with self.subTest(schema_version=schema_version):
@@ -1233,6 +1570,40 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "pass")
         self.assertTrue(result["gate_closed"])
         self.assertEqual(result["not_proven"], [])
+        self.assertTrue(result["safety"]["no_host_ui_evidence_do_not_close_gate"])
+        self.assertTrue(result["safety"]["summary_only_evidence_do_not_close_gate"])
+        self.assertTrue(result["safety"]["retained_remote_file_bytes_required"])
+        self.assertTrue(result["product_e2e_closure"]["host_backed_product_session_required"])
+        self.assertTrue(result["product_e2e_closure"]["same_session_bidirectional_transfer_required"])
+
+    def test_xiaomi_fuxi_identity_is_allowed_when_preflight_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            xiaomi_identity = {
+                "manufacturer": "xiaomi",
+                "model": "2211133C",
+                "codename": "fuxi",
+                "android_release": "16",
+                "sdk": 36,
+            }
+            write_json(
+                paths["usb"],
+                usb_preflight(device={"identity": {**xiaomi_identity, "device": "fuxi"}}),
+            )
+            write_json(paths["product"], product_e2e(device=xiaomi_identity))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "pass")
+        identity_gate = next(item for item in result["checks"] if item["name"] == "device_identity")
+        self.assertEqual(identity_gate["status"], "pass")
 
     def test_p0110_identity_guard_rejects_xiaomi_relabel(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -1261,7 +1632,44 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
 
         self.assertEqual(result["verdict"], "fail")
         identity_gate = next(item for item in result["checks"] if item["name"] == "device_identity")
-        self.assertIn("file-transfer evidence for this run must identify nubia P0110 / pacific", identity_gate["reasons"])
+        self.assertTrue(
+            any("mixed or relabeled identity fields are rejected" in reason for reason in identity_gate["reasons"]),
+            identity_gate["reasons"],
+        )
+
+    def test_product_and_transport_device_identities_must_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["usb"],
+                usb_preflight(
+                    device={
+                        "identity": {
+                            "manufacturer": "xiaomi",
+                            "model": "2211133C",
+                            "device": "fuxi",
+                            "android_release": "16",
+                            "sdk": 36,
+                        }
+                    }
+                ),
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "fail")
+        identity_gate = next(item for item in result["checks"] if item["name"] == "device_identity")
+        self.assertTrue(
+            any("usb_preflight reported" in reason for reason in identity_gate["reasons"]),
+            identity_gate["reasons"],
+        )
 
     def test_output_redacts_serial_home_and_tcc_terms(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:

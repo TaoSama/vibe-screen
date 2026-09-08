@@ -52,6 +52,22 @@ def child_summary(child_id: str, *, verdict: str, can_close: bool = False, **ove
         "gate_closed": verdict == "pass",
         "can_close": can_close,
         "path": f"{defaults['source_gate']}-gate.json",
+        "safety": {
+            "offline_tests_do_not_close_gate": True,
+            "synthetic_evidence_do_not_close_gate": True,
+            "no_host_ui_evidence_do_not_close_gate": True,
+            "summary_only_evidence_do_not_close_gate": True,
+            "retained_remote_file_bytes_required": True,
+            "relay_preflight_does_not_close_product_e2e": True,
+            "usb_lan_evidence_do_not_close_internet_gate": True,
+        },
+        "product_e2e_closure": {
+            "host_backed_product_session_required": True,
+            "same_session_bidirectional_transfer_required": True,
+            "retained_remote_file_bytes_required": True,
+            "summary_only_evidence_rejected": True,
+            "no_host_ui_evidence_rejected": True,
+        },
         "blockers": [],
         "not_proven": [],
     }
@@ -285,6 +301,65 @@ class FileTransferBulkCurrentBaseGateTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "blocked")
         self.assertFalse(report["can_close_webrtc_bulk_product_flow"])
         self.assertIn("unproven requirements", " ".join(report["checks"][f"child.{WEBRTC_CHILD_ID}"]["evidence"]))
+
+    def test_android_child_pass_without_product_closure_summary_blocks_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = make_manifest(root)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+            assert isinstance(child, dict)
+            child.update(child_summary(ANDROID_CHILD_ID, verdict="pass", can_close=True))
+            child.pop("product_e2e_closure")
+            mark_child_pass(manifest, WEBRTC_CHILD_ID)
+            report = derive_gate(manifest)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_android_usb_lan_file_transfer"])
+        self.assertFalse(report["can_close_current_base_aggregate"])
+        self.assertIn(
+            "child gate summary product_e2e_closure.host_backed_product_session_required must be true",
+            " ".join(report["checks"][f"child.{ANDROID_CHILD_ID}"]["evidence"]),
+        )
+
+    def test_android_child_pass_without_no_host_safety_summary_blocks_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = make_manifest(root)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+            assert isinstance(child, dict)
+            child.update(child_summary(ANDROID_CHILD_ID, verdict="pass", can_close=True))
+            safety = child["safety"]
+            assert isinstance(safety, dict)
+            safety.pop("no_host_ui_evidence_do_not_close_gate")
+            mark_child_pass(manifest, WEBRTC_CHILD_ID)
+            report = derive_gate(manifest)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_android_usb_lan_file_transfer"])
+        self.assertIn(
+            "child gate summary safety.no_host_ui_evidence_do_not_close_gate must be true",
+            " ".join(report["checks"][f"child.{ANDROID_CHILD_ID}"]["evidence"]),
+        )
+
+    def test_webrtc_child_pass_without_substitution_safety_summary_blocks_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            manifest = make_manifest(root)
+            mark_child_pass(manifest, ANDROID_CHILD_ID)
+            child = manifest["child_gates"][WEBRTC_CHILD_ID]
+            assert isinstance(child, dict)
+            child.update(child_summary(WEBRTC_CHILD_ID, verdict="pass", can_close=True))
+            safety = child["safety"]
+            assert isinstance(safety, dict)
+            safety.pop("usb_lan_evidence_do_not_close_internet_gate")
+            report = derive_gate(manifest)
+
+        self.assertEqual(report["verdict"], "blocked")
+        self.assertFalse(report["can_close_webrtc_bulk_product_flow"])
+        self.assertIn(
+            "child gate summary safety.usb_lan_evidence_do_not_close_internet_gate must be true",
+            " ".join(report["checks"][f"child.{WEBRTC_CHILD_ID}"]["evidence"]),
+        )
 
     def test_failed_child_gate_makes_aggregate_fail(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
