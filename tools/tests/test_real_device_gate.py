@@ -18,7 +18,11 @@ from vibescreen_evidence.real_device_gate import (
     summarize_requested_gates,
     write_json,
 )
-from tools.tests.test_host_rss_gate import write_exact_window_report, write_inputs
+from tools.tests.test_host_rss_gate import (
+    write_exact_window_report,
+    write_host_readiness,
+    write_inputs,
+)
 
 
 class RealDeviceGateTests(unittest.TestCase):
@@ -253,7 +257,7 @@ class RealDeviceGateTests(unittest.TestCase):
         self.assertEqual(document["result"], "blocked")
         self.assertIn(
             "Host RSS gate requires --soak-summary, --soak-samples, "
-            "and --host-rss-exact-window-report",
+            "--host-rss-exact-window-report, and --host-readiness",
             "\n".join(document["insufficiencies"]),
         )
 
@@ -262,6 +266,7 @@ class RealDeviceGateTests(unittest.TestCase):
             root = Path(directory)
             summary, samples = write_inputs(root)
             exact_window = write_exact_window_report(root)
+            host_readiness = write_host_readiness(root)
             gate_output = root / "host-rss-gate.json"
 
             requested, blockers, insufficiencies = summarize_requested_gates(
@@ -270,6 +275,7 @@ class RealDeviceGateTests(unittest.TestCase):
                 soak_summary=summary,
                 soak_samples=samples,
                 host_rss_gate_output=gate_output,
+                host_readiness=host_readiness,
                 latency_reports=[],
                 input_summaries=[],
                 host_rss_exact_window_report=exact_window,

@@ -150,7 +150,11 @@ launchctl unsetenv MallocStackLoggingNoCompact
 MiB、后半程最后两个四分之一窗口的均值增量不高于 2 MiB；并且同一窗口的原生
 Host telemetry 必须证明流仍在活动、heartbeat 被接受、帧队列和编码器/最新帧保留
 均在固定容量内且没有 frame-queue drop。任一输入不足均为
-`insufficient`，不得宣称通过。流与客户端指标也须
+`insufficient`，不得宣称通过。正式 gate 还必须消费同一 current-source Host 的
+`scripts/macos_dev_host.py readiness` JSON：`can_start_host_rss_gate=true`、稳定签名
+leaf 匹配、安装 Host 的 source commit/tree 与干净当前 checkout 一致、
+Screen Recording/Accessibility/Microphone TCC 均可读且绑定到该 Host identity、
+listener 已观测、readiness probe 保持只读，否则同样 fail-closed。流与客户端指标也须
 继续通过，才关闭 Phase 1 门禁。若仍增长，再检查按帧/秒累积且未逐出的集合、按
 generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 NSData
 的路径。
@@ -237,6 +241,13 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   正式门禁会 fail closed 为 `insufficient` / `fail`，避免用覆盖不足或路径退化的 telemetry
   支撑 RSS no-growth 结论。本轮只做离线 fixture hardening，没有启动 Host GUI、TCC 路径、
   ADB reverse、短窗诊断或正式两小时 soak，Host RSS no-growth gate 仍保持开放。
+- 2026-09-08 current-source readiness follow-up 把正式 `host_rss_gate` 与 shared Host
+  readiness 绑定：CLI 和 `make host-rss-gate` 现在必须提供 `host-readiness.json`；
+  Phase 0 聚合会重新读取 `host-rss-gate.json` 声明的 `source.summary`、`source.samples`、
+  `source.exact_window_report` 和 `source.host_readiness` 并重新派生正式报告。旧报告、
+  blocked readiness、非稳定签名、TCC 未授权/未绑定、旧源码或 dirty source 的 Host 证据
+  都不能关闭 README Host RSS two-hour no-growth gate。该补强只收紧离线判定，仍没有运行
+  Host GUI、TCC 路径、ADB reverse、短窗诊断或正式两小时 soak。
 - 当前源码已离线验证新增 capture/encoder telemetry 合约和诊断 fail-closed 逻辑；
   本机没有完整 Xcode XCTest runtime，`swift test` 因缺少 `xctest` 阻塞。该分支没有
   运行当前源码的真机短窗或两小时 soak，因此正式 Host RSS no-growth 门禁保持开放。

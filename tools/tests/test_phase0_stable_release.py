@@ -18,6 +18,8 @@ from vibescreen_evidence.phase0_stable_release import (
 )
 from tools.tests.latency_test_helpers import minimal_mov
 from tools.tests.test_host_rss_gate import (
+    host_readiness_payload,
+    write_host_readiness,
     write_exact_window_report,
     write_inputs as write_host_rss_inputs,
 )
@@ -520,11 +522,18 @@ def write_host_rss_gate_evidence(
         + (128.0 if int(minute * 2) % 2 else -128.0),
     )
     exact_window_path = write_exact_window_report(source_dir)
-    report = derive_host_rss_gate(summary_path, samples_path, exact_window_path)
+    host_readiness_path = write_host_readiness(source_dir)
+    report = derive_host_rss_gate(
+        summary_path,
+        samples_path,
+        exact_window_path,
+        host_readiness_path,
+    )
     report["source"] = {
         "summary": f"{source_directory}/summary.json",
         "samples": f"{source_directory}/samples.jsonl",
         "exact_window_report": f"{source_directory}/exact-window-report.json",
+        "host_readiness": f"{source_directory}/host-readiness.json",
     }
     output_file = repo / output_path
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1404,6 +1413,64 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_host_rss_pass_rejects_report_without_host_readiness_source(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = repo / "docs/evidence/host-rss-gate.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["source"].pop("host_readiness")
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertIn(
+                "docs/evidence/host-rss-gate.json: formal Host RSS report source.host_readiness must be present",
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_host_rss_pass_revalidates_host_readiness_source(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            readiness_path = repo / "docs/evidence/host-rss/host-readiness.json"
+            readiness_path.write_text(
+                json.dumps(
+                    host_readiness_payload(
+                        can_start_host_rss_gate=False,
+                        signing_tcc_status="blocked",
+                        listener_observed=False,
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = summary["blocking_required_gates"][0]["issues"]
+            self.assertTrue(
+                any(
+                    "source inputs must rederive as a passing host_rss_gate report"
+                    in issue
+                    and "can_start_host_rss_gate" in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
     def test_host_rss_pass_rejects_malformed_report_sections(self) -> None:
         cases = (
             (
@@ -1435,6 +1502,11 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 "failed_telemetry_criterion",
                 lambda record: record["telemetry_criteria"]["encoder_present_through_window"].__setitem__("passed", False),
                 "formal Host RSS report telemetry_criteria must have all checks passed: encoder_present_through_window",
+            ),
+            (
+                "failed_host_readiness_criterion",
+                lambda record: record["host_readiness_criteria"]["stable_signing_identity"].__setitem__("passed", False),
+                "formal Host RSS report host_readiness_criteria must have all checks passed: stable_signing_identity",
             ),
             (
                 "unresolved_reason",
