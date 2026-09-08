@@ -302,7 +302,7 @@ def _source_markers(value: Any) -> set[str]:
         source_text = "|".join(value)
     else:
         return set()
-    return {marker.strip().upper() for marker in source_text.replace(",", "|").split("|") if marker.strip()}
+    return {marker.strip().upper() for marker in source_text.replace(",", "|").replace("+", "|").split("|") if marker.strip()}
 
 
 def _positive_device_id(value: Any) -> int | None:
@@ -330,7 +330,8 @@ def _external_mouse_device_ids(record: dict[str, Any]) -> set[int]:
             continue
         if _virtual_input_name(device.get("name")):
             continue
-        if not MOUSE_LIKE_SOURCES.intersection(_source_markers(device.get("sources"))):
+        source_markers = _source_markers(device.get("sources"))
+        if not source_markers or not source_markers.issubset(MOUSE_LIKE_SOURCES):
             continue
         device_id = _positive_device_id(device.get("device_id"))
         if device_id is not None:

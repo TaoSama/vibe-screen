@@ -93,6 +93,22 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertFalse(summary["observations"]["physical_mouse_attached"])
         self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
 
+    def test_physical_mouse_rejects_devices_with_mixed_non_mouse_sources(self) -> None:
+        record = self.complete_record()
+        record["external_mouse_devices"] = [
+            {"device_id": 11, "name": "USB Combo Receiver", "sources": "MOUSE|KEYBOARD", "is_external": "true"},
+            {"device_id": 12, "name": "USB Touch Combo", "sources": "MOUSE+TOUCHSCREEN", "is_external": "true"},
+        ]
+        record["observed_android_pointer_device_ids_by_event"] = {"move": [11], "press": [11], "release": [11]}
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["observations"]["physical_mouse_attached"])
+        self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+        self.assertFalse(summary["observations"]["android_required_events_share_external_mouse_device"])
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
     def test_android_forwarding_device_ids_must_match_external_mouse(self) -> None:
         record = self.complete_record()
         record["observed_android_pointer_device_ids_by_event"] = {"move": [99], "press": [99], "release": [99]}

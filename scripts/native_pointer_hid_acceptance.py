@@ -50,21 +50,30 @@ POINTER_PATTERNS = {
 }
 REQUIRED_POINTER_EVENTS = ("move", "press", "release")
 ANDROID_LOGCAT_TAG = "MA"
-ANDROID_MOUSE_SOURCE_TOKENS = ("MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL")
-ANDROID_MOUSE_SOURCE_PATTERN = (
-    rf"(?:{'|'.join(ANDROID_MOUSE_SOURCE_TOKENS)})"
-    rf"(?:\s*\|\s*(?:{'|'.join(ANDROID_MOUSE_SOURCE_TOKENS)}))*"
+ANDROID_MOUSE_SOURCE_TOKENS = frozenset(("MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"))
+ANDROID_DUMPSYS_SOURCE_SEPARATOR_PATTERN = re.compile(r"\s*(?:\||\+|,)\s*")
+ANDROID_LOG_SOURCE_SEPARATOR_PATTERN = re.compile(r"\+")
+ANDROID_LOG_KV_FIELDS = (
+    "transport",
+    "action",
+    "deviceId",
+    "device_id",
+    "source",
+    "sources",
+    "buttonState",
+    "button_state",
+    "actionButton",
+    "action_button",
+    "wireButtons",
+    "wire_buttons",
+    "x",
+    "y",
+    "acceptance_evidence",
 )
+ANDROID_LOG_KV_FIELD_PATTERN = "|".join(re.escape(field) for field in ANDROID_LOG_KV_FIELDS)
+ANDROID_LEGACY_POINTER_PATTERN = re.compile(r"native pointer forwarded\b(?P<fields>[^\n]*)")
+ANDROID_STRUCTURED_POINTER_PATTERN = re.compile(r"peripheral_input kind=native_pointer_forwarded\b(?P<fields>[^\n]*)")
 VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
-ANDROID_POINTER_DETAIL_PATTERN = re.compile(
-    rf"(?:native pointer forwarded action=(?P<legacy_action>MOVE|BUTTON_PRESS|BUTTON_RELEASE)\b"
-    rf"(?=[^\n]*\bdeviceId=(?P<legacy_device_id>[1-9]\d*)\b)"
-    rf"(?=[^\n]*\bsource=(?P<legacy_sources>{ANDROID_MOUSE_SOURCE_PATTERN})(?:\s|$)))"
-    rf"|(?:peripheral_input kind=native_pointer_forwarded\b"
-    rf"(?=[^\n]*\baction=(?P<structured_action>move|button_press|button_release)\b)"
-    rf"(?=[^\n]*\bdevice_id=(?P<structured_device_id>[1-9]\d*)\b)"
-    rf"(?=[^\n]*\bsources=(?P<structured_sources>{ANDROID_MOUSE_SOURCE_PATTERN})(?:\s|$)))"
-)
 ACTION_TO_EVENT = {
     "MOVE": "move",
     "BUTTON_PRESS": "press",
@@ -78,6 +87,55 @@ ACTION_TO_EVENT = {
 def is_virtual_input_name(name: str) -> bool:
     normalized = name.strip().lower()
     return any(marker in normalized for marker in VIRTUAL_INPUT_NAME_MARKERS)
+
+
+def source_tokens(source_text: str, separator_pattern: re.Pattern[str]) -> set[str]:
+    return {token.strip().upper() for token in separator_pattern.split(source_text.strip()) if token.strip()}
+
+
+def has_dumpsys_mouse_like_sources(source_text: str) -> bool:
+    tokens = source_tokens(source_text, ANDROID_DUMPSYS_SOURCE_SEPARATOR_PATTERN)
+    return bool(tokens) and tokens.issubset(ANDROID_MOUSE_SOURCE_TOKENS)
+
+
+def has_android_log_mouse_like_sources(source_text: str) -> bool:
+    tokens = source_tokens(source_text, ANDROID_LOG_SOURCE_SEPARATOR_PATTERN)
+    return bool(tokens) and tokens.issubset(ANDROID_MOUSE_SOURCE_TOKENS)
+
+
+def android_log_field_value(fields_text: str, field: str) -> str | None:
+    match = re.search(
+        rf"(?<![A-Za-z0-9_]){re.escape(field)}=([^\n]*?)(?=\s+(?:{ANDROID_LOG_KV_FIELD_PATTERN})=|$)",
+        fields_text,
+    )
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value or None
+
+
+def android_pointer_detail(line: str) -> tuple[str, int] | None:
+    match = ANDROID_LEGACY_POINTER_PATTERN.search(line)
+    if match:
+        fields_text = match.group("fields")
+        action = android_log_field_value(fields_text, "action")
+        device_id = android_log_field_value(fields_text, "deviceId")
+        sources = android_log_field_value(fields_text, "source")
+    else:
+        match = ANDROID_STRUCTURED_POINTER_PATTERN.search(line)
+        if not match:
+            return None
+        fields_text = match.group("fields")
+        action = android_log_field_value(fields_text, "action")
+        device_id = android_log_field_value(fields_text, "device_id")
+        sources = android_log_field_value(fields_text, "sources")
+    if action not in ACTION_TO_EVENT or not device_id or not sources:
+        return None
+    if not device_id.isdigit() or int(device_id) <= 0:
+        return None
+    if not has_android_log_mouse_like_sources(sources):
+        return None
+    return ACTION_TO_EVENT[action], int(device_id)
 
 
 class AcceptanceError(Exception):
@@ -356,11 +414,11 @@ def external_mouse_devices(devices: Sequence[InputDeviceSummary]) -> list[InputD
     for device in devices:
         sources = device.sources.upper()
         external = device.is_external.lower() == "true"
-        if external and device.device_id > 0 and not is_virtual_input_name(device.name) and (
-            "MOUSE" in sources
-            or "MOUSE_RELATIVE" in sources
-            or "TOUCHPAD" in sources
-            or "TRACKBALL" in sources
+        if (
+            external
+            and device.device_id > 0
+            and not is_virtual_input_name(device.name)
+            and has_dumpsys_mouse_like_sources(sources)
         ):
             candidates.append(device)
     return candidates
@@ -439,14 +497,24 @@ def observed_events(log_text: str) -> list[str]:
 
 def observed_android_event_device_ids(log_text: str) -> dict[str, list[int]]:
     observed: dict[str, set[int]] = {}
-    for match in ANDROID_POINTER_DETAIL_PATTERN.finditer(log_text):
-        action = match.group("legacy_action") or match.group("structured_action")
-        device_id = match.group("legacy_device_id") or match.group("structured_device_id")
-        if not action or not device_id:
+    for line in log_text.splitlines():
+        detail = android_pointer_detail(line)
+        if detail is None:
             continue
-        event = ACTION_TO_EVENT[action]
-        observed.setdefault(event, set()).add(int(device_id))
+        event, device_id = detail
+        observed.setdefault(event, set()).add(device_id)
     return {event: sorted(device_ids) for event, device_ids in observed.items()}
+
+
+def shared_required_android_mouse_device_ids(
+    observed_android_device_ids: dict[str, list[int]],
+    external_mouse_device_ids: set[int],
+    required_events: Sequence[str],
+) -> set[int]:
+    shared_device_ids = set(external_mouse_device_ids)
+    for event in required_events:
+        shared_device_ids.intersection_update(observed_android_device_ids.get(event, []))
+    return shared_device_ids
 
 
 def observed_android_events(log_text: str) -> list[str]:
@@ -698,6 +766,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             for name in args.require_events
             if not external_mouse_device_ids.intersection(observed_android_device_ids.get(name, []))
         ]
+        shared_android_device_ids = shared_required_android_mouse_device_ids(
+            observed_android_device_ids,
+            external_mouse_device_ids,
+            args.require_events,
+        )
         missing_host_ready = not args.host_stable_signed_tcc_ready
         missing_visible_result = not args.visible_result_note.strip()
         missing_reasons = []
@@ -707,6 +780,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             missing_reasons.append(
                 "missing Android native pointer log events with deviceId matching an external mouse-like input device: "
                 + ", ".join(missing_android_device_ids)
+            )
+        if not missing_android and not missing_android_device_ids and not shared_android_device_ids:
+            missing_reasons.append(
+                "missing Android native pointer move/press/release sequence from the same external mouse-like deviceId"
             )
         if missing_host:
             missing_reasons.append("missing Host pointer injection events: " + ", ".join(missing_host))

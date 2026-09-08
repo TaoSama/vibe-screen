@@ -402,17 +402,25 @@ window, and the newly appended Host log segment. First run
 stable signed Host with Screen Recording and Accessibility permission passes
 that preflight. A pass requires Android
 `native pointer forwarded` lines for `MOVE`, `BUTTON_PRESS`, and
-`BUTTON_RELEASE` from `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`,
-and each line must include a positive `deviceId` that matches an external
-mouse-like device from the retained `dumpsys input` snapshot. Virtual or
-synthetic input events such as `deviceId=-1`, or mouse-like devices whose names
-identify virtual, uinput, or synthetic sources, are intentionally ignored for
-gate closure. A pass also requires Host `Pointer injected` lines for `changed`,
+`BUTTON_RELEASE` from production mouse-like sources. Structured Android logs
+join source tokens with `+`, such as `sources=MOUSE+TOUCHPAD`; every retained
+source token must be one of `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or
+`TRACKBALL`. The retained `dumpsys input` external device `Sources:` field must
+also contain only those mouse-like tokens; devices that mix in `KEYBOARD`,
+`TOUCHSCREEN`, `DPAD`, or other non-mouse tokens do not count as the external
+mouse-like device. The complete `MOVE` / `BUTTON_PRESS` / `BUTTON_RELEASE`
+sequence must share at least one positive `deviceId` that matches an external
+mouse-like device from that retained snapshot. Virtual or synthetic input events
+such as `deviceId=-1`, mouse-like devices whose names identify virtual, uinput,
+or synthetic sources, and stitched evidence where move, press, and release come
+from different external mouse-like device IDs are intentionally ignored for gate
+closure. A pass also requires Host `Pointer injected` lines for `changed`,
 `began`, and `ended`. Missing hardware or missing Host stable signing/TCC
-evidence is `blocked`; missing Android logs, Host logs, mismatched forwarding
-`deviceId`, or the visible-result note is `failed`, not a pass. A blocked bundle
-rerun through `make native-pointer-hid-gate` with require-pass semantics is
-expected to return non-zero, with Make printing the child gate error.
+evidence is `blocked`; missing Android logs, Host logs, mismatched or non-shared
+forwarding `deviceId`, or the visible-result note is `failed`, not a pass. A
+blocked bundle rerun through `make native-pointer-hid-gate` with require-pass
+semantics is expected to return non-zero, with Make printing the child gate
+error.
 
 The collection target writes `native-pointer-hid-summary.json`. That summary is
 the gate owner for README updates: only `verdict=pass` and
