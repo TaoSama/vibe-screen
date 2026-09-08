@@ -96,9 +96,9 @@ For every device run, record:
   build fingerprint, display size/density, battery, and boot state;
 - Mac Host model identifier, CPU architecture (`apple_silicon` or `intel`),
   CPU/chip name, macOS product version and build, Xcode/Swift versions, Host
-  app commit/binary SHA/signing identity, Screen Recording and Accessibility
-  state, capture backend, VideoToolbox codec path, display topology, and display
-  UUID/logical/physical dimensions;
+  app commit/binary SHA/signing identity, Screen Recording, Accessibility, and
+  Microphone state, capture backend, VideoToolbox codec path, display topology,
+  and display UUID/logical/physical dimensions;
 - For Host-backed LAN, reconnect, Host RSS, native-pointer, stylus, physical
   keyboard, controller, login/headless, and compatibility runs, retain the
   shared source-bound Host readiness artifacts from
@@ -448,8 +448,8 @@ The underlying Python CLI exits `0` for `pass`, `1` for `blocked` or
 any non-pass result as a failed target while still writing the summary JSON.
 `blocked`, `insufficient`, or `failed` summaries keep the README compatibility
 matrix open for that row. The row must include the packaged Host bundle id,
-stable non-ad-hoc signing identity, authorized Screen Recording and
-Accessibility TCC state, installed Host source commit/tree provenance, Host
+stable non-ad-hoc signing identity, authorized Screen Recording, Accessibility,
+and Microphone TCC state, installed Host source commit/tree provenance, Host
 self-test commit, and current-base commit; missing or mismatched values are
 blocked readiness evidence only. If the connected Android device is the local Nubia
 phone, every ADB command must name `adb -s <device-serial>`, and the
