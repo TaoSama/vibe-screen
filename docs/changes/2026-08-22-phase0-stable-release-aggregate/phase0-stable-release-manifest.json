@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "d8f108aaded3a05708587c721186cf0737bc4dfa",
+    "base_commit": "93ec1bbb73a2ec3dad743e63cd07734c034d1b5a",
     "base_ref": "origin/main",
     "audit_date": "2026-09-08",
     "owner": "Vibe Screen core team",
@@ -14,21 +14,19 @@
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'",
     "queried_at": "2026-09-08",
     "state": "open",
-    "open_pr_numbers": [
-      708
-    ]
+    "open_pr_numbers": []
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=707)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=711)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 707
+      "max": 711
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-707-current-main-gate-blocked/merged-prs-568-707.jsonl",
-    "audited_source_commit": "d8f108aaded3a05708587c721186cf0737bc4dfa",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-711-current-main-gate-blocked/merged-prs-568-711.jsonl",
+    "audited_source_commit": "93ec1bbb73a2ec3dad743e63cd07734c034d1b5a",
     "excluded_pr_numbers": [
       568,
       576,
@@ -74,8 +72,8 @@
         "docs/changes/2026-08-04-phase-0-baseline/TEST.md",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34170285701",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34171279974",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811139",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811156"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34288307346",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34288307261"
       ],
       "owner_prs": [],
       "blockers": []
@@ -100,8 +98,8 @@
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTransferReadinessContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811139",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811156"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34288307346",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34288307261"
       ],
       "owner_prs": [],
       "blockers": []
@@ -117,8 +115,8 @@
         "https://github.com/TaoSama/vibe-screen/actions/runs/34170285701",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34171279974",
         "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-28-machost-xctest-full-xcode-blocked/README.md",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811139",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34269811156"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34288307346",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34288307261"
       ],
       "owner_prs": [],
       "blockers": []
