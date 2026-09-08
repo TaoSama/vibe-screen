@@ -268,6 +268,7 @@ export EVIDENCE_SERIAL='<lease-controlled-endpoint>'
 export EVIDENCE_DIR='.build/evidence'
 export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
 mkdir -p "$EVIDENCE_DIR/soak-2h"
+make baseline-macos-host-readiness EVIDENCE_DIR="$EVIDENCE_DIR"
 # 用以上环境启动与当前源码匹配的 Host，建立稳定推流后，记录该进程 PID：
 export HOST_PID='<running-host-pid>'
 make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"
@@ -276,8 +277,9 @@ make host-rss-gate EVIDENCE_DIR="$EVIDENCE_DIR"
 
 也可用 `make soak-2h-host-rss-gate EVIDENCE_SERIAL="$EVIDENCE_SERIAL"
 EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"` 串联正式两小时采集和门禁判定；
-`make soak-2h` 和组合目标都会在 `HOST_PID` 缺失时立即失败，避免产生缺少
-`host.rss_kb` 的不可关闭证据。
+`make soak-2h` 和组合目标都会在 `HOST_PID` 缺失时立即失败；组合目标还会在
+缺少 `host-readiness.json` 时先于两小时采集失败，避免产生缺少 Host readiness
+绑定的不可关闭证据。
 
 只有来源 summary 为 `complete` 且无错误、流/客户端指标有效，并且
 `host_rss_gate` 独立输出 `pass` 时才能关闭门禁。短诊断、30 分钟前缀或 partial

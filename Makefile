@@ -666,6 +666,9 @@ require-evidence-serial:
 require-host-pid:
 	@test -n "$(strip $(EVIDENCE_HOST_PID))" || (echo "error: set HOST_PID or EVIDENCE_HOST_PID to the running Vibe Screen Host process id" >&2; exit 2)
 
+require-host-rss-readiness:
+	@test -f "$(HOST_RSS_HOST_READINESS_JSON)" || (echo "error: collect Host readiness JSON first with make baseline-macos-host-readiness; set HOST_RSS_HOST_READINESS_JSON if stored elsewhere" >&2; exit 2)
+
 evidence-device-info: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --output $(EVIDENCE_DIR)/device-info.json
@@ -987,12 +990,11 @@ soak-30m soak-8h: require-evidence-serial
 soak-2h: require-evidence-serial require-host-pid
 	$(SOAK_RECIPE)
 
-host-rss-gate:
-	@test -f "$(HOST_RSS_HOST_READINESS_JSON)" || (echo "error: collect Host readiness JSON first with scripts/macos_dev_host.py readiness; set HOST_RSS_HOST_READINESS_JSON if stored elsewhere" >&2; exit 2)
+host-rss-gate: require-host-rss-readiness
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-2h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-2h/exact-window-report.json
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary $(EVIDENCE_DIR)/soak-2h/summary.json --samples $(EVIDENCE_DIR)/soak-2h/samples.jsonl --exact-window-report $(EVIDENCE_DIR)/soak-2h/exact-window-report.json --host-readiness $(HOST_RSS_HOST_READINESS_JSON) --output $(EVIDENCE_DIR)/soak-2h/host-rss-gate.json --repo-root .
 
-soak-2h-host-rss-gate: require-evidence-serial require-host-pid
+soak-2h-host-rss-gate: require-evidence-serial require-host-pid require-host-rss-readiness
 	$(MAKE) soak-2h EVIDENCE_SERIAL="$(EVIDENCE_SERIAL)" EVIDENCE_DIR="$(EVIDENCE_DIR)" EVIDENCE_PACKAGE="$(EVIDENCE_PACKAGE)" HOST_PID="$(HOST_PID)" EVIDENCE_HOST_PID="$(EVIDENCE_HOST_PID)"
 	$(MAKE) host-rss-gate EVIDENCE_DIR="$(EVIDENCE_DIR)"
 

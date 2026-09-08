@@ -1080,7 +1080,8 @@ The report carries a top-level `verdict` with exactly three values:
 
 Durations are restricted to 10-17 minutes so the final heap snapshot and report
 remain within a 20-minute command budget. The diagnostic never invokes
-`memory_pressure`, changes TCC, or accesses Keychain. Any tool error, missing
+`memory_pressure`, changes TCC, accesses Keychain, installs or replaces the
+Host, or closes runtime gates. Any tool error, missing
 metric, missing stream telemetry coverage, session-epoch change, queue depth
 above its advertised capacity, present encoder in-flight or frame-registry
 depth above capacity, invalid or changing encoder capacity, present latest

@@ -369,6 +369,15 @@ def evaluate_host_readiness_report(record: Any) -> dict[str, Any]:
         record.get("kind") == HOST_READINESS_KIND,
         f"expected {HOST_READINESS_KIND!r}, got {record.get('kind')!r}",
     )
+    try:
+        _parse_timestamp(record.get("generated_at"), "host_readiness.generated_at")
+    except EvidenceInputError as error:
+        generated_at_valid = False
+        generated_at_detail = str(error)
+    else:
+        generated_at_valid = True
+        generated_at_detail = None
+    add_sufficiency("generated_at", generated_at_valid, generated_at_detail)
     blockers = record.get("blockers", [])
     blockers_valid = isinstance(blockers, list) and all(
         isinstance(blocker, str) for blocker in blockers
@@ -489,7 +498,9 @@ def evaluate_host_readiness_report(record: Any) -> dict[str, Any]:
         "requests_microphone",
         "modifies_tcc",
         "modifies_keychain",
+        "installs_or_replaces_host",
         "modifies_android",
+        "closes_runtime_gates",
     ):
         expected = field == "read_only"
         add_criterion(
@@ -646,11 +657,31 @@ def _source_path(path: Path | None, *, repo_root: Path | None) -> str | None:
         return path.as_posix()
 
 
-def _failure_report() -> dict[str, Any]:
+def _failure_report(
+    *,
+    error: BaseException | None = None,
+    summary_path: Path | None = None,
+    samples_path: Path | None = None,
+    exact_window_report_path: Path | None = None,
+    host_readiness_path: Path | None = None,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    reason = "the gate inputs could not be validated"
+    if error is not None:
+        reason = f"{reason}: {error}"
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": GATE_KIND,
         "derivation_status": "failed",
+        "run_id": None,
+        "source": {
+            "summary": _source_path(summary_path, repo_root=repo_root),
+            "samples": _source_path(samples_path, repo_root=repo_root),
+            "exact_window_report": _source_path(
+                exact_window_report_path, repo_root=repo_root
+            ),
+            "host_readiness": _source_path(host_readiness_path, repo_root=repo_root),
+        },
         "verdict": "insufficient",
         "window": {},
         "source_summary": {},
@@ -664,7 +695,7 @@ def _failure_report() -> dict[str, Any]:
         "sufficiency": {},
         "criteria": {},
         "metrics": {},
-        "reasons": ["the gate inputs could not be validated"],
+        "reasons": [reason],
         "interpretation": INTERPRETATION,
     }
 
@@ -715,8 +746,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo_root=arguments.repo_root,
         )
         _write_json(arguments.output, report)
-    except (EvidenceInputError, OSError, TypeError, ValueError):
-        report = _failure_report()
+    except (EvidenceInputError, OSError, TypeError, ValueError) as error:
+        report = _failure_report(
+            error=error,
+            summary_path=arguments.summary,
+            samples_path=arguments.samples,
+            exact_window_report_path=arguments.exact_window_report,
+            host_readiness_path=arguments.host_readiness,
+            repo_root=arguments.repo_root,
+        )
         try:
             _write_json(arguments.output, report)
         except (OSError, TypeError, ValueError):
