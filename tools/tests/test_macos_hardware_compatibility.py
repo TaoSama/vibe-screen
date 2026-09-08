@@ -9,6 +9,7 @@ from vibescreen_evidence.macos_hardware_compatibility import (
     BOOLEAN_FIELDS,
     INVALID_BOOLEAN_FIELDS,
     MacOSHardwareCompatibilityError,
+    REQUIRED_ARTIFACT_ROLES,
     summarize,
 )
 
@@ -74,7 +75,28 @@ def complete_record() -> dict[str, object]:
         "compatibility_scope": (
             "Apple silicon Mac14,10 on macOS 26.4.1 built-in display over USB only"
         ),
-        "artifact_paths": ["README.md", "host.log"],
+        "artifact_paths": [
+            "host-identity.txt",
+            "host-build.txt",
+            "host-readiness.json",
+            "display-topology.txt",
+            "host.log",
+            "android-device.txt",
+            "logcat.txt",
+            "stream-photo.jpg",
+            "macos-hardware-compatibility.json",
+        ],
+        "artifact_roles": {
+            "host-identity.txt": ["host_identity"],
+            "host-build.txt": ["host_build_identity"],
+            "host-readiness.json": ["host_tcc_readiness"],
+            "display-topology.txt": ["display_topology"],
+            "host.log": ["host_runtime_log"],
+            "android-device.txt": ["android_device_identity"],
+            "logcat.txt": ["android_runtime_log"],
+            "stream-photo.jpg": ["visual_stream_evidence"],
+            "macos-hardware-compatibility.json": ["gate_input"],
+        },
         "blocking_notes": [],
         "notes": "one exact matrix row",
     })
@@ -88,8 +110,10 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
     def summarize_with_artifacts(self, record: dict[str, object]) -> dict[str, object]:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
-            (directory / "host.log").write_text("capture started\n", encoding="utf-8")
-            (directory / "README.md").write_text("evidence note\n", encoding="utf-8")
+            for artifact_path in record["artifact_paths"]:
+                (directory / str(artifact_path)).write_text(
+                    f"{artifact_path} evidence\n", encoding="utf-8"
+                )
             return summarize(record, evidence_dir=directory)
 
     def test_pass_requires_every_observation_and_scopes_to_exact_row(self) -> None:
@@ -111,6 +135,19 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
         self.assertTrue(summary["row_scope"]["microphone_tcc_identity_bound"])
         self.assertEqual(summary["missing_requirements"], [])
         self.assertEqual(summary["invalid_claims"], [])
+        self.assertEqual(summary["artifact_role_check"]["missing_roles"], [])
+        self.assertEqual(summary["artifact_role_check"]["invalid_paths"], [])
+        self.assertEqual(summary["artifact_role_check"]["unknown_roles"], [])
+        self.assertEqual(summary["artifact_role_check"]["duplicate_roles"], [])
+        self.assertEqual(summary["artifact_role_check"]["multi_role_paths"], [])
+        self.assertEqual(
+            summary["artifact_role_check"]["roles_by_path"],
+            self.complete_record()["artifact_roles"],
+        )
+        self.assertEqual(
+            set(summary["artifact_role_check"]["observed_roles"]),
+            REQUIRED_ARTIFACT_ROLES,
+        )
         self.assertEqual(
             {item["id"]: item["status"] for item in summary["closure_checklist"]},
             {
@@ -457,6 +494,7 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
     def test_artifact_paths_are_required_to_close_row(self) -> None:
         record = self.complete_record()
         record["artifact_paths"] = []
+        record["artifact_roles"] = {}
 
         summary = summarize(record, evidence_dir=Path("."))
 
@@ -470,6 +508,106 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
             },
             summary["blocking_reasons"],
         )
+
+    def test_artifact_roles_are_required_to_close_row(self) -> None:
+        record = self.complete_record()
+        record["artifact_roles"] = {"host-identity.txt": ["host_identity"]}
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["can_close_macos_host_compatibility_row"])
+        self.assertIn("android_runtime_log", summary["artifact_role_check"]["missing_roles"])
+        self.assertIn(
+            {
+                "field": "artifacts_retained",
+                "requirement": (
+                    "record distinct retained artifact roles for Host identity, Host build/TCC "
+                    "readiness, display topology, Host and Android runtime logs, visual stream "
+                    "evidence, and gate input"
+                ),
+            },
+            summary["blocking_reasons"],
+        )
+
+    def test_artifact_roles_must_reference_known_artifacts_and_roles(self) -> None:
+        record = self.complete_record()
+        record["artifact_roles"] = dict(record["artifact_roles"])
+        record["artifact_roles"]["missing.log"] = ["host_runtime_log"]
+        record["artifact_roles"]["host.log"] = [
+            "host_runtime_log",
+            "host_runtime_log",
+            "side_note",
+        ]
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertEqual(summary["artifact_role_check"]["invalid_paths"], ["missing.log"])
+        self.assertEqual(summary["artifact_role_check"]["unknown_roles"], ["side_note"])
+        self.assertEqual(
+            summary["artifact_role_check"]["duplicate_roles"],
+            ["host.log:host_runtime_log"],
+        )
+        self.assertNotIn("host_runtime_log", summary["artifact_role_check"]["missing_roles"])
+
+    def test_invalid_artifact_path_roles_do_not_count_as_observed(self) -> None:
+        record = self.complete_record()
+        roles = dict(record["artifact_roles"])
+        del roles["host.log"]
+        roles["missing.log"] = ["host_runtime_log"]
+        record["artifact_roles"] = roles
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertEqual(summary["artifact_role_check"]["invalid_paths"], ["missing.log"])
+        self.assertIn("host_runtime_log", summary["artifact_role_check"]["missing_roles"])
+        self.assertNotIn("host_runtime_log", summary["artifact_role_check"]["observed_roles"])
+
+    def test_artifact_roles_require_one_required_role_per_file(self) -> None:
+        record = self.complete_record()
+        roles = dict(record["artifact_roles"])
+        del roles["host-build.txt"]
+        roles["host-identity.txt"] = ["host_identity", "host_build_identity"]
+        record["artifact_roles"] = roles
+
+        summary = self.summarize_with_artifacts(record)
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertEqual(
+            summary["artifact_role_check"]["multi_role_paths"],
+            ["host-identity.txt"],
+        )
+        self.assertEqual(summary["artifact_role_check"]["missing_roles"], [])
+        self.assertIn(
+            {
+                "field": "artifacts_retained",
+                "requirement": (
+                    "record distinct retained artifact roles for Host identity, Host build/TCC "
+                    "readiness, display topology, Host and Android runtime logs, visual stream "
+                    "evidence, and gate input"
+                ),
+            },
+            summary["blocking_reasons"],
+        )
+
+    def test_rejects_malformed_artifact_roles(self) -> None:
+        malformed_values = [
+            ([], "artifact_roles must be an object mapping artifact paths to roles"),
+            ({"": ["host_identity"]}, "artifact_roles keys must be non-empty"),
+            ({"host-identity.txt": "host_identity"}, "must be a non-empty list of roles"),
+            ({"host-identity.txt": []}, "must be a non-empty list of roles"),
+            ({"host-identity.txt": [""]}, "must be a non-empty list of roles"),
+            ({"host-identity.txt": [1]}, "must be a non-empty list of roles"),
+        ]
+        for artifact_roles, message in malformed_values:
+            with self.subTest(artifact_roles=artifact_roles):
+                record = self.complete_record()
+                record["artifact_roles"] = artifact_roles
+
+                with self.assertRaisesRegex(MacOSHardwareCompatibilityError, message):
+                    summarize(record)
 
     def test_fails_invalid_claims_from_ci_or_other_rows(self) -> None:
         record = self.complete_record()
@@ -591,6 +729,7 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
             "missing.txt",
             "../escape.txt",
         ]
+        record["artifact_roles"] = {"host.log": ["host_runtime_log"]}
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
             (directory / "host.log").write_text("capture started\n", encoding="utf-8")
@@ -604,12 +743,13 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
 
     def test_artifact_report_preserves_relative_evidence_dir(self) -> None:
         record = self.complete_record()
-        record["artifact_paths"] = ["README.md"]
+        record["artifact_paths"] = ["host-identity.txt"]
+        record["artifact_roles"] = {"host-identity.txt": ["host_identity"]}
         with tempfile.TemporaryDirectory() as directory_name:
             base = Path(directory_name)
             evidence_dir = base / "relative-evidence"
             evidence_dir.mkdir()
-            (evidence_dir / "README.md").write_text("evidence note\n", encoding="utf-8")
+            (evidence_dir / "host-identity.txt").write_text("evidence note\n", encoding="utf-8")
             old_cwd = Path.cwd()
             try:
                 import os
@@ -619,7 +759,7 @@ class MacOSHardwareCompatibilityTest(unittest.TestCase):
             finally:
                 os.chdir(old_cwd)
 
-        self.assertEqual(summary["verdict"], "pass")
+        self.assertEqual(summary["verdict"], "blocked")
         self.assertEqual(summary["artifact_file_check"]["evidence_dir"], "relative-evidence")
 
 
@@ -647,6 +787,36 @@ class MacOSHardwareCompatibilityCliTest(unittest.TestCase):
         self.assertEqual(summary["artifact_file_check"]["missing_paths"], [])
         self.assertEqual(summary["artifact_file_check"]["invalid_paths"], [])
         self.assertEqual(summary["artifact_file_check"]["empty_paths"], [])
+        self.assertEqual(
+            summary["artifact_role_check"],
+            {
+                "required_roles": sorted(REQUIRED_ARTIFACT_ROLES),
+                "observed_roles": [
+                    "display_topology",
+                    "gate_input",
+                    "host_build_identity",
+                    "host_identity",
+                    "host_tcc_readiness",
+                ],
+                "missing_roles": [
+                    "android_device_identity",
+                    "android_runtime_log",
+                    "host_runtime_log",
+                    "visual_stream_evidence",
+                ],
+                "invalid_paths": [],
+                "unknown_roles": [],
+                "duplicate_roles": [],
+                "multi_role_paths": [],
+                "roles_by_path": {
+                    "display-topology.txt": ["display_topology"],
+                    "host-identity.txt": ["host_identity"],
+                    "host-readiness.json": ["host_tcc_readiness"],
+                    "host-signing-and-permissions.txt": ["host_build_identity"],
+                    "macos-hardware-compatibility.json": ["gate_input"],
+                },
+            },
+        )
         self.assertEqual(
             summary["row_scope"]["repository_commit"],
             "28b9d1a59ef026b45ada3cd7e665ef09ea9a7523",
@@ -690,10 +860,13 @@ class MacOSHardwareCompatibilityCliTest(unittest.TestCase):
     def test_cli_pass_exits_zero_and_checks_input_relative_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
-            (directory / "host.log").write_text("capture started\n", encoding="utf-8")
-            (directory / "README.md").write_text("evidence note\n", encoding="utf-8")
+            record = complete_record()
+            for artifact_path in record["artifact_paths"]:
+                (directory / str(artifact_path)).write_text(
+                    f"{artifact_path} evidence\n", encoding="utf-8"
+                )
             evidence = directory / "macos-hardware-compatibility.json"
-            evidence.write_text(json.dumps(complete_record()), encoding="utf-8")
+            evidence.write_text(json.dumps(record), encoding="utf-8")
             result = subprocess.run(
                 [sys.executable, "-m", MODULE, str(evidence)],
                 capture_output=True,

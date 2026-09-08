@@ -81,7 +81,16 @@ Keep these artifacts in that directory:
 - Android device identity, APK identity, logcat, screenshots or external photos
   showing the stream and visible input result.
 - `macos-hardware-compatibility.json`: the boolean observations consumed by the
-  gate.
+  gate. Its `artifact_paths` entries must be relative files under the evidence
+  directory, and its `artifact_roles` map must tag retained files with each
+  required role before a row can pass: `host_identity`,
+  `host_build_identity`, `host_tcc_readiness`, `display_topology`,
+  `host_runtime_log`, `android_device_identity`, `android_runtime_log`,
+  `visual_stream_evidence`, and `gate_input`. Each required role must come from
+  its own retained file; one artifact cannot stand in for multiple closing
+  evidence roles. A blocked readiness package may omit runtime roles, but then
+  the generated summary must keep
+  `can_close_macos_host_compatibility_row=false`.
 - `macos-hardware-compatibility-gate.json`: the generated gate summary.
 
 ## Commands
@@ -246,7 +255,28 @@ artifact exists:
   "claims_virtual_display_from_symbol_probe": false,
   "claims_virtual_display_from_current_main_fallback": false,
   "claims_dummy_headless_from_attached_monitor": false,
-  "artifact_paths": ["host-identity.txt", "host.log"],
+  "artifact_paths": [
+    "host-identity.txt",
+    "host-build.txt",
+    "host-readiness.json",
+    "display-topology.txt",
+    "host.log",
+    "android-device.txt",
+    "logcat.txt",
+    "stream-photo.jpg",
+    "macos-hardware-compatibility.json"
+  ],
+  "artifact_roles": {
+    "host-identity.txt": ["host_identity"],
+    "host-build.txt": ["host_build_identity"],
+    "host-readiness.json": ["host_tcc_readiness"],
+    "display-topology.txt": ["display_topology"],
+    "host.log": ["host_runtime_log"],
+    "android-device.txt": ["android_device_identity"],
+    "logcat.txt": ["android_runtime_log"],
+    "stream-photo.jpg": ["visual_stream_evidence"],
+    "macos-hardware-compatibility.json": ["gate_input"]
+  },
   "blocking_notes": [],
   "notes": ""
 }

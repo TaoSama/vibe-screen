@@ -8,11 +8,59 @@
   },
   "artifact_paths": [
     "README.md",
+    "macos-hardware-compatibility.json",
     "host-identity.txt",
     "display-topology.txt",
     "host-readiness.json",
     "host-signing-and-permissions.txt"
   ],
+  "artifact_role_check": {
+    "duplicate_roles": [],
+    "invalid_paths": [],
+    "missing_roles": [
+      "android_device_identity",
+      "android_runtime_log",
+      "host_runtime_log",
+      "visual_stream_evidence"
+    ],
+    "multi_role_paths": [],
+    "observed_roles": [
+      "display_topology",
+      "gate_input",
+      "host_build_identity",
+      "host_identity",
+      "host_tcc_readiness"
+    ],
+    "required_roles": [
+      "android_device_identity",
+      "android_runtime_log",
+      "display_topology",
+      "gate_input",
+      "host_build_identity",
+      "host_identity",
+      "host_runtime_log",
+      "host_tcc_readiness",
+      "visual_stream_evidence"
+    ],
+    "roles_by_path": {
+      "display-topology.txt": [
+        "display_topology"
+      ],
+      "host-identity.txt": [
+        "host_identity"
+      ],
+      "host-readiness.json": [
+        "host_tcc_readiness"
+      ],
+      "host-signing-and-permissions.txt": [
+        "host_build_identity"
+      ],
+      "macos-hardware-compatibility.json": [
+        "gate_input"
+      ]
+    },
+    "unknown_roles": []
+  },
   "blocking_notes": [
     "Host readiness exited 2 with status=blocked; runtime compatibility probes were not started.",
     "The configured Vibe Screen Dev signing identity was not found in the keychain lookup used for rebuild/install readiness.",
@@ -114,6 +162,10 @@
     {
       "field": "signing_and_tcc_state_recorded",
       "requirement": "Microphone TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "artifacts_retained",
+      "requirement": "record distinct retained artifact roles for Host identity, Host build/TCC readiness, display topology, Host and Android runtime logs, visual stream evidence, and gate input"
     }
   ],
   "can_close_macos_host_compatibility_row": false,
@@ -186,9 +238,13 @@
     },
     {
       "id": "scope_and_artifacts",
-      "missing_fields": [],
-      "next_steps": [],
-      "status": "pass",
+      "missing_fields": [
+        "artifacts_retained"
+      ],
+      "next_steps": [
+        "record distinct retained artifact roles for Host identity, Host build/TCC readiness, display topology, Host and Android runtime logs, visual stream evidence, and gate input"
+      ],
+      "status": "blocked",
       "title": "Scope and retained artifacts"
     },
     {
@@ -324,6 +380,10 @@
     {
       "field": "signing_and_tcc_state_recorded",
       "requirement": "Microphone TCC must be authorized for the packaged Host"
+    },
+    {
+      "field": "artifacts_retained",
+      "requirement": "record distinct retained artifact roles for Host identity, Host build/TCC readiness, display topology, Host and Android runtime logs, visual stream evidence, and gate input"
     }
   ],
   "notes": "Fail-closed current-base readiness package for the macOS Host compatibility matrix owner refreshed on branch codex/macos-host-compat-codex-task-20260831 from origin/main 28b9d1a59ef026b45ada3cd7e665ef09ea9a7523. This row remains blocked before runtime probes and does not claim macOS Host compatibility support.",
