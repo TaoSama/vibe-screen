@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.StatusOverlayLayoutPolicyTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-08T00:12:53" hostname="Mac.local" time="0.0">
+  <properties/>
+  <testcase name="safe insets and margins shrink overlay maximum width" classname="dev.telemachus.display.StatusOverlayLayoutPolicyTest" time="0.0"/>
+  <testcase name="narrow windows stack stats instead of exceeding the safe width" classname="dev.telemachus.display.StatusOverlayLayoutPolicyTest" time="0.0"/>
+  <testcase name="invalid widths clamp to zero" classname="dev.telemachus.display.StatusOverlayLayoutPolicyTest" time="0.0"/>
+  <testcase name="wide windows keep stats in a single row" classname="dev.telemachus.display.StatusOverlayLayoutPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

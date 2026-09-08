@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.DesignTokenContrastTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-08T00:12:53" hostname="Mac.local" time="0.017">
+  <properties/>
+  <testcase name="lightUncheckedSwitchTokensKeepTrackAndThumbDistinct" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.003"/>
+  <testcase name="lightMutedSubtleAndFaintTokensKeepVisibilityHierarchy" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.001"/>
+  <testcase name="lightSmallTextTokensMeetWcagContrast" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.002"/>
+  <testcase name="darkModeToggleStrokeMeetsNonTextContrastInAllStates" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.003"/>
+  <testcase name="lightOutlineStrongTokenMeetsNonTextContrast" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.002"/>
+  <testcase name="darkOutlineStrongTokenMeetsNonTextContrast" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.001"/>
+  <testcase name="darkSmallTextTokensMeetWcagContrast" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.002"/>
+  <testcase name="lightModeToggleStrokeMeetsNonTextContrastInAllStates" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.002"/>
+  <testcase name="darkUncheckedSwitchTokensKeepTrackAndThumbDistinct" classname="dev.telemachus.display.DesignTokenContrastTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
