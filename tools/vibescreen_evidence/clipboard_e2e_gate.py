@@ -165,17 +165,23 @@ def _retained_artifact_reasons(
             reasons.append(f"{artifact_label} must be an object")
             continue
         role = artifact.get("role")
+        direction_matches = artifact.get("direction") == label
+        if not direction_matches:
+            reasons.append(f"{artifact_label}.direction must be {label}")
         if isinstance(role, str) and role.strip():
             role_name = role.strip()
             if role_name not in required_role_names:
                 reasons.append(f"{artifact_label}.role must be one of {', '.join(required_roles)}")
+                role_is_required = False
+            elif not direction_matches:
                 role_is_required = False
             elif role_name in seen_roles:
                 reasons.append(f"{artifact_label}.role duplicates {role_name} artifact")
                 role_is_required = True
             else:
                 role_is_required = True
-            seen_roles.add(role_name)
+            if direction_matches:
+                seen_roles.add(role_name)
         else:
             role_name = f"entry {index}"
             role_is_required = False
@@ -291,6 +297,173 @@ def _retained_artifact_digest_reasons(
         else:
             if actual_sha256 != expected_sha256.lower():
                 reasons.append(f"{artifact_label}.sha256 must equal retained artifact SHA-256")
+    return reasons
+
+
+def _retained_artifact_path_by_role(direction: dict[str, Any], role: str) -> Path | None:
+    artifacts = direction.get(RETAINED_ARTIFACTS_FIELD)
+    if not isinstance(artifacts, list):
+        return None
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or artifact.get("role") != role:
+            continue
+        path_value = artifact.get("path")
+        if isinstance(path_value, str) and path_value.strip():
+            return Path(path_value)
+    return None
+
+
+def _resolved_retained_artifact_path(direction: dict[str, Any], role: str, evidence_dir: Path | None) -> Path | None:
+    if evidence_dir is None:
+        return None
+    path = _retained_artifact_path_by_role(direction, role)
+    if path is None or path.is_absolute() or ".." in path.parts:
+        return None
+    try:
+        resolved_evidence_dir = evidence_dir.resolve()
+        resolved_candidate = (evidence_dir / path).resolve(strict=True)
+        resolved_candidate.relative_to(resolved_evidence_dir)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return None
+    if not resolved_candidate.is_file():
+        return None
+    return resolved_candidate
+
+
+def _artifact_payload_reasons(
+    path: Path,
+    label: str,
+    expected_byte_length: Any,
+    expected_sha256: Any,
+) -> list[str]:
+    reasons: list[str] = []
+    try:
+        actual_byte_length = path.stat().st_size
+    except OSError as error:
+        reasons.append(f"{label} artifact byte length cannot be read: {sanitize_text(error)}")
+    else:
+        if isinstance(expected_byte_length, int) and not isinstance(expected_byte_length, bool):
+            if actual_byte_length != expected_byte_length:
+                reasons.append(f"{label} artifact size {actual_byte_length} must equal direction.byte_length {expected_byte_length}")
+
+    if isinstance(expected_sha256, str) and re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        try:
+            digest = hashlib.sha256()
+            with path.open("rb") as file_handle:
+                for chunk in iter(lambda: file_handle.read(HASH_CHUNK_BYTES), b""):
+                    digest.update(chunk)
+            actual_sha256 = digest.hexdigest()
+        except OSError as error:
+            reasons.append(f"{label} artifact SHA-256 cannot be read: {sanitize_text(error)}")
+        else:
+            if actual_sha256 != expected_sha256.lower():
+                reasons.append(f"{label} artifact SHA-256 must equal direction.sha256")
+    return reasons
+
+
+def _destination_clipboard_artifact_reasons(
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+) -> list[str]:
+    destination_artifact = _resolved_retained_artifact_path(
+        direction,
+        "destination_clipboard_write",
+        evidence_dir,
+    )
+    if destination_artifact is None:
+        return []
+    return _artifact_payload_reasons(
+        destination_artifact,
+        f"{label}.destination_clipboard_write",
+        direction.get("byte_length"),
+        direction.get("sha256"),
+    )
+
+
+def _protocol_packets_artifact_reasons(
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+) -> list[str]:
+    protocol_artifact = _resolved_retained_artifact_path(direction, "protocol_packets", evidence_dir)
+    if protocol_artifact is None:
+        return []
+    required_events = {"clipboard_offer", "clipboard_request", "clipboard_content"}
+    observed_events: set[str] = set()
+    observed_change_id = False
+    observed_epoch = False
+    observed_origin = False
+    event_records_missing_metadata: list[str] = []
+    malformed_lines: list[int] = []
+    change_id = direction.get("change_id_hex")
+    session_epoch = direction.get("session_epoch")
+    origin_device_id = direction.get("origin_device_id")
+    try:
+        lines = protocol_artifact.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        return [f"{label}.protocol_packets artifact cannot be read: {sanitize_text(error)}"]
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            malformed_lines.append(line_number)
+            continue
+        if not isinstance(record, dict):
+            malformed_lines.append(line_number)
+            continue
+        event_names = {
+            str(record.get(key, "")).strip().lower()
+            for key in ("type", "event", "name", "message_type", "packet_type")
+            if str(record.get(key, "")).strip()
+        }
+        matching_events = required_events & event_names
+        observed_events.update(matching_events)
+        serialized_record = json.dumps(record, sort_keys=True).lower()
+        event_has_change_id = (
+            isinstance(change_id, str)
+            and re.fullmatch(r"[0-9a-fA-F]{32}", change_id) is not None
+            and change_id.lower() in serialized_record
+        )
+        record_session_epoch = record.get("session_epoch")
+        event_has_epoch = (
+            isinstance(session_epoch, int)
+            and not isinstance(session_epoch, bool)
+            and isinstance(record_session_epoch, int)
+            and not isinstance(record_session_epoch, bool)
+            and record_session_epoch == session_epoch
+        )
+        event_has_origin = (
+            isinstance(origin_device_id, str)
+            and bool(origin_device_id.strip())
+            and origin_device_id.strip().lower() in serialized_record
+        )
+        observed_change_id = observed_change_id or event_has_change_id
+        observed_epoch = observed_epoch or event_has_epoch
+        observed_origin = observed_origin or event_has_origin
+        if matching_events and not (event_has_change_id and event_has_epoch and event_has_origin):
+            event_records_missing_metadata.extend(sorted(matching_events))
+
+    reasons: list[str] = []
+    if malformed_lines:
+        reasons.append(f"{label}.protocol_packets artifact must be JSONL; malformed line(s): {malformed_lines[:5]}")
+    missing_events = sorted(required_events - observed_events)
+    if missing_events:
+        reasons.append(f"{label}.protocol_packets artifact missing event(s): {', '.join(missing_events)}")
+    if event_records_missing_metadata:
+        missing_metadata_events = sorted(set(event_records_missing_metadata))
+        reasons.append(
+            f"{label}.protocol_packets event record(s) must include matching change_id_hex, "
+            f"session_epoch, and origin_device_id: {', '.join(missing_metadata_events)}"
+        )
+    if not observed_change_id:
+        reasons.append(f"{label}.protocol_packets artifact must include change_id_hex {direction.get('change_id_hex')}")
+    if not observed_epoch:
+        reasons.append(f"{label}.protocol_packets artifact must include session_epoch {direction.get('session_epoch')}")
+    if not observed_origin:
+        reasons.append(f"{label}.protocol_packets artifact must include origin_device_id {direction.get('origin_device_id')}")
     return reasons
 
 
@@ -702,6 +875,8 @@ def _direction_reasons(
             cross_direction_artifact_paths,
         )
     )
+    reasons.extend(_destination_clipboard_artifact_reasons(direction, label, evidence_dir))
+    reasons.extend(_protocol_packets_artifact_reasons(direction, label, evidence_dir))
     return reasons
 
 
@@ -932,8 +1107,11 @@ def derive_gate(
             "distinct final marker matches, distinct change IDs, distinct SHA-256 digests, and retained product "
             "artifacts for the source read, sender action, receiver approval, protocol packets, destination write, "
             "final verification, and negative boundary checks, with distinct non-empty artifact files per role, per "
-            "direction, and across both directions. Every retained artifact must declare byte_length and SHA-256 "
-            "metadata that matches the retained file bytes. Offline or synthetic coverage alone remains readiness evidence."
+            "direction, and across both directions. Every retained artifact must declare its parent direction, byte_length, and SHA-256 "
+            "metadata that matches the retained file bytes, the destination_clipboard_write artifact must "
+            "match the direction-level byte_length and SHA-256 payload, and protocol_packets JSONL must "
+            "contain clipboard offer/request/content records for the direction change ID, session epoch, and origin. "
+            "Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
 

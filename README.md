@@ -501,8 +501,11 @@ summary-only, and older 5-test Android smoke logs. The gate still requires
 retained product evidence for exact Android ClipboardManager and macOS
 NSPasteboard endpoints, verified session epoch, change ID, SHA-256 digest,
 bounded byte length, distinct markers for both transfer directions, and
-per-role retained artifact byte-length/SHA-256 metadata that matches the stored
-artifact bytes. The real Android ClipboardManager
+per-role retained artifacts whose declared direction, byte-length, and SHA-256
+metadata match the stored artifact bytes, with the destination-write artifact
+matching the direction-level payload size and digest, and retained protocol-packet
+JSONL that contains offer/request/content records matching the direction
+change ID, session epoch, and origin. The real Android ClipboardManager
 <-> macOS NSPasteboard USB/LAN E2E gate remains open pending a signed
 Host/device run; see the
 [clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)
