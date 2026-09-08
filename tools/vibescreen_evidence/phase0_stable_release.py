@@ -491,6 +491,8 @@ def _formal_host_rss_report_issues(
         "criteria",
         "telemetry_sufficiency",
         "telemetry_criteria",
+        "host_readiness_sufficiency",
+        "host_readiness_criteria",
     ):
         issues.extend(_all_gate_section_checks_pass(record, path, section_name))
 
@@ -508,7 +510,7 @@ def _formal_host_rss_report_issues(
         return issues
 
     source_paths: dict[str, Path] = {}
-    for field in ("summary", "samples", "exact_window_report"):
+    for field in ("summary", "samples", "exact_window_report", "host_readiness"):
         value = source.get(field)
         if not isinstance(value, str) or not value.strip():
             issues.append(f"{path}: formal Host RSS report source.{field} must be present")
@@ -530,12 +532,13 @@ def _formal_host_rss_report_issues(
             continue
         source_paths[field] = source_path
 
-    if set(source_paths) == {"summary", "samples", "exact_window_report"}:
+    if set(source_paths) == {"summary", "samples", "exact_window_report", "host_readiness"}:
         try:
             rebuilt_report = derive_host_rss_gate(
                 source_paths["summary"],
                 source_paths["samples"],
                 source_paths["exact_window_report"],
+                source_paths["host_readiness"],
             )
         except (EvidenceInputError, OSError, TypeError, ValueError) as error:
             issues.append(

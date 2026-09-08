@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from vibescreen_evidence.host_rss_gate import derive_gate, main
+from vibescreen_evidence.host_rss_gate import derive_gate as _derive_gate, main
 
 
 def write_inputs(
@@ -230,6 +230,117 @@ def write_exact_window_report(
     return report
 
 
+def host_readiness_payload(
+    *,
+    source_commit: str = "c" * 40,
+    source_tree: str = "d" * 40,
+    source_dirty: bool = False,
+    current_source_commit: str | None = None,
+    current_source_tree: str | None = None,
+    current_source_dirty: bool = False,
+    can_start_host_rss_gate: bool = True,
+    signing_tcc_status: str = "ready",
+    listener_observed: bool = True,
+    is_ad_hoc: bool = False,
+    certificate_sha1: str = "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    expected_certificate_sha1: str = "9AAE572BF6D764E3436A6109197D345B5A87998C",
+    permissions_readable: bool = True,
+    permission_value: bool = True,
+) -> dict:
+    current_source_commit = current_source_commit or source_commit
+    current_source_tree = current_source_tree or source_tree
+    return {
+        "schema_version": "vibescreen.host-readiness/v1",
+        "kind": "macos_host_shared_prerequisite_readiness",
+        "generated_at": "2026-08-10T00:00:00+00:00",
+        "status": "pass" if can_start_host_rss_gate else "blocked",
+        "signing_tcc_status": signing_tcc_status,
+        "listener_status": "ready" if listener_observed else "blocked",
+        "virtual_hid_status": "blocked",
+        "login_headless_status": "blocked",
+        "can_start_host_rss_gate": can_start_host_rss_gate,
+        "can_start_trusted_lan_gate": can_start_host_rss_gate,
+        "can_start_native_hid_gate": can_start_host_rss_gate,
+        "can_start_stylus_gate": can_start_host_rss_gate,
+        "can_start_hardware_keyboard_gate": can_start_host_rss_gate,
+        "can_start_controller_runtime_gate": False,
+        "can_start_headless_login_gate": False,
+        "can_close_runtime_gates": False,
+        "blockers": [] if can_start_host_rss_gate else ["Host listener is not observed"],
+        "host": {
+            "app_path": "/Applications/Vibe Screen.app",
+            "identifier": "dev.telemachus.display",
+            "identity": "Vibe Screen Dev",
+            "is_ad_hoc": is_ad_hoc,
+            "authorities": ["Vibe Screen Dev"],
+            "team_identifier": None,
+            "certificate_sha1": certificate_sha1,
+            "expected_certificate_sha1": expected_certificate_sha1,
+            "cdhash": "a" * 40,
+            "binary_sha256": "b" * 64,
+            "designated_requirement": "identifier \"dev.telemachus.display\" and certificate leaf = H\"9AAE572BF6D764E3436A6109197D345B5A87998C\"",
+            "source_commit": source_commit,
+            "source_tree": source_tree,
+            "source_dirty": source_dirty,
+            "current_source_commit": current_source_commit,
+            "current_source_tree": current_source_tree,
+            "current_source_dirty": current_source_dirty,
+        },
+        "permissions": {
+            "database_path": "<user-tcc-db>; <system-tcc-db>",
+            "readable": permissions_readable,
+            "error": None,
+            "screen_recording_granted": permission_value,
+            "screen_recording_auth_reason": 2,
+            "accessibility_granted": permission_value,
+            "accessibility_auth_reason": 2,
+            "microphone_granted": permission_value,
+            "microphone_auth_reason": 2,
+            "screen_recording_state": "authorized_current_host_identity",
+            "accessibility_state": "authorized_current_host_identity",
+            "microphone_state": "authorized_current_host_identity",
+            "screen_recording_identity_bound": permission_value,
+            "accessibility_identity_bound": permission_value,
+            "microphone_identity_bound": permission_value,
+            "rows": [],
+        },
+        "listener": {"port": 54321, "observed": listener_observed, "output": "Vibe Screen LISTEN", "error": None},
+        "entitlements": {"app_path": "/Applications/Vibe Screen.app", "virtual_hid": False, "keys": [], "error": None},
+        "login_headless": {"status": "blocked", "blockers": ["Launch at Login is not verified enabled: unverified"]},
+        "safety": {
+            "read_only": True,
+            "starts_host": False,
+            "opens_host_gui": False,
+            "opens_system_settings": False,
+            "requests_screen_recording": False,
+            "requests_accessibility": False,
+            "requests_microphone": False,
+            "modifies_tcc": False,
+            "modifies_keychain": False,
+            "installs_or_replaces_host": False,
+            "modifies_android": False,
+            "closes_runtime_gates": False,
+        },
+    }
+
+
+def write_host_readiness(directory: Path, **overrides) -> Path:
+    report = directory / "host-readiness.json"
+    report.write_text(json.dumps(host_readiness_payload(**overrides)), encoding="utf-8")
+    return report
+
+
+def derive_gate(
+    summary: Path,
+    samples: Path,
+    exact_window: Path | None = None,
+    host_readiness: Path | None = None,
+) -> dict:
+    if host_readiness is None and exact_window is not None:
+        host_readiness = write_host_readiness(summary.parent)
+    return _derive_gate(summary, samples, exact_window, host_readiness)
+
+
 class HostRSSGateTest(unittest.TestCase):
     def test_flat_noisy_two_hour_window_passes(self):
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -247,6 +358,7 @@ class HostRSSGateTest(unittest.TestCase):
                 "summary": summary.as_posix(),
                 "samples": samples.as_posix(),
                 "exact_window_report": exact_window.as_posix(),
+                "host_readiness": (Path(raw_directory) / "host-readiness.json").as_posix(),
             },
         )
         self.assertEqual(report["source_summary"]["errors"], [])
@@ -419,6 +531,7 @@ class HostRSSGateTest(unittest.TestCase):
                         "--summary", str(summary),
                         "--samples", str(directory / "missing.jsonl"),
                         "--exact-window-report", str(directory / "missing-report.json"),
+                        "--host-readiness", str(directory / "missing-readiness.json"),
                         "--output", str(output),
                     ]
                 )
@@ -436,6 +549,7 @@ class HostRSSGateTest(unittest.TestCase):
             evidence_dir.mkdir(parents=True)
             summary, samples = write_inputs(evidence_dir)
             exact_window = write_exact_window_report(evidence_dir)
+            host_readiness = write_host_readiness(evidence_dir)
             output = evidence_dir / "host-rss-gate.json"
 
             with redirect_stdout(io.StringIO()):
@@ -444,6 +558,7 @@ class HostRSSGateTest(unittest.TestCase):
                         "--summary", str(summary),
                         "--samples", str(samples),
                         "--exact-window-report", str(exact_window),
+                        "--host-readiness", str(host_readiness),
                         "--output", str(output),
                         "--repo-root", str(directory),
                     ]
@@ -459,7 +574,12 @@ class HostRSSGateTest(unittest.TestCase):
                 "exact_window_report": (
                     "docs/evidence/host-rss/exact-window-report.json"
                 ),
+                "host_readiness": "docs/evidence/host-rss/host-readiness.json",
             },
+        )
+        self.assertEqual(report["host_readiness"]["status"], "pass")
+        self.assertTrue(
+            report["host_readiness_criteria"]["can_start_host_rss_gate"]["passed"]
         )
 
     def test_cli_fails_closed_on_malformed_host_rss_values(self):
@@ -477,6 +597,7 @@ class HostRSSGateTest(unittest.TestCase):
                     encoding="utf-8",
                 )
                 exact_window = write_exact_window_report(directory)
+                host_readiness = write_host_readiness(directory)
                 output = directory / "gate.json"
 
                 with redirect_stdout(io.StringIO()):
@@ -485,6 +606,7 @@ class HostRSSGateTest(unittest.TestCase):
                             "--summary", str(summary),
                             "--samples", str(samples),
                             "--exact-window-report", str(exact_window),
+                            "--host-readiness", str(host_readiness),
                             "--output", str(output),
                         ]
                     )
@@ -499,6 +621,7 @@ class HostRSSGateTest(unittest.TestCase):
             directory = Path(raw_directory)
             summary, samples = write_inputs(directory, sample_count=1)
             exact_window = write_exact_window_report(directory)
+            host_readiness = write_host_readiness(directory)
             output = directory / "gate.json"
             with redirect_stdout(io.StringIO()):
                 exit_code = main(
@@ -506,6 +629,7 @@ class HostRSSGateTest(unittest.TestCase):
                         "--summary", str(summary),
                         "--samples", str(samples),
                         "--exact-window-report", str(exact_window),
+                        "--host-readiness", str(host_readiness),
                         "--output", str(output),
                     ]
                 )
@@ -523,6 +647,7 @@ class HostRSSGateTest(unittest.TestCase):
             directory = Path(raw_directory)
             summary, samples = write_inputs(directory)
             exact_window = write_exact_window_report(directory)
+            host_readiness = write_host_readiness(directory)
             output = directory / "existing-directory"
             output.mkdir()
             stderr = io.StringIO()
@@ -532,6 +657,7 @@ class HostRSSGateTest(unittest.TestCase):
                         "--summary", str(summary),
                         "--samples", str(samples),
                         "--exact-window-report", str(exact_window),
+                        "--host-readiness", str(host_readiness),
                         "--output", str(output),
                     ]
                 )
@@ -586,6 +712,7 @@ class HostRSSGateTest(unittest.TestCase):
                 accepted_heartbeat_count=0,
                 heartbeat_gap_seconds=None,
             )
+            host_readiness = write_host_readiness(directory)
             output = directory / "gate.json"
             with redirect_stdout(io.StringIO()):
                 exit_code = main(
@@ -593,6 +720,7 @@ class HostRSSGateTest(unittest.TestCase):
                         "--summary", str(summary),
                         "--samples", str(samples),
                         "--exact-window-report", str(exact_window),
+                        "--host-readiness", str(host_readiness),
                         "--output", str(output),
                     ]
                 )
@@ -607,6 +735,98 @@ class HostRSSGateTest(unittest.TestCase):
         self.assertTrue(
             any("heartbeat_present" in reason for reason in report["reasons"])
         )
+
+    def test_missing_host_readiness_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            report = _derive_gate(summary, samples, exact_window)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["host_readiness_sufficiency"]["host_readiness_report_present"]["passed"]
+        )
+        self.assertIn("host_readiness_report_present", report["reasons"])
+
+    def test_non_object_host_readiness_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            host_readiness = directory / "host-readiness.json"
+            host_readiness.write_text("[]", encoding="utf-8")
+            report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+        self.assertEqual(report["derivation_status"], "complete")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["host_readiness_sufficiency"]["host_readiness_report_object"]["passed"]
+        )
+        self.assertTrue(
+            any("host_readiness_report_object" in reason for reason in report["reasons"])
+        )
+
+    def test_blocked_host_readiness_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            host_readiness = write_host_readiness(
+                directory,
+                can_start_host_rss_gate=False,
+                signing_tcc_status="blocked",
+                listener_observed=False,
+            )
+            report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["host_readiness_criteria"]["can_start_host_rss_gate"]["passed"]
+        )
+        self.assertFalse(report["host_readiness_criteria"]["listener_observed"]["passed"])
+        self.assertTrue(
+            any("signing_tcc_status_ready" in reason for reason in report["reasons"])
+        )
+
+    def test_wrong_source_signing_or_tcc_readiness_is_insufficient(self):
+        cases = (
+            (
+                "source_mismatch",
+                {"current_source_commit": "e" * 40},
+                "installed_host_matches_current_source",
+            ),
+            (
+                "dirty_current_source",
+                {"current_source_dirty": True},
+                "current_source_clean",
+            ),
+            (
+                "ad_hoc_signed",
+                {"is_ad_hoc": True},
+                "stable_signing_identity",
+            ),
+            (
+                "permission_not_bound",
+                {"permission_value": False},
+                "screen_recording_granted",
+            ),
+            (
+                "permission_unreadable",
+                {"permissions_readable": False},
+                "permissions_readable",
+            ),
+        )
+        for _name, overrides, failing_key in cases:
+            with self.subTest(_name), tempfile.TemporaryDirectory() as raw_directory:
+                directory = Path(raw_directory)
+                summary, samples = write_inputs(directory)
+                exact_window = write_exact_window_report(directory)
+                host_readiness = write_host_readiness(directory, **overrides)
+                report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertFalse(report["host_readiness_criteria"][failing_key]["passed"])
 
     def test_exact_window_queue_over_capacity_fails(self):
         with tempfile.TemporaryDirectory() as raw_directory:
