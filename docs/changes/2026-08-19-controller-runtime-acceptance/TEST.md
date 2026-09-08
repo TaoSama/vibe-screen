@@ -220,6 +220,15 @@ acceptance and does not change the README-facing open gate status.
 - [2026-08-30-p0110-controller-runtime-current-base-blocked-3214615/controller-runtime-readiness.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-3214615/controller-runtime-readiness.json)
 - [2026-08-30-p0110-controller-runtime-current-base-blocked-3214615/host-readiness.json](evidence/2026-08-30-p0110-controller-runtime-current-base-blocked-3214615/host-readiness.json)
 
+## Fail-closed evidence mapping
+
+`controller-runtime-summary.json` may report `pass` only when the observation
+record includes retained `artifact_paths` plus an `observation_artifacts` mapping
+for every `true` runtime observation. Each mapping entry must point to retained
+artifacts in the same evidence bundle. This prevents offline-only source/tests,
+no-device readiness notes, no-entitlement Host checks, or a single generic
+artifact from being promoted into controller runtime acceptance.
+
 ## 2026-08-30 current-base refresh after trusted LAN gate merge
 
 The latest 2026-08-30 current-base readiness run refreshed the controller owner

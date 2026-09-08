@@ -51,6 +51,36 @@ BLOCKING_FIELDS = {
 
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
 
+ARTIFACT_FIELD_REQUIREMENTS = {
+    "device_identity_recorded": "retain Android device identity, OS/build, and adb devices artifacts",
+    "apk_identity_recorded": "retain APK version, signing, and install-time artifacts",
+    "physical_controller_attached": "retain named physical controller hardware evidence",
+    "android_controller_source_observed": "retain SOURCE_GAMEPAD or SOURCE_JOYSTICK Android input evidence",
+    "protocol_controller_capability_negotiated": "retain Protocol v1 controller capability negotiation evidence",
+    "android_production_forwarding_observed": "retain MainActivity/StreamClient production forwarding evidence",
+    "controller_connected_state_disconnected_observed": "retain CONNECTED, STATE, and DISCONNECTED controller samples",
+    "host_identity_signed": "retain identity-signed Host codesign evidence",
+    "host_virtual_hid_entitlement_present": "retain approved virtual HID entitlement evidence",
+    "host_virtual_gamepad_available": "retain Host virtual-gamepad runtime availability evidence",
+    "mac_side_controller_response_observed": "retain Mac-side observer output showing visible controller response",
+    "neutral_release_on_disconnect_observed": "retain disconnect neutral-release evidence",
+}
+
+ARTIFACT_PATH_MARKERS = {
+    "device_identity_recorded": ("device-info", "adb-devices"),
+    "apk_identity_recorded": ("dumpsys-package", "apk"),
+    "physical_controller_attached": ("dumpsys-input", "controller-hardware"),
+    "android_controller_source_observed": ("dumpsys-input", "android-controller"),
+    "protocol_controller_capability_negotiated": ("protocol-controller", "capability"),
+    "android_production_forwarding_observed": ("android-controller", "streamclient", "mainactivity"),
+    "controller_connected_state_disconnected_observed": ("protocol-controller", "controller-lifecycle"),
+    "host_identity_signed": ("host-codesign",),
+    "host_virtual_hid_entitlement_present": ("host-codesign", "entitlement"),
+    "host_virtual_gamepad_available": ("host-controller-availability", "host-controller-injection"),
+    "mac_side_controller_response_observed": ("mac-controller-observer", "mac-side-controller"),
+    "neutral_release_on_disconnect_observed": ("neutral-release",),
+}
+
 CONSISTENCY_RULES = (
     (
         "physical_controller_attached",
@@ -115,6 +145,32 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
     return value
 
 
+def _observation_artifacts(record: dict[str, Any]) -> dict[str, list[str]]:
+    value = record.get("observation_artifacts", {})
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ControllerRuntimeEvidenceError("observation_artifacts must be an object")
+    artifacts: dict[str, list[str]] = {}
+    for field, paths in value.items():
+        if not isinstance(field, str):
+            raise ControllerRuntimeEvidenceError("observation_artifacts keys must be strings")
+        if field not in BOOLEAN_FIELDS:
+            raise ControllerRuntimeEvidenceError(f"unknown observation_artifacts field: {field}")
+        if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+            raise ControllerRuntimeEvidenceError(
+                f"observation_artifacts.{field} must be a list of strings"
+            )
+        artifacts[field] = paths
+    return artifacts
+
+
+def _has_expected_artifact_marker(field: str, paths: Sequence[str]) -> bool:
+    markers = ARTIFACT_PATH_MARKERS[field]
+    normalized_paths = [path.lower() for path in paths]
+    return any(marker in path for marker in markers for path in normalized_paths)
+
+
 def _inconsistent_observations(field_values: dict[str, bool]) -> list[dict[str, Any]]:
     inconsistencies: list[dict[str, Any]] = []
     for observed_field, prerequisites, requirement in CONSISTENCY_RULES:
@@ -135,6 +191,7 @@ def _inconsistent_observations(field_values: dict[str, bool]) -> list[dict[str, 
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     artifact_paths = _string_list(record, "artifact_paths")
+    observation_artifacts = _observation_artifacts(record)
     missing = [
         {"field": field, "requirement": requirement}
         for field, requirement in REQUIRED_FIELDS
@@ -154,6 +211,34 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
                 ),
             }
         )
+    artifact_path_set = set(artifact_paths)
+    for field in BOOLEAN_FIELDS:
+        if not field_values[field]:
+            continue
+        paths = observation_artifacts.get(field, [])
+        if not paths:
+            missing.append(
+                {
+                    "field": f"observation_artifacts.{field}",
+                    "requirement": ARTIFACT_FIELD_REQUIREMENTS[field],
+                }
+            )
+            continue
+        if artifact_path_set and any(path not in artifact_path_set for path in paths):
+            missing.append(
+                {
+                    "field": f"observation_artifacts.{field}",
+                    "requirement": "list only paths also present in artifact_paths",
+                }
+            )
+            continue
+        if not _has_expected_artifact_marker(field, paths):
+            missing.append(
+                {
+                    "field": f"observation_artifacts.{field}",
+                    "requirement": ARTIFACT_FIELD_REQUIREMENTS[field],
+                }
+            )
     if not missing and not inconsistencies:
         verdict = STATUS_PASS
     elif blocking_reasons:
@@ -175,6 +260,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
         "inconsistent_observations": inconsistencies,
         "blocking_reasons": blocking_reasons,
         "artifact_paths": artifact_paths,
+        "observation_artifacts": observation_artifacts,
         "notes": record.get("notes", "") if isinstance(record.get("notes", ""), str) else "",
     }
 
