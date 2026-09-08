@@ -541,6 +541,43 @@ def write_host_rss_gate_evidence(
     return output_path
 
 
+def write_clipboard_gate_evidence(
+    repo: Path,
+    *,
+    output_path: str = "docs/evidence/clipboard-e2e-gate.json",
+    mutate: Callable[[dict[str, object]], None] | None = None,
+) -> str:
+    report: dict[str, object] = {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "android_macos_clipboard_e2e_gate",
+        "verdict": "pass",
+        "result": "pass",
+        "gate_closed": True,
+        "can_close_android_macos_clipboard_e2e_gate": True,
+        "checks": [
+            {"name": "device_identity", "status": "pass", "reasons": []},
+            {"name": "host_readiness", "status": "pass", "reasons": []},
+            {"name": "real_transport_ready", "status": "pass", "reasons": []},
+            {"name": "android_clipboardmanager_smoke", "status": "pass", "reasons": []},
+            {"name": "bidirectional_product_e2e", "status": "pass", "reasons": []},
+        ],
+        "blockers": [],
+        "not_proven": [],
+        "safety": {
+            "offline_tests_do_not_close_gate": True,
+            "synthetic_evidence_do_not_close_gate": True,
+            "public_output_sanitized": True,
+            "raw_serial_redacted": True,
+        },
+    }
+    if mutate is not None:
+        mutate(report)
+    output_file = repo / output_path
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(json.dumps(report), encoding="utf-8")
+    return output_path
+
+
 def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[str, object]:
     manifest = complete_manifest()
     manifest["source"]["base_commit"] = audited_source_commit
@@ -549,6 +586,9 @@ def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[s
     )
     gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
         write_host_rss_gate_evidence(repo)
+    ]
+    gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+        write_clipboard_gate_evidence(repo)
     ]
     add_merged_pr_snapshot(manifest, repo, audited_source_commit)
     return manifest
@@ -1712,6 +1752,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                write_clipboard_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(manifest, repo, merge_commit)
 
             summary = evaluate_manifest(
@@ -1904,6 +1947,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                write_clipboard_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(
                 manifest, repo, merge_commit, excluded_pr_numbers=[159, 160], maximum=160
             )
@@ -2091,6 +2137,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                write_clipboard_gate_evidence(repo)
+            ]
             add_merged_pr_snapshot(manifest, repo, base_commit)
             gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
             gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
@@ -2128,6 +2177,9 @@ class Phase0StableReleaseTest(unittest.TestCase):
             )
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
+            ]
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                write_clipboard_gate_evidence(repo)
             ]
             add_merged_pr_snapshot(manifest, repo, base_commit)
 
@@ -2259,6 +2311,144 @@ class Phase0StableReleaseTest(unittest.TestCase):
             summary["missing_required_gate_ids"],
             ["clipboard_android_macos_product_e2e"],
         )
+
+    def test_clipboard_product_e2e_pass_requires_formal_gate_report(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
+            gate["evidence_paths"] = ["docs/evidence/clipboard-summary-only.json"]
+            summary_file = repo / "docs/evidence/clipboard-summary-only.json"
+            summary_file.parent.mkdir(parents=True, exist_ok=True)
+            summary_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "android_clipboard_local_smoke",
+                        "verdict": "pass",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            clipboard_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertIn(
+                "clipboard_android_macos_product_e2e pass requires at least one passing formal android_macos_clipboard_e2e_gate report in evidence_paths",
+                clipboard_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/clipboard-summary-only.json: formal clipboard report kind must be android_macos_clipboard_e2e_gate",
+                clipboard_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_pass_rejects_blocked_gate_report(self) -> None:
+        def mark_blocked(report: dict[str, object]) -> None:
+            report["verdict"] = "blocked"
+            report["result"] = "blocked"
+            report["gate_closed"] = False
+            report["can_close_android_macos_clipboard_e2e_gate"] = False
+            report["blockers"] = ["missing Host-backed bidirectional clipboard product E2E"]
+            report["not_proven"] = ["Android ClipboardManager -> macOS NSPasteboard over Protocol v1 USB/LAN"]
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
+            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=mark_blocked)]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            clipboard_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("formal clipboard report verdict and result must be pass" in issue for issue in clipboard_gate["issues"]),
+                clipboard_gate["issues"],
+            )
+            self.assertTrue(
+                any("can_close_android_macos_clipboard_e2e_gate must be true" in issue for issue in clipboard_gate["issues"]),
+                clipboard_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_pass_requires_formal_gate_checks(self) -> None:
+        def remove_checks(report: dict[str, object]) -> None:
+            report.pop("checks")
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
+            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=remove_checks)]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            clipboard_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertIn(
+                "docs/evidence/clipboard-e2e-gate.json: formal clipboard report checks must be a list",
+                clipboard_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_pass_rejects_non_pass_formal_gate_check(self) -> None:
+        def block_product_check(report: dict[str, object]) -> None:
+            checks = report["checks"]
+            assert isinstance(checks, list)
+            product_check = checks[-1]
+            assert isinstance(product_check, dict)
+            product_check["status"] = "blocked"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
+            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=block_product_check)]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            clipboard_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertIn(
+                "docs/evidence/clipboard-e2e-gate.json: formal clipboard report check bidirectional_product_e2e must be pass",
+                clipboard_gate["issues"],
+            )
+
+        with_temporary_repo(run)
 
     def test_readme_guard_fails_on_phase0_has_shipped_claim(self) -> None:
         manifest = complete_manifest()

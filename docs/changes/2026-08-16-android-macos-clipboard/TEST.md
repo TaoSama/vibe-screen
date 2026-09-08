@@ -220,6 +220,17 @@ Xcode / CI 环境执行后才能声称通过。
 - 仅有 Command Line Tools 的本机无法执行 Mac clipboard XCTest；需完整 Xcode
   或 CI 补证。
 
+## E2E gate artifact hardening
+
+Current tooling requires each retained product artifact role to be backed by a
+distinct evidence-relative file, and each artifact entry must record a positive
+`byte_length` plus a 64-character SHA-256 digest that matches the retained file
+bytes. Summary-only placeholders, copied role files, missing artifact metadata,
+or edited artifact files therefore keep `clipboard-e2e-gate` blocked even when
+the surrounding JSON claims bidirectional product success. This is tooling
+hardening only; it does not create Host-backed Android `ClipboardManager` <->
+macOS `NSPasteboard` product evidence.
+
 ## 2026-08-22 Nubia P0110 readiness rerun
 
 Evidence:

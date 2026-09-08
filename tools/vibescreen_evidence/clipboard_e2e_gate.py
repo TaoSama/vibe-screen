@@ -10,6 +10,7 @@ directions.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -46,6 +47,14 @@ REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS = (
 ANDROID_CLIPBOARD_SMOKE_CLASS = "dev.telemachus.display.ClipboardManagerInstrumentedTest"
 SAFE_SERIAL_LABEL = "REDACTED_P0110_USB_SERIAL"
 RETAINED_ARTIFACTS_FIELD = "retained_artifacts"
+HOST_READINESS_REQUIRED_PERMISSION_FIELDS = (
+    "screen_recording_granted",
+    "accessibility_granted",
+    "microphone_granted",
+    "screen_recording_identity_bound",
+    "accessibility_identity_bound",
+    "microphone_identity_bound",
+)
 REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "source_clipboard_read",
     "sender_action",
@@ -55,6 +64,7 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "final_verification",
     "negative_boundary_verification",
 )
+HASH_CHUNK_BYTES = 1024 * 1024
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
 TCC_DATABASE_COMPONENT = "TCC" + r"\.db"
@@ -177,6 +187,7 @@ def _retained_artifact_reasons(
             continue
         artifact_key, path_reasons = _retained_artifact_key(artifact_label, path_value, evidence_dir)
         reasons.extend(path_reasons)
+        reasons.extend(_retained_artifact_digest_reasons(artifact_label, artifact, artifact_key))
         if artifact_key is not None:
             previous_role = seen_artifact_paths.get(artifact_key)
             if previous_role is not None:
@@ -237,6 +248,58 @@ def _retained_artifact_key(
     return resolved_candidate, []
 
 
+def _retained_artifact_digest_reasons(
+    artifact_label: str,
+    artifact: dict[str, Any],
+    artifact_key: Path | str | None,
+) -> list[str]:
+    reasons: list[str] = []
+    expected_byte_length = artifact.get("byte_length")
+    if (
+        not isinstance(expected_byte_length, int)
+        or isinstance(expected_byte_length, bool)
+        or expected_byte_length <= 0
+    ):
+        reasons.append(f"{artifact_label}.byte_length must record the retained artifact byte length")
+    expected_sha256 = artifact.get("sha256")
+    if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        reasons.append(f"{artifact_label}.sha256 must record the retained artifact SHA-256 digest")
+
+    if not isinstance(artifact_key, Path):
+        return reasons
+
+    try:
+        actual_byte_length = artifact_key.stat().st_size
+    except OSError as error:
+        reasons.append(f"{artifact_label}.byte_length cannot be verified: {sanitize_text(error)}")
+    else:
+        if isinstance(expected_byte_length, int) and not isinstance(expected_byte_length, bool):
+            if actual_byte_length != expected_byte_length:
+                reasons.append(
+                    f"{artifact_label}.byte_length {expected_byte_length} must equal retained artifact size {actual_byte_length}"
+                )
+
+    if isinstance(expected_sha256, str) and re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        try:
+            digest = hashlib.sha256()
+            with artifact_key.open("rb") as file_handle:
+                for chunk in iter(lambda: file_handle.read(HASH_CHUNK_BYTES), b""):
+                    digest.update(chunk)
+            actual_sha256 = digest.hexdigest()
+        except OSError as error:
+            reasons.append(f"{artifact_label}.sha256 cannot be verified: {sanitize_text(error)}")
+        else:
+            if actual_sha256 != expected_sha256.lower():
+                reasons.append(f"{artifact_label}.sha256 must equal retained artifact SHA-256")
+    return reasons
+
+
+def _flag_enabled(value: Any) -> bool:
+    if isinstance(value, str) and value.strip().lower() in {"", "0", "false", "no", "n"}:
+        return False
+    return bool(value)
+
+
 def _device_identity(document: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(document, dict):
         return dict(DEFAULT_DEVICE_IDENTITY)
@@ -268,6 +331,47 @@ def _device_identity_failures(identity: dict[str, Any]) -> list[str]:
     return failures
 
 
+def _identity_signature(identity: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        str(identity.get("manufacturer", "")).strip().lower(),
+        str(identity.get("model", "")).strip().lower(),
+        str(identity.get("codename", "")).strip().lower(),
+        str(identity.get("android_release", "")).strip(),
+        str(identity.get("sdk", "")).strip(),
+    )
+
+
+def _device_identity_consistency_failures(
+    identities: Sequence[tuple[str, dict[str, Any]]]
+) -> list[str]:
+    if len(identities) < 2:
+        return []
+    baseline_label, baseline_identity = identities[0]
+    baseline_signature = _identity_signature(baseline_identity)
+    failures: list[str] = []
+    for label, identity in identities[1:]:
+        if _identity_signature(identity) != baseline_signature:
+            failures.append(
+                f"{label} device identity must match {baseline_label} device identity"
+            )
+    return failures
+
+
+def _android_origin_device_id_failure(origin_device_id: Any, identity: dict[str, Any]) -> str | None:
+    if not isinstance(origin_device_id, str) or not origin_device_id.strip():
+        return None
+    normalized_origin = origin_device_id.lower()
+    if any(term in normalized_origin for term in ("xiaomi", "fuxi", "2211133c")):
+        return "android_clipboardmanager_to_macos_nspasteboard.origin_device_id must not include a non-P0110 Android device identity"
+    expected_terms = (
+        str(identity.get("model", "")).strip().lower(),
+        str(identity.get("codename", "")).strip().lower(),
+    )
+    if all(term and term in normalized_origin for term in expected_terms):
+        return None
+    return "android_clipboardmanager_to_macos_nspasteboard.origin_device_id must identify the P0110/pacific Android device"
+
+
 def _load_optional(path: Path | None, label: str) -> tuple[dict[str, Any] | None, list[str]]:
     if path is None:
         return None, [f"missing {label}"]
@@ -282,12 +386,38 @@ def _host_gate(host: dict[str, Any] | None, missing: Sequence[str]) -> dict[str,
         if host.get("status") != "pass" or host.get("can_close_runtime_gates") is not True:
             blockers = [str(item) for item in _list_value(host, "blockers")]
             reasons.extend(blockers or ["Host readiness did not pass"])
+        reasons.extend(_host_readiness_structural_reasons(host))
     return _gate(
         "host_readiness",
         PASS if not reasons else BLOCKED,
         reasons,
         ["host-readiness.json"] if host else [],
     )
+
+
+def _host_readiness_structural_reasons(host: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if host.get("schema_version") != "vibescreen.host-readiness/v1":
+        reasons.append("Host readiness schema_version must be vibescreen.host-readiness/v1")
+    if host.get("kind") != "macos_host_shared_prerequisite_readiness":
+        reasons.append("Host readiness kind must be macos_host_shared_prerequisite_readiness")
+    if host.get("signing_tcc_status") != "ready":
+        reasons.append(f"Host readiness signing_tcc_status must be ready, got {host.get('signing_tcc_status')!r}")
+    listener = host.get("listener")
+    if not isinstance(listener, dict):
+        reasons.append("Host readiness listener must be present")
+    elif listener.get("observed") is not True:
+        reasons.append(f"Host readiness listener.observed must be true, got {listener.get('observed')!r}")
+    permissions = host.get("permissions")
+    if not isinstance(permissions, dict):
+        reasons.append("Host readiness permissions must be present")
+    else:
+        if permissions.get("readable") is not True:
+            reasons.append(f"Host readiness permissions.readable must be true, got {permissions.get('readable')!r}")
+        for field in HOST_READINESS_REQUIRED_PERMISSION_FIELDS:
+            if permissions.get(field) is not True:
+                reasons.append(f"Host readiness permissions.{field} must be true, got {permissions.get(field)!r}")
+    return reasons
 
 
 def _usb_gate(usb: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, Any]:
@@ -471,6 +601,7 @@ def _direction_reasons(
     label: str,
     evidence_dir: Path | None,
     cross_direction_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
+    product_device_identity: dict[str, Any] | None = None,
 ) -> list[str]:
     required_true = (
         "protocol_v1_session",
@@ -509,6 +640,13 @@ def _direction_reasons(
     origin_device_id = direction.get("origin_device_id")
     if not isinstance(origin_device_id, str) or not origin_device_id.strip():
         reasons.append(f"{label}.origin_device_id must record the verified Protocol v1 origin device ID")
+    elif (
+        label == "android_clipboardmanager_to_macos_nspasteboard"
+        and product_device_identity is not None
+    ):
+        origin_failure = _android_origin_device_id_failure(origin_device_id, product_device_identity)
+        if origin_failure is not None:
+            reasons.append(origin_failure)
     byte_length = direction.get("byte_length")
     if not isinstance(byte_length, int) or isinstance(byte_length, bool) or byte_length <= 0:
         reasons.append(f"{label}.byte_length must be a positive integer")
@@ -572,13 +710,14 @@ def _product_e2e_gate(
     missing: Sequence[str],
     available_transports: set[str],
     evidence_dir: Path | None,
+    verified_device_identity: dict[str, Any] | None,
 ) -> dict[str, Any]:
     reasons = list(missing)
     evidence = ["product-e2e.json"] if product is not None else []
     if product is not None:
         if product.get("kind") != "android_macos_clipboard_product_e2e":
             reasons.append("product evidence kind must be android_macos_clipboard_product_e2e")
-        if product.get("synthetic") is True or product.get("offline_only") is True:
+        if _flag_enabled(product.get("synthetic")) or _flag_enabled(product.get("offline_only")):
             reasons.append("synthetic or offline-only clipboard evidence cannot close this gate")
         directions = product.get("directions") if isinstance(product.get("directions"), dict) else {}
         android_to_macos = directions.get("android_clipboardmanager_to_macos_nspasteboard")
@@ -594,6 +733,7 @@ def _product_e2e_gate(
                     "android_clipboardmanager_to_macos_nspasteboard",
                     evidence_dir,
                     retained_artifact_paths,
+                    verified_device_identity,
                 )
             )
             transport = android_to_macos.get("transport")
@@ -655,13 +795,16 @@ def _product_e2e_gate(
 
 
 def _device_gate(usb: dict[str, Any] | None, lan: dict[str, Any] | None, product: dict[str, Any] | None) -> dict[str, Any]:
-    has_identity_evidence = True
+    identity_sources: list[tuple[str, dict[str, Any]]] = []
     if product and isinstance(product.get("device"), dict):
-        identity = _device_identity(product.get("device"))
-    elif usb and isinstance(usb.get("device"), dict):
-        identity = _device_identity(usb.get("device"))
-    elif lan and isinstance(lan.get("android_device"), dict):
-        identity = _device_identity(lan.get("android_device"))
+        identity_sources.append(("product", _device_identity(product.get("device"))))
+    if usb and isinstance(usb.get("device"), dict):
+        identity_sources.append(("usb", _device_identity(usb.get("device"))))
+    if lan and isinstance(lan.get("android_device"), dict):
+        identity_sources.append(("trusted_lan", _device_identity(lan.get("android_device"))))
+    has_identity_evidence = True
+    if identity_sources:
+        identity = identity_sources[0][1]
     else:
         identity = dict(DEFAULT_DEVICE_IDENTITY)
         has_identity_evidence = False
@@ -674,7 +817,12 @@ def _device_gate(usb: dict[str, Any] | None, lan: dict[str, Any] | None, product
             "identity": None,
             "expected_identity": sanitize_value(identity),
         }
-    reasons = _device_identity_failures(identity)
+    reasons = [
+        reason
+        for _, source_identity in identity_sources
+        for reason in _device_identity_failures(source_identity)
+    ]
+    reasons.extend(_device_identity_consistency_failures(identity_sources))
     return {
         "name": "device_identity",
         "status": FAIL if reasons else PASS,
@@ -706,14 +854,26 @@ def derive_gate(
         for transport, gate in (("usb", usb_gate), ("trusted_lan", lan_gate))
         if gate["status"] == PASS
     }
+    device_gate = _device_gate(usb, lan, product)
+    verified_device_identity = (
+        device_gate.get("identity")
+        if device_gate.get("status") == PASS and isinstance(device_gate.get("identity"), dict)
+        else None
+    )
     gates = [
-        _device_gate(usb, lan, product),
+        device_gate,
         _host_gate(host, host_missing),
         usb_gate,
         lan_gate,
         _transport_gate(usb_gate, lan_gate),
         _android_clipboard_gate(android_clipboard_instrumentation_log),
-        _product_e2e_gate(product, product_missing, available_transports, evidence_dir),
+        _product_e2e_gate(
+            product,
+            product_missing,
+            available_transports,
+            evidence_dir,
+            verified_device_identity,
+        ),
     ]
     required_gate_names = {
         "device_identity",
@@ -772,7 +932,8 @@ def derive_gate(
             "distinct final marker matches, distinct change IDs, distinct SHA-256 digests, and retained product "
             "artifacts for the source read, sender action, receiver approval, protocol packets, destination write, "
             "final verification, and negative boundary checks, with distinct non-empty artifact files per role, per "
-            "direction, and across both directions. Offline or synthetic coverage alone remains readiness evidence."
+            "direction, and across both directions. Every retained artifact must declare byte_length and SHA-256 "
+            "metadata that matches the retained file bytes. Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
 
