@@ -38,6 +38,22 @@ def child_gate(kind: str, flag: str, *, verdict: str = "pass") -> dict[str, obje
         "verdict": verdict,
         "gate_closed": verdict == "pass",
         flag: verdict == "pass",
+        "safety": {
+            "offline_tests_do_not_close_gate": True,
+            "synthetic_evidence_do_not_close_gate": True,
+            "no_host_ui_evidence_do_not_close_gate": True,
+            "summary_only_evidence_do_not_close_gate": True,
+            "retained_remote_file_bytes_required": True,
+            "relay_preflight_does_not_close_product_e2e": True,
+            "usb_lan_evidence_do_not_close_internet_gate": True,
+        },
+        "product_e2e_closure": {
+            "host_backed_product_session_required": True,
+            "same_session_bidirectional_transfer_required": True,
+            "retained_remote_file_bytes_required": True,
+            "summary_only_evidence_rejected": True,
+            "no_host_ui_evidence_rejected": True,
+        },
         "blockers": [] if verdict == "pass" else ["still blocked"],
         "not_proven": [] if verdict == "pass" else ["product evidence"],
     }
@@ -193,6 +209,54 @@ class FileTransferBulkCurrentBaseManifestTests(unittest.TestCase):
         self.assertFalse(child["can_close"])
         self.assertIn("retained public Internet product evidence", child["not_proven"])
         self.assertIn("pass but still lists unproven", " ".join(child["blockers"]))
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_pass_android_child_gate_without_product_closure_flags_cannot_close(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            android = root / "file-transfer-android-smoke-gate.json"
+            report = pass_child_gate(
+                "android_macos_file_transfer_smoke",
+                "can_close_file_transfer_android_smoke_gate",
+            )
+            report.pop("product_e2e_closure")
+            write_json(android, report)
+
+            manifest = build_manifest(command=[], repo=root, android_gate=android)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertFalse(child["can_close"])
+        self.assertIn(
+            "product_e2e_closure.host_backed_product_session_required must be true",
+            " ".join(child["blockers"]),
+        )
+
+    @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
+    def test_pass_android_child_gate_without_no_host_safety_flags_cannot_close(self, repository_state) -> None:
+        repository_state.return_value = {"revision": "abc", "dirty": False, "status_porcelain": []}
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            make_docs(root)
+            android = root / "file-transfer-android-smoke-gate.json"
+            report = pass_child_gate(
+                "android_macos_file_transfer_smoke",
+                "can_close_file_transfer_android_smoke_gate",
+            )
+            safety = report["safety"]
+            assert isinstance(safety, dict)
+            safety.pop("no_host_ui_evidence_do_not_close_gate")
+            write_json(android, report)
+
+            manifest = build_manifest(command=[], repo=root, android_gate=android)
+            child = manifest["child_gates"][ANDROID_CHILD_ID]
+
+        self.assertFalse(child["can_close"])
+        self.assertIn(
+            "safety.no_host_ui_evidence_do_not_close_gate must be true",
+            " ".join(child["blockers"]),
+        )
 
     @patch("vibescreen_evidence.file_transfer_bulk_current_base_manifest.repository_state")
     def test_verdict_result_mismatch_cannot_close_child_gate(self, repository_state) -> None:

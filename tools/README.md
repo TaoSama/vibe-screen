@@ -83,7 +83,11 @@ blocked placeholder. The aggregate exits successfully for a default blocked
 summary unless `FILE_TRANSFER_BULK_CURRENT_BASE_REQUIRE_PASS=1` is set. It never
 claims the separate clipboard gate and never treats USB/LAN evidence as public
 Internet WebRTC bulk proof. Wrong-kind child gate JSON, missing required pass
-flags, or contradictory child verdict fields remain blocked.
+flags, missing child safety flags, missing Android product-E2E closure flags,
+or contradictory child verdict fields remain blocked. The Android child summary
+must explicitly state that no-Host UI, summary-only, synthetic, or offline test
+evidence did not close the gate and that retained destination-file bytes are
+required.
 
 ## Phase 0 stable-release aggregate gate
 
@@ -99,6 +103,10 @@ has verdict `pass` with closing-strength evidence. Historical real-device
 evidence is accepted only for the Android USB baseline gate; current-source
 runtime, latency, Host RSS, hardware compatibility, HID, controller, and module
 ownership gates require their gate-specific closing evidence.
+The file-transfer product E2E row also deep-validates cited JSON evidence: it
+must include a passing `android_macos_file_transfer_smoke` gate report with
+passing required checks, empty blockers and `not_proven`, explicit no-Host /
+summary-only rejection safety flags, and Android product-E2E closure flags.
 Pass `PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=$(git rev-parse HEAD)` when
 refreshing or auditing the aggregate owner so the summary records whether the
 manifest is bound to the evaluated source commit. A mismatch normally reports

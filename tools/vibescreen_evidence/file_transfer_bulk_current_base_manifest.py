@@ -53,6 +53,20 @@ CHILD_GATE_DEFAULTS = {
         "kind": "android_macos_file_transfer_smoke",
         "source_gate": "file-transfer-android-smoke",
         "required_flag": "can_close_file_transfer_android_smoke_gate",
+        "required_safety_true": (
+            "offline_tests_do_not_close_gate",
+            "synthetic_evidence_do_not_close_gate",
+            "no_host_ui_evidence_do_not_close_gate",
+            "summary_only_evidence_do_not_close_gate",
+            "retained_remote_file_bytes_required",
+        ),
+        "required_closure_true": (
+            "host_backed_product_session_required",
+            "same_session_bidirectional_transfer_required",
+            "retained_remote_file_bytes_required",
+            "summary_only_evidence_rejected",
+            "no_host_ui_evidence_rejected",
+        ),
         "requirement": (
             "Real Android USB or trusted-LAN Protocol v1 file transfer passes "
             "with signed/TCC-ready Host, bidirectional product evidence, retained "
@@ -63,6 +77,13 @@ CHILD_GATE_DEFAULTS = {
         "kind": "phase3_webrtc_bulk_product_flow_gate",
         "source_gate": "phase3-webrtc-bulk-product-flow",
         "required_flag": "can_close_public_internet_bulk_product_flow_gate",
+        "required_safety_true": (
+            "relay_preflight_does_not_close_product_e2e",
+            "offline_tests_do_not_close_gate",
+            "usb_lan_evidence_do_not_close_internet_gate",
+            "synthetic_evidence_do_not_close_gate",
+        ),
+        "required_closure_true": (),
         "requirement": (
             "Real macOS and Android peers use public Internet WebRTC bulk "
             "DataChannel product-flow evidence with retained artifacts, route "
@@ -129,6 +150,8 @@ def _child_gate_summary(
         "required_flag": defaults["required_flag"],
         "can_close": False,
         "requirement": defaults["requirement"],
+        "safety": {},
+        "product_e2e_closure": {},
         "blockers": [f"missing child gate report for {defaults['source_gate']}"],
         "not_proven": [defaults["requirement"]],
     }
@@ -162,6 +185,14 @@ def _child_gate_summary(
         blockers.append("child gate report did not set gate_closed=true")
     if not required_flag_closed:
         blockers.append(f"child gate report did not set {required_flag}=true")
+    safety = report.get("safety") if isinstance(report.get("safety"), dict) else {}
+    for field in defaults["required_safety_true"]:
+        if safety.get(field) is not True:
+            blockers.append(f"child gate report safety.{field} must be true")
+    closure = report.get("product_e2e_closure") if isinstance(report.get("product_e2e_closure"), dict) else {}
+    for field in defaults["required_closure_true"]:
+        if closure.get(field) is not True:
+            blockers.append(f"child gate report product_e2e_closure.{field} must be true")
     if verdict_text == "pass" and blockers:
         blockers.append("child gate report is pass but still lists blockers")
     if verdict_text == "pass" and not_proven:
@@ -183,6 +214,8 @@ def _child_gate_summary(
             "verdict": verdict_text,
             "gate_closed": gate_closed,
             "can_close": can_close,
+            "safety": safety,
+            "product_e2e_closure": closure,
             "blockers": blockers,
             "not_proven": [] if can_close else not_proven,
         }

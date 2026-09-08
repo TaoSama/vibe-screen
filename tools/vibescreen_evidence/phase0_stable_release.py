@@ -27,6 +27,13 @@ from .host_rss_gate import (
     MINIMUM_SAMPLE_COUNT as HOST_RSS_MINIMUM_SAMPLE_COUNT,
     derive_gate as derive_host_rss_gate,
 )
+from .file_transfer_android_smoke import (
+    EXPECTED_DIRECTION_ENDPOINTS as FILE_TRANSFER_EXPECTED_DIRECTION_ENDPOINTS,
+    REQUIRED_CANCEL_ARTIFACT_ROLES as FILE_TRANSFER_REQUIRED_CANCEL_ARTIFACT_ROLES,
+    REQUIRED_DIRECTION_ARTIFACT_ROLES as FILE_TRANSFER_REQUIRED_DIRECTION_ARTIFACT_ROLES,
+    REQUIRED_PRODUCT_CONTEXT_FALSE as FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_FALSE,
+    REQUIRED_PRODUCT_CONTEXT_TRUE as FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_TRUE,
+)
 from .soak_public_report import EvidenceInputError
 
 KIND = "phase0_stable_release_closure"
@@ -39,9 +46,11 @@ EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID = "telemetry_and_latency_archive"
 HOST_RSS_2H_NO_GROWTH_GATE_ID = "host_rss_2h_no_growth"
 CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID = "clipboard_android_macos_product_e2e"
+FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID = "file_transfer_android_product_e2e"
 LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
 ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
 CLIPBOARD_E2E_GATE_KIND = "android_macos_clipboard_e2e_gate"
+FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND = "android_macos_file_transfer_smoke"
 CLIPBOARD_E2E_REQUIRED_CHECKS = (
     "device_identity",
     "host_readiness",
@@ -94,6 +103,28 @@ DEFAULT_FORBIDDEN_README_PATTERNS = (
     r"\bPhase\s*0\s+(?:is(?:\s+now)?|now|has(?:\s+been|\s+reached)?|was|marked|declared|treated as|reached)\s+(?:complete|closed|shipped|released|stable|done|production[- ]ready|generally available|GA)\b",
     r"\bPhase\s*0\s+(?:stable[- ]release|release)\s+(?:is|now|has been|was)\s+(?:available|ready|complete|shipped|released|stable|done|production[- ]ready|generally available|GA)\b",
     r"\bPhase\s*0\s+(?:GA|generally available|production[- ]ready)\b",
+)
+FILE_TRANSFER_ANDROID_REQUIRED_CHECKS = (
+    "device_identity",
+    "host_readiness",
+    "real_transport_ready",
+    "android_file_transfer_smoke",
+    "bidirectional_product_e2e",
+    "cancel_cleanup",
+)
+FILE_TRANSFER_ANDROID_REQUIRED_SAFETY_TRUE = (
+    "offline_tests_do_not_close_gate",
+    "synthetic_evidence_do_not_close_gate",
+    "no_host_ui_evidence_do_not_close_gate",
+    "summary_only_evidence_do_not_close_gate",
+    "retained_remote_file_bytes_required",
+)
+FILE_TRANSFER_ANDROID_REQUIRED_CLOSURE_TRUE = (
+    "host_backed_product_session_required",
+    "same_session_bidirectional_transfer_required",
+    "retained_remote_file_bytes_required",
+    "summary_only_evidence_rejected",
+    "no_host_ui_evidence_rejected",
 )
 
 REQUIRED_GATE_IDS = (
@@ -255,6 +286,12 @@ def _gate_summary(
         elif gate_id == CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID:
             issues.extend(
                 _clipboard_android_macos_product_e2e_issues(
+                    evidence_paths=evidence_paths, repo_root=repo_root
+                )
+            )
+        elif gate_id == FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID:
+            issues.extend(
+                _file_transfer_android_product_e2e_issues(
                     evidence_paths=evidence_paths, repo_root=repo_root
                 )
             )
@@ -531,6 +568,370 @@ def _load_evidence_json(
             f"{gate_id} evidence {raw_path} must be a JSON object",
         )
     return record, None
+
+
+def _file_transfer_android_product_e2e_issues(
+    *, evidence_paths: Sequence[str], repo_root: Path | None
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "file_transfer_android_product_e2e pass requires repo_root to verify "
+            "structured evidence paths"
+        ]
+
+    valid_file_transfer_report = False
+    issues: list[str] = []
+    candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(
+            repository,
+            raw_path,
+            gate_id=FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID,
+        )
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                f"file_transfer_android_product_e2e evidence path {raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(
+            evidence_path,
+            raw_path,
+            gate_id=FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID,
+        )
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        if record.get("kind") != FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND:
+            candidate_issues.append(
+                f"{raw_path}: formal file-transfer report kind must be "
+                f"{FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND}"
+            )
+            continue
+        report_issues = _formal_file_transfer_android_product_e2e_report_issues(
+            record, raw_path, repo_root=repository
+        )
+        if report_issues:
+            candidate_issues.extend(report_issues)
+        else:
+            valid_file_transfer_report = True
+
+    if not valid_file_transfer_report:
+        issues.append(
+            "file_transfer_android_product_e2e pass requires at least one passing "
+            "formal android_macos_file_transfer_smoke gate report with Host-backed, "
+            "same-session bidirectional product evidence and retained source/destination bytes"
+        )
+        issues.extend(candidate_issues)
+    return issues
+
+
+def _formal_file_transfer_android_product_e2e_report_issues(
+    record: dict[str, Any], path: str, *, repo_root: Path
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{path}: formal file-transfer report schema_version must be {SCHEMA_VERSION}")
+    if record.get("kind") != FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND:
+        issues.append(
+            f"{path}: formal file-transfer report kind must be {FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND}"
+        )
+    for field in ("verdict", "result"):
+        if record.get(field) != STATUS_PASS:
+            issues.append(f"{path}: formal file-transfer report {field} must be pass")
+    if record.get("gate_closed") is not True:
+        issues.append(f"{path}: formal file-transfer report gate_closed must be true")
+    if record.get("can_close_file_transfer_android_smoke_gate") is not True:
+        issues.append(
+            f"{path}: formal file-transfer report can_close_file_transfer_android_smoke_gate must be true"
+        )
+
+    for field in ("blockers", "not_proven"):
+        value = record.get(field, [])
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            issues.append(f"{path}: formal file-transfer report {field} must be a list of strings")
+        elif any(item.strip() for item in value):
+            issues.append(f"{path}: formal file-transfer report pass must not include unresolved {field}")
+
+    safety = record.get("safety")
+    if not isinstance(safety, dict):
+        issues.append(f"{path}: formal file-transfer report safety must be an object")
+    else:
+        for field in FILE_TRANSFER_ANDROID_REQUIRED_SAFETY_TRUE:
+            if safety.get(field) is not True:
+                issues.append(f"{path}: formal file-transfer report safety.{field} must be true")
+
+    closure = record.get("product_e2e_closure")
+    if not isinstance(closure, dict):
+        issues.append(f"{path}: formal file-transfer report product_e2e_closure must be an object")
+    else:
+        for field in FILE_TRANSFER_ANDROID_REQUIRED_CLOSURE_TRUE:
+            if closure.get(field) is not True:
+                issues.append(
+                    f"{path}: formal file-transfer report product_e2e_closure.{field} must be true"
+                )
+
+    checks = record.get("checks")
+    if not isinstance(checks, list):
+        issues.append(f"{path}: formal file-transfer report checks must be a list")
+        return issues
+    checks_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    for check_name in FILE_TRANSFER_ANDROID_REQUIRED_CHECKS:
+        check = checks_by_name.get(check_name)
+        if not isinstance(check, dict):
+            issues.append(f"{path}: formal file-transfer report missing {check_name} check")
+            continue
+        if check.get("status") != STATUS_PASS:
+            issues.append(f"{path}: formal file-transfer report {check_name}.status must be pass")
+        reasons = check.get("reasons", [])
+        if not isinstance(reasons, list) or any(not isinstance(reason, str) for reason in reasons):
+            issues.append(f"{path}: formal file-transfer report {check_name}.reasons must be a list of strings")
+        elif any(reason.strip() for reason in reasons):
+            issues.append(f"{path}: formal file-transfer report {check_name}.reasons must be empty")
+
+    source = record.get("source")
+    if not isinstance(source, dict):
+        issues.append(f"{path}: formal file-transfer report source must be an object")
+        return issues
+    product_e2e_ref = source.get("product_e2e")
+    if not isinstance(product_e2e_ref, str) or not product_e2e_ref.strip():
+        issues.append(f"{path}: formal file-transfer report source.product_e2e must be present")
+        return issues
+    product_path, path_issue = _repo_relative_evidence_path(
+        repo_root,
+        product_e2e_ref.strip(),
+        gate_id=FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID,
+    )
+    if path_issue is not None or product_path is None:
+        issues.append(
+            f"{path}: formal file-transfer report source.product_e2e must be a repo-relative path inside repo_root"
+        )
+        return issues
+    if not product_path.exists():
+        issues.append(
+            f"{path}: formal file-transfer report source.product_e2e {product_e2e_ref.strip()} must exist"
+        )
+        return issues
+    product_record, load_issue = _load_evidence_json(
+        product_path,
+        product_e2e_ref.strip(),
+        gate_id=FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID,
+    )
+    if load_issue is not None:
+        issues.append(f"{path}: formal file-transfer report source.product_e2e could not be read: {load_issue}")
+        return issues
+    issues.extend(
+        _file_transfer_product_e2e_source_issues(
+            product_record,
+            f"{path}: source.product_e2e {product_e2e_ref.strip()}",
+            evidence_dir=product_path.parent,
+        )
+    )
+    return issues
+
+
+def _file_transfer_product_e2e_source_issues(
+    record: dict[str, Any],
+    label: str,
+    *,
+    evidence_dir: Path | None,
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{label} schema_version must be {SCHEMA_VERSION}")
+    if record.get("kind") != "android_macos_file_transfer_product_e2e":
+        issues.append(f"{label} kind must be android_macos_file_transfer_product_e2e")
+    if record.get("synthetic") is True or record.get("offline_only") is True:
+        issues.append(f"{label} synthetic or offline-only evidence cannot close this gate")
+    for field in FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_TRUE:
+        if record.get(field) is not True:
+            issues.append(f"{label} {field} must be true")
+    for field in FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_FALSE:
+        if record.get(field) is not False:
+            issues.append(f"{label} {field} must be false")
+
+    directions = record.get("directions")
+    if not isinstance(directions, dict):
+        issues.append(f"{label} directions must be an object")
+        return issues
+
+    transfer_ids: dict[str, str] = {}
+    digests: dict[str, str] = {}
+    file_names: dict[str, str] = {}
+    transports: dict[str, str] = {}
+    session_epochs: dict[str, int] = {}
+    for direction_name, endpoints in FILE_TRANSFER_EXPECTED_DIRECTION_ENDPOINTS.items():
+        direction = directions.get(direction_name)
+        if not isinstance(direction, dict):
+            issues.append(f"{label} missing {direction_name} direction evidence")
+            continue
+        issues.extend(
+            _file_transfer_retained_artifact_issues(
+                direction,
+                f"{label} {direction_name}",
+                FILE_TRANSFER_REQUIRED_DIRECTION_ARTIFACT_ROLES,
+                evidence_dir,
+            )
+        )
+        source_endpoint, destination_endpoint = endpoints
+        if direction.get("source_endpoint") != source_endpoint:
+            issues.append(f"{label} {direction_name}.source_endpoint must be {source_endpoint}")
+        if direction.get("destination_endpoint") != destination_endpoint:
+            issues.append(f"{label} {direction_name}.destination_endpoint must be {destination_endpoint}")
+        transfer_id = direction.get("transfer_id_hex")
+        if not isinstance(transfer_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", transfer_id):
+            issues.append(f"{label} {direction_name}.transfer_id_hex must be a 32-character hex transfer ID")
+        else:
+            transfer_ids[direction_name] = transfer_id.lower()
+        digest = direction.get("sha256")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+            issues.append(f"{label} {direction_name}.sha256 must be a 64-character hex SHA-256 digest")
+        else:
+            digests[direction_name] = digest.lower()
+        byte_length = direction.get("byte_length")
+        if not _is_positive_integer(byte_length):
+            issues.append(f"{label} {direction_name}.byte_length must be a positive integer")
+        session_epoch = direction.get("session_epoch")
+        if not _is_positive_integer(session_epoch):
+            issues.append(f"{label} {direction_name}.session_epoch must be a positive integer")
+        else:
+            session_epochs[direction_name] = session_epoch
+        transport = direction.get("transport")
+        if transport not in {"usb", "trusted_lan"}:
+            issues.append(f"{label} {direction_name}.transport must be usb or trusted_lan")
+        else:
+            transports[direction_name] = transport
+        file_name = direction.get("file_name")
+        if not isinstance(file_name, str) or not file_name.strip():
+            issues.append(f"{label} {direction_name}.file_name must be present")
+        else:
+            file_names[direction_name] = file_name.strip()
+
+    android_to_macos = "android_to_macos_file_transfer"
+    macos_to_android = "macos_to_android_file_transfer"
+    if transfer_ids.get(android_to_macos) and transfer_ids.get(android_to_macos) == transfer_ids.get(macos_to_android):
+        issues.append(f"{label} direction transfer IDs must be distinct")
+    if digests.get(android_to_macos) and digests.get(android_to_macos) == digests.get(macos_to_android):
+        issues.append(f"{label} direction SHA-256 digests must be distinct")
+    if file_names.get(android_to_macos) and file_names.get(android_to_macos) == file_names.get(macos_to_android):
+        issues.append(f"{label} direction file names must be distinct")
+    if transports.get(android_to_macos) and transports.get(macos_to_android) and transports[android_to_macos] != transports[macos_to_android]:
+        issues.append(f"{label} direction transports must match for same-session bidirectional product evidence")
+    if (
+        session_epochs.get(android_to_macos)
+        and session_epochs.get(macos_to_android)
+        and session_epochs[android_to_macos] != session_epochs[macos_to_android]
+    ):
+        issues.append(f"{label} direction session_epoch values must match for same-session bidirectional product evidence")
+
+    cancel_cleanup = record.get("cancel_cleanup")
+    if not isinstance(cancel_cleanup, dict):
+        issues.append(f"{label} missing cancel_cleanup evidence")
+    else:
+        issues.extend(
+            _file_transfer_retained_artifact_issues(
+                cancel_cleanup,
+                f"{label} cancel_cleanup",
+                FILE_TRANSFER_REQUIRED_CANCEL_ARTIFACT_ROLES,
+                evidence_dir,
+            )
+        )
+        for field in (
+            "cancel_requested",
+            "cancel_acknowledged",
+            "partial_file_removed_or_quarantined",
+            "sender_state_cleared",
+            "receiver_state_cleared",
+        ):
+            if cancel_cleanup.get(field) is not True:
+                issues.append(f"{label} cancel_cleanup.{field} must be true")
+    return issues
+
+
+def _file_transfer_retained_artifact_issues(
+    record: dict[str, Any],
+    label: str,
+    required_roles: Sequence[str],
+    evidence_dir: Path | None,
+) -> list[str]:
+    artifacts = record.get("retained_artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        return [f"{label}.retained_artifacts must retain product evidence artifacts"]
+
+    issues: list[str] = []
+    seen_roles: set[str] = set()
+    seen_paths: set[str] = set()
+    required_role_names = set(required_roles)
+    resolved_evidence_dir: Path | None = None
+    if evidence_dir is not None:
+        try:
+            resolved_evidence_dir = evidence_dir.resolve()
+        except OSError as error:
+            return [f"{label}.retained_artifacts evidence directory cannot be read: {error}"]
+
+    for index, artifact in enumerate(artifacts):
+        artifact_label = f"{label}.retained_artifacts[{index}]"
+        if not isinstance(artifact, dict):
+            issues.append(f"{artifact_label} must be an object")
+            continue
+        role = artifact.get("role")
+        if not isinstance(role, str) or not role.strip():
+            issues.append(f"{artifact_label}.role must be present")
+        else:
+            role_name = role.strip()
+            if role_name not in required_role_names:
+                issues.append(f"{artifact_label}.role must be one of {', '.join(required_roles)}")
+            elif role_name in seen_roles:
+                issues.append(f"{artifact_label}.role duplicates {role_name} artifact")
+            seen_roles.add(role_name)
+
+        path_value = artifact.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            issues.append(f"{artifact_label}.path must be present")
+            continue
+        artifact_path = Path(path_value)
+        if artifact_path.is_absolute():
+            issues.append(f"{artifact_label}.path must be evidence-relative")
+            continue
+        if ".." in artifact_path.parts:
+            issues.append(f"{artifact_label}.path must stay inside the evidence bundle")
+            continue
+        normalized_path = artifact_path.as_posix()
+        if normalized_path in seen_paths:
+            issues.append(f"{artifact_label}.path must be distinct")
+        seen_paths.add(normalized_path)
+        if resolved_evidence_dir is None:
+            continue
+        try:
+            resolved_artifact = (resolved_evidence_dir / artifact_path).resolve(strict=True)
+            resolved_artifact.relative_to(resolved_evidence_dir)
+        except FileNotFoundError:
+            issues.append(f"{artifact_label}.path missing retained artifact {path_value}")
+            continue
+        except (OSError, RuntimeError, ValueError) as error:
+            issues.append(f"{artifact_label}.path cannot access retained artifact {path_value}: {error}")
+            continue
+        if not resolved_artifact.is_file():
+            issues.append(f"{artifact_label}.path missing retained artifact {path_value}")
+            continue
+        try:
+            if resolved_artifact.stat().st_size <= 0:
+                issues.append(f"{artifact_label}.path retained artifact {path_value} must be non-empty")
+        except OSError as error:
+            issues.append(f"{artifact_label}.path cannot stat retained artifact {path_value}: {error}")
+
+    missing_roles = [role for role in required_roles if role not in seen_roles]
+    issues.extend(f"{label}.retained_artifacts missing {role} artifact" for role in missing_roles)
+    return issues
 
 
 def _host_rss_2h_no_growth_issues(

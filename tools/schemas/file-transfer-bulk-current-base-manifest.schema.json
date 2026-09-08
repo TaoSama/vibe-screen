@@ -101,6 +101,8 @@
         "required_flag",
         "can_close",
         "requirement",
+        "safety",
+        "product_e2e_closure",
         "blockers",
         "not_proven"
       ],
@@ -114,6 +116,14 @@
         "required_flag": {"type": "string", "minLength": 1},
         "can_close": {"type": "boolean"},
         "requirement": {"type": "string", "minLength": 1},
+        "safety": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        },
+        "product_e2e_closure": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        },
         "blockers": {"type": "array", "items": {"type": "string"}},
         "not_proven": {"type": "array", "items": {"type": "string"}}
       }

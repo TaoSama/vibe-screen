@@ -82,6 +82,23 @@ def _check(passed: bool, expected: str, *, evidence: Sequence[str] = (), blockin
     }
 
 
+def _required_child_summary_reasons(child: dict[str, Any], *, child_id: str) -> list[str]:
+    defaults = CHILD_GATE_DEFAULTS[child_id]
+    safety = _dict(child.get("safety"))
+    closure = _dict(child.get("product_e2e_closure"))
+    reasons = [
+        f"child gate summary safety.{field} must be true"
+        for field in defaults["required_safety_true"]
+        if safety.get(field) is not True
+    ]
+    reasons.extend(
+        f"child gate summary product_e2e_closure.{field} must be true"
+        for field in defaults["required_closure_true"]
+        if closure.get(field) is not True
+    )
+    return reasons
+
+
 def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
     required = {
         "schema_version",
@@ -174,12 +191,15 @@ def _child_check(child: dict[str, Any], *, child_id: str) -> dict[str, Any]:
     blockers = _string_list(child.get("blockers"))
     if blockers:
         evidence.extend(blockers[:6])
+    child_summary_reasons = _required_child_summary_reasons(child, child_id=child_id)
+    evidence.extend(child_summary_reasons[:6])
     passed = (
         child.get("present") is True
         and child.get("kind") == required_kind
         and child.get("verdict") == PASS
         and child.get("gate_closed") is True
         and child.get("can_close") is True
+        and not child_summary_reasons
     )
     return _check(passed, expected, evidence=evidence)
 
@@ -206,6 +226,7 @@ def _child_pass_state_contradictory(child: dict[str, Any], *, child_id: str) -> 
             or child.get("can_close") is not True
             or bool(_string_list(child.get("blockers")))
             or bool(_string_list(child.get("not_proven")))
+            or bool(_required_child_summary_reasons(child, child_id=child_id))
         )
     )
 

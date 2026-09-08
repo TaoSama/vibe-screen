@@ -24,6 +24,12 @@ from tools.tests.test_host_rss_gate import (
     write_inputs as write_host_rss_inputs,
 )
 from vibescreen_evidence.host_rss_gate import derive_gate as derive_host_rss_gate
+from vibescreen_evidence.file_transfer_android_smoke import (
+    derive_gate as derive_file_transfer_android_smoke_gate,
+)
+from tools.tests.test_file_transfer_android_smoke import (
+    write_pass_inputs as write_file_transfer_pass_inputs,
+)
 
 
 MODULE = "vibescreen_evidence.phase0_stable_release"
@@ -578,6 +584,67 @@ def write_clipboard_gate_evidence(
     return output_path
 
 
+def write_file_transfer_android_gate_evidence(
+    repo: Path,
+    *,
+    output_path: str = "docs/evidence/file-transfer-android-smoke-gate.json",
+    source_directory: str = "docs/evidence/file-transfer-android-smoke",
+    mutate_report: Callable[[dict[str, object]], None] | None = None,
+) -> str:
+    source_dir = repo / source_directory
+    paths = write_file_transfer_pass_inputs(source_dir)
+    report = derive_file_transfer_android_smoke_gate(
+        host_readiness=paths["host"],
+        usb_preflight=paths["usb"],
+        trusted_lan_preflight=paths["lan"],
+        android_file_transfer_instrumentation_log=paths["android_log"],
+        product_e2e=paths["product"],
+        repo_root=repo,
+    )
+    if mutate_report is not None:
+        mutate_report(report)
+    output_file = repo / output_path
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(json.dumps(report), encoding="utf-8")
+    return output_path
+
+
+def attach_file_transfer_android_gate_evidence(manifest: dict[str, object], repo: Path) -> None:
+    gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+        write_file_transfer_android_gate_evidence(repo)
+    ]
+
+
+def file_transfer_gate_issues(summary: dict[str, object]) -> list[str]:
+    blocking_gates = summary["blocking_required_gates"]
+    assert isinstance(blocking_gates, list)
+    blocking_gate = next(
+        item
+        for item in blocking_gates
+        if isinstance(item, dict) and item["id"] == "file_transfer_android_product_e2e"
+    )
+    issues = blocking_gate["issues"]
+    assert isinstance(issues, list)
+    assert all(isinstance(issue, str) for issue in issues)
+    return issues
+
+
+def mutate_file_transfer_product_source(
+    repo: Path,
+    report_path: str,
+    mutate_product: Callable[[dict[str, object]], None],
+) -> None:
+    report = json.loads((repo / report_path).read_text(encoding="utf-8"))
+    source = report["source"]
+    assert isinstance(source, dict)
+    product_e2e_ref = source["product_e2e"]
+    assert isinstance(product_e2e_ref, str)
+    product_path = repo / product_e2e_ref
+    product = json.loads(product_path.read_text(encoding="utf-8"))
+    mutate_product(product)
+    product_path.write_text(json.dumps(product), encoding="utf-8")
+
+
 def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[str, object]:
     manifest = complete_manifest()
     manifest["source"]["base_commit"] = audited_source_commit
@@ -590,6 +657,7 @@ def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[s
     gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
         write_clipboard_gate_evidence(repo)
     ]
+    attach_file_transfer_android_gate_evidence(manifest, repo)
     add_merged_pr_snapshot(manifest, repo, audited_source_commit)
     return manifest
 
@@ -733,6 +801,394 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
             self.assertEqual(summary["aggregate_verdict"], "pass")
             self.assertTrue(summary["can_mark_phase0_stable_release"])
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_pass_requires_formal_gate_report(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            summary_path = repo / "docs" / "evidence" / "no-host-transfer-controls-summary.json"
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "vibescreen.evidence/v1",
+                        "kind": "file_transfer_no_host_ui_summary",
+                        "verdict": "pass",
+                        "no_host_ui_only": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate = gate_by_id(manifest, "file_transfer_android_product_e2e")
+            gate["evidence_paths"] = ["docs/evidence/no-host-transfer-controls-summary.json"]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            blocking_gate = next(
+                item for item in summary["blocking_required_gates"] if item["id"] == "file_transfer_android_product_e2e"
+            )
+            self.assertTrue(
+                any("formal android_macos_file_transfer_smoke gate report" in issue for issue in blocking_gate["issues"]),
+                blocking_gate["issues"],
+            )
+            self.assertTrue(
+                any("formal file-transfer report kind must be android_macos_file_transfer_smoke" in issue for issue in blocking_gate["issues"]),
+                blocking_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_pass_requires_safety_closure_and_passing_checks(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-mutated-gate.json",
+                mutate_report=lambda report: (
+                    report["safety"].pop("no_host_ui_evidence_do_not_close_gate"),
+                    report["product_e2e_closure"].pop("same_session_bidirectional_transfer_required"),
+                    next(
+                        check for check in report["checks"] if check["name"] == "bidirectional_product_e2e"
+                    ).update({"status": "blocked", "reasons": ["missing retained product bytes"]}),
+                ),
+            )
+            gate = gate_by_id(manifest, "file_transfer_android_product_e2e")
+            gate["evidence_paths"] = [report_path]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            blocking_gate = next(
+                item for item in summary["blocking_required_gates"] if item["id"] == "file_transfer_android_product_e2e"
+            )
+            self.assertIn(
+                "docs/evidence/file-transfer-mutated-gate.json: formal file-transfer report safety.no_host_ui_evidence_do_not_close_gate must be true",
+                blocking_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/file-transfer-mutated-gate.json: formal file-transfer report product_e2e_closure.same_session_bidirectional_transfer_required must be true",
+                blocking_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/file-transfer-mutated-gate.json: formal file-transfer report bidirectional_product_e2e.status must be pass",
+                blocking_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/file-transfer-mutated-gate.json: formal file-transfer report bidirectional_product_e2e.reasons must be empty",
+                blocking_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_report_must_reference_product_source(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-source-gate.json",
+                mutate_report=lambda report: report["source"].pop("product_e2e"),
+            )
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any("formal file-transfer report source.product_e2e must be present" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_path_must_exist(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-product-source-gate.json",
+                mutate_report=lambda report: report["source"].update(
+                    {"product_e2e": "docs/evidence/missing-file-transfer-product-e2e.json"}
+                ),
+            )
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any("source.product_e2e docs/evidence/missing-file-transfer-product-e2e.json must exist" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_must_be_product_e2e_kind(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-wrong-product-kind-gate.json",
+            )
+            mutate_file_transfer_product_source(
+                repo,
+                report_path,
+                lambda product: product.update({"kind": "file_transfer_no_host_ui_summary"}),
+            )
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any("kind must be android_macos_file_transfer_product_e2e" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_rejects_non_product_context(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-non-product-context-gate.json",
+            )
+            mutate_file_transfer_product_source(
+                repo,
+                report_path,
+                lambda product: product.update(
+                    {
+                        "host_backed_product_session": False,
+                        "no_host_ui_only": True,
+                    }
+                ),
+            )
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any("host_backed_product_session must be true" in issue for issue in issues),
+                issues,
+            )
+            self.assertTrue(
+                any("no_host_ui_only must be false" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_rejects_synthetic_or_offline_evidence(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-synthetic-product-gate.json",
+            )
+            mutate_file_transfer_product_source(
+                repo,
+                report_path,
+                lambda product: product.update({"synthetic": True, "offline_only": True}),
+            )
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any("synthetic or offline-only evidence cannot close this gate" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_requires_distinct_direction_evidence(self) -> None:
+        def duplicate_macos_direction(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            for field in ("transfer_id_hex", "sha256", "file_name"):
+                macos_to_android[field] = android_to_macos[field]
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-duplicate-directions-gate.json",
+            )
+            mutate_file_transfer_product_source(repo, report_path, duplicate_macos_direction)
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(any("direction transfer IDs must be distinct" in issue for issue in issues), issues)
+            self.assertTrue(any("direction SHA-256 digests must be distinct" in issue for issue in issues), issues)
+            self.assertTrue(any("direction file names must be distinct" in issue for issue in issues), issues)
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_requires_cancel_cleanup(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-cancel-cleanup-gate.json",
+            )
+            mutate_file_transfer_product_source(
+                repo,
+                report_path,
+                lambda product: product.pop("cancel_cleanup"),
+            )
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(any("missing cancel_cleanup evidence" in issue for issue in issues), issues)
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_requires_direction_retained_artifacts(self) -> None:
+        def remove_direction_artifacts(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_to_macos_file_transfer"]
+            assert isinstance(android_to_macos, dict)
+            android_to_macos.pop("retained_artifacts")
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-direction-artifacts-gate.json",
+            )
+            mutate_file_transfer_product_source(repo, report_path, remove_direction_artifacts)
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any(
+                    "android_to_macos_file_transfer.retained_artifacts must retain product evidence artifacts"
+                    in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_file_transfer_product_e2e_source_requires_cancel_cleanup_artifacts(self) -> None:
+        def remove_cancel_artifacts(product: dict[str, object]) -> None:
+            cancel_cleanup = product["cancel_cleanup"]
+            assert isinstance(cancel_cleanup, dict)
+            cancel_cleanup["retained_artifacts"] = [
+                {"role": "cancel_request", "path": "cancel-cleanup/missing-cancel-request.txt"}
+            ]
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-missing-cancel-artifacts-gate.json",
+            )
+            mutate_file_transfer_product_source(repo, report_path, remove_cancel_artifacts)
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any(
+                    "cancel_cleanup.retained_artifacts[0].path missing retained artifact "
+                    "cancel-cleanup/missing-cancel-request.txt" in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+            self.assertTrue(
+                any("cancel_cleanup.retained_artifacts missing cleanup_state artifact" in issue for issue in issues),
+                issues,
+            )
 
         with_temporary_repo(run)
 
@@ -1755,6 +2211,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(manifest, repo, merge_commit)
 
             summary = evaluate_manifest(
@@ -1950,6 +2407,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(
                 manifest, repo, merge_commit, excluded_pr_numbers=[159, 160], maximum=160
             )
@@ -2140,6 +2598,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(manifest, repo, base_commit)
             gate_by_id(manifest, "host_rss_2h_no_growth")["verdict"] = "blocked"
             gate_by_id(manifest, "host_rss_2h_no_growth")["blockers"] = [
@@ -2181,6 +2640,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
                 write_clipboard_gate_evidence(repo)
             ]
+            attach_file_transfer_android_gate_evidence(manifest, repo)
             add_merged_pr_snapshot(manifest, repo, base_commit)
 
             summary = evaluate_manifest(
