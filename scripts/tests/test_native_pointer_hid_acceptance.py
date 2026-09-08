@@ -34,6 +34,43 @@ Input Reader State (Nums of device: 3):
 
 
 class NativePointerHIDAcceptanceTests(unittest.TestCase):
+    def _native_pointer_summary(self, overrides: dict[str, object]) -> dict[str, object]:
+        record: dict[str, object] = {
+            "status": "passed",
+            "reason": "synthetic fixture",
+            "device": {
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "device": "pacific",
+                "android_release": "16",
+                "sdk": "36",
+            },
+            "external_mouse_devices": [
+                {
+                    "device_id": 11,
+                    "name": "USB Optical Mouse",
+                    "sources": "MOUSE",
+                    "is_external": "true",
+                }
+            ],
+            "host_log": "host-log-appended.txt",
+            "host_log_appended_bytes": 128,
+            "host_stable_signed_tcc_ready": True,
+            "android_logcat_bytes": 128,
+            "required_pointer_events": ["move", "press", "release"],
+            "observed_host_pointer_events": ["move", "press", "release"],
+            "observed_android_pointer_events": ["move", "press", "release"],
+            "observed_android_pointer_device_ids_by_event": {
+                "move": [11],
+                "press": [11],
+                "release": [11],
+            },
+            "visible_mac_result": "Mac cursor moved and primary click focused TextEdit.",
+            "adb_was_run": True,
+        }
+        record.update(overrides)
+        return acceptance.summarize_native_pointer_hid(record, run_id="test-run", source_path=Path("result.json"))
+
     def test_input_device_parser_finds_external_mouse_sources(self) -> None:
         devices = acceptance.parse_input_devices(SAMPLE_DUMPSYS_INPUT)
 
@@ -93,6 +130,48 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
         self.assertEqual(acceptance.observed_android_event_device_ids(log), {"move": [11], "press": [12], "release": [11]})
+
+    def test_gate_rejects_touch_derived_pointer_evidence_even_with_host_logs(self) -> None:
+        summary = self._native_pointer_summary(
+            {
+                "external_mouse_devices": [
+                    {
+                        "device_id": 3,
+                        "name": "gdix_input_agent",
+                        "sources": "KEYBOARD | TOUCHSCREEN",
+                        "is_external": "false",
+                    }
+                ],
+                "observed_android_pointer_device_ids_by_event": {
+                    "move": [3],
+                    "press": [3],
+                    "release": [3],
+                },
+                "reason": "touch-derived pointer forwarding was observed without Android-visible HID mouse hardware",
+            }
+        )
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+        self.assertFalse(summary["observations"]["physical_mouse_attached"])
+        self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+        self.assertIn("physical_mouse_attached", [item["field"] for item in summary["blocking_reasons"]])
+
+    def test_gate_rejects_no_host_claim_even_with_physical_mouse_and_android_logs(self) -> None:
+        summary = self._native_pointer_summary(
+            {
+                "host_stable_signed_tcc_ready": False,
+                "host_log_appended_bytes": 0,
+                "observed_host_pointer_events": [],
+                "visible_mac_result": "not recorded; no product Host session was available",
+                "reason": "no-Host Android-only pointer logs are not runtime acceptance evidence",
+            }
+        )
+
+        self.assertEqual(summary["verdict"], "blocked")
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+        self.assertFalse(summary["observations"]["host_stable_signed_tcc_ready"])
+        self.assertIn("host_stable_signed_tcc_ready", [item["field"] for item in summary["blocking_reasons"]])
 
     def test_utc_timestamp_uses_z_suffix(self) -> None:
         created_at = acceptance.utc_timestamp()
