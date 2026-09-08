@@ -1,0 +1,10 @@
+repository=TaoSama/vibe-screen
+worktree=/Users/luwentao/.codex/worktrees/036c/vibe-screen/.claude/worktrees/p0110-no-host-uiux-current-main-20260908
+branch=codex/p0110-no-host-uiux-current-main-20260908
+base_head=693b90a1919746f140a27ba625b039e7fa625d27
+origin_main=693b90a1919746f140a27ba625b039e7fa625d27
+base_subject=Harden controller runtime evidence gate (#691)
+date=2026-09-08
+date_time=2026-09-08T13:21:24+0800
+timezone=Asia/Shanghai
+local_change=Adds focused no-Host control-surface boundary contract checks for Android clipboard and file-transfer UI refresh paths before running device/UI evidence.
