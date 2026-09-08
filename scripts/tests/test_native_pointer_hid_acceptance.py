@@ -32,6 +32,22 @@ Input Reader State (Nums of device: 3):
     Sources: KEYBOARD | DPAD
 """
 
+MULTI_MOUSE_DUMPSYS_INPUT = """
+Input Reader State (Nums of device: 4):
+  Device 11: USB Optical Mouse
+    IsExternal: true
+    Sources: MOUSE | TOUCHPAD
+  Device 12: Bluetooth Trackpad
+    IsExternal: true
+    Sources: MOUSE_RELATIVE
+  Device 13: USB Trackball
+    IsExternal: true
+    Sources: TRACKBALL
+  Device -1: Virtual
+    IsExternal: false
+    Sources: KEYBOARD | DPAD
+"""
+
 
 class NativePointerHIDAcceptanceTests(unittest.TestCase):
     def _native_pointer_summary(self, overrides: dict[str, object]) -> dict[str, object]:
@@ -98,6 +114,18 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             [acceptance.InputDeviceSummary(23, "USB Optical Mouse", "MOUSE", "true")],
         )
 
+    def test_external_mouse_devices_rejects_mixed_non_mouse_sources(self) -> None:
+        devices = [
+            acceptance.InputDeviceSummary(21, "USB Combo Receiver", "MOUSE | KEYBOARD", "true"),
+            acceptance.InputDeviceSummary(22, "USB Touch Combo", "MOUSE | TOUCHSCREEN", "true"),
+            acceptance.InputDeviceSummary(23, "USB Optical Mouse", "MOUSE | TOUCHPAD", "true"),
+        ]
+
+        self.assertEqual(
+            acceptance.external_mouse_devices(devices),
+            [acceptance.InputDeviceSummary(23, "USB Optical Mouse", "MOUSE | TOUCHPAD", "true")],
+        )
+
     def test_observed_events_accept_swift_enum_and_plain_phase_spelling(self) -> None:
         log = """
         Pointer injected: phase=INPUT_PHASE_changed buttons=0
@@ -114,6 +142,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         08-21 12:00:02.000 D MA      : native pointer forwarded action=BUTTON_RELEASE deviceId=11 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5
         08-21 12:00:03.000 D MA      : native pointer forwarded action=MOVE deviceId=-1 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.2 y=0.2
         08-21 12:00:04.000 D MA      : native pointer forwarded action=MOVE deviceId=13 source=OTHER buttonState=0 actionButton=0 wireButtons=0 x=0.1 y=0.1
+        08-21 12:00:05.000 D MA      : native pointer forwarded action=BUTTON_PRESS deviceId=14 source=NOT_MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.1 y=0.1
+        08-21 12:00:06.000 D MA      : native pointer forwarded action=BUTTON_RELEASE deviceId=15 source=MOUSEPAD buttonState=0 actionButton=1 wireButtons=0 x=0.1 y=0.1
         """
 
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
@@ -121,15 +151,55 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_observed_android_events_accept_structured_forwarding_logs(self) -> None:
         log = """
-        08-21 12:00:00.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=11 sources=MOUSE button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
+        08-21 12:00:00.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=11 sources=MOUSE+TOUCHPAD button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
         08-21 12:00:01.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_press device_id=12 sources=MOUSE_RELATIVE button_state=1 action_button=1 wire_buttons=1 x=0.5 y=0.5 acceptance_evidence=external_gate_required
         08-21 12:00:02.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_release device_id=11 sources=TOUCHPAD button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
         08-21 12:00:03.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=-1 sources=MOUSE button_state=0 action_button=0 wire_buttons=0 x=0.2 y=0.2 acceptance_evidence=external_gate_required
         08-21 12:00:04.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=13 sources=OTHER button_state=0 action_button=0 wire_buttons=0 x=0.1 y=0.1 acceptance_evidence=external_gate_required
+        08-21 12:00:05.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_press device_id=14 sources=NOT_MOUSE button_state=1 action_button=1 wire_buttons=1 x=0.1 y=0.1 acceptance_evidence=external_gate_required
+        08-21 12:00:06.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_release device_id=15 sources=MOUSEPAD button_state=0 action_button=1 wire_buttons=0 x=0.1 y=0.1 acceptance_evidence=external_gate_required
         """
 
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
         self.assertEqual(acceptance.observed_android_event_device_ids(log), {"move": [11], "press": [12], "release": [11]})
+
+    def test_observed_android_events_reject_mixed_or_partial_structured_source_tokens(self) -> None:
+        log = """
+        peripheral_input kind=native_pointer_forwarded action=move device_id=21 sources=MOUSE | KEYBOARD button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=button_press device_id=22 sources=NOT_MOUSE button_state=1 action_button=1 wire_buttons=1 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=button_release device_id=23 sources=MOUSEPAD button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=move device_id=24 sources=TRACKBALLER button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5
+        """
+
+        self.assertEqual(acceptance.observed_android_events(log), [])
+        self.assertEqual(acceptance.observed_android_event_device_ids(log), {})
+
+    def test_observed_android_events_require_exact_mouse_source_tokens(self) -> None:
+        log = """
+        native pointer forwarded action=MOVE deviceId=21 source=NOT_MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5
+        native pointer forwarded action=BUTTON_PRESS deviceId=22 source=MOUSEPAD buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=button_release device_id=23 sources=TRACKBALLER button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=move device_id=24 sources=KEYBOARD | TOUCHSCREEN button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5
+        """
+
+        self.assertEqual(acceptance.observed_android_events(log), [])
+        self.assertEqual(acceptance.observed_android_event_device_ids(log), {})
+
+    def test_shared_required_android_mouse_device_ids_requires_one_device_for_all_events(self) -> None:
+        observed_device_ids = {"move": [11], "press": [12, 11], "release": [11, 13]}
+
+        self.assertEqual(
+            acceptance.shared_required_android_mouse_device_ids(observed_device_ids, {11, 12, 13}, ["move", "press", "release"]),
+            {11},
+        )
+        self.assertEqual(
+            acceptance.shared_required_android_mouse_device_ids(
+                {"move": [11], "press": [12], "release": [13]},
+                {11, 12, 13},
+                ["move", "press", "release"],
+            ),
+            set(),
+        )
 
     def test_gate_rejects_touch_derived_pointer_evidence_even_with_host_logs(self) -> None:
         summary = self._native_pointer_summary(
@@ -459,6 +529,83 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertTrue(summary["can_close_native_pointer_hid_gate"])
             self.assertTrue((evidence_dir / "host-log-appended.txt").exists())
             self.assertTrue((evidence_dir / "android-logcat-native-pointer.txt").exists())
+
+    def test_main_fails_when_required_android_events_do_not_share_external_mouse_device(self) -> None:
+        identity = acceptance.DeviceIdentity(
+            serial="SERIAL",
+            endpoint="SERIAL device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            android_release="16",
+            sdk="36",
+            fingerprint_sha256="1" * 64,
+            display_size="Physical size: 1264x2800",
+            display_density="Physical density: 480",
+            battery_summary="level: 88",
+            boot_completed="1",
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host.log"
+            host_log.write_text("before\n", encoding="utf-8")
+            cursor = acceptance.host_log_cursor(host_log)
+            host_log.write_text(
+                "before\n"
+                "Pointer injected: phase=changed buttons=0\n"
+                "Pointer injected: phase=began buttons=1\n"
+                "Pointer injected: phase=ended buttons=0\n",
+                encoding="utf-8",
+            )
+            evidence_dir = Path(temporary_directory) / "evidence"
+            with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[]),
+                mock.patch.object(acceptance, "read_device_identity", return_value=identity),
+                mock.patch.object(
+                    acceptance,
+                    "adb",
+                    return_value=acceptance.CommandResult(["adb"], 0, MULTI_MOUSE_DUMPSYS_INPUT, ""),
+                ),
+                mock.patch.object(acceptance, "host_log_cursor", return_value=cursor),
+                mock.patch.object(
+                    acceptance,
+                    "LogcatCapture",
+                    return_value=FakeLogcatCapture(
+                        "peripheral_input kind=native_pointer_forwarded action=move device_id=11 sources=MOUSE+TOUCHPAD button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5\n"
+                        "peripheral_input kind=native_pointer_forwarded action=button_press device_id=12 sources=MOUSE_RELATIVE button_state=1 action_button=1 wire_buttons=1 x=0.5 y=0.5\n"
+                        "peripheral_input kind=native_pointer_forwarded action=button_release device_id=13 sources=TOUCHPAD button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5\n",
+                    ),
+                ),
+            ):
+                exit_code = acceptance.main(
+                    [
+                        "--serial",
+                        "SERIAL",
+                        "--host-log",
+                        str(host_log),
+                        "--evidence-dir",
+                        str(evidence_dir),
+                        "--observe-seconds",
+                        "0",
+                        "--visible-result-note",
+                        "Mac cursor moved and the primary click focused TextEdit.",
+                        "--host-stable-signed-tcc-ready",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 1)
+            result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "failed")
+            self.assertIn("same external mouse-like deviceId", result["reason"])
+            self.assertEqual(
+                result["observed_android_pointer_device_ids_by_event"],
+                {"move": [11], "press": [12], "release": [13]},
+            )
+            summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["verdict"], "insufficient")
+            self.assertFalse(summary["observations"]["collector_reported_passed"])
+            self.assertFalse(summary["observations"]["android_required_events_share_external_mouse_device"])
+            self.assertFalse(summary["can_close_native_pointer_hid_gate"])
 
     def test_main_fails_without_visible_result_note_even_when_logs_match(self) -> None:
         identity = acceptance.DeviceIdentity(

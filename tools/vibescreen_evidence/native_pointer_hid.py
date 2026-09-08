@@ -56,6 +56,11 @@ REQUIRED_FIELDS = (
         "match every Android forwarded pointer event to a positive deviceId from the external mouse-like input device inventory",
     ),
     (
+        "android_required_events_share_external_mouse_device",
+        "retain move, primary-button press, and primary-button release evidence "
+        "from the same external mouse-like Android deviceId",
+    ),
+    (
         "android_button_press_forwarded",
         "retain Android native pointer BUTTON_PRESS forwarding logs from a mouse-like source",
     ),
@@ -95,18 +100,39 @@ VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
 CONSISTENCY_RULES = (
     (
         "android_move_forwarded",
-        ("physical_mouse_attached", "android_forwarding_device_ids_match_external_mouse", "default_gate_events_required"),
-        "Android native pointer MOVE evidence requires a physical mouse-like source, matching physical deviceId, and the full gate event set",
+        (
+            "physical_mouse_attached",
+            "android_forwarding_device_ids_match_external_mouse",
+            "android_required_events_share_external_mouse_device",
+            "default_gate_events_required",
+        ),
+        "Android native pointer MOVE evidence requires a physical mouse-like source, "
+        "matching physical deviceId, a single physical device covering the gate "
+        "sequence, and the full gate event set",
     ),
     (
         "android_button_press_forwarded",
-        ("physical_mouse_attached", "android_forwarding_device_ids_match_external_mouse", "default_gate_events_required"),
-        "Android native pointer BUTTON_PRESS evidence requires a physical mouse-like source, matching physical deviceId, and the full gate event set",
+        (
+            "physical_mouse_attached",
+            "android_forwarding_device_ids_match_external_mouse",
+            "android_required_events_share_external_mouse_device",
+            "default_gate_events_required",
+        ),
+        "Android native pointer BUTTON_PRESS evidence requires a physical mouse-like "
+        "source, matching physical deviceId, a single physical device covering the "
+        "gate sequence, and the full gate event set",
     ),
     (
         "android_button_release_forwarded",
-        ("physical_mouse_attached", "android_forwarding_device_ids_match_external_mouse", "default_gate_events_required"),
-        "Android native pointer BUTTON_RELEASE evidence requires a physical mouse-like source, matching physical deviceId, and the full gate event set",
+        (
+            "physical_mouse_attached",
+            "android_forwarding_device_ids_match_external_mouse",
+            "android_required_events_share_external_mouse_device",
+            "default_gate_events_required",
+        ),
+        "Android native pointer BUTTON_RELEASE evidence requires a physical mouse-like "
+        "source, matching physical deviceId, a single physical device covering the "
+        "gate sequence, and the full gate event set",
     ),
     (
         "host_pointer_changed_injected",
@@ -276,7 +302,7 @@ def _source_markers(value: Any) -> set[str]:
         source_text = "|".join(value)
     else:
         return set()
-    return {marker.strip().upper() for marker in source_text.replace(",", "|").split("|") if marker.strip()}
+    return {marker.strip().upper() for marker in source_text.replace(",", "|").replace("+", "|").split("|") if marker.strip()}
 
 
 def _positive_device_id(value: Any) -> int | None:
@@ -304,7 +330,8 @@ def _external_mouse_device_ids(record: dict[str, Any]) -> set[int]:
             continue
         if _virtual_input_name(device.get("name")):
             continue
-        if not MOUSE_LIKE_SOURCES.intersection(_source_markers(device.get("sources"))):
+        source_markers = _source_markers(device.get("sources"))
+        if not source_markers or not source_markers.issubset(MOUSE_LIKE_SOURCES):
             continue
         device_id = _positive_device_id(device.get("device_id"))
         if device_id is not None:
@@ -347,6 +374,17 @@ def _android_forwarding_device_ids_match_external_mouse(record: dict[str, Any]) 
     )
 
 
+def _android_required_events_share_external_mouse_device(record: dict[str, Any]) -> bool:
+    external_device_ids = _external_mouse_device_ids(record)
+    if not external_device_ids:
+        return False
+    event_device_ids = _event_device_ids(record)
+    shared_device_ids = set(external_device_ids)
+    for event in REQUIRED_POINTER_EVENTS:
+        shared_device_ids.intersection_update(event_device_ids.get(event, set()))
+    return bool(shared_device_ids)
+
+
 def _observations(record: dict[str, Any]) -> dict[str, bool]:
     status = _string_value(record, "status")
     required_events = set(_string_list(record, "required_pointer_events"))
@@ -362,6 +400,7 @@ def _observations(record: dict[str, Any]) -> dict[str, bool]:
         "default_gate_events_required": set(REQUIRED_POINTER_EVENTS).issubset(required_events),
         "android_move_forwarded": "move" in android_events,
         "android_forwarding_device_ids_match_external_mouse": _android_forwarding_device_ids_match_external_mouse(record),
+        "android_required_events_share_external_mouse_device": _android_required_events_share_external_mouse_device(record),
         "android_button_press_forwarded": "press" in android_events,
         "android_button_release_forwarded": "release" in android_events,
         "host_pointer_changed_injected": "move" in host_events,

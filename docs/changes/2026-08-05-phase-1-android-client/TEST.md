@@ -525,6 +525,9 @@ for `MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE` from `MOUSE`,
 `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`; Host `Pointer injected` lines for
 `changed`, `began`, and `ended`; and an operator note describing the visible Mac
 pointer/click result.
+The Android forwarding lines must use exact mouse-class source tokens, and the
+full move/press/release sequence must share at least one positive external
+mouse-like `deviceId` from the retained `dumpsys input` snapshot.
 
 The connected P0110 was online, but no external Android input device with a
 `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source was attached. The
