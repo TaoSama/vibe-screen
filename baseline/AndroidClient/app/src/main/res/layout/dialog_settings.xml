@@ -28,8 +28,10 @@
 
         <!-- Header -->
         <TextView
+            android:id="@+id/settingsDialogTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
             android:text="@string/display_settings"
             android:textColor="@color/on_surface"
             android:textSize="28sp"
@@ -101,8 +103,10 @@
                     android:padding="@dimen/settings_section_padding">
 
                     <TextView
+                        android:id="@+id/deviceHealthTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:accessibilityHeading="true"
                         android:text="@string/device_health_title"
                         android:textColor="@color/on_surface"
                         android:textSize="17sp"
@@ -139,6 +143,7 @@
                     android:padding="@dimen/settings_section_padding">
 
                     <TextView
+                        android:id="@+id/transferReadinessTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:accessibilityHeading="true"
@@ -180,6 +185,7 @@
                     android:padding="@dimen/settings_section_padding">
 
                     <TextView
+                        android:id="@+id/audioReadinessTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:accessibilityHeading="true"
@@ -231,8 +237,10 @@
                     android:padding="@dimen/settings_section_padding">
 
                     <TextView
+                        android:id="@+id/viewportTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:accessibilityHeading="true"
                         android:text="@string/viewport"
                         android:textColor="@color/on_surface"
                         android:textSize="17sp"
@@ -361,8 +369,10 @@
             android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
+                android:id="@+id/videoSectionTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
                 android:text="@string/video_section_title"
                 android:textColor="@color/on_surface"
                 android:textSize="17sp"
@@ -551,8 +561,10 @@
             android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
             <TextView
+                android:id="@+id/gestureShortcutsTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
                 android:text="@string/gesture_shortcuts_title"
                 android:textColor="@color/on_surface"
                 android:textSize="17sp"
@@ -688,6 +700,7 @@
                 android:id="@+id/opacityLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
                 android:labelFor="@id/opacitySlider"
                 android:text="@string/overlay_opacity"
                 android:textColor="@color/on_surface"
