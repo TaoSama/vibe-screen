@@ -30,6 +30,12 @@ from vibescreen_evidence.file_transfer_android_smoke import (
 from tools.tests.test_file_transfer_android_smoke import (
     write_pass_inputs as write_file_transfer_pass_inputs,
 )
+from tools.tests.test_macos_hardware_compatibility import (
+    complete_record as complete_macos_hardware_compatibility_record,
+)
+from vibescreen_evidence.macos_hardware_compatibility import (
+    summarize as summarize_macos_hardware_compatibility,
+)
 
 
 MODULE = "vibescreen_evidence.phase0_stable_release"
@@ -128,6 +134,12 @@ def commit_all(repo: Path, message: str) -> str:
     )
     return subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+    ).strip()
+
+
+def commit_tree(repo: Path, commit: str) -> str:
+    return subprocess.check_output(
+        ["git", "rev-parse", f"{commit}^{{tree}}"], cwd=repo, text=True
     ).strip()
 
 
@@ -609,6 +621,49 @@ def write_file_transfer_android_gate_evidence(
     return output_path
 
 
+def write_macos_hardware_compatibility_evidence(
+    repo: Path,
+    *,
+    repository_commit: str,
+    repository_tree: str | None = None,
+    source_directory: str = "docs/evidence/macos-host-compatibility",
+    output_path: str | None = None,
+    mutate_input: Callable[[dict[str, object]], None] | None = None,
+    mutate_report: Callable[[dict[str, object]], None] | None = None,
+) -> str:
+    if output_path is None:
+        output_path = f"{source_directory}/macos-hardware-compatibility-gate.json"
+    source_dir = repo / source_directory
+    source_dir.mkdir(parents=True, exist_ok=True)
+    record = complete_macos_hardware_compatibility_record()
+    if repository_tree is None:
+        repository_tree = commit_tree(repo, repository_commit)
+    record.update({
+        "repository_commit": repository_commit,
+        "repository_tree": repository_tree,
+        "host_source_commit": repository_commit,
+        "host_source_tree": repository_tree,
+        "host_self_test_commit": repository_commit,
+        "current_base_commit": repository_commit,
+        "current_base_tree": repository_tree,
+    })
+    if mutate_input is not None:
+        mutate_input(record)
+    for artifact_path in record["artifact_paths"]:
+        (source_dir / str(artifact_path)).write_text(
+            f"{artifact_path} evidence\n", encoding="utf-8"
+        )
+    input_path = source_dir / "macos-hardware-compatibility.json"
+    input_path.write_text(json.dumps(record), encoding="utf-8")
+    report = summarize_macos_hardware_compatibility(record, evidence_dir=source_dir)
+    if mutate_report is not None:
+        mutate_report(report)
+    output_file = repo / output_path
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(json.dumps(report), encoding="utf-8")
+    return output_path
+
+
 def attach_file_transfer_android_gate_evidence(manifest: dict[str, object], repo: Path) -> None:
     gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
         write_file_transfer_android_gate_evidence(repo)
@@ -651,6 +706,13 @@ def complete_manifest_for_repo(repo: Path, audited_source_commit: str) -> dict[s
     gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
         write_latency_archive_evidence(repo)
     )
+    gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")[
+        "evidence_paths"
+    ] = [
+        write_macos_hardware_compatibility_evidence(
+            repo, repository_commit=audited_source_commit
+        )
+    ]
     gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
         write_host_rss_gate_evidence(repo)
     ]
@@ -2205,6 +2267,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")[
+                "evidence_paths"
+            ] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo, repository_commit=merge_commit
+                )
+            ]
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
@@ -2401,6 +2470,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")[
+                "evidence_paths"
+            ] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo, repository_commit=merge_commit
+                )
+            ]
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
@@ -2592,6 +2668,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")[
+                "evidence_paths"
+            ] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo, repository_commit=base_commit
+                )
+            ]
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
@@ -2634,6 +2717,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
             gate_by_id(manifest, "telemetry_and_latency_archive")["evidence_paths"] = (
                 write_latency_archive_evidence(repo)
             )
+            gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")[
+                "evidence_paths"
+            ] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo, repository_commit=base_commit
+                )
+            ]
             gate_by_id(manifest, "host_rss_2h_no_growth")["evidence_paths"] = [
                 write_host_rss_gate_evidence(repo)
             ]
@@ -2754,6 +2844,225 @@ class Phase0StableReleaseTest(unittest.TestCase):
             summary["missing_required_gate_ids"],
             ["macos_host_hardware_compatibility_matrix"],
         )
+
+    def test_hardware_compatibility_matrix_pass_requires_formal_row_report(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = ["docs/evidence/macos-host-compatibility-summary.json"]
+            summary_file = repo / "docs/evidence/macos-host-compatibility-summary.json"
+            summary_file.parent.mkdir(parents=True, exist_ok=True)
+            summary_file.write_text(
+                json.dumps({
+                    "schema_version": "vibescreen.evidence/v1",
+                    "kind": "macos_host_compatibility_readiness",
+                    "verdict": "pass",
+                }),
+                encoding="utf-8",
+            )
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "macos_host_hardware_compatibility_matrix pass requires at least one passing formal macos_host_compatibility_matrix_row report that revalidates a retained gate_input artifact from the same evidence bundle",
+                macos_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility-summary.json: formal macOS Host compatibility report kind must be macos_host_compatibility_matrix_row",
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_pass_rejects_blocked_row_report(self) -> None:
+        def block_runtime(record: dict[str, object]) -> None:
+            record["packaged_host_launch_observed"] = False
+            record["protocol_v1_stream_observed"] = False
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo, repository_commit=base_commit, mutate_input=block_runtime
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report verdict must be pass",
+                macos_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report can_close_macos_host_compatibility_row must be true",
+                macos_gate["issues"],
+            )
+            self.assertTrue(
+                any(
+                    "gate_input artifact must rederive as a passing macos_host_compatibility_matrix_row report"
+                    in issue
+                    and "launch the packaged Host on the recorded Mac row" in issue
+                    for issue in macos_gate["issues"]
+                ),
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_pass_revalidates_gate_input(self) -> None:
+        def alter_report(report: dict[str, object]) -> None:
+            row_scope = report["row_scope"]
+            assert isinstance(row_scope, dict)
+            row_scope["host_model_identifier"] = "Mac999,1"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo, repository_commit=base_commit, mutate_report=alter_report
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report must match its rederived gate_input artifact for row_scope",
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_revalidates_gate_input_without_run_id_drift(self) -> None:
+        def remove_input_run_id(record: dict[str, object]) -> None:
+            record.pop("run_id", None)
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/macos-host-compatibility-without-run-id",
+                    mutate_input=remove_input_run_id,
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertTrue(summary["can_mark_phase0_stable_release"])
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_reports_invalid_gate_input_claim_detail(self) -> None:
+        def mark_ci_only(record: dict[str, object]) -> None:
+            record["ci_runner_only"] = True
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/ci-only-macos-host-compatibility",
+                    mutate_input=mark_ci_only,
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertTrue(
+                any(
+                    "CI runner build/test output cannot close a real Host hardware compatibility row"
+                    in issue
+                    for issue in macos_gate["issues"]
+                ),
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_pass_must_match_manifest_base_commit(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            feature = repo / "feature.txt"
+            feature.write_text("feature\n", encoding="utf-8")
+            current_commit = commit_all(repo, "current source")
+            manifest = complete_manifest_for_repo(repo, current_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/stale-macos-host-compatibility",
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "docs/evidence/stale-macos-host-compatibility/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report row_scope.repository_commit must match manifest source.base_commit",
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
 
     def test_clipboard_product_e2e_is_required(self) -> None:
         manifest = complete_manifest()

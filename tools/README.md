@@ -1265,6 +1265,13 @@ Host identity, display and encoder capability, runtime acceptance, retained
 scope/artifacts, and extrapolation guard. Use it as the next-action checklist
 for blocked current-base evidence; it is derived from the same fail-closed
 requirements and does not weaken the top-level verdict.
+The Phase 0 stable-release aggregate also revalidates any claimed
+`macos_host_hardware_compatibility_matrix` pass against this formal row summary:
+the cited JSON must be a passing `macos_host_compatibility_matrix_row`, must have
+empty missing/blocking/invalid-claim lists, must retain all artifact roles, and
+must rederive from the same evidence bundle's distinct `gate_input` artifact.
+Prose, CI-only output, blocked readiness summaries, or summaries that cannot be
+rederived from retained input cannot close the aggregate.
 
 ## Latency evidence
 
