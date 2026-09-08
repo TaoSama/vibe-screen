@@ -183,9 +183,10 @@ USB/LAN file-transfer acceptance still requires a retained real-device package
 with device identity, signed/TCC-authorized Host readiness, Protocol v1
 `CAPABILITY_FILE_TRANSFER`, Android SAF sender selection to a macOS saved file,
 macOS sender selection to Android Downloads, receiver approval on both sides,
-matching SHA-256 digests, progress/cancel or backpressure behavior, and
-disconnect cleanup. Nubia P0110 evidence must remain labeled as nubia P0110 /
-pacific / Android 16 / SDK 36.
+matching SHA-256 digests, a shared `session_id_hex` and session epoch for both
+directions, ordered chunk-offset evidence with a final chunk marker, progress
+or backpressure behavior, cancel cleanup, and disconnect cleanup. Nubia P0110
+evidence must remain labeled as nubia P0110 / pacific / Android 16 / SDK 36.
 
 WebRTC bulk product-flow acceptance is separate: it requires a real public
 Internet route over `vibescreen.bulk.v1`, retained route and deployed remote TURN
@@ -409,8 +410,10 @@ file-transfer instrumentation log with `OK`; and `file-transfer-product-e2e.json
 using the current `vibescreen.evidence/v1` schema and proving Android -> macOS
 and macOS -> Android product transfers with file-offer/request/content packets,
 explicit sender action, receiver approval, saved remote file bytes whose
-retained artifact size and SHA-256 match the direction manifest, positive
-session epoch, final SHA-256 equality, and cancel/cleanup evidence.
+retained artifact size and SHA-256 match the direction manifest, a shared
+`session_id_hex` and positive session epoch, ordered chunk offsets with a final
+chunk marker, final SHA-256 equality, cancel cleanup, and disconnect cleanup
+evidence.
 
 Offline protocol/JVM tests, Android control-bar instrumentation, synthetic JSON,
 or a live stream without retained file-transfer product evidence cannot close
