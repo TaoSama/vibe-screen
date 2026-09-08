@@ -480,6 +480,11 @@ appended Host log lines for native pointer `changed`, `began`, and `ended`
 injection; and an operator-visible Mac result note. The Android forwarding lines
 must include a positive `deviceId` for each required event, and those IDs must
 match an external mouse-like device in the retained `dumpsys input` inventory.
+The full `MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE` sequence must share at
+least one exact external mouse-like `deviceId`; stitched logs from multiple
+pointer devices are not accepted. Source names in Android logs must be exact
+mouse-class tokens (`MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`), not
+substring matches from unrelated source labels.
 Synthetic ADB pointer/touch events, including virtual-device events such as
 `deviceId=-1`, are diagnostics only and cannot close the gate. If no external
 Android input device with a mouse, relative mouse, touchpad, or trackball source

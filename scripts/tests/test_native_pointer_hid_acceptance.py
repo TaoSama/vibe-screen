@@ -114,6 +114,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         08-21 12:00:02.000 D MA      : native pointer forwarded action=BUTTON_RELEASE deviceId=11 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5
         08-21 12:00:03.000 D MA      : native pointer forwarded action=MOVE deviceId=-1 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.2 y=0.2
         08-21 12:00:04.000 D MA      : native pointer forwarded action=MOVE deviceId=13 source=OTHER buttonState=0 actionButton=0 wireButtons=0 x=0.1 y=0.1
+        08-21 12:00:05.000 D MA      : native pointer forwarded action=BUTTON_PRESS deviceId=14 source=NOT_MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.1 y=0.1
+        08-21 12:00:06.000 D MA      : native pointer forwarded action=BUTTON_RELEASE deviceId=15 source=MOUSEPAD buttonState=0 actionButton=1 wireButtons=0 x=0.1 y=0.1
         """
 
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
@@ -121,15 +123,28 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
     def test_observed_android_events_accept_structured_forwarding_logs(self) -> None:
         log = """
-        08-21 12:00:00.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=11 sources=MOUSE button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
+        08-21 12:00:00.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=11 sources=MOUSE | TOUCHPAD button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
         08-21 12:00:01.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_press device_id=12 sources=MOUSE_RELATIVE button_state=1 action_button=1 wire_buttons=1 x=0.5 y=0.5 acceptance_evidence=external_gate_required
         08-21 12:00:02.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_release device_id=11 sources=TOUCHPAD button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5 acceptance_evidence=external_gate_required
         08-21 12:00:03.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=-1 sources=MOUSE button_state=0 action_button=0 wire_buttons=0 x=0.2 y=0.2 acceptance_evidence=external_gate_required
         08-21 12:00:04.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=move device_id=13 sources=OTHER button_state=0 action_button=0 wire_buttons=0 x=0.1 y=0.1 acceptance_evidence=external_gate_required
+        08-21 12:00:05.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_press device_id=14 sources=NOT_MOUSE button_state=1 action_button=1 wire_buttons=1 x=0.1 y=0.1 acceptance_evidence=external_gate_required
+        08-21 12:00:06.000 D MA      : peripheral_input kind=native_pointer_forwarded transport=usb_lan action=button_release device_id=15 sources=MOUSEPAD button_state=0 action_button=1 wire_buttons=0 x=0.1 y=0.1 acceptance_evidence=external_gate_required
         """
 
         self.assertEqual(acceptance.observed_android_events(log), ["move", "press", "release"])
         self.assertEqual(acceptance.observed_android_event_device_ids(log), {"move": [11], "press": [12], "release": [11]})
+
+    def test_observed_android_events_require_exact_mouse_source_tokens(self) -> None:
+        log = """
+        native pointer forwarded action=MOVE deviceId=21 source=NOT_MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5
+        native pointer forwarded action=BUTTON_PRESS deviceId=22 source=MOUSEPAD buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=button_release device_id=23 sources=TRACKBALLER button_state=0 action_button=1 wire_buttons=0 x=0.5 y=0.5
+        peripheral_input kind=native_pointer_forwarded action=move device_id=24 sources=KEYBOARD | TOUCHSCREEN button_state=0 action_button=0 wire_buttons=0 x=0.5 y=0.5
+        """
+
+        self.assertEqual(acceptance.observed_android_events(log), [])
+        self.assertEqual(acceptance.observed_android_event_device_ids(log), {})
 
     def test_gate_rejects_touch_derived_pointer_evidence_even_with_host_logs(self) -> None:
         summary = self._native_pointer_summary(

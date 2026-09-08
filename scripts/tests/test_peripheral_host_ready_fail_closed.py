@@ -108,9 +108,9 @@ class PeripheralHostReadyFailClosedTests(unittest.TestCase):
                     native_pointer_hid_acceptance,
                     "LogcatCapture",
                     return_value=FakeLogcatCapture(
-                        "native pointer forwarded action=MOVE source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
-                        "native pointer forwarded action=BUTTON_PRESS source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
-                        "native pointer forwarded action=BUTTON_RELEASE source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
+                        "native pointer forwarded action=MOVE deviceId=12 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_PRESS deviceId=12 source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_RELEASE deviceId=12 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
                     ),
                 ),
             ):

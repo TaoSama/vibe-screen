@@ -103,6 +103,26 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
         self.assertFalse(summary["can_close_native_pointer_hid_gate"])
 
+    def test_android_required_events_must_share_one_external_mouse_device(self) -> None:
+        record = self.complete_record()
+        record["external_mouse_devices"] = [
+            {"device_id": 11, "name": "USB Mouse", "sources": "MOUSE", "is_external": "true"},
+            {"device_id": 12, "name": "Bluetooth Trackpad", "sources": "TOUCHPAD", "is_external": "true"},
+            {"device_id": 13, "name": "USB Trackball", "sources": "TRACKBALL", "is_external": "true"},
+        ]
+        record["observed_android_pointer_device_ids_by_event"] = {
+            "move": [11],
+            "press": [12],
+            "release": [13],
+        }
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertTrue(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+        self.assertFalse(summary["observations"]["android_required_events_share_external_mouse_device"])
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+
     def test_synthetic_negative_device_id_cannot_close_gate(self) -> None:
         record = self.complete_record()
         record["external_mouse_devices"] = [{"device_id": -1, "name": "Virtual mouse", "sources": "MOUSE", "is_external": "true"}]
@@ -113,6 +133,7 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "blocked")
         self.assertFalse(summary["observations"]["physical_mouse_attached"])
         self.assertFalse(summary["observations"]["android_forwarding_device_ids_match_external_mouse"])
+        self.assertFalse(summary["observations"]["android_required_events_share_external_mouse_device"])
 
     def test_virtual_named_mouse_cannot_close_gate_even_when_external(self) -> None:
         record = self.complete_record()

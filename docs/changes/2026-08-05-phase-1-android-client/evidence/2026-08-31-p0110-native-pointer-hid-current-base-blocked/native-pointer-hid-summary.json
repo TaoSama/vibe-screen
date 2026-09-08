@@ -34,6 +34,10 @@
       "requirement": "match every Android forwarded pointer event to a positive deviceId from the external mouse-like input device inventory"
     },
     {
+      "field": "android_required_events_share_external_mouse_device",
+      "requirement": "retain move, primary-button press, and primary-button release evidence from the same external mouse-like Android deviceId"
+    },
+    {
       "field": "android_button_press_forwarded",
       "requirement": "retain Android native pointer BUTTON_PRESS forwarding logs from a mouse-like source"
     },
@@ -82,6 +86,7 @@
     "android_forwarding_device_ids_match_external_mouse": false,
     "android_logcat_window_retained": false,
     "android_move_forwarded": false,
+    "android_required_events_share_external_mouse_device": false,
     "collector_reported_passed": false,
     "default_gate_events_required": true,
     "device_identity_matches_claim": true,
