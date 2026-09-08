@@ -1,10 +1,10 @@
 # P0110 Android audio current-base owner
 
-Status: Android local playback-adapter smoke added; real USB/LAN audio playback blocked
-Date: 2026-09-06
-Previous record: 2026-09-01
-Source branch: `android-audio-track-smoke`
-Base commit: `origin/main` at `f97ea7d6ad2bba93720332f31609e691cb648088`
+Status: Android local playback-adapter smoke refreshed on current main; real USB/LAN audio playback blocked
+Date: 2026-09-08
+Previous record: 2026-09-06
+Source branch: `codex/p0110-audio-nohost-current-main`
+Base commit: `origin/main` at `47d139cba7372e3fa7927129da259c53a7b829cd`
 
 ## Scope
 
@@ -37,6 +37,12 @@ Android local playback-adapter availability on the P0110 only. It does not
 launch a Host, negotiate `CAPABILITY_AUDIO`, accept a Host-sent `AudioConfig`,
 carry channel `3` packets over USB/LAN, prove audible output, or close the real
 audio playback gate.
+
+The 2026-09-08 current-main refresh reruns that same Android-local
+instrumentation smoke and focused JVM companion contracts on `origin/main` at
+`47d139cba7372e3fa7927129da259c53a7b829cd`, preserving the same no-Host
+boundary and adding a machine-checkable owner summary with
+`can_close_android_audio_playback_gate=false`.
 
 ## PR audit
 
@@ -71,24 +77,27 @@ The machine-checkable summary is
 ## Android-local no-Host playback-adapter smoke
 
 Latest evidence directory:
-[`evidence/2026-09-06-p0110-audio-android-track-no-host-smoke`](evidence/2026-09-06-p0110-audio-android-track-no-host-smoke/README.md).
+[`evidence/2026-09-08-p0110-audio-android-track-no-host-current-main`](evidence/2026-09-08-p0110-audio-android-track-no-host-current-main/README.md).
 
 The retained device identity is `nubia P0110 / pacific / Android 16 / SDK 36`;
-public artifacts use `REDACTED_P0110_USB_SERIAL` instead of the real device
-serial. The smoke installs/runs only the Android test APK and keeps the macOS
-Host out of scope. It does not create or remove `adb reverse tcp:54321`, does
-not start Vibe Screen/MacHost/Telemachus GUI, and does not touch macOS TCC,
-Keychain, Screen Recording, Accessibility, or System Settings.
+public artifacts use `<redacted-adb-serial>` instead of the real device serial.
+The smoke installs/runs only the Android test APK and keeps the macOS Host out
+of scope. It does not create or remove `adb reverse tcp:54321`, does not start
+Vibe Screen/MacHost/Telemachus GUI, and does not touch macOS TCC, Keychain,
+Screen Recording, Accessibility, or System Settings.
 
 ## Automated checks
 
-The first rows are the 2026-09-06 Android-local playback-adapter smoke. The
-next rows are the 2026-09-01 offline contract refresh. The remaining
+The first rows are the 2026-09-08 current-main Android-local playback-adapter
+smoke. The next rows are the 2026-09-01 offline contract refresh. The remaining
 2026-08-30, 2026-08-29, and 2026-08-28 rows are retained as historical context
 for the earlier blocked owner record.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
+| `cd baseline/AndroidClient && ANDROID_SERIAL=<ANDROID_SERIAL> ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest` | PASS | 2026-09-08 current-main rerun on nubia P0110 / pacific / Android 16 / SDK 36 with `tests=1`, `failures=0`, `errors=0`, `skipped=0`; retained marker `android_audio_track_smoke=start_write_close packets=1 bytes=1920`. This proves Android-local `AudioTrack` start/write/close with synthetic PCM only. |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" --tests "dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.usbLanPcmFixtureNegotiatesWritesAndCleansUpOnDisconnect" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.rejectedAudioReconfigurationStopsExistingPlayback" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.malformedAudioPacketAfterAcceptedConfigFailsSessionAndReleasesOutput"` | PASS | 2026-09-08 current-main focused JVM audio contracts passed 38/38 and cover stream format, jitter/write ordering, USB/LAN fixture negotiation/write/cleanup, config-reject cleanup, and malformed-packet cleanup. |
+| `make android-audio-playback-owner-record EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-09-08-p0110-audio-android-track-no-host-current-main` | PASS | Rebuilt `android-audio-playback-summary.json` as expected fail-closed owner evidence with `verdict=blocked` and `can_close_android_audio_playback_gate=false`; no Host-backed audio artifacts were claimed. |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest` | PASS | Ran on nubia P0110 / pacific / Android 16 / SDK 36 with `Finished 1 tests on P0110 - 16`. The retained logcat marker is `android_audio_track_smoke=start_write_close packets=1 bytes=1920`, proving local `AndroidAudioTrackOutputFactory` plus `ProtocolPcmAudioPlayer` start/write/close with synthetic PCM only. |
 | `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests "dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" --tests "dev.telemachus.display.audio.ProtocolPcmAudioStreamTest"` | PASS | Focused JVM audio tests passed as the protocol/fake-output companion to the P0110 no-Host smoke. |
 | `make protocol` | PASS | Buf format/lint/build/breaking and 45 Python protocol/security/shared-model tests passed. |

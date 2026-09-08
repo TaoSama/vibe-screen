@@ -1,0 +1,99 @@
+09-08 09:12:25.231 31298 31327 I TestRunner: started: androidAudioTrackOutputCanStartWriteAndCloseSyntheticPcm(dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest)
+09-08 09:12:25.235  5682  6161 D EventDataStallCollector: lastTx: 11404704397 currentTx: 1140470439711100388411 currentRx: 11100388411 deltaTx: 0 deltaRx: 0 stallType: 3 deltaTxPackets: 0 deltaRxPackets: 0
+09-08 09:12:25.236  5682  6161 D EventDataStallCollector: StallHandler handleMessage startStallPolling
+09-08 09:12:25.247  8311  9167 I TestDefaultEnvManager: auto_env_enabled is false，do nothing
+09-08 09:12:25.247  8311  9167 D VipFeatureCacheUtils: getFeatureConfMap key: VIP_FEATURE_MAPobric/rls/11.9.0.611090056, value:
+09-08 09:12:25.247 31298 31327 D AudioSystem: onNewServiceWithAdapter: media.audio_flinger service obtained 0xb400007c425d9aa0
+09-08 09:12:25.248  8311  9167 D AssistantFeature: isFeatureEnable: true, buildVariant: obric
+09-08 09:12:25.248  8311  9167 D AssistantFeature: appVariant: obric_pacific_P0110
+09-08 09:12:25.248  8311  9167 D ObricExtraParamImpl: getAppVariant: obric_nubia_P0110, obric_pacific_P0110
+09-08 09:12:25.248 31298 31327 D AudioSystem: getService: checking for service media.audio_flinger: 0xb400007ba26200e0
+09-08 09:12:25.250  2038  4256 D NativePermissionController: checkPermission: missing 1 for 10926
+09-08 09:12:25.250  2038  4256 D NativePermissionController: checkPermission: missing 3 for 10926
+09-08 09:12:25.250  2038  4256 D NativePermissionController: checkPermission: missing 5 for 10926
+09-08 09:12:25.251  2038  4256 D AudioFlinger: Client defaulted notificationFrames to 1922 for frameCount 5766
+09-08 09:12:25.251  2038  4256 I AF::PthrPatchRecord: creating track with enforcement level 0
+09-08 09:12:25.253  2038  4256 E ConversionHelperAidl: Function: parseAndGetVendorParameters Line: 55 Failed
+09-08 09:12:25.253  8311  9167 D CronetHttpURLConnection: start request url = https://log.snssdk.com/service/2/app_log_test/?aid=482431&device_id=3264909601171417&tt_info=dGMFEAAAxgLIdWyFoikxBsJ_T1MGWcUsbYEaLj3aDlvbOGd1Cy7BiWLgHw3ayhkLdYWX-eWgluQj%0A1Xu8SUP1wGJzmFcy12ZELQDhDJsAJLp9abxnMRHn4l3NDD02GsWS5SdPjGGfHFsM-4DplxIvawtQ%0AGlW6woAiUKG0LAtyN_LrZG5KpJfNDO4QJqBlTR0IdLzFrdoD3h_TGfx366mJnXpGO-Rf_l-_9r6n%0AqKHR4-lbhAUiOqiWCeaxl6Qo5roPYMNHf4fcl7FFhlnd2Sb9Oy2DgR5jr-v5m_oheSUg4HGtUZQD%0A8G69iCMlzbAwKqYjVnaP96IWIKh3nuwuZh_dYBkqXEHb-EYsdo8x7JaOOd0da5UlTRPCe926xRSF%0AoUG2Eji8858j6ZH4MN2JB_aOXhwTtUWDGNQoi__2F6sluf8KwAb_ip0lifShfzQ3VV9PIsgwZw1h%0AU6C3Qopq3jxQl4c7oKQC13EY99Zr3zvtdXdXbWJ5dnm0mplmSMc1bJ5WZHpNOYj9_Hri2sjyqjM4%0AJEahfzU4VtfgqyxE02gjQbIy_GYhDAXkk70WzlQta69P8QXNINgp5uUUDhh9DAlEPV4-WpQHkx0D%0AHob2e3ReOD5MCiNNIf15VNU2YlMqh9uDEdeestKIaBJF6LMd2IrWNGdqBoFthpAFOhPnFNqS11OV%0ARjA8eVI%3D%0A&use-olympus-account=1
+09-08 09:12:25.254  8311  9167 V chromium: [8311:9167:0908/091225.254284:VERBOSE1:cronet_url_request_adapter.cc(93)] New chromium network request_adapter: https://log.snssdk.com/service/2/app_log_test/?aid=482431&device_id=3264909601171417&tt_info=dGMFEAAAxgLIdWyFoikxBsJ_T1MGWcUsbYEaLj3aDlvbOGd1Cy7BiWLgHw3ayhkLdYWX-eWgluQj%0A1Xu8SUP1wGJzmFcy12ZELQDhDJsAJLp9abxnMRHn4l3NDD02GsWS5SdPjGGfHFsM-4DplxIvawtQ%0AGlW6woAiUKG0LAtyN_LrZG5KpJfNDO4QJqBlTR0IdLzFrdoD3h_TGfx366mJnXpGO-Rf_l-_9r6n%0AqKHR4-lbhAUiOqiWCeaxl6Qo5roPYMNHf4fcl7FFhlnd2Sb9Oy2DgR5jr-v5m_oheSUg4HGtUZQD%0A8G69iCMlzbAwKqYjVnaP96IWIKh3nuwuZh_dYBkqXEHb-EYsdo8x7JaOOd0da5UlTRPCe926xRSF%0AoUG2Eji8858j6ZH4MN2JB_aOXhwTtUWDGNQoi__2F6sluf8KwAb_ip0lifShfzQ3VV9PIsgwZw1h%0AU6C3Qopq3jxQl4c7oKQC13EY99Zr3zvtdXdXbWJ5dnm0mplmSMc1bJ5WZHpNOYj9_Hri2sjyqjM4%0AJEahfzU4VtfgqyxE02gjQbIy_GYhDAXkk70WzlQta69P8QXNINgp5uUUDhh9DAlEPV4-WpQHkx0D%0AHob2e3ReOD5MCiNNIf15VNU2YlMqh9uDEdeestKIaBJF6LMd2IrWNGdqBoFthpAFOhPnFNqS11OV%0ARjA8eVI%3D%0A&use-olympus-account=1
+09-08 09:12:25.254  8311  9196 V chromium: [8311:9196:0908/091225.254478:VERBOSE1:cronet_url_request.cc(408)] Starting chromium request: https://log.snssdk.com/service/2/app_log_test/?aid=482431&device_id=3264909601171417&tt_info=dGMFEAAAxgLIdWyFoikxBsJ_T1MGWcUsbYEaLj3aDlvbOGd1Cy7BiWLgHw3ayhkLdYWX-eWgluQj%0A1Xu8SUP1wGJzmFcy12ZELQDhDJsAJLp9abxnMRHn4l3NDD02GsWS5SdPjGGfHFsM-4DplxIvawtQ%0AGlW6woAiUKG0LAtyN_LrZG5KpJfNDO4QJqBlTR0IdLzFrdoD3h_TGfx366mJnXpGO-Rf_l-_9r6n%0AqKHR4-lbhAUiOqiWCeaxl6Qo5roPYMNHf4fcl7FFhlnd2Sb9Oy2DgR5jr-v5m_oheSUg4HGtUZQD%0A8G69iCMlzbAwKqYjVnaP96IWIKh3nuwuZh_dYBkqXEHb-EYsdo8x7JaOOd0da5UlTRPCe926xRSF%0AoUG2Eji8858j6ZH4MN2JB_aOXhwTtUWDGNQoi__2F6sluf8KwAb_ip0lifShfzQ3VV9PIsgwZw1h%0AU6C3Qopq3jxQl4c7oKQC13EY99Zr3zvtdXdXbWJ5dnm0mplmSMc1bJ5WZHpNOYj9_Hri2sjyqjM4%0AJEahfzU4VtfgqyxE02gjQbIy_GYhDAXkk70WzlQta69P8QXNINgp5uUUDhh9DAlEPV4-WpQHkx0D%0AHob2e3ReOD5MCiNNIf15VNU2YlMqh9uDEdeestKIaBJF6LMd2IrWNGdqBoFthpAFOhPnFNqS11OV%0ARjA8eVI%3D%0A&use-olympus-account=1 priority: MEDIUM
+09-08 09:12:25.254  8311  9196 V chromium: [8311:9196:0908/091225.254625:VERBOSE1:network_delegate.cc(38)] NetworkDelegate::NotifyBeforeURLRequest: https://log.snssdk.com/service/2/app_log_test/?aid=482431&device_id=3264909601171417&tt_info=dGMFEAAAxgLIdWyFoikxBsJ_T1MGWcUsbYEaLj3aDlvbOGd1Cy7BiWLgHw3ayhkLdYWX-eWgluQj%0A1Xu8SUP1wGJzmFcy12ZELQDhDJsAJLp9abxnMRHn4l3NDD02GsWS5SdPjGGfHFsM-4DplxIvawtQ%0AGlW6woAiUKG0LAtyN_LrZG5KpJfNDO4QJqBlTR0IdLzFrdoD3h_TGfx366mJnXpGO-Rf_l-_9r6n%0AqKHR4-lbhAUiOqiWCeaxl6Qo5roPYMNHf4fcl7FFhlnd2Sb9Oy2DgR5jr-v5m_oheSUg4HGtUZQD%0A8G69iCMlzbAwKqYjVnaP96IWIKh3nuwuZh_dYBkqXEHb-EYsdo8x7JaOOd0da5UlTRPCe926xRSF%0AoUG2Eji8858j6ZH4MN2JB_aOXhwTtUWDGNQoi__2F6sluf8KwAb_ip0lifShfzQ3VV9PIsgwZw1h%0AU6C3Qopq3jxQl4c7oKQC13EY99Zr3zvtdXdXbWJ5dnm0mplmSMc1bJ5WZHpNOYj9_Hri2sjyqjM4%0AJEahfzU4VtfgqyxE02gjQbIy_GYhDAXkk70WzlQta69P8QXNINgp5uUUDhh9DAlEPV4-WpQHkx0D%0AHob2e3ReOD5MCiNNIf15VNU2YlMqh9uDEdeestKIaBJF6LMd2IrWNGdqBoFthpAFOhPnFNqS11OV%0ARjA8eVI%3D%0A&use-olympus-account=1
+09-08 09:12:25.255  2441  3762 D AudioEventTracker: onCreated(59): iid=0, session_id=361, uid=10926, package_name=dev.telemachus.display, flags=AUDIO_OUTPUT_FLAG_DEEP_BUFFER, original_flags=AUDIO_OUTPUT_FLAG_DEEP_BUFFER, stream_type=AUDIO_STREAM_MUSIC, original_stream_type=AUDIO_STREAM_DEFAULT, content_type=AUDIO_CONTENT_TYPE_MOVIE, usage=AUDIO_USAGE_MEDIA, encoding=AUDIO_FORMAT_PCM_16_BIT, channel_mask=-2147483645, frame_count=5766, requested_frame_count=5766, sample_rate=48000, playback_speed=1.000000, playback_pitch=1.000000, io_handle=37
+09-08 09:12:25.256  2410 23757 D AudioOpFeatureProvider: reportPlayback received
+09-08 09:12:25.256  2441  3762 D AudioEventTracker: onSetPlayerIId(59): iid=391
+09-08 09:12:25.258  1874  3154 D AHAL_EffectFactoryQti: createEffect: UUID 08b8b058-0590-11e5-ac71-0025b32654a0: instance 0xb40000771d7775d0 created successfully
+09-08 09:12:25.258  4248  4248 D ExtAdapterServiceImpl: updateAudioPlaybackActiveStatus: true
+09-08 09:12:25.258  8311  9196 V chromium: [8311:9196:0908/091225.258807:VERBOSE1:network_delegate.cc(38)] NetworkDelegate::NotifyBeforeURLRequest: https://dig.bdurl.net/resolve?domain=log.snssdk.com&account_id=2104091785&timestamp=2524579199000&sign=56d74629b3dd600e92ddf30c44bcbdb4&ip=&type=1&ttl=1&aid=482431&p=android&did=3264909601171417&cache_stale_reason=3&cache_expire_time_delta=-1&sdk_id=0
+09-08 09:12:25.259  4248  4248 D ExtAdapterServiceImpl: updateAudioPlaybackActiveStatus: value audio_playback_status=true
+09-08 09:12:25.259  3199  4040 V ControlStreamHelper: scheduleControlStreamCheck
+09-08 09:12:25.259  4248  4248 V bluetooth: vendor/bytedance/bluetooth/Bluetooth/system/btif/src/btif_adapter_ext.cc:119 SendMessageToStack: id is 2
+09-08 09:12:25.259  4248  4248 D MediaPlayerList: updateMediaForAudioPlayback: no active player
+09-08 09:12:25.259  4248  4842 V bluetooth: vendor/bytedance/bluetooth/Bluetooth/system/bta/adapter/bta_adapter_ext.cc:112 SendMessageToStack: msg id 2 value is audio_playback_status=true
+09-08 09:12:25.259  2038  3158 I EffectHalAidl: createAidlConversion create UUID AudioUuid{timeLow: 146321496, timeMid: 1424, timeHiAndVersion: 4581, clockSeq: 44145, node: [0, 37, 179, 38, 84, 160]}
+09-08 09:12:25.259  4248  4842 V bluetooth: vendor/bytedance/bluetooth/Bluetooth/system/bta/adapter/bta_adapter_ext.cc:250 ParseAudioPlaybackStatusAndUpdate: Status is true ret is true
+09-08 09:12:25.259  2038  3158 D EffectConversionHelperAidl: handleSetConfig at state INIT, opening effect with input AudioConfig{base: AudioConfigBase{sampleRate: 48000, channelMask: AudioChannelLayout{layoutMask: 3}, format: AudioFormatDescription{type: PCM, pcm: FLOAT_32_BIT, encoding: }}, offloadInfo: AudioOffloadInfo{base: AudioConfigBase{sampleRate: 0, channelMask: AudioChannelLayout{none: 0}, format: AudioFormatDescription{type: DEFAULT, pcm: DEFAULT, encoding: }}, streamType: INVALID, bitRatePerSecond: 0, durationUs: 0, hasVideo: false, isStreaming: false, bitWidth: 16, offloadBufferSize: 0, usage: INVALID, encapsulationMode: INVALID, contentId: 0, syncId: 0}, frameCount: 1920} output AudioConfig{base: AudioConfigBase{sampleRate: 48000, channelMask: AudioChannelLayout{layoutMask: 3}, format: AudioFormatDescription{type: PCM, pcm: FLOAT_32_BIT, encoding: }}, offloadInfo: AudioOffloadInfo{base: AudioConfigBase{sampleRate: 0, channelMask: AudioChannelLayout{none: 0}, format: AudioFormatDescription{type: DEFAULT, pcm: DEFAULT, encoding: }}, streamType: INVALID, bi
+09-08 09:12:25.259  4248  4248 D MediaPlayerList: updateMediaForAudioPlayback: update state=PlaybackState {state=STOPPED(1), position=0, buffered position=0, speed=0.0, updated=2992356719, actions=0, custom actions=[], active item id=-1, error=null}
+09-08 09:12:25.259  4248  4248 D MediaPlayerList: sendMediaUpdate
+09-08 09:12:25.259  4248  4248 D MediaPlayerList: sendMediaUpdate state=PlaybackState {state=STOPPED(1), position=0, buffered position=0, speed=0.0, updated=2992356719, actions=0, custom actions=[], active item id=-1, error=null}
+09-08 09:12:25.259  4248  4248 D AvrcpTargetService: onMediaUpdated: track_changed=false state=false queue=false
+09-08 09:12:25.259  4248  4248 D AvrcpNativeInterface: sendMediaUpdate: metadata=false playStatus=false queue=false
+09-08 09:12:25.259  7814  8195 D CaeLog  : <LowLatencyHandler> onPlaybackConfigChanged
+09-08 09:12:25.259  1874 19563 D AHAL_EffectImplQti: Qti-MusicVolumeListener  open sessionId 361 ioHandle 37
+09-08 09:12:25.259  7814  8195 D CaeLog  : <LowLatencyHandler> all playback is not in active.
+09-08 09:12:25.259  4248  4248 D AvrcpTargetJni: android/app/jni/com_android_bluetooth_avrcp_target.cpp:283 sendMediaUpdateNative:
+09-08 09:12:25.260  2038  3158 E FMQ     : MQDescriptor is invalid or queue size is 0.
+09-08 09:12:25.260  4248  4248 I bluetooth: system/btif/avrcp/avrcp_service.cc:537 SendMediaUpdate: track_changed=false :  play_state=false :  queue=false
+09-08 09:12:25.260  4248  4248 D ExtAdapterServiceImpl: updateAudioPlaybackActiveStatus: true
+09-08 09:12:25.260  2038  3158 E FMQ     : MQDescriptor is invalid or queue size is 0.
+09-08 09:12:25.260  4248  4248 D ExtAdapterServiceImpl: updateAudioPlaybackActiveStatus: value audio_playback_status=true
+09-08 09:12:25.260  2038  3158 E FMQ     : MQDescriptor is invalid or queue size is 0.
+09-08 09:12:25.260  4248  4248 V bluetooth: vendor/bytedance/bluetooth/Bluetooth/system/btif/src/btif_adapter_ext.cc:119 SendMessageToStack: id is 2
+09-08 09:12:25.260  4248  4248 D MediaPlayerList: updateMediaForAudioPlayback: no active player
+09-08 09:12:25.260  1692 31331 I resolv  : GetAddrInfoHandler::run: {0 262144 0 983040 10056 0}
+09-08 09:12:25.260  4248  4842 V bluetooth: vendor/bytedance/bluetooth/Bluetooth/system/bta/adapter/bta_adapter_ext.cc:112 SendMessageToStack: msg id 2 value is audio_playback_status=true
+09-08 09:12:25.260  4248  4248 D MediaPlayerList: updateMediaForAudioPlayback: update state=PlaybackState {state=STOPPED(1), position=0, buffered position=0, speed=0.0, updated=2992356720, actions=0, custom actions=[], active item id=-1, error=null}
+09-08 09:12:25.260  2038  3158 D EffectHalAidl: setDevices AUDIO_DEVICE_OUT_SPEAKER, @:
+09-08 09:12:25.260  4248  4842 V bluetooth: vendor/bytedance/bluetooth/Bluetooth/system/bta/adapter/bta_adapter_ext.cc:250 ParseAudioPlaybackStatusAndUpdate: Status is true ret is true
+09-08 09:12:25.260  4248  4248 D MediaPlayerList: sendMediaUpdate
+09-08 09:12:25.260  1874 19563 D AHAL_Effect_VolumeListenerQti: checkAndSetGainDepCal_l use volume -1.000000 gain 0
+09-08 09:12:25.260  4248  4248 D MediaPlayerList: sendMediaUpdate state=PlaybackState {state=STOPPED(1), position=0, buffered position=0, speed=0.0, updated=2992356720, actions=0, custom actions=[], active item id=-1, error=null}
+09-08 09:12:25.260  1874 19563 D PAL: ResourceManager: setParameter: 11626: Enter param id: 59
+09-08 09:12:25.260  1692 31332 I resolv  : res_nmkquery: (QUERY, IN, A)
+09-08 09:12:25.260  1874 19563 D PAL: ResourceManager: setParameter: 12641: set mspp linear gain (0x0)
+09-08 09:12:25.260  1874 19563 D PAL: ResourceManager: setParameter: 12791: Exit status: 0
+09-08 09:12:25.260  1692 31332 I resolv  : doQuery: rcode=0, ancount=0, return value=-3
+09-08 09:12:25.260  4248  4248 D MediaControlProfile: GMCS processPendingPlayerStateRequest
+09-08 09:12:25.261  4248  4248 W MediaControlProfile: MCS service state fields left unhandled:
+09-08 09:12:25.261  4248  4248 W MediaControlProfile:    > PLAYER_NAME
+09-08 09:12:25.261  4248  4248 W MediaControlProfile:    > PLAYING_ORDER_SUPPORTED
+09-08 09:12:25.261  2038  3158 W AudioFlinger: moveEffectChain_ll: effect chain for session 0 not on source thread 0xb400007c189d7ff0
+09-08 09:12:25.262  2038  3158 D AudioPolicyManagerExtImpl: getEffectModeForClient:mode 3 for usage 1
+09-08 09:12:25.262  1874 19563 D PAL: ResourceManager: setParameter: 11626: Enter param id: 60
+09-08 09:12:25.263  1874 19563 D PAL: ResourceManager: isDeviceAvailable: 13550: Device 22, is_available = 0
+09-08 09:12:25.263  1874 19563 D PAL: ResourceManager: isDeviceAvailable: 13550: Device 8, is_available = 0
+09-08 09:12:25.263  2441  3762 D AudioEventTracker: onBeginAudioIntervalGroup(59): device=
+09-08 09:12:25.263  1874 19563 D PAL: ResourceManager: setParameter: 12791: Exit status: 0
+09-08 09:12:25.263  2441  3762 D AudioEventTracker: onUserOperation(59): event=start, state=STATE_ACTIVE, status=0, frames_transferred=0
+09-08 09:12:25.263 31298 31327 D AudioTrack: stop(59): called with 480 frames delivered
+09-08 09:12:25.263  2410 23757 D AudioOpFeatureProvider: reportPlaybackDevice received:  for portId: 59
+09-08 09:12:25.263  3199  4040 V ControlStreamHelper: scheduleControlStreamCheck
+09-08 09:12:25.263  2410 23757 D AudioOpFeatureProvider: reportPlaybackOp received
+09-08 09:12:25.263  2410 23757 D AudioOpFeatureProvider: Updated playback state to started for portId: 59
+09-08 09:12:25.263  2410 23757 W SessionImpl: onDataAvailable: dataPattern is null
+09-08 09:12:25.263  2410 23757 E DataControlService: convertFeatureTypeToTable: unknown feature type AUDIO_OP
+09-08 09:12:25.263  2410 23757 D SampleListener: onDataAvailable called. FeatureType: AUDIO_OP
+09-08 09:12:25.263  2410 23757 D SampleListener: mSamplers size: 1
+09-08 09:12:25.263  2410 23757 D DataCenter_DataSampler: DataSampler volume_adapter_sampler sample called
+09-08 09:12:25.263  2410 23757 D DataCenter_VolumeAdapterSampler: VolumeAdapterSampler sample collection completed
+09-08 09:12:25.264  1874  3154 D AHAL_EffectImplQti: Qti-MusicVolumeListener  command: receive command: START at state IDLE
+09-08 09:12:25.264  2410 23757 D DataCenter_VolumeAdapterSampler: updateSampleMode: hasActivePlayback=true
+09-08 09:12:25.264  1874  3154 D AHAL_EffectImplQti: Qti-MusicVolumeListener  command transfer to state: PROCESSING
+09-08 09:12:25.264  2410 23757 I DataCenter_DataSampler: DataSampler volume_adapter_sampler switching mode from TRIGGER to PERIOD
+09-08 09:12:25.264  2410  4126 V WakeupTimer: handleMessage 0
+09-08 09:12:25.264  2441  3162 D AudioEventTracker: onUserOperation(59): event=stop, state=STATE_STOPPED, status=0, frames_transferred=480
+09-08 09:12:25.264  1874  3185 D AHAL_StreamOut_QTI: start : usecase: DEEP_BUFFER_PLAYBACK IoHandle: 37
+09-08 09:12:25.264  2410  4126 V WakeupTimer: addOrUpdateTimer: 1000
+09-08 09:12:25.264  2441  3162 D AudioEventTracker: onUserOperation(59): event=stop, state=STATE_STOPPED, status=0, frames_transferred=0
+09-08 09:12:25.264 31298 31320 D AudioSystem: onNewService: media.audio_policy service obtained 0xb400007ba26560a0
+09-08 09:12:25.264 31298 31327 I AudioTrackSmokeTest: android_audio_track_smoke=start_write_close packets=1 bytes=1920
+09-08 09:12:25.264 31298 31327 I TestRunner: finished: androidAudioTrackOutputCanStartWriteAndCloseSyntheticPcm(dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest)

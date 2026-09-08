@@ -1,0 +1,239 @@
+{
+  "android_only_logs_are_not_playback_evidence": true,
+  "artifact_checks": [
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "metadata/device-identity.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "logs/adb-devices.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "logs/adb-reverse-before-tests.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "logs/adb-reverse-after-tests.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "logs/android-audio-track-logcat.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": false,
+      "path": "logs/android-audio-track-instrumentation.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "logs/android-audio-track-test-results.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "logs/android-audio-track-utp-logcat.txt",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-test-results/TEST-P0110 - 16-_app-.xml",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "android-test-results/test-result.textproto",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "unit-test-results/TEST-dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest.xml",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "unit-test-results/TEST-dev.telemachus.display.audio.ProtocolPcmAudioStreamTest.xml",
+      "under_evidence_dir": true
+    },
+    {
+      "exists": true,
+      "non_empty": true,
+      "path": "unit-test-results/TEST-dev.telemachus.display.StreamClientProtocolV1IntegrationTest.xml",
+      "under_evidence_dir": true
+    }
+  ],
+  "artifact_paths": [
+    "metadata/device-identity.txt",
+    "logs/adb-devices.txt",
+    "logs/adb-reverse-before-tests.txt",
+    "logs/adb-reverse-after-tests.txt",
+    "logs/android-audio-track-logcat.txt",
+    "logs/android-audio-track-instrumentation.txt",
+    "logs/android-audio-track-test-results.txt",
+    "logs/android-audio-track-utp-logcat.txt",
+    "android-test-results/TEST-P0110 - 16-_app-.xml",
+    "android-test-results/test-result.textproto",
+    "unit-test-results/TEST-dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest.xml",
+    "unit-test-results/TEST-dev.telemachus.display.audio.ProtocolPcmAudioStreamTest.xml",
+    "unit-test-results/TEST-dev.telemachus.display.StreamClientProtocolV1IntegrationTest.xml"
+  ],
+  "blocking_notes": [
+    "Device identity is nubia P0110 / pacific / Android 16 / SDK 36 / <redacted-adb-serial>; this is not Xiaomi 13/fuxi evidence.",
+    "This run is Android no-Host playback-adapter smoke only; no macOS Host was launched and no Protocol v1 product session was negotiated.",
+    "No retained production session evidence proves CAPABILITY_AUDIO, accepted AudioConfig, Host channel 3 packets, Android production-session AudioTrack writes, playback output, or disconnect cleanup.",
+    "The retained AudioTrack marker comes from synthetic PCM injected by ProtocolPcmAudioPlayerInstrumentedTest, so it is not Host-origin audio playback evidence.",
+    "No adb reverse tcp:54321 tcp:54321 mapping was created; retained reverse samples are empty.",
+    "Current-main Android no-Host owner record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device passed the local AudioTrack adapter smoke and focused JVM audio contracts, but no Host, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, or playback confirmation evidence was collected. This record does not close the real USB or trusted-LAN audio playback gate."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording, Accessibility, and Microphone permission ready"
+    },
+    {
+      "field": "host_listener_observed",
+      "requirement": "record the macOS Host listener for the transport under test"
+    },
+    {
+      "field": "protocol_v1_session_observed",
+      "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
+    },
+    {
+      "field": "playback_output_confirmed",
+      "requirement": "record audible output or instrumentation-backed Android playback confirmation from the real device"
+    },
+    {
+      "field": "retained_artifacts_available",
+      "requirement": "retain non-empty pass artifacts under the evidence directory for device, Host audio, Android audio, and playback confirmation"
+    }
+  ],
+  "can_close_android_audio_playback_gate": false,
+  "device": {
+    "adb_serial": "<redacted-adb-serial>",
+    "android_release": "16",
+    "build_fingerprint": "redacted-build-fingerprint",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "kind": "android_audio_playback_acceptance",
+  "loopback_or_synthetic_is_not_playback_evidence": true,
+  "missing_requirements": [
+    {
+      "field": "apk_identity_recorded",
+      "requirement": "record APK version/signing identity and install timestamp"
+    },
+    {
+      "field": "host_build_identity_recorded",
+      "requirement": "record Host commit, binary hash, and signing identity"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording, Accessibility, and Microphone permission ready"
+    },
+    {
+      "field": "host_listener_observed",
+      "requirement": "record the macOS Host listener for the transport under test"
+    },
+    {
+      "field": "protocol_v1_session_observed",
+      "requirement": "retain logs proving a real production Protocol v1 session, not a loopback or synthetic harness"
+    },
+    {
+      "field": "audio_capability_negotiated",
+      "requirement": "retain negotiated CAPABILITY_AUDIO and maximum_audio_streams from the active session"
+    },
+    {
+      "field": "audio_config_accepted",
+      "requirement": "retain AudioConfig and AudioConfigResult.accepted=true for PCM S16LE on the active session"
+    },
+    {
+      "field": "host_microphone_capture_started",
+      "requirement": "retain Host audio_capture_started telemetry/logs"
+    },
+    {
+      "field": "host_audio_packets_sent",
+      "requirement": "retain Host channel 3 audio packet/frame send evidence for the accepted stream"
+    },
+    {
+      "field": "android_audio_track_started",
+      "requirement": "retain Android production AudioTrack playback-start evidence for the accepted stream"
+    },
+    {
+      "field": "android_audio_packets_written",
+      "requirement": "retain Android AudioTrack write evidence for Protocol v1 audio packets"
+    },
+    {
+      "field": "playback_output_confirmed",
+      "requirement": "record audible output or instrumentation-backed Android playback confirmation from the real device"
+    },
+    {
+      "field": "disconnect_cleanup_observed",
+      "requirement": "retain Host and Android audio cleanup after disconnect or reconfiguration"
+    },
+    {
+      "field": "host_logs_retained",
+      "requirement": "retain Host logs covering negotiation, packet flow, and cleanup"
+    },
+    {
+      "field": "no_synthetic_or_loopback_markers",
+      "requirement": "exclude synthetic harness, loopback-only, Android-only, and plaintext legacy fallback evidence from gate closure"
+    },
+    {
+      "field": "retained_artifacts_available",
+      "requirement": "retain non-empty pass artifacts under the evidence directory for device, Host audio, Android audio, and playback confirmation"
+    }
+  ],
+  "notes": "Current-main Android no-Host owner record only. The real nubia P0110 / pacific / Android 16 / SDK 36 device passed the local AudioTrack adapter smoke and focused JVM audio contracts, but no Host, Microphone/TCC, Protocol v1 audio negotiation, channel 3 packet flow, or playback confirmation evidence was collected. This record does not close the real USB or trusted-LAN audio playback gate.",
+  "observations": {
+    "android_audio_packets_written": false,
+    "android_audio_track_started": false,
+    "android_device_lock_acquired": true,
+    "android_logs_retained": true,
+    "apk_identity_recorded": false,
+    "audio_capability_negotiated": false,
+    "audio_config_accepted": false,
+    "device_identity_matches_claim": true,
+    "device_identity_recorded": true,
+    "device_identity_structured": true,
+    "disconnect_cleanup_observed": false,
+    "host_audio_packets_sent": false,
+    "host_build_identity_recorded": false,
+    "host_listener_observed": false,
+    "host_logs_retained": false,
+    "host_microphone_capture_started": false,
+    "host_stable_signed_tcc_ready": false,
+    "no_synthetic_or_loopback_markers": false,
+    "playback_output_confirmed": false,
+    "protocol_v1_session_observed": false,
+    "retained_artifacts_available": false,
+    "transport_supported": true
+  },
+  "profile": "protocol-v1-android-usb-lan-audio-playback",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16/SDK 36 evidence must not be relabeled as Xiaomi 13/fuxi.",
+  "requires_audible_or_instrumented_output": true,
+  "requires_real_android_device": true,
+  "run_id": "2026-09-08-p0110-audio-android-track-no-host-current-main",
+  "schema_version": "vibescreen.evidence/v1",
+  "transport": "usb",
+  "verdict": "blocked"
+}

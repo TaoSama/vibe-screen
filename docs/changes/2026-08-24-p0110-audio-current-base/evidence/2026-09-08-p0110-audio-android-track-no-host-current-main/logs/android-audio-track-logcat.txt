@@ -1,0 +1,2 @@
+--------- beginning of main
+09-08 09:12:25.264 31298 31327 I AudioTrackSmokeTest: android_audio_track_smoke=start_write_close packets=1 bytes=1920

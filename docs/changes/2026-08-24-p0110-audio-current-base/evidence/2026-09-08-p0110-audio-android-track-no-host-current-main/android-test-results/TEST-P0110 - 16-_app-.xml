@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.775" timestamp="2026-09-08T01:12:31" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="androidAudioTrackOutputCanStartWriteAndCloseSyntheticPcm" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest" time="0.007" />
+</testsuite>

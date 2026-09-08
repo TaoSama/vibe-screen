@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.StreamClientProtocolV1IntegrationTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-08T01:13:43" hostname="Mac.local" time="0.12">
+  <properties/>
+  <testcase name="malformedAudioPacketAfterAcceptedConfigFailsSessionAndReleasesOutput" classname="dev.telemachus.display.StreamClientProtocolV1IntegrationTest" time="0.102"/>
+  <testcase name="usbLanPcmFixtureNegotiatesWritesAndCleansUpOnDisconnect" classname="dev.telemachus.display.StreamClientProtocolV1IntegrationTest" time="0.012"/>
+  <testcase name="rejectedAudioReconfigurationStopsExistingPlayback" classname="dev.telemachus.display.StreamClientProtocolV1IntegrationTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

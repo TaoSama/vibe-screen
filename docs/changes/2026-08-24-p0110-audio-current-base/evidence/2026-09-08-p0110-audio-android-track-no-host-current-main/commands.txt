@@ -1,0 +1,27 @@
+adb -s <redacted-adb-serial> devices -l
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell wm size
+adb -s <redacted-adb-serial> shell wm density
+adb -s <redacted-adb-serial> reverse --list
+command -v lsof
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+cd baseline/AndroidClient
+adb -s <redacted-adb-serial> logcat -c
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.audio.ProtocolPcmAudioPlayerInstrumentedTest
+adb -s <redacted-adb-serial> logcat -d -s AudioTrackSmokeTest
+./gradlew --no-daemon testDebugUnitTest \
+  --tests "dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" \
+  --tests "dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" \
+  --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.usbLanPcmFixtureNegotiatesWritesAndCleansUpOnDisconnect" \
+  --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.rejectedAudioReconfigurationStopsExistingPlayback" \
+  --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest.malformedAudioPacketAfterAcceptedConfigFailsSessionAndReleasesOutput"
+adb -s <redacted-adb-serial> reverse --list
+command -v lsof
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+make android-audio-playback-owner-record EVIDENCE_DIR=docs/changes/2026-08-24-p0110-audio-current-base/evidence/2026-09-08-p0110-audio-android-track-no-host-current-main
+shasum -a 256 -c SHA256SUMS
