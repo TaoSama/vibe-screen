@@ -225,9 +225,11 @@ acceptance and does not change the README-facing open gate status.
 `controller-runtime-summary.json` may report `pass` only when the observation
 record includes retained `artifact_paths` plus an `observation_artifacts` mapping
 for every `true` runtime observation. Each mapping entry must point to retained
-artifacts in the same evidence bundle. This prevents offline-only source/tests,
-no-device readiness notes, no-entitlement Host checks, or a single generic
-artifact from being promoted into controller runtime acceptance.
+relative artifact paths in the same evidence bundle; empty, absolute, or
+parent-directory references are rejected. This prevents offline-only
+source/tests, no-device readiness notes, no-entitlement Host checks,
+out-of-bundle files, or a single generic artifact from being promoted into
+controller runtime acceptance.
 
 ## 2026-08-30 current-base refresh after trusted LAN gate merge
 

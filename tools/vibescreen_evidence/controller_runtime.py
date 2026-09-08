@@ -12,7 +12,7 @@ import argparse
 import json
 import sys
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Sequence, TextIO
 
 from . import SCHEMA_VERSION
@@ -142,7 +142,19 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
         return []
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ControllerRuntimeEvidenceError(f"{field} must be a list of strings")
+    for item in value:
+        _validate_artifact_reference(field, item)
     return value
+
+
+def _validate_artifact_reference(field: str, reference: str) -> None:
+    if not reference.strip():
+        raise ControllerRuntimeEvidenceError(f"{field} must contain only non-empty strings")
+    path = PurePosixPath(reference)
+    if path.is_absolute():
+        raise ControllerRuntimeEvidenceError(f"{field} must contain relative evidence-bundle paths")
+    if any(part in {"", ".", ".."} for part in path.parts):
+        raise ControllerRuntimeEvidenceError(f"{field} must not escape the evidence bundle")
 
 
 def _observation_artifacts(record: dict[str, Any]) -> dict[str, list[str]]:
@@ -161,6 +173,8 @@ def _observation_artifacts(record: dict[str, Any]) -> dict[str, list[str]]:
             raise ControllerRuntimeEvidenceError(
                 f"observation_artifacts.{field} must be a list of strings"
             )
+        for path in paths:
+            _validate_artifact_reference(f"observation_artifacts.{field}", path)
         artifacts[field] = paths
     return artifacts
 
