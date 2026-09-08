@@ -181,7 +181,23 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         self.assertFalse(summary["observations"]["device_identity_matches_claim"])
         self.assertFalse(summary["can_close_native_pointer_hid_gate"])
 
-    def test_non_p0110_identity_cannot_close_current_p0110_gate(self) -> None:
+    def test_xiaomi_13_identity_can_close_current_gate(self) -> None:
+        record = self.complete_record()
+        record["device"] = {
+            "manufacturer": "Xiaomi",
+            "model": "2211133C",
+            "device": "fuxi",
+            "android_release": "16",
+            "sdk": "36",
+        }
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "pass")
+        self.assertTrue(summary["observations"]["device_identity_matches_claim"])
+        self.assertTrue(summary["can_close_native_pointer_hid_gate"])
+
+    def test_unknown_identity_cannot_close_current_gate(self) -> None:
         record = self.complete_record()
         record["device"] = {
             "manufacturer": "Google",

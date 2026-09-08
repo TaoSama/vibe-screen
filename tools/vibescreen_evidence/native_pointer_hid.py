@@ -96,6 +96,10 @@ BLOCKING_FIELDS = {
 BOOLEAN_FIELDS = tuple(field for field, _ in REQUIRED_FIELDS)
 MOUSE_LIKE_SOURCES = {"MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"}
 VIRTUAL_INPUT_NAME_MARKERS = ("virtual", "uinput", "synthetic")
+SUPPORTED_ANDROID_DEVICE_IDENTITIES = (
+    ("nubia", "p0110", "pacific", "16", "36"),
+    ("xiaomi", "2211133c", "fuxi", "16", "36"),
+)
 
 CONSISTENCY_RULES = (
     (
@@ -252,13 +256,13 @@ def _device_identity_matches_claim(record: dict[str, Any]) -> bool:
     sdk = str(device.get("sdk", "")).strip()
     if not all((manufacturer, model, codename, android_release, sdk)):
         return False
-    return (manufacturer, model, codename, android_release, sdk) == (
-        "nubia",
-        "p0110",
-        "pacific",
-        "16",
-        "36",
-    )
+    return (
+        manufacturer,
+        model,
+        codename,
+        android_release,
+        sdk,
+    ) in SUPPORTED_ANDROID_DEVICE_IDENTITIES
 
 
 def _artifact_paths(record: dict[str, Any], source_path: Path | None) -> list[str]:
