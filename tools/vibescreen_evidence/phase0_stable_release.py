@@ -27,6 +27,9 @@ from .host_rss_gate import (
     MINIMUM_SAMPLE_COUNT as HOST_RSS_MINIMUM_SAMPLE_COUNT,
     derive_gate as derive_host_rss_gate,
 )
+from .macos_hardware_compatibility import (
+    summarize as summarize_macos_hardware_compatibility,
+)
 from .file_transfer_android_smoke import (
     EXPECTED_DIRECTION_ENDPOINTS as FILE_TRANSFER_EXPECTED_DIRECTION_ENDPOINTS,
     REQUIRED_CANCEL_ARTIFACT_ROLES as FILE_TRANSFER_REQUIRED_CANCEL_ARTIFACT_ROLES,
@@ -45,10 +48,14 @@ STATUS_OPEN = "open"
 EXPECTED_OPEN_PR_REPOSITORY = "TaoSama/vibe-screen"
 TELEMETRY_AND_LATENCY_ARCHIVE_GATE_ID = "telemetry_and_latency_archive"
 HOST_RSS_2H_NO_GROWTH_GATE_ID = "host_rss_2h_no_growth"
+MACOS_HOST_HARDWARE_COMPATIBILITY_MATRIX_GATE_ID = (
+    "macos_host_hardware_compatibility_matrix"
+)
 CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID = "clipboard_android_macos_product_e2e"
 FILE_TRANSFER_ANDROID_PRODUCT_E2E_GATE_ID = "file_transfer_android_product_e2e"
 LATENCY_EVIDENCE_GATE_KIND = "latency_evidence_gate"
 ANDROID_USB_LIVE_SMOKE_KIND = "android_usb_live_smoke"
+MACOS_HOST_COMPATIBILITY_MATRIX_ROW_KIND = "macos_host_compatibility_matrix_row"
 CLIPBOARD_E2E_GATE_KIND = "android_macos_clipboard_e2e_gate"
 FILE_TRANSFER_ANDROID_SMOKE_GATE_KIND = "android_macos_file_transfer_smoke"
 CLIPBOARD_E2E_REQUIRED_CHECKS = (
@@ -241,7 +248,7 @@ def _compile_guard_pattern(pattern: str) -> re.Pattern[str]:
 
 
 def _gate_summary(
-    gate: dict[str, Any], *, repo_root: Path | None = None
+    gate: dict[str, Any], *, repo_root: Path | None = None, manifest_source_commit: str | None = None
 ) -> dict[str, Any]:
     gate_id = _string(gate, "id")
     title = _string(gate, "title")
@@ -281,6 +288,14 @@ def _gate_summary(
             issues.extend(
                 _host_rss_2h_no_growth_issues(
                     evidence_paths=evidence_paths, repo_root=repo_root
+                )
+            )
+        elif gate_id == MACOS_HOST_HARDWARE_COMPATIBILITY_MATRIX_GATE_ID:
+            issues.extend(
+                _macos_host_hardware_compatibility_matrix_issues(
+                    evidence_paths=evidence_paths,
+                    repo_root=repo_root,
+                    manifest_source_commit=manifest_source_commit,
                 )
             )
         elif gate_id == CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID:
@@ -379,6 +394,332 @@ def _telemetry_and_latency_archive_issues(
         )
         issues.extend(android_candidate_issues)
     return issues
+
+
+def _macos_host_hardware_compatibility_matrix_issues(
+    *,
+    evidence_paths: Sequence[str],
+    repo_root: Path | None,
+    manifest_source_commit: str | None,
+) -> list[str]:
+    if repo_root is None:
+        return [
+            "macos_host_hardware_compatibility_matrix pass requires repo_root "
+            "to verify formal compatibility row evidence paths"
+        ]
+
+    valid_compatibility_report = False
+    issues: list[str] = []
+    candidate_issues: list[str] = []
+    repository = repo_root.resolve()
+    for raw_path in evidence_paths:
+        evidence_path, path_issue = _repo_relative_evidence_path(
+            repository,
+            raw_path,
+            gate_id=MACOS_HOST_HARDWARE_COMPATIBILITY_MATRIX_GATE_ID,
+        )
+        if path_issue is not None:
+            issues.append(path_issue)
+            continue
+        if evidence_path is not None and not evidence_path.exists():
+            issues.append(
+                "macos_host_hardware_compatibility_matrix evidence path "
+                f"{raw_path} must exist"
+            )
+            continue
+        if evidence_path is None or evidence_path.suffix.lower() != ".json":
+            continue
+        record, load_issue = _load_evidence_json(
+            evidence_path,
+            raw_path,
+            gate_id=MACOS_HOST_HARDWARE_COMPATIBILITY_MATRIX_GATE_ID,
+        )
+        if load_issue is not None:
+            issues.append(load_issue)
+            continue
+        if record.get("kind") != MACOS_HOST_COMPATIBILITY_MATRIX_ROW_KIND:
+            candidate_issues.append(
+                f"{raw_path}: formal macOS Host compatibility report kind must be "
+                f"{MACOS_HOST_COMPATIBILITY_MATRIX_ROW_KIND}"
+            )
+            continue
+        report_issues = _formal_macos_host_compatibility_report_issues(
+            record,
+            raw_path,
+            evidence_path=evidence_path,
+            manifest_source_commit=manifest_source_commit,
+        )
+        if report_issues:
+            candidate_issues.extend(report_issues)
+        else:
+            valid_compatibility_report = True
+
+    if not valid_compatibility_report:
+        issues.append(
+            "macos_host_hardware_compatibility_matrix pass requires at least one "
+            "passing formal macos_host_compatibility_matrix_row report that "
+            "revalidates a retained gate_input artifact from the same evidence bundle"
+        )
+        issues.extend(candidate_issues)
+    return issues
+
+
+def _formal_macos_host_compatibility_report_issues(
+    record: dict[str, Any],
+    path: str,
+    *,
+    evidence_path: Path,
+    manifest_source_commit: str | None,
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(
+            f"{path}: formal macOS Host compatibility report schema_version must be {SCHEMA_VERSION}"
+        )
+    if record.get("kind") != MACOS_HOST_COMPATIBILITY_MATRIX_ROW_KIND:
+        issues.append(
+            f"{path}: formal macOS Host compatibility report kind must be {MACOS_HOST_COMPATIBILITY_MATRIX_ROW_KIND}"
+        )
+    if record.get("profile") != "macos-host-compatibility-row":
+        issues.append(
+            f"{path}: formal macOS Host compatibility report profile must be macos-host-compatibility-row"
+        )
+    if record.get("verdict") != STATUS_PASS:
+        issues.append(
+            f"{path}: formal macOS Host compatibility report verdict must be pass"
+        )
+    if record.get("can_close_macos_host_compatibility_row") is not True:
+        issues.append(
+            f"{path}: formal macOS Host compatibility report can_close_macos_host_compatibility_row must be true"
+        )
+
+    for field in ("invalid_claims", "missing_requirements", "blocking_reasons"):
+        value = record.get(field, [])
+        if not isinstance(value, list):
+            issues.append(
+                f"{path}: formal macOS Host compatibility report {field} must be a list"
+            )
+        elif value:
+            issues.append(
+                f"{path}: formal macOS Host compatibility report pass must not include {field}"
+            )
+
+    checklist = record.get("closure_checklist")
+    if not isinstance(checklist, list) or not checklist:
+        issues.append(
+            f"{path}: formal macOS Host compatibility report closure_checklist must be a non-empty list"
+        )
+    else:
+        failing_items = [
+            str(item.get("id", index))
+            for index, item in enumerate(checklist)
+            if not isinstance(item, dict) or item.get("status") != STATUS_PASS
+        ]
+        if failing_items:
+            issues.append(
+                f"{path}: formal macOS Host compatibility report closure_checklist must have all items pass: "
+                + ", ".join(failing_items)
+            )
+
+    row_scope = record.get("row_scope")
+    if not isinstance(row_scope, dict):
+        issues.append(
+            f"{path}: formal macOS Host compatibility report row_scope must be an object"
+        )
+    else:
+        for field in (
+            "repository_commit",
+            "repository_tree",
+            "cpu_architecture",
+            "host_model_identifier",
+            "macos_version",
+            "macos_build",
+            "display_topology",
+            "capture_backend",
+            "stream_transport",
+            "android_counterpart",
+            "compatibility_scope",
+        ):
+            if not isinstance(row_scope.get(field), str) or not row_scope.get(field, "").strip():
+                issues.append(
+                    f"{path}: formal macOS Host compatibility report row_scope.{field} must be present"
+                )
+        row_commit = row_scope.get("repository_commit")
+        if (
+            isinstance(manifest_source_commit, str)
+            and HASH_RE.fullmatch(manifest_source_commit)
+            and row_commit != manifest_source_commit
+        ):
+            issues.append(
+                f"{path}: formal macOS Host compatibility report row_scope.repository_commit must match manifest source.base_commit"
+            )
+
+    artifact_file_check = record.get("artifact_file_check")
+    if not isinstance(artifact_file_check, dict):
+        issues.append(
+            f"{path}: formal macOS Host compatibility report artifact_file_check must be an object"
+        )
+    else:
+        if artifact_file_check.get("enabled") is not True:
+            issues.append(
+                f"{path}: formal macOS Host compatibility report artifact_file_check.enabled must be true"
+            )
+        for field in ("missing_paths", "invalid_paths", "empty_paths"):
+            value = artifact_file_check.get(field, [])
+            if not isinstance(value, list):
+                issues.append(
+                    f"{path}: formal macOS Host compatibility report artifact_file_check.{field} must be a list"
+                )
+            elif value:
+                issues.append(
+                    f"{path}: formal macOS Host compatibility report artifact_file_check.{field} must be empty"
+                )
+
+    artifact_role_check = record.get("artifact_role_check")
+    gate_input_path = None
+    if not isinstance(artifact_role_check, dict):
+        issues.append(
+            f"{path}: formal macOS Host compatibility report artifact_role_check must be an object"
+        )
+    else:
+        for field in (
+            "missing_roles",
+            "invalid_paths",
+            "unknown_roles",
+            "duplicate_roles",
+            "multi_role_paths",
+        ):
+            value = artifact_role_check.get(field, [])
+            if not isinstance(value, list):
+                issues.append(
+                    f"{path}: formal macOS Host compatibility report artifact_role_check.{field} must be a list"
+                )
+            elif value:
+                issues.append(
+                    f"{path}: formal macOS Host compatibility report artifact_role_check.{field} must be empty"
+                )
+        gate_input_path = _single_macos_gate_input_path(artifact_role_check)
+        if gate_input_path is None:
+            issues.append(
+                f"{path}: formal macOS Host compatibility report artifact_role_check must identify exactly one gate_input artifact"
+            )
+
+    if gate_input_path is not None:
+        issues.extend(
+            _macos_host_compatibility_gate_input_issues(
+                record,
+                path,
+                evidence_path=evidence_path,
+                gate_input_path=gate_input_path,
+            )
+        )
+    return issues
+
+
+def _single_macos_gate_input_path(artifact_role_check: dict[str, Any]) -> str | None:
+    roles_by_path = artifact_role_check.get("roles_by_path")
+    if not isinstance(roles_by_path, dict):
+        return None
+    gate_input_paths = [
+        str(artifact_path)
+        for artifact_path, roles in roles_by_path.items()
+        if isinstance(artifact_path, str)
+        and isinstance(roles, list)
+        and roles == ["gate_input"]
+    ]
+    if len(gate_input_paths) != 1:
+        return None
+    return gate_input_paths[0]
+
+
+def _macos_host_compatibility_gate_input_issues(
+    record: dict[str, Any], path: str, *, evidence_path: Path, gate_input_path: str
+) -> list[str]:
+    input_path = Path(gate_input_path)
+    if input_path.is_absolute() or ".." in input_path.parts:
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact must be evidence-relative"
+        ]
+    try:
+        evidence_dir = evidence_path.parent.resolve()
+        resolved_input = (evidence_dir / input_path).resolve(strict=True)
+        resolved_input.relative_to(evidence_dir)
+    except FileNotFoundError:
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact {gate_input_path} must exist"
+        ]
+    except (OSError, RuntimeError, ValueError) as error:
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact {gate_input_path} cannot be accessed: {error}"
+        ]
+    if not resolved_input.is_file():
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact {gate_input_path} must be a file"
+        ]
+    gate_input_record, load_issue = _load_evidence_json(
+        resolved_input,
+        gate_input_path,
+        gate_id=MACOS_HOST_HARDWARE_COMPATIBILITY_MATRIX_GATE_ID,
+    )
+    if load_issue is not None:
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact could not be read: {load_issue}"
+        ]
+    try:
+        rebuilt_report = summarize_macos_hardware_compatibility(
+            gate_input_record, run_id=record.get("run_id"), evidence_dir=evidence_dir
+        )
+    except (OSError, TypeError, ValueError) as error:
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact could not be revalidated: {error}"
+        ]
+    if (
+        rebuilt_report.get("verdict") != STATUS_PASS
+        or rebuilt_report.get("can_close_macos_host_compatibility_row") is not True
+    ):
+        detail_parts = _macos_host_compatibility_failure_details(rebuilt_report)
+        detail = "; ".join(part for part in detail_parts if part.strip())
+        suffix = f": {detail}" if detail else ""
+        return [
+            f"{path}: formal macOS Host compatibility report gate_input artifact must rederive as a passing macos_host_compatibility_matrix_row report{suffix}"
+        ]
+    mismatch_fields = [
+        field
+        for field in (
+            "run_id",
+            "row_scope",
+            "observations",
+            "invalid_claims",
+            "invalid_claim_observations",
+            "closure_checklist",
+            "missing_requirements",
+            "blocking_reasons",
+            "artifact_paths",
+            "artifact_role_check",
+        )
+        if record.get(field) != rebuilt_report.get(field)
+    ]
+    if mismatch_fields:
+        return [
+            f"{path}: formal macOS Host compatibility report must match its rederived gate_input artifact for "
+            + ", ".join(mismatch_fields)
+        ]
+    return []
+
+
+def _macos_host_compatibility_failure_details(record: dict[str, Any]) -> list[str]:
+    details: list[str] = []
+    for field in ("blocking_reasons", "missing_requirements", "invalid_claims"):
+        value = record.get(field, [])
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            detail = item.get("requirement") or item.get("reason")
+            if isinstance(detail, str) and detail.strip():
+                details.append(detail)
+    return details
 
 
 def _clipboard_android_macos_product_e2e_issues(
@@ -1911,7 +2252,13 @@ def evaluate_manifest(
     for raw_gate in gates_value:
         if not isinstance(raw_gate, dict):
             raise Phase0StableReleaseError("required_gates entries must be objects")
-        summary = _gate_summary(raw_gate, repo_root=repo_root)
+        summary = _gate_summary(
+            raw_gate,
+            repo_root=repo_root,
+            manifest_source_commit=(
+                source.get("base_commit") if isinstance(source.get("base_commit"), str) else None
+            ),
+        )
         if summary["id"] in seen_gate_ids:
             duplicate_gate_ids.append(summary["id"])
         seen_gate_ids.add(summary["id"])
