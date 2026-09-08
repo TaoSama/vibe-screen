@@ -1,0 +1,95 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" tests="87" failures="0" errors="0" skipped="0" time="279.011" timestamp="2026-09-08T14:22:46" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="hiddenInternetSettingsDoesNotLeaveLeadingSecondaryActionGap" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.083" />
+  <testcase name="narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.054" />
+  <testcase name="narrowPortraitKeepsInternetSecondaryActionsReadableAtLargeFontScale" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.033" />
+  <testcase name="xiaomi13RotationReappliesLandscapeDimensionsWithoutReinflatingTheViewTree" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.034" />
+  <testcase name="defaultFontKeepsInternetProfileActionsSideBySide" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.034" />
+  <testcase name="xiaomi13PortraitAndLandscapeKeepModeGuidanceReadableAndSeparated" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.149" />
+  <testcase name="wideLandscapeKeepsInlineSettingsButtonWithoutFloatingPolicy" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.039" />
+  <testcase name="narrowPortraitKeepsUsbRetryDiagnosticsReadableAtMaxFontScale" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.034" />
+  <testcase name="p0110LandscapeLargeTextKeepsUsbRetryFirstAndGuidanceScrollable" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.037" />
+  <testcase name="narrowPortraitKeepsModeTouchTargetsAtDefaultFontScale" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.039" />
+  <testcase name="xiaomi13LandscapeKeepsLongestUsbLanAndInternetErrorsReadable" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.032" />
+  <testcase name="narrowPortraitKeepsInternetProfileActionsReadableAtLargeFontScale" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.043" />
+  <testcase name="disconnectedInternetSecondaryActionsKeepSettingsFlushAtLargeFontScale" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.031" />
+  <testcase name="nubiaP0110AndXiaomi13PortraitKeepConnectPreviewOnTheFirstScreen" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.062" />
+  <testcase name="defaultFontKeepsInternetSecondaryActionsSideBySide" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.028" />
+  <testcase name="narrowPortraitKeepsModeLabelsReadableAtLargeFontScale" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.034" />
+  <testcase name="hiddenInternetSettingsDoesNotLeaveHorizontalLeadingSecondaryActionGap" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.056" />
+  <testcase name="productionLayoutDoesNotPreRenderModeSpecificGuidance" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.038" />
+  <testcase name="connectionGuidanceRegionsExposeGroupedScreenReaderStatus" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.043" />
+  <testcase name="internetRouteToggleDoesNotAutosizeBelowReadableText" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.003" />
+  <testcase name="connectionDetailsMeetsTouchTargetAndKeepsItsFullLabel" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.089" />
+  <testcase name="hiddenLiveRegionMessageReannouncesTheSameErrorWhenShownAgain" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.033" />
+  <testcase name="internetSecurityDescriptionStaysFullyVisibleWithoutDisclosureActions" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.037" />
+  <testcase name="wirelessRepairGuidanceExposesFullScreenReaderStatus" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="45.526" />
+  <testcase name="disconnectedActivityFollowsUserOrientationPolicy" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="45.49" />
+  <testcase name="productionConnectionStatesUsePoliteLiveRegions" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.033" />
+  <testcase name="internetSecurityDescriptionStaysVisibleAfterModeAndConfigurationChanges" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="45.483" />
+  <testcase name="disconnectedActivityDoesNotOverrideSystemLandscapeConfiguration" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="45.478" />
+  <testcase name="productionModeToggleHasReadableCheckedAndDistinctDisabledStates" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.005" />
+  <testcase name="productionUsbConnectVisuallyDistinguishesEnabledAndDisabledStates" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.04" />
+  <testcase name="productionChecklistReportsEveryTransportLabelAndHighlightsFailures" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.005" />
+  <testcase name="p0110UsbErrorCopyKeepsChecklistReachableWithLargeText" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.038" />
+  <testcase name="connectedStatusAnnouncementUsesVisibleStreamChromeAndDeduplicates" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.041" />
+  <testcase name="liveRegionTextOnlyChangesForNewContent" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="0.034" />
+  <testcase name="disconnectedResetClearsStreamingOrientationOverride" classname="dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest" time="45.403" />
+  <testcase name="splitWindowProgressKeepsFullAccessibilityLabelAndButtonTargetsAtLargeFontScale" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.09" />
+  <testcase name="resourceGeometryUsesExactPixelsAtNonIntegerDensityBoundaries" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.259" />
+  <testcase name="safeInsetsAndRepeatedResizeReapplyTheProductionLayout" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.006" />
+  <testcase name="columnModeGivesActiveTransferProgressTheFullActionWidthAtLargeFontScale" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.036" />
+  <testcase name="phoneWidthsUseProductionLayoutAndPreserveTouchTargets" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.064" />
+  <testcase name="productionRevealActionRestoresHiddenStreamControls" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.034" />
+  <testcase name="pendingClipboardStatusUsesSharedRowWithoutShrinkingControls" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.036" />
+  <testcase name="activeFileTransferProgressPreservesControlBarGeometryOnPhoneWidths" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.036" />
+  <testcase name="smallTabletWidthKeepsStreamControlsInlineWithReadableLabels" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.03" />
+  <testcase name="statsOverlayStacksInsideNarrowSafeWindows" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.037" />
+  <testcase name="revealActionIsARealClickableNodeOnlyWhileConnectedChromeIsHidden" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.088" />
+  <testcase name="productionApplierCoversStackedColumnAndHiddenSelectorBoundaries" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.471" />
+  <testcase name="productionBinderDisablesDisplaySelectorWhileSwitchIsPending" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.033" />
+  <testcase name="hiddenSelectorUsesExactCompactBoundariesAtNonIntegerDensity" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.122" />
+  <testcase name="statsOverlayKeepsSingleRowWhenAllColumnsFit" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.098" />
+  <testcase name="productionBinderClearsStaleDisplayStateWhenSelectionIsUnavailable" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.002" />
+  <testcase name="fileTransferControlPreservesTouchTargetsWhenVisible" classname="dev.telemachus.display.ControlBarLayoutInstrumentedTest" time="0.03" />
+  <testcase name="transferReadinessUsesSinglePoliteLiveRegion" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.037" />
+  <testcase name="unavailableVideoControlsExposeNoteInsteadOfDeadControls" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.037" />
+  <testcase name="audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.194" />
+  <testcase name="p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.047" />
+  <testcase name="unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.003" />
+  <testcase name="sixHundredDpPortraitWindowKeepsOneSettingsColumn" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="largeTextStacksOptionGroupsWithoutClipping" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.156" />
+  <testcase name="wideWindowKeepsOptionGroupsHorizontal" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.006" />
+  <testcase name="opacitySliderKeepsAccessibilityContract" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.036" />
+  <testcase name="smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.038" />
+  <testcase name="smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.056" />
+  <testcase name="repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="narrowPhoneWindowsStackOptionGroupsWithoutClipping" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.043" />
+  <testcase name="smallTabletPortraitKeepsSettingsSingleColumnForReadableCards" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.046" />
+  <testcase name="settingsSectionsExposeScreenReaderHeadings" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.005" />
+  <testcase name="sixHundredDpLandscapeWindowUsesTwoSettingsColumns" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="capturesSustainedUseStatusEvidenceImages" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.541" />
+  <testcase name="productionInternetActionsDistinguishEnabledAndDisabledStates" classname="dev.telemachus.display.InternetControlStateColorsInstrumentedTest" time="0.062" />
+  <testcase name="productionRouteToggleDistinguishesCheckedAndUncheckedStates" classname="dev.telemachus.display.InternetControlStateColorsInstrumentedTest" time="0.003" />
+  <testcase name="productionBuilderConstrainsPairingDialogContent" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="45.578" />
+  <testcase name="imeConstrainedPairingDialogKeepsAcceptanceInputReachable" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.03" />
+  <testcase name="importDialogUsesProtectedMultiLineInputWithoutHorizontalScroll" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.205" />
+  <testcase name="narrowPhoneKeepsPairingDialogContentReadableAndScrollable" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.262" />
+  <testcase name="regularPortraitCapsTargetAtProductionMaximum" classname="dev.telemachus.display.QRScannerLayoutInstrumentedTest" time="0.002" />
+  <testcase name="shortLandscapeKeepsScannerChromeSeparated" classname="dev.telemachus.display.QRScannerLayoutInstrumentedTest" time="0.032" />
+  <testcase name="compactPortraitAndLargeTextKeepScannerChromeSeparated" classname="dev.telemachus.display.QRScannerLayoutInstrumentedTest" time="0.032" />
+  <testcase name="cameraErrorStateIsReadableAndRecoverable" classname="dev.telemachus.display.QRScannerLayoutInstrumentedTest" time="0.001" />
+  <testcase name="permanentlyDeniedCameraStateUsesSettingsAction" classname="dev.telemachus.display.QRScannerLayoutInstrumentedTest" time="0.002" />
+  <testcase name="invalidQrStatusStaysReadableAboveTarget" classname="dev.telemachus.display.QRScannerLayoutInstrumentedTest" time="0.002" />
+  <testcase name="gestureShortcutChoicesRoundTripThroughSharedPreferences" classname="dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest" time="0.002" />
+  <testcase name="offerLayoutKeepsDecisionCopyStructuredForDialogButtons" classname="dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest" time="0.002" />
+  <testcase name="narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable" classname="dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest" time="0.034" />
+  <testcase name="outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable" classname="dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest" time="0.001" />
+  <testcase name="narrowAndLargeFontClipboardConfirmationKeepsContentReadableAndScrollable" classname="dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest" time="0.034" />
+  <testcase name="clipboardConfirmationCoversSendReceiveAndOverwriteCopy" classname="dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest" time="0.002" />
+</testsuite>

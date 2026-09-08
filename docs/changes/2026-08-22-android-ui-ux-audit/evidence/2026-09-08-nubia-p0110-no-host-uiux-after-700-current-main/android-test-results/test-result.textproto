@@ -1,0 +1,11 @@
+# text summary generated from retained Gradle XML and log artifacts
+instrumentation_tests=87
+instrumentation_failures=0
+instrumentation_errors=0
+instrumentation_skipped=0
+instrumentation_log_result=Finished 87 tests on P0110 - 16; BUILD SUCCESSFUL in 5m 2s
+jvm_tests=19
+jvm_failures=0
+jvm_errors=0
+jvm_skipped=0
+jvm_log_result=BUILD SUCCESSFUL in 38s
