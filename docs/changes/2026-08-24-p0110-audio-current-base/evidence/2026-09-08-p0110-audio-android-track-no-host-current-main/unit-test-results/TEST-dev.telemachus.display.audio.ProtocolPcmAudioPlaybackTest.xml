@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" tests="24" skipped="0" failures="0" errors="0" timestamp="2026-09-08T01:13:43" hostname="Mac.local" time="0.004">
+  <properties/>
+  <testcase name="configureReportsOutputCreateAndStartFailures" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.001"/>
+  <testcase name="submitRejectsWithoutConfigurationAndRejectsMalformedPacketBytes" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="writesReadyPacketsInSequenceOrderAfterOutOfOrderSubmit" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="reconfigureDropsUndrainedOldPacketsAndStartsFreshSequence" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="writeFailureStopsActiveOutputAndRejectsFurtherPacketsUntilReconfigured" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.001"/>
+  <testcase name="configureRejectsInvalidConfigWithoutCreatingOutput" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="threeChannelPcmConfigurationCreatesOutputWithExpectedPacketSize" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="configureStartsOutputAndStopClosesIt" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="invalidReconfigureStopsOldOutputAndLeavesPlayerUnconfigured" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="stopReturnsCleanupFailureReasonAndClearsPlayback" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="startFailureReportsCleanupFailureReason" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="reconfigureClosesOldOutputAndStartsFreshSequence" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="noConfigurationDiagnosticMatchesProductProtocolCode" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="writeFailureReportsCleanupFailureReasonAndClearsPlayback" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="usbLanPcmProductFlowFixtureWritesAudioTrackPayloadsAndStops" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="submitMapsProtocolRejectReasonsWithoutWriting" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="reconfigureCreateFailureStopsOldOutputAndLeavesPlayerUnconfigured" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="submitRejectsScopeMismatchWithoutWriting" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="configureRejectsNegativeSessionEpochWithoutCreatingOutput" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="backpressureDropResultsStayAcceptedAndPlaybackContinues" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="invalidSessionEpochReconfigureStopsOldOutputWithoutCreatingNewOutput" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="gapRecoveryWritesNewestLiveWindowWithoutWaitingForAnotherFrame" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="configureRejectsNegativeInitialSequenceWithoutCreatingOutput" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <testcase name="configureRejectsInvalidSessionEpochWithoutCreatingOutput" classname="dev.telemachus.display.audio.ProtocolPcmAudioPlaybackTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

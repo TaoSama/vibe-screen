@@ -1,0 +1,9 @@
+repository=TaoSama/vibe-screen
+worktree=<repo-root>
+branch=codex/p0110-audio-nohost-current-main
+head=47d139cba7372e3fa7927129da259c53a7b829cd
+origin_main=47d139cba7372e3fa7927129da259c53a7b829cd
+head_subject=docs: add p0110 no-host uiux rerun evidence (#683)
+date=2026-09-08
+date_time=2026-09-08T09:10:47+0800
+timezone=Asia/Shanghai

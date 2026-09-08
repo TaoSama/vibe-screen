@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-09-08T01:13:43" hostname="Mac.local" time="0.007">
+  <properties/>
+  <testcase name="usbLanPcmProductFlowFixtureMatchesProtocolParser" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.001"/>
+  <testcase name="validatesPcmConfigAndDerivesPacketByteCount" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.0"/>
+  <testcase name="boundedBufferAdvancesPastGapOrDropsNewest" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.0"/>
+  <testcase name="rejectsMalformedAudioPacketHeaderVarint" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.001"/>
+  <testcase name="advancingPastGapKeepsNewestLiveWindowForImmediateRecovery" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.0"/>
+  <testcase name="rejectsOversizedAudioPacketHeader" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.0"/>
+  <testcase name="drainsContiguousPacketsAfterOutOfOrderArrival" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.0"/>
+  <testcase name="rejectsDuplicateStaleAndScopeMismatchedPackets" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.002"/>
+  <testcase name="rejectsTruncatedAudioPacketHeader" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.002"/>
+  <testcase name="rejectsUnsupportedConfigValues" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.0"/>
+  <testcase name="parsesDelimitedAudioPacketAndRejectsPayloadMismatch" classname="dev.telemachus.display.audio.ProtocolPcmAudioStreamTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
