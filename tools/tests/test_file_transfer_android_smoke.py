@@ -1184,6 +1184,39 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn("bidirectional_product_e2e: synthetic or offline-only file-transfer evidence cannot close this gate", result["blockers"])
 
+    def test_product_e2e_requires_current_schema_version(self) -> None:
+        for schema_version in (None, "vibescreen.evidence/v0"):
+            with self.subTest(schema_version=schema_version):
+                with tempfile.TemporaryDirectory() as directory_name:
+                    root = Path(directory_name)
+                    paths = write_pass_inputs(root)
+                    document = product_e2e()
+                    if schema_version is None:
+                        document.pop("schema_version")
+                    else:
+                        document["schema_version"] = schema_version
+                    write_json(paths["product"], document)
+
+                    result = derive_gate(
+                        host_readiness=paths["host"],
+                        usb_preflight=paths["usb"],
+                        trusted_lan_preflight=paths["lan"],
+                        android_file_transfer_instrumentation_log=paths["android_log"],
+                        product_e2e=paths["product"],
+                    )
+
+                self.assertEqual(result["verdict"], "blocked")
+                self.assertIn(
+                    "bidirectional_product_e2e: product evidence schema_version must be "
+                    f"{SCHEMA_VERSION}",
+                    result["blockers"],
+                )
+                self.assertIn(
+                    "cancel_cleanup: product evidence schema_version must be "
+                    f"{SCHEMA_VERSION}",
+                    result["blockers"],
+                )
+
     def test_complete_bidirectional_product_e2e_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
