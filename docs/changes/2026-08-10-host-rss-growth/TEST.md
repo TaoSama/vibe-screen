@@ -103,6 +103,19 @@ git diff --check
 
 Result: pass.
 
+Offline Host RSS evidence-tool checks:
+
+```sh
+PYTHONPATH=tools python3 -m unittest tools/tests/test_host_rss_gate.py
+PYTHONPATH=tools python3 -m unittest tools/tests/test_host_memory_diagnostic.py
+PYTHONPATH=tools python3 -m unittest tools/tests/test_real_device_gate.py
+make phase0-stable-release-gate
+```
+
+Expected result: all unit tests pass, and the aggregate Phase 0 gate remains
+blocked until a current-source two-hour Host RSS run produces a passing formal
+`host_rss_gate` report with the same-session `host-readiness.json`.
+
 ## Non-Claims
 
 - This is not Xiaomi/fuxi evidence.

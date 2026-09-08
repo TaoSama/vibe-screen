@@ -246,13 +246,16 @@ def host_readiness_payload(
     expected_certificate_sha1: str = "9AAE572BF6D764E3436A6109197D345B5A87998C",
     permissions_readable: bool = True,
     permission_value: bool = True,
+    installs_or_replaces_host: bool = False,
+    closes_runtime_gates: bool = False,
+    generated_at: str = "2026-08-10T00:00:00+00:00",
 ) -> dict:
     current_source_commit = current_source_commit or source_commit
     current_source_tree = current_source_tree or source_tree
     return {
         "schema_version": "vibescreen.host-readiness/v1",
         "kind": "macos_host_shared_prerequisite_readiness",
-        "generated_at": "2026-08-10T00:00:00+00:00",
+        "generated_at": generated_at,
         "status": "pass" if can_start_host_rss_gate else "blocked",
         "signing_tcc_status": signing_tcc_status,
         "listener_status": "ready" if listener_observed else "blocked",
@@ -317,9 +320,9 @@ def host_readiness_payload(
             "requests_microphone": False,
             "modifies_tcc": False,
             "modifies_keychain": False,
-            "installs_or_replaces_host": False,
+            "installs_or_replaces_host": installs_or_replaces_host,
             "modifies_android": False,
-            "closes_runtime_gates": False,
+            "closes_runtime_gates": closes_runtime_gates,
         },
     }
 
@@ -540,6 +543,21 @@ class HostRSSGateTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertEqual(report["derivation_status"], "failed")
         self.assertEqual(report["verdict"], "insufficient")
+        self.assertIsNone(report["run_id"])
+        self.assertEqual(
+            report["source"],
+            {
+                "summary": summary.as_posix(),
+                "samples": (directory / "missing.jsonl").as_posix(),
+                "exact_window_report": (directory / "missing-report.json").as_posix(),
+                "host_readiness": (directory / "missing-readiness.json").as_posix(),
+            },
+        )
+        self.assertTrue(
+            report["reasons"][0].startswith(
+                "the gate inputs could not be validated: summary.schema_version:"
+            )
+        )
         self.assertEqual(report["sufficiency"], {})
 
     def test_cli_records_repo_relative_source_paths_when_repo_root_is_set(self):
@@ -767,6 +785,18 @@ class HostRSSGateTest(unittest.TestCase):
             any("host_readiness_report_object" in reason for reason in report["reasons"])
         )
 
+    def test_host_readiness_generated_at_must_be_timestamp(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            host_readiness = write_host_readiness(directory, generated_at="not-a-date")
+            report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(report["host_readiness_sufficiency"]["generated_at"]["passed"])
+        self.assertTrue(any("generated_at" in reason for reason in report["reasons"]))
+
     def test_blocked_host_readiness_is_insufficient(self):
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
@@ -827,6 +857,50 @@ class HostRSSGateTest(unittest.TestCase):
 
                 self.assertEqual(report["verdict"], "insufficient")
                 self.assertFalse(report["host_readiness_criteria"][failing_key]["passed"])
+
+    def test_host_readiness_that_installs_or_replaces_host_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            host_readiness = write_host_readiness(
+                directory, installs_or_replaces_host=True
+            )
+            report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["host_readiness_criteria"]["safety_installs_or_replaces_host"][
+                "passed"
+            ]
+        )
+        self.assertTrue(
+            any(
+                "safety_installs_or_replaces_host" in reason
+                for reason in report["reasons"]
+            )
+        )
+
+    def test_host_readiness_that_closes_runtime_gates_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            exact_window = write_exact_window_report(directory)
+            host_readiness = write_host_readiness(directory, closes_runtime_gates=True)
+            report = _derive_gate(summary, samples, exact_window, host_readiness)
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["host_readiness_criteria"]["safety_closes_runtime_gates"][
+                "passed"
+            ]
+        )
+        self.assertTrue(
+            any(
+                "safety_closes_runtime_gates" in reason
+                for reason in report["reasons"]
+            )
+        )
 
     def test_exact_window_queue_over_capacity_fails(self):
         with tempfile.TemporaryDirectory() as raw_directory:
