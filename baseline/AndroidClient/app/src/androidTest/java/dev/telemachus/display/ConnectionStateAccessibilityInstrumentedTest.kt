@@ -186,6 +186,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
         withProductionLayout { root ->
             val activity = DetachedTestActivity(root.context)
             activity.clearCameraPermissionRequestHistory()
+            root.findViewById<View>(R.id.wirelessModeContent).visibility = View.VISIBLE
             val storage = PairedHostStorage(activity).also { it.clear() }
             val controller =
                 WirelessTabController(
@@ -201,12 +202,17 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.show()
             assertOnlyWirelessPanelVisible(root, R.id.wirelessFirstTime)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessScanButton, activity.getString(R.string.scan_qr_code)),
+            )
             assertEquals(activity.getString(R.string.scan_qr_code), root.buttonText(R.id.wirelessScanButton))
             assertTrue(root.findViewById<Button>(R.id.wirelessScanButton).isEnabled)
             assertEquals(View.GONE, root.findViewById<View>(R.id.wirelessCameraPermissionRetry).visibility)
 
             controller.onScanResult(TEST_PAIRING_URL)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessConnecting)
+            assertWirelessActions(root)
             assertEquals(
                 activity.getString(R.string.connecting_to_mac, TEST_MAC_NAME),
                 root.text(R.id.connectingLabel),
@@ -215,6 +221,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.onConnectSuccess(TEST_MAC_NAME, TEST_LAN_ENDPOINT)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessConnected)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessDisconnectButton, activity.getString(R.string.disconnect)),
+                WirelessAction(R.id.wirelessForgetButton, activity.getString(R.string.forget_this_mac)),
+            )
             assertEquals(TEST_MAC_NAME, root.text(R.id.connectedMacName))
             assertEquals(TEST_LAN_ENDPOINT, root.text(R.id.connectedMacIp))
             assertTrue(root.findViewById<Button>(R.id.wirelessDisconnectButton).isEnabled)
@@ -222,6 +233,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.onStreamDisconnected()
             assertOnlyWirelessPanelVisible(root, R.id.wirelessPairedIdle)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessReconnectButton, activity.getString(R.string.reconnect)),
+                WirelessAction(R.id.wirelessIdleForgetButton, activity.getString(R.string.forget_this_mac)),
+            )
             assertEquals(activity.getString(R.string.disconnected_status), root.text(R.id.idleStatusLabel))
             assertEquals(TEST_MAC_NAME, root.text(R.id.idleMacName))
             assertEquals(TEST_LAN_ENDPOINT, root.text(R.id.idleMacIp))
@@ -231,6 +247,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.showAutomaticReconnect(TEST_MAC_NAME, TEST_LAN_HOST, TEST_LAN_PORT, remainingSeconds = 9)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessPairedIdle)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessReconnectButton, activity.getString(R.string.retry_now)),
+                WirelessAction(R.id.wirelessIdleForgetButton, activity.getString(R.string.forget_this_mac)),
+            )
             assertEquals(activity.getString(R.string.reconnect_countdown_title), root.text(R.id.idleStatusLabel))
             assertEquals(View.VISIBLE, root.findViewById<View>(R.id.wirelessReconnectCountdown).visibility)
             assertEquals(
@@ -243,6 +264,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.showAutomaticReconnectAttempting(TEST_MAC_NAME, TEST_LAN_HOST, TEST_LAN_PORT)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessPairedIdle)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessReconnectButton, activity.getString(R.string.connecting), enabled = false),
+                WirelessAction(R.id.wirelessIdleForgetButton, activity.getString(R.string.forget_this_mac)),
+            )
             assertEquals(activity.getString(R.string.reconnecting_short), root.text(R.id.idleStatusLabel))
             assertEquals(
                 activity.getString(R.string.reconnect_attempting_message, TEST_MAC_NAME, TEST_LAN_HOST, TEST_LAN_PORT),
@@ -253,6 +279,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.onConnectError(StreamClient.WirelessConnectError.TokenRejected)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessTokenMismatch)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessRescanButton, activity.getString(R.string.scan_qr_code)),
+            )
             assertEquals(activity.getString(R.string.wireless_error_title_repair_required), root.text(R.id.repairTitle))
             assertEquals(
                 activity.getString(R.string.wireless_error_token_rejected_cached, TEST_MAC_NAME),
@@ -263,6 +293,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
             storage.clear()
             controller.onConnectError(StreamClient.WirelessConnectError.TokenRejected)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessTokenMismatch)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessRescanButton, activity.getString(R.string.scan_qr_code)),
+            )
             assertEquals(
                 activity.getString(R.string.wireless_error_token_rejected_uncached),
                 root.text(R.id.repairMessage),
@@ -270,6 +304,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
             controller.onCameraPermissionResult(granted = false)
             assertOnlyWirelessPanelVisible(root, R.id.wirelessFirstTime)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessScanButton, activity.getString(R.string.scan_qr_code)),
+            )
             assertEquals(View.VISIBLE, root.findViewById<View>(R.id.wirelessCameraPermissionRetry).visibility)
             assertEquals(activity.getString(R.string.scan_qr_code), root.buttonText(R.id.wirelessScanButton))
             assertTrue(root.findViewById<Button>(R.id.wirelessScanButton).isEnabled)
@@ -802,6 +840,41 @@ class ConnectionStateAccessibilityInstrumentedTest {
         }
     }
 
+    private fun assertWirelessActions(
+        root: View,
+        vararg expectedActions: WirelessAction,
+    ) {
+        val expectedById = expectedActions.associateBy { it.id }
+        WIRELESS_ACTION_IDS.forEach { actionId ->
+            val button = root.findViewById<Button>(actionId)
+            val expected = expectedById[actionId]
+            val name = root.resources.getResourceEntryName(actionId)
+            if (expected == null) {
+                assertFalse(
+                    "$name should not be exposed outside its active LAN panel",
+                    button.isVisibleWithin(root),
+                )
+            } else {
+                assertTrue(
+                    "$name should be exposed in its active LAN panel",
+                    button.isVisibleWithin(root),
+                )
+                assertEquals(name, expected.text, button.text.toString())
+                assertEquals(name, expected.enabled, button.isEnabled)
+            }
+        }
+    }
+
+    private fun View.isVisibleWithin(root: View): Boolean {
+        var current: View? = this
+        while (current != null) {
+            if (current.visibility != View.VISIBLE) return false
+            if (current === root) return true
+            current = current.parent as? View
+        }
+        return false
+    }
+
     private fun View.text(id: Int): String = findViewById<TextView>(id).text.toString()
 
     private fun View.buttonText(id: Int): String = findViewById<Button>(id).text.toString()
@@ -856,6 +929,12 @@ class ConnectionStateAccessibilityInstrumentedTest {
         }
     }
 
+    private data class WirelessAction(
+        val id: Int,
+        val text: String,
+        val enabled: Boolean = true,
+    )
+
     private companion object {
         const val TEST_MAC_NAME = "Studio Mac"
         const val TEST_LAN_HOST = "192.168.50.8"
@@ -872,6 +951,16 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 R.id.wirelessPairedIdle,
                 R.id.wirelessTokenMismatch,
                 R.id.wirelessPermDenied,
+            )
+        val WIRELESS_ACTION_IDS =
+            listOf(
+                R.id.wirelessScanButton,
+                R.id.wirelessDisconnectButton,
+                R.id.wirelessForgetButton,
+                R.id.wirelessReconnectButton,
+                R.id.wirelessIdleForgetButton,
+                R.id.wirelessRescanButton,
+                R.id.wirelessOpenSettingsButton,
             )
     }
 }
