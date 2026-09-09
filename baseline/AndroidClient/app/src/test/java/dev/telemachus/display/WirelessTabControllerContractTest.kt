@@ -115,7 +115,7 @@ class WirelessTabControllerContractTest {
 
         assertTrue(showIdleReconnectState.contains("R.string.disconnected_status"))
         assertTrue(showIdleReconnectState.contains("LiveRegionTextApplier.hide(views.reconnectCountdown)"))
-        assertTrue(showIdleReconnectState.contains("views.reconnectButton.text = activity.getString(R.string.reconnect)"))
+        assertTrue(showIdleReconnectState.contains("views.reconnectButton.text = host.getString(R.string.reconnect)"))
         assertTrue(showIdleReconnectState.contains("views.reconnectButton.isEnabled = true"))
         assertTrue(onStreamDisconnected.contains("showIdleReconnectState()"))
         assertTrue(show.contains("showIdleReconnectState()"))

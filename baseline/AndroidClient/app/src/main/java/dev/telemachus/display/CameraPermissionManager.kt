@@ -12,25 +12,25 @@ import androidx.core.content.ContextCompat
 
 class CameraPermissionManager(
     private val activity: Activity,
-) {
-    fun isGranted(): Boolean =
+) : WirelessCameraPermission {
+    override fun isGranted(): Boolean =
         ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     /**
      * True when the user has selected "Don't ask again". In that state,
      * `requestPermissions()` returns immediately without prompting.
      */
-    fun isPermanentlyDenied(): Boolean =
+    override fun isPermanentlyDenied(): Boolean =
         !isGranted() &&
             !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA) &&
             hasBeenRequestedAtLeastOnce(activity)
 
-    fun request(requestCode: Int) {
+    override fun request(requestCode: Int) {
         ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.CAMERA), requestCode)
         markRequested(activity)
     }
 
-    fun openAppSettings() {
+    override fun openAppSettings() {
         val intent =
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.fromParts("package", activity.packageName, null)
