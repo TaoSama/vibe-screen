@@ -21,6 +21,7 @@ from typing import Any, Callable, Sequence
 
 from . import SCHEMA_VERSION
 from .adb import ADBClient, ADBError
+from .manifest import ManifestError, repository_state
 from .usb_live_smoke_summary import (
     DEFAULT_PORT,
     parse_adb_reverse,
@@ -466,6 +467,17 @@ def build_document(
         blockers.extend(listener_blockers)
         blockers.extend(preflight_blockers)
 
+    try:
+        repository = repository_state(repository_root.resolve())
+    except ManifestError as error:
+        repository = {
+            "revision": None,
+            "dirty": None,
+            "status_porcelain": [],
+            "error": str(error),
+        }
+        blockers.append(blocker("source.repository", f"source repository state unavailable: {error}"))
+
     result = "ready" if not blockers else "blocked"
     return {
         "schema_version": SCHEMA_VERSION,
@@ -473,6 +485,8 @@ def build_document(
         "collected_at": wall_clock(),
         "result": result,
         "blockers": blockers,
+        "source": {"base_commit": repository.get("revision")},
+        "repository": repository,
         "configuration": {
             "serial": serial,
             "package": package_name,
@@ -509,6 +523,13 @@ def build_document(
         "host": {"listener": host_listener, "preflight": host_preflight},
         "claims": {
             "can_start_usb_smoke": result == "ready",
+            "host_listener_observed": bool(host_listener and host_listener.get("listening") and host_listener.get("host_owned")),
+            "adb_reverse_tcp_54321_present": bool(reverse and reverse.get("configured")),
+            "android_app_foreground": bool(
+                android_app
+                and isinstance(android_app.get("foreground"), dict)
+                and android_app["foreground"].get("foreground") is True
+            ),
             "live_usb_stream_observed": False,
             "readme_gate_closure": False,
             "can_close_two_hour_soak_gate": False,
