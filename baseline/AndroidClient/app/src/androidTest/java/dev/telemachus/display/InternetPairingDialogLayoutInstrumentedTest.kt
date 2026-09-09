@@ -120,7 +120,6 @@ class InternetPairingDialogLayoutInstrumentedTest {
 
     @Test
     fun productionBuilderConstrainsPairingDialogContent() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
         var dialog: AlertDialog? = null
         var root: ScrollView? = null
         var assertionFailure: Throwable? = null
@@ -140,10 +139,17 @@ class InternetPairingDialogLayoutInstrumentedTest {
                             .setPositiveButton(R.string.internet_pairing_complete_action, null)
                             .show()
                 }
-                instrumentation.waitForIdleSync()
                 scenario.onActivity { activity ->
                     try {
                         val dialogRoot = checkNotNull(root)
+                        checkNotNull(dialog).window?.decorView?.let { decor ->
+                            val activityRoot = activity.window.decorView
+                            decor.measure(
+                                View.MeasureSpec.makeMeasureSpec(activityRoot.width, View.MeasureSpec.AT_MOST),
+                                View.MeasureSpec.makeMeasureSpec(activityRoot.height, View.MeasureSpec.AT_MOST),
+                            )
+                            decor.layout(0, 0, decor.measuredWidth, decor.measuredHeight)
+                        }
                         val measured = PairingMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
 
                         assertTrue("production dialog measures pairing root", dialogRoot.width > 0 && dialogRoot.height > 0)

@@ -1320,10 +1320,22 @@
                         app:strokeWidth="1dp" />
                 </com.google.android.material.button.MaterialButtonToggleGroup>
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/internetConnectButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="@dimen/connection_primary_action_margin_top"
+                    android:text="@string/internet_connect"
+                    android:textColor="@color/primary_button_text"
+                    android:textStyle="bold"
+                    app:backgroundTint="@color/primary_button_background"
+                    app:cornerRadius="18dp" />
+
                 <LinearLayout
                     android:id="@+id/internetProfileActions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.button.MaterialButton
@@ -1379,17 +1391,6 @@
                         app:autoSizeTextType="uniform"
                         app:textAllCaps="false" />
                 </LinearLayout>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/internetConnectButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:layout_marginTop="@dimen/connection_primary_action_margin_top"
-                    android:text="@string/internet_connect"
-                    android:textColor="@color/primary_button_text"
-                    android:textStyle="bold"
-                    app:backgroundTint="@color/primary_button_background"
-                    app:cornerRadius="18dp" />
 
                 <LinearLayout
                     android:id="@+id/internetSecondaryActions"

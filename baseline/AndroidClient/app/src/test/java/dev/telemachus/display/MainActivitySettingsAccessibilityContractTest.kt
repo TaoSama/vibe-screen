@@ -65,11 +65,9 @@ class MainActivitySettingsAccessibilityContractTest {
                 Regex("unavailableNote\\.visibility\\s*=").containsMatchIn(gestureControls),
         )
         assertTrue(
-            "Focusable unavailable notes should have a visible focus background",
-            extractXmlElement(layout, "android:id=\"@+id/videoControlUnavailable\"")
-                .contains("android:background=\"?attr/selectableItemBackground\"") &&
-                extractXmlElement(layout, "android:id=\"@+id/gestureShortcutUnavailable\"")
-                    .contains("android:background=\"?attr/selectableItemBackground\""),
+            "Focusable unavailable notes should have a visible focus background and 48dp target",
+            unavailableNoteXml(layout, "android:id=\"@+id/videoControlUnavailable\"") &&
+                unavailableNoteXml(layout, "android:id=\"@+id/gestureShortcutUnavailable\""),
         )
         listOf(
             "android:id=\"@+id/videoQualityLabel\"" to "android:text=\"@string/video_quality_label\"",
@@ -237,6 +235,16 @@ class MainActivitySettingsAccessibilityContractTest {
         val openTagEnd = source.indexOf('>', idIndex)
         require(openTagEnd >= 0) { "XML element open tag end not found: $idAttribute" }
         return source.substring(openStart, openTagEnd + 1)
+    }
+
+    private fun unavailableNoteXml(
+        layout: String,
+        idAttribute: String,
+    ): Boolean {
+        val element = extractXmlElement(layout, idAttribute)
+        return element.contains(xmlAttribute("android:background", "?attr/selectableItemBackground")) &&
+            element.contains(xmlAttribute("android:minHeight", "48dp")) &&
+            element.contains(xmlAttribute("android:gravity", "center_vertical"))
     }
 
     private fun xmlAttribute(

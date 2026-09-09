@@ -216,7 +216,7 @@ class SettingsDialogLayoutInstrumentedTest {
 
     @Test
     fun unavailableVideoControlsExposeNoteInsteadOfDeadControls() {
-        withLayout(screenWidthDp = 360) { layout ->
+        unavailableNoteLayouts { layout ->
             val note = layout.root.findViewById<TextView>(R.id.videoControlUnavailable)
             val controls =
                 listOf(
@@ -236,6 +236,7 @@ class SettingsDialogLayoutInstrumentedTest {
             )
 
             assertUnavailableNoteOwnsAccessibility(note)
+            assertUnavailableNoteTouchTarget(layout, note)
             controls.forEach(::assertUnavailableControlHiddenFromAccessibility)
 
             SettingsUnavailableControlsAccessibilityApplier.apply(
@@ -250,7 +251,7 @@ class SettingsDialogLayoutInstrumentedTest {
 
     @Test
     fun unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls() {
-        withLayout(screenWidthDp = 360) { layout ->
+        unavailableNoteLayouts { layout ->
             val note = layout.root.findViewById<TextView>(R.id.gestureShortcutUnavailable)
             val description = layout.root.findViewById<TextView>(R.id.gestureShortcutsDescription)
             val swipeUpLabel = layout.root.findViewById<TextView>(R.id.gestureSwipeUpLabel)
@@ -274,6 +275,7 @@ class SettingsDialogLayoutInstrumentedTest {
             )
 
             assertUnavailableNoteOwnsAccessibility(note)
+            assertUnavailableNoteTouchTarget(layout, note)
             controls.forEach(::assertUnavailableControlHiddenFromAccessibility)
 
             SettingsUnavailableControlsAccessibilityApplier.apply(
@@ -283,6 +285,14 @@ class SettingsDialogLayoutInstrumentedTest {
             )
 
             assertAvailableControlsRestoreDefaultAccessibility(note, controls)
+        }
+    }
+
+    private fun unavailableNoteLayouts(assertion: (MeasuredLayout) -> Unit) {
+        listOf(320, 360).forEach { screenWidthDp ->
+            listOf(1f, 2f).forEach { fontScale ->
+                withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale, assertion = assertion)
+            }
         }
     }
 
@@ -366,6 +376,16 @@ class SettingsDialogLayoutInstrumentedTest {
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, note.importantForAccessibility)
         assertEquals(null, note.contentDescription)
         assertNotNull(note.background)
+    }
+
+    private fun assertUnavailableNoteTouchTarget(
+        layout: MeasuredLayout,
+        note: TextView,
+    ) {
+        layout.measureAndLayout()
+        assertTrue(note.measuredWidth > 0)
+        assertTrue(note.measuredHeight >= layout.dp(48))
+        assertAllTextReadable(note)
     }
 
     private fun assertAvailableControlsRestoreDefaultAccessibility(
