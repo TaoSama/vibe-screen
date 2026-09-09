@@ -2,9 +2,68 @@ package dev.telemachus.display
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.Resources
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
+
+internal interface WirelessTabHost {
+    val resources: Resources
+
+    fun getString(
+        resId: Int,
+        vararg formatArgs: Any,
+    ): String
+
+    fun showTrustedNetworkDialog(onConfirmed: () -> Unit)
+
+    fun launchScanner()
+}
+
+interface WirelessPairingStore {
+    fun save(entry: PairedHostStorage.Entry)
+
+    fun load(): PairedHostStorage.Entry?
+
+    fun clear()
+}
+
+interface WirelessCameraPermission {
+    fun isGranted(): Boolean
+
+    fun isPermanentlyDenied(): Boolean
+
+    fun request(requestCode: Int)
+
+    fun openAppSettings()
+}
+
+private class ActivityWirelessTabHost(
+    private val activity: Activity,
+) : WirelessTabHost {
+    override val resources: Resources
+        get() = activity.resources
+
+    override fun getString(
+        resId: Int,
+        vararg formatArgs: Any,
+    ): String = activity.getString(resId, *formatArgs)
+
+    override fun showTrustedNetworkDialog(onConfirmed: () -> Unit) {
+        android.app.AlertDialog
+            .Builder(activity)
+            .setTitle(R.string.trusted_network_dialog_title)
+            .setMessage(R.string.trusted_network_dialog_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }
+            .show()
+    }
+
+    override fun launchScanner() {
+        val intent = Intent(activity, QRScannerActivity::class.java)
+        activity.startActivityForResult(intent, WirelessTabController.REQ_SCAN)
+    }
+}
 
 /**
  * Five-state UI machine for the Wireless tab on Android.
@@ -13,11 +72,11 @@ import android.widget.TextView
  *                                         ↘ ④ token mismatch / re-pair
  *   ⓹ permission denied permanently
  */
-class WirelessTabController(
-    private val activity: Activity,
+class WirelessTabController internal constructor(
+    private val host: WirelessTabHost,
     private val views: Views,
-    private val storage: PairedHostStorage,
-    private val cameraPerm: CameraPermissionManager,
+    private val storage: WirelessPairingStore,
+    private val cameraPerm: WirelessCameraPermission,
     private val isTrustedLanAcknowledged: () -> Boolean,
     private val acknowledgeTrustedLan: () -> Unit,
     private val onConnectRequested: (
@@ -28,6 +87,29 @@ class WirelessTabController(
         macName: String,
     ) -> Unit,
 ) {
+    constructor(
+        activity: Activity,
+        views: Views,
+        storage: PairedHostStorage,
+        cameraPerm: CameraPermissionManager,
+        isTrustedLanAcknowledged: () -> Boolean,
+        acknowledgeTrustedLan: () -> Unit,
+        onConnectRequested: (
+            host: String,
+            port: Int,
+            token: ByteArray,
+            deviceName: String,
+            macName: String,
+        ) -> Unit,
+    ) : this(
+        host = ActivityWirelessTabHost(activity),
+        views = views,
+        storage = storage,
+        cameraPerm = cameraPerm,
+        isTrustedLanAcknowledged = isTrustedLanAcknowledged,
+        acknowledgeTrustedLan = acknowledgeTrustedLan,
+        onConnectRequested = onConnectRequested,
+    )
     data class Views(
         val connecting: View,
         val firstTime: View,
@@ -78,8 +160,8 @@ class WirelessTabController(
                     return@setOnClickListener
                 }
             showConnecting(
-                activity.getString(R.string.reconnecting_to_mac, entry.macName),
-                activity.getString(R.string.host_port_format, entry.host, entry.port),
+                host.getString(R.string.reconnecting_to_mac, entry.macName),
+                host.getString(R.string.host_port_format, entry.host, entry.port),
             )
             attemptAutoConnect(entry)
         }
@@ -102,7 +184,7 @@ class WirelessTabController(
         LiveRegionTextApplier.apply(views.idleMacName, entry.macName)
         LiveRegionTextApplier.apply(
             views.idleMacIp,
-            activity.getString(R.string.host_port_format, entry.host, entry.port),
+            host.getString(R.string.host_port_format, entry.host, entry.port),
         )
         showIdleReconnectState()
         transition(State.PAIRED_IDLE)
@@ -137,7 +219,7 @@ class WirelessTabController(
             LiveRegionTextApplier.apply(views.idleMacName, entry.macName)
             LiveRegionTextApplier.apply(
                 views.idleMacIp,
-                activity.getString(R.string.host_port_format, entry.host, entry.port),
+                host.getString(R.string.host_port_format, entry.host, entry.port),
             )
             showIdleReconnectState()
             transition(State.PAIRED_IDLE)
@@ -153,8 +235,8 @@ class WirelessTabController(
         val deviceName = (android.os.Build.MODEL ?: "Android").take(64)
         storage.save(PairedHostStorage.Entry(parsed.host, parsed.port, parsed.token, parsed.macName))
         showConnecting(
-            activity.getString(R.string.connecting_to_mac, parsed.macName),
-            activity.getString(R.string.host_port_format, parsed.host, parsed.port),
+            host.getString(R.string.connecting_to_mac, parsed.macName),
+            host.getString(R.string.host_port_format, parsed.host, parsed.port),
         )
         onConnectRequested(parsed.host, parsed.port, parsed.token, deviceName, parsed.macName)
     }
@@ -164,17 +246,17 @@ class WirelessTabController(
         when (error) {
             is StreamClient.WirelessConnectError.NetworkUnreachable -> {
                 showRepairMessage(
-                    title = activity.getString(R.string.wireless_error_title_couldnt_reach_mac),
+                    title = host.getString(R.string.wireless_error_title_couldnt_reach_mac),
                     message =
                         if (cached != null) {
-                            activity.getString(
+                            host.getString(
                                 R.string.wireless_error_network_cached,
                                 cached.macName,
                                 cached.host,
                                 cached.port,
                             )
                         } else {
-                            activity.getString(R.string.wireless_error_network_uncached)
+                            host.getString(R.string.wireless_error_network_uncached)
                         },
                 )
                 transition(State.REPAIR_NEEDED)
@@ -182,12 +264,12 @@ class WirelessTabController(
 
             is StreamClient.WirelessConnectError.TokenRejected -> {
                 showRepairMessage(
-                    title = activity.getString(R.string.wireless_error_title_repair_required),
+                    title = host.getString(R.string.wireless_error_title_repair_required),
                     message =
                         if (cached != null) {
-                            activity.getString(R.string.wireless_error_token_rejected_cached, cached.macName)
+                            host.getString(R.string.wireless_error_token_rejected_cached, cached.macName)
                         } else {
-                            activity.getString(R.string.wireless_error_token_rejected_uncached)
+                            host.getString(R.string.wireless_error_token_rejected_uncached)
                         },
                 )
                 transition(State.REPAIR_NEEDED)
@@ -195,8 +277,8 @@ class WirelessTabController(
 
             is StreamClient.WirelessConnectError.ProtocolError -> {
                 showRepairMessage(
-                    title = activity.getString(R.string.wireless_error_title_connection_error),
-                    message = activity.getString(R.string.wireless_error_protocol_message),
+                    title = host.getString(R.string.wireless_error_title_connection_error),
+                    message = host.getString(R.string.wireless_error_protocol_message),
                 )
                 transition(State.REPAIR_NEEDED)
             }
@@ -205,8 +287,8 @@ class WirelessTabController(
 
     internal fun showConnectionGuidance(guidance: ConnectionGuidance) {
         showRepairMessage(
-            title = ConnectionGuidanceTextFormatter.format(activity.resources, guidance.status),
-            message = ConnectionGuidanceTextFormatter.format(activity.resources, guidance.message),
+            title = ConnectionGuidanceTextFormatter.format(host.resources, guidance.status),
+            message = ConnectionGuidanceTextFormatter.format(host.resources, guidance.message),
         )
         transition(State.REPAIR_NEEDED)
     }
@@ -218,7 +300,7 @@ class WirelessTabController(
         LiveRegionTextApplier.apply(views.repairTitle, title)
         LiveRegionTextApplier.apply(views.repairMessage, message)
         views.repairMessage.contentDescription =
-            activity.getString(
+            host.getString(
                 R.string.connection_guidance_full_message,
                 title.toString(),
                 message.toString(),
@@ -245,43 +327,43 @@ class WirelessTabController(
 
     fun showAutomaticReconnect(
         macName: String,
-        host: String,
+        hostName: String,
         port: Int,
         remainingSeconds: Int,
     ) {
-        LiveRegionTextApplier.apply(views.idleStatusLabel, activity.getString(R.string.reconnect_countdown_title))
+        LiveRegionTextApplier.apply(views.idleStatusLabel, host.getString(R.string.reconnect_countdown_title))
         LiveRegionTextApplier.apply(views.idleMacName, macName)
         LiveRegionTextApplier.apply(
             views.idleMacIp,
-            activity.getString(R.string.host_port_format, host, port),
+            host.getString(R.string.host_port_format, hostName, port),
         )
         LiveRegionTextApplier.show(
             views.reconnectCountdown,
-            activity.getString(R.string.reconnect_countdown_message, macName, host, port, remainingSeconds),
+            host.getString(R.string.reconnect_countdown_message, macName, hostName, port, remainingSeconds),
         )
-        views.reconnectButton.text = activity.getString(R.string.retry_now)
+        views.reconnectButton.text = host.getString(R.string.retry_now)
         views.reconnectButton.isEnabled = true
         transition(State.PAIRED_IDLE)
     }
 
     fun showAutomaticReconnectAttempting(
         macName: String,
-        host: String,
+        hostName: String,
         port: Int,
     ) {
-        LiveRegionTextApplier.apply(views.idleStatusLabel, activity.getString(R.string.reconnecting_short))
+        LiveRegionTextApplier.apply(views.idleStatusLabel, host.getString(R.string.reconnecting_short))
         LiveRegionTextApplier.show(
             views.reconnectCountdown,
-            activity.getString(R.string.reconnect_attempting_message, macName, host, port),
+            host.getString(R.string.reconnect_attempting_message, macName, hostName, port),
         )
-        views.reconnectButton.text = activity.getString(R.string.connecting)
+        views.reconnectButton.text = host.getString(R.string.connecting)
         views.reconnectButton.isEnabled = false
     }
 
     private fun showIdleReconnectState() {
-        LiveRegionTextApplier.apply(views.idleStatusLabel, activity.getString(R.string.disconnected_status))
+        LiveRegionTextApplier.apply(views.idleStatusLabel, host.getString(R.string.disconnected_status))
         LiveRegionTextApplier.hide(views.reconnectCountdown)
-        views.reconnectButton.text = activity.getString(R.string.reconnect)
+        views.reconnectButton.text = host.getString(R.string.reconnect)
         views.reconnectButton.isEnabled = true
     }
 
@@ -326,15 +408,10 @@ class WirelessTabController(
 
     private fun triggerScan() {
         if (!isTrustedLanAcknowledged()) {
-            android.app.AlertDialog
-                .Builder(activity)
-                .setTitle(R.string.trusted_network_dialog_title)
-                .setMessage(R.string.trusted_network_dialog_message)
-                .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ ->
-                    acknowledgeTrustedLan()
-                    continueScan()
-                }.show()
+            host.showTrustedNetworkDialog {
+                acknowledgeTrustedLan()
+                continueScan()
+            }
             return
         }
         continueScan()
@@ -355,7 +432,7 @@ class WirelessTabController(
     }
 
     private fun showCameraPermissionRetryHint() {
-        val message = activity.getString(R.string.camera_permission_retry_instructions)
+        val message = host.getString(R.string.camera_permission_retry_instructions)
         views.permissionRetryMessage.contentDescription = message
         LiveRegionTextApplier.show(views.permissionRetryMessage, message)
     }
@@ -366,8 +443,7 @@ class WirelessTabController(
     }
 
     private fun launchScanner() {
-        val intent = Intent(activity, QRScannerActivity::class.java)
-        activity.startActivityForResult(intent, REQ_SCAN)
+        host.launchScanner()
     }
 
     private fun attemptAutoConnect(entry: PairedHostStorage.Entry) {

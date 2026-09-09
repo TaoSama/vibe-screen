@@ -13,7 +13,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 class PairedHostStorage(
     context: Context,
-) {
+) : WirelessPairingStore {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("paired_host", Context.MODE_PRIVATE)
 
@@ -33,7 +33,7 @@ class PairedHostStorage(
             ((host.hashCode() * 31 + port) * 31 + macName.hashCode()) * 31 + token.contentHashCode()
     }
 
-    fun save(entry: Entry) {
+    override fun save(entry: Entry) {
         require(entry.token.size == TOKEN_SIZE) { "Pairing token must be $TOKEN_SIZE bytes" }
         val encryptedToken = encryptToken(entry.token)
         prefs
@@ -47,7 +47,7 @@ class PairedHostStorage(
             .apply()
     }
 
-    fun load(): Entry? {
+    override fun load(): Entry? {
         val host = prefs.getString("host", null) ?: return null
         val port = prefs.getInt("port", -1).takeIf { it > 0 } ?: return null
         val macName = prefs.getString("mac_name", null) ?: "Mac"
@@ -74,7 +74,7 @@ class PairedHostStorage(
         return Entry(host, port, token, macName)
     }
 
-    fun clear() {
+    override fun clear() {
         prefs.edit().clear().apply()
     }
 

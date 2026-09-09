@@ -440,6 +440,34 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun disconnectedOrientationStaysUnderUserPolicyWithoutActivityInstrumentation() {
+        val source = mainActivitySource()
+        val onCreate = extractMethod(source, "override fun onCreate")
+        val disconnected = extractMethod(source, "private fun showDisconnectedStreamUi")
+        val resetOrientation = extractMethod(source, "private fun resetOrientationToUserPreference")
+        val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
+        val compactOnCreate = onCreate.replace(Regex("\\s+"), "")
+        val compactReset = resetOrientation.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Disconnected startup must release Activity-level orientation overrides to the user/platform policy",
+            compactOnCreate.contains("requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED"),
+        )
+        assertTrue(
+            "Disconnected sessions must clear any streaming orientation override before rendering no-Host UI",
+            disconnected.contains("resetOrientationToUserPreference()"),
+        )
+        assertTrue(
+            "resetOrientationToUserPreference must clear Activity-level overrides",
+            compactReset.contains("requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED"),
+        )
+        assertFalse(
+            "onConfigurationChanged must not force an Activity orientation while disconnected UI follows system rotation",
+            configurationChanged.contains("requestedOrientation"),
+        )
+    }
+
+    @Test
     fun wideDisconnectedLayoutsKeepSettingsInlineSoRetryActionsAreUncovered() {
         listOf(
             "app/src/main/res/values-w600dp/bools.xml",
