@@ -1,0 +1,10 @@
+repository=TaoSama/vibe-screen
+worktree=<local-codex-worktree>/vibe-screen
+branch=codex/nubia-nohost-uiux-current-main
+base_head=0da8602c67d6f3a9fcbd461eb757fa6754b0e1f5
+origin_main=0da8602c67d6f3a9fcbd461eb757fa6754b0e1f5
+base_subject=Guard macOS host readiness login probe (#731)
+date=2026-09-10
+date_time=2026-09-10T02:07:34+0800
+timezone=Asia/Shanghai
+local_change=Refreshes Nubia P0110 no-Host Android UI/UX instrumentation and focused control-surface JVM evidence after current main advanced through PR #731.

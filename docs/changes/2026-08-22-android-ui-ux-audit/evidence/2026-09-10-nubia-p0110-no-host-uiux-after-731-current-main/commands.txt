@@ -1,0 +1,47 @@
+All commands were run from the repository root unless noted. Device commands used
+the connected Nubia P0110/pacific serial verified by `adb devices -l`; retained
+artifacts redact it as `<redacted-adb-serial>`.
+
+git fetch origin main --prune
+git checkout -B codex/nubia-nohost-uiux-current-main origin/main
+git status --short --branch
+git rev-parse HEAD
+
+adb devices -l
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell getprop ro.build.fingerprint
+adb -s <redacted-adb-serial> shell wm size
+adb -s <redacted-adb-serial> shell wm density
+adb -s <redacted-adb-serial> shell settings get system font_scale
+adb -s <redacted-adb-serial> reverse --list
+command -v lsof
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+
+cd baseline/AndroidClient
+./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest \
+  --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest \
+  --tests dev.telemachus.display.MainActivityTransferReadinessContractTest
+
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest,dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest,dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.InternetControlStateColorsInstrumentedTest,dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest,dev.telemachus.display.QRScannerLayoutInstrumentedTest,dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest,dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest,dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest
+
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:installDebug
+
+cd ../..
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+adb -s <redacted-adb-serial> shell am start -W -n dev.telemachus.display/.MainActivity
+adb -s <redacted-adb-serial> shell screencap -p /sdcard/vibescreen-nohost-main.png
+adb -s <redacted-adb-serial> pull /sdcard/vibescreen-nohost-main.png screenshots/nohost-main.png
+adb -s <redacted-adb-serial> shell rm /sdcard/vibescreen-nohost-main.png
+adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-nohost-main.xml
+adb -s <redacted-adb-serial> pull /sdcard/vibescreen-nohost-main.xml ui-dumps/nohost-main.xml
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+
+adb -s <redacted-adb-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+shasum -a 256 -c SHA256SUMS
