@@ -1,0 +1,23 @@
+5eb9bf6932e8942fb194ed6ad64cffefb862338d
+5eb9bf6932e8942fb194ed6ad64cffefb862338d
+e986ccc8487d75dab82876d461fa968ae2f3ba5a is ancestor of HEAD
+5eb9bf693 test(evidence): revalidate clipboard product sources (#713)
+e986ccc84 docs: refresh phase0 aggregate after PR 711 (#712)
+93ec1bbb7 test(evidence): harden phase0 hardware runtime gates (#711)
+e0ae3bcde test(evidence): harden file transfer product artifacts (#710)
+96cf9f731 test(evidence): require clipboard artifact direction metadata (#709)
+3588bfa99 docs: refresh phase0 aggregate after PR 707 (#708)
+d8f108aad Harden controller runtime artifact evidence paths (#705)
+9f9faacd2 docs: clarify macOS compatibility TCC gates (#707)
+b73000bad test: harden Host RSS readiness safety checks (#706)
+655646b09 docs: refresh Phase 0 aggregate after PR 701 (#702)
+939472bf2 Harden latency artifact closure checks (#701)
+0fbe6e7fc test: refresh P0110 no-Host UI/UX evidence after 700 (#703)
+be950a5e4 test: require macOS compatibility row for phase0 aggregate (#700)
+aec6c27d9 test(evidence): require macos compatibility artifact roles (#699)
+6132bbad8 docs: refresh phase0 aggregate after PR 697 (#698)
+a11d91d82 Harden file-transfer product E2E evidence gates (#697)
+88e632f95 test(evidence): harden clipboard product e2e gate (#696)
+6c5bcaf8e test(evidence): harden native pointer HID gate
+a02cf7cae test(evidence): harden telemetry latency archive gate (#694)
+d27a9dddb Harden Host RSS readiness gate evidence binding
