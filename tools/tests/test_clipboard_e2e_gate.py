@@ -65,13 +65,18 @@ def retained_artifact_content(direction: str, role: str, path: str) -> bytes:
                 "event": "clipboard_offer",
                 "direction": direction,
                 "change_id_hex": payload["change_id_hex"],
+                "session_id_hex": payload["session_id_hex"],
                 "session_epoch": payload["session_epoch"],
                 "origin_device_id": payload["origin_device_id"],
+                "mime_type": "text/plain",
+                "byte_length": payload["byte_length"],
+                "sha256": payload["sha256"],
             },
             {
                 "event": "clipboard_request",
                 "direction": direction,
                 "change_id_hex": payload["change_id_hex"],
+                "session_id_hex": payload["session_id_hex"],
                 "session_epoch": payload["session_epoch"],
                 "origin_device_id": payload["origin_device_id"],
             },
@@ -79,8 +84,12 @@ def retained_artifact_content(direction: str, role: str, path: str) -> bytes:
                 "event": "clipboard_content",
                 "direction": direction,
                 "change_id_hex": payload["change_id_hex"],
+                "session_id_hex": payload["session_id_hex"],
                 "session_epoch": payload["session_epoch"],
                 "origin_device_id": payload["origin_device_id"],
+                "mime_type": "text/plain",
+                "byte_length": payload["byte_length"],
+                "sha256": payload["sha256"],
             },
         ]
         text = "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n"
@@ -1346,6 +1355,10 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
         self.assertIn(
+            f"bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact must include session_id_hex {CLIPBOARD_SESSION_ID}",
+            result["blockers"],
+        )
+        self.assertIn(
             f"bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets artifact must include session_epoch {ANDROID_TO_MACOS_EPOCH}",
             result["blockers"],
         )
@@ -1385,8 +1398,133 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
-            "event record(s) must include matching change_id_hex, session_epoch, and origin_device_id: "
+            "event record(s) must include matching change_id_hex, session_id_hex, session_epoch, "
+            "origin_device_id, and offer/content payload metadata: "
             "clipboard_content, clipboard_offer, clipboard_request",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_protocol_event_records_to_match_session_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            payload = direction_payload(ANDROID_TO_MACOS_DIRECTION)
+            records = [
+                {
+                    "event": "clipboard_offer",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": "11111111111111111111111111111111",
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                    "mime_type": "text/plain",
+                    "byte_length": payload["byte_length"],
+                    "sha256": payload["sha256"],
+                },
+                {
+                    "event": "clipboard_request",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": "22222222222222222222222222222222",
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                },
+                {
+                    "event": "clipboard_content",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": "33333333333333333333333333333333",
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                    "mime_type": "text/plain",
+                    "byte_length": payload["byte_length"],
+                    "sha256": payload["sha256"],
+                },
+            ]
+            artifact_path = root / "android-to-macos" / "protocol-packets.jsonl"
+            artifact_path.write_text(
+                "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
+                encoding="utf-8",
+            )
+            refresh_retained_artifact_metadata(
+                paths["product"], artifact_path, "android-to-macos/protocol-packets.jsonl"
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
+            "event record(s) must include matching change_id_hex, session_id_hex, session_epoch, "
+            "origin_device_id, and offer/content payload metadata: clipboard_content, clipboard_offer, clipboard_request",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_protocol_offer_and_content_payload_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            payload = direction_payload(ANDROID_TO_MACOS_DIRECTION)
+            records = [
+                {
+                    "event": "clipboard_offer",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": payload["session_id_hex"],
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                    "mime_type": "text/html",
+                    "byte_length": payload["byte_length"],
+                    "sha256": payload["sha256"],
+                },
+                {
+                    "event": "clipboard_request",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": payload["session_id_hex"],
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                },
+                {
+                    "event": "clipboard_content",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
+                    "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": payload["session_id_hex"],
+                    "session_epoch": payload["session_epoch"],
+                    "origin_device_id": payload["origin_device_id"],
+                    "mime_type": "text/plain",
+                    "byte_length": 1,
+                    "sha256": "0" * 64,
+                },
+            ]
+            artifact_path = root / "android-to-macos" / "protocol-packets.jsonl"
+            artifact_path.write_text(
+                "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
+                encoding="utf-8",
+            )
+            refresh_retained_artifact_metadata(
+                paths["product"], artifact_path, "android-to-macos/protocol-packets.jsonl"
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
+            "event record(s) must include matching change_id_hex, session_id_hex, session_epoch, "
+            "origin_device_id, and offer/content payload metadata: clipboard_content, clipboard_offer",
             result["blockers"],
         )
 
@@ -1405,12 +1543,17 @@ class ClipboardE2EGateTests(unittest.TestCase):
                         "event": "clipboard_offer",
                         "direction": wrong_direction,
                         "change_id_hex": payload["change_id_hex"],
+                        "session_id_hex": payload["session_id_hex"],
                         "session_epoch": payload["session_epoch"],
                         "origin_device_id": payload["origin_device_id"],
+                        "mime_type": "text/plain",
+                        "byte_length": payload["byte_length"],
+                        "sha256": payload["sha256"],
                     },
                     {
                         "event": "clipboard_request",
                         "change_id_hex": payload["change_id_hex"],
+                        "session_id_hex": payload["session_id_hex"],
                         "session_epoch": payload["session_epoch"],
                         "origin_device_id": payload["origin_device_id"],
                     },
@@ -1418,8 +1561,12 @@ class ClipboardE2EGateTests(unittest.TestCase):
                         "event": "clipboard_content",
                         "direction": label,
                         "change_id_hex": payload["change_id_hex"],
+                        "session_id_hex": payload["session_id_hex"],
                         "session_epoch": payload["session_epoch"],
                         "origin_device_id": payload["origin_device_id"],
+                        "mime_type": "text/plain",
+                        "byte_length": payload["byte_length"],
+                        "sha256": payload["sha256"],
                     },
                 ]
                 artifact_path = root / retained_path
@@ -1454,13 +1601,18 @@ class ClipboardE2EGateTests(unittest.TestCase):
                     "event": "clipboard_offer",
                     "direction": ANDROID_TO_MACOS_DIRECTION,
                     "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": payload["session_id_hex"],
                     "session_epoch": payload["session_epoch"],
                     "origin_device_id": payload["origin_device_id"],
+                    "mime_type": "text/plain",
+                    "byte_length": payload["byte_length"],
+                    "sha256": payload["sha256"],
                 },
                 {
                     "event": "clipboard_request",
                     "direction": ANDROID_TO_MACOS_DIRECTION,
                     "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": payload["session_id_hex"],
                     "session_epoch": True,
                     "origin_device_id": payload["origin_device_id"],
                 },
@@ -1468,8 +1620,12 @@ class ClipboardE2EGateTests(unittest.TestCase):
                     "event": "clipboard_content",
                     "direction": ANDROID_TO_MACOS_DIRECTION,
                     "change_id_hex": payload["change_id_hex"],
+                    "session_id_hex": payload["session_id_hex"],
                     "session_epoch": payload["session_epoch"],
                     "origin_device_id": payload["origin_device_id"],
+                    "mime_type": "text/plain",
+                    "byte_length": payload["byte_length"],
+                    "sha256": payload["sha256"],
                 },
             ]
             artifact_path = root / "android-to-macos" / "protocol-packets.jsonl"
@@ -1492,7 +1648,8 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
-            "event record(s) must include matching change_id_hex, session_epoch, and origin_device_id: "
+            "event record(s) must include matching change_id_hex, session_id_hex, session_epoch, "
+            "origin_device_id, and offer/content payload metadata: "
             "clipboard_request",
             result["blockers"],
         )

@@ -112,6 +112,13 @@ CLIPBOARD_MARKER_FIELDS = (
     "failed_marker",
     "deny_marker",
 )
+CLIPBOARD_EXPECTED_DEVICE_IDENTITY = {
+    "manufacturer": {"nubia", "zte"},
+    "model": "p0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+}
 LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
 LATENCY_SUMMARY_ONLY_KINDS = {"glass_to_glass", "input_latency"}
 LATENCY_DIAGNOSTIC_ONLY_KINDS = {"telemetry_stage_latency"}
@@ -1323,8 +1330,9 @@ def _clipboard_product_e2e_source_issues(
         issues.append(f"{label} schema_version must be {SCHEMA_VERSION}")
     if record.get("kind") != CLIPBOARD_PRODUCT_E2E_KIND:
         issues.append(f"{label} kind must be {CLIPBOARD_PRODUCT_E2E_KIND}")
-    if record.get("synthetic") is True or record.get("offline_only") is True:
+    if _clipboard_flag_enabled(record.get("synthetic")) or _clipboard_flag_enabled(record.get("offline_only")):
         issues.append(f"{label} synthetic or offline-only evidence cannot close this gate")
+    issues.extend(_clipboard_product_device_identity_issues(record.get("device"), label))
 
     directions = record.get("directions")
     if not isinstance(directions, dict):
@@ -1388,6 +1396,55 @@ def _clipboard_product_e2e_source_issues(
     return issues
 
 
+def _clipboard_flag_enabled(value: Any) -> bool:
+    if isinstance(value, str) and value.strip().lower() in {"", "0", "false", "no", "n"}:
+        return False
+    return bool(value)
+
+
+def _clipboard_product_device_identity(device: Any) -> dict[str, str] | None:
+    if not isinstance(device, dict):
+        return None
+    identity = device.get("identity") if isinstance(device.get("identity"), dict) else device
+    return {
+        "manufacturer": str(identity.get("manufacturer", "")).strip().lower(),
+        "model": str(identity.get("model", "")).strip().lower(),
+        "codename": str(identity.get("codename", identity.get("device", ""))).strip().lower(),
+        "android_release": str(identity.get("android_release", identity.get("android_version", ""))).strip(),
+        "sdk": str(identity.get("sdk", "")).strip(),
+    }
+
+
+def _clipboard_product_device_identity_issues(device: Any, label: str) -> list[str]:
+    identity = _clipboard_product_device_identity(device)
+    if identity is None:
+        return [f"{label} device must record the P0110/pacific Android identity"]
+    issues: list[str] = []
+    if identity["manufacturer"] not in CLIPBOARD_EXPECTED_DEVICE_IDENTITY["manufacturer"]:
+        issues.append(
+            f"{label} device.manufacturer must identify nubia/ZTE P0110 evidence, "
+            f"not {identity['manufacturer'] or 'missing'}"
+        )
+    if identity["model"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["model"]:
+        issues.append(f"{label} device.model must be P0110")
+    if identity["codename"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["codename"]:
+        issues.append(f"{label} device.codename must be pacific")
+    if identity["android_release"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["android_release"]:
+        issues.append(f"{label} device.android_release must be Android 16")
+    if identity["sdk"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["sdk"]:
+        issues.append(f"{label} device.sdk must be 36")
+    return issues
+
+
+def _clipboard_android_origin_device_id_issue(origin_device_id: str, label: str) -> str | None:
+    normalized_origin = origin_device_id.lower()
+    if any(term in normalized_origin for term in ("xiaomi", "fuxi", "2211133c")):
+        return f"{label}.origin_device_id must not include a non-P0110 Android device identity"
+    if "p0110" in normalized_origin and "pacific" in normalized_origin:
+        return None
+    return f"{label}.origin_device_id must identify the P0110/pacific Android device"
+
+
 def _clipboard_direction_source_issues(
     direction: dict[str, Any],
     label: str,
@@ -1405,6 +1462,7 @@ def _clipboard_direction_source_issues(
             evidence_dir,
             expected_direction=direction_name,
             cross_direction_artifact_paths=cross_direction_artifact_paths,
+            require_artifact_metadata=True,
         )
     )
     source_endpoint, destination_endpoint = endpoints
@@ -1459,6 +1517,10 @@ def _clipboard_direction_source_issues(
     origin_device_id = direction.get("origin_device_id")
     if not isinstance(origin_device_id, str) or not origin_device_id.strip():
         issues.append(f"{label}.origin_device_id must record the verified Protocol v1 origin device ID")
+    elif direction_name == "android_clipboardmanager_to_macos_nspasteboard":
+        origin_issue = _clipboard_android_origin_device_id_issue(origin_device_id, label)
+        if origin_issue is not None:
+            issues.append(origin_issue)
     issues.extend(
         _clipboard_payload_artifact_issues(
             direction,
@@ -1536,11 +1598,41 @@ def _resolve_retained_artifact_path(path: Path, evidence_dir: Path) -> Path | No
     return resolved_artifact
 
 
+def _clipboard_record_string_field_matches(record: dict[str, Any], key: str, expected: Any) -> bool:
+    return (
+        isinstance(expected, str)
+        and bool(expected.strip())
+        and record.get(key) == expected
+    )
+
+
+def _clipboard_record_hex_field_matches(
+    record: dict[str, Any], key: str, expected: Any, *, length: int
+) -> bool:
+    return (
+        isinstance(expected, str)
+        and re.fullmatch(rf"[0-9a-fA-F]{{{length}}}", expected) is not None
+        and isinstance(record.get(key), str)
+        and record[key].lower() == expected.lower()
+    )
+
+
+def _clipboard_record_integer_field_matches(record: dict[str, Any], key: str, expected: Any) -> bool:
+    return (
+        isinstance(expected, int)
+        and not isinstance(expected, bool)
+        and isinstance(record.get(key), int)
+        and not isinstance(record.get(key), bool)
+        and record[key] == expected
+    )
+
+
 def _clipboard_protocol_packets_artifact_issues(
     direction: dict[str, Any],
     label: str,
     evidence_dir: Path | None,
 ) -> list[str]:
+    expected_direction = label.rsplit(" ", 1)[-1]
     artifact_path = _retained_artifact_path(direction, "protocol_packets")
     if artifact_path is None or evidence_dir is None:
         return []
@@ -1550,13 +1642,19 @@ def _clipboard_protocol_packets_artifact_issues(
     required_events = {"clipboard_offer", "clipboard_request", "clipboard_content"}
     observed_events: set[str] = set()
     observed_change_id = False
+    observed_session_id = False
     observed_epoch = False
     observed_origin = False
     event_records_missing_metadata: list[str] = []
+    event_records_wrong_direction: list[str] = []
     malformed_lines: list[int] = []
     change_id = direction.get("change_id_hex")
+    session_id = direction.get("session_id_hex")
     session_epoch = direction.get("session_epoch")
     origin_device_id = direction.get("origin_device_id")
+    mime_type = direction.get("mime_type")
+    byte_length = direction.get("byte_length")
+    sha256 = direction.get("sha256")
     try:
         lines = resolved_artifact.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as error:
@@ -1579,30 +1677,36 @@ def _clipboard_protocol_packets_artifact_issues(
         }
         matching_events = required_events & event_names
         observed_events.update(matching_events)
-        serialized_record = json.dumps(record, sort_keys=True).lower()
-        event_has_change_id = (
-            isinstance(change_id, str)
-            and CLIPBOARD_SESSION_ID_RE.fullmatch(change_id) is not None
-            and change_id.lower() in serialized_record
+        event_has_change_id = _clipboard_record_hex_field_matches(
+            record, "change_id_hex", change_id, length=32
         )
-        record_session_epoch = record.get("session_epoch")
-        event_has_epoch = (
-            isinstance(session_epoch, int)
-            and not isinstance(session_epoch, bool)
-            and isinstance(record_session_epoch, int)
-            and not isinstance(record_session_epoch, bool)
-            and record_session_epoch == session_epoch
+        event_has_session_id = _clipboard_record_hex_field_matches(
+            record, "session_id_hex", session_id, length=32
         )
-        event_has_origin = (
-            isinstance(origin_device_id, str)
-            and bool(origin_device_id.strip())
-            and origin_device_id.strip().lower() in serialized_record
-        )
+        event_has_epoch = _clipboard_record_integer_field_matches(record, "session_epoch", session_epoch)
+        event_has_origin = _clipboard_record_string_field_matches(record, "origin_device_id", origin_device_id)
+        event_has_payload_metadata = True
+        if matching_events & {"clipboard_offer", "clipboard_content"}:
+            event_has_payload_metadata = (
+                _clipboard_record_string_field_matches(record, "mime_type", mime_type)
+                and _clipboard_record_integer_field_matches(record, "byte_length", byte_length)
+                and _clipboard_record_hex_field_matches(record, "sha256", sha256, length=64)
+            )
+        event_has_direction = record.get("direction") == expected_direction
         observed_change_id = observed_change_id or event_has_change_id
+        observed_session_id = observed_session_id or event_has_session_id
         observed_epoch = observed_epoch or event_has_epoch
         observed_origin = observed_origin or event_has_origin
-        if matching_events and not (event_has_change_id and event_has_epoch and event_has_origin):
+        if matching_events and not (
+            event_has_change_id
+            and event_has_session_id
+            and event_has_epoch
+            and event_has_origin
+            and event_has_payload_metadata
+        ):
             event_records_missing_metadata.extend(sorted(matching_events))
+        if matching_events and not event_has_direction:
+            event_records_wrong_direction.extend(sorted(matching_events))
 
     issues: list[str] = []
     if malformed_lines:
@@ -1614,10 +1718,19 @@ def _clipboard_protocol_packets_artifact_issues(
         missing_metadata_events = sorted(set(event_records_missing_metadata))
         issues.append(
             f"{label}.protocol_packets event record(s) must include matching change_id_hex, "
-            f"session_epoch, and origin_device_id: {', '.join(missing_metadata_events)}"
+            f"session_id_hex, session_epoch, origin_device_id, and offer/content payload metadata: "
+            f"{', '.join(missing_metadata_events)}"
+        )
+    if event_records_wrong_direction:
+        wrong_direction_events = sorted(set(event_records_wrong_direction))
+        issues.append(
+            f"{label}.protocol_packets event record(s) must declare direction {expected_direction}: "
+            f"{', '.join(wrong_direction_events)}"
         )
     if not observed_change_id:
         issues.append(f"{label}.protocol_packets artifact must include change_id_hex {direction.get('change_id_hex')}")
+    if not observed_session_id:
+        issues.append(f"{label}.protocol_packets artifact must include session_id_hex {direction.get('session_id_hex')}")
     if not observed_epoch:
         issues.append(f"{label}.protocol_packets artifact must include session_epoch {direction.get('session_epoch')}")
     if not observed_origin:
@@ -2027,6 +2140,7 @@ def _retained_artifact_issues(
     *,
     expected_direction: str | None = None,
     cross_direction_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
+    require_artifact_metadata: bool = False,
 ) -> list[str]:
     artifacts = record.get("retained_artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -2064,6 +2178,13 @@ def _retained_artifact_issues(
             artifact_direction = artifact.get("direction")
             if artifact_direction != expected_direction:
                 issues.append(f"{artifact_label}.direction must be {expected_direction}")
+        expected_byte_length = artifact.get("byte_length")
+        expected_sha256 = artifact.get("sha256")
+        if require_artifact_metadata:
+            if not _is_positive_integer(expected_byte_length):
+                issues.append(f"{artifact_label}.byte_length must record the retained artifact byte length")
+            if not isinstance(expected_sha256, str) or not CLIPBOARD_SHA256_RE.fullmatch(expected_sha256):
+                issues.append(f"{artifact_label}.sha256 must record the retained artifact SHA-256 digest")
 
         path_value = artifact.get("path")
         if not isinstance(path_value, str) or not path_value.strip():
@@ -2118,10 +2239,23 @@ def _retained_artifact_issues(
             elif previous_artifact is None:
                 cross_direction_artifact_paths[artifact_key] = (label, role_name)
         try:
-            if resolved_artifact.stat().st_size <= 0:
+            artifact_size = resolved_artifact.stat().st_size
+            if artifact_size <= 0:
                 issues.append(f"{artifact_label}.path retained artifact {path_value} must be non-empty")
+            if require_artifact_metadata and _is_positive_integer(expected_byte_length) and artifact_size != expected_byte_length:
+                issues.append(
+                    f"{artifact_label}.byte_length {expected_byte_length} must equal retained artifact size {artifact_size}"
+                )
         except OSError as error:
             issues.append(f"{artifact_label}.path cannot stat retained artifact {path_value}: {error}")
+        if require_artifact_metadata and isinstance(expected_sha256, str) and CLIPBOARD_SHA256_RE.fullmatch(expected_sha256):
+            try:
+                actual_sha256 = hashlib.sha256(resolved_artifact.read_bytes()).hexdigest()
+            except OSError as error:
+                issues.append(f"{artifact_label}.sha256 cannot be verified: {error}")
+            else:
+                if actual_sha256 != expected_sha256.lower():
+                    issues.append(f"{artifact_label}.sha256 must equal retained artifact SHA-256")
 
     missing_roles = [role for role in required_roles if role not in seen_roles]
     issues.extend(f"{label}.retained_artifacts missing {role} artifact" for role in missing_roles)

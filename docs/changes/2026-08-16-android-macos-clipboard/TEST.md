@@ -231,8 +231,10 @@ direction-level payload `byte_length` and SHA-256, so format-valid product JSON
 cannot point at unrelated retained bytes. The `protocol_packets` artifact is a
 session-aware evidence JSONL, not a raw protobuf JSON dump, and each
 clipboard offer/request/content record must include the matching transfer
-direction, the direction's 32-character hex change ID, integer session epoch,
-and origin device ID. Summary-only placeholders, copied
+direction, the direction's 32-character hex change ID, 32-character hex session
+ID, integer session epoch, and origin device ID. Offer and content records must
+also match the direction-level `text/plain` MIME, `byte_length`, and SHA-256
+payload digest. Summary-only placeholders, copied
 role files, missing direction/role metadata, mismatched destination payload
 metadata, malformed packet logs, or edited artifact files therefore keep
 `clipboard-e2e-gate` blocked even when the surrounding JSON claims bidirectional
@@ -282,7 +284,9 @@ before it can close the gate:
   retained artifacts whose declared direction matches the parent transfer
   direction and whose destination-write bytes match the direction-level payload
   size and digest. Retained protocol packet JSONL must include the same change
-  ID, session epoch, origin device ID, and clipboard offer/request/content events.
+  ID, session ID, session epoch, origin device ID, and clipboard
+  offer/request/content events, with offer/content records also matching
+  `text/plain`, byte length, and SHA-256 payload metadata.
 
 The 2026-08-27 run confirmed the device identity as nubia P0110 / pacific /
 Android 16 / SDK 36 and reran the local Android ClipboardManager smoke on

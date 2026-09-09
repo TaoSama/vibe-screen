@@ -402,6 +402,33 @@ def _source_clipboard_artifact_reasons(
     )
 
 
+def _record_string_field_matches(record: dict[str, Any], key: str, expected: Any) -> bool:
+    return (
+        isinstance(expected, str)
+        and bool(expected.strip())
+        and record.get(key) == expected
+    )
+
+
+def _record_hex_field_matches(record: dict[str, Any], key: str, expected: Any, *, length: int) -> bool:
+    return (
+        isinstance(expected, str)
+        and re.fullmatch(rf"[0-9a-fA-F]{{{length}}}", expected) is not None
+        and isinstance(record.get(key), str)
+        and record[key].lower() == expected.lower()
+    )
+
+
+def _record_integer_field_matches(record: dict[str, Any], key: str, expected: Any) -> bool:
+    return (
+        isinstance(expected, int)
+        and not isinstance(expected, bool)
+        and isinstance(record.get(key), int)
+        and not isinstance(record.get(key), bool)
+        and record[key] == expected
+    )
+
+
 def _protocol_packets_artifact_reasons(
     direction: dict[str, Any],
     label: str,
@@ -413,14 +440,19 @@ def _protocol_packets_artifact_reasons(
     required_events = {"clipboard_offer", "clipboard_request", "clipboard_content"}
     observed_events: set[str] = set()
     observed_change_id = False
+    observed_session_id = False
     observed_epoch = False
     observed_origin = False
     event_records_missing_metadata: list[str] = []
     event_records_wrong_direction: list[str] = []
     malformed_lines: list[int] = []
     change_id = direction.get("change_id_hex")
+    session_id = direction.get("session_id_hex")
     session_epoch = direction.get("session_epoch")
     origin_device_id = direction.get("origin_device_id")
+    mime_type = direction.get("mime_type")
+    byte_length = direction.get("byte_length")
+    sha256 = direction.get("sha256")
     try:
         lines = protocol_artifact.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as error:
@@ -443,31 +475,31 @@ def _protocol_packets_artifact_reasons(
         }
         matching_events = required_events & event_names
         observed_events.update(matching_events)
-        serialized_record = json.dumps(record, sort_keys=True).lower()
-        event_has_change_id = (
-            isinstance(change_id, str)
-            and re.fullmatch(r"[0-9a-fA-F]{32}", change_id) is not None
-            and change_id.lower() in serialized_record
-        )
-        record_session_epoch = record.get("session_epoch")
-        event_has_epoch = (
-            isinstance(session_epoch, int)
-            and not isinstance(session_epoch, bool)
-            and isinstance(record_session_epoch, int)
-            and not isinstance(record_session_epoch, bool)
-            and record_session_epoch == session_epoch
-        )
-        event_has_origin = (
-            isinstance(origin_device_id, str)
-            and bool(origin_device_id.strip())
-            and origin_device_id.strip().lower() in serialized_record
-        )
+        event_has_change_id = _record_hex_field_matches(record, "change_id_hex", change_id, length=32)
+        event_has_session_id = _record_hex_field_matches(record, "session_id_hex", session_id, length=32)
+        event_has_epoch = _record_integer_field_matches(record, "session_epoch", session_epoch)
+        event_has_origin = _record_string_field_matches(record, "origin_device_id", origin_device_id)
+        event_has_payload_metadata = True
+        payload_events = {"clipboard_offer", "clipboard_content"}
+        if matching_events & payload_events:
+            event_has_payload_metadata = (
+                _record_string_field_matches(record, "mime_type", mime_type)
+                and _record_integer_field_matches(record, "byte_length", byte_length)
+                and _record_hex_field_matches(record, "sha256", sha256, length=64)
+            )
         record_direction = record.get("direction")
         event_has_direction = record_direction == label
         observed_change_id = observed_change_id or event_has_change_id
+        observed_session_id = observed_session_id or event_has_session_id
         observed_epoch = observed_epoch or event_has_epoch
         observed_origin = observed_origin or event_has_origin
-        if matching_events and not (event_has_change_id and event_has_epoch and event_has_origin):
+        if matching_events and not (
+            event_has_change_id
+            and event_has_session_id
+            and event_has_epoch
+            and event_has_origin
+            and event_has_payload_metadata
+        ):
             event_records_missing_metadata.extend(sorted(matching_events))
         if matching_events and not event_has_direction:
             event_records_wrong_direction.extend(sorted(matching_events))
@@ -482,7 +514,8 @@ def _protocol_packets_artifact_reasons(
         missing_metadata_events = sorted(set(event_records_missing_metadata))
         reasons.append(
             f"{label}.protocol_packets event record(s) must include matching change_id_hex, "
-            f"session_epoch, and origin_device_id: {', '.join(missing_metadata_events)}"
+            f"session_id_hex, session_epoch, origin_device_id, and offer/content payload metadata: "
+            f"{', '.join(missing_metadata_events)}"
         )
     if event_records_wrong_direction:
         wrong_direction_events = sorted(set(event_records_wrong_direction))
@@ -492,6 +525,8 @@ def _protocol_packets_artifact_reasons(
         )
     if not observed_change_id:
         reasons.append(f"{label}.protocol_packets artifact must include change_id_hex {direction.get('change_id_hex')}")
+    if not observed_session_id:
+        reasons.append(f"{label}.protocol_packets artifact must include session_id_hex {direction.get('session_id_hex')}")
     if not observed_epoch:
         reasons.append(f"{label}.protocol_packets artifact must include session_epoch {direction.get('session_epoch')}")
     if not observed_origin:
@@ -1202,7 +1237,8 @@ def derive_gate(
             "metadata that matches the retained file bytes, the destination_clipboard_write artifact must "
             "match the direction-level byte_length and SHA-256 payload, and protocol_packets JSONL must "
             "contain clipboard offer/request/content records for the matching transfer direction, change ID, "
-            "session epoch, and origin. "
+            "session ID, session epoch, and origin, with offer/content records also matching text/plain, "
+            "byte_length, and SHA-256 payload metadata. "
             "Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
