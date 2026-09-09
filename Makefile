@@ -603,7 +603,7 @@ baseline-macos-host-readiness: baseline-macos-preflight-safety-contract
 		--report $(EVIDENCE_DIR)/host-signing-and-permissions.txt \
 		--json-output $(EVIDENCE_DIR)/host-readiness.json \
 		--port $(EVIDENCE_PORT) \
-		$(if $(and $(filter 1 true yes,$(MACOS_HOST_READINESS_PROBE_LOGIN_ITEM)),$(filter I_UNDERSTAND_SFLTOOL_CAN_PROMPT,$(MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK))),--include-login-item-diagnostic,)
+		$(if $(and $(filter 1 true yes,$(MACOS_HOST_READINESS_PROBE_LOGIN_ITEM)),$(filter 1,$(words $(strip $(MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK)))),$(filter I_UNDERSTAND_SFLTOOL_CAN_PROMPT,$(strip $(MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK)))),--include-login-item-diagnostic,)
 
 baseline-macos-touch-preflight: baseline-macos-host-preflight
 

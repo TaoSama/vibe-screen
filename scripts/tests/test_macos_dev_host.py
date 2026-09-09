@@ -3356,6 +3356,50 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
             runbook,
         )
 
+        cases = (
+            ({}, False),
+            ({"MACOS_HOST_READINESS_PROBE_LOGIN_ITEM": "1"}, False),
+            (
+                {
+                    "MACOS_HOST_READINESS_PROBE_LOGIN_ITEM": "0",
+                    "MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK":
+                        "I_UNDERSTAND_SFLTOOL_CAN_PROMPT",
+                },
+                False,
+            ),
+            (
+                {
+                    "MACOS_HOST_READINESS_PROBE_LOGIN_ITEM": "1",
+                    "MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK":
+                        "I_UNDERSTAND_SFLTOOL_CAN_PROMPT extra",
+                },
+                False,
+            ),
+            (
+                {
+                    "MACOS_HOST_READINESS_PROBE_LOGIN_ITEM": "1",
+                    "MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK":
+                        "I_UNDERSTAND_SFLTOOL_CAN_PROMPT",
+                },
+                True,
+            ),
+        )
+        for variables, expected in cases:
+            with self.subTest(variables=variables):
+                command = ["make", "-n", "baseline-macos-host-readiness"]
+                command.extend(f"{key}={value}" for key, value in variables.items())
+                result = subprocess.run(
+                    command,
+                    cwd=REPOSITORY_ROOT,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(
+                    "--include-login-item-diagnostic" in result.stdout,
+                    expected,
+                )
+
     def test_launch_target_is_not_part_of_read_only_preflight_targets(self) -> None:
         targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
 
