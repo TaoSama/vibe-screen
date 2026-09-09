@@ -32,7 +32,9 @@ from .latency import (
     TRANSPORT_USB,
 )
 from .latency_artifact_text import (
+    LATENCY_ARTIFACT_CONTENT_REQUIREMENTS,
     latency_artifact_blocking_reason,
+    missing_latency_artifact_terms,
     read_latency_artifact_text,
 )
 
@@ -115,7 +117,12 @@ def _package_relative_path(path: Path, evidence_dir: Path, field: str) -> str:
 
 def _artifact_reference(path: Path, evidence_dir: Path, field: str, description: str) -> dict[str, str]:
     relative = _package_relative_path(path, evidence_dir, field)
-    _validate_closing_artifact_text(evidence_dir.resolve() / relative, field)
+    artifact_key = field.split(".", 2)[1] if field.startswith("gate_artifacts.") else field
+    _validate_closing_artifact_text(
+        evidence_dir.resolve() / relative,
+        field,
+        artifact_key=artifact_key,
+    )
     return {
         "file": relative,
         "sha256": _sha256(evidence_dir.resolve() / relative),
@@ -123,7 +130,7 @@ def _artifact_reference(path: Path, evidence_dir: Path, field: str, description:
     }
 
 
-def _validate_closing_artifact_text(path: Path, field: str) -> None:
+def _validate_closing_artifact_text(path: Path, field: str, *, artifact_key: str) -> None:
     try:
         text = read_latency_artifact_text(path)
     except UnicodeDecodeError as error:
@@ -135,6 +142,15 @@ def _validate_closing_artifact_text(path: Path, field: str) -> None:
         raise LatencyManifestError(
             f"{field}.file describes {blocking_reason}; retained latency artifacts must "
             "be closing evidence, not blocked readiness or diagnostic-only context"
+        )
+    required_terms = LATENCY_ARTIFACT_CONTENT_REQUIREMENTS.get(artifact_key)
+    if required_terms is None:
+        return
+    missing = missing_latency_artifact_terms(text, required_terms)
+    if missing:
+        raise LatencyManifestError(
+            f"{field}.file must describe {artifact_key.replace('_', ' ')} evidence "
+            f"including: {', '.join(missing)}"
         )
 
 

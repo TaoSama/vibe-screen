@@ -33,7 +33,9 @@ from .latency import (
     summarize,
 )
 from .latency_artifact_text import (
+    LATENCY_ARTIFACT_CONTENT_REQUIREMENTS,
     latency_artifact_blocking_reason,
+    missing_latency_artifact_terms,
     read_latency_artifact_text,
 )
 
@@ -61,13 +63,6 @@ PROFILE_ARTIFACT_REQUIREMENTS = {
         "input_actuation_record",
         "retain real physical input actuation and visible Mac-side result proof",
     ),
-}
-PROFILE_ARTIFACT_CONTENT_REQUIREMENTS = {
-    "usb_connection": ("usb", "stream"),
-    "lan_network_preflight": ("lan", "stream"),
-    "internet_public_route_record": ("public", "route"),
-    "input_actuation_record": ("physical", "input", "visible"),
-    "synchronization_record": ("skew", "drift", "uncertainty", "budget"),
 }
 SYNCHRONIZED_CLOCK_ARTIFACT_REQUIREMENT = (
     "synchronization_record",
@@ -652,8 +647,7 @@ def _validate_artifact_content(
     field: str, path: Path | None, errors: list[str]
 ) -> None:
     artifact_key = field.split(".", 2)[1] if field.startswith("gate_artifacts.") else field
-    required_tokens = PROFILE_ARTIFACT_CONTENT_REQUIREMENTS.get(artifact_key)
-    if required_tokens is None or path is None or not path.is_file():
+    if path is None or not path.is_file():
         return
     try:
         text = read_latency_artifact_text(path)
@@ -663,14 +657,16 @@ def _validate_artifact_content(
     except OSError as error:
         errors.append(f"cannot read {path}: {error}")
         return
-    normalized = text.lower()
     blocking_reason = latency_artifact_blocking_reason(text)
     if blocking_reason is not None:
         errors.append(
             f"{field}.file describes {blocking_reason}; retained latency artifacts must "
             "be closing evidence, not blocked readiness or diagnostic-only context"
         )
-    missing = [token for token in required_tokens if token not in normalized]
+    required_tokens = LATENCY_ARTIFACT_CONTENT_REQUIREMENTS.get(artifact_key)
+    if required_tokens is None:
+        return
+    missing = missing_latency_artifact_terms(text, required_tokens)
     if missing:
         errors.append(
             f"{field}.file must describe {artifact_key.replace('_', ' ')} evidence "
