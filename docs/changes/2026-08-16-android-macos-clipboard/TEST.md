@@ -230,8 +230,9 @@ bytes. The `destination_clipboard_write` artifact must also match the
 direction-level payload `byte_length` and SHA-256, so format-valid product JSON
 cannot point at unrelated retained bytes. The `protocol_packets` artifact is a
 session-aware evidence JSONL, not a raw protobuf JSON dump, and each
-clipboard offer/request/content record must include the direction's 32-character
-hex change ID, integer session epoch, and origin device ID. Summary-only placeholders, copied
+clipboard offer/request/content record must include the matching transfer
+direction, the direction's 32-character hex change ID, integer session epoch,
+and origin device ID. Summary-only placeholders, copied
 role files, missing direction/role metadata, mismatched destination payload
 metadata, malformed packet logs, or edited artifact files therefore keep
 `clipboard-e2e-gate` blocked even when the surrounding JSON claims bidirectional

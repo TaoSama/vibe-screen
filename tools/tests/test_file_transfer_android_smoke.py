@@ -285,15 +285,30 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         session_epoch=7,
         sha256=hashlib.sha256(b"p0110 macos-to-android payload\n").hexdigest(),
     )
-    for artifact_path in (
-        "cancel-cleanup/cancel-request.txt",
-        "cancel-cleanup/cleanup-state.txt",
-        "disconnect-cleanup/disconnect-event.txt",
-        "disconnect-cleanup/cleanup-state.txt",
-    ):
+    cleanup_artifacts = {
+        "cancel-cleanup/cancel-request.txt": (
+            "cancel requested session_id_hex=0123456789abcdeffedcba9876543210 "
+            "session_epoch=7 transfer_id_hex=00112233445566778899aabbccddeeff\n"
+        ),
+        "cancel-cleanup/cleanup-state.txt": (
+            "cleanup sender_state_cleared receiver_state_cleared "
+            "session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7 "
+            "transfer_id_hex=00112233445566778899aabbccddeeff\n"
+        ),
+        "disconnect-cleanup/disconnect-event.txt": (
+            "disconnect observed session_id_hex=0123456789abcdeffedcba9876543210 "
+            "session_epoch=7 transfer_id_hex=ffeeddccbbaa99887766554433221100\n"
+        ),
+        "disconnect-cleanup/cleanup-state.txt": (
+            "cleanup sender_state_cleared receiver_state_cleared "
+            "session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7 "
+            "transfer_id_hex=ffeeddccbbaa99887766554433221100\n"
+        ),
+    }
+    for artifact_path, contents in cleanup_artifacts.items():
         path = root / artifact_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"retained product artifact: {artifact_path}\n", encoding="utf-8")
+        path.write_text(contents, encoding="utf-8")
     return paths
 
 
@@ -1618,6 +1633,135 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             "cancel_cleanup: cancel_cleanup.retained_artifacts missing cleanup_state artifact",
             result["blockers"],
         )
+
+    def test_cancel_cleanup_artifacts_must_record_product_cleanup_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "cancel-cleanup" / "cancel-request.txt").write_text(
+                "user pressed a local cancel button without protocol/session markers\n",
+                encoding="utf-8",
+            )
+            (root / "cancel-cleanup" / "cleanup-state.txt").write_text(
+                "temporary state removed without endpoint or transfer markers\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.cancel_request artifact must record cancel requested",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.cancel_request artifact must contain session_id_hex=0123456789abcdeffedcba9876543210",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.cleanup_state artifact must record cleanup, sender_state_cleared, receiver_state_cleared",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.cleanup_state artifact must contain at least one retained transfer_id_hex",
+            result["blockers"],
+        )
+
+    def test_disconnect_cleanup_artifacts_must_record_product_cleanup_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "disconnect-cleanup" / "disconnect-event.txt").write_text(
+                "transport ended without product session markers\n",
+                encoding="utf-8",
+            )
+            (root / "disconnect-cleanup" / "cleanup-state.txt").write_text(
+                "cleanup sender_state_cleared only\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.disconnect_event artifact must record disconnect observed",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.disconnect_event artifact must contain session_epoch=7",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.cleanup_state artifact must record receiver_state_cleared",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.cleanup_state artifact must contain at least one retained transfer_id_hex",
+            result["blockers"],
+        )
+
+    def test_cleanup_artifacts_require_shared_direction_session_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["session_id_hex"] = "11112222333344445555666677778888"
+            macos_to_android["session_epoch"] = 8
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: directions must contain exactly one shared valid session_id_hex for cleanup validation",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: directions must contain exactly one shared positive session_epoch for cleanup validation",
+            result["blockers"],
+        )
+
+    def test_disconnect_event_does_not_need_transfer_id_when_cleanup_state_names_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "disconnect-cleanup" / "disconnect-event.txt").write_text(
+                "disconnect observed session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["checks"][7]["name"], "cancel_cleanup")
+        self.assertEqual(result["checks"][7]["status"], "pass")
 
     def test_synthetic_product_evidence_cannot_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
