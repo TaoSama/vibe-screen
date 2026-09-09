@@ -1140,13 +1140,13 @@ This does not claim a Host session, Protocol v1 negotiation, streaming/video
 decode, reconnect, clipboard/file-transfer product flow, TCC readiness, or
 Xiaomi 13/fuxi evidence. The device identity must remain Nubia P0110 / pacific.
 
-## 2026-09-08 Nubia P0110 no-Host UI/UX after-700 current-main refresh
+## 2026-09-09 Nubia P0110 no-Host UI/UX after-713 current-main refresh
 
 Evidence:
-[../2026-08-22-android-ui-ux-audit/evidence/2026-09-08-nubia-p0110-no-host-uiux-after-700-current-main/](../2026-08-22-android-ui-ux-audit/evidence/2026-09-08-nubia-p0110-no-host-uiux-after-700-current-main/README.md).
+[../2026-08-22-android-ui-ux-audit/evidence/2026-09-09-nubia-p0110-no-host-uiux-after-713-current-main/](../2026-08-22-android-ui-ux-audit/evidence/2026-09-09-nubia-p0110-no-host-uiux-after-713-current-main/README.md).
 
 Status remains Android-client UI/UX evidence only. The run refreshed from
-current origin/main at be950a5e4e6c7415800f284b368d4b8cf6db3be8, installed and
+current origin/main at ef7983774ff4cc8a277587fd026b18ce8cdb30a4, installed and
 ran focused Android instrumentation on the connected Nubia P0110 / pacific /
 Android 16 / SDK 36 while no product tcp:54321 ADB reverse or local Host
 listener was present.
