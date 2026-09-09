@@ -2090,12 +2090,24 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         LiveRegionTextApplier.apply(binding.internetProfileSummary, summary)
-        binding.internetConnectButton.isEnabled =
+        setInternetConnectButtonEnabled(
             profile != null &&
                 !productSessionCoordinator.requiresFreshInternetLease(profile.authoritativeSessionEpoch) &&
-                internetSession == null
+                internetSession == null,
+            profileAvailable = profile != null,
+        )
         binding.internetRevokeButton.isEnabled = profile != null || internetProfileStore.hasVerifiedPairing()
         allowInternetCredentialMutation()
+    }
+
+    private fun setInternetConnectButtonEnabled(enabled: Boolean, profileAvailable: Boolean = true) {
+        binding.internetConnectButton.isEnabled = enabled
+        binding.internetConnectButton.contentDescription =
+            if (enabled || profileAvailable) {
+                getString(R.string.internet_connect)
+            } else {
+                getString(R.string.internet_connect_profile_missing_description)
+            }
     }
 
     private fun showInternetCameraPermissionBlocked() {
@@ -6036,7 +6048,7 @@ class MainActivity : AppCompatActivity() {
             internetSession = created
             refreshTransferReadinessInSettings()
             refreshAudioReadinessInSettings()
-            binding.internetConnectButton.isEnabled = false
+            setInternetConnectButtonEnabled(false)
             binding.internetDisconnectButton.visibility = View.VISIBLE
             applyConnectionPanelLayout()
             LiveRegionTextApplier.hide(binding.internetErrorText)
@@ -6355,8 +6367,10 @@ class MainActivity : AppCompatActivity() {
                 setStreamingWindowState(false)
                 binding.internetDisconnectButton.visibility = View.GONE
                 val profile = internetProfileStore.loadPublicProfile()
-                binding.internetConnectButton.isEnabled =
-                    profile != null && !productSessionCoordinator.requiresFreshInternetLease(profile.authoritativeSessionEpoch)
+                setInternetConnectButtonEnabled(
+                    profile != null && !productSessionCoordinator.requiresFreshInternetLease(profile.authoritativeSessionEpoch),
+                    profileAvailable = profile != null,
+                )
                 if (showIdle) {
                     LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_state_idle))
                     LiveRegionTextApplier.hide(binding.internetErrorText)
@@ -6409,7 +6423,7 @@ class MainActivity : AppCompatActivity() {
                 failure.addSuppressed(cleanupFailure)
             }
         }
-        binding.internetConnectButton.isEnabled = false
+        setInternetConnectButtonEnabled(false)
         binding.internetImportProfileButton.isEnabled = false
         binding.internetScanProfileButton.isEnabled = false
         binding.internetDisconnectButton.visibility = View.VISIBLE
@@ -6428,7 +6442,7 @@ class MainActivity : AppCompatActivity() {
                     internetStoredSessionFactory.hasPendingPairingPersistenceCleanup()
             }
         if (quarantined && ::binding.isInitialized) {
-            binding.internetConnectButton.isEnabled = false
+            setInternetConnectButtonEnabled(false)
             binding.internetImportProfileButton.isEnabled = false
             binding.internetScanProfileButton.isEnabled = false
             LiveRegionTextApplier.show(

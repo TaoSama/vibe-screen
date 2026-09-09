@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -1631,6 +1632,25 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(refresh.contains("internetProfileSummary.setText"))
         assertFalse(refresh.contains("internetProfileSummary.text ="))
         assertUsesLiveRegion(refresh, "internetProfileSummary", "refreshInternetProfileUi")
+    }
+
+    @Test
+    fun disabledInternetConnectUsesProfileMissingAccessibilityReason() {
+        val source = mainActivitySource()
+        val compactSource = source.replace(Regex("\\s+"), "")
+        val helper = extractMethod(source, "private fun setInternetConnectButtonEnabled")
+        val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
+
+        assertTrue(R.string.internet_connect_profile_missing_description != 0)
+        assertTrue(helper.contains("internetConnectButton.contentDescription"))
+        assertTrue(helper.contains("R.string.internet_connect_profile_missing_description"))
+        assertTrue(helper.contains("R.string.internet_connect"))
+        assertTrue(refresh.contains("profileAvailable = profile != null"))
+        assertEquals(
+            "Internet connect enabled state must keep the accessibility reason in sync",
+            1,
+            countOccurrences(compactSource, "binding.internetConnectButton.isEnabled=enabled"),
+        )
     }
 
     @Test
