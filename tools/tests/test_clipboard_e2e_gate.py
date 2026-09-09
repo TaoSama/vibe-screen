@@ -35,6 +35,7 @@ ANDROID_TO_MACOS_MARKER = "android-to-macos-marker-123"
 MACOS_TO_ANDROID_MARKER = "macos-to-android-marker-123"
 ANDROID_TO_MACOS_CHANGE_ID = "00112233445566778899aabbccddeeff"
 MACOS_TO_ANDROID_CHANGE_ID = "ffeeddccbbaa99887766554433221100"
+CLIPBOARD_SESSION_ID = "0123456789abcdeffedcba9876543210"
 ANDROID_TO_MACOS_ORIGIN = "android-p0110-pacific"
 MACOS_TO_ANDROID_ORIGIN = "macos-host-current-source"
 ANDROID_TO_MACOS_EPOCH = 1
@@ -55,6 +56,8 @@ def retained_artifact(direction: str, role: str, path: str) -> dict[str, object]
 def retained_artifact_content(direction: str, role: str, path: str) -> bytes:
     payload = direction_payload(direction)
     if role == "destination_clipboard_write":
+        return str(payload["marker"]).encode("utf-8")
+    if role == "source_clipboard_read":
         return str(payload["marker"]).encode("utf-8")
     if role == "protocol_packets":
         records = [
@@ -89,6 +92,7 @@ def direction_payload(direction: str) -> dict[str, object]:
             "marker": marker,
             "change_id_hex": ANDROID_TO_MACOS_CHANGE_ID,
             "origin_device_id": ANDROID_TO_MACOS_ORIGIN,
+            "session_id_hex": CLIPBOARD_SESSION_ID,
             "session_epoch": ANDROID_TO_MACOS_EPOCH,
             "sha256": hashlib.sha256(marker.encode("utf-8")).hexdigest(),
             "byte_length": len(marker.encode("utf-8")),
@@ -98,6 +102,7 @@ def direction_payload(direction: str) -> dict[str, object]:
         "marker": marker,
         "change_id_hex": MACOS_TO_ANDROID_CHANGE_ID,
         "origin_device_id": MACOS_TO_ANDROID_ORIGIN,
+        "session_id_hex": CLIPBOARD_SESSION_ID,
         "session_epoch": MACOS_TO_ANDROID_EPOCH,
         "sha256": hashlib.sha256(marker.encode("utf-8")).hexdigest(),
         "byte_length": len(marker.encode("utf-8")),
@@ -235,6 +240,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "transport": "usb",
         "marker": android_to_macos_payload["marker"],
         "change_id_hex": android_to_macos_payload["change_id_hex"],
+        "session_id_hex": android_to_macos_payload["session_id_hex"],
         "sha256": android_to_macos_payload["sha256"],
         "origin_device_id": android_to_macos_payload["origin_device_id"],
         "byte_length": android_to_macos_payload["byte_length"],
@@ -271,6 +277,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "transport": "usb",
         "marker": macos_to_android_payload["marker"],
         "change_id_hex": macos_to_android_payload["change_id_hex"],
+        "session_id_hex": macos_to_android_payload["session_id_hex"],
         "sha256": macos_to_android_payload["sha256"],
         "origin_device_id": macos_to_android_payload["origin_device_id"],
         "byte_length": macos_to_android_payload["byte_length"],
@@ -742,6 +749,38 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertTrue(result["gate_closed"])
         self.assertEqual(result["not_proven"], [])
 
+    def test_report_records_repo_relative_product_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+                repo_root=root,
+            )
+
+        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
+
+    def test_report_sanitizes_non_repo_relative_product_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
+        self.assertNotIn(directory_name, json.dumps(result["source"]))
+
     def test_product_e2e_requires_exact_system_clipboard_endpoints(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -787,6 +826,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
             android_to_macos["byte_length"] = 1_048_577
             android_to_macos["session_epoch"] = 0
             android_to_macos["session_id_verified"] = False
+            android_to_macos["session_id_hex"] = "not-a-session-id"
             android_to_macos["session_epoch_verified"] = False
             android_to_macos["final_sha256_match"] = False
             android_to_macos["origin_device_id_verified"] = False
@@ -819,6 +859,10 @@ class ClipboardE2EGateTests(unittest.TestCase):
         )
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.session_id_verified must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.session_id_hex must be a 32-character hex session ID",
             result["blockers"],
         )
         self.assertIn(
@@ -1207,6 +1251,40 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_product_e2e_requires_source_artifact_to_match_direction_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_to_macos["byte_length"] = 1
+            macos_to_android["sha256"] = "0" * 64
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.source_clipboard_read artifact size "
+            f"{len(retained_artifact_content_for_path('android-to-macos/source-clipboard-read.txt'))} must equal direction.byte_length 1",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.source_clipboard_read artifact SHA-256 must equal direction.sha256",
+            result["blockers"],
+        )
+
     def test_product_e2e_requires_protocol_packets_to_match_direction_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -1442,6 +1520,44 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: direction SHA-256 digests must be distinct so one payload cannot satisfy both directions",
+            result["blockers"],
+        )
+
+    def test_product_e2e_requires_same_session_id_and_transport(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["session_id_hex"] = "11111111111111111111111111111111"
+            macos_to_android["session_epoch"] = 2
+            macos_to_android["transport"] = "trusted_lan"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: direction session IDs must match for same-session bidirectional product evidence",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: direction transports must match for same-session bidirectional product evidence",
+            result["blockers"],
+        )
+        self.assertIn(
+            "bidirectional_product_e2e: direction session_epoch values must match for same-session bidirectional product evidence",
             result["blockers"],
         )
 

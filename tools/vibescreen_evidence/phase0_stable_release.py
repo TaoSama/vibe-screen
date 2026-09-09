@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _datetime
+import hashlib
 import json
 import math
 import re
@@ -44,6 +45,11 @@ from .file_transfer_android_smoke import (
     REQUIRED_PRODUCT_CONTEXT_FALSE as FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_FALSE,
     REQUIRED_PRODUCT_CONTEXT_TRUE as FILE_TRANSFER_REQUIRED_PRODUCT_CONTEXT_TRUE,
 )
+from .clipboard_e2e_gate import (
+    EXPECTED_DIRECTION_ENDPOINTS as CLIPBOARD_EXPECTED_DIRECTION_ENDPOINTS,
+    LOCAL_MAXIMUM_CLIPBOARD_BYTES,
+    REQUIRED_DIRECTION_ARTIFACT_ROLES as CLIPBOARD_REQUIRED_DIRECTION_ARTIFACT_ROLES,
+)
 from .soak_public_report import EvidenceInputError
 
 KIND = "phase0_stable_release_closure"
@@ -74,6 +80,36 @@ CLIPBOARD_E2E_REQUIRED_CHECKS = (
     "real_transport_ready",
     "android_clipboardmanager_smoke",
     "bidirectional_product_e2e",
+)
+CLIPBOARD_PRODUCT_E2E_KIND = "android_macos_clipboard_product_e2e"
+CLIPBOARD_SESSION_ID_RE = re.compile(r"[0-9a-fA-F]{32}")
+CLIPBOARD_SHA256_RE = re.compile(r"[0-9a-fA-F]{64}")
+CLIPBOARD_REQUIRED_DIRECTION_TRUE = (
+    "protocol_v1_session",
+    "system_source_clipboard_read",
+    "explicit_user_action",
+    "receiver_user_approval",
+    "remote_system_clipboard_write",
+    "final_marker_match",
+    "session_id_verified",
+    "session_epoch_verified",
+    "final_sha256_match",
+    "origin_device_id_verified",
+    "send_failure_absent",
+    "write_failure_absent",
+    "cleanup_completed",
+    "utf8_valid",
+    "overwrite_confirmed",
+    "cancel_does_not_write",
+    "failure_does_not_write",
+    "deny_wins_observed",
+)
+CLIPBOARD_MARKER_FIELDS = (
+    "marker",
+    "overwrite_marker",
+    "cancelled_marker",
+    "failed_marker",
+    "deny_marker",
 )
 LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
 LATENCY_SUMMARY_ONLY_KINDS = {"glass_to_glass", "input_latency"}
@@ -1132,7 +1168,9 @@ def _clipboard_android_macos_product_e2e_issues(
                 f"{raw_path}: formal clipboard report kind must be {CLIPBOARD_E2E_GATE_KIND}"
             )
             continue
-        report_issues = _formal_clipboard_e2e_report_issues(record, raw_path)
+        report_issues = _formal_clipboard_e2e_report_issues(
+            record, raw_path, repo_root=repository
+        )
         if report_issues:
             candidate_issues.extend(report_issues)
         else:
@@ -1147,7 +1185,9 @@ def _clipboard_android_macos_product_e2e_issues(
     return issues
 
 
-def _formal_clipboard_e2e_report_issues(record: dict[str, Any], path: str) -> list[str]:
+def _formal_clipboard_e2e_report_issues(
+    record: dict[str, Any], path: str, *, repo_root: Path
+) -> list[str]:
     issues: list[str] = []
     if record.get("schema_version") != SCHEMA_VERSION:
         issues.append(f"{path}: formal clipboard report schema_version must be {SCHEMA_VERSION}")
@@ -1198,6 +1238,357 @@ def _formal_clipboard_e2e_report_issues(record: dict[str, Any], path: str) -> li
                 issues.append(f"{path}: formal clipboard report checks missing {check_name}")
             elif check.get("status") != STATUS_PASS:
                 issues.append(f"{path}: formal clipboard report check {check_name} must be pass")
+    source = record.get("source")
+    if not isinstance(source, dict):
+        issues.append(f"{path}: formal clipboard report source must be an object")
+        return issues
+    product_e2e_ref = source.get("product_e2e")
+    if not isinstance(product_e2e_ref, str) or not product_e2e_ref.strip():
+        issues.append(f"{path}: formal clipboard report source.product_e2e must be present")
+        return issues
+    product_path, path_issue = _repo_relative_evidence_path(
+        repo_root,
+        product_e2e_ref.strip(),
+        gate_id=CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID,
+    )
+    if path_issue is not None or product_path is None:
+        issues.append(
+            f"{path}: formal clipboard report source.product_e2e must be a repo-relative path inside repo_root"
+        )
+        return issues
+    if not product_path.exists():
+        issues.append(
+            f"{path}: formal clipboard report source.product_e2e {product_e2e_ref.strip()} must exist"
+        )
+        return issues
+    product_record, load_issue = _load_evidence_json(
+        product_path,
+        product_e2e_ref.strip(),
+        gate_id=CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID,
+    )
+    if load_issue is not None:
+        issues.append(f"{path}: formal clipboard report source.product_e2e could not be read: {load_issue}")
+        return issues
+    issues.extend(
+        _clipboard_product_e2e_source_issues(
+            product_record,
+            f"{path}: source.product_e2e {product_e2e_ref.strip()}",
+            evidence_dir=product_path.parent,
+        )
+    )
+    return issues
+
+
+def _clipboard_product_e2e_source_issues(
+    record: dict[str, Any],
+    label: str,
+    *,
+    evidence_dir: Path | None,
+) -> list[str]:
+    issues: list[str] = []
+    if record.get("schema_version") != SCHEMA_VERSION:
+        issues.append(f"{label} schema_version must be {SCHEMA_VERSION}")
+    if record.get("kind") != CLIPBOARD_PRODUCT_E2E_KIND:
+        issues.append(f"{label} kind must be {CLIPBOARD_PRODUCT_E2E_KIND}")
+    if record.get("synthetic") is True or record.get("offline_only") is True:
+        issues.append(f"{label} synthetic or offline-only evidence cannot close this gate")
+
+    directions = record.get("directions")
+    if not isinstance(directions, dict):
+        issues.append(f"{label} directions must be an object")
+        return issues
+
+    markers: dict[str, str] = {}
+    change_ids: dict[str, str] = {}
+    digests: dict[str, str] = {}
+    session_ids: dict[str, str] = {}
+    transports: dict[str, str] = {}
+    session_epochs: dict[str, int] = {}
+    artifact_paths: dict[Path | str, tuple[str, str]] = {}
+    for direction_name, endpoints in CLIPBOARD_EXPECTED_DIRECTION_ENDPOINTS.items():
+        direction = directions.get(direction_name)
+        if not isinstance(direction, dict):
+            issues.append(f"{label} missing {direction_name} direction evidence")
+            continue
+        issues.extend(
+            _clipboard_direction_source_issues(
+                direction,
+                f"{label} {direction_name}",
+                endpoints,
+                evidence_dir,
+                artifact_paths,
+            )
+        )
+        marker = direction.get("marker")
+        if isinstance(marker, str) and marker.strip():
+            markers[direction_name] = marker.strip()
+        change_id = direction.get("change_id_hex")
+        if isinstance(change_id, str) and CLIPBOARD_SESSION_ID_RE.fullmatch(change_id):
+            change_ids[direction_name] = change_id.lower()
+        digest = direction.get("sha256")
+        if isinstance(digest, str) and CLIPBOARD_SHA256_RE.fullmatch(digest):
+            digests[direction_name] = digest.lower()
+        session_id = direction.get("session_id_hex")
+        if isinstance(session_id, str) and CLIPBOARD_SESSION_ID_RE.fullmatch(session_id):
+            session_ids[direction_name] = session_id.lower()
+        transport = direction.get("transport")
+        if transport in {"usb", "trusted_lan"}:
+            transports[direction_name] = transport
+        session_epoch = direction.get("session_epoch")
+        if _is_positive_integer(session_epoch):
+            session_epochs[direction_name] = session_epoch
+
+    android_to_macos = "android_clipboardmanager_to_macos_nspasteboard"
+    macos_to_android = "macos_nspasteboard_to_android_clipboardmanager"
+    if markers.get(android_to_macos) and markers.get(android_to_macos) == markers.get(macos_to_android):
+        issues.append(f"{label} direction markers must be distinct")
+    if change_ids.get(android_to_macos) and change_ids.get(android_to_macos) == change_ids.get(macos_to_android):
+        issues.append(f"{label} direction change IDs must be distinct")
+    if digests.get(android_to_macos) and digests.get(android_to_macos) == digests.get(macos_to_android):
+        issues.append(f"{label} direction SHA-256 digests must be distinct")
+    if session_ids.get(android_to_macos) and session_ids.get(macos_to_android) and session_ids[android_to_macos] != session_ids[macos_to_android]:
+        issues.append(f"{label} direction session IDs must match for same-session bidirectional product evidence")
+    if transports.get(android_to_macos) and transports.get(macos_to_android) and transports[android_to_macos] != transports[macos_to_android]:
+        issues.append(f"{label} direction transports must match for same-session bidirectional product evidence")
+    if session_epochs.get(android_to_macos) and session_epochs.get(macos_to_android) and session_epochs[android_to_macos] != session_epochs[macos_to_android]:
+        issues.append(f"{label} direction session_epoch values must match for same-session bidirectional product evidence")
+    return issues
+
+
+def _clipboard_direction_source_issues(
+    direction: dict[str, Any],
+    label: str,
+    endpoints: tuple[str, str],
+    evidence_dir: Path | None,
+    cross_direction_artifact_paths: dict[Path | str, tuple[str, str]],
+) -> list[str]:
+    issues: list[str] = []
+    direction_name = label.rsplit(" ", 1)[-1]
+    issues.extend(
+        _retained_artifact_issues(
+            direction,
+            label,
+            CLIPBOARD_REQUIRED_DIRECTION_ARTIFACT_ROLES,
+            evidence_dir,
+            expected_direction=direction_name,
+            cross_direction_artifact_paths=cross_direction_artifact_paths,
+        )
+    )
+    source_endpoint, destination_endpoint = endpoints
+    if direction.get("source_system_clipboard") != source_endpoint:
+        issues.append(f"{label}.source_system_clipboard must be {source_endpoint}")
+    if direction.get("destination_system_clipboard") != destination_endpoint:
+        issues.append(f"{label}.destination_system_clipboard must be {destination_endpoint}")
+    for field in CLIPBOARD_REQUIRED_DIRECTION_TRUE:
+        if direction.get(field) is not True:
+            issues.append(f"{label}.{field} must be true")
+    if direction.get("mime_type") != "text/plain":
+        issues.append(f"{label}.mime_type must be text/plain")
+    byte_length = direction.get("byte_length")
+    if not _is_positive_integer(byte_length):
+        issues.append(f"{label}.byte_length must be a positive integer")
+    elif byte_length > LOCAL_MAXIMUM_CLIPBOARD_BYTES:
+        issues.append(f"{label}.byte_length must not exceed 1048576 bytes")
+    session_epoch = direction.get("session_epoch")
+    if not _is_positive_integer(session_epoch):
+        issues.append(f"{label}.session_epoch must be a positive integer")
+    transport = direction.get("transport")
+    if transport not in {"usb", "trusted_lan"}:
+        issues.append(f"{label}.transport must be usb or trusted_lan")
+    for field, description in (
+        ("change_id_hex", "change ID"),
+        ("session_id_hex", "session ID"),
+    ):
+        value = direction.get(field)
+        if not isinstance(value, str) or not CLIPBOARD_SESSION_ID_RE.fullmatch(value):
+            issues.append(f"{label}.{field} must be a 32-character hex {description}")
+    sha256 = direction.get("sha256")
+    if not isinstance(sha256, str) or not CLIPBOARD_SHA256_RE.fullmatch(sha256):
+        issues.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
+    marker = direction.get("marker")
+    if not isinstance(marker, str) or len(marker.strip()) < 8:
+        issues.append(f"{label}.marker must identify the transferred text marker")
+    final_marker = direction.get("final_marker")
+    if final_marker != marker:
+        issues.append(f"{label}.final_marker must equal marker after the destination system clipboard write")
+    seen_markers: dict[str, str] = {}
+    for field in CLIPBOARD_MARKER_FIELDS:
+        value = direction.get(field)
+        if not isinstance(value, str) or len(value.strip()) < 8:
+            issues.append(f"{label}.{field} must identify the clipboard boundary marker")
+            continue
+        normalized = value.strip()
+        previous = seen_markers.get(normalized)
+        if previous is not None:
+            issues.append(f"{label}.{field} must be distinct from {previous}")
+        else:
+            seen_markers[normalized] = field
+    origin_device_id = direction.get("origin_device_id")
+    if not isinstance(origin_device_id, str) or not origin_device_id.strip():
+        issues.append(f"{label}.origin_device_id must record the verified Protocol v1 origin device ID")
+    issues.extend(
+        _clipboard_payload_artifact_issues(
+            direction,
+            label,
+            "source_clipboard_read",
+            evidence_dir,
+        )
+    )
+    issues.extend(
+        _clipboard_payload_artifact_issues(
+            direction,
+            label,
+            "destination_clipboard_write",
+            evidence_dir,
+        )
+    )
+    issues.extend(_clipboard_protocol_packets_artifact_issues(direction, label, evidence_dir))
+    return issues
+
+
+def _clipboard_payload_artifact_issues(
+    direction: dict[str, Any],
+    label: str,
+    role: str,
+    evidence_dir: Path | None,
+) -> list[str]:
+    artifact_path = _retained_artifact_path(direction, role)
+    if artifact_path is None or evidence_dir is None:
+        return []
+    resolved_artifact = _resolve_retained_artifact_path(artifact_path, evidence_dir)
+    if resolved_artifact is None:
+        return []
+    issues: list[str] = []
+    try:
+        data = resolved_artifact.read_bytes()
+    except OSError as error:
+        return [f"{label}.{role} artifact cannot be read: {error}"]
+    expected_byte_length = direction.get("byte_length")
+    if _is_positive_integer(expected_byte_length) and len(data) != expected_byte_length:
+        issues.append(
+            f"{label}.{role} artifact size {len(data)} must equal direction.byte_length {expected_byte_length}"
+        )
+    expected_sha256 = direction.get("sha256")
+    if isinstance(expected_sha256, str) and CLIPBOARD_SHA256_RE.fullmatch(expected_sha256):
+        actual_sha256 = hashlib.sha256(data).hexdigest()
+        if actual_sha256 != expected_sha256.lower():
+            issues.append(f"{label}.{role} artifact SHA-256 must equal direction.sha256")
+    return issues
+
+
+def _retained_artifact_path(record: dict[str, Any], role: str) -> Path | None:
+    artifacts = record.get("retained_artifacts")
+    if not isinstance(artifacts, list):
+        return None
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or artifact.get("role") != role:
+            continue
+        path_value = artifact.get("path")
+        if isinstance(path_value, str) and path_value.strip():
+            return Path(path_value)
+    return None
+
+
+def _resolve_retained_artifact_path(path: Path, evidence_dir: Path) -> Path | None:
+    if path.is_absolute() or ".." in path.parts:
+        return None
+    try:
+        resolved_evidence_dir = evidence_dir.resolve()
+        resolved_artifact = (evidence_dir / path).resolve(strict=True)
+        resolved_artifact.relative_to(resolved_evidence_dir)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return None
+    if not resolved_artifact.is_file():
+        return None
+    return resolved_artifact
+
+
+def _clipboard_protocol_packets_artifact_issues(
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+) -> list[str]:
+    artifact_path = _retained_artifact_path(direction, "protocol_packets")
+    if artifact_path is None or evidence_dir is None:
+        return []
+    resolved_artifact = _resolve_retained_artifact_path(artifact_path, evidence_dir)
+    if resolved_artifact is None:
+        return []
+    required_events = {"clipboard_offer", "clipboard_request", "clipboard_content"}
+    observed_events: set[str] = set()
+    observed_change_id = False
+    observed_epoch = False
+    observed_origin = False
+    event_records_missing_metadata: list[str] = []
+    malformed_lines: list[int] = []
+    change_id = direction.get("change_id_hex")
+    session_epoch = direction.get("session_epoch")
+    origin_device_id = direction.get("origin_device_id")
+    try:
+        lines = resolved_artifact.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        return [f"{label}.protocol_packets artifact cannot be read: {error}"]
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            malformed_lines.append(line_number)
+            continue
+        if not isinstance(record, dict):
+            malformed_lines.append(line_number)
+            continue
+        event_names = {
+            str(record.get(key, "")).strip().lower()
+            for key in ("type", "event", "name", "message_type", "packet_type")
+            if str(record.get(key, "")).strip()
+        }
+        matching_events = required_events & event_names
+        observed_events.update(matching_events)
+        serialized_record = json.dumps(record, sort_keys=True).lower()
+        event_has_change_id = (
+            isinstance(change_id, str)
+            and CLIPBOARD_SESSION_ID_RE.fullmatch(change_id) is not None
+            and change_id.lower() in serialized_record
+        )
+        record_session_epoch = record.get("session_epoch")
+        event_has_epoch = (
+            isinstance(session_epoch, int)
+            and not isinstance(session_epoch, bool)
+            and isinstance(record_session_epoch, int)
+            and not isinstance(record_session_epoch, bool)
+            and record_session_epoch == session_epoch
+        )
+        event_has_origin = (
+            isinstance(origin_device_id, str)
+            and bool(origin_device_id.strip())
+            and origin_device_id.strip().lower() in serialized_record
+        )
+        observed_change_id = observed_change_id or event_has_change_id
+        observed_epoch = observed_epoch or event_has_epoch
+        observed_origin = observed_origin or event_has_origin
+        if matching_events and not (event_has_change_id and event_has_epoch and event_has_origin):
+            event_records_missing_metadata.extend(sorted(matching_events))
+
+    issues: list[str] = []
+    if malformed_lines:
+        issues.append(f"{label}.protocol_packets artifact must be JSONL; malformed line(s): {malformed_lines[:5]}")
+    missing_events = sorted(required_events - observed_events)
+    if missing_events:
+        issues.append(f"{label}.protocol_packets artifact missing event(s): {', '.join(missing_events)}")
+    if event_records_missing_metadata:
+        missing_metadata_events = sorted(set(event_records_missing_metadata))
+        issues.append(
+            f"{label}.protocol_packets event record(s) must include matching change_id_hex, "
+            f"session_epoch, and origin_device_id: {', '.join(missing_metadata_events)}"
+        )
+    if not observed_change_id:
+        issues.append(f"{label}.protocol_packets artifact must include change_id_hex {direction.get('change_id_hex')}")
+    if not observed_epoch:
+        issues.append(f"{label}.protocol_packets artifact must include session_epoch {direction.get('session_epoch')}")
+    if not observed_origin:
+        issues.append(f"{label}.protocol_packets artifact must include origin_device_id {direction.get('origin_device_id')}")
     return issues
 
 
@@ -1572,6 +1963,18 @@ def _file_transfer_retained_artifact_issues(
     required_roles: Sequence[str],
     evidence_dir: Path | None,
 ) -> list[str]:
+    return _retained_artifact_issues(record, label, required_roles, evidence_dir)
+
+
+def _retained_artifact_issues(
+    record: dict[str, Any],
+    label: str,
+    required_roles: Sequence[str],
+    evidence_dir: Path | None,
+    *,
+    expected_direction: str | None = None,
+    cross_direction_artifact_paths: dict[Path | str, tuple[str, str]] | None = None,
+) -> list[str]:
     artifacts = record.get("retained_artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         return [f"{label}.retained_artifacts must retain product evidence artifacts"]
@@ -1593,6 +1996,7 @@ def _file_transfer_retained_artifact_issues(
             issues.append(f"{artifact_label} must be an object")
             continue
         role = artifact.get("role")
+        role_name: str | None = None
         if not isinstance(role, str) or not role.strip():
             issues.append(f"{artifact_label}.role must be present")
         else:
@@ -1602,6 +2006,11 @@ def _file_transfer_retained_artifact_issues(
             elif role_name in seen_roles:
                 issues.append(f"{artifact_label}.role duplicates {role_name} artifact")
             seen_roles.add(role_name)
+
+        if expected_direction is not None:
+            artifact_direction = artifact.get("direction")
+            if artifact_direction != expected_direction:
+                issues.append(f"{artifact_label}.direction must be {expected_direction}")
 
         path_value = artifact.get("path")
         if not isinstance(path_value, str) or not path_value.strip():
@@ -1618,13 +2027,25 @@ def _file_transfer_retained_artifact_issues(
         if normalized_path in seen_paths:
             issues.append(f"{artifact_label}.path must be distinct")
         seen_paths.add(normalized_path)
+        artifact_key: Path | str | None = normalized_path
         if resolved_evidence_dir is None:
+            if cross_direction_artifact_paths is not None and role_name is not None:
+                previous_artifact = cross_direction_artifact_paths.get(artifact_key)
+                if previous_artifact is not None and previous_artifact[0] != label:
+                    previous_label, previous_role = previous_artifact
+                    issues.append(
+                        f"{artifact_label}.path for {role_name} must be distinct from "
+                        f"{previous_label} {previous_role} artifact path"
+                    )
+                elif previous_artifact is None:
+                    cross_direction_artifact_paths[artifact_key] = (label, role_name)
             continue
         try:
             resolved_artifact = (resolved_evidence_dir / artifact_path).resolve(strict=True)
             resolved_artifact.relative_to(resolved_evidence_dir)
         except FileNotFoundError:
-            issues.append(f"{artifact_label}.path missing retained artifact {path_value}")
+            role_suffix = f" for {role_name}" if role_name is not None else ""
+            issues.append(f"{artifact_label}.path missing retained artifact{role_suffix} {path_value}")
             continue
         except (OSError, RuntimeError, ValueError) as error:
             issues.append(f"{artifact_label}.path cannot access retained artifact {path_value}: {error}")
@@ -1632,6 +2053,17 @@ def _file_transfer_retained_artifact_issues(
         if not resolved_artifact.is_file():
             issues.append(f"{artifact_label}.path missing retained artifact {path_value}")
             continue
+        artifact_key = resolved_artifact
+        if cross_direction_artifact_paths is not None and role_name is not None:
+            previous_artifact = cross_direction_artifact_paths.get(artifact_key)
+            if previous_artifact is not None and previous_artifact[0] != label:
+                previous_label, previous_role = previous_artifact
+                issues.append(
+                    f"{artifact_label}.path for {role_name} must be distinct from "
+                    f"{previous_label} {previous_role} artifact path"
+                )
+            elif previous_artifact is None:
+                cross_direction_artifact_paths[artifact_key] = (label, role_name)
         try:
             if resolved_artifact.stat().st_size <= 0:
                 issues.append(f"{artifact_label}.path retained artifact {path_value} must be non-empty")

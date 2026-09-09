@@ -27,8 +27,14 @@ from vibescreen_evidence.host_rss_gate import derive_gate as derive_host_rss_gat
 from vibescreen_evidence.file_transfer_android_smoke import (
     derive_gate as derive_file_transfer_android_smoke_gate,
 )
+from vibescreen_evidence.clipboard_e2e_gate import (
+    derive_gate as derive_clipboard_e2e_gate,
+)
 from tools.tests.test_file_transfer_android_smoke import (
     write_pass_inputs as write_file_transfer_pass_inputs,
+)
+from tools.tests.test_clipboard_e2e_gate import (
+    write_pass_inputs as write_clipboard_pass_inputs,
 )
 from tools.tests.test_macos_hardware_compatibility import (
     complete_record as complete_macos_hardware_compatibility_record,
@@ -569,37 +575,46 @@ def write_clipboard_gate_evidence(
     repo: Path,
     *,
     output_path: str = "docs/evidence/clipboard-e2e-gate.json",
+    source_directory: str = "docs/evidence/clipboard-e2e",
+    mutate_product_source: Callable[[dict[str, object]], None] | None = None,
     mutate: Callable[[dict[str, object]], None] | None = None,
 ) -> str:
-    report: dict[str, object] = {
-        "schema_version": "vibescreen.evidence/v1",
-        "kind": "android_macos_clipboard_e2e_gate",
-        "verdict": "pass",
-        "result": "pass",
-        "gate_closed": True,
-        "can_close_android_macos_clipboard_e2e_gate": True,
-        "checks": [
-            {"name": "device_identity", "status": "pass", "reasons": []},
-            {"name": "host_readiness", "status": "pass", "reasons": []},
-            {"name": "real_transport_ready", "status": "pass", "reasons": []},
-            {"name": "android_clipboardmanager_smoke", "status": "pass", "reasons": []},
-            {"name": "bidirectional_product_e2e", "status": "pass", "reasons": []},
-        ],
-        "blockers": [],
-        "not_proven": [],
-        "safety": {
-            "offline_tests_do_not_close_gate": True,
-            "synthetic_evidence_do_not_close_gate": True,
-            "public_output_sanitized": True,
-            "raw_serial_redacted": True,
-        },
-    }
+    source_dir = repo / source_directory
+    paths = write_clipboard_pass_inputs(source_dir)
+    product_record = json.loads(paths["product"].read_text(encoding="utf-8"))
+    if mutate_product_source is not None:
+        mutate_product_source(product_record)
+        paths["product"].write_text(json.dumps(product_record), encoding="utf-8")
+    report = derive_clipboard_e2e_gate(
+        host_readiness=paths["host"],
+        usb_preflight=paths["usb"],
+        trusted_lan_preflight=paths["lan"],
+        android_clipboard_instrumentation_log=paths["android_log"],
+        product_e2e=paths["product"],
+        repo_root=repo,
+    )
     if mutate is not None:
         mutate(report)
     output_file = repo / output_path
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(json.dumps(report), encoding="utf-8")
     return output_path
+
+
+def mutate_clipboard_product_source(
+    repo: Path,
+    report_path: str,
+    mutate: Callable[[dict[str, object]], None],
+) -> None:
+    report = json.loads((repo / report_path).read_text(encoding="utf-8"))
+    source = report["source"]
+    assert isinstance(source, dict)
+    product_ref = source["product_e2e"]
+    assert isinstance(product_ref, str)
+    product_path = repo / product_ref
+    product = json.loads(product_path.read_text(encoding="utf-8"))
+    mutate(product)
+    product_path.write_text(json.dumps(product), encoding="utf-8")
 
 
 def write_file_transfer_android_gate_evidence(
@@ -1388,7 +1403,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
             self.assertTrue(
                 any(
                     "cancel_cleanup.retained_artifacts[0].path missing retained artifact "
-                    "cancel-cleanup/missing-cancel-request.txt" in issue
+                    "for cancel_request cancel-cleanup/missing-cancel-request.txt" in issue
                     for issue in issues
                 ),
                 issues,
@@ -3435,6 +3450,175 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_hardware_compatibility_matrix_rejects_failed_artifact_file_check(self) -> None:
+        def mark_missing_artifact(report: dict[str, object]) -> None:
+            artifact_file_check = report["artifact_file_check"]
+            assert isinstance(artifact_file_check, dict)
+            artifact_file_check["enabled"] = False
+            artifact_file_check["missing_paths"] = ["host-launch.log"]
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/macos-host-compatibility-bad-files",
+                    mutate_report=mark_missing_artifact,
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility-bad-files/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report artifact_file_check.enabled must be true",
+                macos_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility-bad-files/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report artifact_file_check.missing_paths must be empty",
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_rejects_failed_artifact_role_check(self) -> None:
+        def mark_unknown_role(report: dict[str, object]) -> None:
+            artifact_role_check = report["artifact_role_check"]
+            assert isinstance(artifact_role_check, dict)
+            artifact_role_check["unknown_roles"] = ["README.md:summary"]
+            artifact_role_check["roles_by_path"] = {"README.md": ["summary"]}
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/macos-host-compatibility-bad-roles",
+                    mutate_report=mark_unknown_role,
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility-bad-roles/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report artifact_role_check.unknown_roles must be empty",
+                macos_gate["issues"],
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility-bad-roles/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report artifact_role_check must identify exactly one gate_input artifact",
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_rejects_unsafe_gate_input_path(self) -> None:
+        def point_outside_bundle(report: dict[str, object]) -> None:
+            artifact_role_check = report["artifact_role_check"]
+            assert isinstance(artifact_role_check, dict)
+            artifact_role_check["roles_by_path"] = {
+                "../macos-hardware-compatibility.json": ["gate_input"]
+            }
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/macos-host-compatibility-unsafe-input",
+                    mutate_report=point_outside_bundle,
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertIn(
+                "docs/evidence/macos-host-compatibility-unsafe-input/macos-hardware-compatibility-gate.json: formal macOS Host compatibility report gate_input artifact must be evidence-relative",
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_hardware_compatibility_matrix_rejects_unreadable_gate_input_json(self) -> None:
+        def point_to_corrupt_input(report: dict[str, object]) -> None:
+            artifact_role_check = report["artifact_role_check"]
+            assert isinstance(artifact_role_check, dict)
+            artifact_role_check["roles_by_path"] = {
+                "corrupt-gate-input.json": ["gate_input"]
+            }
+
+        def run(repo: Path, base_commit: str) -> None:
+            source_dir = repo / "docs/evidence/macos-host-compatibility-corrupt-input"
+            source_dir.mkdir(parents=True, exist_ok=True)
+            (source_dir / "corrupt-gate-input.json").write_text("{", encoding="utf-8")
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "macos_host_hardware_compatibility_matrix")
+            gate["evidence_paths"] = [
+                write_macos_hardware_compatibility_evidence(
+                    repo,
+                    repository_commit=base_commit,
+                    source_directory="docs/evidence/macos-host-compatibility-corrupt-input",
+                    mutate_report=point_to_corrupt_input,
+                )
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            macos_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "macos_host_hardware_compatibility_matrix"
+            )
+            self.assertTrue(
+                any(
+                    "gate_input artifact could not be read" in issue
+                    and "corrupt-gate-input.json" in issue
+                    for issue in macos_gate["issues"]
+                ),
+                macos_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
     def test_hardware_compatibility_matrix_pass_must_match_manifest_base_commit(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
             feature = repo / "feature.txt"
@@ -3620,6 +3804,340 @@ class Phase0StableReleaseTest(unittest.TestCase):
             self.assertIn(
                 "docs/evidence/clipboard-e2e-gate.json: formal clipboard report check bidirectional_product_e2e must be pass",
                 clipboard_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_pass_requires_source_product_e2e(self) -> None:
+        def remove_source(report: dict[str, object]) -> None:
+            report.pop("source")
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
+            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=remove_source)]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            clipboard_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertIn(
+                "docs/evidence/clipboard-e2e-gate.json: formal clipboard report source must be an object",
+                clipboard_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_pass_revalidates_product_source(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
+            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo)]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text="Phase 0 stable-release summary",
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "pass")
+            self.assertTrue(summary["can_mark_phase0_stable_release"])
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_path_must_exist(self) -> None:
+        def point_to_missing_source(report: dict[str, object]) -> None:
+            source = report["source"]
+            assert isinstance(source, dict)
+            source["product_e2e"] = "docs/evidence/missing-clipboard-product-e2e.json"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo, mutate=point_to_missing_source)
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("source.product_e2e docs/evidence/missing-clipboard-product-e2e.json must exist" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_rejects_missing_retained_artifact(self) -> None:
+        def remove_source_artifact(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            direction = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(direction, dict)
+            artifacts = direction["retained_artifacts"]
+            assert isinstance(artifacts, list)
+            first_artifact = artifacts[0]
+            assert isinstance(first_artifact, dict)
+            first_artifact["path"] = "android-to-macos/missing-source-read.txt"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo)
+            mutate_clipboard_product_source(repo, report_path, remove_source_artifact)
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("source_clipboard_read" in issue and "missing retained artifact" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_rejects_mismatched_session_ids(self) -> None:
+        def mismatch_session(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            direction = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(direction, dict)
+            direction["session_id_hex"] = "11111111111111111111111111111111"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo)
+            mutate_clipboard_product_source(repo, report_path, mismatch_session)
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("direction session IDs must match" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_rejects_mismatched_session_epoch(self) -> None:
+        def mismatch_session_epoch(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            direction = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(direction, dict)
+            direction["session_epoch"] = 2
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo)
+            mutate_clipboard_product_source(repo, report_path, mismatch_session_epoch)
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("direction session_epoch values must match" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_rejects_malformed_protocol_packets(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo)
+            report = json.loads((repo / report_path).read_text(encoding="utf-8"))
+            source = report["source"]
+            assert isinstance(source, dict)
+            product_ref = source["product_e2e"]
+            assert isinstance(product_ref, str)
+            product_path = repo / product_ref
+            product = json.loads(product_path.read_text(encoding="utf-8"))
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            direction = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(direction, dict)
+            artifacts = direction["retained_artifacts"]
+            assert isinstance(artifacts, list)
+            for artifact in artifacts:
+                assert isinstance(artifact, dict)
+                if artifact.get("role") == "protocol_packets":
+                    artifact["byte_length"] = len(b"dummy\n")
+                    artifact["sha256"] = hashlib.sha256(b"dummy\n").hexdigest()
+                    break
+            product_path.write_text(json.dumps(product), encoding="utf-8")
+            protocol_path = product_path.parent / "android-to-macos/protocol-packets.jsonl"
+            protocol_path.write_text("dummy\n", encoding="utf-8")
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("protocol_packets artifact must be JSONL" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_rejects_cross_direction_artifact_reuse(self) -> None:
+        def reuse_artifact(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            android_to_macos = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(android_to_macos, dict)
+            assert isinstance(macos_to_android, dict)
+            android_artifacts = android_to_macos["retained_artifacts"]
+            macos_artifacts = macos_to_android["retained_artifacts"]
+            assert isinstance(android_artifacts, list)
+            assert isinstance(macos_artifacts, list)
+            android_sender = next(
+                item
+                for item in android_artifacts
+                if isinstance(item, dict) and item.get("role") == "sender_action"
+            )
+            macos_sender = next(
+                item
+                for item in macos_artifacts
+                if isinstance(item, dict) and item.get("role") == "sender_action"
+            )
+            assert isinstance(android_sender, dict)
+            assert isinstance(macos_sender, dict)
+            macos_sender["path"] = android_sender["path"]
+            macos_sender["byte_length"] = android_sender["byte_length"]
+            macos_sender["sha256"] = android_sender["sha256"]
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo)
+            mutate_clipboard_product_source(repo, report_path, reuse_artifact)
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(
+                any("path for sender_action must be distinct from" in issue for issue in issues),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
+    def test_clipboard_product_e2e_source_rejects_marker_reuse_and_artifact_direction_drift(self) -> None:
+        def drift_marker_and_direction(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            direction = directions["android_clipboardmanager_to_macos_nspasteboard"]
+            assert isinstance(direction, dict)
+            direction["deny_marker"] = direction["marker"]
+            artifacts = direction["retained_artifacts"]
+            assert isinstance(artifacts, list)
+            first_artifact = artifacts[0]
+            assert isinstance(first_artifact, dict)
+            first_artifact["direction"] = "macos_nspasteboard_to_android_clipboardmanager"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_clipboard_gate_evidence(repo)
+            mutate_clipboard_product_source(repo, report_path, drift_marker_and_direction)
+            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = next(
+                item["issues"]
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "clipboard_android_macos_product_e2e"
+            )
+            self.assertTrue(any("deny_marker must be distinct from marker" in issue for issue in issues), issues)
+            self.assertTrue(
+                any(
+                    ".retained_artifacts[0].direction must be android_clipboardmanager_to_macos_nspasteboard" in issue
+                    for issue in issues
+                ),
+                issues,
             )
 
         with_temporary_repo(run)
