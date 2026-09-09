@@ -504,8 +504,8 @@ bounded byte length, distinct markers for both transfer directions, and
 per-role retained artifacts whose declared direction, byte-length, and SHA-256
 metadata match the stored artifact bytes, with the destination-write artifact
 matching the direction-level payload size and digest, and retained protocol-packet
-JSONL that contains offer/request/content records matching the direction
-change ID, session epoch, and origin. The real Android ClipboardManager
+JSONL that contains offer/request/content records matching the transfer
+direction, change ID, session epoch, and origin. The real Android ClipboardManager
 <-> macOS NSPasteboard USB/LAN E2E gate remains open pending a signed
 Host/device run; see the
 [clipboard verification record](docs/changes/2026-08-16-android-macos-clipboard/TEST.md)

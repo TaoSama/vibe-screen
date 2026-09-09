@@ -416,6 +416,7 @@ def _protocol_packets_artifact_reasons(
     observed_epoch = False
     observed_origin = False
     event_records_missing_metadata: list[str] = []
+    event_records_wrong_direction: list[str] = []
     malformed_lines: list[int] = []
     change_id = direction.get("change_id_hex")
     session_epoch = direction.get("session_epoch")
@@ -461,11 +462,15 @@ def _protocol_packets_artifact_reasons(
             and bool(origin_device_id.strip())
             and origin_device_id.strip().lower() in serialized_record
         )
+        record_direction = record.get("direction")
+        event_has_direction = record_direction == label
         observed_change_id = observed_change_id or event_has_change_id
         observed_epoch = observed_epoch or event_has_epoch
         observed_origin = observed_origin or event_has_origin
         if matching_events and not (event_has_change_id and event_has_epoch and event_has_origin):
             event_records_missing_metadata.extend(sorted(matching_events))
+        if matching_events and not event_has_direction:
+            event_records_wrong_direction.extend(sorted(matching_events))
 
     reasons: list[str] = []
     if malformed_lines:
@@ -478,6 +483,12 @@ def _protocol_packets_artifact_reasons(
         reasons.append(
             f"{label}.protocol_packets event record(s) must include matching change_id_hex, "
             f"session_epoch, and origin_device_id: {', '.join(missing_metadata_events)}"
+        )
+    if event_records_wrong_direction:
+        wrong_direction_events = sorted(set(event_records_wrong_direction))
+        reasons.append(
+            f"{label}.protocol_packets event record(s) must declare direction {label}: "
+            f"{', '.join(wrong_direction_events)}"
         )
     if not observed_change_id:
         reasons.append(f"{label}.protocol_packets artifact must include change_id_hex {direction.get('change_id_hex')}")
@@ -1190,7 +1201,8 @@ def derive_gate(
             "direction, and across both directions. Every retained artifact must declare its parent direction, byte_length, and SHA-256 "
             "metadata that matches the retained file bytes, the destination_clipboard_write artifact must "
             "match the direction-level byte_length and SHA-256 payload, and protocol_packets JSONL must "
-            "contain clipboard offer/request/content records for the direction change ID, session epoch, and origin. "
+            "contain clipboard offer/request/content records for the matching transfer direction, change ID, "
+            "session epoch, and origin. "
             "Offline or synthetic coverage alone remains readiness evidence."
         ),
     }

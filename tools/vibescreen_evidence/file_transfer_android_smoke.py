@@ -435,6 +435,93 @@ def _role_content_reasons(direction: dict[str, Any], label: str, evidence_dir: P
     return reasons
 
 
+def _direction_session_markers(product: dict[str, Any]) -> tuple[set[str], set[int], set[str]]:
+    directions = product.get("directions")
+    if not isinstance(directions, dict):
+        return set(), set(), set()
+    session_ids: set[str] = set()
+    epochs: set[int] = set()
+    transfer_ids: set[str] = set()
+    for direction_name in EXPECTED_DIRECTION_ENDPOINTS:
+        direction = directions.get(direction_name)
+        if not isinstance(direction, dict):
+            continue
+        session_id = direction.get("session_id_hex")
+        if _is_hex(session_id, bytes_length=16):
+            session_ids.add(str(session_id).lower())
+        session_epoch = direction.get("session_epoch")
+        if isinstance(session_epoch, int) and not isinstance(session_epoch, bool) and session_epoch > 0:
+            epochs.add(session_epoch)
+        transfer_id = direction.get("transfer_id_hex")
+        if _is_hex(transfer_id, bytes_length=16):
+            transfer_ids.add(str(transfer_id).lower())
+    return session_ids, epochs, transfer_ids
+
+
+def _direction_session_marker_reasons(
+    session_ids: set[str],
+    session_epochs: set[int],
+    transfer_ids: set[str],
+) -> list[str]:
+    reasons: list[str] = []
+    if len(session_ids) != 1:
+        reasons.append("directions must contain exactly one shared valid session_id_hex for cleanup validation")
+    if len(session_epochs) != 1:
+        reasons.append("directions must contain exactly one shared positive session_epoch for cleanup validation")
+    if not transfer_ids:
+        reasons.append("directions must contain at least one valid transfer_id_hex for cleanup validation")
+    return reasons
+
+
+def _contains_integer_key_value(text: str, key: str, value: int) -> bool:
+    return re.search(rf"\b{re.escape(key)}={value}\b", text, re.IGNORECASE) is not None
+
+
+def _cleanup_artifact_content_reasons(
+    cleanup: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+    *,
+    session_id: str,
+    session_epoch: int,
+    transfer_ids: set[str],
+    event_role: str,
+    event_terms: Sequence[str],
+    cleanup_terms: Sequence[str],
+    require_event_transfer_id: bool,
+) -> list[str]:
+    if evidence_dir is None:
+        return []
+    reasons: list[str] = []
+    for role, required_terms in ((event_role, event_terms), ("cleanup_state", cleanup_terms)):
+        path = _resolved_artifact_path(cleanup, role, evidence_dir)
+        if path is None:
+            continue
+        try:
+            text = _artifact_text(path).lower()
+        except OSError as error:
+            reasons.append(f"{label}.{role} artifact cannot be read: {sanitize_text(error)}")
+            continue
+        if len(required_terms) == 2:
+            first, second = required_terms
+            if not _contains_word_pair(text, first.lower(), second.lower()):
+                reasons.append(f"{label}.{role} artifact must record {first} {second}")
+        else:
+            missing_terms = [term for term in required_terms if not re.search(rf"\b{re.escape(term.lower())}\b", text)]
+            if missing_terms:
+                reasons.append(f"{label}.{role} artifact must record {', '.join(missing_terms)}")
+        if not _contains_key_value(text, "session_id_hex", session_id):
+            reasons.append(f"{label}.{role} artifact must contain session_id_hex={session_id}")
+        if not _contains_integer_key_value(text, "session_epoch", session_epoch):
+            reasons.append(f"{label}.{role} artifact must contain session_epoch={session_epoch}")
+        role_requires_transfer_id = role == "cleanup_state" or (role == event_role and require_event_transfer_id)
+        if role_requires_transfer_id and not any(
+            _contains_key_value(text, "transfer_id_hex", transfer_id) for transfer_id in transfer_ids
+        ):
+            reasons.append(f"{label}.{role} artifact must contain at least one retained transfer_id_hex")
+    return reasons
+
+
 def _protocol_packets_artifact_reasons(
     path: Path,
     label: str,
@@ -994,6 +1081,10 @@ def _cancel_cleanup_gate(
         reasons.append("missing product E2E evidence: file-transfer-product-e2e.json")
     else:
         reasons.extend(_product_schema_reasons(product))
+        session_ids, session_epochs, transfer_ids = _direction_session_markers(product)
+        reasons.extend(_direction_session_marker_reasons(session_ids, session_epochs, transfer_ids))
+        session_id = next(iter(session_ids)) if len(session_ids) == 1 else None
+        session_epoch = next(iter(session_epochs)) if len(session_epochs) == 1 else None
         cancel_cleanup = product.get("cancel_cleanup")
         disconnect_cleanup = product.get("disconnect_cleanup")
         if not isinstance(cancel_cleanup, dict):
@@ -1020,6 +1111,21 @@ def _cancel_cleanup_gate(
                     retained_artifact_paths,
                 )
             )
+            if session_id is not None and session_epoch is not None:
+                reasons.extend(
+                    _cleanup_artifact_content_reasons(
+                        cancel_cleanup,
+                        "cancel_cleanup",
+                        evidence_dir,
+                        session_id=session_id,
+                        session_epoch=session_epoch,
+                        transfer_ids=transfer_ids,
+                        event_role="cancel_request",
+                        event_terms=("cancel", "requested"),
+                        cleanup_terms=("cleanup", "sender_state_cleared", "receiver_state_cleared"),
+                        require_event_transfer_id=True,
+                    )
+                )
         if not isinstance(disconnect_cleanup, dict):
             reasons.append("missing disconnect_cleanup evidence")
         else:
@@ -1043,6 +1149,21 @@ def _cancel_cleanup_gate(
                     retained_artifact_paths,
                 )
             )
+            if session_id is not None and session_epoch is not None:
+                reasons.extend(
+                    _cleanup_artifact_content_reasons(
+                        disconnect_cleanup,
+                        "disconnect_cleanup",
+                        evidence_dir,
+                        session_id=session_id,
+                        session_epoch=session_epoch,
+                        transfer_ids=transfer_ids,
+                        event_role="disconnect_event",
+                        event_terms=("disconnect", "observed"),
+                        cleanup_terms=("cleanup", "sender_state_cleared", "receiver_state_cleared"),
+                        require_event_transfer_id=False,
+                    )
+                )
     return _gate("cancel_cleanup", PASS if not reasons else BLOCKED, reasons, evidence)
 
 

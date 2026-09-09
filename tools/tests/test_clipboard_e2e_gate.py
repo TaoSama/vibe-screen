@@ -63,18 +63,21 @@ def retained_artifact_content(direction: str, role: str, path: str) -> bytes:
         records = [
             {
                 "event": "clipboard_offer",
+                "direction": direction,
                 "change_id_hex": payload["change_id_hex"],
                 "session_epoch": payload["session_epoch"],
                 "origin_device_id": payload["origin_device_id"],
             },
             {
                 "event": "clipboard_request",
+                "direction": direction,
                 "change_id_hex": payload["change_id_hex"],
                 "session_epoch": payload["session_epoch"],
                 "origin_device_id": payload["origin_device_id"],
             },
             {
                 "event": "clipboard_content",
+                "direction": direction,
                 "change_id_hex": payload["change_id_hex"],
                 "session_epoch": payload["session_epoch"],
                 "origin_device_id": payload["origin_device_id"],
@@ -362,6 +365,25 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(retained_artifact_content(direction, role, artifact_path))
     return paths
+
+
+def refresh_retained_artifact_metadata(product_path: Path, artifact_path: Path, retained_path: str) -> None:
+    document = json.loads(product_path.read_text(encoding="utf-8"))
+    content = artifact_path.read_bytes()
+    directions = document["directions"]
+    assert isinstance(directions, dict)
+    for direction_record in directions.values():
+        assert isinstance(direction_record, dict)
+        retained_artifacts = direction_record["retained_artifacts"]
+        assert isinstance(retained_artifacts, list)
+        for artifact in retained_artifacts:
+            assert isinstance(artifact, dict)
+            if artifact.get("path") == retained_path:
+                artifact["byte_length"] = len(content)
+                artifact["sha256"] = hashlib.sha256(content).hexdigest()
+                write_json(product_path, document)
+                return
+    raise AssertionError(f"missing retained artifact metadata for {retained_path}")
 
 
 class ClipboardE2EGateTests(unittest.TestCase):
@@ -1337,9 +1359,9 @@ class ClipboardE2EGateTests(unittest.TestCase):
             root = Path(directory_name)
             paths = write_pass_inputs(root)
             records = [
-                {"event": "clipboard_offer"},
-                {"event": "clipboard_request"},
-                {"event": "clipboard_content"},
+                {"event": "clipboard_offer", "direction": ANDROID_TO_MACOS_DIRECTION},
+                {"event": "clipboard_request", "direction": ANDROID_TO_MACOS_DIRECTION},
+                {"event": "clipboard_content", "direction": ANDROID_TO_MACOS_DIRECTION},
                 {
                     "event": "unrelated_diagnostic",
                     "change_id_hex": ANDROID_TO_MACOS_CHANGE_ID,
@@ -1368,6 +1390,60 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_product_e2e_requires_protocol_event_records_to_declare_matching_direction(self) -> None:
+        cases = (
+            (ANDROID_TO_MACOS_DIRECTION, MACOS_TO_ANDROID_DIRECTION, "android-to-macos/protocol-packets.jsonl"),
+            (MACOS_TO_ANDROID_DIRECTION, ANDROID_TO_MACOS_DIRECTION, "macos-to-android/protocol-packets.jsonl"),
+        )
+        for label, wrong_direction, retained_path in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory_name:
+                root = Path(directory_name)
+                paths = write_pass_inputs(root)
+                payload = direction_payload(label)
+                records = [
+                    {
+                        "event": "clipboard_offer",
+                        "direction": wrong_direction,
+                        "change_id_hex": payload["change_id_hex"],
+                        "session_epoch": payload["session_epoch"],
+                        "origin_device_id": payload["origin_device_id"],
+                    },
+                    {
+                        "event": "clipboard_request",
+                        "change_id_hex": payload["change_id_hex"],
+                        "session_epoch": payload["session_epoch"],
+                        "origin_device_id": payload["origin_device_id"],
+                    },
+                    {
+                        "event": "clipboard_content",
+                        "direction": label,
+                        "change_id_hex": payload["change_id_hex"],
+                        "session_epoch": payload["session_epoch"],
+                        "origin_device_id": payload["origin_device_id"],
+                    },
+                ]
+                artifact_path = root / retained_path
+                artifact_path.write_text(
+                    "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
+                    encoding="utf-8",
+                )
+                refresh_retained_artifact_metadata(paths["product"], artifact_path, retained_path)
+
+                result = derive_gate(
+                    host_readiness=paths["host"],
+                    usb_preflight=paths["usb"],
+                    trusted_lan_preflight=paths["lan"],
+                    android_clipboard_instrumentation_log=paths["android_log"],
+                    product_e2e=paths["product"],
+                )
+
+            self.assertEqual(result["verdict"], "blocked")
+            self.assertIn(
+                f"bidirectional_product_e2e: {label}.protocol_packets "
+                f"event record(s) must declare direction {label}: clipboard_offer, clipboard_request",
+                result["blockers"],
+            )
+
     def test_product_e2e_rejects_boolean_protocol_event_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -1376,26 +1452,33 @@ class ClipboardE2EGateTests(unittest.TestCase):
             records = [
                 {
                     "event": "clipboard_offer",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
                     "change_id_hex": payload["change_id_hex"],
                     "session_epoch": payload["session_epoch"],
                     "origin_device_id": payload["origin_device_id"],
                 },
                 {
                     "event": "clipboard_request",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
                     "change_id_hex": payload["change_id_hex"],
                     "session_epoch": True,
                     "origin_device_id": payload["origin_device_id"],
                 },
                 {
                     "event": "clipboard_content",
+                    "direction": ANDROID_TO_MACOS_DIRECTION,
                     "change_id_hex": payload["change_id_hex"],
                     "session_epoch": payload["session_epoch"],
                     "origin_device_id": payload["origin_device_id"],
                 },
             ]
-            (root / "android-to-macos" / "protocol-packets.jsonl").write_text(
+            artifact_path = root / "android-to-macos" / "protocol-packets.jsonl"
+            artifact_path.write_text(
                 "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
                 encoding="utf-8",
+            )
+            refresh_retained_artifact_metadata(
+                paths["product"], artifact_path, "android-to-macos/protocol-packets.jsonl"
             )
 
             result = derive_gate(
