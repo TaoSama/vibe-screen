@@ -24,7 +24,7 @@ used.
 Recorded in metadata/source-provenance.txt:
 
     repository=TaoSama/vibe-screen
-    worktree=/Users/luwentao/.codex/worktrees/2e7d/vibe-screen
+    worktree=<local-codex-worktree>/vibe-screen
     branch=codex/p0110-no-host-uiux-after-713-current-main
     base_head=ef7983774ff4cc8a277587fd026b18ce8cdb30a4
     origin_main=ef7983774ff4cc8a277587fd026b18ce8cdb30a4
@@ -34,7 +34,7 @@ Recorded in metadata/source-provenance.txt:
     local_change=Refreshes Nubia P0110 no-Host Android UI/UX instrumentation and focused control-surface JVM evidence after current main advanced through PR #713.
 
 This evidence is captured from a branch created from current origin/main at the
-source commit above. It is not evidence for earlier current-main snapshots.
+source commit above. It is not evidence for an older after-700 tree.
 
 ## Device
 
