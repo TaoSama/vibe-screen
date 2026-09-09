@@ -59,6 +59,29 @@ def sampled_mov_with_audio_track(
     return ftyp + mdat + moov
 
 
+def sampled_mov_with_two_video_tracks(
+    first_video_frame_count: int,
+    second_video_frame_count: int,
+    first_video_payload: bytes = b"retained-device-first-video-fragment",
+    second_video_payload: bytes = b"retained-device-second-video-fragment",
+) -> bytes:
+    if first_video_frame_count < 1 or second_video_frame_count < 1:
+        raise ValueError("sample counts must be positive")
+    first_sample = first_video_payload or b"x"
+    second_sample = second_video_payload or b"y"
+    sample_payload = (first_sample * first_video_frame_count) + (second_sample * second_video_frame_count)
+    ftyp = _box(b"ftyp", b"isom\x00\x00\x02\x00isommp42")
+    mdat_content_offset = len(ftyp) + 8
+    mdat = _box(b"mdat", sample_payload)
+    moov = _box(
+        b"moov",
+        _box(b"mvhd", b"\x00" * 16)
+        + _sampled_track(b"vide", b"avc1", first_video_frame_count, mdat_content_offset, len(first_sample))
+        + _sampled_track(b"vide", b"hvc1", second_video_frame_count, mdat_content_offset, len(second_sample)),
+    )
+    return ftyp + mdat + moov
+
+
 def _sampled_track(
     handler_type: bytes,
     sample_entry_type: bytes,

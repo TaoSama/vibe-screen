@@ -154,6 +154,10 @@ SYNCHRONIZATION_BUDGET_COMPONENTS = (
     "result_timestamp_uncertainty_ms",
 )
 REAL_CAPTURE_PLACEHOLDER_TERMS = ("fixture", "synthetic", "placeholder")
+RAW_VIDEO_SAMPLE_COUNT_AMBIGUITY_REASON = (
+    "recording.raw_video must expose exactly one unambiguous video sample count; "
+    "multiple video tracks or fragmented/ambiguous samples cannot close latency gates"
+)
 
 
 class LatencyEvidenceError(ValueError):
@@ -376,20 +380,20 @@ def _all_iso_chunk_offsets_in_media(
     return True
 
 
-def _inspect_iso_bmff_video(data: bytes) -> tuple[bool, int | None]:
+def _inspect_iso_bmff_video(data: bytes) -> tuple[bool, int | None, str | None]:
     if len(data) < 32 or data[4:8] != b"ftyp":
-        return False, None
+        return False, None, None
     top_level = list(_iter_iso_bmff_boxes(data))
     if not any(box_type == b"ftyp" for box_type, _start, _end in top_level):
-        return False, None
+        return False, None, None
     if not any(box_type == b"mdat" and end > start for box_type, start, end in top_level):
-        return False, None
+        return False, None, None
     moov_ranges = [(start, end) for box_type, start, end in top_level if box_type == b"moov"]
     mdat_ranges = [(start, end) for box_type, start, end in top_level if box_type == b"mdat"]
     total_mdat_bytes = sum(end - start for start, end in mdat_ranges)
     has_movie_header = False
     has_fragmented_video_samples = False
-    has_video_track = False
+    video_track_count = 0
     video_sample_counts: list[int] = []
     for moov_start, moov_end in moov_ranges:
         for box_type, content_start, content_end in _iter_iso_bmff_boxes(data, moov_start, moov_end):
@@ -456,7 +460,7 @@ def _inspect_iso_bmff_video(data: bytes) -> tuple[bool, int | None]:
                             )
                 has_progressive_samples = has_video_samples and has_chunk_offset_into_media
                 if has_track_header and has_video_handler and has_video_sample_description:
-                    has_video_track = True
+                    video_track_count += 1
                     if has_progressive_samples and track_sample_count is not None:
                         video_sample_counts.append(track_sample_count)
     for moof_start, moof_end in ((start, end) for box_type, start, end in top_level if box_type == b"moof"):
@@ -464,22 +468,29 @@ def _inspect_iso_bmff_video(data: bytes) -> tuple[bool, int | None]:
             if box_type == b"trun" and content_start + 8 <= content_end:
                 sample_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
                 has_fragmented_video_samples = has_fragmented_video_samples or sample_count > 0
-    is_video = has_movie_header and has_video_track and (
+    is_video = has_movie_header and video_track_count > 0 and (
         bool(video_sample_counts) or has_fragmented_video_samples
     )
-    sample_count = video_sample_counts[0] if len(video_sample_counts) == 1 else None
-    return is_video, sample_count
+    sample_count_issue = None
+    if is_video and (
+        video_track_count != 1
+        or has_fragmented_video_samples
+        or len(video_sample_counts) != 1
+    ):
+        sample_count_issue = RAW_VIDEO_SAMPLE_COUNT_AMBIGUITY_REASON
+    sample_count = video_sample_counts[0] if sample_count_issue is None and len(video_sample_counts) == 1 else None
+    return is_video, sample_count, sample_count_issue
 
 
-def _inspect_camera_video(path: Path) -> tuple[bool, int | None]:
+def _inspect_camera_video(path: Path) -> tuple[bool, int | None, str | None]:
     try:
         data = path.read_bytes()
     except OSError:
-        return False, None
+        return False, None, None
     suffix = path.suffix.lower()
     if suffix in EXTERNAL_CAMERA_CONTAINERS:
         return _inspect_iso_bmff_video(data)
-    return False, None
+    return False, None, None
 
 
 def _contains_fixture_path(path: Path) -> bool:
@@ -1075,9 +1086,11 @@ def _validate_referenced_files(
             resolved_roles[resolved] = field
     raw_video = references.get("recording.raw_video")
     if is_external_camera and raw_video is not None and raw_video.is_file():
-        is_video, sample_count = _inspect_camera_video(raw_video)
+        is_video, sample_count, sample_count_issue = _inspect_camera_video(raw_video)
         if not is_video:
             errors.append("recording.raw_video must be a readable camera video container with a supported layout")
+        if sample_count_issue is not None:
+            errors.append(sample_count_issue)
         raw_video_sample_count = sample_count
     return errors, references, raw_video_sample_count
 
