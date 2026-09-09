@@ -10,6 +10,7 @@ from unittest.mock import patch
 from tools.vibescreen_evidence.latency import (
     GATE_INTERNET_GLASS_TO_GLASS_SUB150,
     GATE_INPUT_P95_SUB50,
+    GATE_LAN_GLASS_TO_GLASS_SUB80,
     GATE_USB_GLASS_TO_GLASS_SUB50,
 )
 from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
@@ -17,7 +18,7 @@ from tools.vibescreen_evidence.latency_manifest import (
     LatencyManifestError,
     build_latency_manifest,
 )
-from tools.tests.latency_test_helpers import minimal_mov
+from tools.tests.latency_test_helpers import sampled_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -84,7 +85,7 @@ def _base_metadata() -> dict[str, object]:
 def _write_fixture_files(root: Path) -> tuple[Path, Path]:
     raw_video = root / "raw-camera-capture.mov"
     samples = root / "samples.csv"
-    raw_video.write_bytes(minimal_mov())
+    raw_video.write_bytes(sampled_mov(600))
     samples.write_text(
         "start_frame,end_frame,camera_fps\n"
         "10,18,240\n110,119,240\n210,219,240\n310,319,240\n410,419,240\n",
@@ -104,7 +105,7 @@ def _write_artifact(root: Path, name: str = "usb-connection.txt") -> Path:
     if name == "usb-connection.txt":
         contents = "usb connection setup and active stream proof\n"
     elif name == "internet-public-route-record.txt":
-        contents = "public route proof with active stream record\n"
+        contents = "public TURN route proof with remote peer and active stream record\n"
     elif name == "input-actuation.txt":
         contents = "physical input actuation visible mac result proof\n"
     else:
@@ -120,6 +121,22 @@ def _write_synchronization_artifact(root: Path) -> Path:
         encoding="utf-8",
     )
     return artifact
+
+
+def _synchronization_metadata() -> dict[str, object]:
+    return {
+        "host_clock_source": "macOS system clock",
+        "device_clock_source": "Android elapsedRealtimeNanos",
+        "sync_procedure": "ADB round-trip calibration",
+        "before_skew_ms": 1.2,
+        "after_skew_ms": 1.5,
+        "max_drift_ms": 0.8,
+        "input_timestamp_uncertainty_ms": 0.4,
+        "result_timestamp_uncertainty_ms": 0.0,
+        "total_error_budget_ms": 4.5,
+        "input_timestamp_method": "Android MotionEvent.eventTime captured at touch dispatch",
+        "result_timestamp_method": "macOS CGEvent timestamp captured at injection",
+    }
 
 
 def _valid_internet_route() -> dict[str, object]:
@@ -276,6 +293,113 @@ class LatencyManifestBuilderTest(unittest.TestCase):
                     evidence_dir=root,
                     raw_video=raw_video,
                     samples=samples,
+                    **metadata,
+                )
+
+    def test_builder_rejects_missing_required_terms_for_profile_artifacts(self) -> None:
+        cases = (
+            (
+                GATE_USB_GLASS_TO_GLASS_SUB50,
+                "usb",
+                "usb-connection.txt",
+                "USB connection setup proof without the runtime keyword\n",
+                None,
+                "including: stream",
+            ),
+            (
+                GATE_LAN_GLASS_TO_GLASS_SUB80,
+                "lan",
+                "lan-network-preflight.txt",
+                "LAN network preflight proof without the runtime keyword\n",
+                None,
+                "including: stream",
+            ),
+            (
+                GATE_INPUT_P95_SUB50,
+                "usb",
+                "input-actuation.txt",
+                "physical input actuation Mac-result proof without screen confirmation\n",
+                "synchronized-clock",
+                "including: visible",
+            ),
+            (
+                GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+                "internet",
+                "internet-public-route-record.txt",
+                "public route proof\n",
+                None,
+                "including: remote, turn, stream",
+            ),
+        )
+        for gate_profile, transport, filename, artifact_text, method, message in cases:
+            with self.subTest(gate_profile=gate_profile):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    metadata = _base_metadata()
+                    metadata["transport"] = transport
+                    metadata["gate_profile"] = gate_profile
+                    artifact = root / filename
+                    artifact.write_text(artifact_text, encoding="utf-8")
+                    internet_route = None
+                    synchronization = None
+                    synchronization_artifact = None
+                    synchronization_artifact_description = None
+                    if transport == "internet":
+                        internet_route = _valid_internet_route()
+                    if method == "synchronized-clock":
+                        metadata["latency_kind"] = "input"
+                        metadata["annotation_method"] = "direct-latency-ms"
+                        samples = _write_synchronized_clock_samples(root)
+                        raw_video = None
+                        synchronization = _synchronization_metadata()
+                        synchronization_artifact = _write_synchronization_artifact(root)
+                        synchronization_artifact_description = (
+                            "Clock synchronization proof with skew drift uncertainty and budget."
+                        )
+                    else:
+                        raw_video, samples = _write_fixture_files(root)
+
+                    with self.assertRaisesRegex(LatencyManifestError, message):
+                        build_latency_manifest(
+                            evidence_dir=root,
+                            raw_video=raw_video,
+                            samples=samples,
+                            gate_artifact=artifact,
+                            gate_artifact_description="Retained profile artifact.",
+                            measurement_method=method or "external-camera",
+                            synchronization=synchronization,
+                            synchronization_artifact=synchronization_artifact,
+                            synchronization_artifact_description=synchronization_artifact_description,
+                            internet_route=internet_route,
+                            **metadata,
+                        )
+
+    def test_builder_rejects_missing_required_terms_for_synchronization_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = _write_synchronized_clock_samples(root)
+            artifact = _write_artifact(root, "input-actuation.txt")
+            synchronization_artifact = root / "synchronization-record.txt"
+            synchronization_artifact.write_text(
+                "clock synchronization proof with skew drift uncertainty\n",
+                encoding="utf-8",
+            )
+            metadata = _base_metadata()
+            metadata["latency_kind"] = "input"
+            metadata["annotation_method"] = "direct-latency-ms"
+            metadata["gate_profile"] = GATE_INPUT_P95_SUB50
+
+            with self.assertRaisesRegex(LatencyManifestError, "including: budget"):
+                build_latency_manifest(
+                    evidence_dir=root,
+                    raw_video=None,
+                    samples=samples,
+                    gate_artifact=artifact,
+                    gate_artifact_description="Physical input actuation and visible Mac result proof.",
+                    measurement_method="synchronized-clock",
+                    synchronization=_synchronization_metadata(),
+                    synchronization_artifact=synchronization_artifact,
+                    synchronization_artifact_description="Clock synchronization proof.",
                     **metadata,
                 )
 
@@ -839,6 +963,187 @@ class LatencyManifestCliTest(unittest.TestCase):
         self.assertEqual(manifest["internet_route"]["network_topology"]["same_private_network"], False)
         self.assertIn("internet_public_route_record", manifest["gate_artifacts"])
         self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_rejects_weak_internet_route_artifact_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            artifact.write_text(
+                "public route proof with active return stream record\n",
+                encoding="utf-8",
+            )
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            arguments[arguments.index("--transport") + 1] = "internet"
+            arguments[arguments.index("--gate-profile") + 1] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            arguments[arguments.index("--gate-artifact") + 1] = str(artifact)
+            arguments[arguments.index("--gate-artifact-description") + 1] = (
+                "Public Internet route and active stream proof."
+            )
+
+            result = self.run_cli(
+                *arguments,
+                "--device-manufacturer",
+                "nubia",
+                "--device-model",
+                "P0110",
+                "--device-codename",
+                "pacific",
+                "--device-os-version",
+                "Android 16 / SDK 36",
+                "--device-sdk",
+                "36",
+                "--device-build-fingerprint",
+                "nubia/pacific/pacific:16/test-keys",
+                "--internet-route",
+                "forced-public-turn",
+                "--turn-provider",
+                "example provider",
+                "--turn-region",
+                "us-west",
+                "--turn-public-hostname",
+                "1.1.1.1",
+                "--turn-resolved-ip",
+                "1.1.1.1",
+                "--turn-tls",
+                "turns",
+                "--turn-credential-source",
+                "authority-issued short-lived credential",
+                "--remote-peer-operator",
+                "remote tester",
+                "--remote-peer-network",
+                "remote carrier",
+                "--remote-peer-public-ip-asn",
+                "AS64500",
+                "--remote-peer-location",
+                "remote lab",
+                "--local-candidate-type",
+                "relay",
+                "--remote-candidate-type",
+                "relay",
+                "--relay-protocol",
+                "turn-tls",
+                "--host-network",
+                "home ISP",
+                "--device-network",
+                "remote carrier",
+                "--different-private-network",
+            )
+
+            self.assertFalse((root / "manifest.json").exists())
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "gate_artifacts.internet_public_route_record.file must describe "
+            "internet public route record evidence including: remote, turn",
+            result.stderr,
+        )
+
+    def test_cli_rejects_negated_internet_route_artifact_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "internet-public-route-record.txt")
+            artifact.write_text(
+                "public route remote TURN stream not established during the run\n",
+                encoding="utf-8",
+            )
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            arguments[arguments.index("--transport") + 1] = "internet"
+            arguments[arguments.index("--gate-profile") + 1] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
+            arguments[arguments.index("--gate-artifact") + 1] = str(artifact)
+            arguments[arguments.index("--gate-artifact-description") + 1] = (
+                "Public Internet route and active stream proof."
+            )
+
+            result = self.run_cli(
+                *arguments,
+                "--device-manufacturer",
+                "nubia",
+                "--device-model",
+                "P0110",
+                "--device-codename",
+                "pacific",
+                "--device-os-version",
+                "Android 16 / SDK 36",
+                "--device-sdk",
+                "36",
+                "--device-build-fingerprint",
+                "nubia/pacific/pacific:16/test-keys",
+                "--internet-route",
+                "forced-public-turn",
+                "--turn-provider",
+                "example provider",
+                "--turn-region",
+                "us-west",
+                "--turn-public-hostname",
+                "1.1.1.1",
+                "--turn-resolved-ip",
+                "1.1.1.1",
+                "--turn-tls",
+                "turns",
+                "--turn-credential-source",
+                "authority-issued short-lived credential",
+                "--remote-peer-operator",
+                "remote tester",
+                "--remote-peer-network",
+                "remote carrier",
+                "--remote-peer-public-ip-asn",
+                "AS64500",
+                "--remote-peer-location",
+                "remote lab",
+                "--local-candidate-type",
+                "relay",
+                "--remote-candidate-type",
+                "relay",
+                "--relay-protocol",
+                "turn-tls",
+                "--host-network",
+                "home ISP",
+                "--device-network",
+                "remote carrier",
+                "--different-private-network",
+            )
+
+            self.assertFalse((root / "manifest.json").exists())
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("negated required-state evidence", result.stderr)
+
+    def test_cli_rejects_failed_lan_artifact_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+            artifact = _write_artifact(root, "lan-network-preflight.txt")
+            artifact.write_text("lan stream disconnected during the run\n", encoding="utf-8")
+            arguments = self.valid_cli_args(root, raw_video, samples)
+            arguments[arguments.index("--transport") + 1] = "lan"
+            arguments[arguments.index("--gate-profile") + 1] = "lan-glass-to-glass-sub80"
+            arguments[arguments.index("--gate-artifact") + 1] = str(artifact)
+            arguments[arguments.index("--gate-artifact-description") + 1] = (
+                "LAN network preflight and active stream proof."
+            )
+
+            result = self.run_cli(
+                *arguments,
+                "--device-manufacturer",
+                "nubia",
+                "--device-model",
+                "P0110",
+                "--device-codename",
+                "pacific",
+                "--device-os-version",
+                "Android 16 / SDK 36",
+                "--device-sdk",
+                "36",
+                "--device-build-fingerprint",
+                "nubia/pacific/pacific:16/test-keys",
+            )
+
+            self.assertFalse((root / "manifest.json").exists())
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("failed or absent evidence state", result.stderr)
 
     def test_cli_requires_explicit_internet_private_network_topology(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -33,7 +33,9 @@ from .latency import (
     summarize,
 )
 from .latency_artifact_text import (
+    LATENCY_ARTIFACT_CONTENT_REQUIREMENTS,
     latency_artifact_blocking_reason,
+    missing_latency_artifact_terms,
     read_latency_artifact_text,
 )
 
@@ -61,13 +63,6 @@ PROFILE_ARTIFACT_REQUIREMENTS = {
         "input_actuation_record",
         "retain real physical input actuation and visible Mac-side result proof",
     ),
-}
-PROFILE_ARTIFACT_CONTENT_REQUIREMENTS = {
-    "usb_connection": ("usb", "stream"),
-    "lan_network_preflight": ("lan", "stream"),
-    "internet_public_route_record": ("public", "route"),
-    "input_actuation_record": ("physical", "input", "visible"),
-    "synchronization_record": ("skew", "drift", "uncertainty", "budget"),
 }
 SYNCHRONIZED_CLOCK_ARTIFACT_REQUIREMENT = (
     "synchronization_record",
@@ -154,6 +149,10 @@ SYNCHRONIZATION_BUDGET_COMPONENTS = (
     "result_timestamp_uncertainty_ms",
 )
 REAL_CAPTURE_PLACEHOLDER_TERMS = ("fixture", "synthetic", "placeholder")
+RAW_VIDEO_SAMPLE_COUNT_AMBIGUITY_REASON = (
+    "recording.raw_video must expose exactly one unambiguous video sample count; "
+    "multiple video tracks or fragmented/ambiguous samples cannot close latency gates"
+)
 
 
 class LatencyEvidenceError(ValueError):
@@ -376,93 +375,117 @@ def _all_iso_chunk_offsets_in_media(
     return True
 
 
-def _looks_like_iso_bmff_video(data: bytes) -> bool:
+def _inspect_iso_bmff_video(data: bytes) -> tuple[bool, int | None, str | None]:
     if len(data) < 32 or data[4:8] != b"ftyp":
-        return False
+        return False, None, None
     top_level = list(_iter_iso_bmff_boxes(data))
     if not any(box_type == b"ftyp" for box_type, _start, _end in top_level):
-        return False
+        return False, None, None
     if not any(box_type == b"mdat" and end > start for box_type, start, end in top_level):
-        return False
+        return False, None, None
     moov_ranges = [(start, end) for box_type, start, end in top_level if box_type == b"moov"]
     mdat_ranges = [(start, end) for box_type, start, end in top_level if box_type == b"mdat"]
     total_mdat_bytes = sum(end - start for start, end in mdat_ranges)
     has_movie_header = False
-    has_track_header = False
-    has_video_handler = False
-    has_video_samples = False
     has_fragmented_video_samples = False
-    has_video_sample_description = False
-    has_chunk_offset_into_media = False
+    video_track_count = 0
+    video_sample_counts: list[int] = []
     for moov_start, moov_end in moov_ranges:
-        for box_type, content_start, content_end in _walk_iso_bmff_boxes(data, moov_start, moov_end):
+        for box_type, content_start, content_end in _iter_iso_bmff_boxes(data, moov_start, moov_end):
             if box_type == b"mvhd":
                 has_movie_header = True
-            elif box_type == b"tkhd":
-                has_track_header = True
-            elif box_type == b"hdlr" and content_start + 12 <= content_end:
-                has_video_handler = has_video_handler or data[content_start + 8:content_start + 12] == b"vide"
-            elif box_type == b"stsd" and content_start + 16 <= content_end:
-                entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
-                sample_entry = data[content_start + 12:content_start + 16]
-                has_video_sample_description = has_video_sample_description or (
-                    entry_count > 0 and sample_entry in {b"avc1", b"avc3", b"hvc1", b"hev1", b"mp4v"}
-                )
-            elif box_type == b"stsz" and content_start + 12 <= content_end:
-                default_sample_size = int.from_bytes(data[content_start + 4:content_start + 8], "big")
-                sample_count = int.from_bytes(data[content_start + 8:content_start + 12], "big")
-                has_sample_sizes = False
-                total_sample_size = 0
-                if sample_count > 0:
-                    if default_sample_size > 0:
-                        has_sample_sizes = True
-                        total_sample_size = default_sample_size * sample_count
-                    elif content_start + 12 + (sample_count * 4) <= content_end:
-                        for index in range(sample_count):
-                            sample_offset = content_start + 12 + (index * 4)
-                            sample_size = int.from_bytes(
-                                data[sample_offset:sample_offset + 4], "big"
+            elif box_type == b"trak":
+                has_track_header = False
+                has_video_handler = False
+                has_video_samples = False
+                has_video_sample_description = False
+                has_chunk_offset_into_media = False
+                track_sample_count: int | None = None
+                for child_type, child_start, child_end in _walk_iso_bmff_boxes(
+                    data,
+                    content_start,
+                    content_end,
+                ):
+                    if child_type == b"tkhd":
+                        has_track_header = True
+                    elif child_type == b"hdlr" and child_start + 12 <= child_end:
+                        has_video_handler = (
+                            has_video_handler
+                            or data[child_start + 8:child_start + 12] == b"vide"
+                        )
+                    elif child_type == b"stsd" and child_start + 16 <= child_end:
+                        entry_count = int.from_bytes(data[child_start + 4:child_start + 8], "big")
+                        sample_entry = data[child_start + 12:child_start + 16]
+                        has_video_sample_description = has_video_sample_description or (
+                            entry_count > 0
+                            and sample_entry in {b"avc1", b"avc3", b"hvc1", b"hev1", b"mp4v"}
+                        )
+                    elif child_type == b"stsz" and child_start + 12 <= child_end:
+                        default_sample_size = int.from_bytes(data[child_start + 4:child_start + 8], "big")
+                        sample_count = int.from_bytes(data[child_start + 8:child_start + 12], "big")
+                        has_sample_sizes = False
+                        total_sample_size = 0
+                        if sample_count > 0:
+                            track_sample_count = sample_count
+                            if default_sample_size > 0:
+                                has_sample_sizes = True
+                                total_sample_size = default_sample_size * sample_count
+                            elif child_start + 12 + (sample_count * 4) <= child_end:
+                                for index in range(sample_count):
+                                    sample_offset = child_start + 12 + (index * 4)
+                                    sample_size = int.from_bytes(
+                                        data[sample_offset:sample_offset + 4], "big"
+                                    )
+                                    total_sample_size += sample_size
+                                    has_sample_sizes = has_sample_sizes or sample_size > 0
+                        has_video_samples = has_video_samples or (
+                            has_sample_sizes and 0 < total_sample_size <= total_mdat_bytes
+                        )
+                    elif child_type == b"stco" and child_start + 12 <= child_end:
+                        entry_count = int.from_bytes(data[child_start + 4:child_start + 8], "big")
+                        if entry_count > 0 and child_start + 8 + (entry_count * 4) <= child_end:
+                            has_chunk_offset_into_media = has_chunk_offset_into_media or (
+                                _all_iso_chunk_offsets_in_media(data, child_start, entry_count, 4, mdat_ranges)
                             )
-                            total_sample_size += sample_size
-                            has_sample_sizes = has_sample_sizes or sample_size > 0
-                has_video_samples = has_video_samples or (
-                    has_sample_sizes and 0 < total_sample_size <= total_mdat_bytes
-                )
-            elif box_type == b"stco" and content_start + 12 <= content_end:
-                entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
-                if entry_count > 0 and content_start + 8 + (entry_count * 4) <= content_end:
-                    has_chunk_offset_into_media = has_chunk_offset_into_media or (
-                        _all_iso_chunk_offsets_in_media(data, content_start, entry_count, 4, mdat_ranges)
-                    )
-            elif box_type == b"co64" and content_start + 16 <= content_end:
-                entry_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
-                if entry_count > 0 and content_start + 8 + (entry_count * 8) <= content_end:
-                    has_chunk_offset_into_media = has_chunk_offset_into_media or (
-                        _all_iso_chunk_offsets_in_media(data, content_start, entry_count, 8, mdat_ranges)
-                    )
-            elif box_type == b"trun" and content_start + 8 <= content_end:
-                sample_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
-                has_fragmented_video_samples = has_fragmented_video_samples or sample_count > 0
+                    elif child_type == b"co64" and child_start + 16 <= child_end:
+                        entry_count = int.from_bytes(data[child_start + 4:child_start + 8], "big")
+                        if entry_count > 0 and child_start + 8 + (entry_count * 8) <= child_end:
+                            has_chunk_offset_into_media = has_chunk_offset_into_media or (
+                                _all_iso_chunk_offsets_in_media(data, child_start, entry_count, 8, mdat_ranges)
+                            )
+                has_progressive_samples = has_video_samples and has_chunk_offset_into_media
+                if has_track_header and has_video_handler and has_video_sample_description:
+                    video_track_count += 1
+                    if has_progressive_samples and track_sample_count is not None:
+                        video_sample_counts.append(track_sample_count)
     for moof_start, moof_end in ((start, end) for box_type, start, end in top_level if box_type == b"moof"):
         for box_type, content_start, content_end in _walk_iso_bmff_boxes(data, moof_start, moof_end):
             if box_type == b"trun" and content_start + 8 <= content_end:
                 sample_count = int.from_bytes(data[content_start + 4:content_start + 8], "big")
                 has_fragmented_video_samples = has_fragmented_video_samples or sample_count > 0
-    has_progressive_samples = has_video_samples and has_chunk_offset_into_media
-    return has_movie_header and has_track_header and has_video_handler and has_video_sample_description and (
-        has_progressive_samples or has_fragmented_video_samples
+    is_video = has_movie_header and video_track_count > 0 and (
+        bool(video_sample_counts) or has_fragmented_video_samples
     )
+    sample_count_issue = None
+    if is_video and (
+        video_track_count != 1
+        or has_fragmented_video_samples
+        or len(video_sample_counts) != 1
+    ):
+        sample_count_issue = RAW_VIDEO_SAMPLE_COUNT_AMBIGUITY_REASON
+    sample_count = video_sample_counts[0] if sample_count_issue is None and len(video_sample_counts) == 1 else None
+    return is_video, sample_count, sample_count_issue
 
 
-def _looks_like_camera_video(path: Path) -> bool:
+def _inspect_camera_video(path: Path) -> tuple[bool, int | None, str | None]:
     try:
         data = path.read_bytes()
     except OSError:
-        return False
+        return False, None, None
     suffix = path.suffix.lower()
-    if suffix in {".mp4", ".mov", ".m4v"}:
-        return _looks_like_iso_bmff_video(data)
-    return False
+    if suffix in EXTERNAL_CAMERA_CONTAINERS:
+        return _inspect_iso_bmff_video(data)
+    return False, None, None
 
 
 def _contains_fixture_path(path: Path) -> bool:
@@ -624,8 +647,7 @@ def _validate_artifact_content(
     field: str, path: Path | None, errors: list[str]
 ) -> None:
     artifact_key = field.split(".", 2)[1] if field.startswith("gate_artifacts.") else field
-    required_tokens = PROFILE_ARTIFACT_CONTENT_REQUIREMENTS.get(artifact_key)
-    if required_tokens is None or path is None or not path.is_file():
+    if path is None or not path.is_file():
         return
     try:
         text = read_latency_artifact_text(path)
@@ -635,14 +657,16 @@ def _validate_artifact_content(
     except OSError as error:
         errors.append(f"cannot read {path}: {error}")
         return
-    normalized = text.lower()
     blocking_reason = latency_artifact_blocking_reason(text)
     if blocking_reason is not None:
         errors.append(
             f"{field}.file describes {blocking_reason}; retained latency artifacts must "
             "be closing evidence, not blocked readiness or diagnostic-only context"
         )
-    missing = [token for token in required_tokens if token not in normalized]
+    required_tokens = LATENCY_ARTIFACT_CONTENT_REQUIREMENTS.get(artifact_key)
+    if required_tokens is None:
+        return
+    missing = missing_latency_artifact_terms(text, required_tokens)
     if missing:
         errors.append(
             f"{field}.file must describe {artifact_key.replace('_', ' ')} evidence "
@@ -651,7 +675,7 @@ def _validate_artifact_content(
 
 
 def _validate_raw_camera_package_metadata(
-    manifest: dict[str, Any], raw_video: Path | None
+    manifest: dict[str, Any], raw_video: Path | None, raw_video_sample_count: int | None
 ) -> list[str]:
     errors: list[str] = []
     if manifest.get("measurement_method") != METHOD_EXTERNAL_CAMERA:
@@ -710,6 +734,12 @@ def _validate_raw_camera_package_metadata(
             errors.append(
                 "recording.duration_ms must match recording.frame_count and "
                 "camera.frame_rate_fps within one frame"
+            )
+    if raw_video is not None and raw_video.is_file() and frame_count is not None:
+        if raw_video_sample_count is not None and raw_video_sample_count != frame_count:
+            errors.append(
+                "recording.frame_count must match raw video sample count "
+                f"(declared {frame_count}, raw video {raw_video_sample_count})"
             )
     return errors
 
@@ -963,8 +993,9 @@ def _validate_referenced_files(
     manifest_path: Path,
     manifest: dict[str, Any],
     gate_profile: str,
-) -> tuple[list[str], dict[str, Path | None]]:
+) -> tuple[list[str], dict[str, Path | None], int | None]:
     errors: list[str] = []
+    raw_video_sample_count: int | None = None
     is_external_camera = manifest.get("measurement_method") == METHOD_EXTERNAL_CAMERA
     recording = manifest.get("recording") if isinstance(manifest.get("recording"), dict) else {}
     samples = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
@@ -1050,9 +1081,14 @@ def _validate_referenced_files(
         else:
             resolved_roles[resolved] = field
     raw_video = references.get("recording.raw_video")
-    if is_external_camera and raw_video is not None and raw_video.is_file() and not _looks_like_camera_video(raw_video):
-        errors.append("recording.raw_video must be a readable camera video container with a supported layout")
-    return errors, references
+    if is_external_camera and raw_video is not None and raw_video.is_file():
+        is_video, sample_count, sample_count_issue = _inspect_camera_video(raw_video)
+        if not is_video:
+            errors.append("recording.raw_video must be a readable camera video container with a supported layout")
+        if sample_count_issue is not None:
+            errors.append(sample_count_issue)
+        raw_video_sample_count = sample_count
+    return errors, references, raw_video_sample_count
 
 
 def _validate_sample_annotations(
@@ -1160,11 +1196,17 @@ def build_latency_evidence_report(
     errors.extend(_validate_real_capture_placeholders(manifest))
     errors.extend(_validate_required_metadata(manifest))
     errors.extend(_validate_internet_route(manifest, gate_profile))
-    reference_errors, references = _validate_referenced_files(manifest_path, manifest, gate_profile)
+    reference_errors, references, raw_video_sample_count = _validate_referenced_files(
+        manifest_path,
+        manifest,
+        gate_profile,
+    )
     errors.extend(reference_errors)
     errors.extend(
         _validate_raw_camera_package_metadata(
-            manifest, references.get("recording.raw_video")
+            manifest,
+            references.get("recording.raw_video"),
+            raw_video_sample_count,
         )
     )
 

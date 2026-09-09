@@ -175,6 +175,14 @@ The `gate_artifacts` object is profile-specific. Use `usb_connection` for
 `synchronization_record` artifact containing the clock-alignment transcript,
 skew checks, drift check, and error-budget derivation. Each entry must point to
 a retained package-relative file with a matching SHA-256 digest.
+The retained artifact text must state affirmative observations for the required
+runtime state; text that says a stream, route, input, or synchronization proof
+was absent, inactive, disconnected, unavailable, or otherwise not observed keeps
+the package fail-closed. For `internet-glass-to-glass-sub150`, the
+`internet_public_route_record` artifact must itself describe the public route,
+remote peer, TURN endpoint, and active stream proof for the run; a summary label
+such as "public route" is not sufficient even when the structured manifest has
+matching route metadata.
 The `evidence_provenance.current_base` and `build` source fields must describe
 the same clean source state. `dirty` and `source_dirty` must both be `false`; a
 dirty worktree cannot close a latency gate.
