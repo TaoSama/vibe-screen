@@ -1,0 +1,154 @@
+[
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-04T15:16:53Z",
+    "headRefName": "codex/android-incoming-transfer-controls-20260904",
+    "headRefOid": "1833a98e065b95a1f92d56ee75f502527efa14a0",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 568,
+    "state": "CLOSED",
+    "title": "fix(android): keep incoming transfer controls reachable",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/568"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-04T22:38:43Z",
+    "headRefName": "codex/android-no-host-p0110-evidence",
+    "headRefOid": "3aa1d928823503116959abff9d93c8b6a5539566",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 576,
+    "state": "CLOSED",
+    "title": "docs: add P0110 no-host UI/UX evidence",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/576"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-06T08:15:14Z",
+    "headRefName": "codex/host-tcc-identity-bound-preflight",
+    "headRefOid": "7b7200b5b31d6aaaac0cc879b98b377a454e3691",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 627,
+    "state": "CLOSED",
+    "title": "Harden Host TCC identity preflight",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/627"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-06T19:55:32Z",
+    "headRefName": "codex/harden-evidence-audio-boundaries-20260907",
+    "headRefOid": "89dae74a643af66e906aa2f94c2a6ab2cf3c5187",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 646,
+    "state": "CLOSED",
+    "title": "test: harden evidence and audio boundaries",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/646"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-07T01:23:40Z",
+    "headRefName": "docs/phase0-aggregate-after-pr-653",
+    "headRefOid": "536d13e352b4d97ea5dbb9585f88c6d34f54b46f",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 655,
+    "state": "CLOSED",
+    "title": "docs: refresh phase0 aggregate after PR 653",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/655"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-08T18:30:54Z",
+    "headRefName": "codex/host-rss-2h-no-growth-audit",
+    "headRefOid": "012cba8046797e12502df2a935592730b91a304a",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 704,
+    "state": "CLOSED",
+    "title": "test: harden Host RSS readiness safety gate",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/704"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": "2026-09-09T10:17:46Z",
+    "headRefName": "codex/phase0-aggregate-after-pr-723",
+    "headRefOid": "0dac7225428f8f65f1ec33fe4d1d657bcb0c9436",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 724,
+    "state": "CLOSED",
+    "title": "docs: refresh phase0 aggregate after PR 723",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/724"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjExMzkyODI5",
+      "is_bot": false,
+      "login": "TaoSama",
+      "name": "Wentao Lu"
+    },
+    "baseRefName": "main",
+    "closedAt": null,
+    "headRefName": "codex/phase0-after-727-aggregate",
+    "headRefOid": "d1ef90d70998d7ba7e39fcb29b30db249124e85f",
+    "isDraft": false,
+    "mergeCommit": null,
+    "mergedAt": null,
+    "number": 729,
+    "state": "OPEN",
+    "title": "docs: refresh phase0 aggregate after PR 727",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/729"
+  }
+]
