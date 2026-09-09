@@ -12,10 +12,14 @@ from tools.vibescreen_evidence.latency import (
     GATE_INPUT_P95_SUB50,
     GATE_USB_GLASS_TO_GLASS_SUB50,
 )
-from tools.vibescreen_evidence.latency_evidence import build_latency_evidence_report
+from tools.vibescreen_evidence.latency_evidence import (
+    _validate_artifact_content,
+    build_latency_evidence_report,
+)
 from tools.vibescreen_evidence.latency_artifact_text import (
     ARTIFACT_BLOCKING_PATTERNS,
     latency_artifact_blocking_reason,
+    missing_latency_artifact_terms,
 )
 from tools.tests.latency_test_helpers import minimal_mov
 
@@ -195,7 +199,10 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         manifest["transport"] = "internet"
         manifest["gate_profile"] = GATE_INTERNET_GLASS_TO_GLASS_SUB150
         route_artifact = root / "internet-public-route-record.txt"
-        route_artifact.write_text("public route proof with active stream\n", encoding="utf-8")
+        route_artifact.write_text(
+            "public TURN route proof with remote peer and active stream\n",
+            encoding="utf-8",
+        )
         manifest["gate_artifacts"] = {
             "internet_public_route_record": {
                 "file": route_artifact.name,
@@ -388,6 +395,30 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "1.1.1.1",
         )
         self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_internet_latency_artifact_must_retain_route_remote_turn_and_stream_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.make_internet_manifest(root)
+            manifest["internet_route"] = self.valid_internet_route()
+            route_artifact = root / "internet-public-route-record.txt"
+            route_artifact.write_text("public route proof\n", encoding="utf-8")
+            artifact = manifest["gate_artifacts"]["internet_public_route_record"]
+            assert isinstance(artifact, dict)
+            artifact["sha256"] = hashlib.sha256(route_artifact.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.internet_public_route_record.file must describe internet public route record evidence including: remote, turn, stream",
+            report["gate"]["reasons"],
+        )
 
     def test_internet_latency_package_rejects_loopback_or_lan_route(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -974,6 +1005,8 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "explicit non-closing evidence": "USB stream was observed but cannot close the latency gate.",
             "missing synchronized-clock evidence": "Input timing has no retained synchronized-clock proof.",
             "missing physical-input evidence": "Input timing has no real physical-input evidence.",
+            "negated required-state evidence": "USB stream was not active during the sample window.",
+            "failed or absent evidence state": "Absent evidence for LAN stream during the sample window.",
         }
 
         self.assertEqual(len(examples), len(ARTIFACT_BLOCKING_PATTERNS))
@@ -1004,11 +1037,59 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "USB stream remained active with no-Host restart during the sample window.",
             "Orientation change does not close socket while active stream continues.",
             "Reconfiguration does not close the active stream during the run.",
+            "USB stream remained active; disconnect and failure markers were absent.",
+            "Input proof retained visible Mac result; unavailable-state blockers were absent.",
+            "USB stream was never disconnected during the sample window.",
+            "Software timestamps were not measured; hardware camera timestamping was used.",
         )
 
         for text in allowed_texts:
             with self.subTest(text=text):
                 self.assertIsNone(latency_artifact_blocking_reason(text))
+
+    def test_latency_artifact_required_terms_use_word_boundaries(self) -> None:
+        self.assertEqual(
+            missing_latency_artifact_terms(
+                "public route proof with remote peer, active return stream record",
+                ("public", "route", "remote", "turn", "stream"),
+            ),
+            ["turn"],
+        )
+        self.assertEqual(
+            missing_latency_artifact_terms(
+                "public routing proof with remote peer, active streaming over turns relay",
+                ("public", "route", "remote", "turn", "stream"),
+            ),
+            [],
+        )
+        self.assertEqual(
+            missing_latency_artifact_terms(
+                "physically actuated input with Mac-result visibility proof",
+                ("physical", "input", "visible"),
+            ),
+            [],
+        )
+
+    def test_unknown_gate_artifact_still_rejects_non_closing_text(self) -> None:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as artifact:
+            artifact.write("diagnostic only\n")
+            artifact.flush()
+            errors: list[str] = []
+
+            _validate_artifact_content(
+                "gate_artifacts.custom_record",
+                Path(artifact.name),
+                errors,
+            )
+
+        self.assertEqual(
+            errors,
+            [
+                "gate_artifacts.custom_record.file describes diagnostic-only evidence; "
+                "retained latency artifacts must be closing evidence, not blocked "
+                "readiness or diagnostic-only context"
+            ],
+        )
 
     def test_gate_artifact_that_declares_no_host_context_is_insufficient(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1033,6 +1114,122 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertEqual(report["verdict"], "insufficient")
         self.assertIn(
             "gate_artifacts.usb_connection.file describes no-Host diagnostic evidence; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
+            report["gate"]["reasons"],
+        )
+
+    def test_gate_artifacts_with_negated_required_state_are_insufficient(self) -> None:
+        cases = (
+            (
+                GATE_USB_GLASS_TO_GLASS_SUB50,
+                "usb_connection",
+                "usb-connection.txt",
+                "usb stream not active during the run\n",
+                "negated required-state evidence",
+            ),
+            (
+                "lan-glass-to-glass-sub80",
+                "lan_network_preflight",
+                "lan-network-preflight.txt",
+                "lan stream disconnected during the run\n",
+                "failed or absent evidence state",
+            ),
+            (
+                GATE_INTERNET_GLASS_TO_GLASS_SUB150,
+                "internet_public_route_record",
+                "internet-public-route-record.txt",
+                "public route remote TURN stream not established during the run\n",
+                "negated required-state evidence",
+            ),
+        )
+
+        for gate_profile, artifact_key, filename, artifact_text, blocking_reason in cases:
+            with self.subTest(gate_profile=gate_profile):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    if gate_profile == GATE_INTERNET_GLASS_TO_GLASS_SUB150:
+                        manifest = self.make_internet_manifest(root)
+                        manifest["internet_route"] = self.valid_internet_route()
+                    else:
+                        manifest = self.copy_valid_package(root)
+                        if gate_profile == "lan-glass-to-glass-sub80":
+                            manifest["transport"] = "lan"
+                            manifest["gate_profile"] = gate_profile
+                    artifact_path = root / filename
+                    artifact_path.write_text(artifact_text, encoding="utf-8")
+                    manifest["gate_artifacts"] = {
+                        artifact_key: {
+                            "file": filename,
+                            "sha256": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
+                            "description": "Retained profile artifact.",
+                        }
+                    }
+                    self.write_manifest(root, manifest)
+
+                    report = build_latency_evidence_report(
+                        manifest_path=root / "manifest.json",
+                        gate_profile=gate_profile,
+                    )
+
+                self.assertEqual(report["gate"]["summary_verdict"], "pass")
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertIn(
+                    f"gate_artifacts.{artifact_key}.file describes {blocking_reason}; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
+                    report["gate"]["reasons"],
+                )
+
+    def test_input_gate_artifact_with_negated_visibility_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            artifact_path = root / "input-actuation.txt"
+            artifact_path.write_text(
+                "physical input was not visible on the mac result during the run\n",
+                encoding="utf-8",
+            )
+            artifacts = manifest["gate_artifacts"]
+            assert isinstance(artifacts, dict)
+            input_record = artifacts["input_actuation_record"]
+            assert isinstance(input_record, dict)
+            input_record["sha256"] = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.input_actuation_record.file describes negated required-state evidence; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronization_artifact_with_negated_state_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_synchronized_clock_package(root)
+            artifact_path = root / "synchronization-record.txt"
+            artifact_path.write_text(
+                "clock synchronization proof with skew drift uncertainty budget record not retained during the run\n",
+                encoding="utf-8",
+            )
+            artifacts = manifest["gate_artifacts"]
+            assert isinstance(artifacts, dict)
+            sync_record = artifacts["synchronization_record"]
+            assert isinstance(sync_record, dict)
+            sync_record["sha256"] = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "gate_artifacts.synchronization_record.file describes negated required-state evidence; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
             report["gate"]["reasons"],
         )
 
