@@ -1,0 +1,23 @@
+git fetch origin main --prune
+git switch -c codex/phase0-aggregate-after-pr-723 origin/main
+mkdir -p docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked
+git rev-parse --verify HEAD > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/head.txt
+git log --oneline -12 >> docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/head.txt
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/open-prs.json
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,author | jq -c '.[] | select(.number>=568 and .number<=723)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/merged-prs-568-723.jsonl
+for n in 568 576 627 646 655 704; do gh pr view "$n" --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,author; done | jq -s 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/closed-prs-568-723.json
+for n in 722 723; do gh pr view "$n" --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,author,body,files > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/pr-$n-merged.json; done
+for run in 34336431276 34336431285 34336431282; do gh run view "$run" --repo TaoSama/vibe-screen --json databaseId,workflowName,event,status,conclusion,headSha,headBranch,createdAt,updatedAt,url,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/github-run-$run.json; done
+make phase0-module-ownership-gate PHASE0_MODULE_OWNERSHIP_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/phase0-module-ownership-summary.json
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=75c2e551d84d11009901a69ad8499a03048da595 PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/phase0-stable-release-summary.json
+status=0; PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=75c2e551d84d11009901a69ad8499a03048da595 PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/phase0-stable-release-summary.json make phase0-stable-release-gate || status=$?; printf '%s\n' "$status" > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/phase0-stable-release-expected-source-exit.txt
+make phase0-stable-release-gate
+make phase0-module-ownership-gate
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release tools.tests.test_macos_hardware_compatibility -v
+make evidence-tools-test
+make release-tools-test
+git diff --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy.RepositoryPrivacyTests.test_current_tree_has_no_raw_android_serial_contexts -v
+! rg -n '[a]db -s (?!<redacted-adb-serial>)|[E]P[0-9A-Z]{10,}' docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked -S --pcre2
+find docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked -maxdepth 1 -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/SHA256SUMS
+shasum -a 256 -c docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-723-current-main-gate-blocked/SHA256SUMS
