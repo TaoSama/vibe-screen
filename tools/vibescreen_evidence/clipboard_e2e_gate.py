@@ -33,6 +33,7 @@ DEFAULT_DEVICE_IDENTITY = {
     "sdk": 36,
 }
 LOCAL_MAXIMUM_CLIPBOARD_BYTES = 1_048_576
+CLIPBOARD_HOST_PORT = 54321
 REQUIRED_ANDROID_CLIPBOARD_SMOKE_TESTS = 8
 REQUIRED_ANDROID_CLIPBOARD_SMOKE_METHODS = (
     "foregroundActivityCanUseAndroidSystemClipboardLocally",
@@ -65,6 +66,7 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "negative_boundary_verification",
 )
 SESSION_ID_HEX_RE = re.compile(r"[0-9a-fA-F]{32}")
+COMMIT_HASH_RE = re.compile(r"[0-9a-fA-F]{40}")
 HASH_CHUNK_BYTES = 1024 * 1024
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
@@ -402,6 +404,33 @@ def _source_clipboard_artifact_reasons(
     )
 
 
+def _record_string_field_matches(record: dict[str, Any], key: str, expected: Any) -> bool:
+    return (
+        isinstance(expected, str)
+        and bool(expected.strip())
+        and record.get(key) == expected
+    )
+
+
+def _record_hex_field_matches(record: dict[str, Any], key: str, expected: Any, *, length: int) -> bool:
+    return (
+        isinstance(expected, str)
+        and re.fullmatch(rf"[0-9a-fA-F]{{{length}}}", expected) is not None
+        and isinstance(record.get(key), str)
+        and record[key].lower() == expected.lower()
+    )
+
+
+def _record_integer_field_matches(record: dict[str, Any], key: str, expected: Any) -> bool:
+    return (
+        isinstance(expected, int)
+        and not isinstance(expected, bool)
+        and isinstance(record.get(key), int)
+        and not isinstance(record.get(key), bool)
+        and record[key] == expected
+    )
+
+
 def _protocol_packets_artifact_reasons(
     direction: dict[str, Any],
     label: str,
@@ -413,14 +442,20 @@ def _protocol_packets_artifact_reasons(
     required_events = {"clipboard_offer", "clipboard_request", "clipboard_content"}
     observed_events: set[str] = set()
     observed_change_id = False
+    observed_session_id = False
     observed_epoch = False
     observed_origin = False
     event_records_missing_metadata: list[str] = []
     event_records_wrong_direction: list[str] = []
+    ambiguous_event_lines: list[int] = []
     malformed_lines: list[int] = []
     change_id = direction.get("change_id_hex")
+    session_id = direction.get("session_id_hex")
     session_epoch = direction.get("session_epoch")
     origin_device_id = direction.get("origin_device_id")
+    mime_type = direction.get("mime_type")
+    byte_length = direction.get("byte_length")
+    sha256 = direction.get("sha256")
     try:
         lines = protocol_artifact.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as error:
@@ -442,32 +477,35 @@ def _protocol_packets_artifact_reasons(
             if str(record.get(key, "")).strip()
         }
         matching_events = required_events & event_names
+        if len(matching_events) > 1:
+            ambiguous_event_lines.append(line_number)
+            continue
         observed_events.update(matching_events)
-        serialized_record = json.dumps(record, sort_keys=True).lower()
-        event_has_change_id = (
-            isinstance(change_id, str)
-            and re.fullmatch(r"[0-9a-fA-F]{32}", change_id) is not None
-            and change_id.lower() in serialized_record
-        )
-        record_session_epoch = record.get("session_epoch")
-        event_has_epoch = (
-            isinstance(session_epoch, int)
-            and not isinstance(session_epoch, bool)
-            and isinstance(record_session_epoch, int)
-            and not isinstance(record_session_epoch, bool)
-            and record_session_epoch == session_epoch
-        )
-        event_has_origin = (
-            isinstance(origin_device_id, str)
-            and bool(origin_device_id.strip())
-            and origin_device_id.strip().lower() in serialized_record
-        )
+        event_has_change_id = _record_hex_field_matches(record, "change_id_hex", change_id, length=32)
+        event_has_session_id = _record_hex_field_matches(record, "session_id_hex", session_id, length=32)
+        event_has_epoch = _record_integer_field_matches(record, "session_epoch", session_epoch)
+        event_has_origin = _record_string_field_matches(record, "origin_device_id", origin_device_id)
+        event_has_payload_metadata = True
+        payload_events = {"clipboard_offer", "clipboard_content"}
+        if matching_events & payload_events:
+            event_has_payload_metadata = (
+                _record_string_field_matches(record, "mime_type", mime_type)
+                and _record_integer_field_matches(record, "byte_length", byte_length)
+                and _record_hex_field_matches(record, "sha256", sha256, length=64)
+            )
         record_direction = record.get("direction")
         event_has_direction = record_direction == label
         observed_change_id = observed_change_id or event_has_change_id
+        observed_session_id = observed_session_id or event_has_session_id
         observed_epoch = observed_epoch or event_has_epoch
         observed_origin = observed_origin or event_has_origin
-        if matching_events and not (event_has_change_id and event_has_epoch and event_has_origin):
+        if matching_events and not (
+            event_has_change_id
+            and event_has_session_id
+            and event_has_epoch
+            and event_has_origin
+            and event_has_payload_metadata
+        ):
             event_records_missing_metadata.extend(sorted(matching_events))
         if matching_events and not event_has_direction:
             event_records_wrong_direction.extend(sorted(matching_events))
@@ -475,6 +513,11 @@ def _protocol_packets_artifact_reasons(
     reasons: list[str] = []
     if malformed_lines:
         reasons.append(f"{label}.protocol_packets artifact must be JSONL; malformed line(s): {malformed_lines[:5]}")
+    if ambiguous_event_lines:
+        reasons.append(
+            f"{label}.protocol_packets event record(s) must identify exactly one clipboard event; "
+            f"ambiguous line(s): {ambiguous_event_lines[:5]}"
+        )
     missing_events = sorted(required_events - observed_events)
     if missing_events:
         reasons.append(f"{label}.protocol_packets artifact missing event(s): {', '.join(missing_events)}")
@@ -482,7 +525,8 @@ def _protocol_packets_artifact_reasons(
         missing_metadata_events = sorted(set(event_records_missing_metadata))
         reasons.append(
             f"{label}.protocol_packets event record(s) must include matching change_id_hex, "
-            f"session_epoch, and origin_device_id: {', '.join(missing_metadata_events)}"
+            f"session_id_hex, session_epoch, origin_device_id, and offer/content payload metadata: "
+            f"{', '.join(missing_metadata_events)}"
         )
     if event_records_wrong_direction:
         wrong_direction_events = sorted(set(event_records_wrong_direction))
@@ -492,6 +536,8 @@ def _protocol_packets_artifact_reasons(
         )
     if not observed_change_id:
         reasons.append(f"{label}.protocol_packets artifact must include change_id_hex {direction.get('change_id_hex')}")
+    if not observed_session_id:
+        reasons.append(f"{label}.protocol_packets artifact must include session_id_hex {direction.get('session_id_hex')}")
     if not observed_epoch:
         reasons.append(f"{label}.protocol_packets artifact must include session_epoch {direction.get('session_epoch')}")
     if not observed_origin:
@@ -577,6 +623,17 @@ def _android_origin_device_id_failure(origin_device_id: Any, identity: dict[str,
     return "android_clipboardmanager_to_macos_nspasteboard.origin_device_id must identify the P0110/pacific Android device"
 
 
+def _macos_origin_device_id_failure(origin_device_id: Any) -> str | None:
+    if not isinstance(origin_device_id, str) or not origin_device_id.strip():
+        return None
+    normalized_origin = origin_device_id.lower()
+    if any(term in normalized_origin for term in ("android", "p0110", "pacific", "xiaomi", "fuxi", "2211133c")):
+        return "macos_nspasteboard_to_android_clipboardmanager.origin_device_id must not include an Android device identity"
+    if "macos" in normalized_origin and "host" in normalized_origin:
+        return None
+    return "macos_nspasteboard_to_android_clipboardmanager.origin_device_id must identify the macOS Host"
+
+
 def _load_optional(path: Path | None, label: str) -> tuple[dict[str, Any] | None, list[str]]:
     if path is None:
         return None, [f"missing {label}"]
@@ -608,11 +665,38 @@ def _host_readiness_structural_reasons(host: dict[str, Any]) -> list[str]:
         reasons.append("Host readiness kind must be macos_host_shared_prerequisite_readiness")
     if host.get("signing_tcc_status") != "ready":
         reasons.append(f"Host readiness signing_tcc_status must be ready, got {host.get('signing_tcc_status')!r}")
+    host_identity = host.get("host")
+    if not isinstance(host_identity, dict):
+        reasons.append("Host readiness host identity must be present")
+    else:
+        current_source_commit = host_identity.get("current_source_commit")
+        current_source_tree = host_identity.get("current_source_tree")
+        source_commit = host_identity.get("source_commit")
+        source_tree = host_identity.get("source_tree")
+        if not isinstance(current_source_commit, str) or COMMIT_HASH_RE.fullmatch(current_source_commit) is None:
+            reasons.append("Host readiness host.current_source_commit must be a 40-character commit hash")
+        if not isinstance(current_source_tree, str) or COMMIT_HASH_RE.fullmatch(current_source_tree) is None:
+            reasons.append("Host readiness host.current_source_tree must be a 40-character tree hash")
+        if host_identity.get("current_source_dirty") is not False:
+            reasons.append("Host readiness host.current_source_dirty must be false")
+        if not isinstance(source_commit, str) or COMMIT_HASH_RE.fullmatch(source_commit) is None:
+            reasons.append("Host readiness host.source_commit must be a 40-character commit hash")
+        if not isinstance(source_tree, str) or COMMIT_HASH_RE.fullmatch(source_tree) is None:
+            reasons.append("Host readiness host.source_tree must be a 40-character tree hash")
+        if host_identity.get("source_dirty") is not False:
+            reasons.append("Host readiness host.source_dirty must be false")
+        if isinstance(current_source_commit, str) and isinstance(source_commit, str) and current_source_commit.lower() != source_commit.lower():
+            reasons.append("Host readiness host.source_commit must match host.current_source_commit")
+        if isinstance(current_source_tree, str) and isinstance(source_tree, str) and current_source_tree.lower() != source_tree.lower():
+            reasons.append("Host readiness host.source_tree must match host.current_source_tree")
     listener = host.get("listener")
     if not isinstance(listener, dict):
         reasons.append("Host readiness listener must be present")
-    elif listener.get("observed") is not True:
-        reasons.append(f"Host readiness listener.observed must be true, got {listener.get('observed')!r}")
+    else:
+        if listener.get("observed") is not True:
+            reasons.append(f"Host readiness listener.observed must be true, got {listener.get('observed')!r}")
+        if listener.get("port") != CLIPBOARD_HOST_PORT:
+            reasons.append(f"Host readiness listener.port must be {CLIPBOARD_HOST_PORT}")
     permissions = host.get("permissions")
     if not isinstance(permissions, dict):
         reasons.append("Host readiness permissions must be present")
@@ -638,12 +722,84 @@ def _usb_gate(usb: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, A
                     reasons.append(str(item))
             if not blockers:
                 reasons.append("USB preflight did not pass")
+        for field in (
+            "host_listener_observed",
+            "adb_reverse_tcp_54321_present",
+            "android_app_foreground",
+        ):
+            if claims.get(field) is not True:
+                reasons.append(f"USB preflight claims.{field} must be true")
+        if _source_base_commit(usb) is None:
+            reasons.append("USB preflight source.base_commit must be a 40-character commit hash")
     return _gate(
         "usb_preflight",
         PASS if not reasons else BLOCKED,
         reasons,
         ["usb-smoke-preflight.json"] if usb else [],
     )
+
+
+def _source_base_commit(record: dict[str, Any] | None) -> str | None:
+    if not isinstance(record, dict):
+        return None
+    source = record.get("source")
+    if isinstance(source, dict):
+        base_commit = source.get("base_commit")
+        if isinstance(base_commit, str) and COMMIT_HASH_RE.fullmatch(base_commit):
+            return base_commit.lower()
+    repository = record.get("repository")
+    if isinstance(repository, dict):
+        revision = repository.get("revision")
+        if isinstance(revision, str) and COMMIT_HASH_RE.fullmatch(revision):
+            return revision.lower()
+    return None
+
+
+def _host_source_commit(host: dict[str, Any] | None) -> str | None:
+    if not isinstance(host, dict):
+        return None
+    host_identity = host.get("host")
+    if not isinstance(host_identity, dict):
+        return None
+    current_source_commit = host_identity.get("current_source_commit")
+    if isinstance(current_source_commit, str) and COMMIT_HASH_RE.fullmatch(current_source_commit):
+        return current_source_commit.lower()
+    return None
+
+
+def _source_provenance_gate(
+    host: dict[str, Any] | None,
+    usb: dict[str, Any] | None,
+    lan: dict[str, Any] | None,
+    product: dict[str, Any] | None,
+    available_transports: set[str],
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    host_commit = _host_source_commit(host)
+    product_commit = _source_base_commit(product)
+    if host_commit is None:
+        reasons.append("Host readiness host.current_source_commit must identify the current source commit")
+    if product_commit is None:
+        reasons.append("product E2E source.base_commit must be a 40-character commit hash")
+    if host_commit is not None and product_commit is not None and host_commit != product_commit:
+        reasons.append("Host readiness and product E2E source commits must match")
+    if "usb" in available_transports:
+        usb_commit = _source_base_commit(usb)
+        if usb_commit is None:
+            reasons.append("ready USB preflight source.base_commit must be a 40-character commit hash")
+        elif host_commit is not None and usb_commit != host_commit:
+            reasons.append("ready USB preflight source.base_commit must match Host readiness source commit")
+        elif product_commit is not None and usb_commit != product_commit:
+            reasons.append("ready USB preflight source.base_commit must match product E2E source commit")
+    if "trusted_lan" in available_transports:
+        lan_commit = _source_base_commit(lan)
+        if lan_commit is None:
+            reasons.append("ready trusted-LAN preflight repository.revision must be a 40-character commit hash")
+        elif host_commit is not None and lan_commit != host_commit:
+            reasons.append("ready trusted-LAN preflight repository.revision must match Host readiness source commit")
+        elif product_commit is not None and lan_commit != product_commit:
+            reasons.append("ready trusted-LAN preflight repository.revision must match product E2E source commit")
+    return _gate("source_provenance", PASS if not reasons else BLOCKED, reasons, [])
 
 
 def _lan_gate(lan: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, Any]:
@@ -853,6 +1009,10 @@ def _direction_reasons(
         and product_device_identity is not None
     ):
         origin_failure = _android_origin_device_id_failure(origin_device_id, product_device_identity)
+        if origin_failure is not None:
+            reasons.append(origin_failure)
+    elif label == "macos_nspasteboard_to_android_clipboardmanager":
+        origin_failure = _macos_origin_device_id_failure(origin_device_id)
         if origin_failure is not None:
             reasons.append(origin_failure)
     byte_length = direction.get("byte_length")
@@ -1129,6 +1289,7 @@ def derive_gate(
         usb_gate,
         lan_gate,
         _transport_gate(usb_gate, lan_gate),
+        _source_provenance_gate(host, usb, lan, product, available_transports),
         _android_clipboard_gate(android_clipboard_instrumentation_log),
         _product_e2e_gate(
             product,
@@ -1142,6 +1303,7 @@ def derive_gate(
         "device_identity",
         "host_readiness",
         "real_transport_ready",
+        "source_provenance",
         "android_clipboardmanager_smoke",
         "bidirectional_product_e2e",
     }
@@ -1170,6 +1332,12 @@ def derive_gate(
         "checks": sanitize_value(gates),
         "blockers": sanitize_value(blockers),
         "source": {
+            "host_readiness": _source_path(host_readiness, repo_root=repo_root),
+            "usb_preflight": _source_path(usb_preflight, repo_root=repo_root),
+            "trusted_lan_preflight": _source_path(trusted_lan_preflight, repo_root=repo_root),
+            "android_clipboard_instrumentation_log": _source_path(
+                android_clipboard_instrumentation_log, repo_root=repo_root
+            ),
             "product_e2e": _source_path(product_e2e, repo_root=repo_root),
         },
         "not_proven": [
@@ -1202,7 +1370,8 @@ def derive_gate(
             "metadata that matches the retained file bytes, the destination_clipboard_write artifact must "
             "match the direction-level byte_length and SHA-256 payload, and protocol_packets JSONL must "
             "contain clipboard offer/request/content records for the matching transfer direction, change ID, "
-            "session epoch, and origin. "
+            "session ID, session epoch, and origin, with offer/content records also matching text/plain, "
+            "byte_length, and SHA-256 payload metadata. "
             "Offline or synthetic coverage alone remains readiness evidence."
         ),
     }
