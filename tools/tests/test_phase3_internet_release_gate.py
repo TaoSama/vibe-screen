@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from vibescreen_evidence.phase3_internet_release_gate import REQUIRED_RAW_ARTIFACTS, derive_gate, main
-from tools.tests.latency_test_helpers import write_minimal_mov
+from tools.tests.latency_test_helpers import sampled_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -447,14 +447,15 @@ def write_latency_package(root: Path, route: str) -> None:
     raw_video = root / f"latency/{route}/raw-camera.mov"
     samples = root / f"latency/{route}/samples.csv"
     route_record = root / f"latency/{route}/internet-public-route-record.txt"
-    write_minimal_mov(raw_video)
+    raw_video.parent.mkdir(parents=True, exist_ok=True)
+    raw_video.write_bytes(sampled_mov(600, b"phase3-internet-real-shaped-video"))
     touch(
         samples,
         "start_frame,end_frame,camera_fps\n"
         "100,124,240\n200,225,240\n300,326,240\n"
         "400,427,240\n500,528,240\n",
     )
-    touch(route_record, "public Internet route proof\n")
+    touch(route_record, "public Internet TURN route proof with remote peer and active stream\n")
     manifest = latency_manifest(route)
     manifest["recording"]["sha256"] = hashlib.sha256(raw_video.read_bytes()).hexdigest()
     manifest["recording"]["file_size_bytes"] = raw_video.stat().st_size
@@ -909,6 +910,62 @@ class Phase3InternetReleaseGateTest(unittest.TestCase):
             latency_gate["reasons"],
         )
         self.assertTrue(any("public Internet TURN hostname" in reason for reason in latency_gate["reasons"]))
+
+    def test_latency_report_pass_with_weak_route_artifact_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            route_artifact = root / "latency/direct/internet-public-route-record.txt"
+            route_artifact.write_text(
+                "public route proof with active return stream record\n",
+                encoding="utf-8",
+            )
+            manifest = json.loads((root / "latency/direct/manifest.json").read_text(encoding="utf-8"))
+            manifest["gate_artifacts"]["internet_public_route_record"]["sha256"] = hashlib.sha256(
+                route_artifact.read_bytes()
+            ).hexdigest()
+            write_json(root / "latency/direct/manifest.json", manifest)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        latency_gate = next(gate for gate in result["gates"] if gate["name"] == "direct_external_camera_latency")
+        self.assertIn(
+            "direct formal latency package verdict is 'insufficient', not 'pass'",
+            latency_gate["reasons"],
+        )
+        self.assertIn(
+            "direct formal latency package: gate_artifacts.internet_public_route_record.file must describe internet public route record evidence including: remote, turn",
+            latency_gate["reasons"],
+        )
+
+    def test_latency_report_pass_with_negated_route_artifact_is_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            populate_bundle(root)
+            route_artifact = root / "latency/direct/internet-public-route-record.txt"
+            route_artifact.write_text(
+                "public route remote TURN stream not established during the run\n",
+                encoding="utf-8",
+            )
+            manifest = json.loads((root / "latency/direct/manifest.json").read_text(encoding="utf-8"))
+            manifest["gate_artifacts"]["internet_public_route_record"]["sha256"] = hashlib.sha256(
+                route_artifact.read_bytes()
+            ).hexdigest()
+            write_json(root / "latency/direct/manifest.json", manifest)
+
+            result = derive_gate(root)
+
+        self.assertEqual(result["verdict"], "insufficient")
+        latency_gate = next(gate for gate in result["gates"] if gate["name"] == "direct_external_camera_latency")
+        self.assertIn(
+            "direct formal latency package verdict is 'insufficient', not 'pass'",
+            latency_gate["reasons"],
+        )
+        self.assertIn(
+            "direct formal latency package: gate_artifacts.internet_public_route_record.file describes negated required-state evidence; retained latency artifacts must be closing evidence, not blocked readiness or diagnostic-only context",
+            latency_gate["reasons"],
+        )
 
     def test_non_internet_latency_report_cannot_close_release_gate(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
