@@ -291,7 +291,7 @@ def load_host_readiness(host_readiness: Path | None) -> dict[str, Any]:
         return {"present": False, "readable": False, "document": {}}
     try:
         document = json.loads(host_readiness.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError) as error:
         return {"present": True, "readable": False, "error": str(error), "document": {}}
     if not isinstance(document, dict):
         return {"present": True, "readable": False, "error": "host readiness JSON is not an object", "document": {}}
