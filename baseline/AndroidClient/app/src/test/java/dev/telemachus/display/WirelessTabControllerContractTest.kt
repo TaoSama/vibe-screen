@@ -80,6 +80,32 @@ class WirelessTabControllerContractTest {
     }
 
     @Test
+    fun wirelessLifecycleRoutesThroughExpectedStatePanels() {
+        val source = wirelessTabControllerSource()
+        val onScanResult = extractMethod(source, "fun onScanResult")
+        val onConnectSuccess = extractMethod(source, "fun onConnectSuccess")
+        val onStreamDisconnected = extractMethod(source, "fun onStreamDisconnected")
+        val onConnectError = extractMethod(source, "fun onConnectError")
+
+        assertTrue(onScanResult.contains("storage.save(PairedHostStorage.Entry"))
+        assertTrue(onScanResult.contains("showConnecting("))
+        assertTrue(onScanResult.contains("onConnectRequested(parsed.host, parsed.port, parsed.token, deviceName, parsed.macName)"))
+
+        assertTrue(onConnectSuccess.contains("LiveRegionTextApplier.apply(views.connectedMacName, macName)"))
+        assertTrue(onConnectSuccess.contains("LiveRegionTextApplier.apply(views.connectedMacIp, ip)"))
+        assertTrue(onConnectSuccess.contains("transition(State.CONNECTED)"))
+
+        assertTrue(onStreamDisconnected.contains("storage.load() ?: run"))
+        assertTrue(onStreamDisconnected.contains("transition(State.FIRST_TIME)"))
+        assertTrue(onStreamDisconnected.contains("showIdleReconnectState()"))
+        assertTrue(onStreamDisconnected.contains("transition(State.PAIRED_IDLE)"))
+
+        assertTrue(onConnectError.contains("StreamClient.WirelessConnectError.NetworkUnreachable"))
+        assertTrue(onConnectError.contains("showRepairMessage("))
+        assertTrue(onConnectError.contains("transition(State.REPAIR_NEEDED)"))
+    }
+
+    @Test
     fun pairedIdleStateClearsCountdownAndKeepsReconnectActionReady() {
         val source = wirelessTabControllerSource()
         val showIdleReconnectState = extractMethod(source, "private fun showIdleReconnectState")
