@@ -35,6 +35,7 @@ from .controller_runtime import (
     BOOLEAN_FIELDS as CONTROLLER_RUNTIME_BOOLEAN_FIELDS,
 )
 from .native_pointer_hid import (
+    ARTIFACT_FIELD_REQUIREMENTS as NATIVE_POINTER_HID_ARTIFACT_FIELD_REQUIREMENTS,
     BOOLEAN_FIELDS as NATIVE_POINTER_HID_BOOLEAN_FIELDS,
     GATE_KIND as NATIVE_POINTER_HID_GATE_KIND,
 )
@@ -905,6 +906,7 @@ def _formal_native_pointer_hid_report_issues(
             "dumpsys-input.txt",
             "android-logcat-native-pointer.txt",
             "host-log-appended.txt",
+            "host-readiness.json",
         }
         missing_artifacts = [
             name for name in required_artifact_names if name not in artifact_paths
@@ -914,6 +916,37 @@ def _formal_native_pointer_hid_report_issues(
                 f"{path}: formal native pointer HID report artifact_paths missing "
                 + ", ".join(sorted(missing_artifacts))
             )
+    observation_artifacts = record.get("observation_artifacts")
+    if not isinstance(observation_artifacts, dict) or not observation_artifacts:
+        issues.append(
+            f"{path}: formal native pointer HID report observation_artifacts must be a non-empty object"
+        )
+    elif isinstance(artifact_paths, list):
+        retained = {item for item in artifact_paths if isinstance(item, str)}
+        mapped_native_pointer_observations = (
+            set(NATIVE_POINTER_HID_ARTIFACT_FIELD_REQUIREMENTS)
+            & set(NATIVE_POINTER_HID_BOOLEAN_FIELDS)
+        )
+        true_observations = [
+            field
+            for field in NATIVE_POINTER_HID_BOOLEAN_FIELDS
+            if field in mapped_native_pointer_observations
+            if isinstance(record.get("observations"), dict)
+            and record["observations"].get(field) is True
+        ]
+        for field in true_observations:
+            paths = observation_artifacts.get(field)
+            if not isinstance(paths, list) or not paths or not all(isinstance(item, str) for item in paths):
+                issues.append(
+                    f"{path}: formal native pointer HID report observation_artifacts.{field} must be a non-empty list of strings"
+                )
+                continue
+            missing_paths = sorted(item for item in paths if item not in retained)
+            if missing_paths:
+                issues.append(
+                    f"{path}: formal native pointer HID report observation_artifacts.{field} must reference retained artifact_paths: "
+                    + ", ".join(missing_paths)
+                )
     return issues
 
 

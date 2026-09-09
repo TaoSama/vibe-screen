@@ -251,7 +251,10 @@ direct Protocol v1 calls are diagnostics only; they cannot close the native
 pointer move/click gate. Use `make native-pointer-hid-acceptance` to collect a
 bundle and `make native-pointer-hid-gate` to re-check an existing bundle. The
 gate is closed only when `native-pointer-hid-summary.json` reports
-`verdict=pass` and `can_close_native_pointer_hid_gate=true`.
+`verdict=pass`, `can_close_native_pointer_hid_gate=true`, and retained
+`observation_artifacts` map every true runtime observation to evidence-bundle
+artifact paths for the physical Android pointer source, Android forwarding logs,
+Host injection logs, Host readiness, and visible Mac result.
 
 Android Protocol v1 audio playback evidence is also fail-closed. The summary
 tool reads a retained `android-audio-playback-observations.json` and writes

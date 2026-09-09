@@ -698,6 +698,7 @@ def write_native_pointer_hid_evidence(
         "dumpsys-input.txt",
         "android-logcat-native-pointer.txt",
         "host-log-appended.txt",
+        "host-readiness.json",
     ):
         (evidence_dir / artifact_name).write_text(
             f"{artifact_name} evidence\n", encoding="utf-8"
@@ -733,6 +734,38 @@ def write_native_pointer_hid_evidence(
         "android_logcat_bytes": 200,
         "host_log_appended_bytes": 180,
         "host_log": "host-log-appended.txt",
+        "artifact_paths": [
+            "result.json",
+            "dumpsys-input.txt",
+            "android-logcat-native-pointer.txt",
+            "host-log-appended.txt",
+            "host-readiness.json",
+        ],
+        "observation_artifacts": {
+            "adb_was_run": ["result.json"],
+            "device_identity_recorded": ["result.json"],
+            "device_identity_matches_claim": ["result.json"],
+            "physical_mouse_attached": ["dumpsys-input.txt"],
+            "default_gate_events_required": ["result.json"],
+            "android_move_forwarded": ["android-logcat-native-pointer.txt"],
+            "android_forwarding_device_ids_match_external_mouse": [
+                "dumpsys-input.txt",
+                "android-logcat-native-pointer.txt",
+            ],
+            "android_required_events_share_external_mouse_device": [
+                "android-logcat-native-pointer.txt"
+            ],
+            "android_button_press_forwarded": ["android-logcat-native-pointer.txt"],
+            "android_button_release_forwarded": ["android-logcat-native-pointer.txt"],
+            "host_pointer_changed_injected": ["host-log-appended.txt"],
+            "host_pointer_began_injected": ["host-log-appended.txt"],
+            "host_pointer_ended_injected": ["host-log-appended.txt"],
+            "host_stable_signed_tcc_ready": ["host-readiness.json"],
+            "visible_mac_result_observed": ["result.json"],
+            "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
+            "host_log_window_retained": ["host-log-appended.txt"],
+            "collector_reported_passed": ["result.json"],
+        },
     }
     report = summarize_native_pointer_hid(
         record, run_id="phase0-native-pointer", source_path=Path("result.json")
@@ -2293,12 +2326,118 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 for item in summary["blocking_required_gates"]
                 if item["id"] == "native_pointer_hid_mouse"
             )
-            self.assertIn(
-                f"{report_path}: formal native pointer HID report artifact_paths missing host-log-appended.txt",
+            self.assertTrue(
+                any(
+                    "formal native pointer HID report artifact_paths missing" in issue
+                    and "host-log-appended.txt" in issue
+                    and "host-readiness.json" in issue
+                    for issue in native_gate["issues"]
+                ),
                 native_gate["issues"],
             )
 
         with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_observation_artifact_mapping(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_native_pointer_hid_evidence(
+                repo,
+                output_path="docs/evidence/native-pointer-no-observation-artifacts/native-pointer-hid-summary.json",
+                mutate_report=lambda report: report.__setitem__("observation_artifacts", {}),
+            )
+            gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            native_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "native_pointer_hid_mouse"
+            )
+            self.assertIn(
+                f"{report_path}: formal native pointer HID report observation_artifacts must be a non-empty object",
+                native_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_observation_artifacts_to_be_retained(self) -> None:
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_native_pointer_hid_evidence(
+                repo,
+                output_path="docs/evidence/native-pointer-unretained-observation-artifact/native-pointer-hid-summary.json",
+                mutate_report=lambda report: report["observation_artifacts"].__setitem__(
+                    "host_pointer_changed_injected", ["missing-host-log.txt"]
+                ),
+            )
+            gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            native_gate = next(
+                item
+                for item in summary["blocking_required_gates"]
+                if item["id"] == "native_pointer_hid_mouse"
+            )
+            self.assertIn(
+                f"{report_path}: formal native pointer HID report observation_artifacts.host_pointer_changed_injected must reference retained artifact_paths: missing-host-log.txt",
+                native_gate["issues"],
+            )
+
+        with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_shared_required_observation_mappings(self) -> None:
+        for field in (
+            "adb_was_run",
+            "default_gate_events_required",
+            "collector_reported_passed",
+        ):
+            with self.subTest(field=field):
+                def run(repo: Path, base_commit: str) -> None:
+                    manifest = complete_manifest_for_repo(repo, base_commit)
+                    report_path = write_native_pointer_hid_evidence(
+                        repo,
+                        output_path=f"docs/evidence/native-pointer-missing-{field}/native-pointer-hid-summary.json",
+                        mutate_report=lambda report: report["observation_artifacts"].pop(field),
+                    )
+                    gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                        report_path
+                    ]
+
+                    summary = evaluate_manifest(
+                        manifest,
+                        readme_text=GUARDED_README_TEXT,
+                        repo_root=repo,
+                    )
+
+                    self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                    native_gate = next(
+                        item
+                        for item in summary["blocking_required_gates"]
+                        if item["id"] == "native_pointer_hid_mouse"
+                    )
+                    self.assertIn(
+                        f"{report_path}: formal native pointer HID report observation_artifacts.{field} must be a non-empty list of strings",
+                        native_gate["issues"],
+                    )
+
+                with_temporary_repo(run)
 
     def test_native_pointer_hid_pass_requires_complete_observations(self) -> None:
         def run(repo: Path, base_commit: str) -> None:

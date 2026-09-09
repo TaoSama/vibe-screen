@@ -20,6 +20,7 @@
     "inconsistent_observations",
     "blocking_reasons",
     "artifact_paths",
+    "observation_artifacts",
     "blocking_notes",
     "notes"
   ],
@@ -116,6 +117,13 @@
       }
     },
     "artifact_paths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "observation_artifacts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+      }
+    },
     "blocking_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "notes": {"type": "string"}
   }

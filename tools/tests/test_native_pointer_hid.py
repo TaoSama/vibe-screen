@@ -36,6 +36,39 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
             "visible_mac_result": "Mac cursor moved and primary click focused TextEdit.",
             "android_logcat_bytes": 200,
             "host_log_appended_bytes": 180,
+            "host_log": "host-log-appended.txt",
+            "artifact_paths": [
+                "result.json",
+                "dumpsys-input.txt",
+                "android-logcat-native-pointer.txt",
+                "host-log-appended.txt",
+                "host-readiness.json",
+            ],
+            "observation_artifacts": {
+                "adb_was_run": ["result.json"],
+                "device_identity_recorded": ["result.json"],
+                "device_identity_matches_claim": ["result.json"],
+                "physical_mouse_attached": ["dumpsys-input.txt"],
+                "default_gate_events_required": ["result.json"],
+                "android_move_forwarded": ["android-logcat-native-pointer.txt"],
+                "android_forwarding_device_ids_match_external_mouse": [
+                    "dumpsys-input.txt",
+                    "android-logcat-native-pointer.txt",
+                ],
+                "android_required_events_share_external_mouse_device": [
+                    "android-logcat-native-pointer.txt"
+                ],
+                "android_button_press_forwarded": ["android-logcat-native-pointer.txt"],
+                "android_button_release_forwarded": ["android-logcat-native-pointer.txt"],
+                "host_pointer_changed_injected": ["host-log-appended.txt"],
+                "host_pointer_began_injected": ["host-log-appended.txt"],
+                "host_pointer_ended_injected": ["host-log-appended.txt"],
+                "host_stable_signed_tcc_ready": ["host-readiness.json"],
+                "visible_mac_result_observed": ["result.json"],
+                "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
+                "host_log_window_retained": ["host-log-appended.txt"],
+                "collector_reported_passed": ["result.json"],
+            },
         }
 
     def test_pass_requires_every_observation(self) -> None:
@@ -75,6 +108,8 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         record["android_logcat_bytes"] = 0
         record["host_log_appended_bytes"] = 0
         record["host_log"] = "host-log-appended.txt"
+        record.pop("artifact_paths")
+        record.pop("observation_artifacts")
 
         summary = summarize(record, source_path=Path("result.json"))
 
@@ -267,6 +302,86 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
             "host_pointer_changed_injected",
             [item["field"] for item in summary["inconsistent_observations"]],
         )
+
+    def test_insufficient_when_true_observations_lack_artifact_mapping(self) -> None:
+        record = self.complete_record()
+        record.pop("observation_artifacts")
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+        missing_fields = {item["field"] for item in summary["missing_requirements"]}
+        self.assertIn("observation_artifacts.android_move_forwarded", missing_fields)
+        self.assertIn("observation_artifacts.host_pointer_changed_injected", missing_fields)
+        self.assertIn("observation_artifacts.adb_was_run", missing_fields)
+        self.assertIn("observation_artifacts.default_gate_events_required", missing_fields)
+        self.assertIn("observation_artifacts.collector_reported_passed", missing_fields)
+
+    def test_insufficient_when_gate_observation_mappings_are_removed(self) -> None:
+        for field in (
+            "adb_was_run",
+            "default_gate_events_required",
+            "collector_reported_passed",
+        ):
+            with self.subTest(field=field):
+                record = self.complete_record()
+                del record["observation_artifacts"][field]
+
+                summary = summarize(record)
+
+                self.assertEqual(summary["verdict"], "insufficient")
+                self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+                self.assertIn(
+                    f"observation_artifacts.{field}",
+                    {item["field"] for item in summary["missing_requirements"]},
+                )
+
+    def test_insufficient_when_observation_artifact_is_not_retained(self) -> None:
+        record = self.complete_record()
+        record["observation_artifacts"]["visible_mac_result_observed"] = ["missing-mac-result.txt"]
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            {
+                "field": "observation_artifacts.visible_mac_result_observed",
+                "requirement": "list only paths also present in artifact_paths",
+            },
+            summary["missing_requirements"],
+        )
+
+    def test_insufficient_when_generic_artifact_is_reused_for_host_injection(self) -> None:
+        record = self.complete_record()
+        record["observation_artifacts"]["host_pointer_changed_injected"] = ["result.json"]
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            {
+                "field": "observation_artifacts.host_pointer_changed_injected",
+                "requirement": "retain Host Pointer injected changed logs for the same run",
+            },
+            summary["missing_requirements"],
+        )
+
+    def test_rejects_unknown_observation_artifact_key(self) -> None:
+        record = self.complete_record()
+        record["observation_artifacts"]["offline_pointer_mapper_passed"] = ["result.json"]
+
+        with self.assertRaisesRegex(NativePointerHIDEvidenceError, "unknown observation_artifacts field"):
+            summarize(record)
+
+    def test_rejects_out_of_bundle_artifact_references(self) -> None:
+        for artifact in ("", "/tmp/native-pointer.log", "../native-pointer.log", "logs/../native-pointer.log"):
+            with self.subTest(artifact=artifact):
+                record = self.complete_record()
+                record["artifact_paths"] = [artifact]
+
+                with self.assertRaisesRegex(NativePointerHIDEvidenceError, "artifact_paths"):
+                    summarize(record)
 
     def test_summary_matches_schema_required_fields(self) -> None:
         summary = summarize(self.complete_record())

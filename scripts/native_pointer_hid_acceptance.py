@@ -33,7 +33,10 @@ TOOLS_PATH = REPOSITORY_ROOT / "tools"
 if str(TOOLS_PATH) not in sys.path:
     sys.path.insert(0, str(TOOLS_PATH))
 
-from vibescreen_evidence.native_pointer_hid import summarize as summarize_native_pointer_hid
+from vibescreen_evidence.native_pointer_hid import (
+    ARTIFACT_FIELD_REQUIREMENTS,
+    summarize as summarize_native_pointer_hid,
+)
 
 
 BLOCKED_EXIT = 2
@@ -49,6 +52,37 @@ POINTER_PATTERNS = {
     "release": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?ended\b|Pointer injected: phase=ended\b"),
 }
 REQUIRED_POINTER_EVENTS = ("move", "press", "release")
+EVIDENCE_ARTIFACT_PATHS = [
+    "result.json",
+    "dumpsys-input.txt",
+    "android-logcat-native-pointer.txt",
+    "host-log-appended.txt",
+    "host-readiness.json",
+]
+OBSERVATION_ARTIFACTS = {
+    "adb_was_run": ["result.json"],
+    "device_identity_recorded": ["result.json"],
+    "device_identity_matches_claim": ["result.json"],
+    "physical_mouse_attached": ["dumpsys-input.txt"],
+    "default_gate_events_required": ["result.json"],
+    "android_move_forwarded": ["android-logcat-native-pointer.txt"],
+    "android_forwarding_device_ids_match_external_mouse": [
+        "dumpsys-input.txt",
+        "android-logcat-native-pointer.txt",
+    ],
+    "android_required_events_share_external_mouse_device": ["android-logcat-native-pointer.txt"],
+    "android_button_press_forwarded": ["android-logcat-native-pointer.txt"],
+    "android_button_release_forwarded": ["android-logcat-native-pointer.txt"],
+    "host_pointer_changed_injected": ["host-log-appended.txt"],
+    "host_pointer_began_injected": ["host-log-appended.txt"],
+    "host_pointer_ended_injected": ["host-log-appended.txt"],
+    "host_stable_signed_tcc_ready": ["host-readiness.json"],
+    "visible_mac_result_observed": ["result.json"],
+    "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
+    "host_log_window_retained": ["host-log-appended.txt"],
+    "collector_reported_passed": ["result.json"],
+}
+assert set(OBSERVATION_ARTIFACTS) == set(ARTIFACT_FIELD_REQUIREMENTS)
 ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_TOKENS = frozenset(("MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"))
 ANDROID_DUMPSYS_SOURCE_SEPARATOR_PATTERN = re.compile(r"\s*(?:\||\+|,)\s*")
@@ -526,6 +560,50 @@ def evidence_text(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
 
 
+def load_host_readiness(path: Path | None) -> dict[str, object]:
+    if path is None:
+        return {"present": False, "readable": False, "document": {}}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return {"present": True, "readable": False, "error": str(error), "document": {}}
+    if not isinstance(document, dict):
+        return {"present": True, "readable": False, "error": "host readiness JSON is not an object", "document": {}}
+    return {"present": True, "readable": True, "error": None, "document": document}
+
+
+def host_native_hid_ready(host_readiness: dict[str, object]) -> bool:
+    if not host_readiness.get("readable"):
+        return False
+    document = host_readiness.get("document")
+    return isinstance(document, dict) and document.get("can_start_native_hid_gate") is True
+
+
+def evidence_artifact_paths(result: AcceptanceResult, evidence_dir: Path) -> list[str]:
+    paths = ["result.json", "dumpsys-input.txt"]
+    if result.android_logcat_bytes > 0:
+        paths.append("android-logcat-native-pointer.txt")
+    if result.host_log and result.host_log_appended_bytes > 0:
+        paths.append(result.host_log)
+    if (evidence_dir / "host-readiness.json").exists():
+        paths.append("host-readiness.json")
+    return list(dict.fromkeys(paths))
+
+
+def observation_artifacts(result: AcceptanceResult, artifact_paths: Sequence[str]) -> dict[str, list[str]]:
+    retained = set(artifact_paths)
+    observations = summarize_native_pointer_hid(
+        {**asdict(result), "artifact_paths": artifact_paths},
+        run_id=result.created_at,
+        source_path=Path("result.json"),
+    )["observations"]
+    mappings: dict[str, list[str]] = {}
+    for field, paths in OBSERVATION_ARTIFACTS.items():
+        if observations.get(field) is True and all(path in retained for path in paths):
+            mappings[field] = list(paths)
+    return mappings
+
+
 def redact_android_dumpsys_input(text: str) -> str:
     input_channel_handle_key = "inputChannel" + "To" + "ken"
     redacted = re.sub(
@@ -565,6 +643,9 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
     path.mkdir(parents=True, exist_ok=True)
     result_path = path / "result.json"
     result_payload = asdict(result)
+    artifact_paths = evidence_artifact_paths(result, path)
+    result_payload["artifact_paths"] = artifact_paths
+    result_payload["observation_artifacts"] = observation_artifacts(result, artifact_paths)
     result_path.write_text(json.dumps(result_payload, indent=2) + "\n", encoding="utf-8")
     gate_summary = summarize_native_pointer_hid(result_payload, run_id=result.created_at, source_path=result_path)
     (path / "native-pointer-hid-summary.json").write_text(
@@ -648,7 +729,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "Set only after scripts/macos_dev_host.py preflight passes for a stable signed Host "
-            "with Screen Recording and Accessibility permissions."
+            "with Screen Recording and Accessibility permissions. Requires --host-readiness or "
+            "an existing host-readiness.json in --evidence-dir to close the gate."
+        ),
+    )
+    parser.add_argument(
+        "--host-readiness",
+        type=Path,
+        help=(
+            "Optional shared macOS Host readiness JSON from baseline-macos-host-readiness. "
+            "When --host-stable-signed-tcc-ready is set, this JSON must also report "
+            "can_start_native_hid_gate=true before native pointer HID evidence can pass."
         ),
     )
     parser.add_argument(
@@ -687,6 +778,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     created_at = utc_timestamp()
     try:
+        host_readiness_path = args.host_readiness
+        if host_readiness_path is None and (args.evidence_dir / "host-readiness.json").exists():
+            host_readiness_path = args.evidence_dir / "host-readiness.json"
+        host_readiness = load_host_readiness(host_readiness_path)
+        if host_readiness.get("readable"):
+            args.evidence_dir.mkdir(parents=True, exist_ok=True)
+            (args.evidence_dir / "host-readiness.json").write_text(
+                json.dumps(host_readiness["document"], indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        host_stable_signed_tcc_ready = bool(args.host_stable_signed_tcc_ready and host_native_hid_ready(host_readiness))
         existing_locks = describe_device_locks()
         if existing_locks and not args.allow_existing_device_lock:
             if not args.write_blocked_on_lock:
@@ -771,7 +873,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             external_mouse_device_ids,
             args.require_events,
         )
-        missing_host_ready = not args.host_stable_signed_tcc_ready
+        missing_host_ready = not host_stable_signed_tcc_ready
         missing_visible_result = not args.visible_result_note.strip()
         missing_reasons = []
         if missing_android:
@@ -803,7 +905,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             host_log="host-log-appended.txt",
             host_log_appended_bytes=len(appended_log),
             host_log_appended_sha256=hashlib.sha256(appended_log).hexdigest(),
-            host_stable_signed_tcc_ready=bool(args.host_stable_signed_tcc_ready),
+            host_stable_signed_tcc_ready=host_stable_signed_tcc_ready,
             android_logcat_bytes=len(android_logcat),
             android_logcat_sha256=hashlib.sha256(android_logcat).hexdigest(),
             required_pointer_events=list(args.require_events),
