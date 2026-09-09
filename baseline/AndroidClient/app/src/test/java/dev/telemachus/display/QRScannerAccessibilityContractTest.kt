@@ -16,8 +16,23 @@ class QRScannerAccessibilityContractTest {
         val cameraIndex = onCreate.indexOf("startCamera()")
 
         assertTrue("QR scanner should keep pairing QR contents out of screenshots", flagIndex >= 0)
-        assertTrue(contentViewIndex > flagIndex)
-        assertTrue(cameraIndex > contentViewIndex)
+        assertTrue("QR scanner should inflate only after FLAG_SECURE is active", contentViewIndex > flagIndex)
+        assertTrue("QR scanner should start CameraX only after FLAG_SECURE is active", cameraIndex > flagIndex)
+        assertTrue("QR scanner should bind camera only after the secure layout exists", cameraIndex > contentViewIndex)
+    }
+
+    @Test
+    fun scannerContractsStayStaticAndDoNotLaunchCameraActivity() {
+        val source = qrScannerContractSource()
+        val activityScenario = "Activity" + "Scenario"
+        val scenarioLaunch = activityScenario + "." + "launch"
+        val qrScannerClass = "QRScannerActivity" + "::class"
+        val startActivityCall = "start" + "Activity("
+
+        assertFalse(source.contains(activityScenario))
+        assertFalse(source.contains("$scenarioLaunch($qrScannerClass.java)"))
+        assertFalse(source.contains("$scenarioLaunch<QRScannerActivity>"))
+        assertFalse(source.contains(startActivityCall))
     }
 
     @Test
@@ -78,15 +93,26 @@ class QRScannerAccessibilityContractTest {
     }
 
     private fun qrScannerActivitySource(): String {
+        return readSource(QR_SCANNER_ACTIVITY_PATHS, "QRScannerActivity.kt")
+    }
+
+    private fun qrScannerContractSource(): String {
+        return readSource(QR_SCANNER_CONTRACT_PATHS, "QRScannerAccessibilityContractTest.kt")
+    }
+
+    private fun readSource(
+        paths: List<String>,
+        name: String,
+    ): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
-            QR_SCANNER_ACTIVITY_PATHS
+            paths
                 .map(current::resolve)
                 .firstOrNull(File::isFile)
                 ?.let { return it.readText() }
             current = current.parentFile?.canonicalFile ?: current
         }
-        error("QRScannerActivity.kt not found from " + System.getProperty("user.dir"))
+        error("$name not found from " + System.getProperty("user.dir"))
     }
 
     private fun extractMethod(
@@ -115,6 +141,11 @@ class QRScannerAccessibilityContractTest {
             listOf(
                 "app/src/main/java/dev/telemachus/display/QRScannerActivity.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/QRScannerActivity.kt",
+            )
+        val QR_SCANNER_CONTRACT_PATHS =
+            listOf(
+                "app/src/test/java/dev/telemachus/display/QRScannerAccessibilityContractTest.kt",
+                "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/QRScannerAccessibilityContractTest.kt",
             )
     }
 }
