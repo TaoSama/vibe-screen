@@ -3339,6 +3339,7 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
     def test_make_readiness_login_item_probe_requires_manual_acknowledgement(self) -> None:
         targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
         readiness_target = targets["baseline-macos-host-readiness"]
+        runbook = (REPOSITORY_ROOT / "docs/runbook/macos-host.md").read_text(encoding="utf-8")
 
         self.assertIn("MACOS_HOST_READINESS_PROBE_LOGIN_ITEM", readiness_target)
         self.assertIn("MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK", readiness_target)
@@ -3347,6 +3348,12 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
         self.assertNotRegex(
             readiness_target,
             r"\$\(if \$\(filter 1 true yes,\$\(MACOS_HOST_READINESS_PROBE_LOGIN_ITEM\)\),--include-login-item-diagnostic,\)",
+        )
+        self.assertIn(
+            "MACOS_HOST_READINESS_PROBE_LOGIN_ITEM=1 "
+            "MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK="
+            "I_UNDERSTAND_SFLTOOL_CAN_PROMPT",
+            runbook,
         )
 
     def test_launch_target_is_not_part_of_read_only_preflight_targets(self) -> None:
