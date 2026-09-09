@@ -3613,6 +3613,42 @@ class MacOSDevHostTCCTests(unittest.TestCase):
             ),
         )
 
+    def test_validate_preflight_uses_latest_tcc_row_not_stale_authorization(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / PRIVACY_DB_FILENAME
+            self.write_tcc_database(
+                database_path,
+                [
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 2, 10),
+                    ("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 0, 4, 20),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 2, 30),
+                    ("kTCCServiceAccessibility", "dev.telemachus.display", 0, 0, 4, 40),
+                    ("kTCCServiceMicrophone", "dev.telemachus.display", 0, 2, 2, 50),
+                ],
+            )
+
+            with self.mock_csreq_decoder():
+                status = macos_dev_host.query_tcc_database(
+                    "dev.telemachus.display",
+                    database_path,
+                )
+
+        errors = macos_dev_host.validate_preflight(
+            MacOSDevHostMetadataTests.metadata(),
+            status,
+            install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+            expected_sign_identity=macos_dev_host.EXPECTED_SIGNING_LEAF_SHA1,
+        )
+        joined_errors = "\n".join(errors)
+
+        self.assertIn("Screen Recording is not authorized for the installed Host", joined_errors)
+        self.assertIn("Accessibility is not authorized for the installed Host", joined_errors)
+        self.assertNotIn("Microphone is not authorized for the installed Host", joined_errors)
+        record = macos_dev_host.permission_record(status, HOST_REQUIREMENT)
+        self.assertEqual(record["screen_recording_state"], "not_authorized")
+        self.assertEqual(record["accessibility_state"], "not_authorized")
+        self.assertEqual(record["microphone_state"], "authorized_current_host_identity")
+
     def test_query_tcc_rows_combines_multiple_read_only_databases(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
