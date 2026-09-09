@@ -83,6 +83,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             },
             "visible_mac_result": "Mac cursor moved and primary click focused TextEdit.",
             "adb_was_run": True,
+            "artifact_paths": acceptance.EVIDENCE_ARTIFACT_PATHS,
+            "observation_artifacts": acceptance.OBSERVATION_ARTIFACTS,
         }
         record.update(overrides)
         return acceptance.summarize_native_pointer_hid(record, run_id="test-run", source_path=Path("result.json"))
@@ -524,6 +526,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["observed_android_pointer_device_ids_by_event"], {"move": [11], "press": [11], "release": [11]})
             self.assertEqual(result["external_mouse_devices"][0]["name"], "USB Optical Mouse")
             self.assertEqual(result["visible_mac_result"], "Mac cursor moved and the primary click focused TextEdit.")
+            self.assertEqual(result["artifact_paths"], acceptance.EVIDENCE_ARTIFACT_PATHS)
+            self.assertEqual(result["observation_artifacts"], acceptance.OBSERVATION_ARTIFACTS)
             summary = json.loads((evidence_dir / "native-pointer-hid-summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["verdict"], "pass")
             self.assertTrue(summary["can_close_native_pointer_hid_gate"])

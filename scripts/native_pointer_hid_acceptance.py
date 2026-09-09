@@ -49,6 +49,32 @@ POINTER_PATTERNS = {
     "release": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?ended\b|Pointer injected: phase=ended\b"),
 }
 REQUIRED_POINTER_EVENTS = ("move", "press", "release")
+EVIDENCE_ARTIFACT_PATHS = [
+    "result.json",
+    "dumpsys-input.txt",
+    "android-logcat-native-pointer.txt",
+    "host-log-appended.txt",
+]
+OBSERVATION_ARTIFACTS = {
+    "device_identity_recorded": ["result.json"],
+    "device_identity_matches_claim": ["result.json"],
+    "physical_mouse_attached": ["dumpsys-input.txt"],
+    "android_move_forwarded": ["android-logcat-native-pointer.txt"],
+    "android_forwarding_device_ids_match_external_mouse": [
+        "dumpsys-input.txt",
+        "android-logcat-native-pointer.txt",
+    ],
+    "android_required_events_share_external_mouse_device": ["android-logcat-native-pointer.txt"],
+    "android_button_press_forwarded": ["android-logcat-native-pointer.txt"],
+    "android_button_release_forwarded": ["android-logcat-native-pointer.txt"],
+    "host_pointer_changed_injected": ["host-log-appended.txt"],
+    "host_pointer_began_injected": ["host-log-appended.txt"],
+    "host_pointer_ended_injected": ["host-log-appended.txt"],
+    "host_stable_signed_tcc_ready": ["result.json"],
+    "visible_mac_result_observed": ["result.json"],
+    "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
+    "host_log_window_retained": ["host-log-appended.txt"],
+}
 ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_TOKENS = frozenset(("MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"))
 ANDROID_DUMPSYS_SOURCE_SEPARATOR_PATTERN = re.compile(r"\s*(?:\||\+|,)\s*")
@@ -565,6 +591,8 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
     path.mkdir(parents=True, exist_ok=True)
     result_path = path / "result.json"
     result_payload = asdict(result)
+    result_payload["artifact_paths"] = EVIDENCE_ARTIFACT_PATHS
+    result_payload["observation_artifacts"] = OBSERVATION_ARTIFACTS
     result_path.write_text(json.dumps(result_payload, indent=2) + "\n", encoding="utf-8")
     gate_summary = summarize_native_pointer_hid(result_payload, run_id=result.created_at, source_path=result_path)
     (path / "native-pointer-hid-summary.json").write_text(

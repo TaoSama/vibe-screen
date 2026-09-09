@@ -11,7 +11,7 @@ import argparse
 import json
 import sys
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Sequence, TextIO
 
 from . import SCHEMA_VERSION
@@ -28,6 +28,42 @@ EXIT_STATUS_BY_VERDICT = {
 }
 
 REQUIRED_POINTER_EVENTS = ("move", "press", "release")
+
+ARTIFACT_FIELD_REQUIREMENTS = {
+    "device_identity_recorded": "retain Android device identity, OS/build, and adb devices artifacts",
+    "device_identity_matches_claim": "retain source-bound device identity evidence for the claimed Android device",
+    "physical_mouse_attached": "retain Android input inventory for the named physical mouse-like device",
+    "android_move_forwarded": "retain Android native pointer MOVE forwarding logs from the physical mouse-like device",
+    "android_forwarding_device_ids_match_external_mouse": "retain Android forwarding logs whose deviceId matches the physical mouse-like input inventory",
+    "android_required_events_share_external_mouse_device": "retain move, press, and release evidence from one physical mouse-like Android deviceId",
+    "android_button_press_forwarded": "retain Android native pointer BUTTON_PRESS forwarding logs from the physical mouse-like device",
+    "android_button_release_forwarded": "retain Android native pointer BUTTON_RELEASE forwarding logs from the physical mouse-like device",
+    "host_pointer_changed_injected": "retain Host Pointer injected changed logs for the same run",
+    "host_pointer_began_injected": "retain Host Pointer injected began logs for the same run",
+    "host_pointer_ended_injected": "retain Host Pointer injected ended logs for the same run",
+    "host_stable_signed_tcc_ready": "retain stable-signed Host and TCC readiness evidence for the exact Host bundle",
+    "visible_mac_result_observed": "retain operator-visible Mac cursor movement and click result evidence",
+    "android_logcat_window_retained": "retain the bounded Android native pointer logcat window",
+    "host_log_window_retained": "retain the newly appended Host pointer-injection log window",
+}
+
+ARTIFACT_PATH_MARKERS = {
+    "device_identity_recorded": ("device-info", "adb-devices", "result"),
+    "device_identity_matches_claim": ("device-info", "result"),
+    "physical_mouse_attached": ("dumpsys-input",),
+    "android_move_forwarded": ("android-logcat-native-pointer",),
+    "android_forwarding_device_ids_match_external_mouse": ("android-logcat-native-pointer", "dumpsys-input"),
+    "android_required_events_share_external_mouse_device": ("android-logcat-native-pointer",),
+    "android_button_press_forwarded": ("android-logcat-native-pointer",),
+    "android_button_release_forwarded": ("android-logcat-native-pointer",),
+    "host_pointer_changed_injected": ("host-log-appended",),
+    "host_pointer_began_injected": ("host-log-appended",),
+    "host_pointer_ended_injected": ("host-log-appended",),
+    "host_stable_signed_tcc_ready": ("host-readiness", "host-signing", "host-log-appended", "result"),
+    "visible_mac_result_observed": ("result", "visible-mac", "mac-result"),
+    "android_logcat_window_retained": ("android-logcat-native-pointer",),
+    "host_log_window_retained": ("host-log-appended",),
+}
 
 REQUIRED_FIELDS = (
     (
@@ -207,6 +243,51 @@ def _string_list(record: dict[str, Any], field: str) -> list[str]:
     return value
 
 
+def _validate_artifact_reference(field: str, reference: str) -> None:
+    if not reference.strip():
+        raise NativePointerHIDEvidenceError(f"{field} must contain only non-empty strings")
+    path = PurePosixPath(reference)
+    if path.is_absolute():
+        raise NativePointerHIDEvidenceError(f"{field} must contain relative evidence-bundle paths")
+    if any(part in {"", ".", ".."} for part in path.parts):
+        raise NativePointerHIDEvidenceError(f"{field} must not escape the evidence bundle")
+
+
+def _artifact_string_list(record: dict[str, Any], field: str) -> list[str]:
+    paths = _string_list(record, field)
+    for path in paths:
+        _validate_artifact_reference(field, path)
+    return paths
+
+
+def _observation_artifacts(record: dict[str, Any]) -> dict[str, list[str]]:
+    value = record.get("observation_artifacts", {})
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise NativePointerHIDEvidenceError("observation_artifacts must be an object")
+    artifacts: dict[str, list[str]] = {}
+    for field, paths in value.items():
+        if not isinstance(field, str):
+            raise NativePointerHIDEvidenceError("observation_artifacts keys must be strings")
+        if field not in BOOLEAN_FIELDS:
+            raise NativePointerHIDEvidenceError(f"unknown observation_artifacts field: {field}")
+        if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+            raise NativePointerHIDEvidenceError(f"observation_artifacts.{field} must be a list of strings")
+        for path in paths:
+            _validate_artifact_reference(f"observation_artifacts.{field}", path)
+        artifacts[field] = paths
+    return artifacts
+
+
+def _has_expected_artifact_marker(field: str, paths: Sequence[str]) -> bool:
+    markers = ARTIFACT_PATH_MARKERS.get(field)
+    if markers is None:
+        return True
+    normalized_paths = [path.lower() for path in paths]
+    return any(marker in path for marker in markers for path in normalized_paths)
+
+
 def _dict_list(record: dict[str, Any], field: str) -> list[dict[str, Any]]:
     value = record.get(field, [])
     if value is None:
@@ -268,7 +349,7 @@ def _device_identity_matches_claim(record: dict[str, Any]) -> bool:
 def _artifact_paths(record: dict[str, Any], source_path: Path | None) -> list[str]:
     explicit = record.get("artifact_paths")
     if explicit is not None:
-        return _string_list(record, "artifact_paths")
+        return _artifact_string_list(record, "artifact_paths")
     paths: list[str] = []
     if source_path is not None and str(source_path) != "-":
         paths.append(source_path.name)
@@ -442,6 +523,8 @@ def summarize(
     source_path: Path | None = None,
 ) -> dict[str, Any]:
     field_values = _observations(record)
+    artifact_paths = _artifact_paths(record, source_path)
+    observation_artifacts = _observation_artifacts(record)
     missing = [
         {"field": field, "requirement": requirement}
         for field, requirement in REQUIRED_FIELDS
@@ -449,6 +532,36 @@ def summarize(
     ]
     blocking_reasons = [item for item in missing if item["field"] in BLOCKING_FIELDS]
     inconsistencies = _inconsistent_observations(field_values)
+    artifact_path_set = set(artifact_paths)
+    for field in ARTIFACT_FIELD_REQUIREMENTS:
+        if not field_values[field]:
+            continue
+        paths = observation_artifacts.get(field, [])
+        if not paths:
+            missing.append(
+                {
+                    "field": f"observation_artifacts.{field}",
+                    "requirement": ARTIFACT_FIELD_REQUIREMENTS[field],
+                }
+            )
+            continue
+        if any(path not in artifact_path_set for path in paths):
+            missing.append(
+                {
+                    "field": f"observation_artifacts.{field}",
+                    "requirement": "list only paths also present in artifact_paths",
+                }
+            )
+            continue
+        if not _has_expected_artifact_marker(field, paths):
+            missing.append(
+                {
+                    "field": f"observation_artifacts.{field}",
+                    "requirement": ARTIFACT_FIELD_REQUIREMENTS[field],
+                }
+            )
+
+    blocking_reasons = [item for item in missing if item["field"] in BLOCKING_FIELDS]
     if not missing and not inconsistencies:
         verdict = STATUS_PASS
     elif blocking_reasons:
@@ -480,7 +593,8 @@ def summarize(
         "missing_requirements": missing,
         "inconsistent_observations": inconsistencies,
         "blocking_reasons": blocking_reasons,
-        "artifact_paths": _artifact_paths(record, source_path),
+        "artifact_paths": artifact_paths,
+        "observation_artifacts": observation_artifacts,
         "blocking_notes": blocking_notes,
         "notes": reason,
     }
