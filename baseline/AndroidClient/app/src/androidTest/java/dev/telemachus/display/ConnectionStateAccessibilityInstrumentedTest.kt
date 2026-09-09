@@ -468,6 +468,21 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
+    fun p0110ModeToggleKeepsInternetReadableWithLargeText() {
+        val context = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
+        withProductionLayout(context) { root ->
+            measureAndLayout(root, context, widthDp = 361, heightDp = 800)
+
+            listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
+                val button = root.findViewById<MaterialButton>(id)
+                assertTrue(root.resources.getResourceEntryName(id), button.measuredHeight >= dp(context, 48))
+                assertFalse(root.resources.getResourceEntryName(id), button.isAllCaps)
+                assertTextRenderedWithoutEllipsis(button)
+            }
+        }
+    }
+
+    @Test
     fun productionModeToggleHasReadableCheckedAndDistinctDisabledStates() {
         withProductionLayout { root ->
             listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
