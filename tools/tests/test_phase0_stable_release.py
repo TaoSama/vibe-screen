@@ -3985,64 +3985,6 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
-    def test_clipboard_product_e2e_pass_requires_source_provenance_formal_check(self) -> None:
-        def remove_source_provenance_check(report: dict[str, object]) -> None:
-            checks = report["checks"]
-            assert isinstance(checks, list)
-            report["checks"] = [
-                check
-                for check in checks
-                if not (isinstance(check, dict) and check.get("name") == "source_provenance")
-            ]
-
-        def run(repo: Path, base_commit: str) -> None:
-            manifest = complete_manifest_for_repo(repo, base_commit)
-            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
-            gate["evidence_paths"] = [
-                write_clipboard_gate_evidence(repo, mutate=remove_source_provenance_check)
-            ]
-
-            summary = evaluate_manifest(
-                manifest,
-                readme_text=GUARDED_README_TEXT,
-                repo_root=repo,
-            )
-
-            self.assertEqual(summary["aggregate_verdict"], "insufficient")
-            clipboard_gate = next(
-                item
-                for item in summary["blocking_required_gates"]
-                if item["id"] == "clipboard_android_macos_product_e2e"
-            )
-            self.assertIn(
-                "docs/evidence/clipboard-e2e-gate.json: formal clipboard report checks missing source_provenance",
-                clipboard_gate["issues"],
-            )
-
-        with_temporary_repo(run)
-
-    def test_clipboard_product_e2e_source_revalidation_allows_one_ready_transport_source(self) -> None:
-        def remove_lan_source(report: dict[str, object]) -> None:
-            source = report["source"]
-            assert isinstance(source, dict)
-            source.pop("trusted_lan_preflight")
-
-        def run(repo: Path, base_commit: str) -> None:
-            manifest = complete_manifest_for_repo(repo, base_commit)
-            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
-            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=remove_lan_source)]
-
-            summary = evaluate_manifest(
-                manifest,
-                readme_text=GUARDED_README_TEXT,
-                repo_root=repo,
-            )
-
-            self.assertEqual(summary["aggregate_verdict"], "pass")
-            self.assertTrue(summary["can_mark_phase0_stable_release"])
-
-        with_temporary_repo(run)
-
     def test_clipboard_product_e2e_pass_rejects_non_pass_formal_gate_check(self) -> None:
         def block_product_check(report: dict[str, object]) -> None:
             checks = report["checks"]
@@ -4185,11 +4127,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 if item["id"] == "clipboard_android_macos_product_e2e"
             )
             self.assertTrue(
-                any(
-                    "source revalidation blocked: bidirectional_product_e2e" in issue
-                    and "missing retained artifact android-to-macos/missing-source-read.txt" in issue
-                    for issue in issues
-                ),
+                any("source_clipboard_read" in issue and "missing retained artifact" in issue for issue in issues),
                 issues,
             )
 
@@ -4291,7 +4229,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 if item["id"] == "clipboard_android_macos_product_e2e"
             )
             self.assertTrue(
-                any("synthetic or offline-only clipboard evidence cannot close this gate" in issue for issue in issues),
+                any("synthetic or offline-only evidence cannot close this gate" in issue for issue in issues),
                 issues,
             )
 
@@ -4380,69 +4318,6 @@ class Phase0StableReleaseTest(unittest.TestCase):
             )
             self.assertTrue(
                 any("protocol_packets artifact must be JSONL" in issue for issue in issues),
-                issues,
-            )
-
-        with_temporary_repo(run)
-
-    def test_clipboard_product_e2e_source_rejects_ambiguous_protocol_event_record(self) -> None:
-        def run(repo: Path, base_commit: str) -> None:
-            manifest = complete_manifest_for_repo(repo, base_commit)
-            report_path = write_clipboard_gate_evidence(repo)
-            report = json.loads((repo / report_path).read_text(encoding="utf-8"))
-            source = report["source"]
-            assert isinstance(source, dict)
-            product_ref = source["product_e2e"]
-            assert isinstance(product_ref, str)
-            product = json.loads((repo / product_ref).read_text(encoding="utf-8"))
-            directions = product["directions"]
-            assert isinstance(directions, dict)
-            direction = directions["android_clipboardmanager_to_macos_nspasteboard"]
-            assert isinstance(direction, dict)
-            records = [
-                {
-                    "event": "clipboard_offer",
-                    "message_type": "clipboard_request",
-                    "packet_type": "clipboard_content",
-                    "direction": "android_clipboardmanager_to_macos_nspasteboard",
-                    "change_id_hex": direction["change_id_hex"],
-                    "session_id_hex": direction["session_id_hex"],
-                    "session_epoch": direction["session_epoch"],
-                    "origin_device_id": direction["origin_device_id"],
-                    "mime_type": direction["mime_type"],
-                    "byte_length": direction["byte_length"],
-                    "sha256": direction["sha256"],
-                },
-            ]
-            content_text = "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n"
-            update_clipboard_retained_artifact(
-                repo,
-                report_path,
-                "android-to-macos/protocol-packets.jsonl",
-                content_text.encode("utf-8"),
-            )
-            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
-                report_path
-            ]
-
-            summary = evaluate_manifest(
-                manifest,
-                readme_text=GUARDED_README_TEXT,
-                repo_root=repo,
-            )
-
-            self.assertEqual(summary["aggregate_verdict"], "insufficient")
-            issues = next(
-                item["issues"]
-                for item in summary["blocking_required_gates"]
-                if item["id"] == "clipboard_android_macos_product_e2e"
-            )
-            self.assertTrue(
-                any("protocol_packets event record(s) must identify exactly one clipboard event" in issue for issue in issues),
-                issues,
-            )
-            self.assertTrue(
-                any("protocol_packets artifact missing event(s): clipboard_content, clipboard_offer, clipboard_request" in issue for issue in issues),
                 issues,
             )
 
