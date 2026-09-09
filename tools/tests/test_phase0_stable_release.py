@@ -1340,6 +1340,44 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
+    def test_file_transfer_product_e2e_source_requires_same_session_id(self) -> None:
+        def mismatch_session_id(product: dict[str, object]) -> None:
+            directions = product["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_to_android_file_transfer"]
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["session_id_hex"] = "11112222333344445555666677778888"
+
+        def run(repo: Path, base_commit: str) -> None:
+            manifest = complete_manifest_for_repo(repo, base_commit)
+            report_path = write_file_transfer_android_gate_evidence(
+                repo,
+                output_path="docs/evidence/file-transfer-mismatched-session-gate.json",
+            )
+            mutate_file_transfer_product_source(repo, report_path, mismatch_session_id)
+            gate_by_id(manifest, "file_transfer_android_product_e2e")["evidence_paths"] = [
+                report_path
+            ]
+
+            summary = evaluate_manifest(
+                manifest,
+                readme_text=GUARDED_README_TEXT,
+                repo_root=repo,
+            )
+
+            self.assertEqual(summary["aggregate_verdict"], "insufficient")
+            issues = file_transfer_gate_issues(summary)
+            self.assertTrue(
+                any(
+                    "direction session_id_hex values must match for same-session bidirectional product evidence"
+                    in issue
+                    for issue in issues
+                ),
+                issues,
+            )
+
+        with_temporary_repo(run)
+
     def test_file_transfer_product_e2e_source_requires_cancel_cleanup(self) -> None:
         def run(repo: Path, base_commit: str) -> None:
             manifest = complete_manifest_for_repo(repo, base_commit)

@@ -1901,6 +1901,7 @@ def _file_transfer_product_e2e_source_issues(
     digests: dict[str, str] = {}
     file_names: dict[str, str] = {}
     transports: dict[str, str] = {}
+    session_ids: dict[str, str] = {}
     session_epochs: dict[str, int] = {}
     for direction_name, endpoints in FILE_TRANSFER_EXPECTED_DIRECTION_ENDPOINTS.items():
         direction = directions.get(direction_name)
@@ -1933,6 +1934,16 @@ def _file_transfer_product_e2e_source_issues(
         byte_length = direction.get("byte_length")
         if not _is_positive_integer(byte_length):
             issues.append(f"{label} {direction_name}.byte_length must be a positive integer")
+        session_id = direction.get("session_id_hex")
+        if not isinstance(session_id, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{32}", session_id
+        ):
+            issues.append(
+                f"{label} {direction_name}.session_id_hex must be a "
+                "32-character hex session ID"
+            )
+        else:
+            session_ids[direction_name] = session_id.lower()
         session_epoch = direction.get("session_epoch")
         if not _is_positive_integer(session_epoch):
             issues.append(f"{label} {direction_name}.session_epoch must be a positive integer")
@@ -1959,6 +1970,15 @@ def _file_transfer_product_e2e_source_issues(
         issues.append(f"{label} direction file names must be distinct")
     if transports.get(android_to_macos) and transports.get(macos_to_android) and transports[android_to_macos] != transports[macos_to_android]:
         issues.append(f"{label} direction transports must match for same-session bidirectional product evidence")
+    if (
+        session_ids.get(android_to_macos)
+        and session_ids.get(macos_to_android)
+        and session_ids[android_to_macos] != session_ids[macos_to_android]
+    ):
+        issues.append(
+            f"{label} direction session_id_hex values must match for "
+            "same-session bidirectional product evidence"
+        )
     if (
         session_epochs.get(android_to_macos)
         and session_epochs.get(macos_to_android)
