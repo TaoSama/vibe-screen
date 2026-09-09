@@ -80,6 +80,33 @@ class WirelessTabControllerContractTest {
     }
 
     @Test
+    fun wirelessLifecycleRoutesThroughExpectedStatePanels() {
+        val source = wirelessTabControllerSource()
+        val onScanResult = extractMethod(source, "fun onScanResult")
+        val onConnectSuccess = extractMethod(source, "fun onConnectSuccess")
+        val onStreamDisconnected = extractMethod(source, "fun onStreamDisconnected")
+        val onConnectError = extractMethod(source, "fun onConnectError")
+
+        assertTrue(onScanResult.contains("storage.save(PairedHostStorage.Entry"))
+        assertTrue(onScanResult.contains("showConnecting("))
+        assertTrue(onScanResult.contains("onConnectRequested(parsed.host, parsed.port, parsed.token, deviceName, parsed.macName)"))
+
+        assertTrue(onConnectSuccess.contains("LiveRegionTextApplier.apply(views.connectedMacName, macName)"))
+        assertTrue(onConnectSuccess.contains("LiveRegionTextApplier.apply(views.connectedMacIp, ip)"))
+        assertTrue(onConnectSuccess.contains("transition(State.CONNECTED)"))
+
+        assertTrue(onStreamDisconnected.contains("storage.load() ?: run"))
+        assertTrue(onStreamDisconnected.contains("transition(State.FIRST_TIME)"))
+        assertTrue(onStreamDisconnected.contains("showIdleReconnectState()"))
+        assertTrue(onStreamDisconnected.contains("transition(State.PAIRED_IDLE)"))
+
+        val networkUnreachableBranch =
+            extractWhenBranch(onConnectError, "is StreamClient.WirelessConnectError.NetworkUnreachable")
+        assertTrue(networkUnreachableBranch.contains("showRepairMessage("))
+        assertTrue(networkUnreachableBranch.contains("transition(State.REPAIR_NEEDED)"))
+    }
+
+    @Test
     fun pairedIdleStateClearsCountdownAndKeepsReconnectActionReady() {
         val source = wirelessTabControllerSource()
         val showIdleReconnectState = extractMethod(source, "private fun showIdleReconnectState")
@@ -197,6 +224,13 @@ class WirelessTabControllerContractTest {
             }
         }
         error("Closing brace not found for $signature")
+    }
+
+    private fun extractWhenBranch(source: String, branchStart: String): String {
+        val start = source.indexOf(branchStart)
+        require(start >= 0) { "Branch not found: $branchStart" }
+        val nextBranch = Regex("(?m)^[\t ]*(is|else)\\s").find(source, start + branchStart.length)
+        return source.substring(start, nextBranch?.range?.first ?: source.length)
     }
 
     private fun wirelessTabControllerSource(): String {
