@@ -1,0 +1,21 @@
+adb -s <redacted-adb-serial> devices -l
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell wm size
+adb -s <redacted-adb-serial> shell wm density
+adb -s <redacted-adb-serial> shell settings get system font_scale
+adb -s <redacted-adb-serial> reverse --list
+command -v lsof
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest \
+  --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest \
+  --tests dev.telemachus.display.MainActivityTransferReadinessContractTest
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest,dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest,dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.InternetControlStateColorsInstrumentedTest,dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest,dev.telemachus.display.QRScannerLayoutInstrumentedTest,dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest,dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest,dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest
+adb -s <redacted-adb-serial> reverse --list
+command -v lsof
+lsof -nP -iTCP:54321 -sTCP:LISTEN

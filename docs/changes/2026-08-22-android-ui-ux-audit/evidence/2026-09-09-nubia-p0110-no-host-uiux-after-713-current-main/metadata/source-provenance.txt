@@ -1,0 +1,9 @@
+repository=TaoSama/vibe-screen
+worktree=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/2e7d/vibe-screen
+branch=codex/p0110-no-host-uiux-after-713-current-main
+base_head=ef7983774ff4cc8a277587fd026b18ce8cdb30a4
+origin_main=ef7983774ff4cc8a277587fd026b18ce8cdb30a4
+base_subject=docs: refresh phase0 aggregate after PR 713
+date=2026-09-09
+timezone=Asia/Shanghai
+local_change=Refreshes Nubia P0110 no-Host Android UI/UX instrumentation and focused control-surface JVM evidence after current main advanced through PR #713.
