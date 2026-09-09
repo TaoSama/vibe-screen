@@ -1,0 +1,13 @@
+[
+  {
+    "baseRefName": "main",
+    "headRefName": "codex/phase0-after-727-aggregate",
+    "headRefOid": "d1ef90d70998d7ba7e39fcb29b30db249124e85f",
+    "isDraft": false,
+    "mergeStateStatus": "BEHIND",
+    "number": 729,
+    "title": "docs: refresh phase0 aggregate after PR 727",
+    "updatedAt": "2026-09-09T13:33:55Z",
+    "url": "https://github.com/TaoSama/vibe-screen/pull/729"
+  }
+]
