@@ -1055,6 +1055,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "Input proof retained visible Mac result; unavailable-state blockers were absent.",
             "USB stream was never disconnected during the sample window.",
             "Software timestamps were not measured; hardware camera timestamping was used.",
+            "Operator absent input from the debug keyboard while physical touch drove the visible result.",
         )
 
         for text in allowed_texts:
