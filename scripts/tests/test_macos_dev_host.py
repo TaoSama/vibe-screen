@@ -3336,6 +3336,19 @@ class MacOSDevHostPreflightSafetyContractTests(unittest.TestCase):
                 self.assertNotIn("tccutil", body)
                 self.assertNotIn("adb reverse", body)
 
+    def test_make_readiness_login_item_probe_requires_manual_acknowledgement(self) -> None:
+        targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
+        readiness_target = targets["baseline-macos-host-readiness"]
+
+        self.assertIn("MACOS_HOST_READINESS_PROBE_LOGIN_ITEM", readiness_target)
+        self.assertIn("MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK", readiness_target)
+        self.assertIn("I_UNDERSTAND_SFLTOOL_CAN_PROMPT", readiness_target)
+        self.assertIn("--include-login-item-diagnostic", readiness_target)
+        self.assertNotRegex(
+            readiness_target,
+            r"\$\(if \$\(filter 1 true yes,\$\(MACOS_HOST_READINESS_PROBE_LOGIN_ITEM\)\),--include-login-item-diagnostic,\)",
+        )
+
     def test_launch_target_is_not_part_of_read_only_preflight_targets(self) -> None:
         targets = self._make_targets(MAKEFILE.read_text(encoding="utf-8"))
 
