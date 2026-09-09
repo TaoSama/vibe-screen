@@ -69,11 +69,29 @@ class WirelessTabControllerContractTest {
             show.contains("transition(State.PAIRED_IDLE)"),
         )
         assertTrue(
-            "The transition helper must make connecting, paired idle, and repair panels mutually exclusive",
+            "The transition helper must make every wireless panel mutually exclusive",
             transition.contains("views.connecting.visibility = if (next == State.CONNECTING) View.VISIBLE else View.GONE") &&
+                transition.contains("views.firstTime.visibility = if (next == State.FIRST_TIME) View.VISIBLE else View.GONE") &&
+                transition.contains("views.connected.visibility = if (next == State.CONNECTED) View.VISIBLE else View.GONE") &&
                 transition.contains("views.pairedIdle.visibility = if (next == State.PAIRED_IDLE) View.VISIBLE else View.GONE") &&
-                transition.contains("views.repair.visibility = if (next == State.REPAIR_NEEDED) View.VISIBLE else View.GONE"),
+                transition.contains("views.repair.visibility = if (next == State.REPAIR_NEEDED) View.VISIBLE else View.GONE") &&
+                transition.contains("views.permDenied.visibility = if (next == State.PERM_DENIED) View.VISIBLE else View.GONE"),
         )
+    }
+
+    @Test
+    fun pairedIdleStateClearsCountdownAndKeepsReconnectActionReady() {
+        val source = wirelessTabControllerSource()
+        val showIdleReconnectState = extractMethod(source, "private fun showIdleReconnectState")
+        val onStreamDisconnected = extractMethod(source, "fun onStreamDisconnected")
+        val show = extractMethod(source, "fun show")
+
+        assertTrue(showIdleReconnectState.contains("R.string.disconnected_status"))
+        assertTrue(showIdleReconnectState.contains("LiveRegionTextApplier.hide(views.reconnectCountdown)"))
+        assertTrue(showIdleReconnectState.contains("views.reconnectButton.text = activity.getString(R.string.reconnect)"))
+        assertTrue(showIdleReconnectState.contains("views.reconnectButton.isEnabled = true"))
+        assertTrue(onStreamDisconnected.contains("showIdleReconnectState()"))
+        assertTrue(show.contains("showIdleReconnectState()"))
     }
 
     @Test

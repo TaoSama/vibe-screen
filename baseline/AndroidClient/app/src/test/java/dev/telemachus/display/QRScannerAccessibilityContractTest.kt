@@ -7,6 +7,20 @@ import org.junit.Test
 
 class QRScannerAccessibilityContractTest {
     @Test
+    fun activityAddsSecureWindowFlagBeforeCameraStarts() {
+        val source = qrScannerActivitySource()
+        val onCreate = extractMethod(source, "override fun onCreate")
+
+        val flagIndex = onCreate.indexOf("window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)")
+        val contentViewIndex = onCreate.indexOf("setContentView(R.layout.activity_qr_scanner)")
+        val cameraIndex = onCreate.indexOf("startCamera()")
+
+        assertTrue("QR scanner should keep pairing QR contents out of screenshots", flagIndex >= 0)
+        assertTrue(contentViewIndex > flagIndex)
+        assertTrue(cameraIndex > contentViewIndex)
+    }
+
+    @Test
     fun cameraBindFailureStaysOnReadableRecoveryState() {
         val source = qrScannerActivitySource()
         val statusUpdateIndex = source.indexOf("showScannerStatus(getString(messageRes))")
@@ -73,6 +87,27 @@ class QRScannerAccessibilityContractTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("QRScannerActivity.kt not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun extractMethod(
+        source: String,
+        signature: String,
+    ): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) { "Method not found: $signature" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Method body not found: $signature" }
+        var depth = 0
+        for (index in bodyStart until source.length) {
+            when (source[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Closing brace not found: $signature")
     }
 
     private companion object {

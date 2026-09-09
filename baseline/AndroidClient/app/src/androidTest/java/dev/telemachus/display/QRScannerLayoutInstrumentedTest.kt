@@ -27,6 +27,27 @@ import kotlin.math.roundToInt
 class QRScannerLayoutInstrumentedTest {
     @Test
     @UiThreadTest
+    fun productionLayoutKeepsDecorativeCameraNodesSilentAndCancelAccessible() {
+        withLayout(widthDp = 393, heightDp = 800) { layout ->
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, layout.preview.importantForAccessibility)
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, layout.target.importantForAccessibility)
+            assertEquals(
+                layout.context.getString(R.string.qr_scanner_instruction_accessibility),
+                layout.instruction.contentDescription.toString(),
+            )
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, layout.status.accessibilityLiveRegion)
+            assertEquals(
+                layout.context.getString(R.string.qr_scanner_cancel_description),
+                layout.cancel.contentDescription.toString(),
+            )
+            assertTrue("Cancel remains an immediate no-Host escape hatch", layout.cancel.isClickable)
+            assertTrue(layout.cancel.width >= layout.dp(48))
+            assertTrue(layout.cancel.height >= layout.dp(48))
+        }
+    }
+
+    @Test
+    @UiThreadTest
     fun shortLandscapeKeepsScannerChromeSeparated() {
         listOf(320, 393).forEach { heightDp ->
             listOf(1f, 2f).forEach { fontScale ->
