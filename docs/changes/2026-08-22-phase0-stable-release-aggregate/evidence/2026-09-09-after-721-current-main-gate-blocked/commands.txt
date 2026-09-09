@@ -1,0 +1,21 @@
+git fetch origin main
+git switch --detach origin/main
+git switch -c codex/refresh-phase0-after-721
+mkdir -p docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked
+git rev-parse --verify HEAD > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/head.txt
+git log --oneline -12 >> docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/head.txt
+gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/open-prs.json
+gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,author | jq -c '.[] | select(.number>=568 and .number<=721)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/merged-prs-568-721.jsonl
+for n in 568 576 627 646 655 704; do gh pr view "$n" --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,author; done | jq -s 'sort_by(.number)' > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/closed-prs-568-721.json
+for n in 719 721; do gh pr view "$n" --repo TaoSama/vibe-screen --json number,title,state,isDraft,baseRefName,headRefName,headRefOid,mergeCommit,mergedAt,closedAt,url,author > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/pr-$n-merged.json; done
+perl -0pi -e 's/adb -s EP[0-9A-Z]{16}/adb -s <redacted-adb-serial>/g' docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/pr-721-merged.json
+for run in 34323890956 34323890914 34323890915; do gh run view "$run" --repo TaoSama/vibe-screen --json databaseId,workflowName,event,status,conclusion,headSha,headBranch,createdAt,updatedAt,url,jobs > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/github-run-$run.json; done
+make phase0-module-ownership-gate PHASE0_MODULE_OWNERSHIP_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/phase0-module-ownership-summary.json
+make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=ce4a3f1e74f45d286a1ab8118849bbbc27865fc5 PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/phase0-stable-release-summary.json
+status=0; PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=ce4a3f1e74f45d286a1ab8118849bbbc27865fc5 PHASE0_STABLE_RELEASE_SUMMARY=docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/phase0-stable-release-summary.json make phase0-stable-release-gate || status=$?; printf '%s\n' "$status" > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/phase0-stable-release-expected-source-exit.txt
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release tools.tests.test_macos_hardware_compatibility -v
+make evidence-tools-test
+make release-tools-test
+git diff --check
+find docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked -maxdepth 1 -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 > docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/SHA256SUMS
+shasum -a 256 -c docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-721-current-main-gate-blocked/SHA256SUMS

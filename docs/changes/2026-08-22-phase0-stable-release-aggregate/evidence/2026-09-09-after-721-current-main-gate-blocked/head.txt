@@ -1,0 +1,13 @@
+ce4a3f1e74f45d286a1ab8118849bbbc27865fc5
+ce4a3f1e7 test(android): cover wireless LAN UI state contracts (#721)
+758b73d19 docs: refresh phase0 aggregate after PR 720 (#719)
+8847de12b test(android): preserve no-host ui accessibility coverage (#720)
+50a12e22b test(android): preserve wireless and QR UI safeguards (#718)
+e4959563b docs: fix after-713 UIUX evidence notes
+a794095a6 test: guard macOS TCC latest-row preflight
+0462fb46c docs: refresh p0110 no-host uiux evidence after 713 (#716)
+ef7983774 docs: refresh phase0 aggregate after PR 713
+5eb9bf693 test(evidence): revalidate clipboard product sources (#713)
+e986ccc84 docs: refresh phase0 aggregate after PR 711 (#712)
+93ec1bbb7 test(evidence): harden phase0 hardware runtime gates (#711)
+e0ae3bcde test(evidence): harden file transfer product artifacts (#710)
