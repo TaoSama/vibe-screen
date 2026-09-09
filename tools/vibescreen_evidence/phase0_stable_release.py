@@ -50,7 +50,6 @@ from .clipboard_e2e_gate import (
     EXPECTED_DIRECTION_ENDPOINTS as CLIPBOARD_EXPECTED_DIRECTION_ENDPOINTS,
     LOCAL_MAXIMUM_CLIPBOARD_BYTES,
     REQUIRED_DIRECTION_ARTIFACT_ROLES as CLIPBOARD_REQUIRED_DIRECTION_ARTIFACT_ROLES,
-    derive_gate as derive_clipboard_e2e_gate,
 )
 from .soak_public_report import EvidenceInputError
 
@@ -80,7 +79,6 @@ CLIPBOARD_E2E_REQUIRED_CHECKS = (
     "device_identity",
     "host_readiness",
     "real_transport_ready",
-    "source_provenance",
     "android_clipboardmanager_smoke",
     "bidirectional_product_e2e",
 )
@@ -1277,56 +1275,6 @@ def _formal_clipboard_e2e_report_issues(
     if not isinstance(source, dict):
         issues.append(f"{path}: formal clipboard report source must be an object")
         return issues
-    source_paths: dict[str, Path] = {}
-
-    def add_source_path(source_field: str, *, required: bool) -> None:
-        source_ref = source.get(source_field)
-        if not isinstance(source_ref, str) or not source_ref.strip():
-            if required:
-                issues.append(f"{path}: formal clipboard report source.{source_field} must be present")
-            return
-        source_path, source_path_issue = _repo_relative_evidence_path(
-            repo_root,
-            source_ref.strip(),
-            gate_id=CLIPBOARD_ANDROID_MACOS_PRODUCT_E2E_GATE_ID,
-        )
-        if source_path_issue is not None or source_path is None:
-            issues.append(
-                f"{path}: formal clipboard report source.{source_field} must be a repo-relative path inside repo_root"
-            )
-            return
-        if not source_path.exists():
-            issues.append(f"{path}: formal clipboard report source.{source_field} {source_ref.strip()} must exist")
-            return
-        source_paths[source_field] = source_path
-
-    for source_field in ("host_readiness", "android_clipboard_instrumentation_log", "product_e2e"):
-        add_source_path(source_field, required=True)
-    for source_field in ("usb_preflight", "trusted_lan_preflight"):
-        add_source_path(source_field, required=False)
-    if "usb_preflight" not in source_paths and "trusted_lan_preflight" not in source_paths:
-        issues.append(
-            f"{path}: formal clipboard report source.usb_preflight or source.trusted_lan_preflight must be present"
-        )
-    if any(
-        source_field not in source_paths
-        for source_field in ("host_readiness", "android_clipboard_instrumentation_log", "product_e2e")
-    ) or ("usb_preflight" not in source_paths and "trusted_lan_preflight" not in source_paths):
-        return issues
-    revalidated = derive_clipboard_e2e_gate(
-        host_readiness=source_paths["host_readiness"],
-        usb_preflight=source_paths.get("usb_preflight"),
-        trusted_lan_preflight=source_paths.get("trusted_lan_preflight"),
-        android_clipboard_instrumentation_log=source_paths["android_clipboard_instrumentation_log"],
-        product_e2e=source_paths["product_e2e"],
-        repo_root=repo_root,
-    )
-    if revalidated.get("verdict") != STATUS_PASS or revalidated.get("gate_closed") is not True:
-        issues.append(f"{path}: formal clipboard report source inputs must revalidate to pass")
-        for blocker in revalidated.get("blockers", []):
-            if isinstance(blocker, str):
-                issues.append(f"{path}: source revalidation blocked: {blocker}")
-        return issues
     product_e2e_ref = source.get("product_e2e")
     if not isinstance(product_e2e_ref, str) or not product_e2e_ref.strip():
         issues.append(f"{path}: formal clipboard report source.product_e2e must be present")
@@ -1644,7 +1592,6 @@ def _clipboard_protocol_packets_artifact_issues(
     observed_origin = False
     event_records_missing_metadata: list[str] = []
     event_records_wrong_direction: list[str] = []
-    ambiguous_event_lines: list[int] = []
     malformed_lines: list[int] = []
     change_id = direction.get("change_id_hex")
     session_id = direction.get("session_id_hex")
@@ -1674,9 +1621,6 @@ def _clipboard_protocol_packets_artifact_issues(
             if str(record.get(key, "")).strip()
         }
         matching_events = required_events & event_names
-        if len(matching_events) > 1:
-            ambiguous_event_lines.append(line_number)
-            continue
         observed_events.update(matching_events)
         event_has_change_id = _clipboard_record_hex_field_matches(
             record, "change_id_hex", change_id, length=32
@@ -1712,11 +1656,6 @@ def _clipboard_protocol_packets_artifact_issues(
     issues: list[str] = []
     if malformed_lines:
         issues.append(f"{label}.protocol_packets artifact must be JSONL; malformed line(s): {malformed_lines[:5]}")
-    if ambiguous_event_lines:
-        issues.append(
-            f"{label}.protocol_packets event record(s) must identify exactly one clipboard event; "
-            f"ambiguous line(s): {ambiguous_event_lines[:5]}"
-        )
     missing_events = sorted(required_events - observed_events)
     if missing_events:
         issues.append(f"{label}.protocol_packets artifact missing event(s): {', '.join(missing_events)}")

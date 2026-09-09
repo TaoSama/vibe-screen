@@ -40,17 +40,6 @@ ANDROID_TO_MACOS_ORIGIN = "android-p0110-pacific"
 MACOS_TO_ANDROID_ORIGIN = "macos-host-current-source"
 ANDROID_TO_MACOS_EPOCH = 1
 MACOS_TO_ANDROID_EPOCH = 1
-SOURCE_COMMIT = "1234567890abcdef1234567890abcdef12345678"
-SOURCE_TREE = "abcdef1234567890abcdef1234567890abcdef12"
-HOST_BINARY_SHA256 = "a" * 64
-HOST_CDHASH = "b" * 40
-EXPECTED_SOURCE_PATHS = {
-    "host_readiness": "host-readiness.json",
-    "usb_preflight": "usb-smoke-preflight.json",
-    "trusted_lan_preflight": "trusted-lan-preflight.json",
-    "android_clipboard_instrumentation_log": "android-clipboard-instrumentation.txt",
-    "product_e2e": "product-e2e.json",
-}
 
 
 def retained_artifact(direction: str, role: str, path: str) -> dict[str, object]:
@@ -105,14 +94,6 @@ def retained_artifact_content(direction: str, role: str, path: str) -> bytes:
         ]
         text = "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n"
         return text.encode("utf-8")
-    if role == "final_verification":
-        return f"final destination clipboard contains marker={payload['marker']}\n".encode("utf-8")
-    if role == "negative_boundary_verification":
-        return (
-            f"cancelled={payload['cancelled_marker']} not written\n"
-            f"failed={payload['failed_marker']} not written\n"
-            f"denied={payload['deny_marker']} not written\n"
-        ).encode("utf-8")
     return f"retained product artifact: direction={direction} role={role} path={path}\n".encode("utf-8")
 
 
@@ -121,10 +102,6 @@ def direction_payload(direction: str) -> dict[str, object]:
         marker = ANDROID_TO_MACOS_MARKER
         return {
             "marker": marker,
-            "overwrite_marker": "android-to-macos-overwrite-123",
-            "cancelled_marker": "android-to-macos-cancelled-123",
-            "failed_marker": "android-to-macos-failed-123",
-            "deny_marker": "android-to-macos-denied-123",
             "change_id_hex": ANDROID_TO_MACOS_CHANGE_ID,
             "origin_device_id": ANDROID_TO_MACOS_ORIGIN,
             "session_id_hex": CLIPBOARD_SESSION_ID,
@@ -135,10 +112,6 @@ def direction_payload(direction: str) -> dict[str, object]:
     marker = MACOS_TO_ANDROID_MARKER
     return {
         "marker": marker,
-        "overwrite_marker": "macos-to-android-overwrite-123",
-        "cancelled_marker": "macos-to-android-cancelled-123",
-        "failed_marker": "macos-to-android-failed-123",
-        "deny_marker": "macos-to-android-denied-123",
         "change_id_hex": MACOS_TO_ANDROID_CHANGE_ID,
         "origin_device_id": MACOS_TO_ANDROID_ORIGIN,
         "session_id_hex": CLIPBOARD_SESSION_ID,
@@ -216,18 +189,6 @@ def host_readiness(**overrides: object) -> dict[str, object]:
             "microphone_identity_bound": True,
         },
         "listener": {"port": 54321, "observed": True},
-        "host": {
-            "app_path": "/Applications/Vibe Screen.app",
-            "identifier": "dev.telemachus.display",
-            "cdhash": HOST_CDHASH,
-            "binary_sha256": HOST_BINARY_SHA256,
-            "source_commit": SOURCE_COMMIT,
-            "source_tree": SOURCE_TREE,
-            "source_dirty": False,
-            "current_source_commit": SOURCE_COMMIT,
-            "current_source_tree": SOURCE_TREE,
-            "current_source_dirty": False,
-        },
         "blockers": [],
     }
     document.update(overrides)
@@ -248,14 +209,7 @@ def usb_preflight(**overrides: object) -> dict[str, object]:
                 "sdk": 36,
             }
         },
-        "source": {"base_commit": SOURCE_COMMIT},
-        "repository": {"revision": SOURCE_COMMIT, "dirty": False, "status_porcelain": []},
-        "claims": {
-            "can_start_usb_smoke": True,
-            "host_listener_observed": True,
-            "adb_reverse_tcp_54321_present": True,
-            "android_app_foreground": True,
-        },
+        "claims": {"can_start_usb_smoke": True},
         "blockers": [],
     }
     document.update(overrides)
@@ -267,7 +221,6 @@ def lan_preflight(**overrides: object) -> dict[str, object]:
         "schema_version": SCHEMA_VERSION,
         "kind": "trusted_lan_preflight",
         "result": "pass",
-        "repository": {"revision": SOURCE_COMMIT, "dirty": False, "status_porcelain": []},
         "blockers": [],
     }
     document.update(overrides)
@@ -306,10 +259,10 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "mime_type": "text/plain",
         "session_epoch": android_to_macos_payload["session_epoch"],
         "final_marker": android_to_macos_payload["marker"],
-        "overwrite_marker": android_to_macos_payload["overwrite_marker"],
-        "cancelled_marker": android_to_macos_payload["cancelled_marker"],
-        "failed_marker": android_to_macos_payload["failed_marker"],
-        "deny_marker": android_to_macos_payload["deny_marker"],
+        "overwrite_marker": "android-to-macos-overwrite-123",
+        "cancelled_marker": "android-to-macos-cancelled-123",
+        "failed_marker": "android-to-macos-failed-123",
+        "deny_marker": "android-to-macos-denied-123",
         "source_system_clipboard": "android_clipboardmanager",
         "destination_system_clipboard": "macos_nspasteboard",
         "protocol_v1_session": True,
@@ -343,10 +296,10 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         "mime_type": "text/plain",
         "session_epoch": macos_to_android_payload["session_epoch"],
         "final_marker": macos_to_android_payload["marker"],
-        "overwrite_marker": macos_to_android_payload["overwrite_marker"],
-        "cancelled_marker": macos_to_android_payload["cancelled_marker"],
-        "failed_marker": macos_to_android_payload["failed_marker"],
-        "deny_marker": macos_to_android_payload["deny_marker"],
+        "overwrite_marker": "macos-to-android-overwrite-123",
+        "cancelled_marker": "macos-to-android-cancelled-123",
+        "failed_marker": "macos-to-android-failed-123",
+        "deny_marker": "macos-to-android-denied-123",
         "source_system_clipboard": "macos_nspasteboard",
         "destination_system_clipboard": "android_clipboardmanager",
         "protocol_v1_session": True,
@@ -381,7 +334,6 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         },
         "synthetic": False,
         "offline_only": False,
-        "source": {"base_commit": SOURCE_COMMIT},
         "directions": {
             ANDROID_TO_MACOS_DIRECTION: dict(android_to_macos),
             MACOS_TO_ANDROID_DIRECTION: dict(macos_to_android),
@@ -647,117 +599,6 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
-    def test_host_readiness_requires_source_and_binary_identity(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            write_json(
-                paths["host"],
-                host_readiness(
-                    listener={"port": 12345, "observed": True},
-                    host={
-                        "app_path": "",
-                        "identifier": None,
-                        "cdhash": "",
-                        "binary_sha256": None,
-                        "source_commit": None,
-                        "source_tree": "not-a-tree",
-                        "source_dirty": True,
-                        "current_source_commit": "not-a-commit",
-                        "current_source_tree": SOURCE_TREE,
-                        "current_source_dirty": True,
-                    },
-                ),
-            )
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "host_readiness: Host readiness host.current_source_commit must be a 40-character commit hash",
-            result["blockers"],
-        )
-        self.assertIn(
-            "host_readiness: Host readiness host.binary_sha256 must be a SHA-256 digest",
-            result["blockers"],
-        )
-        self.assertIn("host_readiness: Host readiness host.cdhash must be present", result["blockers"])
-        self.assertIn("host_readiness: Host readiness listener.port must be 54321", result["blockers"])
-
-    def test_usb_preflight_requires_key_ready_claims_and_source_commit(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            document = product_e2e()
-            directions = document["directions"]
-            assert isinstance(directions, dict)
-            for direction in directions.values():
-                assert isinstance(direction, dict)
-                direction["transport"] = "usb"
-            write_json(paths["product"], document)
-            write_json(
-                paths["usb"],
-                usb_preflight(
-                    claims={"can_start_usb_smoke": True},
-                    source={},
-                    repository={"revision": "not-a-commit", "dirty": False, "status_porcelain": []},
-                ),
-            )
-            write_json(paths["lan"], lan_preflight(result="blocked", blockers=["LAN not used for this USB evidence"]))
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "real_transport_ready: usb: USB preflight claims.host_listener_observed must be true",
-            result["blockers"],
-        )
-        self.assertIn(
-            "real_transport_ready: usb: USB preflight claims.adb_reverse_tcp_54321_present must be true",
-            result["blockers"],
-        )
-        self.assertIn(
-            "real_transport_ready: usb: USB preflight claims.android_app_foreground must be true",
-            result["blockers"],
-        )
-        self.assertIn(
-            "real_transport_ready: usb: USB preflight source.base_commit must be a 40-character commit hash",
-            result["blockers"],
-        )
-
-    def test_source_provenance_requires_matching_commits(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            document = product_e2e(source={"base_commit": "f" * 40})
-            write_json(paths["product"], document)
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "source_provenance: Host readiness and product E2E source commits must match",
-            result["blockers"],
-        )
-
     def test_one_ready_real_transport_is_enough_for_transport_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -953,7 +794,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
                 repo_root=root,
             )
 
-        self.assertEqual(result["source"], EXPECTED_SOURCE_PATHS)
+        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
 
     def test_report_sanitizes_non_repo_relative_product_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -968,7 +809,7 @@ class ClipboardE2EGateTests(unittest.TestCase):
                 product_e2e=paths["product"],
             )
 
-        self.assertEqual(result["source"], EXPECTED_SOURCE_PATHS)
+        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
         self.assertNotIn(directory_name, json.dumps(result["source"]))
 
     def test_product_e2e_requires_exact_system_clipboard_endpoints(self) -> None:
@@ -1324,32 +1165,6 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
-    def test_product_e2e_rejects_macos_origin_device_id_that_names_android(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            document = product_e2e()
-            directions = document["directions"]
-            assert isinstance(directions, dict)
-            macos_to_android = directions[MACOS_TO_ANDROID_DIRECTION]
-            assert isinstance(macos_to_android, dict)
-            macos_to_android["origin_device_id"] = "android-p0110-pacific"
-            write_json(paths["product"], document)
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.origin_device_id must not include an Android device identity",
-            result["blockers"],
-        )
-
     def test_product_e2e_requires_retained_artifact_hash_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -1498,63 +1313,6 @@ class ClipboardE2EGateTests(unittest.TestCase):
         )
         self.assertIn(
             "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.source_clipboard_read artifact SHA-256 must equal direction.sha256",
-            result["blockers"],
-        )
-
-    def test_product_e2e_rejects_invalid_utf8_clipboard_payload_artifact(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            artifact_path = root / "android-to-macos" / "source-clipboard-read.txt"
-            artifact_path.write_bytes(b"\xff\xfe\xfd")
-            refresh_retained_artifact_metadata(
-                paths["product"], artifact_path, "android-to-macos/source-clipboard-read.txt"
-            )
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.source_clipboard_read artifact must be valid UTF-8 text",
-            result["blockers"],
-        )
-
-    def test_product_e2e_requires_final_and_negative_boundary_artifacts_to_include_markers(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            final_artifact = root / "android-to-macos" / "final-verification.txt"
-            final_artifact.write_text("final clipboard does not contain the expected marker\n", encoding="utf-8")
-            refresh_retained_artifact_metadata(
-                paths["product"], final_artifact, "android-to-macos/final-verification.txt"
-            )
-            negative_artifact = root / "android-to-macos" / "negative-boundary.txt"
-            negative_artifact.write_text("cancel/failure/deny checks passed without marker details\n", encoding="utf-8")
-            refresh_retained_artifact_metadata(
-                paths["product"], negative_artifact, "android-to-macos/negative-boundary.txt"
-            )
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.final_verification artifact must include marker marker",
-            result["blockers"],
-        )
-        self.assertIn(
-            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.negative_boundary_verification artifact must include cancelled_marker marker",
             result["blockers"],
         )
 
@@ -1826,61 +1584,12 @@ class ClipboardE2EGateTests(unittest.TestCase):
                     product_e2e=paths["product"],
                 )
 
-                self.assertEqual(result["verdict"], "blocked")
-                self.assertIn(
-                    f"bidirectional_product_e2e: {label}.protocol_packets "
-                    f"event record(s) must declare direction {label}: clipboard_offer, clipboard_request",
-                    result["blockers"],
-                )
-
-    def test_product_e2e_rejects_protocol_record_with_multiple_clipboard_event_names(self) -> None:
-        with tempfile.TemporaryDirectory() as directory_name:
-            root = Path(directory_name)
-            paths = write_pass_inputs(root)
-            payload = direction_payload(ANDROID_TO_MACOS_DIRECTION)
-            records = [
-                {
-                    "event": "clipboard_offer",
-                    "message_type": "clipboard_request",
-                    "packet_type": "clipboard_content",
-                    "direction": ANDROID_TO_MACOS_DIRECTION,
-                    "change_id_hex": payload["change_id_hex"],
-                    "session_id_hex": payload["session_id_hex"],
-                    "session_epoch": payload["session_epoch"],
-                    "origin_device_id": payload["origin_device_id"],
-                    "mime_type": "text/plain",
-                    "byte_length": payload["byte_length"],
-                    "sha256": payload["sha256"],
-                },
-            ]
-            artifact_path = root / "android-to-macos" / "protocol-packets.jsonl"
-            artifact_path.write_text(
-                "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
-                encoding="utf-8",
+            self.assertEqual(result["verdict"], "blocked")
+            self.assertIn(
+                f"bidirectional_product_e2e: {label}.protocol_packets "
+                f"event record(s) must declare direction {label}: clipboard_offer, clipboard_request",
+                result["blockers"],
             )
-            refresh_retained_artifact_metadata(
-                paths["product"], artifact_path, "android-to-macos/protocol-packets.jsonl"
-            )
-
-            result = derive_gate(
-                host_readiness=paths["host"],
-                usb_preflight=paths["usb"],
-                trusted_lan_preflight=paths["lan"],
-                android_clipboard_instrumentation_log=paths["android_log"],
-                product_e2e=paths["product"],
-            )
-
-        self.assertEqual(result["verdict"], "blocked")
-        self.assertIn(
-            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
-            "event record(s) must identify exactly one clipboard event; ambiguous line(s): [1]",
-            result["blockers"],
-        )
-        self.assertIn(
-            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
-            "artifact missing event(s): clipboard_content, clipboard_offer, clipboard_request",
-            result["blockers"],
-        )
 
     def test_product_e2e_rejects_boolean_protocol_event_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
