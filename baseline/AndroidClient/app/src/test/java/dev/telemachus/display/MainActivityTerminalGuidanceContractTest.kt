@@ -582,9 +582,9 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue("Internet settings and revoke actions should be present", settingsIndex >= 0 && revokeIndex >= 0)
         assertTrue("Internet error region should remain reachable after actions", errorIndex >= 0)
         assertTrue(
-            "Internet status must appear before route and connect controls so idle/failed state is visible without scrolling past actions",
-            profileIndex < stateIndex && stateIndex < routeIndex && routeIndex < scanIndex &&
-                scanIndex < importIndex && importIndex < connectIndex && connectIndex < settingsIndex &&
+            "Internet status must appear before route controls, and the primary connect action must precede auxiliary profile actions",
+            profileIndex < stateIndex && stateIndex < routeIndex && routeIndex < connectIndex &&
+                connectIndex < scanIndex && scanIndex < importIndex && connectIndex < settingsIndex &&
                 settingsIndex < revokeIndex && revokeIndex < errorIndex,
         )
         assertTrue(
