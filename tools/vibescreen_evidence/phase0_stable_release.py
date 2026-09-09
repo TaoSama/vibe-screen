@@ -905,6 +905,7 @@ def _formal_native_pointer_hid_report_issues(
             "dumpsys-input.txt",
             "android-logcat-native-pointer.txt",
             "host-log-appended.txt",
+            "host-readiness.json",
         }
         missing_artifacts = [
             name for name in required_artifact_names if name not in artifact_paths

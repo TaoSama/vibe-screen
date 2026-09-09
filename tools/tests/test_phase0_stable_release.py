@@ -2323,8 +2323,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 for item in summary["blocking_required_gates"]
                 if item["id"] == "native_pointer_hid_mouse"
             )
-            self.assertIn(
-                f"{report_path}: formal native pointer HID report artifact_paths missing host-log-appended.txt",
+            self.assertTrue(
+                any(
+                    "formal native pointer HID report artifact_paths missing" in issue
+                    and "host-log-appended.txt" in issue
+                    and "host-readiness.json" in issue
+                    for issue in native_gate["issues"]
+                ),
                 native_gate["issues"],
             )
 

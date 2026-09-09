@@ -59,7 +59,7 @@ ARTIFACT_PATH_MARKERS = {
     "host_pointer_changed_injected": ("host-log-appended",),
     "host_pointer_began_injected": ("host-log-appended",),
     "host_pointer_ended_injected": ("host-log-appended",),
-    "host_stable_signed_tcc_ready": ("host-readiness", "host-signing", "host-log-appended", "result"),
+    "host_stable_signed_tcc_ready": ("host-readiness", "host-signing"),
     "visible_mac_result_observed": ("result", "visible-mac", "mac-result"),
     "android_logcat_window_retained": ("android-logcat-native-pointer",),
     "host_log_window_retained": ("host-log-appended",),
