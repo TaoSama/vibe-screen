@@ -88,6 +88,17 @@ class ControllerRuntimeReadinessTests(unittest.TestCase):
             self.assertEqual(status.unavailable_reason, "")
             self.assertIn("available", status.last_controller_line)
 
+    def test_load_host_readiness_blocks_invalid_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_readiness = Path(temporary_directory) / "host-readiness.json"
+            host_readiness.write_bytes(b"{\xff}")
+
+            state = readiness.load_host_readiness(host_readiness)
+
+            self.assertTrue(state["present"])
+            self.assertFalse(state["readable"])
+            self.assertEqual(state["document"], {})
+            self.assertIn("utf-8", str(state["error"]))
 
     def test_host_readiness_merge_blocks_controller_runtime(self) -> None:
         host_readiness = {
