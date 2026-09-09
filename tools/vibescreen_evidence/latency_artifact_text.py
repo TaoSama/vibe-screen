@@ -17,7 +17,11 @@ ARTIFACT_NEGATED_STATE_PATTERN = (
 ARTIFACT_FAILED_STATE_PATTERN = (
     r"(?:failed|inactive|disconnected|absent|unavailable|unobserved)"
 )
-ARTIFACT_ABSENT_EVIDENCE_SUBJECT_PATTERN = r"(?:evidence|proof|record|measurement)"
+ARTIFACT_ABSENT_EVIDENCE_SUBJECT_PATTERN = (
+    r"(?:usb|lan|public|remote|turn\s+endpoint|turns?|stream(?:ing)?|route|"
+    r"routed|routing|peer|result|proof|evidence|measurement|clock|"
+    r"connection|record|synchronization)"
+)
 LATENCY_ARTIFACT_TERM_PATTERNS = {
     "stream": re.compile(r"(?<![a-z0-9])stream(?:s|ing)?(?![a-z0-9])"),
     "route": re.compile(r"(?<![a-z0-9])rout(?:e|ed|es|ing)(?![a-z0-9])"),

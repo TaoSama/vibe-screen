@@ -1031,6 +1031,20 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                     expected_reason,
                 )
 
+    def test_latency_artifact_blocking_patterns_cover_absent_state_orderings(self) -> None:
+        examples = (
+            "absent stream despite retained usb connection proof",
+            "absent route for public remote TURN stream proof",
+            "physical visible result proof but input was absent",
+        )
+
+        for text in examples:
+            with self.subTest(text=text):
+                self.assertEqual(
+                    latency_artifact_blocking_reason(text),
+                    "failed or absent evidence state",
+                )
+
     def test_latency_artifact_blocking_patterns_allow_runtime_nonclosure_terms(self) -> None:
         allowed_texts = (
             "USB stream remained active with no Host restart during the sample window.",
