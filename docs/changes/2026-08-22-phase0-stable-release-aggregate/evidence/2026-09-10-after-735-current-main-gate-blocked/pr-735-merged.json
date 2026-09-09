@@ -1,0 +1,288 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjExMzkyODI5",
+    "is_bot": false,
+    "login": "TaoSama",
+    "name": "Wentao Lu"
+  },
+  "baseRefName": "main",
+  "body": "## Summary\n- Records a fresh 2026-09-10 Nubia P0110/pacific no-Host Android UI/UX current-main evidence package after PR #731.\n- Retains device identity, read-only adb reverse/lsof boundary checks, focused instrumentation and JVM logs/results, checksum manifest, and a manual first-screen screenshot.\n- Documents that no Mac Host/GUI, TCC, Host-backed E2E, or adb reverse mapping creation was used or claimed.\n\n## Verification\n- Device identity: adb reported online serial <redacted-adb-serial> as nubia P0110 / pacific / Android 16 / API 36; retained files redact the serial.\n- No-Host boundary: read-only `adb reverse --list` was empty before/after; `lsof -nP -iTCP:54321 -sTCP:LISTEN` returned status 1 before/after.\n- `./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --tests dev.telemachus.display.MainActivityTransferReadinessContractTest` passed 19/19.\n- `ANDROID_SERIAL=<redacted> ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...` passed 87/87 on P0110 - 16.\n- Manual no-Host screenshot: `screenshots/nohost-main.png` shows the USB retry surface without obvious clipping/overlap.\n- `shasum -a 256 -c SHA256SUMS` passed for all retained artifacts.\n\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n\n## Summary by CodeRabbit\n\n* **Documentation**\n  * Added a comprehensive Android 16 UI/UX audit record for a Nubia P0110 device.\n  * Included reproducibility details, device metadata, screenshots, logs, test results, limitations, and checksum verification guidance.\n  * Added browsable HTML reports covering instrumentation and JVM contract results.\n\n* **Tests**\n  * Documented 87/87 successful instrumentation tests and 19/19 successful focused contract tests, with no failures or skipped tests.\n\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+  "closedAt": "2026-09-09T19:38:15Z",
+  "files": [
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/README.md",
+      "additions": 196,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/SHA256SUMS",
+      "additions": 43,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/css/base-style.css",
+      "additions": 162,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/css/style.css",
+      "additions": 86,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest.html",
+      "additions": 91,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest.html",
+      "additions": 151,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest.html",
+      "additions": 151,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.ControlBarLayoutInstrumentedTest.html",
+      "additions": 151,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest.html",
+      "additions": 95,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest.html",
+      "additions": 87,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.InternetControlStateColorsInstrumentedTest.html",
+      "additions": 91,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest.html",
+      "additions": 99,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.QRScannerLayoutInstrumentedTest.html",
+      "additions": 111,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.html",
+      "additions": 151,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/dev.telemachus.display.html",
+      "additions": 186,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/index.html",
+      "additions": 206,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-report/js/report.js",
+      "additions": 101,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-results/TEST-P0110 - 16-_app-.xml",
+      "additions": 95,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/android-test-results/test-result.textproto",
+      "additions": 4540,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/commands.txt",
+      "additions": 59,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/adb-devices.txt",
+      "additions": 2,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/adb-reverse-after-tests.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/adb-reverse-before-tests.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/connected-no-host-uiux-instrumentation.log",
+      "additions": 108,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/focused-control-surface-jvm.log",
+      "additions": 57,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/install-debug-for-screenshot.log",
+      "additions": 65,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/manual-launch-mainactivity-for-dump.txt",
+      "additions": 7,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/manual-launch-mainactivity.txt",
+      "additions": 7,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/no-host-boundary-lsof-54321-after-status.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/no-host-boundary-lsof-54321-after.txt",
+      "additions": 0,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/no-host-boundary-lsof-54321-before-status.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/no-host-boundary-lsof-54321-before.txt",
+      "additions": 0,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/no-host-boundary-lsof-command.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/screenshot-pull.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/uiautomator-dump-stderr.txt",
+      "additions": 0,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/uiautomator-dump.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/uiautomator-pull.txt",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/logs/window-state-after-manual-screenshot.txt",
+      "additions": 120,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/metadata/device-identity.txt",
+      "additions": 11,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/metadata/source-provenance.txt",
+      "additions": 10,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/screenshots/nohost-main.png",
+      "additions": 0,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/unit-test-results/TEST-dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest.xml",
+      "additions": 14,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/unit-test-results/TEST-dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest.xml",
+      "additions": 13,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main/unit-test-results/TEST-dev.telemachus.display.MainActivityTransferReadinessContractTest.xml",
+      "additions": 10,
+      "deletions": 0,
+      "changeType": "ADDED"
+    }
+  ],
+  "headRefName": "codex/nubia-nohost-uiux-current-main",
+  "headRefOid": "424235bcd024aeb4edea0fe8a216de101446be48",
+  "isDraft": false,
+  "mergeCommit": {
+    "oid": "779e606477f07b3454e03f5630e47d9663ae03eb"
+  },
+  "mergedAt": "2026-09-09T19:38:15Z",
+  "number": 735,
+  "state": "MERGED",
+  "title": "docs: record P0110 no-host UIUX evidence",
+  "url": "https://github.com/TaoSama/vibe-screen/pull/735"
+}

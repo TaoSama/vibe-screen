@@ -1,0 +1,60 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjExMzkyODI5",
+    "is_bot": false,
+    "login": "TaoSama",
+    "name": "Wentao Lu"
+  },
+  "baseRefName": "main",
+  "body": "## Summary\\n- Decouple wireless no-Host instrumentation coverage from ActivityScenario/MainActivity startup by injecting host/storage/permission adapters into WirelessTabController.\\n- Move disconnected orientation assertions into the existing JVM source contract so no-Host UI tests do not launch app Activity lifecycle.\\n- Keep production WirelessTabController behavior behind the existing Activity constructor while allowing isolated androidTest fakes.\\n\\n## Verification\\n- ./baseline/AndroidClient/gradlew -p baseline/AndroidClient --rerun-tasks :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin\\n- ./baseline/AndroidClient/gradlew -p baseline/AndroidClient :app:testDebugUnitTest --tests \"dev.telemachus.display.MainActivityTerminalGuidanceContractTest\"\\n- ./baseline/AndroidClient/gradlew -p baseline/AndroidClient :app:assembleDebug :app:assembleDebugAndroidTest\\n- ./baseline/AndroidClient/gradlew -p baseline/AndroidClient --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest\\n- git diff --check\\n- rg scan confirmed ConnectionStateAccessibilityInstrumentedTest no longer references ActivityScenario/MainActivity/DialogHostActivity/DetachedTestActivity/camera permission prefs\\n- adb with redacted P0110 USB serial reverse --list returned empty\\n- adb with redacted P0110 USB serial shell pidof dev.telemachus.display returned empty\\n\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n\n## Summary by CodeRabbit\n\n* **Bug Fixes**\n  * Disconnected screens now consistently restore the device’s system orientation policy instead of forcing a specific orientation.\n  * Wireless connection flows continue to preserve camera-permission handling, paired-device storage, reconnect messaging, and scanner behavior.\n\n* **Refactor**\n  * Improved separation of wireless connection, pairing, and camera-permission handling to support more reliable behavior across Android screens.\n\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+  "closedAt": "2026-09-09T16:16:52Z",
+  "files": [
+    {
+      "path": "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/ConnectionStateAccessibilityInstrumentedTest.kt",
+      "additions": 76,
+      "deletions": 92,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/CameraPermissionManager.kt",
+      "additions": 5,
+      "deletions": 5,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/PairedHostStorage.kt",
+      "additions": 4,
+      "deletions": 4,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WirelessTabController.kt",
+      "additions": 120,
+      "deletions": 44,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTerminalGuidanceContractTest.kt",
+      "additions": 28,
+      "deletions": 0,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WirelessTabControllerContractTest.kt",
+      "additions": 1,
+      "deletions": 1,
+      "changeType": "MODIFIED"
+    }
+  ],
+  "headRefName": "codex/harden-android-nohost-wireless-tests",
+  "headRefOid": "26c5c4415ccf40b011dc8b01fac421677c08261b",
+  "isDraft": false,
+  "mergeCommit": {
+    "oid": "c23c65d075efc15c1fce285df4d3e2bf7e2562c6"
+  },
+  "mergedAt": "2026-09-09T16:16:52Z",
+  "number": 734,
+  "state": "MERGED",
+  "title": "test(android): isolate no-host wireless UI tests",
+  "url": "https://github.com/TaoSama/vibe-screen/pull/734"
+}

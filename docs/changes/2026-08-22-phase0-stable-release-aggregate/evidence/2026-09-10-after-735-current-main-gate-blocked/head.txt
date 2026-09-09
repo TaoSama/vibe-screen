@@ -1,0 +1,13 @@
+779e606477f07b3454e03f5630e47d9663ae03eb
+779e60647 docs: record P0110 no-host UIUX evidence (#735)
+7c496b6ca test(evidence): require file transfer session match (#736)
+0da8602c6 Guard macOS host readiness login probe (#731)
+3c68b63cd fix(android): explain disabled internet connect action (#733)
+54550c164 Harden file-transfer cleanup evidence gate (#732)
+c23c65d07 test(android): isolate no-host wireless UI tests (#734)
+4921d27eb docs: refresh phase0 aggregate after PR 730 (#729)
+20776920b test(android): harden no-host ui contracts (#730)
+719208cb2 test(controller): block invalid host readiness utf8 (#728)
+b0db1767c test(evidence): require native pointer observation artifacts (#727)
+9df491d75 test(evidence): harden product e2e artifact checks
+fdd37797c docs: refresh phase0 aggregate after PR 723 (#725)
