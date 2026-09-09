@@ -64,6 +64,7 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "final_verification",
     "negative_boundary_verification",
 )
+SESSION_ID_HEX_RE = re.compile(r"[0-9a-fA-F]{32}")
 HASH_CHUNK_BYTES = 1024 * 1024
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
@@ -376,6 +377,26 @@ def _destination_clipboard_artifact_reasons(
     return _artifact_payload_reasons(
         destination_artifact,
         f"{label}.destination_clipboard_write",
+        direction.get("byte_length"),
+        direction.get("sha256"),
+    )
+
+
+def _source_clipboard_artifact_reasons(
+    direction: dict[str, Any],
+    label: str,
+    evidence_dir: Path | None,
+) -> list[str]:
+    source_artifact = _resolved_retained_artifact_path(
+        direction,
+        "source_clipboard_read",
+        evidence_dir,
+    )
+    if source_artifact is None:
+        return []
+    return _artifact_payload_reasons(
+        source_artifact,
+        f"{label}.source_clipboard_read",
         direction.get("byte_length"),
         direction.get("sha256"),
     )
@@ -805,8 +826,11 @@ def _direction_reasons(
     if not isinstance(marker, str) or len(marker.strip()) < 8:
         reasons.append(f"{label}.marker must identify the transferred text marker")
     change_id = direction.get("change_id_hex")
-    if not isinstance(change_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", change_id):
+    if not isinstance(change_id, str) or not SESSION_ID_HEX_RE.fullmatch(change_id):
         reasons.append(f"{label}.change_id_hex must be a 32-character hex change ID")
+    session_id = direction.get("session_id_hex")
+    if not isinstance(session_id, str) or not SESSION_ID_HEX_RE.fullmatch(session_id):
+        reasons.append(f"{label}.session_id_hex must be a 32-character hex session ID")
     sha256 = direction.get("sha256")
     if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         reasons.append(f"{label}.sha256 must be a 64-character hex SHA-256 digest")
@@ -875,6 +899,7 @@ def _direction_reasons(
             cross_direction_artifact_paths,
         )
     )
+    reasons.extend(_source_clipboard_artifact_reasons(direction, label, evidence_dir))
     reasons.extend(_destination_clipboard_artifact_reasons(direction, label, evidence_dir))
     reasons.extend(_protocol_packets_artifact_reasons(direction, label, evidence_dir))
     return reasons
@@ -900,6 +925,9 @@ def _product_e2e_gate(
         markers: dict[str, str] = {}
         change_ids: dict[str, str] = {}
         digests: dict[str, str] = {}
+        session_ids: dict[str, str] = {}
+        transports: dict[str, str] = {}
+        session_epochs: dict[str, int] = {}
         retained_artifact_paths: dict[Path | str, tuple[str, str]] = {}
         if isinstance(android_to_macos, dict):
             reasons.extend(
@@ -918,11 +946,19 @@ def _product_e2e_gate(
             if isinstance(marker, str):
                 markers["android_clipboardmanager_to_macos_nspasteboard"] = marker.strip()
             change_id = android_to_macos.get("change_id_hex")
-            if isinstance(change_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", change_id):
+            if isinstance(change_id, str) and SESSION_ID_HEX_RE.fullmatch(change_id):
                 change_ids["android_clipboardmanager_to_macos_nspasteboard"] = change_id.lower()
+            session_id = android_to_macos.get("session_id_hex")
+            if isinstance(session_id, str) and SESSION_ID_HEX_RE.fullmatch(session_id):
+                session_ids["android_clipboardmanager_to_macos_nspasteboard"] = session_id.lower()
             digest = android_to_macos.get("sha256")
             if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
                 digests["android_clipboardmanager_to_macos_nspasteboard"] = digest.lower()
+            if transport in {"usb", "trusted_lan"}:
+                transports["android_clipboardmanager_to_macos_nspasteboard"] = transport
+            session_epoch = android_to_macos.get("session_epoch")
+            if isinstance(session_epoch, int) and not isinstance(session_epoch, bool) and session_epoch > 0:
+                session_epochs["android_clipboardmanager_to_macos_nspasteboard"] = session_epoch
         else:
             reasons.append("missing android_clipboardmanager_to_macos_nspasteboard direction evidence")
         if isinstance(macos_to_android, dict):
@@ -941,11 +977,19 @@ def _product_e2e_gate(
             if isinstance(marker, str):
                 markers["macos_nspasteboard_to_android_clipboardmanager"] = marker.strip()
             change_id = macos_to_android.get("change_id_hex")
-            if isinstance(change_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", change_id):
+            if isinstance(change_id, str) and SESSION_ID_HEX_RE.fullmatch(change_id):
                 change_ids["macos_nspasteboard_to_android_clipboardmanager"] = change_id.lower()
+            session_id = macos_to_android.get("session_id_hex")
+            if isinstance(session_id, str) and SESSION_ID_HEX_RE.fullmatch(session_id):
+                session_ids["macos_nspasteboard_to_android_clipboardmanager"] = session_id.lower()
             digest = macos_to_android.get("sha256")
             if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{64}", digest):
                 digests["macos_nspasteboard_to_android_clipboardmanager"] = digest.lower()
+            if transport in {"usb", "trusted_lan"}:
+                transports["macos_nspasteboard_to_android_clipboardmanager"] = transport
+            session_epoch = macos_to_android.get("session_epoch")
+            if isinstance(session_epoch, int) and not isinstance(session_epoch, bool) and session_epoch > 0:
+                session_epochs["macos_nspasteboard_to_android_clipboardmanager"] = session_epoch
         else:
             reasons.append("missing macos_nspasteboard_to_android_clipboardmanager direction evidence")
         if (
@@ -966,7 +1010,39 @@ def _product_e2e_gate(
             == digests.get("macos_nspasteboard_to_android_clipboardmanager")
         ):
             reasons.append("direction SHA-256 digests must be distinct so one payload cannot satisfy both directions")
+        if (
+            session_ids.get("android_clipboardmanager_to_macos_nspasteboard")
+            and session_ids.get("macos_nspasteboard_to_android_clipboardmanager")
+            and session_ids["android_clipboardmanager_to_macos_nspasteboard"]
+            != session_ids["macos_nspasteboard_to_android_clipboardmanager"]
+        ):
+            reasons.append("direction session IDs must match for same-session bidirectional product evidence")
+        if (
+            transports.get("android_clipboardmanager_to_macos_nspasteboard")
+            and transports.get("macos_nspasteboard_to_android_clipboardmanager")
+            and transports["android_clipboardmanager_to_macos_nspasteboard"]
+            != transports["macos_nspasteboard_to_android_clipboardmanager"]
+        ):
+            reasons.append("direction transports must match for same-session bidirectional product evidence")
+        if (
+            session_epochs.get("android_clipboardmanager_to_macos_nspasteboard")
+            and session_epochs.get("macos_nspasteboard_to_android_clipboardmanager")
+            and session_epochs["android_clipboardmanager_to_macos_nspasteboard"]
+            != session_epochs["macos_nspasteboard_to_android_clipboardmanager"]
+        ):
+            reasons.append("direction session_epoch values must match for same-session bidirectional product evidence")
     return _gate("bidirectional_product_e2e", PASS if not reasons else BLOCKED, reasons, evidence)
+
+
+def _source_path(path: Path | None, *, repo_root: Path | None) -> str | None:
+    if path is None:
+        return None
+    if repo_root is None:
+        return path.as_posix()
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _device_gate(usb: dict[str, Any] | None, lan: dict[str, Any] | None, product: dict[str, Any] | None) -> dict[str, Any]:
@@ -1014,6 +1090,7 @@ def derive_gate(
     trusted_lan_preflight: Path | None = None,
     android_clipboard_instrumentation_log: Path | None = None,
     product_e2e: Path | None = None,
+    repo_root: Path | None = None,
     serial_label: str = SAFE_SERIAL_LABEL,
 ) -> dict[str, Any]:
     host, host_missing = _load_optional(host_readiness, "host readiness")
@@ -1081,6 +1158,9 @@ def derive_gate(
         "serial_label": sanitize_text(serial_label),
         "checks": sanitize_value(gates),
         "blockers": sanitize_value(blockers),
+        "source": {
+            "product_e2e": _source_path(product_e2e, repo_root=repo_root),
+        },
         "not_proven": [
             item
             for item in (
@@ -1138,6 +1218,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--trusted-lan-preflight", type=Path)
     parser.add_argument("--android-clipboard-instrumentation-log", type=Path)
     parser.add_argument("--product-e2e", type=Path)
+    parser.add_argument("--repo-root", type=Path)
     parser.add_argument("--serial", help="Raw serial accepted for invocation auditing; never emitted")
     parser.add_argument("--serial-label", default=SAFE_SERIAL_LABEL)
     parser.add_argument("--output", type=Path, required=True)
@@ -1154,6 +1235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             trusted_lan_preflight=args.trusted_lan_preflight,
             android_clipboard_instrumentation_log=args.android_clipboard_instrumentation_log,
             product_e2e=args.product_e2e,
+            repo_root=args.repo_root,
             serial_label=args.serial_label,
         )
     except (ClipboardE2EGateError, OSError, TypeError, ValueError) as error:
