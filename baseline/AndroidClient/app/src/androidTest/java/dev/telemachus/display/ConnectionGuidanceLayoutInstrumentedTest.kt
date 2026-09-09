@@ -858,6 +858,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         fun assertPrimaryInternetActionVisible() {
             scrollView.scrollTo(0, 0)
             val actionBounds = boundsInContent(internetConnect)
+            val profileActionsBounds = boundsInContent(internetProfileActions)
             assertTrue(
                 "Internet action height was " + internetConnect.height + "px",
                 internetConnect.height >= dp(48),
@@ -866,6 +867,10 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 "Internet action " + actionBounds + " starts below the " +
                     scrollView.height + "px first-screen viewport",
                 actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
+            )
+            assertTrue(
+                "Internet action " + actionBounds + " should precede profile actions " + profileActionsBounds,
+                actionBounds.bottom <= profileActionsBounds.top,
             )
         }
 
