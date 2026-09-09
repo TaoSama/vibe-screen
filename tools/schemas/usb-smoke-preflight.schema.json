@@ -10,6 +10,8 @@
     "collected_at",
     "result",
     "blockers",
+    "source",
+    "repository",
     "configuration",
     "safety",
     "device",
@@ -97,7 +99,12 @@
             }
           },
           "claims": {
-            "properties": {"can_start_usb_smoke": {"const": true}}
+            "properties": {
+              "can_start_usb_smoke": {"const": true},
+              "host_listener_observed": {"const": true},
+              "adb_reverse_tcp_54321_present": {"const": true},
+              "android_app_foreground": {"const": true}
+            }
           }
         }
       }
@@ -129,6 +136,24 @@
           "field": {"type": "string", "minLength": 1},
           "message": {"type": "string", "minLength": 1}
         }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_commit"],
+      "properties": {
+        "base_commit": {"type": ["string", "null"]}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": ["string", "null"]},
+        "dirty": {"type": ["boolean", "null"]},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
       }
     },
     "configuration": {
@@ -256,10 +281,16 @@
         "can_close_native_pointer_hid_gate",
         "can_close_stylus_gate",
         "can_close_controller_gate",
-        "device_matches_expected_p0110"
+        "device_matches_expected_p0110",
+        "host_listener_observed",
+        "adb_reverse_tcp_54321_present",
+        "android_app_foreground"
       ],
       "properties": {
         "can_start_usb_smoke": {"type": "boolean"},
+        "host_listener_observed": {"type": "boolean"},
+        "adb_reverse_tcp_54321_present": {"type": "boolean"},
+        "android_app_foreground": {"type": "boolean"},
         "live_usb_stream_observed": {"const": false},
         "readme_gate_closure": {"const": false},
         "can_close_two_hour_soak_gate": {"const": false},
