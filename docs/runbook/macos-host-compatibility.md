@@ -109,8 +109,13 @@ make baseline-macos-host-preflight
 The default `baseline-macos-host-readiness` path intentionally skips the
 Launch at Login `sfltool dumpbtm` probe because that system command can display
 a macOS administrator prompt. Default tests and CI must keep this path skipped.
-Only run `scripts/macos_dev_host.py readiness --include-login-item-diagnostic ...` during an
-explicit manual diagnostic, after confirming no stale `sfltool` process is
+The Make target forwards `--include-login-item-diagnostic` only when both
+`MACOS_HOST_READINESS_PROBE_LOGIN_ITEM=1` and
+`MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK=I_UNDERSTAND_SFLTOOL_CAN_PROMPT`
+are set, so a single inherited environment variable cannot opt automation into
+the prompt-capable probe. Only run that acknowledged path, or
+`scripts/macos_dev_host.py readiness --include-login-item-diagnostic ...`, during
+an explicit manual diagnostic, after confirming no stale `sfltool` process is
 present.
 
 `baseline-macos-touch-preflight` is retained as an alias for existing touch
