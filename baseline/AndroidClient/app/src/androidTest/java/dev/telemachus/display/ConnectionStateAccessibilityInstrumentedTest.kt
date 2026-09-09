@@ -364,6 +364,14 @@ class ConnectionStateAccessibilityInstrumentedTest {
                     connectionMode = ConnectionMode.INTERNET,
                     subtitleExpanded = false,
                 )
+                val configuration = context.resources.configuration
+                measureAndLayout(
+                    root,
+                    context,
+                    widthDp = configuration.screenWidthDp,
+                    heightDp = configuration.screenHeightDp,
+                )
+                assertTextRenderedWithoutEllipsis(subtitle)
 
                 assertEquals(root.context.getString(R.string.internet_waiting_description), subtitle.text.toString())
                 assertEquals(Int.MAX_VALUE, subtitle.maxLines)

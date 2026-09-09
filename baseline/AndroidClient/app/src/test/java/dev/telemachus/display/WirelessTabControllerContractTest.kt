@@ -100,9 +100,10 @@ class WirelessTabControllerContractTest {
         assertTrue(onStreamDisconnected.contains("showIdleReconnectState()"))
         assertTrue(onStreamDisconnected.contains("transition(State.PAIRED_IDLE)"))
 
-        assertTrue(onConnectError.contains("StreamClient.WirelessConnectError.NetworkUnreachable"))
-        assertTrue(onConnectError.contains("showRepairMessage("))
-        assertTrue(onConnectError.contains("transition(State.REPAIR_NEEDED)"))
+        val networkUnreachableBranch =
+            extractWhenBranch(onConnectError, "is StreamClient.WirelessConnectError.NetworkUnreachable")
+        assertTrue(networkUnreachableBranch.contains("showRepairMessage("))
+        assertTrue(networkUnreachableBranch.contains("transition(State.REPAIR_NEEDED)"))
     }
 
     @Test
@@ -223,6 +224,13 @@ class WirelessTabControllerContractTest {
             }
         }
         error("Closing brace not found for $signature")
+    }
+
+    private fun extractWhenBranch(source: String, branchStart: String): String {
+        val start = source.indexOf(branchStart)
+        require(start >= 0) { "Branch not found: $branchStart" }
+        val nextBranch = Regex("(?m)^[\t ]*(is|else)\\s").find(source, start + branchStart.length)
+        return source.substring(start, nextBranch?.range?.first ?: source.length)
     }
 
     private fun wirelessTabControllerSource(): String {
