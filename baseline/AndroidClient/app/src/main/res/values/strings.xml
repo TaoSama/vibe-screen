@@ -280,6 +280,7 @@
     <string name="internet_scan_profile">Scan QR</string>
     <string name="internet_import_profile">Import</string>
     <string name="internet_connect">Connect preview</string>
+    <string name="internet_connect_profile_missing_description">Connect preview unavailable. Scan or import an Internet profile first.</string>
     <string name="internet_revoke_local">Revoke this Mac on this device</string>
     <string name="internet_revoke_local_short">Revoke Mac</string>
     <string name="internet_state_idle">Idle · encrypted records required</string>
