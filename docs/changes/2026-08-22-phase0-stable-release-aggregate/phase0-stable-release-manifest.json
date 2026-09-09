@@ -3,30 +3,30 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "93ec1bbb73a2ec3dad743e63cd07734c034d1b5a",
+    "base_commit": "5eb9bf6932e8942fb194ed6ad64cffefb862338d",
     "base_ref": "origin/main",
-    "audit_date": "2026-09-08",
+    "audit_date": "2026-09-09",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
     "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'sort_by(.number)'",
-    "queried_at": "2026-09-08",
+    "queried_at": "2026-09-09",
     "state": "open",
     "open_pr_numbers": []
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=711)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 200 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=713)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 711
+      "max": 713
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-711-current-main-gate-blocked/merged-prs-568-711.jsonl",
-    "audited_source_commit": "93ec1bbb73a2ec3dad743e63cd07734c034d1b5a",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-09-after-713-current-main-gate-blocked/merged-prs-568-713.jsonl",
+    "audited_source_commit": "5eb9bf6932e8942fb194ed6ad64cffefb862338d",
     "excluded_pr_numbers": [
       568,
       576,
