@@ -63,8 +63,10 @@ must not be reported as Xiaomi 13/fuxi evidence.
 
 ## Commands
 
-Run from `baseline/AndroidClient` unless noted. Device commands used the
-redacted serial placeholder shown below. The exact command list is retained in
+Commands were recorded from the repository root unless the retained command
+uses an explicit subshell under `baseline/AndroidClient`. Device commands used
+the redacted serial placeholder shown below. The exact command list, including
+artifact paths, output redirection, and status capture, is retained in
 `commands.txt`.
 
     adb -s <redacted-adb-serial> devices -l
@@ -93,6 +95,37 @@ redacted serial placeholder shown below. The exact command list is retained in
     adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-nohost-main.xml
     adb -s <redacted-adb-serial> reverse --list
     lsof -nP -iTCP:54321 -sTCP:LISTEN
+
+The retained no-Host boundary logs were produced by separate capture steps that
+write directly under this evidence directory. The pre-run samples were captured
+as:
+
+    adb -s <redacted-adb-serial> reverse --list > "$EVID/logs/adb-reverse-before-tests.txt"
+    command -v lsof > "$EVID/logs/no-host-boundary-lsof-command.txt"
+    if lsof -nP -iTCP:54321 -sTCP:LISTEN > "$EVID/logs/no-host-boundary-lsof-54321-before.txt" 2>&1; then
+      printf '0\n' > "$EVID/logs/no-host-boundary-lsof-54321-before-status.txt"
+    else
+      printf '%s\n' "$?" > "$EVID/logs/no-host-boundary-lsof-54321-before-status.txt"
+    fi
+
+The post-run samples used the same read-only reverse command and `lsof` capture
+pattern with `after` output filenames. In both cases the retained status file is
+`1`, matching an empty `lsof` result rather than a listening Host.
+
+The retained manual screenshot and UIAutomator diagnostic logs were also
+separate capture steps:
+
+    adb -s <redacted-adb-serial> shell am start -W -n dev.telemachus.display/.MainActivity > "$EVID/logs/manual-launch-mainactivity.txt" 2>&1
+    adb -s <redacted-adb-serial> pull /sdcard/vibescreen-nohost-main.png "$EVID/screenshots/nohost-main.png" > "$EVID/logs/screenshot-pull.txt" 2>&1
+    adb -s <redacted-adb-serial> shell am start -W -n dev.telemachus.display/.MainActivity > "$EVID/logs/manual-launch-mainactivity-for-dump.txt" 2>&1
+    adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-nohost-main.xml > "$EVID/logs/uiautomator-dump.txt" 2> "$EVID/logs/uiautomator-dump-stderr.txt" || true
+    adb -s <redacted-adb-serial> pull /sdcard/vibescreen-nohost-main.xml "$EVID/ui-dumps/nohost-main.xml" > "$EVID/logs/uiautomator-pull.txt" 2>&1 || true
+
+The retained `uiautomator` files therefore record the failed diagnostic attempt
+exactly; no hierarchy dump file is part of this package. Checksum verification
+is run from the evidence directory:
+
+    (cd "$EVID" && shasum -a 256 -c SHA256SUMS)
 
 ## Results
 
