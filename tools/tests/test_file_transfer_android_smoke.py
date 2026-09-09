@@ -293,7 +293,8 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         "cancel-cleanup/cleanup-state.txt": (
             "cleanup sender_state_cleared receiver_state_cleared "
             "session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7 "
-            "transfer_id_hex=00112233445566778899aabbccddeeff\n"
+            "transfer_id_hex=00112233445566778899aabbccddeeff "
+            "transfer_id_hex=ffeeddccbbaa99887766554433221100\n"
         ),
         "disconnect-cleanup/disconnect-event.txt": (
             "disconnect observed session_id_hex=0123456789abcdeffedcba9876543210 "
@@ -302,6 +303,7 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
         "disconnect-cleanup/cleanup-state.txt": (
             "cleanup sender_state_cleared receiver_state_cleared "
             "session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7 "
+            "transfer_id_hex=00112233445566778899aabbccddeeff "
             "transfer_id_hex=ffeeddccbbaa99887766554433221100\n"
         ),
     }
@@ -1508,6 +1510,41 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_cleanup_state_artifacts_must_cover_both_direction_transfer_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            (root / "cancel-cleanup" / "cleanup-state.txt").write_text(
+                "cleanup sender_state_cleared receiver_state_cleared "
+                "session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7 "
+                "transfer_id_hex=00112233445566778899aabbccddeeff\n",
+                encoding="utf-8",
+            )
+            (root / "disconnect-cleanup" / "cleanup-state.txt").write_text(
+                "cleanup sender_state_cleared receiver_state_cleared "
+                "session_id_hex=0123456789abcdeffedcba9876543210 session_epoch=7 "
+                "transfer_id_hex=ffeeddccbbaa99887766554433221100\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "cancel_cleanup: cancel_cleanup.cleanup_state artifact must contain every retained transfer_id_hex: ffeeddccbbaa99887766554433221100",
+            result["blockers"],
+        )
+        self.assertIn(
+            "cancel_cleanup: disconnect_cleanup.cleanup_state artifact must contain every retained transfer_id_hex: 00112233445566778899aabbccddeeff",
+            result["blockers"],
+        )
+
     def test_disconnect_cleanup_root_is_required(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -1669,7 +1706,8 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
         self.assertIn(
-            "cancel_cleanup: cancel_cleanup.cleanup_state artifact must contain at least one retained transfer_id_hex",
+            "cancel_cleanup: cancel_cleanup.cleanup_state artifact must contain every retained transfer_id_hex: "
+            "00112233445566778899aabbccddeeff, ffeeddccbbaa99887766554433221100",
             result["blockers"],
         )
 
@@ -1708,7 +1746,8 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             result["blockers"],
         )
         self.assertIn(
-            "cancel_cleanup: disconnect_cleanup.cleanup_state artifact must contain at least one retained transfer_id_hex",
+            "cancel_cleanup: disconnect_cleanup.cleanup_state artifact must contain every retained transfer_id_hex: "
+            "00112233445566778899aabbccddeeff, ffeeddccbbaa99887766554433221100",
             result["blockers"],
         )
 

@@ -514,8 +514,18 @@ def _cleanup_artifact_content_reasons(
             reasons.append(f"{label}.{role} artifact must contain session_id_hex={session_id}")
         if not _contains_integer_key_value(text, "session_epoch", session_epoch):
             reasons.append(f"{label}.{role} artifact must contain session_epoch={session_epoch}")
-        role_requires_transfer_id = role == "cleanup_state" or (role == event_role and require_event_transfer_id)
-        if role_requires_transfer_id and not any(
+        if role == "cleanup_state":
+            missing_transfer_ids = [
+                transfer_id
+                for transfer_id in sorted(transfer_ids)
+                if not _contains_key_value(text, "transfer_id_hex", transfer_id)
+            ]
+            if missing_transfer_ids:
+                reasons.append(
+                    f"{label}.{role} artifact must contain every retained transfer_id_hex: "
+                    f"{', '.join(missing_transfer_ids)}"
+                )
+        elif require_event_transfer_id and not any(
             _contains_key_value(text, "transfer_id_hex", transfer_id) for transfer_id in transfer_ids
         ):
             reasons.append(f"{label}.{role} artifact must contain at least one retained transfer_id_hex")
