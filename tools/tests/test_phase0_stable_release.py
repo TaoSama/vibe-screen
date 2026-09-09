@@ -742,9 +742,11 @@ def write_native_pointer_hid_evidence(
             "host-readiness.json",
         ],
         "observation_artifacts": {
+            "adb_was_run": ["result.json"],
             "device_identity_recorded": ["result.json"],
             "device_identity_matches_claim": ["result.json"],
             "physical_mouse_attached": ["dumpsys-input.txt"],
+            "default_gate_events_required": ["result.json"],
             "android_move_forwarded": ["android-logcat-native-pointer.txt"],
             "android_forwarding_device_ids_match_external_mouse": [
                 "dumpsys-input.txt",
@@ -762,6 +764,7 @@ def write_native_pointer_hid_evidence(
             "visible_mac_result_observed": ["result.json"],
             "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
             "host_log_window_retained": ["host-log-appended.txt"],
+            "collector_reported_passed": ["result.json"],
         },
     }
     report = summarize_native_pointer_hid(
@@ -2398,6 +2401,43 @@ class Phase0StableReleaseTest(unittest.TestCase):
             )
 
         with_temporary_repo(run)
+
+    def test_native_pointer_hid_pass_requires_shared_required_observation_mappings(self) -> None:
+        for field in (
+            "adb_was_run",
+            "default_gate_events_required",
+            "collector_reported_passed",
+        ):
+            with self.subTest(field=field):
+                def run(repo: Path, base_commit: str) -> None:
+                    manifest = complete_manifest_for_repo(repo, base_commit)
+                    report_path = write_native_pointer_hid_evidence(
+                        repo,
+                        output_path=f"docs/evidence/native-pointer-missing-{field}/native-pointer-hid-summary.json",
+                        mutate_report=lambda report: report["observation_artifacts"].pop(field),
+                    )
+                    gate_by_id(manifest, "native_pointer_hid_mouse")["evidence_paths"] = [
+                        report_path
+                    ]
+
+                    summary = evaluate_manifest(
+                        manifest,
+                        readme_text=GUARDED_README_TEXT,
+                        repo_root=repo,
+                    )
+
+                    self.assertEqual(summary["aggregate_verdict"], "insufficient")
+                    native_gate = next(
+                        item
+                        for item in summary["blocking_required_gates"]
+                        if item["id"] == "native_pointer_hid_mouse"
+                    )
+                    self.assertIn(
+                        f"{report_path}: formal native pointer HID report observation_artifacts.{field} must be a non-empty list of strings",
+                        native_gate["issues"],
+                    )
+
+                with_temporary_repo(run)
 
     def test_native_pointer_hid_pass_requires_complete_observations(self) -> None:
         def run(repo: Path, base_commit: str) -> None:

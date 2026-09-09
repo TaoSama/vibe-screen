@@ -630,6 +630,118 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(summary["verdict"], "blocked")
             self.assertFalse(summary["can_close_native_pointer_hid_gate"])
 
+    def test_main_blocks_host_ready_flag_with_blocked_host_readiness_json(self) -> None:
+        identity = acceptance.DeviceIdentity(
+            serial="SERIAL",
+            endpoint="SERIAL device product:pacific model:P0110 device:pacific",
+            manufacturer="nubia",
+            model="P0110",
+            device="pacific",
+            android_release="16",
+            sdk="36",
+            fingerprint_sha256="1" * 64,
+            display_size="Physical size: 1264x2800",
+            display_density="Physical density: 480",
+            battery_summary="level: 88",
+            boot_completed="1",
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host.log"
+            host_log.write_text("before\n", encoding="utf-8")
+            cursor = acceptance.host_log_cursor(host_log)
+            host_log.write_text(
+                "before\n"
+                "Pointer injected: phase=changed buttons=0\n"
+                "Pointer injected: phase=began buttons=1\n"
+                "Pointer injected: phase=ended buttons=0\n",
+                encoding="utf-8",
+            )
+            evidence_dir = Path(temporary_directory) / "evidence"
+            host_readiness = self._write_host_readiness(
+                Path(temporary_directory) / "host-readiness.json",
+                can_start_native_hid_gate=False,
+            )
+            with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[]),
+                mock.patch.object(acceptance, "read_device_identity", return_value=identity),
+                mock.patch.object(
+                    acceptance,
+                    "adb",
+                    return_value=acceptance.CommandResult(["adb"], 0, SAMPLE_DUMPSYS_INPUT, ""),
+                ),
+                mock.patch.object(acceptance, "host_log_cursor", return_value=cursor),
+                mock.patch.object(
+                    acceptance,
+                    "LogcatCapture",
+                    return_value=FakeLogcatCapture(
+                        "native pointer forwarded action=MOVE deviceId=11 source=MOUSE buttonState=0 actionButton=0 wireButtons=0 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_PRESS deviceId=11 source=MOUSE buttonState=1 actionButton=1 wireButtons=1 x=0.5 y=0.5\n"
+                        "native pointer forwarded action=BUTTON_RELEASE deviceId=11 source=MOUSE buttonState=0 actionButton=1 wireButtons=0 x=0.5 y=0.5\n",
+                    ),
+                ),
+            ):
+                exit_code = acceptance.main(
+                    [
+                        "--serial",
+                        "SERIAL",
+                        "--host-log",
+                        str(host_log),
+                        "--evidence-dir",
+                        str(evidence_dir),
+                        "--observe-seconds",
+                        "0",
+                        "--visible-result-note",
+                        "Mac cursor moved and the primary click focused TextEdit.",
+                        "--host-stable-signed-tcc-ready",
+                        "--host-readiness",
+                        str(host_readiness),
+                    ]
+                )
+
+            self.assertEqual(exit_code, acceptance.BLOCKED_EXIT)
+            result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertFalse(result["host_stable_signed_tcc_ready"])
+            self.assertIn("host-readiness.json", result["artifact_paths"])
+            self.assertNotIn("host_stable_signed_tcc_ready", result["observation_artifacts"])
+            self.assertTrue((evidence_dir / "host-readiness.json").exists())
+
+    def test_main_blocks_host_readiness_decode_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            host_readiness = Path(temporary_directory) / "host-readiness.json"
+            host_readiness.write_bytes(b"{\xff}")
+            lock = acceptance.CoordinationLock("/tmp/vibe-screen-device-android.lock", "owner=other-run")
+            with (
+                mock.patch.object(acceptance, "describe_device_locks", return_value=[lock]),
+                mock.patch.object(acceptance, "read_device_identity") as read_device_identity,
+                mock.patch.object(acceptance, "adb") as adb,
+            ):
+                exit_code = acceptance.main(
+                    [
+                        "--serial",
+                        "SERIAL",
+                        "--host-log",
+                        str(Path(temporary_directory) / "missing-host.log"),
+                        "--evidence-dir",
+                        str(evidence_dir),
+                        "--observe-seconds",
+                        "0",
+                        "--host-stable-signed-tcc-ready",
+                        "--host-readiness",
+                        str(host_readiness),
+                        "--no-wait",
+                        "--write-blocked-on-lock",
+                    ]
+                )
+
+            self.assertEqual(exit_code, acceptance.BLOCKED_EXIT)
+            read_device_identity.assert_not_called()
+            adb.assert_not_called()
+            result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertFalse(result["host_stable_signed_tcc_ready"])
+            self.assertNotIn("host-readiness.json", result["artifact_paths"])
+
     def test_main_fails_when_required_android_events_do_not_share_external_mouse_device(self) -> None:
         identity = acceptance.DeviceIdentity(
             serial="SERIAL",

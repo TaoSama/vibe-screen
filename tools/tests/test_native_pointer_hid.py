@@ -45,9 +45,11 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
                 "host-readiness.json",
             ],
             "observation_artifacts": {
+                "adb_was_run": ["result.json"],
                 "device_identity_recorded": ["result.json"],
                 "device_identity_matches_claim": ["result.json"],
                 "physical_mouse_attached": ["dumpsys-input.txt"],
+                "default_gate_events_required": ["result.json"],
                 "android_move_forwarded": ["android-logcat-native-pointer.txt"],
                 "android_forwarding_device_ids_match_external_mouse": [
                     "dumpsys-input.txt",
@@ -65,6 +67,7 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
                 "visible_mac_result_observed": ["result.json"],
                 "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
                 "host_log_window_retained": ["host-log-appended.txt"],
+                "collector_reported_passed": ["result.json"],
             },
         }
 
@@ -311,6 +314,28 @@ class NativePointerHIDEvidenceTest(unittest.TestCase):
         missing_fields = {item["field"] for item in summary["missing_requirements"]}
         self.assertIn("observation_artifacts.android_move_forwarded", missing_fields)
         self.assertIn("observation_artifacts.host_pointer_changed_injected", missing_fields)
+        self.assertIn("observation_artifacts.adb_was_run", missing_fields)
+        self.assertIn("observation_artifacts.default_gate_events_required", missing_fields)
+        self.assertIn("observation_artifacts.collector_reported_passed", missing_fields)
+
+    def test_insufficient_when_gate_observation_mappings_are_removed(self) -> None:
+        for field in (
+            "adb_was_run",
+            "default_gate_events_required",
+            "collector_reported_passed",
+        ):
+            with self.subTest(field=field):
+                record = self.complete_record()
+                del record["observation_artifacts"][field]
+
+                summary = summarize(record)
+
+                self.assertEqual(summary["verdict"], "insufficient")
+                self.assertFalse(summary["can_close_native_pointer_hid_gate"])
+                self.assertIn(
+                    f"observation_artifacts.{field}",
+                    {item["field"] for item in summary["missing_requirements"]},
+                )
 
     def test_insufficient_when_observation_artifact_is_not_retained(self) -> None:
         record = self.complete_record()

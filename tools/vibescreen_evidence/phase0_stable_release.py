@@ -35,6 +35,7 @@ from .controller_runtime import (
     BOOLEAN_FIELDS as CONTROLLER_RUNTIME_BOOLEAN_FIELDS,
 )
 from .native_pointer_hid import (
+    ARTIFACT_FIELD_REQUIREMENTS as NATIVE_POINTER_HID_ARTIFACT_FIELD_REQUIREMENTS,
     BOOLEAN_FIELDS as NATIVE_POINTER_HID_BOOLEAN_FIELDS,
     GATE_KIND as NATIVE_POINTER_HID_GATE_KIND,
 )
@@ -922,23 +923,10 @@ def _formal_native_pointer_hid_report_issues(
         )
     elif isinstance(artifact_paths, list):
         retained = {item for item in artifact_paths if isinstance(item, str)}
-        mapped_native_pointer_observations = {
-            "device_identity_recorded",
-            "device_identity_matches_claim",
-            "physical_mouse_attached",
-            "android_move_forwarded",
-            "android_forwarding_device_ids_match_external_mouse",
-            "android_required_events_share_external_mouse_device",
-            "android_button_press_forwarded",
-            "android_button_release_forwarded",
-            "host_pointer_changed_injected",
-            "host_pointer_began_injected",
-            "host_pointer_ended_injected",
-            "host_stable_signed_tcc_ready",
-            "visible_mac_result_observed",
-            "android_logcat_window_retained",
-            "host_log_window_retained",
-        }
+        mapped_native_pointer_observations = (
+            set(NATIVE_POINTER_HID_ARTIFACT_FIELD_REQUIREMENTS)
+            & set(NATIVE_POINTER_HID_BOOLEAN_FIELDS)
+        )
         true_observations = [
             field
             for field in NATIVE_POINTER_HID_BOOLEAN_FIELDS

@@ -33,7 +33,10 @@ TOOLS_PATH = REPOSITORY_ROOT / "tools"
 if str(TOOLS_PATH) not in sys.path:
     sys.path.insert(0, str(TOOLS_PATH))
 
-from vibescreen_evidence.native_pointer_hid import summarize as summarize_native_pointer_hid
+from vibescreen_evidence.native_pointer_hid import (
+    ARTIFACT_FIELD_REQUIREMENTS,
+    summarize as summarize_native_pointer_hid,
+)
 
 
 BLOCKED_EXIT = 2
@@ -57,9 +60,11 @@ EVIDENCE_ARTIFACT_PATHS = [
     "host-readiness.json",
 ]
 OBSERVATION_ARTIFACTS = {
+    "adb_was_run": ["result.json"],
     "device_identity_recorded": ["result.json"],
     "device_identity_matches_claim": ["result.json"],
     "physical_mouse_attached": ["dumpsys-input.txt"],
+    "default_gate_events_required": ["result.json"],
     "android_move_forwarded": ["android-logcat-native-pointer.txt"],
     "android_forwarding_device_ids_match_external_mouse": [
         "dumpsys-input.txt",
@@ -75,7 +80,9 @@ OBSERVATION_ARTIFACTS = {
     "visible_mac_result_observed": ["result.json"],
     "android_logcat_window_retained": ["android-logcat-native-pointer.txt"],
     "host_log_window_retained": ["host-log-appended.txt"],
+    "collector_reported_passed": ["result.json"],
 }
+assert set(OBSERVATION_ARTIFACTS) == set(ARTIFACT_FIELD_REQUIREMENTS)
 ANDROID_LOGCAT_TAG = "MA"
 ANDROID_MOUSE_SOURCE_TOKENS = frozenset(("MOUSE", "MOUSE_RELATIVE", "TOUCHPAD", "TRACKBALL"))
 ANDROID_DUMPSYS_SOURCE_SEPARATOR_PATTERN = re.compile(r"\s*(?:\||\+|,)\s*")
@@ -558,7 +565,7 @@ def load_host_readiness(path: Path | None) -> dict[str, object]:
         return {"present": False, "readable": False, "document": {}}
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError) as error:
         return {"present": True, "readable": False, "error": str(error), "document": {}}
     if not isinstance(document, dict):
         return {"present": True, "readable": False, "error": "host readiness JSON is not an object", "document": {}}

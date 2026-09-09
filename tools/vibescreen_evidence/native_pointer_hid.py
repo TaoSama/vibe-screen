@@ -30,9 +30,11 @@ EXIT_STATUS_BY_VERDICT = {
 REQUIRED_POINTER_EVENTS = ("move", "press", "release")
 
 ARTIFACT_FIELD_REQUIREMENTS = {
+    "adb_was_run": "retain collector run status and Android command admission evidence",
     "device_identity_recorded": "retain Android device identity, OS/build, and adb devices artifacts",
     "device_identity_matches_claim": "retain source-bound device identity evidence for the claimed Android device",
     "physical_mouse_attached": "retain Android input inventory for the named physical mouse-like device",
+    "default_gate_events_required": "retain the collector configuration proving move, press, and release were required",
     "android_move_forwarded": "retain Android native pointer MOVE forwarding logs from the physical mouse-like device",
     "android_forwarding_device_ids_match_external_mouse": "retain Android forwarding logs whose deviceId matches the physical mouse-like input inventory",
     "android_required_events_share_external_mouse_device": "retain move, press, and release evidence from one physical mouse-like Android deviceId",
@@ -45,12 +47,15 @@ ARTIFACT_FIELD_REQUIREMENTS = {
     "visible_mac_result_observed": "retain operator-visible Mac cursor movement and click result evidence",
     "android_logcat_window_retained": "retain the bounded Android native pointer logcat window",
     "host_log_window_retained": "retain the newly appended Host pointer-injection log window",
+    "collector_reported_passed": "retain the structured collector result reporting passed status",
 }
 
 ARTIFACT_PATH_MARKERS = {
+    "adb_was_run": ("result",),
     "device_identity_recorded": ("device-info", "adb-devices", "result"),
     "device_identity_matches_claim": ("device-info", "result"),
     "physical_mouse_attached": ("dumpsys-input",),
+    "default_gate_events_required": ("result",),
     "android_move_forwarded": ("android-logcat-native-pointer",),
     "android_forwarding_device_ids_match_external_mouse": ("android-logcat-native-pointer", "dumpsys-input"),
     "android_required_events_share_external_mouse_device": ("android-logcat-native-pointer",),
@@ -63,6 +68,7 @@ ARTIFACT_PATH_MARKERS = {
     "visible_mac_result_observed": ("result", "visible-mac", "mac-result"),
     "android_logcat_window_retained": ("android-logcat-native-pointer",),
     "host_log_window_retained": ("host-log-appended",),
+    "collector_reported_passed": ("result",),
 }
 
 REQUIRED_FIELDS = (
