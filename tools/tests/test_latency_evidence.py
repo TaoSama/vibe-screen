@@ -17,7 +17,11 @@ from tools.vibescreen_evidence.latency_artifact_text import (
     ARTIFACT_BLOCKING_PATTERNS,
     latency_artifact_blocking_reason,
 )
-from tools.tests.latency_test_helpers import minimal_mov
+from tools.tests.latency_test_helpers import (
+    sampled_mov,
+    sampled_mov_with_audio_track,
+    sampled_mov_with_two_video_tracks,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -104,7 +108,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         assert isinstance(recording, dict)
         recording["raw_video"] = "raw-camera-capture.mov"
         (root / "raw-camera-capture.mov").write_bytes(
-            minimal_mov(b"retained-device-usb-video-fragment")
+            sampled_mov(600, b"retained-device-usb-video-fragment")
         )
         (root / "usb-connection.txt").write_text(
             "adb reverse tcp:54321 tcp:54321\nactive usb stream observed on real device\n",
@@ -742,7 +746,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             recording = manifest["recording"]
             assert isinstance(recording, dict)
             raw_video = root / str(recording["raw_video"])
-            raw_video.write_bytes(minimal_mov(b"video-fragment"))
+            raw_video.write_bytes(sampled_mov(600, b"video-fragment"))
             self.update_recording_metadata(root, manifest)
             self.write_manifest(root, manifest)
 
@@ -752,6 +756,82 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             )
 
         self.assertEqual(report["verdict"], "pass")
+
+    def test_raw_video_sample_count_must_match_recording_frame_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(sampled_mov(5, b"short-video-fragment"))
+            self.update_recording_metadata(root, manifest)
+            recording["frame_count"] = 600
+            recording["duration_ms"] = 2500
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.frame_count must match raw video sample count "
+            "(declared 600, raw video 5)",
+            report["gate"]["reasons"],
+        )
+
+    def test_raw_video_sample_count_ignores_audio_track_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(
+                sampled_mov_with_audio_track(
+                    video_frame_count=600,
+                    audio_sample_count=1200,
+                )
+            )
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+
+    def test_raw_video_multiple_video_tracks_are_insufficient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            recording = manifest["recording"]
+            assert isinstance(recording, dict)
+            raw_video = root / str(recording["raw_video"])
+            raw_video.write_bytes(
+                sampled_mov_with_two_video_tracks(
+                    first_video_frame_count=600,
+                    second_video_frame_count=42,
+                )
+            )
+            self.update_recording_metadata(root, manifest)
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "recording.raw_video must expose exactly one unambiguous video sample count; "
+            "multiple video tracks or fragmented/ambiguous samples cannot close latency gates",
+            report["gate"]["reasons"],
+        )
 
     def test_iso_bmff_ftyp_must_be_at_required_offset(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

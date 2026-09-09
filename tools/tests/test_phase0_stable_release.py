@@ -16,7 +16,7 @@ from vibescreen_evidence.phase0_stable_release import (
     _write_summary,
     evaluate_manifest,
 )
-from tools.tests.latency_test_helpers import minimal_mov
+from tools.tests.latency_test_helpers import sampled_mov
 from tools.tests.test_host_rss_gate import (
     host_readiness_payload,
     write_host_readiness,
@@ -217,7 +217,7 @@ def write_latency_archive_evidence(
     samples_file = evidence_dir / "samples.csv"
     usb_artifact_file = evidence_dir / "usb-connection.txt"
     manifest_file = evidence_dir / "latency-manifest.json"
-    raw_video_file.write_bytes(minimal_mov(b"phase0-aggregate-real-shaped-video"))
+    raw_video_file.write_bytes(sampled_mov(600, b"phase0-aggregate-real-shaped-video"))
     samples_file.write_text(
         "start_frame,end_frame,camera_fps\n"
         "10,18,240\n110,119,240\n210,219,240\n"
