@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-09T18:08:15" hostname="Mac.local" time="0.017">
+  <properties/>
+  <testcase name="noHostFileTransferControlSurfaceRefreshDoesNotTouchPickerOrFileBoundaries" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.002"/>
+  <testcase name="activeFileTransferSuppressesControlBarAutoHide" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.001"/>
+  <testcase name="disconnectedSessionUiHidesFileTransferControlsFailClosed" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.002"/>
+  <testcase name="incomingFileTransferExposesProgressAndUserCancelThroughProductState" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.006"/>
+  <testcase name="outgoingFileTransferCancelCopyHasDedicatedFailureMessage" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.001"/>
+  <testcase name="outgoingFileTransferExposesProgressAndUserCancelThroughProductState" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.003"/>
+  <testcase name="internetFileTransferBlocksOutgoingWhileIncomingOfferIsPending" classname="dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

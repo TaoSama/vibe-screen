@@ -1,0 +1,59 @@
+All commands were run from the repository root unless noted. Device commands used
+the connected Nubia P0110/pacific serial verified by `adb devices -l`; retained
+artifacts redact it as `<redacted-adb-serial>`.
+
+EVID=docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-no-host-uiux-after-731-current-main
+
+git fetch origin main --prune
+git checkout -B codex/nubia-nohost-uiux-current-main origin/main
+git status --short --branch
+git rev-parse HEAD
+
+adb devices -l > "$EVID/logs/adb-devices.txt"
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> shell getprop ro.build.fingerprint
+adb -s <redacted-adb-serial> shell wm size
+adb -s <redacted-adb-serial> shell wm density
+adb -s <redacted-adb-serial> shell settings get system font_scale
+adb -s <redacted-adb-serial> reverse --list > "$EVID/logs/adb-reverse-before-tests.txt"
+command -v lsof > "$EVID/logs/no-host-boundary-lsof-command.txt"
+if lsof -nP -iTCP:54321 -sTCP:LISTEN > "$EVID/logs/no-host-boundary-lsof-54321-before.txt" 2>&1; then
+  printf '0\n' > "$EVID/logs/no-host-boundary-lsof-54321-before-status.txt"
+else
+  printf '%s\n' "$?" > "$EVID/logs/no-host-boundary-lsof-54321-before-status.txt"
+fi
+
+(cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest \
+  --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest \
+  --tests dev.telemachus.display.MainActivityTransferReadinessContractTest) > "$EVID/logs/focused-control-surface-jvm.log" 2>&1
+
+(cd baseline/AndroidClient && ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest,dev.telemachus.display.ConnectionStateAccessibilityInstrumentedTest,dev.telemachus.display.ControlBarLayoutInstrumentedTest,dev.telemachus.display.SettingsDialogLayoutInstrumentedTest,dev.telemachus.display.InternetControlStateColorsInstrumentedTest,dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest,dev.telemachus.display.QRScannerLayoutInstrumentedTest,dev.telemachus.display.GestureShortcutPreferencesInstrumentedTest,dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest,dev.telemachus.display.ClipboardConfirmationDialogLayoutInstrumentedTest) > "$EVID/logs/connected-no-host-uiux-instrumentation.log" 2>&1
+
+(cd baseline/AndroidClient && ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:installDebug) > "$EVID/logs/install-debug-for-screenshot.log" 2>&1
+
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+adb -s <redacted-adb-serial> shell am start -W -n dev.telemachus.display/.MainActivity > "$EVID/logs/manual-launch-mainactivity.txt" 2>&1
+adb -s <redacted-adb-serial> shell screencap -p /sdcard/vibescreen-nohost-main.png
+adb -s <redacted-adb-serial> pull /sdcard/vibescreen-nohost-main.png "$EVID/screenshots/nohost-main.png" > "$EVID/logs/screenshot-pull.txt" 2>&1
+adb -s <redacted-adb-serial> shell rm /sdcard/vibescreen-nohost-main.png
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+adb -s <redacted-adb-serial> shell am start -W -n dev.telemachus.display/.MainActivity > "$EVID/logs/manual-launch-mainactivity-for-dump.txt" 2>&1
+adb -s <redacted-adb-serial> shell uiautomator dump /sdcard/vibescreen-nohost-main.xml > "$EVID/logs/uiautomator-dump.txt" 2> "$EVID/logs/uiautomator-dump-stderr.txt" || true
+adb -s <redacted-adb-serial> pull /sdcard/vibescreen-nohost-main.xml "$EVID/ui-dumps/nohost-main.xml" > "$EVID/logs/uiautomator-pull.txt" 2>&1 || true
+adb -s <redacted-adb-serial> shell dumpsys window > "$EVID/logs/window-state-after-manual-screenshot.txt"
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display
+
+adb -s <redacted-adb-serial> reverse --list > "$EVID/logs/adb-reverse-after-tests.txt"
+if lsof -nP -iTCP:54321 -sTCP:LISTEN > "$EVID/logs/no-host-boundary-lsof-54321-after.txt" 2>&1; then
+  printf '0\n' > "$EVID/logs/no-host-boundary-lsof-54321-after-status.txt"
+else
+  printf '%s\n' "$?" > "$EVID/logs/no-host-boundary-lsof-54321-after-status.txt"
+fi
+
+(cd "$EVID" && shasum -a 256 -c SHA256SUMS)
