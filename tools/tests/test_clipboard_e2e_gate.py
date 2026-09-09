@@ -765,6 +765,22 @@ class ClipboardE2EGateTests(unittest.TestCase):
 
         self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
 
+    def test_report_sanitizes_non_repo_relative_product_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
+        self.assertNotIn(directory_name, json.dumps(result["source"]))
+
     def test_product_e2e_requires_exact_system_clipboard_endpoints(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)

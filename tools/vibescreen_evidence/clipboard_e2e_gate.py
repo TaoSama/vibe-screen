@@ -1038,11 +1038,11 @@ def _source_path(path: Path | None, *, repo_root: Path | None) -> str | None:
     if path is None:
         return None
     if repo_root is None:
-        return path.as_posix()
+        return sanitize_text(path.name)
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
-        return path.as_posix()
+        return sanitize_text(path.name)
 
 
 def _device_gate(usb: dict[str, Any] | None, lan: dict[str, Any] | None, product: dict[str, Any] | None) -> dict[str, Any]:
