@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from vibescreen_evidence.phase3_internet_release_gate import REQUIRED_RAW_ARTIFACTS, derive_gate, main
-from tools.tests.latency_test_helpers import write_minimal_mov
+from tools.tests.latency_test_helpers import sampled_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -447,7 +447,8 @@ def write_latency_package(root: Path, route: str) -> None:
     raw_video = root / f"latency/{route}/raw-camera.mov"
     samples = root / f"latency/{route}/samples.csv"
     route_record = root / f"latency/{route}/internet-public-route-record.txt"
-    write_minimal_mov(raw_video)
+    raw_video.parent.mkdir(parents=True, exist_ok=True)
+    raw_video.write_bytes(sampled_mov(600, b"phase3-internet-real-shaped-video"))
     touch(
         samples,
         "start_frame,end_frame,camera_fps\n"

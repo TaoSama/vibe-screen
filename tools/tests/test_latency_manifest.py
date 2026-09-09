@@ -18,7 +18,7 @@ from tools.vibescreen_evidence.latency_manifest import (
     LatencyManifestError,
     build_latency_manifest,
 )
-from tools.tests.latency_test_helpers import minimal_mov
+from tools.tests.latency_test_helpers import sampled_mov
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -85,7 +85,7 @@ def _base_metadata() -> dict[str, object]:
 def _write_fixture_files(root: Path) -> tuple[Path, Path]:
     raw_video = root / "raw-camera-capture.mov"
     samples = root / "samples.csv"
-    raw_video.write_bytes(minimal_mov())
+    raw_video.write_bytes(sampled_mov(600))
     samples.write_text(
         "start_frame,end_frame,camera_fps\n"
         "10,18,240\n110,119,240\n210,219,240\n310,319,240\n410,419,240\n",
