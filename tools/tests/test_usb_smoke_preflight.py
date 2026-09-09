@@ -52,6 +52,11 @@ class USBSmokePreflightTests(unittest.TestCase):
         self.assertTrue(document["host"]["listener"]["host_owned"])
         self.assertTrue(document["host"]["preflight"]["passed"])
         self.assertTrue(document["claims"]["can_start_usb_smoke"])
+        self.assertTrue(document["claims"]["host_listener_observed"])
+        self.assertTrue(document["claims"]["adb_reverse_tcp_54321_present"])
+        self.assertTrue(document["claims"]["android_app_foreground"])
+        self.assertRegex(document["source"]["base_commit"], r"^[0-9a-f]{40}$")
+        self.assertFalse(document["repository"]["dirty"])
         self.assertFalse(document["claims"]["live_usb_stream_observed"])
         self.assertFalse(document["claims"]["readme_gate_closure"])
         assert_schema_shape(self, document)
@@ -102,6 +107,8 @@ class USBSmokePreflightTests(unittest.TestCase):
         self.assertIn("Mac Host is not listening on TCP 54321", joined)
         self.assertIn("Vibe Screen Dev", joined)
         self.assertFalse(document["claims"]["can_start_usb_smoke"])
+        self.assertFalse(document["claims"]["host_listener_observed"])
+        self.assertFalse(document["claims"]["adb_reverse_tcp_54321_present"])
         self.assertFalse(document["claims"]["live_usb_stream_observed"])
         self.assertFalse(document["claims"]["can_close_latency_gate"])
 
@@ -264,9 +271,10 @@ class USBSmokePreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             held = Path(directory) / "vibe-screen-device-android.lock"
             held.write_text("owner\n", encoding="utf-8")
+            repository_root = _fixture_repo(directory)
             document = build_document(
                 serial=SERIAL,
-                repository_root=Path("/repo"),
+                repository_root=repository_root,
                 adb_path="adb",
                 adb_timeout=1.0,
                 host_preflight_timeout=1.0,
@@ -616,9 +624,10 @@ def _build_document(
     lock_globs: list[str] | None = None,
     allow_existing_locks: bool = False,
 ):
+    repo = _fixture_repo(directory)
     return build_document(
         serial=SERIAL,
-        repository_root=Path("/repo"),
+        repository_root=repo,
         adb_path="adb",
         adb_timeout=1.0,
         host_preflight_timeout=1.0,
@@ -638,6 +647,20 @@ def _build_document(
         command_runner=command_runner,
         wall_clock=lambda: "2026-08-24T00:00:00Z",
     )
+
+
+def _fixture_repo(directory: str) -> Path:
+    repo = Path(directory) / "repo"
+    if repo.exists():
+        return repo
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo, check=True)
+    return repo
 
 
 def _ready_responses(command: list[str]) -> tuple[int, str, str]:

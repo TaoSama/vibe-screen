@@ -40,6 +40,8 @@ ANDROID_TO_MACOS_ORIGIN = "android-p0110-pacific"
 MACOS_TO_ANDROID_ORIGIN = "macos-host-current-source"
 ANDROID_TO_MACOS_EPOCH = 1
 MACOS_TO_ANDROID_EPOCH = 1
+SOURCE_COMMIT = "1234567890abcdef1234567890abcdef12345678"
+SOURCE_TREE = "abcdef1234567890abcdef1234567890abcdef12"
 
 
 def retained_artifact(direction: str, role: str, path: str) -> dict[str, object]:
@@ -189,6 +191,14 @@ def host_readiness(**overrides: object) -> dict[str, object]:
             "microphone_identity_bound": True,
         },
         "listener": {"port": 54321, "observed": True},
+        "host": {
+            "source_commit": SOURCE_COMMIT,
+            "source_tree": SOURCE_TREE,
+            "source_dirty": False,
+            "current_source_commit": SOURCE_COMMIT,
+            "current_source_tree": SOURCE_TREE,
+            "current_source_dirty": False,
+        },
         "blockers": [],
     }
     document.update(overrides)
@@ -209,7 +219,14 @@ def usb_preflight(**overrides: object) -> dict[str, object]:
                 "sdk": 36,
             }
         },
-        "claims": {"can_start_usb_smoke": True},
+        "source": {"base_commit": SOURCE_COMMIT},
+        "repository": {"revision": SOURCE_COMMIT, "dirty": False, "status_porcelain": []},
+        "claims": {
+            "can_start_usb_smoke": True,
+            "host_listener_observed": True,
+            "adb_reverse_tcp_54321_present": True,
+            "android_app_foreground": True,
+        },
         "blockers": [],
     }
     document.update(overrides)
@@ -221,6 +238,7 @@ def lan_preflight(**overrides: object) -> dict[str, object]:
         "schema_version": SCHEMA_VERSION,
         "kind": "trusted_lan_preflight",
         "result": "pass",
+        "repository": {"revision": SOURCE_COMMIT, "dirty": False, "status_porcelain": []},
         "blockers": [],
     }
     document.update(overrides)
@@ -334,6 +352,7 @@ def product_e2e(**overrides: object) -> dict[str, object]:
         },
         "synthetic": False,
         "offline_only": False,
+        "source": {"base_commit": SOURCE_COMMIT},
         "directions": {
             ANDROID_TO_MACOS_DIRECTION: dict(android_to_macos),
             MACOS_TO_ANDROID_DIRECTION: dict(macos_to_android),
@@ -599,6 +618,91 @@ class ClipboardE2EGateTests(unittest.TestCase):
             result["blockers"],
         )
 
+    def test_host_readiness_requires_source_identity_and_listener_port(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["host"],
+                host_readiness(
+                    listener={"port": 12345, "observed": True},
+                    host={
+                        "current_source_commit": "not-a-commit",
+                        "current_source_tree": SOURCE_TREE,
+                        "current_source_dirty": True,
+                        "source_commit": SOURCE_COMMIT,
+                        "source_tree": "not-a-tree",
+                        "source_dirty": True,
+                    },
+                ),
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "host_readiness: Host readiness host.current_source_commit must be a 40-character commit hash",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness host.source_tree must be a 40-character tree hash",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness host.current_source_dirty must be false",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness host.source_dirty must be false",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness listener.port must be 54321",
+            result["blockers"],
+        )
+
+    def test_host_readiness_rejects_source_identity_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["host"],
+                host_readiness(
+                    host={
+                        "source_commit": "f" * 40,
+                        "source_tree": SOURCE_TREE,
+                        "source_dirty": False,
+                        "current_source_commit": SOURCE_COMMIT,
+                        "current_source_tree": "0" * 40,
+                        "current_source_dirty": False,
+                    },
+                ),
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "host_readiness: Host readiness host.source_commit must match host.current_source_commit",
+            result["blockers"],
+        )
+        self.assertIn(
+            "host_readiness: Host readiness host.source_tree must match host.current_source_tree",
+            result["blockers"],
+        )
+
     def test_one_ready_real_transport_is_enough_for_transport_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
             root = Path(directory_name)
@@ -621,6 +725,97 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(transport_gate["status"], "pass")
         lan_gate = next(item for item in result["checks"] if item["name"] == "trusted_lan_preflight")
         self.assertEqual(lan_gate["status"], "blocked")
+
+    def test_source_provenance_is_required_to_close_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(paths["host"], host_readiness(host={}))
+            product = product_e2e()
+            product.pop("source")
+            write_json(paths["product"], product)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+                repo_root=root,
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertFalse(result["gate_closed"])
+        self.assertIn(
+            "source_provenance: Host readiness host.current_source_commit must identify the current source commit",
+            result["blockers"],
+        )
+        self.assertIn(
+            "source_provenance: product E2E source.base_commit must be a 40-character commit hash",
+            result["blockers"],
+        )
+
+    def test_source_provenance_rejects_mismatched_transport_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["usb"],
+                usb_preflight(source={"base_commit": "f" * 40}, repository={"revision": "f" * 40}),
+            )
+            write_json(paths["lan"], lan_preflight(result="blocked", blockers=["LAN not used for this USB evidence"]))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+                repo_root=root,
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "source_provenance: ready USB preflight source.base_commit must match Host readiness source commit",
+            result["blockers"],
+        )
+
+    def test_usb_preflight_requires_key_ready_claims_and_source_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            write_json(
+                paths["usb"],
+                usb_preflight(claims={"can_start_usb_smoke": True}, source={}, repository={}),
+            )
+            write_json(paths["lan"], lan_preflight(result="blocked", blockers=["LAN not used for this USB evidence"]))
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+                repo_root=root,
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "real_transport_ready: usb: USB preflight claims.host_listener_observed must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "real_transport_ready: usb: USB preflight claims.adb_reverse_tcp_54321_present must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "real_transport_ready: usb: USB preflight claims.android_app_foreground must be true",
+            result["blockers"],
+        )
+        self.assertIn(
+            "real_transport_ready: usb: USB preflight source.base_commit must be a 40-character commit hash",
+            result["blockers"],
+        )
 
     def test_product_e2e_must_use_ready_transport(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -794,7 +989,16 @@ class ClipboardE2EGateTests(unittest.TestCase):
                 repo_root=root,
             )
 
-        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
+        self.assertEqual(
+            result["source"],
+            {
+                "host_readiness": "host-readiness.json",
+                "usb_preflight": "usb-smoke-preflight.json",
+                "trusted_lan_preflight": "trusted-lan-preflight.json",
+                "android_clipboard_instrumentation_log": "android-clipboard-instrumentation.txt",
+                "product_e2e": "product-e2e.json",
+            },
+        )
 
     def test_report_sanitizes_non_repo_relative_product_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -809,7 +1013,16 @@ class ClipboardE2EGateTests(unittest.TestCase):
                 product_e2e=paths["product"],
             )
 
-        self.assertEqual(result["source"], {"product_e2e": "product-e2e.json"})
+        self.assertEqual(
+            result["source"],
+            {
+                "host_readiness": "host-readiness.json",
+                "usb_preflight": "usb-smoke-preflight.json",
+                "trusted_lan_preflight": "trusted-lan-preflight.json",
+                "android_clipboard_instrumentation_log": "android-clipboard-instrumentation.txt",
+                "product_e2e": "product-e2e.json",
+            },
+        )
         self.assertNotIn(directory_name, json.dumps(result["source"]))
 
     def test_product_e2e_requires_exact_system_clipboard_endpoints(self) -> None:
@@ -1401,6 +1614,45 @@ class ClipboardE2EGateTests(unittest.TestCase):
             "event record(s) must include matching change_id_hex, session_id_hex, session_epoch, "
             "origin_device_id, and offer/content payload metadata: "
             "clipboard_content, clipboard_offer, clipboard_request",
+            result["blockers"],
+        )
+
+    def test_product_e2e_rejects_ambiguous_protocol_event_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            payload = direction_payload(ANDROID_TO_MACOS_DIRECTION)
+            record = {
+                "event": "clipboard_offer",
+                "message_type": "clipboard_request",
+                "packet_type": "clipboard_content",
+                "direction": ANDROID_TO_MACOS_DIRECTION,
+                "change_id_hex": payload["change_id_hex"],
+                "session_id_hex": payload["session_id_hex"],
+                "session_epoch": payload["session_epoch"],
+                "origin_device_id": payload["origin_device_id"],
+                "mime_type": "text/plain",
+                "byte_length": payload["byte_length"],
+                "sha256": payload["sha256"],
+            }
+            artifact_path = root / "android-to-macos" / "protocol-packets.jsonl"
+            artifact_path.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
+            refresh_retained_artifact_metadata(
+                paths["product"], artifact_path, "android-to-macos/protocol-packets.jsonl"
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.protocol_packets "
+            "event record(s) must identify exactly one clipboard event; ambiguous line(s): [1]",
             result["blockers"],
         )
 
@@ -2163,6 +2415,32 @@ class ClipboardE2EGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "blocked")
         self.assertIn(
             "bidirectional_product_e2e: android_clipboardmanager_to_macos_nspasteboard.origin_device_id must not include a non-P0110 Android device identity",
+            result["blockers"],
+        )
+
+    def test_macos_origin_device_id_must_identify_macos_host(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            document = product_e2e()
+            directions = document["directions"]
+            assert isinstance(directions, dict)
+            macos_to_android = directions["macos_nspasteboard_to_android_clipboardmanager"]
+            assert isinstance(macos_to_android, dict)
+            macos_to_android["origin_device_id"] = "android-p0110-pacific"
+            write_json(paths["product"], document)
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_clipboard_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn(
+            "bidirectional_product_e2e: macos_nspasteboard_to_android_clipboardmanager.origin_device_id must not include an Android device identity",
             result["blockers"],
         )
 
