@@ -1148,7 +1148,6 @@ clipboard-e2e-gate:
 		--android-clipboard-instrumentation-log "$(CLIPBOARD_E2E_ANDROID_INSTRUMENTATION_LOG)" \
 		--product-e2e "$(CLIPBOARD_E2E_PRODUCT_JSON)" \
 		--serial-label "REDACTED_P0110_USB_SERIAL" \
-		--repo-root . \
 		--output "$(CLIPBOARD_E2E_GATE_JSON)" \
 		$(if $(filter 1 true yes,$(CLIPBOARD_E2E_REQUIRE_PASS)),--require-pass,); \
 	status=$$?; \
