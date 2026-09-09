@@ -184,12 +184,13 @@ class ConnectionStateAccessibilityInstrumentedTest {
             val context = root.context
             root.findViewById<View>(R.id.wirelessModeContent).visibility = View.VISIBLE
             val storage = FakeWirelessPairingStore()
+            val cameraPermission = FakeWirelessCameraPermission()
             val controller =
                 WirelessTabController(
                     host = FakeWirelessTabHost(context),
                     views = wirelessViews(root),
                     storage = storage,
-                    cameraPerm = FakeWirelessCameraPermission(),
+                    cameraPerm = cameraPermission,
                     isTrustedLanAcknowledged = { true },
                     acknowledgeTrustedLan = {},
                     onConnectRequested = { _, _, _, _, _ -> },
@@ -307,6 +308,17 @@ class ConnectionStateAccessibilityInstrumentedTest {
             assertEquals(View.VISIBLE, root.findViewById<View>(R.id.wirelessCameraPermissionRetry).visibility)
             assertEquals(context.getString(R.string.scan_qr_code), root.buttonText(R.id.wirelessScanButton))
             assertTrue(root.findViewById<Button>(R.id.wirelessScanButton).isEnabled)
+
+            cameraPermission.permanentlyDenied = true
+            controller.onCameraPermissionResult(granted = false)
+            assertOnlyWirelessPanelVisible(root, R.id.wirelessPermDenied)
+            assertWirelessActions(
+                root,
+                WirelessAction(R.id.wirelessOpenSettingsButton, context.getString(R.string.open_settings)),
+            )
+            assertEquals(View.GONE, root.findViewById<View>(R.id.wirelessCameraPermissionRetry).visibility)
+            assertTrue(root.findViewById<Button>(R.id.wirelessOpenSettingsButton).performClick())
+            assertEquals(1, cameraPermission.openSettingsCalls)
         }
     }
 
@@ -893,13 +905,18 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     private class FakeWirelessCameraPermission : WirelessCameraPermission {
+        var permanentlyDenied: Boolean = false
+        var openSettingsCalls: Int = 0
+
         override fun isGranted(): Boolean = true
 
-        override fun isPermanentlyDenied(): Boolean = false
+        override fun isPermanentlyDenied(): Boolean = permanentlyDenied
 
         override fun request(requestCode: Int) = Unit
 
-        override fun openAppSettings() = Unit
+        override fun openAppSettings() {
+            openSettingsCalls += 1
+        }
     }
 
     private class FakeWirelessTabHost(
