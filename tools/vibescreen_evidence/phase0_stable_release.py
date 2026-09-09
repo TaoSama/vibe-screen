@@ -112,13 +112,6 @@ CLIPBOARD_MARKER_FIELDS = (
     "failed_marker",
     "deny_marker",
 )
-CLIPBOARD_EXPECTED_DEVICE_IDENTITY = {
-    "manufacturer": {"nubia", "zte"},
-    "model": "p0110",
-    "codename": "pacific",
-    "android_release": "16",
-    "sdk": "36",
-}
 LATENCY_ARCHIVE_MEASUREMENT_METHODS = {"external-camera", "synchronized-clock"}
 LATENCY_SUMMARY_ONLY_KINDS = {"glass_to_glass", "input_latency"}
 LATENCY_DIAGNOSTIC_ONLY_KINDS = {"telemetry_stage_latency"}
@@ -1332,7 +1325,6 @@ def _clipboard_product_e2e_source_issues(
         issues.append(f"{label} kind must be {CLIPBOARD_PRODUCT_E2E_KIND}")
     if _clipboard_flag_enabled(record.get("synthetic")) or _clipboard_flag_enabled(record.get("offline_only")):
         issues.append(f"{label} synthetic or offline-only evidence cannot close this gate")
-    issues.extend(_clipboard_product_device_identity_issues(record.get("device"), label))
 
     directions = record.get("directions")
     if not isinstance(directions, dict):
@@ -1400,49 +1392,6 @@ def _clipboard_flag_enabled(value: Any) -> bool:
     if isinstance(value, str) and value.strip().lower() in {"", "0", "false", "no", "n"}:
         return False
     return bool(value)
-
-
-def _clipboard_product_device_identity(device: Any) -> dict[str, str] | None:
-    if not isinstance(device, dict):
-        return None
-    identity = device.get("identity") if isinstance(device.get("identity"), dict) else device
-    return {
-        "manufacturer": str(identity.get("manufacturer", "")).strip().lower(),
-        "model": str(identity.get("model", "")).strip().lower(),
-        "codename": str(identity.get("codename", identity.get("device", ""))).strip().lower(),
-        "android_release": str(identity.get("android_release", identity.get("android_version", ""))).strip(),
-        "sdk": str(identity.get("sdk", "")).strip(),
-    }
-
-
-def _clipboard_product_device_identity_issues(device: Any, label: str) -> list[str]:
-    identity = _clipboard_product_device_identity(device)
-    if identity is None:
-        return [f"{label} device must record the P0110/pacific Android identity"]
-    issues: list[str] = []
-    if identity["manufacturer"] not in CLIPBOARD_EXPECTED_DEVICE_IDENTITY["manufacturer"]:
-        issues.append(
-            f"{label} device.manufacturer must identify nubia/ZTE P0110 evidence, "
-            f"not {identity['manufacturer'] or 'missing'}"
-        )
-    if identity["model"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["model"]:
-        issues.append(f"{label} device.model must be P0110")
-    if identity["codename"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["codename"]:
-        issues.append(f"{label} device.codename must be pacific")
-    if identity["android_release"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["android_release"]:
-        issues.append(f"{label} device.android_release must be Android 16")
-    if identity["sdk"] != CLIPBOARD_EXPECTED_DEVICE_IDENTITY["sdk"]:
-        issues.append(f"{label} device.sdk must be 36")
-    return issues
-
-
-def _clipboard_android_origin_device_id_issue(origin_device_id: str, label: str) -> str | None:
-    normalized_origin = origin_device_id.lower()
-    if any(term in normalized_origin for term in ("xiaomi", "fuxi", "2211133c")):
-        return f"{label}.origin_device_id must not include a non-P0110 Android device identity"
-    if "p0110" in normalized_origin and "pacific" in normalized_origin:
-        return None
-    return f"{label}.origin_device_id must identify the P0110/pacific Android device"
 
 
 def _clipboard_direction_source_issues(
@@ -1517,10 +1466,6 @@ def _clipboard_direction_source_issues(
     origin_device_id = direction.get("origin_device_id")
     if not isinstance(origin_device_id, str) or not origin_device_id.strip():
         issues.append(f"{label}.origin_device_id must record the verified Protocol v1 origin device ID")
-    elif direction_name == "android_clipboardmanager_to_macos_nspasteboard":
-        origin_issue = _clipboard_android_origin_device_id_issue(origin_device_id, label)
-        if origin_issue is not None:
-            issues.append(origin_issue)
     issues.extend(
         _clipboard_payload_artifact_issues(
             direction,

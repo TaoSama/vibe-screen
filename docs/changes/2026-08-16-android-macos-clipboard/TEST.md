@@ -351,7 +351,7 @@ Status remains open. The run refreshed the fail-closed `clipboard-e2e-gate`
 tooling from `origin/main` at `4884d80813a7f674a10d574a96f8dfcf5723c6e7`. The
 gate now rejects product evidence that omits exact source/destination system
 clipboard endpoints, reuses one marker for both directions, omits verified
-session epoch/origin, omits a 16-byte change ID or SHA-256 digest, exceeds the
+session ID/epoch/origin, omits a 16-byte change ID or SHA-256 digest, exceeds the
 1 MiB byte ceiling, or defaults device identity without retained USB,
 trusted-LAN, or product identity evidence.
 

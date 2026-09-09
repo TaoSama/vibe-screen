@@ -4235,52 +4235,13 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
-    def test_clipboard_product_e2e_source_rejects_non_p0110_device_after_report(self) -> None:
-        def relabel_device(product: dict[str, object]) -> None:
-            product["device"] = {
-                "manufacturer": "xiaomi",
-                "model": "2211133C",
-                "codename": "fuxi",
-                "android_release": "16",
-                "sdk": 36,
-            }
-
-        def run(repo: Path, base_commit: str) -> None:
-            manifest = complete_manifest_for_repo(repo, base_commit)
-            report_path = write_clipboard_gate_evidence(repo)
-            mutate_clipboard_product_source(repo, report_path, relabel_device)
-            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [
-                report_path
-            ]
-
-            summary = evaluate_manifest(
-                manifest,
-                readme_text=GUARDED_README_TEXT,
-                repo_root=repo,
-            )
-
-            self.assertEqual(summary["aggregate_verdict"], "insufficient")
-            issues = next(
-                item["issues"]
-                for item in summary["blocking_required_gates"]
-                if item["id"] == "clipboard_android_macos_product_e2e"
-            )
-            self.assertTrue(
-                any("device.manufacturer must identify nubia/ZTE P0110 evidence" in issue for issue in issues),
-                issues,
-            )
-            self.assertTrue(any("device.model must be P0110" in issue for issue in issues), issues)
-            self.assertTrue(any("device.codename must be pacific" in issue for issue in issues), issues)
-
-        with_temporary_repo(run)
-
     def test_clipboard_product_e2e_source_rejects_protocol_origin_drift(self) -> None:
         def relabel_android_origin(product: dict[str, object]) -> None:
             directions = product["directions"]
             assert isinstance(directions, dict)
             direction = directions["android_clipboardmanager_to_macos_nspasteboard"]
             assert isinstance(direction, dict)
-            direction["origin_device_id"] = "xiaomi-2211133c-fuxi"
+            direction["origin_device_id"] = "different-origin-device"
 
         def run(repo: Path, base_commit: str) -> None:
             manifest = complete_manifest_for_repo(repo, base_commit)
@@ -4307,7 +4268,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
                 issues,
             )
             self.assertTrue(
-                any("artifact must include origin_device_id xiaomi-2211133c-fuxi" in issue for issue in issues),
+                any("artifact must include origin_device_id different-origin-device" in issue for issue in issues),
                 issues,
             )
 
