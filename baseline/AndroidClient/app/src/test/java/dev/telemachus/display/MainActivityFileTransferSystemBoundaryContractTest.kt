@@ -18,6 +18,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val finish = extractMethod(source, "private fun finishIncomingFileTransferState")
         val cleanup = extractMethod(source, "private fun clearActiveIncomingFileTransfer")
         val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val streamPromptOffer = extractMethod(source, "private fun promptIncomingFileOffer(\n        client: StreamClient")
         val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer")
         val offerView = extractMethod(source, "private fun fileTransferOfferView")
         val onIncomingCompleted = extractMethod(source, "private fun onIncomingFileCompleted")
@@ -62,6 +63,21 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "Incoming progress callback should update the active receive control only on the current session",
             callback.contains("updateIncomingFileTransferProgress(transferId, receivedBytes)"),
+        )
+        assertTrue(
+            "Incoming cancellation callbacks must also dismiss a pending offer dialog for policy-driven offer rejection",
+            cancelledCallback.contains("rejectPendingIncomingFileOffer(transferId)") &&
+                internetCancelled.contains("rejectPendingIncomingFileOffer(transferId)") &&
+                source.contains("private var pendingIncomingFileOfferTransferId: ByteString? = null") &&
+                source.contains("private fun rejectPendingIncomingFileOffer(transferId: ByteString): Boolean") &&
+                source.contains("if (pendingIncomingFileOfferTransferId != transferId) return false") &&
+                source.contains("pendingIncomingFileDialog?.setOnCancelListener(null)"),
+        )
+        assertTrue(
+            "Stream incoming offers should use transfer id as the coordinator token so cancellation callbacks can clear the pending dialog",
+            streamPromptOffer.contains("productSessionCoordinator.beginIncomingFileOffer(client, generation, offer.transferId)") &&
+                streamPromptOffer.contains("productSessionCoordinator.acceptsIncomingFileOffer(client, generation, offer.transferId)") &&
+                streamPromptOffer.contains("finishDecision = { productSessionCoordinator.finishIncomingFileOffer(client, generation, offer.transferId) }"),
         )
         assertTrue(
             "Incoming Internet progress callback should share the same active receive control",
@@ -313,7 +329,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 begin.contains("cancel(transferId)") &&
                 begin.contains("return false") &&
                 finish.contains("transferId?.let(::markOutgoingFileTransferFinished)") &&
-                source.contains("private fun hasOutgoingFileTransferAlreadyFinished(transferId: ByteString): Boolean"),
+                source.contains("private fun hasOutgoingFileTransferAlreadyFinished(transferId: ByteString): Boolean") &&
+                source.contains("recentlyFinishedOutgoingTransferIds.contains(transferId)"),
         )
         assertTrue(
             "Outgoing progress callback should update the active send dialog only on the current stream session",

@@ -372,6 +372,7 @@ class StreamProtocolActionDispatcherTest {
         }
 
         override fun onManagedPolicyReceived(
+            out: DataOutputStream,
             session: ProtocolV1Session,
             connectionGeneration: Long,
             status: ManagedPolicyStatus,

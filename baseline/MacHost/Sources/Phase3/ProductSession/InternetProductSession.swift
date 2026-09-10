@@ -1795,6 +1795,7 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec,
         generation: UInt64
     ) {
+        self.codec = codec
         guard response.accepted else {
             if let transfer = outgoingFileTransfers.removeValue(forKey: response.transferID) {
                 cancelOutgoingFileTransferDeadline(transferID: response.transferID)
@@ -1805,11 +1806,9 @@ final class InternetProductSession: EncodedFrameSink {
                     reason: response.rejectionReason
                 )
             }
-            self.codec = codec
             return
         }
         guard let transfer = outgoingFileTransfers[response.transferID] else {
-            self.codec = codec
             return
         }
         cancelOutgoingFileTransferDeadline(transferID: response.transferID)
@@ -1822,8 +1821,8 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec,
         generation: UInt64
     ) {
+        self.codec = codec
         guard let transfer = outgoingFileTransfers[progress.transferID] else {
-            self.codec = codec
             return
         }
         do {
@@ -1873,8 +1872,8 @@ final class InternetProductSession: EncodedFrameSink {
         _ result: VSFileTransferComplete,
         codec: inout InternetProductProtocolCodec
     ) {
+        self.codec = codec
         guard let transfer = outgoingFileTransfers.removeValue(forKey: result.transferID) else {
-            self.codec = codec
             return
         }
         cancelOutgoingFileTransferDeadline(transferID: result.transferID)
@@ -1883,15 +1882,13 @@ final class InternetProductSession: EncodedFrameSink {
             notifyOutgoingFileTransferResult(
                 transferID: result.transferID,
                 accepted: false,
-                    reason: result.rejectionReason
-                )
-            self.codec = codec
+                reason: result.rejectionReason
+            )
             return
         }
         do {
             try transfer.validateCompletionDigest(result.sha256)
             notifyOutgoingFileTransferResult(transferID: result.transferID, accepted: true, reason: "")
-            self.codec = codec
         } catch let error as ProtocolV1FileTransferError {
             cancelOutgoingFileTransfer(
                 transferID: result.transferID,
@@ -2161,62 +2158,62 @@ final class InternetProductSession: EncodedFrameSink {
         }
 
         for transferID in cancelledIncomingTransferIDs {
-            do {
-                try sendControl(codec.fileTransferCancel(
-                    transferID: transferID,
-                    reasonCode: reasonCode
-                ))
-                self.codec = codec
-            } catch {
-                fail(.securityFailure(error.localizedDescription))
+            if generation == sessionGeneration {
+                do {
+                    try sendControl(codec.fileTransferCancel(
+                        transferID: transferID,
+                        reasonCode: reasonCode
+                    ))
+                    self.codec = codec
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
             }
-            guard generation == sessionGeneration else { return }
             notifyFileTransferResult(
                 transferID: transferID,
                 direction: .incoming,
                 accepted: false,
                 reason: reasonCode
             )
-            guard generation == sessionGeneration else { return }
         }
 
         for transferID in cancelledOutgoingTransferIDs {
-            do {
-                try sendControl(codec.fileTransferCancel(
-                    transferID: transferID,
-                    reasonCode: reasonCode
-                ))
-                self.codec = codec
-            } catch {
-                fail(.securityFailure(error.localizedDescription))
+            if generation == sessionGeneration {
+                do {
+                    try sendControl(codec.fileTransferCancel(
+                        transferID: transferID,
+                        reasonCode: reasonCode
+                    ))
+                    self.codec = codec
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
             }
-            guard generation == sessionGeneration else { return }
             notifyOutgoingFileTransferResult(
                 transferID: transferID,
                 accepted: false,
                 reason: reasonCode
             )
-            guard generation == sessionGeneration else { return }
         }
 
         for transferID in rejectedPendingIncomingTransferIDs {
-            do {
-                try sendControl(codec.fileAccept(VSFileAccept.rejected(
-                    transferID: transferID,
-                    reasonCode: reasonCode
-                )))
-                self.codec = codec
-            } catch {
-                fail(.securityFailure(error.localizedDescription))
+            if generation == sessionGeneration {
+                do {
+                    try sendControl(codec.fileAccept(VSFileAccept.rejected(
+                        transferID: transferID,
+                        reasonCode: reasonCode
+                    )))
+                    self.codec = codec
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
             }
-            guard generation == sessionGeneration else { return }
             notifyFileTransferResult(
                 transferID: transferID,
                 direction: .incoming,
                 accepted: false,
                 reason: reasonCode
             )
-            guard generation == sessionGeneration else { return }
         }
     }
 

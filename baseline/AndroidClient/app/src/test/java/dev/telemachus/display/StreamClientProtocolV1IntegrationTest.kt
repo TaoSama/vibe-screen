@@ -3353,6 +3353,76 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun hostManagedPolicyShrinkRejectsOversizedPendingFileOffer() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 29).toByte() })
+            val content = "pending-managed-oversized".toByteArray(Charsets.UTF_8)
+            val offered = CountDownLatch(1)
+            val results = Collections.synchronizedList(mutableListOf<Pair<Boolean, String>>())
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeManagedPolicyHandshake(
+                            peer = peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            hostManagedStatus = managedPolicyStatus(
+                                fileTransferAllowed = true,
+                                maximumFileBytes = 1_024,
+                            ),
+                            maxFileBytes = 1_024,
+                            maxFileChunkBytes = 64 * 1024,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 7,
+                                transferId = transferId,
+                                fileName = "pending-managed.txt",
+                                content = content,
+                            ),
+                        )
+                        assertTrue(offered.await(8, TimeUnit.SECONDS))
+                        write(
+                            peer,
+                            managedPolicyStatus(
+                                id = 8,
+                                status = managedPolicyStatus(
+                                    fileTransferAllowed = true,
+                                    maximumFileBytes = 4,
+                                ),
+                            ),
+                        )
+                        val rejected = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, rejected.payloadCase)
+                        assertEquals(transferId, rejected.fileAccept.transferId)
+                        assertFalse(rejected.fileAccept.accepted)
+                        assertEquals("file_too_large", rejected.fileAccept.rejectionReason)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(9))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offered.countDown() }
+            client.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(listOf(false to "file_too_large"), results.toList())
+            Unit
+        }
+    }
+
+    @Test
     fun staleHostFileOfferDecisionAfterDisconnectSendsNoAccept() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)

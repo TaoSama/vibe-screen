@@ -104,6 +104,7 @@ internal class StreamProtocolActionDispatcher(
         )
 
         fun onManagedPolicyReceived(
+            out: DataOutputStream,
             session: ProtocolV1Session,
             connectionGeneration: Long,
             status: ManagedPolicyStatus,
@@ -241,7 +242,7 @@ internal class StreamProtocolActionDispatcher(
                         pending = action.pending,
                     )
                 is ProtocolV1Session.Action.ManagedPolicyReceived ->
-                    sink.onManagedPolicyReceived(session, connectionGeneration, action.status)
+                    sink.onManagedPolicyReceived(out, session, connectionGeneration, action.status)
                 is ProtocolV1Session.Action.FileOfferReceived ->
                     sink.onFileOfferReceived(out, session, connectionGeneration, action.offer)
                 is ProtocolV1Session.Action.FileAcceptReceived ->

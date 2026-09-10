@@ -3,6 +3,7 @@ package dev.telemachus.display
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.TransportKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -181,27 +182,27 @@ class StreamProtocolSideEffectOwnerTest {
         val transfer = ByteString.copyFromUtf8("transfer")
         val blocked = ByteString.copyFromUtf8("blocked")
 
-        assertTrue(owner.trackFileOffer(transfer, session, 3L))
-        assertFalse(owner.trackFileOffer(transfer, session, 3L))
-        assertFalse(owner.trackFileOffer(blocked, session, 3L))
+        assertTrue(owner.trackFileOffer(fileOffer(transfer), session, 3L))
+        assertFalse(owner.trackFileOffer(fileOffer(transfer), session, 3L))
+        assertFalse(owner.trackFileOffer(fileOffer(blocked), session, 3L))
 
         currentGeneration = 4L
         assertNull(owner.claimFileOffer(transfer))
-        assertFalse(owner.trackFileOffer(blocked, session, 3L))
+        assertFalse(owner.trackFileOffer(fileOffer(blocked), session, 3L))
 
         currentGeneration = 3L
-        assertTrue(owner.trackFileOffer(blocked, session, 3L))
+        assertTrue(owner.trackFileOffer(fileOffer(blocked), session, 3L))
         val claimed = owner.claimFileOffer(blocked)
         assertTrue(claimed?.session === session)
         assertEquals(3L, claimed?.connectionGeneration)
         assertNull(owner.claimFileOffer(blocked))
 
-        assertTrue(owner.trackFileOffer(transfer, session, 3L))
+        assertTrue(owner.trackFileOffer(fileOffer(transfer), session, 3L))
         connected = false
         assertNull(owner.claimFileOffer(transfer))
 
         connected = true
-        assertTrue(owner.trackFileOffer(transfer, session, 3L))
+        assertTrue(owner.trackFileOffer(fileOffer(transfer), session, 3L))
         owner.clear()
         assertNull(owner.claimFileOffer(transfer))
     }
@@ -213,7 +214,7 @@ class StreamProtocolSideEffectOwnerTest {
         val transfer = ByteString.copyFromUtf8("transfer")
 
         val admitted = owner.runIfCurrent(session, 1L) {
-            owner.trackFileOffer(transfer, session, 1L)
+            owner.trackFileOffer(fileOffer(transfer), session, 1L)
         }
 
         assertTrue(admitted == true)
@@ -270,13 +271,34 @@ class StreamProtocolSideEffectOwnerTest {
         owner.activate(session, 1L)
         val transfer = ByteString.copyFromUtf8("transfer")
 
-        assertTrue(owner.trackFileOffer(transfer, session, 1L))
-        assertFalse(owner.trackFileOffer(ByteString.copyFromUtf8("blocked"), session, 1L))
+        assertTrue(owner.trackFileOffer(fileOffer(transfer), session, 1L))
+        assertFalse(owner.trackFileOffer(fileOffer(ByteString.copyFromUtf8("blocked")), session, 1L))
 
         owner.clear()
 
         owner.activate(session, 1L)
-        assertTrue(owner.trackFileOffer(ByteString.copyFromUtf8("after-clear"), session, 1L))
+        assertTrue(owner.trackFileOffer(fileOffer(ByteString.copyFromUtf8("after-clear")), session, 1L))
+    }
+
+    @Test
+    fun `cancel file offers exceeding limit removes only oversized pending offers`() {
+        val session = session()
+        val owner = StreamProtocolSideEffectOwner(
+            isConnected = { true },
+            acceptsConnectionGeneration = { it == 1L },
+            maximumPendingFileOffers = 2,
+        )
+        owner.activate(session, 1L)
+        val small = fileOffer(ByteString.copyFromUtf8("small"), byteLength = 4)
+        val large = fileOffer(ByteString.copyFromUtf8("large"), byteLength = 16)
+        assertTrue(owner.trackFileOffer(small, session, 1L))
+        assertTrue(owner.trackFileOffer(large, session, 1L))
+
+        val cancelled = owner.cancelFileOffersExceeding(maximumFileBytes = 8)
+
+        assertEquals(listOf(large.transferId), cancelled.map { it.offer.transferId })
+        assertNull(owner.claimFileOffer(large.transferId))
+        assertTrue(owner.claimFileOffer(small.transferId)?.session === session)
     }
 
     @Test
@@ -309,4 +331,13 @@ class StreamProtocolSideEffectOwnerTest {
             transport = TransportKind.TRANSPORT_KIND_USB,
             codecs = listOf(Codec.CODEC_H264),
         )
+
+    private fun fileOffer(transferId: ByteString, byteLength: Long = 1L): FileOffer =
+        FileOffer.newBuilder()
+            .setTransferId(transferId)
+            .setFileName("${transferId.toStringUtf8()}.txt")
+            .setMimeType("text/plain")
+            .setByteLength(byteLength)
+            .setSha256(ByteString.copyFrom(ByteArray(32) { 1 }))
+            .build()
 }

@@ -78,7 +78,7 @@ internal class FileTransferProductOwner(
         pendingOfferGate.clearFileOffers()
     }
 
-    fun applyManagedPolicy(status: ManagedPolicyStatus) {
+    fun applyManagedPolicy(status: ManagedPolicyStatus): ManagedPolicyUpdate {
         val update = synchronized(lock) {
             remoteManagedPolicy = RemoteManagedPolicy(status)
             val effectivePolicy = fileTransferPolicy.applying(remoteManagedPolicy)
@@ -98,6 +98,13 @@ internal class FileTransferProductOwner(
                 )
             }
         }
+        val rejectedPendingOffers =
+            if (update.incomingSizeLimit == null) {
+                emptyList()
+            } else {
+                pendingOfferGate.cancelFileOffersExceeding(update.incomingSizeLimit)
+                    .map { pending -> PendingFileOfferRejection(pending.offer, pending.owner, "file_too_large") }
+            }
         if (update.incomingSizeLimit == null) {
             update.incoming
                 ?.cancelAll()
@@ -118,6 +125,11 @@ internal class FileTransferProductOwner(
         update.outgoing.cancelAll()
         notifyOutgoingTransfers(update.outgoing)
         if (update.clearPendingOffers) pendingOfferGate.clearFileOffers()
+        rejectedPendingOffers.forEach { rejection ->
+            notifyIncomingFileCancelled(rejection.offer.transferId, rejection.reasonCode)
+            notifyFileTransferResult(TransferResult(accepted = false, reason = rejection.reasonCode))
+        }
+        return ManagedPolicyUpdate(rejectedPendingOffers)
     }
 
     fun receiveFileOffer(
@@ -135,7 +147,7 @@ internal class FileTransferProductOwner(
             }
             onFileOffer ?: return rejectedFileAccept(offer.transferId, "user_denied")
         }
-        if (!pendingOfferGate.trackFileOffer(offer.transferId, ownerToken, connectionGeneration)) {
+        if (!pendingOfferGate.trackFileOffer(offer, ownerToken, connectionGeneration)) {
             return rejectedFileAccept(offer.transferId, "file_offer_pending_limit")
         }
         callback.invoke(offer)
@@ -594,6 +606,16 @@ internal class FileTransferProductOwner(
         val clearPendingOffers: Boolean,
     )
 
+    data class ManagedPolicyUpdate(
+        val rejectedPendingOffers: List<PendingFileOfferRejection> = emptyList(),
+    )
+
+    data class PendingFileOfferRejection(
+        val offer: FileOffer,
+        val owner: PendingOfferOwner,
+        val reasonCode: String,
+    )
+
     private fun notifyOutgoingTransfers(drain: OutgoingDrain) {
         val outgoing = LinkedHashSet<OutgoingTransferStore>()
         outgoing += drain.prepared
@@ -739,7 +761,7 @@ internal class FileTransferProductOwner(
 
     interface PendingOfferGate {
         fun trackFileOffer(
-            transferId: ByteString,
+            offer: FileOffer,
             ownerToken: Any,
             connectionGeneration: Long,
         ): Boolean
@@ -750,8 +772,15 @@ internal class FileTransferProductOwner(
 
         fun hasFileOffer(transferId: ByteString): Boolean
 
+        fun cancelFileOffersExceeding(maximumFileBytes: Long): List<PendingFileOffer>
+
         fun clearFileOffers()
     }
+
+    data class PendingFileOffer(
+        val offer: FileOffer,
+        val owner: PendingOfferOwner,
+    )
 
     data class PendingOfferOwner(
         val ownerToken: Any,
