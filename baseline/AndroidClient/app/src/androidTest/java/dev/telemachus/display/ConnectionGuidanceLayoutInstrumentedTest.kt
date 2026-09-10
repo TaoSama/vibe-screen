@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Paint
 import android.graphics.Rect
@@ -8,11 +9,13 @@ import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -23,6 +26,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.math.roundToInt
+
+private const val AUTO_CONNECT_EXTRA = "auto_connect"
 
 @RunWith(AndroidJUnit4::class)
 class ConnectionGuidanceLayoutInstrumentedTest {
@@ -893,6 +898,50 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         }
     }
 
+    @Test
+    fun narrowPortraitLargeTextKeepsLegalFooterReachableReadableAndTouchable() {
+        listOf(320 to 640, 360 to 800).forEach { (widthDp, heightDp) ->
+            withLayout(widthDp = widthDp, heightDp = heightDp, fontScale = 2f) { layout ->
+                layout.showModeContent(R.id.usbModeContent)
+                layout.applyPanel(
+                    resources = layout.context.resources,
+                    connectionMode = ConnectionMode.USB,
+                    subtitleExpanded = false,
+                )
+                layout.measureAndLayout()
+
+                layout.assertFullyReachableByScroll(layout.legalFooter)
+                layout.assertFullyReachableByScroll(layout.legalSummary)
+                layout.assertFullyReachableByScroll(layout.openSourceLicensesButton)
+                layout.assertTextRenderedWithoutEllipsis(layout.legalSummary)
+                layout.assertTextRenderedWithoutEllipsis(layout.openSourceLicensesButton)
+                layout.assertMinimumTouchTarget(layout.openSourceLicensesButton)
+                layout.assertNoOverlap(layout.legalSummary, layout.openSourceLicensesButton)
+            }
+        }
+    }
+
+    @Test
+    fun openSourceLicensesButtonOpensPackagedNoticesDialog() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val launchIntent = Intent(applicationContext(), MainActivity::class.java)
+            .putExtra(AUTO_CONNECT_EXTRA, false)
+        ActivityScenario.launch<MainActivity>(launchIntent).use { scenario ->
+            scenario.onActivity { activity ->
+                val scrollView = activity.findViewById<NestedScrollView>(R.id.connectionScroll)
+                val button = activity.findViewById<View>(R.id.openSourceLicensesButton)
+                scrollView.scrollTo(0, scrollView.getChildAt(0).height)
+                assertTrue("Open-source notices entry should accept clicks", button.performClick())
+            }
+            instrumentation.waitForIdleSync()
+            val expectedTitle = applicationContext().getString(R.string.open_source_notices_title)
+            assertTrue(
+                "Open-source notices dialog title should be visible after clicking the production entry point",
+                instrumentation.waitForVisibleText(expectedTitle),
+            )
+        }
+    }
+
     private fun withLayout(
         widthDp: Int,
         heightDp: Int,
@@ -937,6 +986,28 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
+
+    private fun android.app.Instrumentation.waitForVisibleText(
+        expected: String,
+        timeoutMs: Long = 5_000L,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        do {
+            val root = uiAutomation.rootInActiveWindow
+            if (root != null && root.containsText(expected)) return true
+            Thread.sleep(50)
+        } while (System.currentTimeMillis() < deadline)
+        return false
+    }
+
+    private fun AccessibilityNodeInfo.containsText(expected: String): Boolean {
+        if (text?.toString() == expected || contentDescription?.toString() == expected) return true
+        for (index in 0 until childCount) {
+            val child = getChild(index) ?: continue
+            if (child.containsText(expected)) return true
+        }
+        return false
+    }
 
     private fun dp(
         context: Context,
@@ -1026,6 +1097,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val internetConnectionSettingsButton = root.findViewById<TextView>(R.id.internetConnectionSettingsButton)
         val internetDisconnectButton = root.findViewById<TextView>(R.id.internetDisconnectButton)
         val internetRevokeButton = root.findViewById<TextView>(R.id.internetRevokeButton)
+        val legalFooter = root.findViewById<View>(R.id.connectionLegalFooter)
+        val legalSummary = root.findViewById<TextView>(R.id.connectionLegalSummary)
+        val openSourceLicensesButton = root.findViewById<TextView>(R.id.openSourceLicensesButton)
         private val scrollView = root.findViewById<NestedScrollView>(R.id.connectionScroll)
         private val icon = root.findViewById<View>(R.id.connectionIcon)
         private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
