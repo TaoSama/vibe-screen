@@ -2523,6 +2523,79 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun hostFileOfferFlushFailureAfterCompleteStillDeliversAndCleansStagedFile() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 13).toByte() })
+            val content = "complete-before-flush-failure".toByteArray(Charsets.UTF_8)
+            val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
+            val completionSeen = CountDownLatch(1)
+            val failingFlushSocket = AtomicReference<FailingFlushSocket?>()
+            val writeFailure = AtomicReference<String?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "flush-failure.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        assertEquals(transferId, accept.fileAccept.transferId)
+
+                        checkNotNull(failingFlushSocket.get()).failNextFlush()
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.BULK,
+                            fileChunk(transferId = transferId, offset = 0, payload = content, final = true),
+                        )
+                        peer.soTimeout = 500
+                        while (readEnvelopeOrNull(peer) != null) Unit
+                    }
+                }
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    socketFactory = { FailingFlushSocket().also(failingFlushSocket::set) },
+                )
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
+            client.onWriteFailure = { writeFailure.set(it) }
+            client.onIncomingFileCompleted = { received ->
+                assertEquals("flush-failure.txt", received.fileName)
+                assertEquals(content.toList(), received.stagingFile.readBytes().toList())
+                assertTrue(received.stagingFile.delete())
+                completed.set(received)
+                completionSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            assertTrue(completionSeen.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { clientJob.await() }
+
+            val received = checkNotNull(completed.get())
+            assertFalse(received.stagingFile.exists())
+            assertEquals(ByteString.copyFrom(sha256(content)), received.sha256)
+            assertEquals("forced flush failure", writeFailure.get())
+            Unit
+        }
+    }
+
+    @Test
     fun hostFileOfferCanBeCancelledAfterReceiverApproval() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
@@ -4333,6 +4406,34 @@ class StreamClientProtocolV1IntegrationTest {
                 override fun flush() {
                     delegate.flush()
                     flushCount.incrementAndGet()
+                }
+
+                override fun close() = delegate.close()
+            }
+        }
+    }
+
+    private class FailingFlushSocket : Socket() {
+        private val failNextFlush = AtomicBoolean(false)
+
+        fun failNextFlush() {
+            failNextFlush.set(true)
+        }
+
+        override fun getOutputStream(): OutputStream {
+            val delegate = super.getOutputStream()
+            return object : OutputStream() {
+                override fun write(value: Int) = delegate.write(value)
+
+                override fun write(
+                    bytes: ByteArray,
+                    offset: Int,
+                    length: Int,
+                ) = delegate.write(bytes, offset, length)
+
+                override fun flush() {
+                    if (failNextFlush.compareAndSet(true, false)) throw IOException("forced flush failure")
+                    delegate.flush()
                 }
 
                 override fun close() = delegate.close()

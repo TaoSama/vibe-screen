@@ -1988,18 +1988,34 @@ class StreamClient(
         }
         when (result) {
             is FileTransferProductOwner.IncomingChunkResult.Accepted -> {
-                session.fileProgress(result.transferId, result.receivedBytes)?.let { writeProtocolEnvelope(out, it) }
-                fileTransferProductOwner.notifyIncomingFileProgress(result.transferId, result.receivedBytes)
-                result.completed?.let { completed ->
-                    session.fileComplete(
-                        transferId = completed.transferId,
-                        accepted = true,
-                        sha256 = completed.sha256,
-                        rejectionReason = "",
-                    )?.let { writeProtocolEnvelope(out, it) }
+                var primaryFailure: Throwable? = null
+                try {
+                    session.fileProgress(result.transferId, result.receivedBytes)?.let { writeProtocolEnvelope(out, it) }
+                    fileTransferProductOwner.notifyIncomingFileProgress(result.transferId, result.receivedBytes)
+                    result.completed?.let { completed ->
+                        session.fileComplete(
+                            transferId = completed.transferId,
+                            accepted = true,
+                            sha256 = completed.sha256,
+                            rejectionReason = "",
+                        )?.let { writeProtocolEnvelope(out, it) }
+                    }
+                    out.flush()
+                } catch (failure: Throwable) {
+                    primaryFailure = failure
+                } finally {
+                    result.completed?.let { completed ->
+                        try {
+                            fileTransferProductOwner.notifyIncomingFileCompleted(completed)
+                        } catch (completionFailure: Throwable) {
+                            primaryFailure?.addSuppressed(completionFailure) ?: run { primaryFailure = completionFailure }
+                        }
+                    }
                 }
-                out.flush()
-                result.completed?.let(fileTransferProductOwner::notifyIncomingFileCompleted)
+                primaryFailure?.let { failure ->
+                    command.completion.completeExceptionally(failure)
+                    throw failure
+                }
                 command.completion.complete(Unit)
             }
             is FileTransferProductOwner.IncomingChunkResult.Rejected -> {

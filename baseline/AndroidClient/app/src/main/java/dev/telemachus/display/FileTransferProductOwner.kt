@@ -79,21 +79,45 @@ internal class FileTransferProductOwner(
     }
 
     fun applyManagedPolicy(status: ManagedPolicyStatus) {
-        var clearPendingOffers = false
-        var incomingToCancel: IncomingTransferStore? = null
-        var outgoingToCancel = OutgoingDrain.EMPTY
-        synchronized(lock) {
+        val update = synchronized(lock) {
             remoteManagedPolicy = RemoteManagedPolicy(status)
-            if (!fileTransferPolicy.applying(remoteManagedPolicy).allowed) {
-                incomingToCancel = incomingFileTransfers
-                outgoingToCancel = drainOutgoingLocked("policy_denied")
-                clearPendingOffers = true
+            val effectivePolicy = fileTransferPolicy.applying(remoteManagedPolicy)
+            if (!effectivePolicy.allowed) {
+                ManagedPolicyDrain(
+                    incoming = incomingFileTransfers,
+                    incomingSizeLimit = null,
+                    outgoing = drainOutgoingLocked("policy_denied"),
+                    clearPendingOffers = true,
+                )
+            } else {
+                ManagedPolicyDrain(
+                    incoming = incomingFileTransfers,
+                    incomingSizeLimit = effectivePolicy.maximumFileBytes,
+                    outgoing = drainOutgoingExceedingLocked(effectivePolicy.maximumFileBytes, "file_too_large"),
+                    clearPendingOffers = false,
+                )
             }
         }
-        incomingToCancel?.cancelAll()
-        outgoingToCancel.cancelAll()
-        notifyOutgoingTransfers(outgoingToCancel)
-        if (clearPendingOffers) pendingOfferGate.clearFileOffers()
+        if (update.incomingSizeLimit == null) {
+            update.incoming
+                ?.cancelAll()
+                .orEmpty()
+                .forEach { transferId ->
+                    notifyIncomingFileCancelled(transferId, "policy_denied")
+                    notifyFileTransferResult(TransferResult(accepted = false, reason = "policy_denied"))
+                }
+        } else {
+            update.incoming
+                ?.cancelTransfersExceeding(update.incomingSizeLimit)
+                .orEmpty()
+                .forEach { transferId ->
+                    notifyIncomingFileCancelled(transferId, "file_too_large")
+                    notifyFileTransferResult(TransferResult(accepted = false, reason = "file_too_large"))
+                }
+        }
+        update.outgoing.cancelAll()
+        notifyOutgoingTransfers(update.outgoing)
+        if (update.clearPendingOffers) pendingOfferGate.clearFileOffers()
     }
 
     fun receiveFileOffer(
@@ -528,6 +552,25 @@ internal class FileTransferProductOwner(
         return OutgoingDrain(prepared = prepared, active = active)
     }
 
+    private fun drainOutgoingExceedingLocked(
+        maximumFileBytes: Long,
+        reasonCode: String,
+    ): OutgoingDrain {
+        val prepared = preparedOutgoingTransfers
+            .filter { transfer -> transfer.offer.byteLength > maximumFileBytes }
+        val active = outgoingFileTransfers
+            .filterValues { transfer -> transfer.offer.byteLength > maximumFileBytes }
+        prepared.forEach { transfer ->
+            preparedOutgoingTransfers.remove(transfer)
+            terminatedOutgoingTransfers[transfer] = reasonCode
+        }
+        active.forEach { (transferId, transfer) ->
+            outgoingFileTransfers.remove(transferId)
+            terminatedOutgoingTransfers[transfer] = reasonCode
+        }
+        return OutgoingDrain(prepared = prepared, active = active.values.toList())
+    }
+
     private data class OutgoingDrain(
         val prepared: List<OutgoingTransferStore>,
         val active: List<OutgoingTransferStore>,
@@ -543,6 +586,13 @@ internal class FileTransferProductOwner(
             val EMPTY = OutgoingDrain(emptyList(), emptyList())
         }
     }
+
+    private data class ManagedPolicyDrain(
+        val incoming: IncomingTransferStore?,
+        val incomingSizeLimit: Long?,
+        val outgoing: OutgoingDrain,
+        val clearPendingOffers: Boolean,
+    )
 
     private fun notifyOutgoingTransfers(drain: OutgoingDrain) {
         val outgoing = LinkedHashSet<OutgoingTransferStore>()
@@ -603,9 +653,11 @@ internal class FileTransferProductOwner(
 
         fun cancel(transferId: ByteString): Boolean
 
+        fun cancelTransfersExceeding(maximumFileBytes: Long): List<ByteString>
+
         fun contains(transferId: ByteString): Boolean
 
-        fun cancelAll()
+        fun cancelAll(): List<ByteString>
 
         fun activeTransferCount(): Int
     }
@@ -626,9 +678,12 @@ internal class FileTransferProductOwner(
 
         override fun cancel(transferId: ByteString): Boolean = manager.cancel(transferId)
 
+        override fun cancelTransfersExceeding(maximumFileBytes: Long): List<ByteString> =
+            manager.cancelTransfersExceeding(maximumFileBytes)
+
         override fun contains(transferId: ByteString): Boolean = manager.contains(transferId)
 
-        override fun cancelAll() = manager.cancelAll()
+        override fun cancelAll(): List<ByteString> = manager.cancelAll()
 
         override fun activeTransferCount(): Int = manager.activeTransferCount()
     }
