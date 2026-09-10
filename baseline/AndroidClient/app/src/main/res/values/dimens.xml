@@ -12,6 +12,7 @@
     <dimen name="settings_section_padding">16dp</dimen>
     <dimen name="settings_section_margin_bottom">16dp</dimen>
     <dimen name="settings_inner_group_margin_top">16dp</dimen>
+    <dimen name="settings_show_stats_switch_gap">12dp</dimen>
 
     <!-- Tap-to-reveal control bar geometry. Compact and centered, with
          icon buttons held at the 48dp accessibility minimum so the
