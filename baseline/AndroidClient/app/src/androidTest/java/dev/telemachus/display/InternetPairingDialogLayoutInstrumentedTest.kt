@@ -16,6 +16,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.core.view.AccessibilityDelegateCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,7 +65,12 @@ class InternetPairingDialogLayoutInstrumentedTest {
                 layout.assertSensitiveInput(layout.acceptance)
                 layout.assertRequestRemainsFullyAvailable()
                 layout.assertParentOwnsAcceptanceScrolling()
+                layout.assertErrorHiddenByDefault()
                 layout.assertLastFieldCanScrollIntoView()
+                layout.showSampleError()
+                layout.measureAndLayout()
+                layout.assertTextReadable(layout.error)
+                layout.assertVisibleErrorCanScrollIntoView()
                 if (shouldCaptureEvidence(widthDp, heightDp, fontScale)) {
                     assertTrue("pairing evidence screenshot exists", layout.capture("pairing-$widthDp-$heightDp-$fontScale").isFile)
                 }
@@ -90,7 +98,12 @@ class InternetPairingDialogLayoutInstrumentedTest {
                 assertTrue("IME-constrained pairing viewport remains usable", layout.root.measuredHeight > layout.dp(120))
                 layout.assertSensitiveInput(layout.acceptance)
                 layout.assertParentOwnsAcceptanceScrolling()
+                layout.assertErrorHiddenByDefault()
                 layout.assertFieldEdgesCanScrollIntoView(layout.acceptance)
+                layout.showSampleError()
+                layout.measureAndLayout()
+                layout.assertTextReadable(layout.error)
+                layout.assertVisibleErrorCanScrollIntoView()
             }
         }
     }
@@ -227,6 +240,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
                     val container =
                         activity.layoutInflater.inflate(R.layout.dialog_internet_pairing_completion, null, false) as ScrollView
                     renderSamplePairingPayloads(activity, container)
+                    showSamplePairingError(activity, container)
                     root = container
                     dialog =
                         MaterialAlertDialogBuilder(activity)
@@ -259,6 +273,8 @@ class InternetPairingDialogLayoutInstrumentedTest {
                         measured.assertSensitiveInput(measured.acceptance)
                         measured.assertRequestRemainsFullyAvailable()
                         measured.assertParentOwnsAcceptanceScrolling()
+                        measured.assertTextReadable(measured.error)
+                        measured.assertVisibleErrorCanScrollIntoView()
                         measured.assertContentReachableInProductionDialog()
                         measured.assertNoDuplicateDialogLiveRegions()
                     } catch (failure: Throwable) {
@@ -463,9 +479,18 @@ class InternetPairingDialogLayoutInstrumentedTest {
         val request: TextView = root.findViewById(R.id.internetPairingRequestText)
         val acceptanceLabel: TextView = root.findViewById(R.id.internetPairingAcceptanceLabel)
         val acceptance: EditText = root.findViewById(R.id.internetPairingAcceptanceInput)
+        val error: TextView = root.findViewById(R.id.internetPairingAcceptanceErrorText)
+
+        init {
+            configurePairingAcceptanceAccessibilityError(acceptance, error)
+        }
 
         fun renderSamplePayloads() {
             renderSamplePairingPayloads(context, root)
+        }
+
+        fun showSampleError() {
+            showSamplePairingError(context, root)
         }
 
         fun assertRequestRemainsFullyAvailable() {
@@ -488,9 +513,9 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
             assertTrue("production dialog leaves a usable viewport", visibleHeight > 0)
             if (content.height > visibleHeight) {
-                assertFieldEdgesCanScrollIntoView(acceptance)
+                assertFieldEdgesCanScrollIntoView(error)
             } else {
-                assertTrue("acceptance field is fully visible when content fits", acceptance.bottom <= scroll.scrollY + visibleHeight)
+                assertTrue("pairing content is fully visible when it fits", error.bottom <= scroll.scrollY + visibleHeight)
             }
         }
 
@@ -501,6 +526,29 @@ class InternetPairingDialogLayoutInstrumentedTest {
             assertTrue("pairing input preserves a comfortable minimum entry area", acceptance.measuredHeight >= dp(128))
         }
 
+        fun assertErrorHiddenByDefault() {
+            assertEquals(View.GONE, error.visibility)
+            assertPairingAccessibilityError(null)
+        }
+
+        fun assertVisibleErrorCanScrollIntoView() {
+            assertEquals(View.VISIBLE, error.visibility)
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, error.accessibilityLiveRegion)
+            assertNull("Pairing input uses explicit node info error instead of EditText popup error", acceptance.error)
+            assertPairingAccessibilityError(error.text)
+            assertFieldEdgesCanScrollIntoView(error)
+        }
+
+        private fun assertPairingAccessibilityError(expected: CharSequence?) {
+            val node = AccessibilityNodeInfoCompat.obtain()
+            try {
+                ViewCompat.onInitializeAccessibilityNodeInfo(acceptance, node)
+                assertEquals(expected?.toString(), node.error?.toString())
+            } finally {
+                node.recycle()
+            }
+        }
+
         fun assertNoDuplicateDialogLiveRegions() {
             listOf(scroll, content, identity, requestLabel, request, acceptanceLabel, acceptance).forEach { view ->
                 assertEquals(
@@ -509,6 +557,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
                     view.accessibilityLiveRegion,
                 )
             }
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, error.accessibilityLiveRegion)
         }
 
         fun assertAcceptanceHint() {
@@ -619,6 +668,40 @@ private fun renderSamplePairingPayloads(
         "vibescreen://pair?v=1&o=" + "requestpayload".repeat(40)
     root.findViewById<EditText>(R.id.internetPairingAcceptanceInput).setText(
         "vibescreen://accept?v=1&a=" + "acceptancepayload".repeat(20),
+    )
+}
+
+private fun showSamplePairingError(
+    context: Context,
+    root: View,
+) {
+    val message =
+        context.getString(
+            R.string.internet_pairing_error_format,
+            "Pairing acceptance fields are invalid. Paste a fresh signed acceptance from your Mac.",
+        )
+    val error = root.findViewById<TextView>(R.id.internetPairingAcceptanceErrorText)
+    LiveRegionTextApplier.show(error, message)
+}
+
+private fun configurePairingAcceptanceAccessibilityError(
+    acceptance: EditText,
+    error: TextView,
+) {
+    ViewCompat.setAccessibilityDelegate(
+        acceptance,
+        object : AccessibilityDelegateCompat() {
+            override fun onInitializeAccessibilityNodeInfo(
+                host: View,
+                info: AccessibilityNodeInfoCompat,
+            ) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.error =
+                    error.text.takeIf {
+                        error.visibility == View.VISIBLE && it.isNotEmpty()
+                    }
+            }
+        },
     )
 }
 
