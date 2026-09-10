@@ -2698,11 +2698,11 @@ class StreamingServer: EncodedFrameSink {
                 )
             case .fileTransferCancel(let cancellation):
                 let wasIncoming = cancelProtocolV1IncomingFileTransfer(transferID: cancellation.transferID)
-                let wasOutgoing = cancelProtocolV1OutgoingFileTransfer(
+                _ = cancelProtocolV1OutgoingFileTransfer(
                     transferID: cancellation.transferID,
                     reasonCode: cancellation.reasonCode
                 )
-                if wasIncoming && !wasOutgoing {
+                if wasIncoming {
                     notifyProtocolV1FileTransferResult(
                         transferID: cancellation.transferID,
                         direction: .incoming,
@@ -2803,6 +2803,12 @@ class StreamingServer: EncodedFrameSink {
                 pendingTransferCount: protocolV1PendingIncomingFileApprovals.count
             )
         } catch let error as ProtocolV1FileTransferError {
+            notifyProtocolV1FileTransferResult(
+                transferID: offer.transferID,
+                direction: .incoming,
+                accepted: false,
+                reason: error.reasonCode
+            )
             applyProtocolV1Actions(
                 session.makeFileAccept(VSFileAccept.rejected(
                     transferID: offer.transferID,
@@ -2813,10 +2819,17 @@ class StreamingServer: EncodedFrameSink {
             )
             return
         } catch {
+            let reason = ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+            notifyProtocolV1FileTransferResult(
+                transferID: offer.transferID,
+                direction: .incoming,
+                accepted: false,
+                reason: reason
+            )
             applyProtocolV1Actions(
                 session.makeFileAccept(VSFileAccept.rejected(
                     transferID: offer.transferID,
-                    reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                    reasonCode: reason
                 )),
                 connection: conn,
                 generation: generation
