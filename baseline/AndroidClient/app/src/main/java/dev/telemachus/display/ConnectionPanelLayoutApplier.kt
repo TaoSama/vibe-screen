@@ -127,23 +127,36 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         views: Views,
     ): Int {
-        val measuredContentWidthPx = views.content.width - views.content.paddingStart - views.content.paddingEnd
-        val measuredActionsWidthPx = views.actions.width
-        val measuredWidthPx = maxOf(measuredContentWidthPx, measuredActionsWidthPx).takeIf { it > 0 }
         val screenWidthPx =
             if (resources.configuration.screenWidthDp > 0) {
                 dp(resources, resources.configuration.screenWidthDp.toFloat())
             } else {
                 resources.displayMetrics.widthPixels
             }
+        val rootWidthPx = stableRootWidthPx(resources, views.content.rootView) ?: screenWidthPx
         val panelWidthPx =
-            (screenWidthPx - connectionPanelHorizontalMarginsPx(resources, views))
+            (rootWidthPx - connectionPanelHorizontalMarginsPx(resources, views))
                 .coerceAtLeast(0)
                 .coerceAtMost(resources.getDimensionPixelSize(R.dimen.connection_panel_max_width))
-        val configuredContentWidthPx =
-            (panelWidthPx - resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding) * 2)
-                .coerceAtLeast(0)
-        return measuredWidthPx?.coerceAtMost(configuredContentWidthPx) ?: configuredContentWidthPx
+        return (panelWidthPx - resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding) * 2)
+            .coerceAtLeast(0)
+            .coerceAtMost(screenWidthPx)
+    }
+
+    private fun stableRootWidthPx(
+        resources: Resources,
+        root: View,
+    ): Int? {
+        val width = root.width
+        val height = root.height
+        if (width <= 0 || height <= 0) return null
+        val matchesConfiguration =
+            when (resources.configuration.orientation) {
+                Configuration.ORIENTATION_LANDSCAPE -> width >= height
+                Configuration.ORIENTATION_PORTRAIT -> height >= width
+                else -> true
+            }
+        return width.takeIf { matchesConfiguration }
     }
 
     private fun dp(
