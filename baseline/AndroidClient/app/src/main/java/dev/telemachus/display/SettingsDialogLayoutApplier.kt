@@ -181,7 +181,8 @@ internal object SettingsDialogLayoutApplier {
 
     private fun requiredButtonWidth(button: MaterialButton): Int {
         val density = button.resources.displayMetrics.density
-        val minimumWidth = ceil(MINIMUM_OPTION_WIDTH_DP * density).toInt()
+        val fontScale = button.resources.configuration.fontScale.coerceAtLeast(1f)
+        val minimumWidth = ceil(MINIMUM_OPTION_WIDTH_DP * density * fontScale).toInt()
         val minimumHorizontalPadding = ceil(MINIMUM_HORIZONTAL_PADDING_DP * density).toInt()
         val displayedText =
             button.transformationMethod?.getTransformation(button.text, button) ?: button.text
