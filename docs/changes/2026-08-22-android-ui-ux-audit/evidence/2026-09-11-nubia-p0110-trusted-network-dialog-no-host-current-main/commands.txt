@@ -1,0 +1,47 @@
+Worktree:
+
+cd <local-codex-worktree>
+
+Static source sanity:
+
+rg -n -F '.setTitle(R.string.trusted_network_dialog_title)' baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WirelessTabController.kt
+test "$(rg -n -F '.setTitle(R.string.trusted_network_dialog_title)' baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WirelessTabControllerContractTest.kt | wc -l | tr -d ' ')" = "2"
+rg -n -F 'assertFalse(createDialog.contains(".setTitle(' baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WirelessTabControllerContractTest.kt && exit 1 || true
+rg -n -F 'trustedNetworkDialogTitle' baseline/AndroidClient/app/src/main/res/layout/dialog_trusted_network.xml && exit 1 || true
+rg -n -F 'productionMaterialDialogInvokesConfirmCallbackOnlyFromPositiveAction' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt
+rg -n -F 'performClick()' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt
+rg -n -F 'callOnClick' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt && exit 1 || true
+rg -n -F 'applyOverrideConfiguration' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt && exit 1 || true
+rg -n -F 'layout.title' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt && exit 1 || true
+rg -n -F 'R.id.trustedNetworkDialogTitle' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt && exit 1 || true
+rg -n -F 'visibleBounds' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt
+rg -n -F 'Rect.intersects' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt
+test "$(rg -n '@Test' baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt | wc -l | tr -d ' ')" = "4"
+git diff --check
+
+Focused JVM contracts:
+
+cd baseline/AndroidClient
+./gradlew --no-daemon --max-workers=1 --no-watch-fs --console=plain -Dkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false :app:testDebugUnitTest --tests dev.telemachus.display.WirelessTabControllerContractTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest
+
+APK build only, no connected test:
+
+cd baseline/AndroidClient
+./gradlew --no-daemon --max-workers=1 --no-watch-fs --console=plain -Dkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false :app:assembleDebug :app:assembleDebugAndroidTest
+
+Device no-Host boundary and raw instrumentation:
+
+adb -s <redacted-adb-serial> devices -l
+adb -s <redacted-adb-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+adb -s <redacted-adb-serial> install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s <redacted-adb-serial> install -r baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display.test || true
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display || true
+adb -s <redacted-adb-serial> shell am instrument -w -r -e class dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+
+Evidence verification:
+
+shasum -a 256 -c SHA256SUMS

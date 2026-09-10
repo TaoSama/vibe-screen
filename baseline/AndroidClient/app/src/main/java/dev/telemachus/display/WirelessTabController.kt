@@ -1,10 +1,14 @@
 package dev.telemachus.display
 
 import android.app.Activity
+import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -42,6 +46,7 @@ interface WirelessCameraPermission {
 
 private class ActivityWirelessTabHost(
     private val activity: Activity,
+    private val showDialog: (Dialog) -> Dialog,
 ) : WirelessTabHost {
     override val resources: Resources
         get() = activity.resources
@@ -52,7 +57,8 @@ private class ActivityWirelessTabHost(
     ): String = activity.getString(resId, *formatArgs)
 
     override fun showTrustedNetworkDialog(onConfirmed: () -> Unit) {
-        showTrustedNetworkDialog(activity, onConfirmed)
+        if (activity.isFinishing || activity.isDestroyed) return
+        showDialog(createTrustedNetworkDialog(activity, onConfirmed))
     }
 
     override fun launchScanner() {
@@ -61,32 +67,72 @@ private class ActivityWirelessTabHost(
     }
 }
 
-internal fun showTrustedNetworkDialog(
-    activity: Activity,
+internal fun createTrustedNetworkDialog(
+    context: Context,
     onConfirmed: () -> Unit,
-): AlertDialog? {
-    if (activity.isFinishing || activity.isDestroyed) return null
-    val builder =
-        MaterialAlertDialogBuilder(activity)
-            .setTitle(R.string.trusted_network_dialog_title)
-            .setMessage(R.string.trusted_network_dialog_message)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }
-    val dialog =
-        if (activity is MainActivity) {
-            activity.showImmersiveDialog(builder)
-        } else {
-            builder.show()
+): AlertDialog {
+    val content = LayoutInflater.from(context).inflate(R.layout.dialog_trusted_network, null, false)
+    return MaterialAlertDialogBuilder(context)
+        .setTitle(R.string.trusted_network_dialog_title)
+        .setView(content)
+        .setNegativeButton(R.string.cancel, null)
+        .setPositiveButton(R.string.trusted_network_dialog_confirm, null)
+        .create()
+        .also { dialog -> configureTrustedNetworkDialogActions(dialog, onConfirmed) }
+}
+
+private fun configureTrustedNetworkDialogActions(
+    dialog: AlertDialog,
+    onConfirmed: () -> Unit,
+) {
+    dialog.setOnShowListener {
+        val scroll = dialog.findViewById<ScrollView>(R.id.trustedNetworkDialogScroll)
+        val maxContentHeight = trustedNetworkDialogMaxContentHeightPx(dialog.context)
+        if (scroll != null && maxContentHeight > 0) {
+            scroll.post {
+                val desiredHeight = scroll.getChildAt(0)?.height?.plus(scroll.paddingTop + scroll.paddingBottom) ?: scroll.height
+                if (desiredHeight > maxContentHeight || scroll.height > maxContentHeight) {
+                    val params = scroll.layoutParams ?: return@post
+                    scroll.layoutParams =
+                        params.apply {
+                            height = maxContentHeight
+                        }
+                    scroll.requestLayout()
+                }
+            }
         }
-    listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { buttonId ->
-        dialog.getButton(buttonId)?.apply {
-            isSingleLine = false
-            maxLines = 2
-            ellipsize = null
+        listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE)
+            .map { which ->
+                checkNotNull(dialog.getButton(which)) {
+                    "trusted network dialog button $which is present"
+                }
+            }
+            .forEach { button ->
+                button.setSingleLine(false)
+                button.maxLines = TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES
+                button.ellipsize = null
+            }
+        checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE)) {
+            "trusted network dialog positive button is present"
+        }.setOnClickListener {
+            onConfirmed()
+            dialog.dismiss()
         }
     }
-    return dialog
 }
+
+private fun trustedNetworkDialogMaxContentHeightPx(context: Context): Int {
+    val metrics = context.resources.displayMetrics
+    val configuredHeightPx =
+        context.resources.configuration.screenHeightDp
+            .takeIf { it > 0 }
+            ?.let { (it * metrics.density).toInt() }
+    val sourceHeightPx = configuredHeightPx ?: metrics.heightPixels
+    return (sourceHeightPx * TRUSTED_NETWORK_DIALOG_CONTENT_MAX_HEIGHT_RATIO).toInt()
+}
+
+private const val TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES = 2
+private const val TRUSTED_NETWORK_DIALOG_CONTENT_MAX_HEIGHT_RATIO = 0.52f
 
 /**
  * Five-state UI machine for the Wireless tab on Android.
@@ -117,6 +163,7 @@ class WirelessTabController internal constructor(
         cameraPerm: CameraPermissionManager,
         isTrustedLanAcknowledged: () -> Boolean,
         acknowledgeTrustedLan: () -> Unit,
+        showDialog: (Dialog) -> Dialog,
         onConnectRequested: (
             host: String,
             port: Int,
@@ -125,7 +172,11 @@ class WirelessTabController internal constructor(
             macName: String,
         ) -> Unit,
     ) : this(
-        host = ActivityWirelessTabHost(activity),
+        host =
+            ActivityWirelessTabHost(
+                activity = activity,
+                showDialog = showDialog,
+            ),
         views = views,
         storage = storage,
         cameraPerm = cameraPerm,

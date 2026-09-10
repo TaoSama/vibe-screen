@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Vibe Screen</string>
-    <string name="trusted_network_dialog_title">Wireless mode is experimental</string>
-    <string name="trusted_network_dialog_message">Wireless mode is for trusted private networks only. Current Mac and Android apps protect video and input with per-session application records; explicit legacy fallback remains plaintext.</string>
+    <string name="trusted_network_dialog_title">Wireless is experimental</string>
+    <string name="trusted_network_dialog_message">Trusted private networks only.\nVideo stays protected.\nInput stays protected.\nLegacy fallback is plaintext.</string>
     <string name="trusted_network_dialog_confirm">I understand — scan</string>
     <string name="qr_scanner_camera_bind_failed">Camera could not start. Check Camera permission and retry. USB still works.</string>
     <string name="qr_scanner_camera_permission_missing">Camera permission is missing. Allow Camera, then retry. USB still works.</string>

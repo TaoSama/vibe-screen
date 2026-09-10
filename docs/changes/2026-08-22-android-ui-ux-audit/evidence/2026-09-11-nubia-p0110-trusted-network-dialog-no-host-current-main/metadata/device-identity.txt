@@ -1,0 +1,10 @@
+serial=<redacted-adb-serial>
+manufacturer=nubia
+model=P0110
+device=pacific
+release=16
+sdk=36
+fingerprint=nubia/pacific/pacific:16/2.6.2.0/20260907.013634:userdebug/test-keys
+wm_size=Physical size: 1264x2800
+wm_density=Physical density: 560
+font_scale=1.0

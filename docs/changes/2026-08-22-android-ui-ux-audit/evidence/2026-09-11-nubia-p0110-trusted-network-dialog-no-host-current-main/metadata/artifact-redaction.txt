@@ -1,0 +1,9 @@
+Redaction policy applied after collection:
+
+- Android serial <redacted-adb-serial> -> <redacted-adb-serial>.
+- Forbidden Android serial <forbidden-adb-serial> -> <forbidden-adb-serial> if present.
+- Local absolute paths under <local-codex-worktree> -> <local-codex-worktree>.
+- Local hostnames such as <redacted-host> and XML hostname attributes -> <redacted-host>.
+- Credential-like strings were scanned before finalization.
+
+The raw am instrument text output is retained. No Gradle connectedDebugAndroidTest report is represented for this run.

@@ -1,0 +1,11 @@
+No-Host boundary for this evidence run:
+
+- The macOS Host was not started, installed, replaced, re-signed, or launched.
+- TCC, Screen Recording, Accessibility, Microphone, Keychain, signing, and Host provenance state were not touched.
+- No adb reverse tcp:54321 tcp:54321 mapping was created.
+- Before instrumentation, adb -s <redacted-adb-serial> reverse --list returned no mappings and exit status 0.
+- Before instrumentation, lsof -nP -iTCP:54321 -sTCP:LISTEN returned no listener and exit status 1.
+- After instrumentation, adb -s <redacted-adb-serial> reverse --list returned no mappings and exit status 0.
+- After instrumentation, lsof -nP -iTCP:54321 -sTCP:LISTEN returned no listener and exit status 1.
+
+This evidence only validates Android UI/dialog behavior and local no-Host boundaries. It does not prove Host-backed LAN streaming, USB streaming, Internet traversal, video decode, input forwarding, clipboard transfer, or file transfer.

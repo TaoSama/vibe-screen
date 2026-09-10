@@ -1,0 +1,7 @@
+76:        .setTitle(R.string.trusted_network_dialog_title)
+93:    fun productionMaterialDialogInvokesConfirmCallbackOnlyFromPositiveAction() {
+100:            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+108:            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+397:            .map { view -> view.debugName() to view.visibleBounds() }
+458:private fun View.visibleBounds(): Rect =
+403:            assertFalse(name + " must not overlap " + otherName, Rect.intersects(bounds, otherBounds))
