@@ -312,6 +312,7 @@
     <string name="internet_pairing_acceptance_label">Signed acceptance from Mac</string>
     <string name="internet_pairing_acceptance_hint">Paste the signed pairing acceptance from your Mac</string>
     <string name="internet_pairing_complete_action">Complete pairing</string>
+    <string name="internet_pairing_error_format">Pairing failed. %1$s</string>
     <string name="internet_pairing_complete">Mac identity verified and pairing secrets stored in Android Keystore. Import a fresh session lease to connect.</string>
     <string name="internet_pairing_identity_format">Verify identities before accepting:\nMac %1$s · key %2$s…\nThis Android key %3$s…</string>
     <string name="internet_revoke_confirm_title">Revoke local pairing?</string>

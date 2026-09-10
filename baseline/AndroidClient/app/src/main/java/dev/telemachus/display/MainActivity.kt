@@ -23,6 +23,8 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.InputDevice
@@ -33,6 +35,7 @@ import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.widget.ScrollView
 import android.widget.TextView
@@ -43,8 +46,10 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -2002,7 +2007,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showInternetPairingCompletionDialog(pending: PendingInternetPairing) {
-        val container = layoutInflater.inflate(R.layout.dialog_internet_pairing_completion, null, false)
+        val container = layoutInflater.inflate(R.layout.dialog_internet_pairing_completion, null, false) as ScrollView
         container.findViewById<TextView>(R.id.internetPairingRequestText).apply {
             text = pending.request.encode()
             setTextIsSelectable(true)
@@ -2029,6 +2034,53 @@ class MainActivity : AppCompatActivity() {
                 isSaveEnabled = false
                 setHorizontallyScrolling(false)
             }
+        val errorText = container.findViewById<TextView>(R.id.internetPairingAcceptanceErrorText)
+        var pairingAcceptanceError: CharSequence? = null
+        fun updatePairingAcceptanceError(message: CharSequence?) {
+            pairingAcceptanceError = message
+            if (message == null) {
+                LiveRegionTextApplier.hide(errorText)
+            } else {
+                LiveRegionTextApplier.show(errorText, message)
+                errorText.post { container.smoothScrollTo(0, errorText.top) }
+            }
+            acceptance.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+        ViewCompat.setAccessibilityDelegate(
+            acceptance,
+            object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(
+                    host: View,
+                    info: AccessibilityNodeInfoCompat,
+                ) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.error = pairingAcceptanceError
+                }
+            },
+        )
+        acceptance.addTextChangedListener(
+            object : TextWatcher {
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int,
+                ) = Unit
+
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int,
+                ) {
+                    if (errorText.visibility == View.VISIBLE) {
+                        updatePairingAcceptanceError(null)
+                    }
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
+            },
+        )
         val dialog =
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.internet_pairing_complete_title)
@@ -2042,44 +2094,48 @@ class MainActivity : AppCompatActivity() {
         dialog.setOnShowListener {
             @Suppress("DEPRECATION")
             dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                try {
-                    val parsed = InternetPairingAcceptance.parse(acceptance.text.toString())
+            val completeButton = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+            completeButton.setOnClickListener {
+                updatePairingAcceptanceError(null)
+                val parsed =
                     try {
-                        internetRevocationCoordinator.withCredentialMutationAdmission(
-                            durableBlock = {
-                                internetProfileStore.hasDurableCredentialMutationBlock(
-                                    pending.publicMetadata.pairingIdentifier,
-                                ) || internetStoredSessionFactory.hasPendingPairingPersistenceCleanup()
-                            },
-                        ) { permit ->
-                            pending.complete(parsed).also { completed ->
-                                internetProfileStore.recordVerifiedPairing(
-                                    permit,
-                                    completed.metadata,
-                                    internetStoredSessionFactory,
-                                )
-                            }
-                        }
-                        val identityCleanup = checkNotNull(pendingInternetPairingIdentity) {
-                            "Pending pairing identity ownership is unavailable"
-                        }
-                        check(pendingInternetPairing === pending) { "Pending pairing changed before identity ownership commit" }
-                        identityCleanup.commit()
-                        pendingInternetPairingIdentity = null
-                        pendingInternetPairing = null
-                        refreshInternetProfileUi()
+                        InternetPairingAcceptance.parse(acceptance.text.toString())
                     } catch (failure: Throwable) {
-                        discardPendingInternetPairing(pending, failure)
-                        dialog.dismiss()
-                        showInternetFailure(failure)
+                        updatePairingAcceptanceError(pairingCompletionErrorMessage(failure))
                         return@setOnClickListener
                     }
+                try {
+                    internetRevocationCoordinator.withCredentialMutationAdmission(
+                        durableBlock = {
+                            internetProfileStore.hasDurableCredentialMutationBlock(
+                                pending.publicMetadata.pairingIdentifier,
+                            ) || internetStoredSessionFactory.hasPendingPairingPersistenceCleanup()
+                        },
+                    ) { permit ->
+                        pending.complete(parsed).also { completed ->
+                            internetProfileStore.recordVerifiedPairing(
+                                permit,
+                                completed.metadata,
+                                internetStoredSessionFactory,
+                            )
+                        }
+                    }
+                    val identityCleanup = checkNotNull(pendingInternetPairingIdentity) {
+                        "Pending pairing identity ownership is unavailable"
+                    }
+                    check(pendingInternetPairing === pending) { "Pending pairing changed before identity ownership commit" }
+                    identityCleanup.commit()
+                    pendingInternetPairingIdentity = null
+                    pendingInternetPairing = null
+                    refreshInternetProfileUi()
                     acceptance.text?.clear()
                     LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_pairing_complete))
                     dialog.dismiss()
                 } catch (failure: Throwable) {
-                    acceptance.error = failure.message ?: getString(R.string.internet_error_title)
+                    discardPendingInternetPairing(pending, failure)
+                    dialog.dismiss()
+                    showInternetFailure(failure)
+                    return@setOnClickListener
                 }
             }
         }
@@ -2088,6 +2144,11 @@ class MainActivity : AppCompatActivity() {
         }
         dialog.setCanceledOnTouchOutside(false)
         showSecureImmersiveDialog(dialog)
+    }
+
+    private fun pairingCompletionErrorMessage(failure: Throwable): String {
+        val detail = failure.message?.takeUnless { it.isBlank() } ?: getString(R.string.internet_error_title)
+        return getString(R.string.internet_pairing_error_format, detail)
     }
 
     private fun discardPendingInternetPairing(

@@ -1,0 +1,4 @@
+git_diff_check=0
+focused_jvm=0
+android_test_compile=0
+instrumentation=0

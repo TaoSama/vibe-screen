@@ -1625,17 +1625,20 @@ class MainActivityTerminalGuidanceContractTest {
     fun internetPairingDialogUsesDedicatedSmallScreenLayout() {
         val source = mainActivitySource()
         val pairingDialog = extractMethod(source, "private fun showInternetPairingCompletionDialog")
+        val pairingErrorMessage = extractMethod(source, "private fun pairingCompletionErrorMessage")
         val layout = resourceSource("app/src/main/res/layout/dialog_internet_pairing_completion.xml")
         val scroll = extractXmlElement(layout, """android:id="@+id/internetPairingDialogScroll""")
         val requestLabel = extractXmlElement(layout, """android:id="@+id/internetPairingRequestLabel""")
         val acceptanceLabel = extractXmlElement(layout, """android:id="@+id/internetPairingAcceptanceLabel""")
         val acceptanceInput = extractXmlElement(layout, """android:id="@+id/internetPairingAcceptanceInput""")
+        val acceptanceError = extractXmlElement(layout, """android:id="@+id/internetPairingAcceptanceErrorText""")
         val compactPairingDialog = pairingDialog.replace(Regex("\\s+"), "")
 
         assertTrue(pairingDialog.contains("R.layout.dialog_internet_pairing_completion"))
         assertTrue(pairingDialog.contains("R.id.internetPairingRequestText"))
         assertTrue(pairingDialog.contains("R.id.internetPairingIdentityText"))
         assertTrue(pairingDialog.contains("R.id.internetPairingAcceptanceInput"))
+        assertTrue(pairingDialog.contains("R.id.internetPairingAcceptanceErrorText"))
         assertFalse("Pairing dialog must not build a raw vertical LinearLayout in code", pairingDialog.contains("android.widget.LinearLayout"))
         assertTrue(
             "The one-time request must remain selectable and should not scroll horizontally on phones",
@@ -1661,6 +1664,45 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(acceptanceInput.contains("""android:textSize="10sp"""))
         assertFalse("Pairing input should not create nested vertical scrolling inside the dialog ScrollView", acceptanceInput.contains("android:maxLines="))
         assertFalse("Pairing input should leave vertical scrolling to the parent ScrollView", acceptanceInput.contains("""android:scrollbars="vertical"""))
+        assertTrue(acceptanceError.contains("""android:accessibilityLiveRegion="polite"""))
+        assertTrue(acceptanceError.contains("""android:breakStrategy="balanced"""))
+        assertTrue(acceptanceError.contains("""android:textColor="?attr/colorError"""))
+        assertTrue(acceptanceError.contains("""android:textIsSelectable="true"""))
+        assertTrue(acceptanceError.contains("""android:textSize="12sp"""))
+        assertTrue(acceptanceError.contains("""android:visibility="gone"""))
+        assertTrue(pairingDialog.contains("acceptance.addTextChangedListener"))
+        assertFalse(
+            "Pairing completion should not use the EditText error popup for inline guidance",
+            pairingDialog.contains("acceptance.error"),
+        )
+        assertTrue(pairingDialog.contains("ViewCompat.setAccessibilityDelegate"))
+        assertTrue(pairingDialog.contains("AccessibilityDelegateCompat"))
+        assertTrue(pairingDialog.contains("info.error = pairingAcceptanceError"))
+        assertTrue(pairingDialog.contains("AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED"))
+        assertTrue(pairingDialog.contains("acceptance.sendAccessibilityEvent"))
+        assertTrue(pairingDialog.contains("updatePairingAcceptanceError(null)"))
+        assertTrue(pairingDialog.contains("LiveRegionTextApplier.hide(errorText)"))
+        assertTrue(pairingDialog.contains("LiveRegionTextApplier.show(errorText, message)"))
+        assertTrue(pairingDialog.contains("errorText.post { container.smoothScrollTo(0, errorText.top) }"))
+        assertTrue(pairingErrorMessage.contains("R.string.internet_pairing_error_format"))
+        assertTrue(
+            "Blank pairing failure messages should fall back to the generic Internet error title",
+            pairingErrorMessage.replace(Regex("\\s+"), "")
+                .contains("failure.message?.takeUnless{it.isBlank()}?:getString(R.string.internet_error_title)") &&
+                pairingErrorMessage.contains("getString(R.string.internet_pairing_error_format, detail)"),
+        )
+        assertTrue(
+            "Parse failures should show the inline error and keep the dialog retryable",
+            compactPairingDialog.contains("catch(failure:Throwable){updatePairingAcceptanceError(pairingCompletionErrorMessage(failure))return@setOnClickListener}"),
+        )
+        assertTrue(
+            "Persistence failures must clean the one-time pairing and use the existing Internet failure surface",
+            compactPairingDialog.contains("catch(failure:Throwable){discardPendingInternetPairing(pending,failure)dialog.dismiss()showInternetFailure(failure)return@setOnClickListener}"),
+        )
+        assertFalse(
+            "Persistence failures should not leave a disabled completion dialog behind",
+            pairingDialog.contains("completeButton.isEnabled = false") || pairingDialog.contains("acceptance.isEnabled = false"),
+        )
         assertTrue(pairingDialog.contains("EditorInfo.IME_FLAG_NO_EXTRACT_UI"))
         assertTrue(pairingDialog.contains("EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING"))
         assertTrue(
