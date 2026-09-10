@@ -33,6 +33,7 @@ class SettingsDialogLayoutInstrumentedTest {
     fun narrowPhoneWindowsStackOptionGroupsWithoutClipping() {
         listOf(320, 360).forEach { screenWidthDp ->
             withLayout(screenWidthDp = screenWidthDp) { layout ->
+                assertReadable(layout, R.id.scaleModeGroup)
                 assertStackedAndReadable(layout, R.id.rotationGroup)
                 assertStackedAndReadable(layout, R.id.videoQualityGroup)
                 assertStackedAndReadable(layout, R.id.videoFrameRateGroup)
@@ -48,6 +49,7 @@ class SettingsDialogLayoutInstrumentedTest {
         listOf(320, 360).forEach { screenWidthDp ->
             listOf(1.5f, 2f).forEach { fontScale ->
                 withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
+                    assertReadable(layout, R.id.scaleModeGroup)
                     assertStackedAndReadable(layout, R.id.rotationGroup)
                     assertStackedAndReadable(layout, R.id.videoQualityGroup)
                     assertStackedAndReadable(layout, R.id.videoFrameRateGroup)
@@ -61,9 +63,35 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun scaleModeGroupUsesResponsiveProductionLayoutOnNarrowLargeText() {
+        withLayout(screenWidthDp = 320, fontScale = 2f) { layout ->
+            val group = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
+            val modes = SettingsDialogLayoutApplier.apply(layout.root)
+            layout.measureAndLayout()
+            val mode = modes[R.id.scaleModeGroup]
+
+            assertTrue("scale mode group participates in responsive layout", modes.containsKey(R.id.scaleModeGroup))
+            assertEquals(
+                if (mode == SettingsDialogLayoutApplier.Mode.STACKED) {
+                    LinearLayout.VERTICAL
+                } else {
+                    LinearLayout.HORIZONTAL
+                },
+                group.orientation,
+            )
+            assertTrue(group.isSingleSelection)
+            assertTrue(group.isSelectionRequired)
+            assertEquals(layout.context.getString(R.string.display_selection_available), group.contentDescription)
+            assertReadable(layout, R.id.scaleModeGroup)
+            assertAllTextReadable(group)
+        }
+    }
+
+    @Test
     fun wideWindowKeepsOptionGroupsHorizontal() {
         withLayout(screenWidthDp = 600) { layout ->
             listOf(
+                R.id.scaleModeGroup,
                 R.id.rotationGroup,
                 R.id.videoQualityGroup,
                 R.id.videoFrameRateGroup,
@@ -124,6 +152,7 @@ class SettingsDialogLayoutInstrumentedTest {
                 "reset actions should keep the full dialog row width outside the two-column body",
                 resetActions.measuredWidth > layout.root.findViewById<View>(R.id.settingsControlsColumn).measuredWidth,
             )
+            assertGroupInsidePrimaryColumn(layout, R.id.scaleModeGroup)
             listOf(R.id.gestureSwipeUpGroup, R.id.gestureSwipeDownGroup).forEach { groupId ->
                 assertGroupInsideControlsColumn(layout, groupId)
                 assertReadable(layout, groupId)
@@ -350,24 +379,47 @@ class SettingsDialogLayoutInstrumentedTest {
     @Test
     fun repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics() {
         withLayout(screenWidthDp = 600) { layout ->
-            val group = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.videoQualityGroup)
-            group.check(R.id.videoQualityBalanced)
-            var listenerCalls = 0
-            group.addOnButtonCheckedListener { _, _, _ -> listenerCalls += 1 }
-
-            SettingsDialogLayoutApplier.applyAfterNextLayout(layout.root)
-            layout.measureAndLayout(layout.dp(320))
-            assertEquals(LinearLayout.VERTICAL, group.orientation)
-            SettingsDialogLayoutApplier.applyAfterNextLayout(layout.root)
-            layout.measureAndLayout(layout.dp(600))
-            assertEquals(LinearLayout.HORIZONTAL, group.orientation)
-
-            assertEquals(R.id.videoQualityBalanced, group.checkedButtonId)
-            assertEquals(1, group.checkedButtonIds.size)
-            assertTrue(group.isSingleSelection)
-            assertTrue(group.isSelectionRequired)
-            assertEquals(0, listenerCalls)
+            assertResponsiveLayoutPreservesToggleSelection(
+                layout = layout,
+                groupId = R.id.videoQualityGroup,
+                selectedButtonId = R.id.videoQualityBalanced,
+                narrowWidthPx = layout.dp(320),
+                expectedNarrowOrientation = LinearLayout.VERTICAL,
+            )
+            assertResponsiveLayoutPreservesToggleSelection(
+                layout = layout,
+                groupId = R.id.scaleModeGroup,
+                selectedButtonId = R.id.scaleFillButton,
+                narrowWidthPx = layout.dp(120),
+                expectedNarrowOrientation = LinearLayout.VERTICAL,
+            )
         }
+    }
+
+    private fun assertResponsiveLayoutPreservesToggleSelection(
+        layout: MeasuredLayout,
+        groupId: Int,
+        selectedButtonId: Int,
+        narrowWidthPx: Int,
+        expectedNarrowOrientation: Int,
+    ) {
+        val group = layout.root.findViewById<MaterialButtonToggleGroup>(groupId)
+        group.check(selectedButtonId)
+        var listenerCalls = 0
+        group.addOnButtonCheckedListener { _, _, _ -> listenerCalls += 1 }
+
+        SettingsDialogLayoutApplier.applyAfterNextLayout(layout.root)
+        layout.measureAndLayout(narrowWidthPx)
+        assertEquals(expectedNarrowOrientation, group.orientation)
+        SettingsDialogLayoutApplier.applyAfterNextLayout(layout.root)
+        layout.measureAndLayout(layout.dp(600))
+        assertEquals(LinearLayout.HORIZONTAL, group.orientation)
+
+        assertEquals(selectedButtonId, group.checkedButtonId)
+        assertEquals(1, group.checkedButtonIds.size)
+        assertTrue(group.isSingleSelection)
+        assertTrue(group.isSelectionRequired)
+        assertEquals(0, listenerCalls)
     }
 
     private fun assertUnavailableNoteOwnsAccessibility(note: TextView) {
@@ -504,6 +556,16 @@ class SettingsDialogLayoutInstrumentedTest {
         }
         assertTrue("group is nested in controls column", group.hasAncestor(controls))
         assertTrue("group fits controls column width", group.measuredWidth <= controls.measuredWidth)
+    }
+
+    private fun assertGroupInsidePrimaryColumn(
+        layout: MeasuredLayout,
+        groupId: Int,
+    ) {
+        val primary = layout.root.findViewById<LinearLayout>(R.id.settingsPrimaryColumn)
+        val group = layout.root.findViewById<LinearLayout>(groupId)
+        assertTrue("group is nested in primary column", group.hasAncestor(primary))
+        assertTrue("group fits primary column width", group.measuredWidth <= primary.measuredWidth)
     }
 
     private fun View.hasAncestor(ancestor: View): Boolean {
