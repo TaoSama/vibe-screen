@@ -121,6 +121,35 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun videoChoiceGroupsRemainReadableOnLargeTextPhonesAndShortLandscape() {
+        listOf(
+            Triple(320, 800, 1.5f),
+            Triple(320, 800, 2f),
+            Triple(360, 800, 1.5f),
+            Triple(360, 800, 2f),
+            Triple(640, 320, 1f),
+            Triple(640, 320, 1.5f),
+            Triple(640, 320, 2f),
+        ).forEach { (screenWidthDp, screenHeightDp, fontScale) ->
+            withLayout(
+                screenWidthDp = screenWidthDp,
+                screenHeightDp = screenHeightDp,
+                fontScale = fontScale,
+            ) { layout ->
+                listOf(R.id.videoQualityGroup, R.id.videoFrameRateGroup).forEach { groupId ->
+                    val group = layout.root.findViewById<LinearLayout>(groupId)
+                    assertReadable(layout, groupId)
+                    assertNoContentOverlapBetweenVisibleChildren(group)
+                    if (group.orientation == LinearLayout.VERTICAL) {
+                        assertStackedOptionsHaveDividerSpacing(layout, group)
+                    }
+                    assertFullyReachableByScroll(layout, group)
+                }
+            }
+        }
+    }
+
+    @Test
     fun scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText() {
         withLayout(screenWidthDp = 320, fontScale = 2f) { layout ->
             val group = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
@@ -513,6 +542,36 @@ class SettingsDialogLayoutInstrumentedTest {
                 narrowWidthPx = layout.dp(120),
                 expectedNarrowOrientation = LinearLayout.VERTICAL,
             )
+        }
+    }
+
+    @Test
+    fun videoChoiceGroupsPreserveSelectionAcrossPhoneAndLandscapeReflows() {
+        listOf(
+            R.id.videoQualityGroup to R.id.videoQualitySharp,
+            R.id.videoFrameRateGroup to R.id.videoFps120,
+        ).forEach { (groupId, selectedButtonId) ->
+            withLayout(screenWidthDp = 1000, screenHeightDp = 1400, fontScale = 1.5f) { layout ->
+                val group = layout.root.findViewById<MaterialButtonToggleGroup>(groupId)
+                group.check(selectedButtonId)
+                val selectedState = layout.captureVideoChoiceGroupState(groupId)
+                assertEquals("wide single-column baseline", LinearLayout.HORIZONTAL, group.orientation)
+
+                layout.applySettingsDialogLayoutForSize(widthDp = 320, heightDp = 800)
+                assertEquals(LinearLayout.VERTICAL, group.orientation)
+                assertEquals(selectedState, layout.captureVideoChoiceGroupState(groupId))
+                assertReadable(layout, groupId)
+
+                layout.applySettingsDialogLayoutForSize(widthDp = 640, heightDp = 320)
+                assertEquals(LinearLayout.VERTICAL, group.orientation)
+                assertEquals(selectedState, layout.captureVideoChoiceGroupState(groupId))
+                assertReadable(layout, groupId)
+
+                layout.applySettingsDialogLayoutForSize(widthDp = 1000, heightDp = 1400)
+                assertEquals("wide single-column return", LinearLayout.HORIZONTAL, group.orientation)
+                assertEquals(selectedState, layout.captureVideoChoiceGroupState(groupId))
+                assertReadable(layout, groupId)
+            }
         }
     }
 
@@ -925,6 +984,56 @@ class SettingsDialogLayoutInstrumentedTest {
         )
     }
 
+    private fun assertNoContentOverlapBetweenVisibleChildren(group: LinearLayout) {
+        val visibleChildren =
+            (0 until group.childCount)
+                .map { index -> group.getChildAt(index) }
+                .filter { child -> child.visibility == View.VISIBLE }
+        visibleChildren.forEachIndexed { index, first ->
+            val firstBounds = Rect(first.left, first.top, first.right, first.bottom)
+            visibleChildren.drop(index + 1).forEach { second ->
+                val secondBounds = Rect(second.left, second.top, second.right, second.bottom)
+                val horizontalOverlap = minOf(firstBounds.right, secondBounds.right) - maxOf(firstBounds.left, secondBounds.left)
+                val verticalOverlap = minOf(firstBounds.bottom, secondBounds.bottom) - maxOf(firstBounds.top, secondBounds.top)
+                val allowedJoinedStrokeOverlap = maxOf(
+                    (first as? MaterialButton)?.strokeWidth ?: 0,
+                    (second as? MaterialButton)?.strokeWidth ?: 0,
+                )
+                assertFalse(
+                    group.resources.getResourceEntryName(first.id) + " must not overlap content with " +
+                        group.resources.getResourceEntryName(second.id) +
+                        " first=$firstBounds second=$secondBounds overlap=${horizontalOverlap}x$verticalOverlap " +
+                        "allowedStrokeOverlap=$allowedJoinedStrokeOverlap groupOrientation=${group.orientation} " +
+                        "group=${group.width}x${group.height}",
+                    horizontalOverlap > allowedJoinedStrokeOverlap && verticalOverlap > allowedJoinedStrokeOverlap,
+                )
+            }
+        }
+    }
+
+    private fun assertStackedOptionsHaveDividerSpacing(
+        layout: MeasuredLayout,
+        group: LinearLayout,
+    ) {
+        assertEquals(LinearLayout.SHOW_DIVIDER_MIDDLE, group.showDividers)
+        val divider = group.dividerDrawable
+        assertNotNull("stacked option group has divider", divider)
+        assertTrue(
+            "stacked option divider height",
+            requireNotNull(divider).intrinsicHeight >= layout.dp(4),
+        )
+    }
+
+    private fun MeasuredLayout.captureVideoChoiceGroupState(groupId: Int): VideoChoiceGroupState {
+        val group = root.findViewById<MaterialButtonToggleGroup>(groupId)
+        return VideoChoiceGroupState(
+            checkedButtonId = group.checkedButtonId,
+            checkedButtonIds = group.checkedButtonIds.toList(),
+            singleSelection = group.isSingleSelection,
+            selectionRequired = group.isSelectionRequired,
+        )
+    }
+
     private fun MeasuredLayout.captureCapabilityCopyState(): CapabilityCopyState {
         val displayCapability = root.findViewById<TextView>(R.id.displayCapability)
         val inputCapability = root.findViewById<TextView>(R.id.inputCapability)
@@ -944,6 +1053,25 @@ class SettingsDialogLayoutInstrumentedTest {
         measureAndLayout(dp(widthDp))
         SettingsDialogLayoutApplier.apply(root)
         measureAndLayout(dp(widthDp))
+    }
+
+    private fun MeasuredLayout.applySettingsDialogLayoutForSize(
+        widthDp: Int,
+        heightDp: Int,
+    ) {
+        val widthPx = dp(widthDp)
+        val heightPx = dp(heightDp)
+        viewport.measure(
+            View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
+        )
+        viewport.layout(0, 0, viewport.measuredWidth, viewport.measuredHeight)
+        SettingsDialogLayoutApplier.apply(root)
+        viewport.measure(
+            View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
+        )
+        viewport.layout(0, 0, viewport.measuredWidth, viewport.measuredHeight)
     }
 
     private fun assertFullyReachableByScroll(
@@ -1047,6 +1175,13 @@ class SettingsDialogLayoutInstrumentedTest {
         val inputWidth: Int,
         val inputHeight: Int,
         val scaleModeDescription: String,
+    )
+
+    private data class VideoChoiceGroupState(
+        val checkedButtonId: Int,
+        val checkedButtonIds: List<Int>,
+        val singleSelection: Boolean,
+        val selectionRequired: Boolean,
     )
 
     private companion object {

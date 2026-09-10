@@ -1,6 +1,8 @@
 package dev.telemachus.display
 
 import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.text.Layout
 import android.view.Gravity
 import android.view.View
@@ -41,11 +43,15 @@ internal object SettingsDialogLayoutPolicy {
         minimumWidthPx: Int,
         gapPx: Int,
         decisionWidthPx: Int = availableWidthPx,
+        minimumColumnContentWidthPx: Int = 0,
     ): Columns {
-        val twoColumns = shouldUseTwoColumns(decisionWidthPx, availableHeightPx, minimumWidthPx)
         val width = availableWidthPx.coerceAtLeast(0)
+        val gap = gapPx.coerceAtLeast(0)
+        val columnWidth = ((width - gap) / 2).coerceAtLeast(0)
+        val twoColumns =
+            shouldUseTwoColumns(decisionWidthPx, availableHeightPx, minimumWidthPx) &&
+                (minimumColumnContentWidthPx <= 0 || columnWidth >= minimumColumnContentWidthPx)
         return if (twoColumns) {
-            val columnWidth = ((width - gapPx.coerceAtLeast(0)) / 2).coerceAtLeast(0)
             Columns(
                 twoColumns = true,
                 primaryWidthPx = columnWidth,
@@ -54,6 +60,20 @@ internal object SettingsDialogLayoutPolicy {
             )
         } else {
             Columns(twoColumns = false, primaryWidthPx = width, controlsWidthPx = width, fullWidthPx = width)
+        }
+    }
+
+    fun constrainedGroupWidth(
+        columnWidthPx: Int,
+        groupWidthPx: Int,
+        groupMeasuredWidthPx: Int,
+        parentHorizontalPaddingPx: Int,
+    ): Int {
+        val contentWidth = (columnWidthPx - parentHorizontalPaddingPx.coerceAtLeast(0)).coerceAtLeast(0)
+        val laidOutWidth = listOf(groupWidthPx, groupMeasuredWidthPx).filter { it > 0 }.minOrNull() ?: 0
+        return when {
+            contentWidth > 0 -> contentWidth
+            else -> laidOutWidth
         }
     }
 }
@@ -182,6 +202,7 @@ internal object SettingsDialogLayoutApplier {
                 minimumWidthPx = root.resources.getDimensionPixelSize(R.dimen.settings_two_column_min_width),
                 gapPx = gap,
                 decisionWidthPx = measuredWidth(root),
+                minimumColumnContentWidthPx = minimumColumnContentWidth(root),
             )
         container.orientation = if (columns.twoColumns) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         applyColumnLayout(primary, columns.twoColumns, marginStart = 0)
@@ -208,10 +229,14 @@ internal object SettingsDialogLayoutApplier {
 
         group.orientation =
             if (mode == Mode.STACKED) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        applyGroupDividers(group, mode, separateStackedButtons)
         buttons.forEach { button ->
+            button.isSingleLine = false
+            button.setHorizontallyScrolling(false)
             button.ellipsize = null
             button.maxLines = MAX_OPTION_LINES
             val params = button.layoutParams as LinearLayout.LayoutParams
+            val isAfterFirstButton = group.indexOfChild(button) > 0
             if (mode == Mode.STACKED) {
                 params.width = ViewGroup.LayoutParams.MATCH_PARENT
                 params.weight = 0f
@@ -220,11 +245,15 @@ internal object SettingsDialogLayoutApplier {
                 params.weight = 1f
             }
             if (separateStackedButtons) {
-                val isSecondButton = group.indexOfChild(button) > 0
-                params.marginStart = if (mode == Mode.HORIZONTAL && isSecondButton) dp(button, 4f) else 0
-                params.marginEnd = if (mode == Mode.HORIZONTAL && !isSecondButton) dp(button, 4f) else 0
-                params.topMargin = if (mode == Mode.STACKED && isSecondButton) dp(button, 8f) else 0
+                params.marginStart = if (mode == Mode.HORIZONTAL && isAfterFirstButton) dp(button, 4f) else 0
+                params.marginEnd = if (mode == Mode.HORIZONTAL && !isAfterFirstButton) dp(button, 4f) else 0
+                params.topMargin = if (mode == Mode.STACKED && isAfterFirstButton) dp(button, 8f) else 0
+            } else {
+                params.marginStart = 0
+                params.marginEnd = 0
+                params.topMargin = 0
             }
+            button.minHeight = max(button.minimumHeight, dp(button, MINIMUM_TOUCH_TARGET_DP))
             button.layoutParams = params
         }
         return mode
@@ -241,6 +270,20 @@ internal object SettingsDialogLayoutApplier {
         val horizontalPadding =
             max(button.compoundPaddingLeft + button.compoundPaddingRight, minimumHorizontalPadding)
         return max(minimumWidth, textWidth + horizontalPadding)
+    }
+
+    private fun applyGroupDividers(
+        group: LinearLayout,
+        mode: Mode,
+        separateStackedButtons: Boolean,
+    ) {
+        if (mode == Mode.STACKED && !separateStackedButtons) {
+            group.showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+            group.dividerDrawable = StackedOptionGapDrawable(dp(group, STACKED_OPTION_GAP_DP))
+        } else {
+            group.showDividers = LinearLayout.SHOW_DIVIDER_NONE
+            group.dividerDrawable = null
+        }
     }
 
     private fun dp(
@@ -286,21 +329,39 @@ internal object SettingsDialogLayoutApplier {
         twoColumns: Boolean,
         columnWidthPx: Int,
     ): Int {
-        if (!twoColumns) return group.width
         val parent = group.parent as? ViewGroup
         val parentHorizontalPadding = (parent?.paddingStart ?: 0) + (parent?.paddingEnd ?: 0)
-        return (columnWidthPx - parentHorizontalPadding).coerceAtLeast(0)
+        return SettingsDialogLayoutPolicy.constrainedGroupWidth(
+            columnWidthPx = columnWidthPx,
+            groupWidthPx = group.width,
+            groupMeasuredWidthPx = group.measuredWidth,
+            parentHorizontalPaddingPx = if (twoColumns || columnWidthPx > 0) parentHorizontalPadding else 0,
+        )
+    }
+
+    private fun minimumColumnContentWidth(root: View): Int {
+        val density = root.resources.displayMetrics.density
+        val fontScale = root.resources.configuration.fontScale.coerceAtLeast(1f)
+        return ceil(MINIMUM_COLUMN_CONTENT_WIDTH_DP * density * fontScale).toInt()
     }
 
     private const val MINIMUM_OPTION_WIDTH_DP = 88f
     private const val MINIMUM_HORIZONTAL_PADDING_DP = 32f
     private const val MINIMUM_TOUCH_TARGET_DP = 48f
+    private const val MINIMUM_COLUMN_CONTENT_WIDTH_DP = 176f
     private const val MAX_OPTION_LINES = 2
+    private const val STACKED_OPTION_GAP_DP = 4f
 
     private data class PendingLayoutListener(
         val observer: ViewTreeObserver,
         val listener: ViewTreeObserver.OnGlobalLayoutListener,
     )
+
+    private class StackedOptionGapDrawable(private val heightPx: Int) : ColorDrawable(Color.TRANSPARENT) {
+        override fun getIntrinsicWidth(): Int = 0
+
+        override fun getIntrinsicHeight(): Int = heightPx
+    }
 
     private val pendingLayoutListeners = WeakHashMap<View, PendingLayoutListener>()
 }
