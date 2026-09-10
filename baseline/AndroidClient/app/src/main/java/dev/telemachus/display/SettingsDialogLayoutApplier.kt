@@ -92,6 +92,7 @@ internal object SettingsDialogLayoutApplier {
     fun apply(root: View): Map<Int, Mode> {
         val columns = applyAdaptiveColumns(root)
         return mapOf(
+            R.id.scaleModeGroup to columns.primaryWidthPx,
             R.id.rotationGroup to columns.primaryWidthPx,
             R.id.videoQualityGroup to columns.controlsWidthPx,
             R.id.videoFrameRateGroup to columns.controlsWidthPx,

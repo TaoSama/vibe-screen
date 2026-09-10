@@ -256,8 +256,10 @@
                         android:textSize="13sp" />
 
                     <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/scaleModeGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:contentDescription="@string/display_selection_available"
                         app:selectionRequired="true"
                         app:singleSelection="true">
 
