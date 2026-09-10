@@ -104,6 +104,27 @@ class MainActivitySettingsAccessibilityContractTest {
     }
 
     @Test
+    fun videoBitrateSliderUsesVisibleLabelInsteadOfDuplicateDescription() {
+        val layout = settingsLayoutSource()
+        val label = extractXmlElement(layout, xmlAttribute("android:id", "@+id/videoBitrateLabel"))
+        val slider = extractXmlElement(layout, xmlAttribute("android:id", "@+id/videoBitrateSlider"))
+
+        assertTrue(
+            "The visible bitrate label should name the slider",
+            label.contains(xmlAttribute("android:labelFor", "@id/videoBitrateSlider")) &&
+                label.contains(xmlAttribute("android:text", "@string/video_bitrate_label")),
+        )
+        assertTrue(
+            "The visible bitrate label should be reachable as a screen-reader heading",
+            label.contains(xmlAttribute("android:accessibilityHeading", "true")),
+        )
+        assertFalse(
+            "The slider should not expose a duplicate or stale standalone contentDescription",
+            slider.contains("android:contentDescription"),
+        )
+    }
+
+    @Test
     fun viewportCapabilityCopyStaysSourceBoundAndDoesNotOverstateInputSupport() {
         val source = mainActivitySource()
         val layout = settingsLayoutSource()

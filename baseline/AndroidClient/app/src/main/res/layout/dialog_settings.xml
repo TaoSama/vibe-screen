@@ -525,6 +525,8 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:accessibilityHeading="true"
+                    android:labelFor="@id/videoBitrateSlider"
                     android:text="@string/video_bitrate_label"
                     android:textColor="@color/on_surface_muted"
                     android:textSize="13sp" />
@@ -541,7 +543,6 @@
                 android:id="@+id/videoBitrateSlider"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:contentDescription="@string/video_bitrate_label"
                 android:valueFrom="1.0"
                 android:valueTo="100.0"
                 android:value="20.0"
