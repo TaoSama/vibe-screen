@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
@@ -253,6 +254,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             layout.measureAndLayout()
 
             layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertPanelGeometryUsesResources()
             layout.assertModeToggleHorizontal()
             layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
             layout.assertInternetSecondaryActionsHorizontal(expectedGapDp = 8)
@@ -707,6 +709,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     ) {
         val header = root.findViewById<LinearLayout>(R.id.connectionHeader)
         val actions = root.findViewById<LinearLayout>(R.id.connectionActions)
+        private val panel = root.findViewById<View>(R.id.settingsPanel)
         val content = root.findViewById<LinearLayout>(R.id.connectionContent)
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
@@ -894,6 +897,21 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             } else {
                 assertTrue(header.bottom <= actions.top)
             }
+        }
+
+        fun assertPanelGeometryUsesResources() {
+            val params = panel.layoutParams as ConstraintLayout.LayoutParams
+            val expectedHorizontalMargin = context.resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)
+            val expectedVerticalMargin = context.resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)
+            assertEquals(context.resources.getDimensionPixelSize(R.dimen.connection_panel_max_width), params.matchConstraintMaxWidth)
+            assertEquals(expectedHorizontalMargin, params.marginStart)
+            assertEquals(expectedHorizontalMargin, params.marginEnd)
+            assertEquals(expectedVerticalMargin, params.topMargin)
+            assertEquals(expectedVerticalMargin, params.bottomMargin)
+            assertTrue(
+                "panel width ${panel.measuredWidth}px must not exceed max ${params.matchConstraintMaxWidth}px",
+                panel.measuredWidth <= params.matchConstraintMaxWidth,
+            )
         }
 
         fun assertNoOverlap(

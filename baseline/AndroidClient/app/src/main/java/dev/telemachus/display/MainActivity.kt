@@ -42,6 +42,7 @@ import android.widget.PopupMenu
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -1004,7 +1005,28 @@ class MainActivity : AppCompatActivity() {
      */
     private fun applySafeAreaToChrome() {
         setInsetMargins(binding.controlBar)
+        refreshConnectionPanelContainerGeometry()
         setInsetMargins(binding.settingsPanel)
+    }
+
+    private fun refreshConnectionPanelContainerGeometry() {
+        val horizontalMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)
+        val verticalMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)
+        baseChromeMargins[binding.settingsPanel.id] =
+            SafeAreaGeometry.Insets.of(
+                left = horizontalMargin,
+                top = verticalMargin,
+                right = horizontalMargin,
+                bottom = verticalMargin,
+            )
+        val params =
+            binding.settingsPanel.layoutParams as? ConstraintLayout.LayoutParams
+                ?: return
+        val maxWidthPx = resources.getDimensionPixelSize(R.dimen.connection_panel_max_width)
+        if (params.matchConstraintMaxWidth != maxWidthPx) {
+            params.matchConstraintMaxWidth = maxWidthPx
+            binding.settingsPanel.layoutParams = params
+        }
     }
 
     private fun setInsetMargins(view: View) {
@@ -1058,6 +1080,7 @@ class MainActivity : AppCompatActivity() {
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
         connectionSubtitleDisclosure.reset()
+        applySafeAreaToChrome()
         applyControlBarLayout()
         applyStatusOverlayLayout()
         if (!isConnected) {

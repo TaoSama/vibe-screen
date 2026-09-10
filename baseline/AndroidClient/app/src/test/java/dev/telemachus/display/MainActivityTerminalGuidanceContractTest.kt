@@ -828,6 +828,20 @@ class MainActivityTerminalGuidanceContractTest {
 
     @Test
     fun connectionPanelOuterGeometryUsesResponsiveResources() {
+        val mainActivity = mainActivitySource()
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
+        val applySafeAreaToChrome = extractMethod(mainActivity, "private fun applySafeAreaToChrome")
+        val refreshContainerGeometry =
+            extractMethod(mainActivity, "private fun refreshConnectionPanelContainerGeometry")
+        val onConfigurationChanged = extractMethod(mainActivity, "override fun onConfigurationChanged")
+        val compactApplySafeAreaToChrome = applySafeAreaToChrome.replace(Regex("\\s+"), "")
+        val compactRefreshContainerGeometry = refreshContainerGeometry.replace(Regex("\\s+"), "")
+        val compactOnConfigurationChanged = onConfigurationChanged.replace(Regex("\\s+"), "")
+        val controlBarMarginIndex = compactApplySafeAreaToChrome.indexOf("setInsetMargins(binding.controlBar)")
+        val containerRefreshIndex = compactApplySafeAreaToChrome.indexOf("refreshConnectionPanelContainerGeometry()")
+        val settingsPanelMarginIndex = compactApplySafeAreaToChrome.indexOf("setInsetMargins(binding.settingsPanel)")
         val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
         val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
 
@@ -848,6 +862,38 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(
             "Connection panel must not keep the old hard-coded 680dp cap",
             settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
+        )
+        assertTrue(
+            "MainActivity must refresh connection panel container geometry before applying settingsPanel safe-area margins",
+            controlBarMarginIndex >= 0 &&
+                containerRefreshIndex > controlBarMarginIndex &&
+                settingsPanelMarginIndex > containerRefreshIndex,
+        )
+        assertTrue(
+            "Connection panel base margins must be refreshed from current resource qualifiers",
+            compactRefreshContainerGeometry.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)") &&
+                compactRefreshContainerGeometry.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)") &&
+                compactRefreshContainerGeometry.contains("baseChromeMargins[binding.settingsPanel.id]=SafeAreaGeometry.Insets.of"),
+        )
+        assertTrue(
+            "Connection panel max width must be refreshed from current resource qualifiers",
+            compactRefreshContainerGeometry.contains("params.matchConstraintMaxWidth!=maxWidthPx") &&
+                compactRefreshContainerGeometry.contains("params.matchConstraintMaxWidth=maxWidthPx") &&
+                compactRefreshContainerGeometry.contains("binding.settingsPanel.layoutParams=params") &&
+                compactRefreshContainerGeometry.contains("R.dimen.connection_panel_max_width"),
+        )
+        assertTrue(
+            "Configuration changes must refresh connection panel container geometry before reading panel layout",
+            compactOnConfigurationChanged.contains("connectionSubtitleDisclosure.reset()applySafeAreaToChrome()applyControlBarLayout()"),
+        )
+        assertFalse(
+            "ConnectionPanelLayoutApplier must not own outer container max-width refresh",
+            applier.contains("matchConstraintMaxWidth"),
+        )
+        assertFalse(
+            "ConnectionPanelLayoutApplier must not own safe-area base margin refresh",
+            applier.contains("baseChromeMargins") ||
+                applier.contains("SafeAreaGeometry.Insets.of"),
         )
         assertTrue(
             "Horizontal connection layouts must not baseline-align the header against the actions column",
