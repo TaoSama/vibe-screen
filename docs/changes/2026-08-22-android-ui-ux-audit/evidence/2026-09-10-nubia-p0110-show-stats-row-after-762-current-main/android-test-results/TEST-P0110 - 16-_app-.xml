@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" tests="23" failures="0" errors="0" skipped="0" time="3.575" timestamp="2026-09-10T14:56:08" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="transferReadinessUsesSinglePoliteLiveRegion" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.075" />
+  <testcase name="scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.061" />
+  <testcase name="capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.127" />
+  <testcase name="unavailableVideoControlsExposeNoteInsteadOfDeadControls" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.176" />
+  <testcase name="audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.24" />
+  <testcase name="p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.158" />
+  <testcase name="showStatsRowKeepsHorizontalLayoutWhenContentFits" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.04" />
+  <testcase name="sixHundredDpPortraitWindowKeepsOneSettingsColumn" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.032" />
+  <testcase name="largeTextStacksOptionGroupsWithoutClipping" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.151" />
+  <testcase name="wideWindowKeepsOptionGroupsHorizontal" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.037" />
+  <testcase name="showStatsRowRestoresLayoutAcrossNarrowWideReflow" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.065" />
+  <testcase name="opacitySliderKeepsAccessibilityContract" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.098" />
+  <testcase name="smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="narrowPhoneWindowsStackOptionGroupsWithoutClipping" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.101" />
+  <testcase name="showStatsRowStaysReadableAndReachableOnNarrowLargeText" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.151" />
+  <testcase name="smallTabletPortraitKeepsSettingsSingleColumnForReadableCards" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.038" />
+  <testcase name="settingsSectionsExposeScreenReaderHeadings" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.041" />
+  <testcase name="videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.154" />
+  <testcase name="sixHundredDpLandscapeWindowUsesTwoSettingsColumns" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.038" />
+  <testcase name="capturesSustainedUseStatusEvidenceImages" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.909" />
+</testsuite>

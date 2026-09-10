@@ -1,0 +1,24 @@
+./android-test-report/css/base-style.css: OK
+./android-test-report/css/style.css: OK
+./android-test-report/dev.telemachus.display.html: OK
+./android-test-report/dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.html: OK
+./android-test-report/index.html: OK
+./android-test-report/js/report.js: OK
+./android-test-results/TEST-P0110 - 16-_app-.xml: OK
+./commands.txt: OK
+./logs/adb-devices.txt: OK
+./logs/connected-settings-dialog-instrumentation.log: OK
+./logs/focused-settings-jvm.log: OK
+./logs/git-diff-check.txt: OK
+./logs/gradle-compile-debug-androidtest-kotlin.log: OK
+./logs/no-host-boundary-lsof-54321-after-status.txt: OK
+./logs/no-host-boundary-lsof-54321-after.txt: OK
+./logs/no-host-boundary-lsof-54321-before-status.txt: OK
+./logs/no-host-boundary-lsof-54321-before.txt: OK
+./logs/no-host-boundary-lsof-command.txt: OK
+./metadata/device-identity.txt: OK
+./metadata/source-provenance.txt: OK
+./README.md: OK
+./unit-test-results/TEST-dev.telemachus.display.DesignTokenContrastTest.xml: OK
+./unit-test-results/TEST-dev.telemachus.display.MainActivitySettingsAccessibilityContractTest.xml: OK
+./unit-test-results/TEST-dev.telemachus.display.SettingsDialogLayoutPolicyTest.xml: OK

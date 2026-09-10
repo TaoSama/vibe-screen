@@ -132,8 +132,12 @@ internal object SettingsDialogLayoutApplier {
             ((primaryWidthPx.takeIf { it > 0 } ?: measuredWidth(row)) - row.paddingStart - row.paddingEnd)
                 .coerceAtLeast(0)
         val switchGap = root.resources.getDimensionPixelSize(R.dimen.settings_show_stats_switch_gap)
-        val requiredTextWidth = max(requiredTextWidth(title), requiredTextWidth(description))
-        val requiredSwitchWidth = max(measuredWidth(switch), dp(switch, MINIMUM_TOUCH_TARGET_DP))
+        val minimumTouchTarget = dp(switch, MINIMUM_TOUCH_TARGET_DP)
+        val requiredTextWidth =
+            max(requiredTextWidth(title), requiredTextWidth(description)) +
+                textGroup.paddingStart +
+                textGroup.paddingEnd
+        val requiredSwitchWidth = requiredSwitchWidth(switch, minimumTouchTarget)
         val stacked =
             SettingsDialogLayoutPolicy.shouldStack(
                 availableWidthPx,
@@ -158,7 +162,8 @@ internal object SettingsDialogLayoutApplier {
     private fun requiredTextWidth(textView: TextView): Int {
         val displayedText =
             textView.transformationMethod?.getTransformation(textView.text, textView) ?: textView.text
-        return ceil(Layout.getDesiredWidth(displayedText, textView.paint).toDouble()).toInt()
+        val textWidth = ceil(Layout.getDesiredWidth(displayedText, textView.paint).toDouble()).toInt()
+        return textWidth + textView.compoundPaddingLeft + textView.compoundPaddingRight
     }
 
     fun applyAdaptiveColumns(root: View): SettingsDialogLayoutPolicy.Columns {
@@ -247,6 +252,11 @@ internal object SettingsDialogLayoutApplier {
         view.width.takeIf { it > 0 }
             ?: view.measuredWidth.takeIf { it > 0 }
             ?: view.resources.displayMetrics.widthPixels
+
+    private fun requiredSwitchWidth(
+        switch: View,
+        minimumTouchTarget: Int,
+    ): Int = max(max(switch.width, max(switch.measuredWidth, switch.minimumWidth)), minimumTouchTarget)
 
     private fun measuredHeight(view: View): Int {
         view.height.takeIf { it > 0 }?.let { return it }
