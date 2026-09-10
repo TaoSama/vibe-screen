@@ -1005,7 +1005,16 @@ class MainActivity : AppCompatActivity() {
      */
     private fun applySafeAreaToChrome() {
         setInsetMargins(binding.controlBar)
-        setInsetMargins(binding.settingsPanel)
+        refreshConnectionPanelContainerGeometry()
+    }
+
+    private fun refreshConnectionPanelContainerGeometry() {
+        baseChromeMargins[binding.settingsPanel.id] =
+            ConnectionPanelContainerGeometryApplier.apply(
+                resources = resources,
+                panel = binding.settingsPanel,
+                safeAreaInsets = safeAreaInsets,
+            )
     }
 
     private fun setInsetMargins(view: View) {
@@ -1059,6 +1068,7 @@ class MainActivity : AppCompatActivity() {
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
         connectionSubtitleDisclosure.reset()
+        applySafeAreaToChrome()
         applyControlBarLayout()
         applyStatusOverlayLayout()
         if (!isConnected) {

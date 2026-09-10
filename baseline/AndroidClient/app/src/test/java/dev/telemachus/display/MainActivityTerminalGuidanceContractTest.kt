@@ -828,6 +828,23 @@ class MainActivityTerminalGuidanceContractTest {
 
     @Test
     fun connectionPanelOuterGeometryUsesResponsiveResources() {
+        val mainActivity = mainActivitySource()
+        val containerApplier =
+            resourceSource(
+                "app/src/main/java/dev/telemachus/display/ConnectionPanelContainerGeometryApplier.kt",
+            ).replace(Regex("\\s+"), "")
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
+        val applySafeAreaToChrome = extractMethod(mainActivity, "private fun applySafeAreaToChrome")
+        val refreshContainerGeometry =
+            extractMethod(mainActivity, "private fun refreshConnectionPanelContainerGeometry")
+        val onConfigurationChanged = extractMethod(mainActivity, "override fun onConfigurationChanged")
+        val compactApplySafeAreaToChrome = applySafeAreaToChrome.replace(Regex("\\s+"), "")
+        val compactRefreshContainerGeometry = refreshContainerGeometry.replace(Regex("\\s+"), "")
+        val compactOnConfigurationChanged = onConfigurationChanged.replace(Regex("\\s+"), "")
+        val controlBarMarginIndex = compactApplySafeAreaToChrome.indexOf("setInsetMargins(binding.controlBar)")
+        val containerRefreshIndex = compactApplySafeAreaToChrome.indexOf("refreshConnectionPanelContainerGeometry()")
         val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
         val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
 
@@ -848,6 +865,49 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(
             "Connection panel must not keep the old hard-coded 680dp cap",
             settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
+        )
+        assertTrue(
+            "MainActivity must apply connection panel geometry through the atomic container refresh",
+            controlBarMarginIndex >= 0 &&
+                containerRefreshIndex > controlBarMarginIndex &&
+                !compactApplySafeAreaToChrome.contains("setInsetMargins(binding.settingsPanel)"),
+        )
+        assertTrue(
+            "Connection panel base margins must be refreshed from current resource qualifiers",
+            containerApplier.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)") &&
+                containerApplier.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)") &&
+                containerApplier.contains("valbaseMargins=SafeAreaGeometry.Insets.of"),
+        )
+        assertTrue(
+            "Connection panel max width must be refreshed from current resource qualifiers",
+            containerApplier.contains("params.matchConstraintMaxWidth!=maxWidthPx") &&
+                containerApplier.contains("params.matchConstraintMaxWidth=maxWidthPx") &&
+                containerApplier.contains("panel.layoutParams=params") &&
+                containerApplier.contains("R.dimen.connection_panel_max_width"),
+        )
+        assertEquals(
+            "Connection panel geometry must update layout params atomically",
+            1,
+            Regex("panel\\.layoutParams=params").findAll(containerApplier).count(),
+        )
+        assertTrue(
+            "MainActivity must delegate outer geometry refresh to the production container applier",
+            compactRefreshContainerGeometry.contains("ConnectionPanelContainerGeometryApplier.apply") &&
+                compactRefreshContainerGeometry.contains("panel=binding.settingsPanel") &&
+                compactRefreshContainerGeometry.contains("safeAreaInsets=safeAreaInsets"),
+        )
+        assertTrue(
+            "Configuration changes must refresh connection panel container geometry before reading panel layout",
+            compactOnConfigurationChanged.contains("connectionSubtitleDisclosure.reset()applySafeAreaToChrome()applyControlBarLayout()"),
+        )
+        assertFalse(
+            "ConnectionPanelLayoutApplier must not own outer container max-width refresh",
+            applier.contains("matchConstraintMaxWidth"),
+        )
+        assertFalse(
+            "ConnectionPanelLayoutApplier must not own safe-area base margin refresh",
+            applier.contains("baseChromeMargins") ||
+                applier.contains("SafeAreaGeometry.Insets.of"),
         )
         assertTrue(
             "Horizontal connection layouts must not baseline-align the header against the actions column",

@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
@@ -253,6 +254,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             layout.measureAndLayout()
 
             layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertPanelGeometryUsesResources()
             layout.assertModeToggleHorizontal()
             layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
             layout.assertInternetSecondaryActionsHorizontal(expectedGapDp = 8)
@@ -269,6 +271,63 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 layout.assertMinimumTouchTarget(button)
                 layout.assertFullyReachableByScroll(button)
             }
+        }
+    }
+
+    @Test
+    fun connectionPanelOuterGeometryRebindsPhoneAndWideResourcesWithoutReinflating() {
+        val phoneContext = configuredContext(widthDp = 361, heightDp = 800)
+        val widePortraitContext = configuredContext(widthDp = 680, heightDp = 880)
+        val wideLandscapeContext = configuredContext(widthDp = 880, heightDp = 680)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(phoneContext)
+            val panel = root.findViewById<View>(R.id.settingsPanel)
+
+            val phoneBase = applyPanelContainerGeometry(phoneContext, panel)
+            measureAndLayout(root, phoneContext, 361, 800)
+            assertPanelContainerGeometry(phoneContext, root, panel, phoneBase, 680, 24, 20)
+
+            val widePortraitBase = applyPanelContainerGeometry(widePortraitContext, panel)
+            measureAndLayout(root, widePortraitContext, 680, 880)
+            assertPanelContainerGeometry(widePortraitContext, root, panel, widePortraitBase, 880, 32, 28)
+
+            val safeInsets =
+                SafeAreaGeometry.Insets.of(
+                    left = dp(wideLandscapeContext, 7),
+                    top = dp(wideLandscapeContext, 5),
+                    right = dp(wideLandscapeContext, 11),
+                    bottom = dp(wideLandscapeContext, 13),
+                )
+            val wideLandscapeBase = applyPanelContainerGeometry(wideLandscapeContext, panel, safeInsets)
+            measureAndLayout(root, wideLandscapeContext, 880, 680)
+            assertPanelContainerGeometry(
+                wideLandscapeContext, root, panel, wideLandscapeBase, 880, 32, 12, safeInsets,
+            )
+        }
+    }
+
+    @Test
+    fun connectionPanelOuterGeometrySurvivesMultiWindowWidthRoundTrip() {
+        val phoneContext = configuredContext(widthDp = 500, heightDp = 800)
+        val wideContext = configuredContext(widthDp = 680, heightDp = 880)
+        val phoneAgainContext = configuredContext(widthDp = 500, heightDp = 800)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(phoneContext)
+            val panel = root.findViewById<View>(R.id.settingsPanel)
+
+            val phoneBase = applyPanelContainerGeometry(phoneContext, panel)
+            measureAndLayout(root, phoneContext, 500, 800)
+            assertPanelContainerGeometry(phoneContext, root, panel, phoneBase, 680, 24, 20)
+
+            val wideBase = applyPanelContainerGeometry(wideContext, panel)
+            measureAndLayout(root, wideContext, 680, 880)
+            assertPanelContainerGeometry(wideContext, root, panel, wideBase, 880, 32, 28)
+
+            val phoneAgainBase = applyPanelContainerGeometry(phoneAgainContext, panel)
+            measureAndLayout(root, phoneAgainContext, 500, 800)
+            assertPanelContainerGeometry(phoneAgainContext, root, panel, phoneAgainBase, 680, 24, 20)
         }
     }
 
@@ -699,6 +758,62 @@ class ConnectionGuidanceLayoutInstrumentedTest {
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
 
+    private fun dp(
+        context: Context,
+        value: Int,
+    ): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+    private fun applyPanelContainerGeometry(
+        context: Context,
+        panel: View,
+        safeAreaInsets: SafeAreaGeometry.Insets = SafeAreaGeometry.Insets.NONE,
+    ): SafeAreaGeometry.Insets =
+        ConnectionPanelContainerGeometryApplier.apply(context.resources, panel, safeAreaInsets)
+
+    private fun measureAndLayout(
+        root: ViewGroup,
+        context: Context,
+        widthDp: Int,
+        heightDp: Int,
+    ) {
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec(dp(context, widthDp), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(dp(context, heightDp), View.MeasureSpec.EXACTLY),
+        )
+        root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+    }
+
+    private fun assertPanelContainerGeometry(
+        context: Context,
+        root: ViewGroup,
+        panel: View,
+        baseMargins: SafeAreaGeometry.Insets,
+        maxWidthDp: Int,
+        horizontalMarginDp: Int,
+        verticalMarginDp: Int,
+        safeAreaInsets: SafeAreaGeometry.Insets = SafeAreaGeometry.Insets.NONE,
+    ) {
+        val params = panel.layoutParams as ConstraintLayout.LayoutParams
+        val expectedBase =
+            SafeAreaGeometry.Insets.of(
+                left = dp(context, horizontalMarginDp),
+                top = dp(context, verticalMarginDp),
+                right = dp(context, horizontalMarginDp),
+                bottom = dp(context, verticalMarginDp),
+            )
+        assertEquals(dp(context, maxWidthDp), params.matchConstraintMaxWidth)
+        assertEquals(expectedBase.left + safeAreaInsets.left, params.marginStart)
+        assertEquals(expectedBase.top + safeAreaInsets.top, params.topMargin)
+        assertEquals(expectedBase.right + safeAreaInsets.right, params.marginEnd)
+        assertEquals(expectedBase.bottom + safeAreaInsets.bottom, params.bottomMargin)
+        assertEquals(expectedBase, baseMargins)
+        assertEquals(params.marginStart, panel.left)
+        assertEquals(params.topMargin, panel.top)
+        assertEquals(root.measuredWidth - params.marginEnd, panel.right)
+        assertEquals(root.measuredHeight - params.bottomMargin, panel.bottom)
+        assertTrue(panel.measuredWidth <= params.matchConstraintMaxWidth)
+    }
+
     private class MeasuredLayout(
         val context: Context,
         val root: ViewGroup,
@@ -707,6 +822,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     ) {
         val header = root.findViewById<LinearLayout>(R.id.connectionHeader)
         val actions = root.findViewById<LinearLayout>(R.id.connectionActions)
+        private val panel = root.findViewById<View>(R.id.settingsPanel)
         val content = root.findViewById<LinearLayout>(R.id.connectionContent)
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
@@ -894,6 +1010,21 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             } else {
                 assertTrue(header.bottom <= actions.top)
             }
+        }
+
+        fun assertPanelGeometryUsesResources() {
+            val params = panel.layoutParams as ConstraintLayout.LayoutParams
+            val expectedHorizontalMargin = context.resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)
+            val expectedVerticalMargin = context.resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)
+            assertEquals(context.resources.getDimensionPixelSize(R.dimen.connection_panel_max_width), params.matchConstraintMaxWidth)
+            assertEquals(expectedHorizontalMargin, params.marginStart)
+            assertEquals(expectedHorizontalMargin, params.marginEnd)
+            assertEquals(expectedVerticalMargin, params.topMargin)
+            assertEquals(expectedVerticalMargin, params.bottomMargin)
+            assertTrue(
+                "panel width ${panel.measuredWidth}px must not exceed max ${params.matchConstraintMaxWidth}px",
+                panel.measuredWidth <= params.matchConstraintMaxWidth,
+            )
         }
 
         fun assertNoOverlap(
