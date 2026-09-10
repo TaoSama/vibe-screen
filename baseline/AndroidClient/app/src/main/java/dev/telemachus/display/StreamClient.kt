@@ -193,12 +193,12 @@ class StreamClient(
             stagingDirectory = ::fileTransferStagingDirectory,
             pendingOfferGate = object : FileTransferProductOwner.PendingOfferGate {
                 override fun trackFileOffer(
-                    transferId: ByteString,
+                    offer: FileOffer,
                     ownerToken: Any,
                     connectionGeneration: Long,
                 ): Boolean {
                     val session = ownerToken as? ProtocolV1Session ?: return false
-                    return protocolSessionOwner.trackFileOffer(transferId, session, connectionGeneration)
+                    return protocolSessionOwner.trackFileOffer(offer, session, connectionGeneration)
                 }
 
                 override fun claimFileOffer(transferId: ByteString): FileTransferProductOwner.PendingOfferOwner? =
@@ -212,6 +212,17 @@ class StreamClient(
 
                 override fun hasFileOffer(transferId: ByteString): Boolean =
                     protocolSessionOwner.hasFileOffer(transferId)
+
+                override fun cancelFileOffersExceeding(maximumFileBytes: Long): List<FileTransferProductOwner.PendingFileOffer> =
+                    protocolSessionOwner.cancelFileOffersExceeding(maximumFileBytes).map { pending ->
+                        FileTransferProductOwner.PendingFileOffer(
+                            offer = pending.offer,
+                            owner = FileTransferProductOwner.PendingOfferOwner(
+                                ownerToken = pending.owner.session,
+                                connectionGeneration = pending.owner.connectionGeneration,
+                            ),
+                        )
+                    }
 
                 override fun clearFileOffers() {
                     protocolSessionOwner.clearFileOffers()
@@ -1988,18 +1999,34 @@ class StreamClient(
         }
         when (result) {
             is FileTransferProductOwner.IncomingChunkResult.Accepted -> {
-                session.fileProgress(result.transferId, result.receivedBytes)?.let { writeProtocolEnvelope(out, it) }
-                fileTransferProductOwner.notifyIncomingFileProgress(result.transferId, result.receivedBytes)
-                result.completed?.let { completed ->
-                    session.fileComplete(
-                        transferId = completed.transferId,
-                        accepted = true,
-                        sha256 = completed.sha256,
-                        rejectionReason = "",
-                    )?.let { writeProtocolEnvelope(out, it) }
+                var primaryFailure: Throwable? = null
+                try {
+                    session.fileProgress(result.transferId, result.receivedBytes)?.let { writeProtocolEnvelope(out, it) }
+                    fileTransferProductOwner.notifyIncomingFileProgress(result.transferId, result.receivedBytes)
+                    result.completed?.let { completed ->
+                        session.fileComplete(
+                            transferId = completed.transferId,
+                            accepted = true,
+                            sha256 = completed.sha256,
+                            rejectionReason = "",
+                        )?.let { writeProtocolEnvelope(out, it) }
+                    }
+                    out.flush()
+                } catch (failure: Throwable) {
+                    primaryFailure = failure
+                } finally {
+                    result.completed?.let { completed ->
+                        try {
+                            fileTransferProductOwner.notifyIncomingFileCompleted(completed)
+                        } catch (completionFailure: Throwable) {
+                            primaryFailure?.addSuppressed(completionFailure) ?: run { primaryFailure = completionFailure }
+                        }
+                    }
                 }
-                out.flush()
-                result.completed?.let(fileTransferProductOwner::notifyIncomingFileCompleted)
+                primaryFailure?.let { failure ->
+                    command.completion.completeExceptionally(failure)
+                    throw failure
+                }
                 command.completion.complete(Unit)
             }
             is FileTransferProductOwner.IncomingChunkResult.Rejected -> {
@@ -2301,12 +2328,29 @@ class StreamClient(
         }
 
         override fun onManagedPolicyReceived(
+            out: java.io.DataOutputStream,
             session: ProtocolV1Session,
             connectionGeneration: Long,
             status: ManagedPolicyStatus,
         ) {
             if (!isCurrentProtocolSession(session, connectionGeneration)) return
-            fileTransferProductOwner.applyManagedPolicy(status)
+            val update = fileTransferProductOwner.applyManagedPolicy(status)
+            update.rejectedPendingOffers.forEach { rejection ->
+                if (rejection.owner.ownerToken !== session ||
+                    rejection.owner.connectionGeneration != connectionGeneration ||
+                    !isCurrentProtocolSession(session, connectionGeneration)
+                ) {
+                    return@forEach
+                }
+                session.fileAccept(
+                    FileAccept.newBuilder()
+                        .setTransferId(rejection.offer.transferId)
+                        .setAccepted(false)
+                        .setRejectionReason(rejection.reasonCode)
+                        .build(),
+                )?.let { writeProtocolEnvelope(out, it) }
+            }
+            if (update.rejectedPendingOffers.isNotEmpty()) out.flush()
             if (Capability.CAPABILITY_WAKE_HOST !in session.negotiated) {
                 wakeHostProductOwner.cancelPendingForPolicyDeny(session, connectionGeneration)
             }

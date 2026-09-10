@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.ProtocolV1Session
+import dev.vibescreen.protocol.v1.FileOffer
 
 /**
  * Owns the Protocol v1 product-session orchestration boundary for the USB/LAN
@@ -142,10 +143,10 @@ internal class StreamProtocolSessionOwner(
     ): T? = protocolSideEffectOwner.runIfCurrent(session, connectionGeneration, block)
 
     fun trackFileOffer(
-        transferId: ByteString,
+        offer: FileOffer,
         session: ProtocolV1Session,
         connectionGeneration: Long,
-    ): Boolean = protocolSideEffectOwner.trackFileOffer(transferId, session, connectionGeneration)
+    ): Boolean = protocolSideEffectOwner.trackFileOffer(offer, session, connectionGeneration)
 
     fun claimFileOffer(transferId: ByteString): StreamProtocolSideEffectOwner.ProtocolOwner? =
         protocolSideEffectOwner.claimFileOffer(transferId)
@@ -155,6 +156,9 @@ internal class StreamProtocolSessionOwner(
 
     fun hasFileOffer(transferId: ByteString): Boolean =
         protocolSideEffectOwner.hasFileOffer(transferId)
+
+    fun cancelFileOffersExceeding(maximumFileBytes: Long): List<StreamProtocolSideEffectOwner.PendingFileOffer> =
+        protocolSideEffectOwner.cancelFileOffersExceeding(maximumFileBytes)
 
     fun clearFileOffers() = protocolSideEffectOwner.clearFileOffers()
 

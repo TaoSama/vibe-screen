@@ -1161,6 +1161,197 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(availability.snapshot(), [false, true])
     }
 
+    func testManagedPolicyStatusAdvancesReceivedMessageCounter() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 3,
+            fileTransferAllowed: true,
+            maximumFileBytes: 512
+        ))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        harness.receiveControl(harness.ping(messageID: 3, sequence: 99))
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertFalse(harness.waitForPong(sequence: 99, timeout: 0.05))
+    }
+
+    func testManagedPolicyShrinkingMaximumFileBytesCancelsActiveIncomingFileTransfer() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        harness.session.onFileTransferApprovalRequested = { _, completion in completion(.accepted) }
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+        }
+
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+
+        let transferID = Data(repeating: 0xB1, count: 16)
+        let payload = Data("oversized".utf8)
+        harness.receiveControl(harness.fileOffer(
+            messageID: 3,
+            offer: fileOffer(transferID: transferID, fileName: "oversized.txt", payload: payload)
+        ))
+        XCTAssertTrue(harness.waitForFileAccept(transferID: transferID))
+        XCTAssertEqual(harness.sentFileAccept(transferID: transferID)?.accepted, true)
+
+        harness.receiveBulk(try fileChunk(
+            transferID: transferID,
+            payload: Data("over".utf8),
+            offset: 0,
+            final: false
+        ).serializedFrame())
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 4,
+            fileTransferAllowed: true,
+            maximumFileBytes: 4
+        ))
+
+        XCTAssertTrue(harness.waitForFileCancel(transferID: transferID))
+        XCTAssertEqual(
+            harness.sentFileTransferCancel(transferID: transferID)?.reasonCode,
+            ProtocolV1FileTransferError.fileTooLarge(4).reasonCode
+        )
+        let snapshot = results.snapshot()
+        XCTAssertEqual(snapshot.count, 1)
+        XCTAssertEqual(snapshot[0].0, transferID)
+        XCTAssertEqual(snapshot[0].1, .incoming)
+        XCTAssertFalse(snapshot[0].2)
+        XCTAssertEqual(snapshot[0].3, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        harness.receiveBulk(try fileChunk(
+            transferID: transferID,
+            payload: Data("sized".utf8),
+            offset: 4,
+            final: true
+        ).serializedFrame())
+        XCTAssertNil(harness.sentFileTransferComplete(transferID: transferID))
+    }
+
+    func testManagedPolicyShrinkingMaximumFileBytesRejectsPendingIncomingFileApproval() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+        let approvalCompletion = TestLockedValue<((ProtocolV1FileTransferApprovalResult) -> Void)>()
+        let approvalRequested = expectation(description: "incoming file approval requested")
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        harness.session.onFileTransferApprovalRequested = { _, completion in
+            approvalCompletion.store(completion)
+            approvalRequested.fulfill()
+        }
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+        }
+
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+
+        let transferID = Data(repeating: 0xB2, count: 16)
+        harness.receiveControl(harness.fileOffer(
+            messageID: 3,
+            offer: fileOffer(
+                transferID: transferID,
+                fileName: "pending-oversized.txt",
+                payload: Data("oversized".utf8)
+            )
+        ))
+        wait(for: [approvalRequested], timeout: 1)
+        XCTAssertNil(harness.sentFileAccept(transferID: transferID))
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 4,
+            fileTransferAllowed: true,
+            maximumFileBytes: 4
+        ))
+
+        XCTAssertTrue(harness.waitForFileAccept(transferID: transferID))
+        let rejected = try XCTUnwrap(harness.sentFileAccept(transferID: transferID))
+        XCTAssertFalse(rejected.accepted)
+        XCTAssertEqual(rejected.rejectionReason, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+        let snapshot = results.snapshot()
+        XCTAssertEqual(snapshot.count, 1)
+        XCTAssertEqual(snapshot[0].0, transferID)
+        XCTAssertEqual(snapshot[0].1, .incoming)
+        XCTAssertFalse(snapshot[0].2)
+        XCTAssertEqual(snapshot[0].3, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+
+        approvalCompletion.load()?(.accepted)
+        XCTAssertEqual(harness.sentFileAccepts(transferID: transferID).count, 1)
+    }
+
+    func testManagedPolicyShrinkingMaximumFileBytesCancelsOutgoingFileTransfer() throws {
+        let harness = try Harness(fileTransferPolicy: ProtocolV1FileTransferPolicy(
+            maximumFileBytes: 1_024,
+            maximumChunkBytes: 4
+        ))
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+        }
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+
+        let fileURL = try makeTemporaryFile(name: "outgoing-policy-shrink.bin", contents: Data("oversized".utf8))
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let transferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: transferID))
+        harness.receiveControl(harness.fileAccept(
+            messageID: 3,
+            transferID: transferID,
+            maximumChunkBytes: 4
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 4,
+            fileTransferAllowed: true,
+            maximumFileBytes: 4
+        ))
+
+        XCTAssertTrue(harness.waitForFileCancel(transferID: transferID))
+        XCTAssertEqual(
+            harness.sentFileTransferCancel(transferID: transferID)?.reasonCode,
+            ProtocolV1FileTransferError.fileTooLarge(4).reasonCode
+        )
+        let snapshot = results.snapshot()
+        XCTAssertEqual(snapshot.count, 1)
+        XCTAssertEqual(snapshot[0].0, transferID)
+        XCTAssertEqual(snapshot[0].1, .outgoing)
+        XCTAssertFalse(snapshot[0].2)
+        XCTAssertEqual(snapshot[0].3, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+
+        let secondURL = try makeTemporaryFile(name: "outgoing-after-policy-shrink.bin", contents: Data([0x64]))
+        defer { try? FileManager.default.removeItem(at: secondURL.deletingLastPathComponent()) }
+        let secondTransferID = try harness.session.sendFile(fileURL: secondURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: secondTransferID))
+        XCTAssertNotEqual(transferID, secondTransferID)
+    }
+
     func testManagedPolicyReentrantReplacementDoesNotMutateReplacementSession() throws {
         let harness = try Harness(
             engineCount: 2,
@@ -1232,6 +1423,363 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(try harness.sentControlEnvelopes(engineIndex: 1).contains { envelope in
             guard case .fileOffer(let offer) = envelope.payload else { return false }
             return offer.transferID == transferID
+        })
+    }
+
+    func testManagedPolicyShrinkReentrantReplacementDoesNotMutateReplacementSession() throws {
+        let harness = try Harness(
+            engineCount: 2,
+            replacementSessionEpoch: 2,
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 4
+            )
+        )
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let replacementStarted = expectation(description: "replacement session started")
+        let firstTransferID = Data(repeating: 0xB4, count: 16)
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        var didStartReplacement = false
+        defer { harness.session.close() }
+        harness.session.onFileTransferApprovalRequested = { _, completion in completion(.accepted) }
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+            guard transferID == firstTransferID else { return }
+            XCTAssertFalse(accepted)
+            XCTAssertEqual(direction, .incoming)
+            XCTAssertEqual(reason, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+            guard !didStartReplacement else { return }
+            didStartReplacement = true
+            harness.session.close()
+            do {
+                try harness.session.start(configuration: replacementConfiguration)
+                replacementStarted.fulfill()
+            } catch {
+                XCTFail("Replacing the Internet product session failed: \(error)")
+            }
+        }
+
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+
+        harness.receiveControl(harness.fileOffer(
+            messageID: 3,
+            offer: fileOffer(
+                transferID: firstTransferID,
+                fileName: "shrink-reentrant.txt",
+                payload: Data("oversized".utf8)
+            )
+        ))
+        XCTAssertTrue(harness.waitForFileAccept(transferID: firstTransferID))
+        harness.receiveBulk(try fileChunk(
+            transferID: firstTransferID,
+            payload: Data("over".utf8),
+            offset: 0,
+            final: false
+        ).serializedFrame())
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 4,
+            fileTransferAllowed: true,
+            maximumFileBytes: 4
+        ))
+
+        wait(for: [replacementStarted], timeout: 1)
+        let initialResults = results.snapshot().filter { result in result.0 == firstTransferID }
+        XCTAssertEqual(initialResults.count, 1)
+        let initialResult = try XCTUnwrap(initialResults.first)
+        XCTAssertEqual(initialResult.1, .incoming)
+        XCTAssertFalse(initialResult.2)
+        XCTAssertEqual(initialResult.3, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+
+        replacement.emitConnection(.connected(path: .direct))
+        harness.receiveControl(
+            harness.clientHello(
+                messageID: 1,
+                supportsFileTransfer: true,
+                supportsManagedConfiguration: true,
+                sessionEpoch: 2
+            ),
+            engineIndex: 1
+        )
+        XCTAssertTrue(harness.waitForSentControlCount(3, engineIndex: 1))
+        harness.receiveControl(
+            harness.videoAccepted(messageID: 2, sessionEpoch: 2),
+            engineIndex: 1
+        )
+
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+        let fileURL = try makeTemporaryFile(
+            name: "replacement-session-shrink-file.bin",
+            contents: Data([0x42])
+        )
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let secondTransferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(try harness.sentControlEnvelopes(engineIndex: 1).contains { envelope in
+            guard case .fileOffer(let offer) = envelope.payload else { return false }
+            return offer.transferID == secondTransferID
+        })
+    }
+
+    func testManagedPolicyShrinkReentrantReplacementNotifiesAllOriginalTransfers() throws {
+        let harness = try Harness(
+            engineCount: 2,
+            replacementSessionEpoch: 2,
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 4,
+                maximumConcurrentTransfers: 2
+            )
+        )
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementStarted = expectation(description: "replacement session started")
+        let transferIDs = [
+            Data(repeating: 0xC1, count: 16),
+            Data(repeating: 0xC2, count: 16),
+        ]
+        let reasonCode = ProtocolV1FileTransferError.fileTooLarge(4).reasonCode
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        var didStartReplacement = false
+        defer { harness.session.close() }
+        harness.session.onFileTransferApprovalRequested = { _, completion in completion(.accepted) }
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+            guard !didStartReplacement else { return }
+            didStartReplacement = true
+            harness.session.close()
+            do {
+                try harness.session.start(configuration: replacementConfiguration)
+                replacementStarted.fulfill()
+            } catch {
+                XCTFail("Replacing the Internet product session failed: \(error)")
+            }
+        }
+
+        try reachStreaming(
+            harness,
+            supportsFileTransfer: true,
+            supportsManagedConfiguration: true
+        )
+
+        for (index, transferID) in transferIDs.enumerated() {
+            harness.receiveControl(harness.fileOffer(
+                messageID: UInt64(3 + index),
+                offer: fileOffer(
+                    transferID: transferID,
+                    fileName: "shrink-reentrant-\(index).txt",
+                    payload: Data("oversized-\(index)".utf8)
+                )
+            ))
+            XCTAssertTrue(harness.waitForFileAccept(transferID: transferID))
+            XCTAssertEqual(harness.sentFileAccept(transferID: transferID)?.accepted, true)
+            harness.receiveBulk(try fileChunk(
+                transferID: transferID,
+                payload: Data("over".utf8),
+                offset: 0,
+                final: false
+            ).serializedFrame())
+        }
+
+        harness.receiveControl(harness.managedPolicyStatus(
+            messageID: 5,
+            fileTransferAllowed: true,
+            maximumFileBytes: 4
+        ))
+
+        wait(for: [replacementStarted], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+
+        let matchingResults = results.snapshot().filter { transferIDs.contains($0.0) }
+        XCTAssertEqual(matchingResults.count, transferIDs.count)
+        XCTAssertEqual(Set(matchingResults.map(\.0)), Set(transferIDs))
+        for result in matchingResults {
+            XCTAssertEqual(result.1, .incoming)
+            XCTAssertFalse(result.2)
+            XCTAssertEqual(result.3, reasonCode)
+        }
+
+        replacement.emitConnection(.connected(path: .direct))
+        harness.receiveControl(
+            harness.clientHello(
+                messageID: 1,
+                supportsFileTransfer: true,
+                supportsManagedConfiguration: true,
+                sessionEpoch: 2
+            ),
+            engineIndex: 1
+        )
+        XCTAssertTrue(harness.waitForSentControlCount(3, engineIndex: 1))
+        harness.receiveControl(
+            harness.videoAccepted(messageID: 2, sessionEpoch: 2),
+            engineIndex: 1
+        )
+
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+    }
+
+    func testOutgoingFileAcceptRejectedReentrantReplacementDoesNotMutateReplacementSession() throws {
+        try assertReplacementSessionCanSendFileAfterOutgoingResultReentrantReplacement(
+            originalFileName: "outgoing-accept-rejected-reentrant.bin",
+            replacementFileName: "replacement-after-accept-rejected.bin",
+            expectedAccepted: false,
+            expectedReason: "peer_rejected"
+        ) { harness, transferID, _ in
+            harness.receiveControl(harness.fileAccept(
+                messageID: 3,
+                transferID: transferID,
+                accepted: false,
+                rejectionReason: "peer_rejected"
+            ))
+        }
+    }
+
+    func testOutgoingFileCompleteRejectedReentrantReplacementDoesNotMutateReplacementSession() throws {
+        try assertReplacementSessionCanSendFileAfterOutgoingResultReentrantReplacement(
+            originalFileName: "outgoing-complete-rejected-reentrant.bin",
+            replacementFileName: "replacement-after-complete-rejected.bin",
+            expectedAccepted: false,
+            expectedReason: "peer_rejected_complete"
+        ) { harness, transferID, _ in
+            harness.receiveControl(harness.fileAccept(
+                messageID: 3,
+                transferID: transferID,
+                maximumChunkBytes: 4
+            ))
+            XCTAssertTrue(harness.waitForSentBulkCount(1))
+            harness.receiveControl(harness.fileTransferComplete(
+                messageID: 4,
+                transferID: transferID,
+                accepted: false,
+                rejectionReason: "peer_rejected_complete"
+            ))
+        }
+    }
+
+    func testOutgoingFileCompleteAcceptedReentrantReplacementDoesNotMutateReplacementSession() throws {
+        try assertReplacementSessionCanSendFileAfterOutgoingResultReentrantReplacement(
+            originalFileName: "outgoing-complete-accepted-reentrant.bin",
+            replacementFileName: "replacement-after-complete-accepted.bin",
+            expectedAccepted: true,
+            expectedReason: ""
+        ) { harness, transferID, payload in
+            harness.receiveControl(harness.fileAccept(
+                messageID: 3,
+                transferID: transferID,
+                maximumChunkBytes: 4
+            ))
+            XCTAssertTrue(harness.waitForSentBulkCount(1))
+            for (index, receivedBytes) in stride(from: 4, through: payload.count, by: 4).enumerated() {
+                harness.receiveControl(harness.fileProgress(
+                    messageID: UInt64(4 + index),
+                    transferID: transferID,
+                    receivedBytes: UInt64(receivedBytes)
+                ))
+                if receivedBytes < payload.count {
+                    XCTAssertTrue(harness.waitForSentBulkCount(index + 2))
+                }
+            }
+            harness.receiveControl(harness.fileTransferComplete(
+                messageID: 8,
+                transferID: transferID,
+                accepted: true,
+                digest: sha256(payload)
+            ))
+        }
+    }
+
+    private func assertReplacementSessionCanSendFileAfterOutgoingResultReentrantReplacement(
+        originalFileName: String,
+        replacementFileName: String,
+        expectedAccepted: Bool,
+        expectedReason: String,
+        deliverOutgoingResult: (Harness, Data, Data) throws -> Void
+    ) throws {
+        let payload = Data("outgoing-payload".utf8)
+        let harness = try Harness(
+            engineCount: 2,
+            replacementSessionEpoch: 2,
+            fileTransferPolicy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 1_024,
+                maximumChunkBytes: 4
+            )
+        )
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementStarted = expectation(description: "replacement session started after outgoing result")
+        let results = TestLockedArray<(Data, ProtocolV1FileTransferDirection, Bool, String)>()
+        var didStartReplacement = false
+        defer { harness.session.close() }
+        harness.session.onFileTransferResult = { transferID, direction, accepted, reason in
+            results.append((transferID, direction, accepted, reason))
+            guard !didStartReplacement else { return }
+            didStartReplacement = true
+            harness.session.close()
+            do {
+                try harness.session.start(configuration: replacementConfiguration)
+                replacementStarted.fulfill()
+            } catch {
+                XCTFail("Replacing the Internet product session failed: \(error)")
+            }
+        }
+
+        try reachStreaming(harness, supportsFileTransfer: true)
+        let fileURL = try makeTemporaryFile(name: originalFileName, contents: payload)
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let transferID = try harness.session.sendFile(fileURL: fileURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(harness.waitForFileOffer(transferID: transferID))
+
+        try deliverOutgoingResult(harness, transferID, payload)
+
+        wait(for: [replacementStarted], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+
+        let matchingResults = results.snapshot().filter { $0.0 == transferID }
+        XCTAssertEqual(matchingResults.count, 1)
+        let result = try XCTUnwrap(matchingResults.first)
+        XCTAssertEqual(result.1, .outgoing)
+        XCTAssertEqual(result.2, expectedAccepted)
+        XCTAssertEqual(result.3, expectedReason)
+
+        replacement.emitConnection(.connected(path: .direct))
+        harness.receiveControl(
+            harness.clientHello(
+                messageID: 1,
+                supportsFileTransfer: true,
+                sessionEpoch: 2
+            ),
+            engineIndex: 1
+        )
+        XCTAssertTrue(harness.waitForSentControlCount(3, engineIndex: 1))
+        harness.receiveControl(
+            harness.videoAccepted(messageID: 2, sessionEpoch: 2),
+            engineIndex: 1
+        )
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertTrue(harness.session.fileTransferAvailable)
+
+        let replacementURL = try makeTemporaryFile(name: replacementFileName, contents: Data([0x44]))
+        defer { try? FileManager.default.removeItem(at: replacementURL.deletingLastPathComponent()) }
+        let replacementTransferID = try harness.session.sendFile(fileURL: replacementURL, mimeType: "application/octet-stream")
+        XCTAssertTrue(try harness.sentControlEnvelopes(engineIndex: 1).contains { envelope in
+            guard case .fileOffer(let offer) = envelope.payload else { return false }
+            return offer.transferID == replacementTransferID
         })
     }
 
@@ -3917,6 +4465,23 @@ private final class Harness {
         return envelope
     }
 
+    func fileTransferComplete(
+        messageID: UInt64,
+        transferID: Data,
+        accepted: Bool,
+        digest: Data = Data(),
+        rejectionReason: String = ""
+    ) -> VSEnvelope {
+        var complete = VSFileTransferComplete()
+        complete.transferID = transferID
+        complete.accepted = accepted
+        complete.sha256 = digest
+        complete.rejectionReason = accepted ? "" : rejectionReason
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.fileTransferComplete = complete
+        return envelope
+    }
+
     func managedPolicyStatus(
         messageID: UInt64,
         fileTransferAllowed: Bool,
@@ -4257,8 +4822,8 @@ private final class Harness {
         }
     }
 
-    func waitForPong(sequence: UInt64) -> Bool {
-        waitUntil {
+    func waitForPong(sequence: UInt64, timeout: TimeInterval = 1) -> Bool {
+        waitUntil(timeout: timeout) {
             self.engine.sentPlaintext.contains { item in
                 guard item.channel == .control,
                       let envelope = try? VSEnvelope(serializedBytes: item.payload),

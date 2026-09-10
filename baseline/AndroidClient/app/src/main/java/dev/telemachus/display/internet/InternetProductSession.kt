@@ -28,6 +28,7 @@ import dev.telemachus.display.protocol.ProtocolV1Framing
 import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.vibescreen.protocol.v1.AudioConfig
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.FileAccept
 import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.ResourceLimits
@@ -1987,6 +1988,7 @@ class InternetProductSession internal constructor(
     ) {
         var validationFailure: Throwable? = null
         var shouldStopAudio = false
+        var managedPolicyUpdate = FileTransferProductOwner.ManagedPolicyUpdate()
         val notifyStatus =
             synchronized(lock) {
                 if (!acceptsTransportCallbackLocked(owner) || !acceptedSession) return
@@ -2014,7 +2016,7 @@ class InternetProductSession internal constructor(
                 shouldStopAudio = hadAudioState && Capability.CAPABILITY_AUDIO !in expectedNegotiatedCapabilities
                 if (!remoteManagedClipboardAllowed) clipboard?.reset()
                 // Apply managed policy to file transfer
-                fileTransferProductOwner.applyManagedPolicy(status)
+                managedPolicyUpdate = fileTransferProductOwner.applyManagedPolicy(status)
                 negotiatedFilePolicy =
                     if (Capability.CAPABILITY_FILE_TRANSFER in expectedNegotiatedCapabilities) {
                         negotiatedFilePolicyFromHostLocked().applying(RemoteManagedPolicy(status))
@@ -2031,6 +2033,17 @@ class InternetProductSession internal constructor(
             }
         if (shouldStopAudio) {
             stopAudioPlayback("managed_policy_audio_denied")?.let { failIfOwned(owner, it) }
+        }
+        managedPolicyUpdate.rejectedPendingOffers.forEach { rejection ->
+            if (rejection.owner.ownerToken == owner && rejection.owner.connectionGeneration == owner.generation) {
+                sendFileAccept(
+                    FileAccept.newBuilder()
+                        .setTransferId(rejection.offer.transferId)
+                        .setAccepted(false)
+                        .setRejectionReason(rejection.reasonCode)
+                        .build(),
+                )
+            }
         }
         withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && acceptedSession }) {
@@ -2661,7 +2674,7 @@ class InternetProductSession internal constructor(
     private class InternetFileTransferPendingOfferGate(
         private val maximumPendingFileOffers: Int = DEFAULT_MAXIMUM_PENDING_FILE_OFFERS,
     ) : FileTransferProductOwner.PendingOfferGate {
-        private val pendingFileOffers = LinkedHashMap<ByteString, FileTransferProductOwner.PendingOfferOwner>()
+        private val pendingFileOffers = LinkedHashMap<ByteString, FileTransferProductOwner.PendingFileOffer>()
 
         init {
             require(maximumPendingFileOffers > 0) { "maximumPendingFileOffers must be positive" }
@@ -2669,19 +2682,23 @@ class InternetProductSession internal constructor(
 
         @Synchronized
         override fun trackFileOffer(
-            transferId: ByteString,
+            offer: FileOffer,
             ownerToken: Any,
             connectionGeneration: Long,
         ): Boolean {
+            val transferId = offer.transferId
             if (pendingFileOffers.containsKey(transferId)) return false
             if (pendingFileOffers.size >= maximumPendingFileOffers) return false
-            pendingFileOffers[transferId] = FileTransferProductOwner.PendingOfferOwner(ownerToken, connectionGeneration)
+            pendingFileOffers[transferId] = FileTransferProductOwner.PendingFileOffer(
+                offer = offer,
+                owner = FileTransferProductOwner.PendingOfferOwner(ownerToken, connectionGeneration),
+            )
             return true
         }
 
         @Synchronized
         override fun claimFileOffer(transferId: ByteString): FileTransferProductOwner.PendingOfferOwner? =
-            pendingFileOffers.remove(transferId)
+            pendingFileOffers.remove(transferId)?.owner
 
         @Synchronized
         override fun releaseFileOffer(transferId: ByteString) {
@@ -2690,6 +2707,16 @@ class InternetProductSession internal constructor(
 
         @Synchronized
         override fun hasFileOffer(transferId: ByteString): Boolean = pendingFileOffers.containsKey(transferId)
+
+        @Synchronized
+        override fun cancelFileOffersExceeding(maximumFileBytes: Long): List<FileTransferProductOwner.PendingFileOffer> {
+            val cancelled = pendingFileOffers
+                .values
+                .filter { pending -> pending.offer.byteLength > maximumFileBytes }
+                .toList()
+            cancelled.forEach { pending -> pendingFileOffers.remove(pending.offer.transferId) }
+            return cancelled
+        }
 
         @Synchronized
         override fun clearFileOffers() {

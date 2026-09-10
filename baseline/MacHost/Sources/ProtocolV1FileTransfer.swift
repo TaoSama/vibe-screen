@@ -484,6 +484,19 @@ final class ProtocolV1IncomingFileTransferManager {
         }
     }
 
+    func cancelTransfersExceeding(maximumFileBytes: UInt64) -> [Data] {
+        lock.withLock {
+            let transferIDs = transfers.compactMap { transferID, state in
+                state.offer.byteLength > maximumFileBytes ? transferID : nil
+            }
+            for transferID in transferIDs {
+                guard let state = transfers.removeValue(forKey: transferID) else { continue }
+                cleanup(state: state)
+            }
+            return transferIDs
+        }
+    }
+
     func cancelAll() {
         lock.withLock {
             for state in transfers.values { cleanup(state: state) }
@@ -602,6 +615,10 @@ final class ProtocolV1OutgoingFileTransfer {
         lock.withLock {
             acceptedMaximumChunkBytes ?? defaultBytes
         }
+    }
+
+    var byteLength: UInt64 {
+        offer.byteLength
     }
 
     func validateAcknowledgedOffset(_ receivedBytes: UInt64) throws {

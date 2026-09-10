@@ -1658,6 +1658,37 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun managedPolicyShrinkRejectsOversizedPendingInternetFileOffer() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true, managedConfiguration = true)
+        val payload = "pending-managed-oversized".toByteArray(Charsets.UTF_8)
+        val transferId = transferId(0x12)
+        val offer = fileOffer(transferId, "pending-managed.bin", payload)
+
+        peer.receive(controlEnvelope(4).setFileOffer(offer).build())
+        assertEquals(offer, callbacks.fileOffers.single())
+        assertTrue(peer.controlEnvelopes().none { it.payloadCase == Envelope.PayloadCase.FILE_ACCEPT })
+
+        peer.receive(
+            controlEnvelope(5)
+                .setManagedPolicyStatus(managedPolicyStatus(fileTransferAllowed = true, maximumFileBytes = 4))
+                .build(),
+        )
+
+        val rejected = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_ACCEPT }.fileAccept
+        assertEquals(transferId, rejected.transferId)
+        assertFalse(rejected.accepted)
+        assertEquals("file_too_large", rejected.rejectionReason)
+        assertEquals(listOf(false to "file_too_large"), callbacks.fileResults.toList())
+        assertFalse(session.respondToFileOffer(offer, accepted = true))
+        assertEquals(1, peer.controlEnvelopes().count { it.payloadCase == Envelope.PayloadCase.FILE_ACCEPT })
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    @Test
     fun directClipboardContentIsPendingAndInvalidDigestFailsClosed() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()

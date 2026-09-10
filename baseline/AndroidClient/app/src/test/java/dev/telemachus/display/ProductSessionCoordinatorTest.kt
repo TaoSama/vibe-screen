@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import com.google.protobuf.ByteString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -677,6 +678,23 @@ class ProductSessionCoordinatorTest {
         assertTrue(coordinator.acceptsIncomingFileOffer(client, generation, offerToken))
 
         assertTrue(coordinator.finishIncomingFileOffer(client, generation, offerToken))
+        assertFalse(coordinator.acceptsIncomingFileOffer(client, generation, offerToken))
+    }
+
+    @Test
+    fun `incoming file offer can be cleared by equal transfer id token`() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(fileTransfer = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, fileTransfer = true)
+        val offerToken = ByteString.copyFrom(byteArrayOf(1, 2, 3))
+        val equalToken = ByteString.copyFrom(byteArrayOf(1, 2, 3))
+
+        assertTrue(coordinator.beginIncomingFileOffer(client, generation, offerToken))
+        assertTrue(coordinator.clearIncomingFileOffer(equalToken))
+
         assertFalse(coordinator.acceptsIncomingFileOffer(client, generation, offerToken))
     }
 

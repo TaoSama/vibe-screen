@@ -386,7 +386,7 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         offerToken: Any,
     ): Boolean =
         pendingIncomingFileOffer?.let {
-            it.client === client && it.generation == generation && it.offerToken === offerToken
+            it.client === client && it.generation == generation && it.offerToken == offerToken
         } == true
 
     fun finishIncomingFileOffer(
@@ -395,6 +395,13 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         offerToken: Any,
     ): Boolean {
         if (!acceptsIncomingFileOffer(client, generation, offerToken)) return false
+        pendingIncomingFileOffer = null
+        return true
+    }
+
+    fun clearIncomingFileOffer(offerToken: Any): Boolean {
+        val pending = pendingIncomingFileOffer ?: return false
+        if (pending.offerToken != offerToken) return false
         pendingIncomingFileOffer = null
         return true
     }

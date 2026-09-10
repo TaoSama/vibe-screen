@@ -1131,14 +1131,23 @@ final class InternetProductSession: EncodedFrameSink {
                 let wasFileTransferAvailable = fileTransferAvailable(codec: codec)
                 try applyRemoteManagedPolicy(status)
                 guard generation == sessionGeneration else { return }
-                if var activeCodec = self.codec {
-                    activeCodec.updateRemoteManagedPolicy(status)
-                    if !activeCodec.remoteManagedPolicy.fileTransferAllowed {
-                        cancelAllFileTransfers(reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode)
-                    }
-                    self.codec = activeCodec
-                    notifyFileTransferAvailabilityChangedIfNeeded(previousAvailability: wasFileTransferAvailable)
+                codec.updateRemoteManagedPolicy(status)
+                if !codec.remoteManagedPolicy.fileTransferAllowed {
+                    self.codec = codec
+                    cancelAllFileTransfers(reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode)
+                } else {
+                    let maximumFileBytes = codec.negotiatedFileTransferPolicy.maximumFileBytes
+                    cancelFileTransfersExceeding(
+                        maximumFileBytes: maximumFileBytes,
+                        reasonCode: ProtocolV1FileTransferError.fileTooLarge(maximumFileBytes).reasonCode,
+                        codec: &codec,
+                        generation: generation
+                    )
+                    guard generation == sessionGeneration else { return }
+                    self.codec = codec
                 }
+                guard generation == sessionGeneration else { return }
+                notifyFileTransferAvailabilityChangedIfNeeded(previousAvailability: wasFileTransferAvailable)
 
             case .disconnectNotice(let notice):
                 self.codec = codec
@@ -1786,6 +1795,7 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec,
         generation: UInt64
     ) {
+        self.codec = codec
         guard response.accepted else {
             if let transfer = outgoingFileTransfers.removeValue(forKey: response.transferID) {
                 cancelOutgoingFileTransferDeadline(transferID: response.transferID)
@@ -1796,11 +1806,9 @@ final class InternetProductSession: EncodedFrameSink {
                     reason: response.rejectionReason
                 )
             }
-            self.codec = codec
             return
         }
         guard let transfer = outgoingFileTransfers[response.transferID] else {
-            self.codec = codec
             return
         }
         cancelOutgoingFileTransferDeadline(transferID: response.transferID)
@@ -1813,8 +1821,8 @@ final class InternetProductSession: EncodedFrameSink {
         codec: inout InternetProductProtocolCodec,
         generation: UInt64
     ) {
+        self.codec = codec
         guard let transfer = outgoingFileTransfers[progress.transferID] else {
-            self.codec = codec
             return
         }
         do {
@@ -1864,8 +1872,8 @@ final class InternetProductSession: EncodedFrameSink {
         _ result: VSFileTransferComplete,
         codec: inout InternetProductProtocolCodec
     ) {
+        self.codec = codec
         guard let transfer = outgoingFileTransfers.removeValue(forKey: result.transferID) else {
-            self.codec = codec
             return
         }
         cancelOutgoingFileTransferDeadline(transferID: result.transferID)
@@ -1874,15 +1882,13 @@ final class InternetProductSession: EncodedFrameSink {
             notifyOutgoingFileTransferResult(
                 transferID: result.transferID,
                 accepted: false,
-                    reason: result.rejectionReason
-                )
-            self.codec = codec
+                reason: result.rejectionReason
+            )
             return
         }
         do {
             try transfer.validateCompletionDigest(result.sha256)
             notifyOutgoingFileTransferResult(transferID: result.transferID, accepted: true, reason: "")
-            self.codec = codec
         } catch let error as ProtocolV1FileTransferError {
             cancelOutgoingFileTransfer(
                 transferID: result.transferID,
@@ -2108,6 +2114,103 @@ final class InternetProductSession: EncodedFrameSink {
         for transferID in cancelledOutgoingTransferIDs {
             notifyOutgoingFileTransferResult(
                 transferID: transferID,
+                accepted: false,
+                reason: reasonCode
+            )
+        }
+    }
+
+    private func cancelFileTransfersExceeding(
+        maximumFileBytes: UInt64,
+        reasonCode: String,
+        codec: inout InternetProductProtocolCodec,
+        generation: UInt64
+    ) {
+        var rejectedPendingIncomingTransferIDs = Set<Data>()
+        var cancelledIncomingTransferIDs = Set<Data>()
+        var cancelledOutgoingTransferIDs = Set<Data>()
+
+        let pendingIncomingTransferIDs = pendingIncomingFileApprovals.compactMap { transferID, pending in
+            pending.offer.byteLength > maximumFileBytes ? transferID : nil
+        }
+        for transferID in pendingIncomingTransferIDs {
+            if cancelPendingFileApproval(transferID: transferID) {
+                rejectedPendingIncomingTransferIDs.insert(transferID)
+            }
+        }
+
+        if let activeIncomingTransferIDs = incomingFileTransferManager?.cancelTransfersExceeding(
+            maximumFileBytes: maximumFileBytes
+        ) {
+            for transferID in activeIncomingTransferIDs {
+                approvedIncomingFileOffers.remove(transferID)
+                cancelledIncomingTransferIDs.insert(transferID)
+            }
+        }
+
+        let outgoingTransferIDs = outgoingFileTransfers.compactMap { transferID, transfer in
+            transfer.byteLength > maximumFileBytes ? transferID : nil
+        }
+        for transferID in outgoingTransferIDs {
+            outgoingFileTransfers.removeValue(forKey: transferID)?.cancel()
+            cancelOutgoingFileTransferDeadline(transferID: transferID)
+            cancelledOutgoingTransferIDs.insert(transferID)
+        }
+
+        for transferID in cancelledIncomingTransferIDs {
+            if generation == sessionGeneration {
+                do {
+                    try sendControl(codec.fileTransferCancel(
+                        transferID: transferID,
+                        reasonCode: reasonCode
+                    ))
+                    self.codec = codec
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
+            }
+            notifyFileTransferResult(
+                transferID: transferID,
+                direction: .incoming,
+                accepted: false,
+                reason: reasonCode
+            )
+        }
+
+        for transferID in cancelledOutgoingTransferIDs {
+            if generation == sessionGeneration {
+                do {
+                    try sendControl(codec.fileTransferCancel(
+                        transferID: transferID,
+                        reasonCode: reasonCode
+                    ))
+                    self.codec = codec
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
+            }
+            notifyOutgoingFileTransferResult(
+                transferID: transferID,
+                accepted: false,
+                reason: reasonCode
+            )
+        }
+
+        for transferID in rejectedPendingIncomingTransferIDs {
+            if generation == sessionGeneration {
+                do {
+                    try sendControl(codec.fileAccept(VSFileAccept.rejected(
+                        transferID: transferID,
+                        reasonCode: reasonCode
+                    )))
+                    self.codec = codec
+                } catch {
+                    fail(.securityFailure(error.localizedDescription))
+                }
+            }
+            notifyFileTransferResult(
+                transferID: transferID,
+                direction: .incoming,
                 accepted: false,
                 reason: reasonCode
             )

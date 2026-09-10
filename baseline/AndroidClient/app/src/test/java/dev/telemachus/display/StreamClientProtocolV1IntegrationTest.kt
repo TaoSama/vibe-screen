@@ -2523,6 +2523,84 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun hostFileOfferFlushFailureAfterCompleteStillDeliversAndCleansStagedFile() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 13).toByte() })
+            val content = "complete-before-flush-failure".toByteArray(Charsets.UTF_8)
+            val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
+            val completionSeen = CountDownLatch(1)
+            val completeEnvelopeWritten = CountDownLatch(1)
+            val writeFailure = AtomicReference<String?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 6,
+                                transferId = transferId,
+                                fileName = "flush-failure.txt",
+                                content = content,
+                            ),
+                        )
+                        val accept = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, accept.payloadCase)
+                        assertTrue(accept.fileAccept.accepted)
+                        assertEquals(transferId, accept.fileAccept.transferId)
+
+                        ProtocolV1Framing.write(
+                            peer.getOutputStream(),
+                            ProtocolChannel.BULK,
+                            fileChunk(transferId = transferId, offset = 0, payload = content, final = true),
+                        )
+                        peer.soTimeout = 500
+                        while (readEnvelopeOrNull(peer) != null) Unit
+                    }
+                }
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    socketFactory = {
+                        FailAfterCompleteEnvelopeSocket(
+                            transferId = transferId,
+                            completeEnvelopeWritten = completeEnvelopeWritten,
+                        )
+                    },
+                )
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
+            client.onWriteFailure = { writeFailure.set(it) }
+            client.onIncomingFileCompleted = { received ->
+                assertEquals("flush-failure.txt", received.fileName)
+                assertEquals(content.toList(), received.stagingFile.readBytes().toList())
+                assertTrue(received.stagingFile.delete())
+                completed.set(received)
+                completionSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(completeEnvelopeWritten.await(8, TimeUnit.SECONDS))
+            assertTrue(completionSeen.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+
+            val received = checkNotNull(completed.get())
+            assertFalse(received.stagingFile.exists())
+            assertEquals(ByteString.copyFrom(sha256(content)), received.sha256)
+            assertEquals("forced flush failure", writeFailure.get())
+            Unit
+        }
+    }
+
+    @Test
     fun hostFileOfferCanBeCancelledAfterReceiverApproval() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
@@ -3275,6 +3353,76 @@ class StreamClientProtocolV1IntegrationTest {
                 client.disconnect()
             }
             withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun hostManagedPolicyShrinkRejectsOversizedPendingFileOffer() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+            val transferId = ByteString.copyFrom(ByteArray(16) { (it + 29).toByte() })
+            val content = "pending-managed-oversized".toByteArray(Charsets.UTF_8)
+            val offered = CountDownLatch(1)
+            val results = Collections.synchronizedList(mutableListOf<Pair<Boolean, String>>())
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeManagedPolicyHandshake(
+                            peer = peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            hostManagedStatus = managedPolicyStatus(
+                                fileTransferAllowed = true,
+                                maximumFileBytes = 1_024,
+                            ),
+                            maxFileBytes = 1_024,
+                            maxFileChunkBytes = 64 * 1024,
+                        )
+                        write(
+                            peer,
+                            fileOffer(
+                                id = 7,
+                                transferId = transferId,
+                                fileName = "pending-managed.txt",
+                                content = content,
+                            ),
+                        )
+                        assertTrue(offered.await(8, TimeUnit.SECONDS))
+                        write(
+                            peer,
+                            managedPolicyStatus(
+                                id = 8,
+                                status = managedPolicyStatus(
+                                    fileTransferAllowed = true,
+                                    maximumFileBytes = 4,
+                                ),
+                            ),
+                        )
+                        val rejected = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_ACCEPT, rejected.payloadCase)
+                        assertEquals(transferId, rejected.fileAccept.transferId)
+                        assertFalse(rejected.fileAccept.accepted)
+                        assertEquals("file_too_large", rejected.fileAccept.rejectionReason)
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(9))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onFileOffer = { offered.countDown() }
+            client.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(listOf(false to "file_too_large"), results.toList())
             Unit
         }
     }
@@ -4337,6 +4485,58 @@ class StreamClientProtocolV1IntegrationTest {
 
                 override fun close() = delegate.close()
             }
+        }
+    }
+
+    private class FailAfterCompleteEnvelopeSocket(
+        private val transferId: ByteString,
+        private val completeEnvelopeWritten: CountDownLatch,
+    ) : Socket() {
+        private val output = AtomicReference<OutputStream?>()
+
+        override fun getOutputStream(): OutputStream {
+            output.get()?.let { return it }
+            val stream = object : OutputStream() {
+                private val delegate = super@FailAfterCompleteEnvelopeSocket.getOutputStream()
+                private val frameBuffer = java.io.ByteArrayOutputStream()
+                private val failNextFlush = AtomicBoolean(false)
+
+                override fun write(value: Int) = delegate.write(value)
+
+                override fun write(
+                    bytes: ByteArray,
+                    offset: Int,
+                    length: Int,
+                ) {
+                    delegate.write(bytes, offset, length)
+                    frameBuffer.write(bytes, offset, length)
+                    armFailureAfterCompleteEnvelope()
+                }
+
+                override fun flush() {
+                    if (failNextFlush.compareAndSet(true, false)) throw IOException("forced flush failure")
+                    delegate.flush()
+                }
+
+                override fun close() = delegate.close()
+
+                private fun armFailureAfterCompleteEnvelope() {
+                    val bytes = frameBuffer.toByteArray()
+                    if (bytes.size < 5 || bytes[0].toInt() != ProtocolChannel.CONTROL.wireValue) return
+                    val frameLength = java.nio.ByteBuffer.wrap(bytes, 1, 4).order(java.nio.ByteOrder.BIG_ENDIAN).int
+                    if (bytes.size < 5 + frameLength) return
+                    val envelope = Envelope.parseFrom(bytes.copyOfRange(5, 5 + frameLength))
+                    frameBuffer.reset()
+                    if (envelope.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_COMPLETE &&
+                        envelope.fileTransferComplete.transferId == transferId
+                    ) {
+                        failNextFlush.set(true)
+                        completeEnvelopeWritten.countDown()
+                    }
+                }
+            }
+            output.compareAndSet(null, stream)
+            return output.get() ?: stream
         }
     }
 
