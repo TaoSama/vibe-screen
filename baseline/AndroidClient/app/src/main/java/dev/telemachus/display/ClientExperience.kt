@@ -1390,30 +1390,41 @@ internal object ConnectionPanelLayoutPolicy {
 
 /**
  * Shared readable-row guard for compact connection-panel action groups. Large
- * text stacks in single-column layouts, or when the current column cannot give
- * each button a readable horizontal slot.
+ * text stacks when the current column cannot give every visible button a
+ * readable horizontal slot.
  */
 internal object ConnectionActionRowLayoutPolicy {
     const val LARGE_FONT_SCALE_THRESHOLD = 1.3f
 
     fun shouldStack(
-        stackedContent: Boolean,
         fontScale: Float,
         availableWidthPx: Int,
         buttonCount: Int,
         gapPx: Int,
         minimumHorizontalButtonWidthPx: Int,
+        minimumHorizontalButtonWidthsPx: List<Int> = emptyList(),
     ): Boolean {
-        if (fontScale < LARGE_FONT_SCALE_THRESHOLD) return false
-        if (stackedContent) return true
+        if (fontScale < LARGE_FONT_SCALE_THRESHOLD && minimumHorizontalButtonWidthsPx.isEmpty()) return false
         if (buttonCount <= 1) return false
 
         val gapCount = (buttonCount - 1).coerceAtLeast(0)
-        val horizontalButtonWidthPx =
-            (availableWidthPx - gapPx.coerceAtLeast(0) * gapCount).coerceAtLeast(0) / buttonCount
-        val readableButtonWidthPx =
+        val fallbackButtonWidthPx =
             (minimumHorizontalButtonWidthPx.coerceAtLeast(0) * fontScale).roundToInt()
-        return horizontalButtonWidthPx < readableButtonWidthPx
+        val hasMeasuredButtonWidths = minimumHorizontalButtonWidthsPx.isNotEmpty()
+        val readableButtonWidthsPx =
+            (0 until buttonCount).map { index ->
+                val measuredWidthPx = minimumHorizontalButtonWidthsPx.getOrNull(index)?.coerceAtLeast(0) ?: 0
+                if (measuredWidthPx > 0) measuredWidthPx else fallbackButtonWidthPx
+            }
+        val measuredRequiredWidthPx = readableButtonWidthsPx.sum() + gapPx.coerceAtLeast(0) * gapCount
+        val baseMinimumWidthPx =
+            if (hasMeasuredButtonWidths && fontScale >= LARGE_FONT_SCALE_THRESHOLD) {
+                minimumHorizontalButtonWidthPx.coerceAtLeast(0) * buttonCount
+            } else {
+                0
+            }
+        val requiredHorizontalWidthPx = maxOf(measuredRequiredWidthPx, baseMinimumWidthPx)
+        return availableWidthPx.coerceAtLeast(0) < requiredHorizontalWidthPx
     }
 }
 
@@ -1438,19 +1449,19 @@ internal object ConnectionModeToggleLayoutPolicy {
     private const val BUTTON_COUNT = 3
 
     fun resolve(
-        stackedContent: Boolean,
         fontScale: Float,
         availableWidthPx: Int,
         minimumHorizontalButtonWidthPx: Int,
+        minimumHorizontalButtonWidthsPx: List<Int> = emptyList(),
     ): Layout =
         if (
             ConnectionActionRowLayoutPolicy.shouldStack(
-                stackedContent = stackedContent,
                 fontScale = fontScale,
                 availableWidthPx = availableWidthPx,
                 buttonCount = BUTTON_COUNT,
                 gapPx = 0,
                 minimumHorizontalButtonWidthPx = minimumHorizontalButtonWidthPx,
+                minimumHorizontalButtonWidthsPx = minimumHorizontalButtonWidthsPx,
             )
         ) {
             Layout(
@@ -1468,8 +1479,8 @@ internal object ConnectionModeToggleLayoutPolicy {
 }
 
 /**
- * Gives Internet profile import/scan actions enough readable width when the
- * disconnected panel is already in the single-column large-text layout.
+ * Gives Internet profile import/scan actions enough readable width when their
+ * current labels cannot share the row at large text scales.
  */
 internal object InternetProfileActionsLayoutPolicy {
     enum class Orientation {
@@ -1490,21 +1501,21 @@ internal object InternetProfileActionsLayoutPolicy {
     private const val BUTTON_COUNT = 2
 
     fun resolve(
-        stackedContent: Boolean,
         fontScale: Float,
         availableWidthPx: Int,
         gapPx: Int,
         minimumHorizontalButtonWidthPx: Int,
+        minimumHorizontalButtonWidthsPx: List<Int> = emptyList(),
     ): Layout {
         val resolvedGapPx = gapPx.coerceAtLeast(0)
         return if (
             ConnectionActionRowLayoutPolicy.shouldStack(
-                stackedContent = stackedContent,
                 fontScale = fontScale,
                 availableWidthPx = availableWidthPx,
                 buttonCount = BUTTON_COUNT,
                 gapPx = resolvedGapPx,
                 minimumHorizontalButtonWidthPx = minimumHorizontalButtonWidthPx,
+                minimumHorizontalButtonWidthsPx = minimumHorizontalButtonWidthsPx,
             )
         ) {
             Layout(
@@ -1549,22 +1560,22 @@ internal object InternetSecondaryActionsLayoutPolicy {
     private const val BUTTON_COUNT = 3
 
     fun resolve(
-        stackedContent: Boolean,
         fontScale: Float,
         availableWidthPx: Int,
         gapPx: Int,
         minimumHorizontalButtonWidthPx: Int,
+        minimumHorizontalButtonWidthsPx: List<Int> = emptyList(),
         layoutButtonCount: Int = BUTTON_COUNT,
     ): Layout {
         val resolvedGapPx = gapPx.coerceAtLeast(0)
         return if (
             ConnectionActionRowLayoutPolicy.shouldStack(
-                stackedContent = stackedContent,
                 fontScale = fontScale,
                 availableWidthPx = availableWidthPx,
                 buttonCount = layoutButtonCount,
                 gapPx = resolvedGapPx,
                 minimumHorizontalButtonWidthPx = minimumHorizontalButtonWidthPx,
+                minimumHorizontalButtonWidthsPx = minimumHorizontalButtonWidthsPx,
             )
         ) {
             Layout(

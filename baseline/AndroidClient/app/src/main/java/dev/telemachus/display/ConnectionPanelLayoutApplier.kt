@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import android.content.res.Resources
 import android.content.res.Configuration
+import android.graphics.Paint
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
@@ -9,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import kotlin.math.roundToInt
 
@@ -39,40 +41,70 @@ internal object ConnectionPanelLayoutApplier {
             }
         views.content.gravity = layout.contentGravity
         val stackedContent = layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL
+        val measureActionRowLabels = layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL
         val actionsAvailableWidthPx = actionsAvailableWidthPx(resources, views, layout)
         applyModeToggleLayout(
             views = views,
             layout =
                 ConnectionModeToggleLayoutPolicy.resolve(
-                    stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
                     availableWidthPx = actionsAvailableWidthPx,
                     minimumHorizontalButtonWidthPx =
                         dp(resources, ConnectionModeToggleLayoutPolicy.MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP),
+                    minimumHorizontalButtonWidthsPx =
+                        if (measureActionRowLabels) {
+                            readableButtonWidthsPx(
+                                views.actions,
+                                R.id.modeUSB,
+                                R.id.modeWireless,
+                                R.id.modeInternet,
+                            )
+                        } else {
+                            emptyList()
+                        },
                 ),
         )
         applyInternetProfileActionsLayout(
             views = views,
             layout =
                 InternetProfileActionsLayoutPolicy.resolve(
-                    stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
                     availableWidthPx = actionsAvailableWidthPx,
                     gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
                     minimumHorizontalButtonWidthPx =
                         dp(resources, InternetProfileActionsLayoutPolicy.MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP),
+                    minimumHorizontalButtonWidthsPx =
+                        if (measureActionRowLabels) {
+                            readableButtonWidthsPx(
+                                views.actions,
+                                R.id.internetScanProfileButton,
+                                R.id.internetImportProfileButton,
+                            )
+                        } else {
+                            emptyList()
+                        },
                 ),
         )
         applyInternetSecondaryActionsLayout(
             views = views,
             layout =
                 InternetSecondaryActionsLayoutPolicy.resolve(
-                    stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
                     availableWidthPx = actionsAvailableWidthPx,
                     gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
                     minimumHorizontalButtonWidthPx =
                         dp(resources, InternetSecondaryActionsLayoutPolicy.MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP),
+                    minimumHorizontalButtonWidthsPx =
+                        if (measureActionRowLabels) {
+                            readableButtonWidthsPx(
+                                views.actions,
+                                R.id.internetConnectionSettingsButton,
+                                R.id.internetDisconnectButton,
+                                R.id.internetRevokeButton,
+                            )
+                        } else {
+                            emptyList()
+                        },
                     layoutButtonCount = layoutPresentInternetSecondaryActionCount(views),
                 ),
         )
@@ -184,6 +216,51 @@ internal object ConnectionPanelLayoutApplier {
             R.id.internetDisconnectButton,
             R.id.internetRevokeButton,
         ).count { id -> requiredView(actions, id).visibility != View.GONE }
+    }
+
+    internal fun readableButtonWidthsPx(
+        root: View,
+        vararg ids: Int,
+    ): List<Int> =
+        ids.toList().mapNotNull { id ->
+            val button = requiredView(root, id) as? TextView
+            button?.takeIf { it.visibility != View.GONE }?.readableHorizontalWidthPx()
+        }
+
+    private fun TextView.readableHorizontalWidthPx(): Int {
+        val availableLines = maxLines.takeIf { it > 0 } ?: 1
+        val label = text.toString()
+        val paint = textPaint()
+        val balancedLineWidthPx = ceilDiv(paint.measureText(label).roundToInt(), availableLines)
+        val longestWordWidthPx =
+            label.split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+                .maxOfOrNull { word -> paint.measureText(word).roundToInt() }
+                ?: 0
+        val textWidthPx = maxOf(balancedLineWidthPx, longestWordWidthPx)
+        return textWidthPx + horizontalReadablePaddingPx()
+    }
+
+    private fun TextView.horizontalReadablePaddingPx(): Int {
+        val compoundPaddingPx = compoundPaddingStart + compoundPaddingEnd
+        val explicitPaddingAndIconPx = paddingStart + paddingEnd + materialButtonIconWidthPx()
+        return maxOf(compoundPaddingPx, explicitPaddingAndIconPx)
+    }
+
+    private fun TextView.materialButtonIconWidthPx(): Int {
+        val button = this as? MaterialButton ?: return 0
+        val iconWidth = button.icon?.intrinsicWidth?.coerceAtLeast(0) ?: return 0
+        return iconWidth + button.iconPadding.coerceAtLeast(0)
+    }
+
+    private fun TextView.textPaint(): Paint = Paint(paint)
+
+    private fun ceilDiv(
+        value: Int,
+        divisor: Int,
+    ): Int {
+        val safeDivisor = divisor.coerceAtLeast(1)
+        return (value.coerceAtLeast(0) + safeDivisor - 1) / safeDivisor
     }
 
     private fun applySubtitleDisclosure(
