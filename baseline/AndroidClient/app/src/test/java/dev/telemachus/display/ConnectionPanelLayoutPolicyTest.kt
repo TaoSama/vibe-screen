@@ -77,12 +77,11 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
-    fun `mode toggle stacks for large-font single-column layout`() {
+    fun `mode toggle stacks when large-font column is too narrow`() {
         val layout =
             ConnectionModeToggleLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.3f,
-                availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
+                availableWidthPx = 320,
                 minimumHorizontalButtonWidthPx = MODE_TOGGLE_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
             )
 
@@ -95,7 +94,6 @@ class ConnectionPanelLayoutPolicyTest {
     fun `mode toggle stays segmented for default font single-column layout`() {
         val layout =
             ConnectionModeToggleLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.0f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 minimumHorizontalButtonWidthPx = MODE_TOGGLE_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
@@ -111,7 +109,6 @@ class ConnectionPanelLayoutPolicyTest {
         listOf(1.3f, 1.5f, 2.0f).forEach { fontScale ->
             val layout =
                 ConnectionModeToggleLayoutPolicy.resolve(
-                    stackedContent = false,
                     fontScale = fontScale,
                     availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                     minimumHorizontalButtonWidthPx = MODE_TOGGLE_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
@@ -127,7 +124,6 @@ class ConnectionPanelLayoutPolicyTest {
     fun `mode toggle stays segmented outside single-column layout when width and font allow it`() {
         val layout =
             ConnectionModeToggleLayoutPolicy.resolve(
-                stackedContent = false,
                 fontScale = 1.3f,
                 availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
                 minimumHorizontalButtonWidthPx = MODE_TOGGLE_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
@@ -139,12 +135,41 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
-    fun `internet profile actions stack for large-font single-column layout`() {
+    fun `mode toggle uses readable width instead of stacked content alone`() {
+        val layout =
+            ConnectionModeToggleLayoutPolicy.resolve(
+                fontScale = 1.3f,
+                availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
+                minimumHorizontalButtonWidthPx = MODE_TOGGLE_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(120, 132, 156),
+            )
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
+        assertFalse(layout.buttonWidthMatchParent)
+        assertEquals(1f, layout.buttonWeight, 0f)
+    }
+
+    @Test
+    fun `mode toggle stacks when measured labels require more than wide action column`() {
+        val layout =
+            ConnectionModeToggleLayoutPolicy.resolve(
+                fontScale = 1.3f,
+                availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
+                minimumHorizontalButtonWidthPx = MODE_TOGGLE_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(280, 260, 300),
+            )
+
+        assertEquals(ConnectionModeToggleLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+    }
+
+    @Test
+    fun `internet profile actions stack when large-font column is too narrow`() {
         val layout =
             InternetProfileActionsLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.3f,
-                availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
+                availableWidthPx = 320,
                 gapPx = 8,
                 minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
             )
@@ -160,7 +185,6 @@ class ConnectionPanelLayoutPolicyTest {
     fun `internet profile actions stay side by side for default font`() {
         val layout =
             InternetProfileActionsLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.0f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 gapPx = 8,
@@ -179,7 +203,6 @@ class ConnectionPanelLayoutPolicyTest {
         listOf(1.3f, 1.5f, 2.0f).forEach { fontScale ->
             val layout =
                 InternetProfileActionsLayoutPolicy.resolve(
-                    stackedContent = false,
                     fontScale = fontScale,
                     availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                     gapPx = 8,
@@ -198,11 +221,11 @@ class ConnectionPanelLayoutPolicyTest {
     fun `internet profile actions stay side by side when two-column width can fit large text`() {
         val layout =
             InternetProfileActionsLayoutPolicy.resolve(
-                stackedContent = false,
                 fontScale = 1.3f,
                 availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
                 gapPx = 8,
                 minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(120, 132),
             )
 
         assertEquals(InternetProfileActionsLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
@@ -213,10 +236,27 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
+    fun `internet profile actions stack when actual labels exceed available column width`() {
+        val layout =
+            InternetProfileActionsLayoutPolicy.resolve(
+                fontScale = 1.3f,
+                availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
+                gapPx = 8,
+                minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(340, 380),
+            )
+
+        assertEquals(InternetProfileActionsLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+        assertEquals(0, layout.importMarginStartPx)
+        assertEquals(8, layout.importMarginTopPx)
+    }
+
+    @Test
     fun `internet profile action gap is clamped to zero`() {
         val layout =
             InternetProfileActionsLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.3f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 gapPx = -8,
@@ -228,10 +268,9 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
-    fun `internet secondary actions stack for large-font single-column layout`() {
+    fun `internet secondary actions stack when large-font column is too narrow`() {
         val layout =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.3f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 gapPx = 8,
@@ -249,7 +288,6 @@ class ConnectionPanelLayoutPolicyTest {
     fun `internet secondary actions stay side by side for default font`() {
         val layout =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.0f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 gapPx = 8,
@@ -264,11 +302,29 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
+    fun `internet secondary actions stack at default font when measured labels exceed the row`() {
+        val layout =
+            InternetSecondaryActionsLayoutPolicy.resolve(
+                fontScale = 1.0f,
+                availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
+                gapPx = 8,
+                minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(180, 170, 160),
+                layoutButtonCount = 3,
+            )
+
+        assertEquals(InternetSecondaryActionsLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+        assertEquals(0, layout.interButtonMarginStartPx)
+        assertEquals(8, layout.interButtonMarginTopPx)
+    }
+
+    @Test
     fun `internet secondary actions stack in narrow two-column large-font layout`() {
         listOf(1.3f, 1.5f, 2.0f).forEach { fontScale ->
             val layout =
                 InternetSecondaryActionsLayoutPolicy.resolve(
-                    stackedContent = false,
                     fontScale = fontScale,
                     availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                     gapPx = 8,
@@ -287,11 +343,11 @@ class ConnectionPanelLayoutPolicyTest {
     fun `internet secondary actions stay side by side when two-column width can fit large text`() {
         val layout =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = false,
                 fontScale = 1.3f,
-                availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
+                availableWidthPx = 463,
                 gapPx = 8,
                 minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(160, 132, 148),
             )
 
         assertEquals(InternetSecondaryActionsLayoutPolicy.Orientation.HORIZONTAL, layout.orientation)
@@ -302,20 +358,38 @@ class ConnectionPanelLayoutPolicyTest {
     }
 
     @Test
+    fun `internet secondary actions stack when present labels exceed available column width`() {
+        val layout =
+            InternetSecondaryActionsLayoutPolicy.resolve(
+                fontScale = 1.3f,
+                availableWidthPx = WIDE_ACTION_COLUMN_WIDTH_PX,
+                gapPx = 8,
+                minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(280, 160, 300),
+                layoutButtonCount = 3,
+            )
+
+        assertEquals(InternetSecondaryActionsLayoutPolicy.Orientation.VERTICAL, layout.orientation)
+        assertTrue(layout.buttonWidthMatchParent)
+        assertEquals(0f, layout.buttonWeight, 0f)
+        assertEquals(0, layout.interButtonMarginStartPx)
+        assertEquals(8, layout.interButtonMarginTopPx)
+    }
+
+    @Test
     fun `internet secondary actions use layout-present button count for width decisions`() {
         val twoButtonOnlyWidthPx = 400
         val twoButtonsFit =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = false,
                 fontScale = 1.3f,
                 availableWidthPx = twoButtonOnlyWidthPx,
                 gapPx = 8,
                 minimumHorizontalButtonWidthPx = ACTION_MINIMUM_HORIZONTAL_BUTTON_WIDTH_PX,
+                minimumHorizontalButtonWidthsPx = listOf(160, 160),
                 layoutButtonCount = 2,
             )
         val threeButtonsDoNotFit =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = false,
                 fontScale = 1.3f,
                 availableWidthPx = twoButtonOnlyWidthPx,
                 gapPx = 8,
@@ -331,7 +405,6 @@ class ConnectionPanelLayoutPolicyTest {
     fun `internet secondary actions stay side by side outside single-column layout at default font`() {
         val layout =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = false,
                 fontScale = 1.0f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 gapPx = 8,
@@ -349,7 +422,6 @@ class ConnectionPanelLayoutPolicyTest {
     fun `internet secondary action gap is clamped to zero`() {
         val layout =
             InternetSecondaryActionsLayoutPolicy.resolve(
-                stackedContent = true,
                 fontScale = 1.3f,
                 availableWidthPx = NARROW_ACTION_COLUMN_WIDTH_PX,
                 gapPx = -8,

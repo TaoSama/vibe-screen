@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Paint
 import android.graphics.Rect
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
@@ -15,6 +16,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.button.MaterialButton
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -198,7 +200,12 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             layout.assertConfigurationUsesTwoColumns(expected = true)
             layout.assertTextRenderedWithoutEllipsis(layout.internetProfileSummary)
             layout.assertTextRenderedWithoutEllipsis(layout.internetStateText)
-            layout.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            layout.assertReadableActionRowFitsActionsColumn(
+                gapDp = 8,
+                R.id.internetScanProfileButton,
+                R.id.internetImportProfileButton,
+            )
             layout.assertPrimaryInternetActionVisible()
             layout.assertMinimumTouchTarget(layout.internetConnectButton)
             layout.assertHeaderAndActionsSeparated()
@@ -238,6 +245,179 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 }
                 layout.assertHeaderAndActionsSeparated()
             }
+        }
+    }
+
+    @Test
+    fun narrowTwoColumnLandscapeLargeTextStacksLongActionLabelsWithoutClipping() {
+        listOf(1.3f, 2.0f).forEach { fontScale ->
+            withLayout(widthDp = 600, heightDp = 360, fontScale = fontScale) { layout ->
+                layout.showModeContent(R.id.internetModeContent)
+                layout.showAllInternetSecondaryActions()
+                layout.useLongConnectionActionLabels()
+                layout.applyPanel(
+                    resources = layout.context.resources,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = false,
+                )
+                layout.measureAndLayout()
+
+                layout.assertConfigurationUsesTwoColumns(expected = true)
+                layout.assertModeToggleStacked()
+                layout.assertInternetProfileActionsStacked(expectedGapDp = 8)
+                layout.assertInternetSecondaryActionsStacked(expectedGapDp = 8)
+                listOf(
+                    layout.usbModeButton,
+                    layout.wirelessModeButton,
+                    layout.internetModeButton,
+                    layout.internetScanProfileButton,
+                    layout.internetImportProfileButton,
+                    layout.internetConnectionSettingsButton,
+                    layout.internetDisconnectButton,
+                    layout.internetRevokeButton,
+                ).forEach { button ->
+                    layout.assertTextRenderedWithoutEllipsis(button)
+                    layout.assertMinimumTouchTarget(button)
+                    layout.assertFullyReachableByScroll(button)
+                }
+                layout.assertHeaderAndActionsSeparated()
+            }
+        }
+    }
+
+    @Test
+    fun expandedTwoColumnLargeTextStacksVeryLongActionLabelsByMeasuredWidth() {
+        withLayout(widthDp = 1200, heightDp = 700, fontScale = 1.3f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showDisconnectedInternetSecondaryActions()
+            layout.useVeryLongConnectionActionLabels()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertModeToggleStacked()
+            layout.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            layout.assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp = 8)
+            listOf(
+                layout.usbModeButton,
+                layout.wirelessModeButton,
+                layout.internetModeButton,
+                layout.internetScanProfileButton,
+                layout.internetImportProfileButton,
+                layout.internetConnectionSettingsButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+            layout.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
+    fun expandedTwoColumnDefaultTextStacksVeryLongActionLabelsByMeasuredWidth() {
+        withLayout(widthDp = 1200, heightDp = 700, fontScale = 1.0f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showAllInternetSecondaryActions()
+            layout.useVeryLongInternetSecondaryActionLabels()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertModeToggleHorizontal()
+            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            layout.assertInternetSecondaryActionsStacked(expectedGapDp = 8)
+            listOf(
+                layout.usbModeButton,
+                layout.wirelessModeButton,
+                layout.internetModeButton,
+                layout.internetScanProfileButton,
+                layout.internetImportProfileButton,
+                layout.internetConnectionSettingsButton,
+                layout.internetDisconnectButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+            layout.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
+    fun expandedTwoColumnLargeTextKeepsDefaultActionLabelsHorizontal() {
+        withLayout(widthDp = 1200, heightDp = 700, fontScale = 1.3f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showAllInternetSecondaryActions()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertModeToggleHorizontal()
+            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            layout.assertInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+            layout.assertReadableActionRowFitsActionsColumn(
+                gapDp = 0,
+                R.id.modeUSB,
+                R.id.modeWireless,
+                R.id.modeInternet,
+            )
+            layout.assertReadableActionRowFitsActionsColumn(
+                gapDp = 8,
+                R.id.internetScanProfileButton,
+                R.id.internetImportProfileButton,
+            )
+            layout.assertReadableActionRowFitsActionsColumn(
+                gapDp = 8,
+                R.id.internetConnectionSettingsButton,
+                R.id.internetDisconnectButton,
+                R.id.internetRevokeButton,
+            )
+            listOf(
+                layout.usbModeButton,
+                layout.wirelessModeButton,
+                layout.internetModeButton,
+                layout.internetScanProfileButton,
+                layout.internetImportProfileButton,
+                layout.internetConnectionSettingsButton,
+                layout.internetDisconnectButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertTextRenderedWithoutEllipsis(button)
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
+            layout.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
+    fun materialButtonReadableWidthCountsIconSpaceOnce() {
+        withLayout(widthDp = 1200, heightDp = 700, fontScale = 1.3f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showAllInternetSecondaryActions()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertReadableWidthCountsMaterialIconOnce(layout.internetConnectionSettingsButton)
         }
     }
 
@@ -912,6 +1092,34 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             internetRevokeButton.visibility = View.VISIBLE
         }
 
+        fun useLongConnectionActionLabels() {
+            usbModeButton.text = "USB cable"
+            wirelessModeButton.text = "Trusted LAN"
+            internetModeButton.text = "Internet preview"
+            internetScanProfileButton.text = "Scan pairing QR"
+            internetImportProfileButton.text = "Import profile file"
+            internetConnectionSettingsButton.text = "Display settings"
+            internetDisconnectButton.text = "Disconnect session"
+            internetRevokeButton.text = "Revoke this Mac"
+        }
+
+        fun useVeryLongConnectionActionLabels() {
+            usbModeButton.text = "UsbDisplayRecoveryProbeLabel"
+            wirelessModeButton.text = "TrustedNetworkRecoveryProbeLabel"
+            internetModeButton.text = "InternetPreviewRecoveryProbeLabel"
+            internetScanProfileButton.text = "ScanPairingRecoveryProbeLabel"
+            internetImportProfileButton.text = "ImportProfileRecoveryProbeLabel"
+            internetConnectionSettingsButton.text = "DisplaySettingsRecoveryProbeLabel"
+            internetDisconnectButton.text = "DisconnectSessionRecoveryProbeLabel"
+            internetRevokeButton.text = "RevokePairingRecoveryProbeLabel"
+        }
+
+        fun useVeryLongInternetSecondaryActionLabels() {
+            internetConnectionSettingsButton.text = "DisplaySettingsRecoveryProbeLabel"
+            internetDisconnectButton.text = "DisconnectSessionRecoveryProbeLabel"
+            internetRevokeButton.text = "RevokePairingRecoveryProbeLabel"
+        }
+
         fun measureAndLayout() {
             root.measure(
                 View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
@@ -993,6 +1201,49 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 "View " + view.resources.getResourceEntryName(view.id) + " must stay enabled",
                 view.isEnabled,
             )
+        }
+
+        fun assertReadableActionRowFitsActionsColumn(
+            gapDp: Int,
+            vararg ids: Int,
+        ) {
+            val buttonWidthsPx = ConnectionPanelLayoutApplier.readableButtonWidthsPx(actions, *ids)
+            val totalGapPx = dp(gapDp) * (buttonWidthsPx.size - 1).coerceAtLeast(0)
+            val requiredWidthPx = buttonWidthsPx.sum() + totalGapPx
+            assertTrue(
+                "Required readable action row width $requiredWidthPx px must fit actions column ${actions.width} px",
+                requiredWidthPx <= actions.width,
+            )
+        }
+
+        fun assertReadableWidthCountsMaterialIconOnce(button: TextView) {
+            val materialButton = button as MaterialButton
+            val readableWidth =
+                ConnectionPanelLayoutApplier.readableButtonWidthsPx(actions, button.id).single()
+            val textWidth = readableTextWidthPx(button)
+            val compoundPadding = button.compoundPaddingStart + button.compoundPaddingEnd
+            val iconWidth = materialButton.icon?.intrinsicWidth?.coerceAtLeast(0) ?: 0
+            val iconSpace = iconWidth + materialButton.iconPadding.coerceAtLeast(0)
+            val explicitPaddingWithIcon = button.paddingStart + button.paddingEnd + iconSpace
+            assertTrue(
+                "Icon-bearing button must expose icon space for this assertion",
+                iconSpace > 0,
+            )
+            assertEquals(
+                textWidth + maxOf(compoundPadding, explicitPaddingWithIcon),
+                readableWidth,
+            )
+            assertTrue(
+                "Readable width must not add icon space on top of compound padding: " +
+                    "readable=$readableWidth text=$textWidth compound=$compoundPadding iconSpace=$iconSpace",
+                readableWidth <= textWidth + compoundPadding + iconSpace,
+            )
+            if (compoundPadding >= explicitPaddingWithIcon) {
+                assertTrue(
+                    "Compound padding already accounts for the icon, so readable width must stay below double-counted width",
+                    readableWidth < textWidth + compoundPadding + iconSpace,
+                )
+            }
         }
 
         fun assertConfigurationUsesTwoColumns(expected: Boolean) {
@@ -1263,6 +1514,27 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             view.layoutParams as LinearLayout.LayoutParams
 
         private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+        private fun readableTextWidthPx(text: TextView): Int {
+            val availableLines = text.maxLines.takeIf { it > 0 } ?: 1
+            val label = text.text.toString()
+            val paint = Paint(text.paint)
+            val balancedLineWidth = ceilDiv(paint.measureText(label).roundToInt(), availableLines)
+            val longestWordWidth =
+                label.split(Regex("\\s+"))
+                    .filter { it.isNotBlank() }
+                    .maxOfOrNull { word -> paint.measureText(word).roundToInt() }
+                    ?: 0
+            return maxOf(balancedLineWidth, longestWordWidth)
+        }
+
+        private fun ceilDiv(
+            value: Int,
+            divisor: Int,
+        ): Int {
+            val safeDivisor = divisor.coerceAtLeast(1)
+            return (value.coerceAtLeast(0) + safeDivisor - 1) / safeDivisor
+        }
     }
 
     private fun ConnectionGuidance.formattedMessage(context: Context): String =
