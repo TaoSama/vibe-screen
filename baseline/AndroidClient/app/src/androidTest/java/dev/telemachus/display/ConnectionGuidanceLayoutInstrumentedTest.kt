@@ -273,6 +273,137 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun portraitToWideLandscapeUsesConfigurationWidthBeforeSecondLayout() {
+        val portraitContext = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
+        val landscapeContext = configuredContext(widthDp = 873, heightDp = 393, fontScale = 1.3f)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(portraitContext)
+            val portrait = MeasuredLayout(portraitContext, root, widthDp = 361, heightDp = 800)
+            portrait.showModeContent(R.id.internetModeContent)
+            portrait.showDisconnectedInternetSecondaryActions()
+            portrait.applyPanel(
+                resources = portraitContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            portrait.measureAndLayout()
+            portrait.assertConfigurationUsesTwoColumns(expected = false)
+            portrait.assertModeToggleStacked()
+            portrait.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            portrait.assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp = 8)
+
+            val staleLandscape = MeasuredLayout(landscapeContext, root, widthDp = 873, heightDp = 393)
+            staleLandscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            staleLandscape.assertConfigurationUsesTwoColumns(expected = true)
+            staleLandscape.assertModeToggleHorizontal()
+            staleLandscape.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            staleLandscape.assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+
+            staleLandscape.measureAndLayout()
+            staleLandscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            staleLandscape.measureAndLayout()
+
+            staleLandscape.assertConfigurationUsesTwoColumns(expected = true)
+            staleLandscape.assertModeToggleHorizontal()
+            staleLandscape.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            staleLandscape.assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+            staleLandscape.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
+    fun landscapeToPortraitSecondLayoutKeepsActionRowsStackedForNarrowWidth() {
+        val landscapeContext = configuredContext(widthDp = 873, heightDp = 393, fontScale = 1.3f)
+        val portraitContext = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(landscapeContext)
+            val landscape = MeasuredLayout(landscapeContext, root, widthDp = 873, heightDp = 393)
+            landscape.showModeContent(R.id.internetModeContent)
+            landscape.showDisconnectedInternetSecondaryActions()
+            landscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            landscape.measureAndLayout()
+            landscape.assertConfigurationUsesTwoColumns(expected = true)
+            landscape.assertModeToggleHorizontal()
+            landscape.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            landscape.assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+
+            val portrait = MeasuredLayout(portraitContext, root, widthDp = 361, heightDp = 800)
+            portrait.applyPanel(
+                resources = portraitContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            portrait.measureAndLayout()
+            portrait.applyPanel(
+                resources = portraitContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            portrait.measureAndLayout()
+
+            portrait.assertConfigurationUsesTwoColumns(expected = false)
+            portrait.assertModeToggleStacked()
+            portrait.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            portrait.assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp = 8)
+            portrait.assertPrimaryInternetActionVisible()
+        }
+    }
+
+    @Test
+    fun portraitToExpandedLandscapeKeepsModeToggleHorizontalAcrossSecondLayout() {
+        val portraitContext = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
+        val landscapeContext = configuredContext(widthDp = 1200, heightDp = 700, fontScale = 1.3f)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(portraitContext)
+            val portrait = MeasuredLayout(portraitContext, root, widthDp = 361, heightDp = 800)
+            portrait.applyPanel(
+                resources = portraitContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            portrait.measureAndLayout()
+            portrait.assertConfigurationUsesTwoColumns(expected = false)
+            portrait.assertModeToggleStacked()
+
+            val expandedLandscape = MeasuredLayout(landscapeContext, root, widthDp = 1200, heightDp = 700)
+            expandedLandscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            expandedLandscape.assertConfigurationUsesTwoColumns(expected = true)
+            expandedLandscape.assertModeToggleHorizontal()
+
+            expandedLandscape.measureAndLayout()
+            expandedLandscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            expandedLandscape.measureAndLayout()
+
+            expandedLandscape.assertConfigurationUsesTwoColumns(expected = true)
+            expandedLandscape.assertModeToggleHorizontal()
+            expandedLandscape.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+        }
+    }
+
+    @Test
     fun narrowPortraitKeepsModeLabelsReadableAtLargeFontScale() {
         withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
             layout.measureAndLayout()
@@ -921,6 +1052,21 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(0, linearMargins(internetConnectionSettingsButton).topMargin)
             assertEquals(0, linearMargins(internetRevokeButton).marginStart)
             assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).topMargin)
+        }
+
+        fun assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp: Int) {
+            assertEquals(LinearLayout.HORIZONTAL, internetSecondaryActions.orientation)
+            assertEquals(View.VISIBLE, internetConnectionSettingsButton.visibility)
+            assertEquals(View.GONE, internetDisconnectButton.visibility)
+            assertEquals(View.VISIBLE, internetRevokeButton.visibility)
+            assertEquals(0, internetConnectionSettingsButton.layoutParams.width)
+            assertEquals(0, internetRevokeButton.layoutParams.width)
+            assertEquals(1f, linearMargins(internetConnectionSettingsButton).weight, 0f)
+            assertEquals(1f, linearMargins(internetRevokeButton).weight, 0f)
+            assertEquals(0, linearMargins(internetConnectionSettingsButton).marginStart)
+            assertEquals(0, linearMargins(internetConnectionSettingsButton).topMargin)
+            assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).marginStart)
+            assertEquals(0, linearMargins(internetRevokeButton).topMargin)
         }
 
         fun assertPortraitDimensionsInflated() {
