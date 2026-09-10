@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -14,6 +15,7 @@ import kotlin.math.roundToInt
 
 internal object ConnectionPanelLayoutApplier {
     data class Views(
+        val panel: View,
         val content: LinearLayout,
         val header: View,
         val actions: View,
@@ -155,8 +157,7 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         views: Views,
     ): Int {
-        val panel = views.content.rootView.findViewById<View>(R.id.settingsPanel)
-        val margins = panel?.layoutParams as? ViewGroup.MarginLayoutParams
+        val margins = views.panel.layoutParams as? ViewGroup.MarginLayoutParams
         return if (margins != null) {
             (margins.marginStart + margins.marginEnd).coerceAtLeast(0)
         } else {
@@ -244,6 +245,7 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         views: Views,
     ) {
+        applyPanelMaximumWidth(resources, views)
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding)
         views.content.setPaddingRelative(
             horizontalPadding,
@@ -282,6 +284,18 @@ internal object ConnectionPanelLayoutApplier {
         }
         updateLayout(requiredView(views.actions, R.id.internetConnectButton)) { params ->
             params.topMargin = resources.getDimensionPixelSize(R.dimen.connection_primary_action_margin_top)
+        }
+    }
+
+    private fun applyPanelMaximumWidth(
+        resources: Resources,
+        views: Views,
+    ) {
+        val params = views.panel.layoutParams as? ConstraintLayout.LayoutParams ?: return
+        val maxWidthPx = resources.getDimensionPixelSize(R.dimen.connection_panel_max_width)
+        if (params.matchConstraintMaxWidth != maxWidthPx) {
+            params.matchConstraintMaxWidth = maxWidthPx
+            views.panel.layoutParams = params
         }
     }
 

@@ -828,6 +828,9 @@ class MainActivityTerminalGuidanceContractTest {
 
     @Test
     fun connectionPanelOuterGeometryUsesResponsiveResources() {
+        val applier =
+            resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+                .replace(Regex("\\s+"), "")
         val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
         val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
 
@@ -848,6 +851,19 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(
             "Connection panel must not keep the old hard-coded 680dp cap",
             settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
+        )
+        assertTrue(
+            "ConnectionPanelLayoutApplier must reapply max width after configChanges because the view tree is not reinflated",
+            applier.contains("params.matchConstraintMaxWidth!=maxWidthPx") &&
+                applier.contains("params.matchConstraintMaxWidth=maxWidthPx") &&
+                applier.contains("R.dimen.connection_panel_max_width") &&
+                applier.contains("views.panel.layoutParams=params"),
+        )
+        assertTrue(
+            "ConnectionPanelLayoutApplier must use an explicit panel view for max width and margins",
+            applier.contains("valpanel:View") &&
+                applier.contains("valmargins=views.panel.layoutParamsas?ViewGroup.MarginLayoutParams") &&
+                !applier.contains("rootView.findViewById<View>(R.id.settingsPanel)"),
         )
         assertTrue(
             "Horizontal connection layouts must not baseline-align the header against the actions column",
@@ -1368,6 +1384,66 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "The explicit layout mode must reach the disclosure applier",
             compactLayout.contains("connectionMode=connectionMode"),
+        )
+    }
+
+    @Test
+    fun rootWidthChangesReapplyConnectionPanelAfterLayoutSettles() {
+        val source = mainActivitySource()
+        val setupSafeAreaInsets = extractMethod(source, "private fun setupSafeAreaInsets")
+        val applySafeAreaToChrome = extractMethod(source, "private fun applySafeAreaToChrome")
+        val refreshBaseMargins = extractMethod(source, "private fun refreshConnectionPanelBaseMargins")
+        val setupSurface = extractMethod(source, "private fun setupSurface")
+        val scheduler = extractMethod(source, "private fun scheduleConnectionPanelLayoutAfterRootWidthChange")
+        val onConfigurationChanged = extractMethod(source, "override fun onConfigurationChanged")
+        val onDestroy = extractMethod(source, "override fun onDestroy")
+        val compactSource = source.replace(Regex("\\s+"), "")
+        val compactSafeAreaInsets = setupSafeAreaInsets.replace(Regex("\\s+"), "")
+        val compactApplySafeAreaToChrome = applySafeAreaToChrome.replace(Regex("\\s+"), "")
+        val compactRefreshBaseMargins = refreshBaseMargins.replace(Regex("\\s+"), "")
+        val compactSetupSurface = setupSurface.replace(Regex("\\s+"), "")
+        val compactScheduler = scheduler.replace(Regex("\\s+"), "")
+        val compactOnConfigurationChanged = onConfigurationChanged.replace(Regex("\\s+"), "")
+        val compactOnDestroy = onDestroy.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Safe-area margin changes must re-resolve the connection panel width inputs",
+            compactSafeAreaInsets.contains("applySafeAreaToChrome()applyConnectionPanelLayout()applyControlBarLayout()"),
+        )
+        assertTrue(
+            "Safe-area application must refresh connection panel base margins from the current resource qualifiers",
+            compactApplySafeAreaToChrome.contains("setInsetMargins(binding.controlBar)refreshConnectionPanelBaseMargins()setInsetMargins(binding.settingsPanel)") &&
+                compactRefreshBaseMargins.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)") &&
+                compactRefreshBaseMargins.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)") &&
+                compactRefreshBaseMargins.contains("baseChromeMargins[binding.settingsPanel.id]=SafeAreaGeometry.Insets.of"),
+        )
+        assertTrue(
+            "Configuration changes must refresh connection panel base margins before reading panel geometry",
+            compactOnConfigurationChanged.contains("connectionSubtitleDisclosure.reset()applySafeAreaToChrome()applyControlBarLayout()"),
+        )
+        assertTrue(
+            "Root width changes must schedule a connection panel relayout after the new width is measured",
+            compactSetupSurface.contains("valwidthPx=right-left") &&
+                compactSetupSurface.contains("if(widthPx!=oldRight-oldLeft)") &&
+                compactSetupSurface.contains("scheduleConnectionPanelLayoutAfterRootWidthChange(widthPx)"),
+        )
+        assertTrue(
+            "The deferred relayout must replace older posts so quick rotations cannot replay stale widths",
+            compactScheduler.contains("pendingConnectionPanelLayoutWidthPx=widthPx") &&
+                compactScheduler.contains("binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)") &&
+                compactScheduler.contains("binding.root.post(pendingConnectionPanelLayoutRunnable)"),
+        )
+        assertTrue(
+            "The posted relayout must only run for the still-current root width",
+            compactScheduler.contains("if(widthPx<=0)return") &&
+                compactSource.contains("valexpectedWidthPx=pendingConnectionPanelLayoutWidthPx?:return@Runnable") &&
+                compactSource.contains("pendingConnectionPanelLayoutWidthPx=null") &&
+                compactSource.contains("if(binding.root.width==expectedWidthPx){applyConnectionPanelLayout()}"),
+        )
+        assertTrue(
+            "Activity teardown must not leave a deferred root relayout callback behind",
+            compactOnDestroy.contains("binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)") &&
+                compactOnDestroy.contains("pendingConnectionPanelLayoutWidthPx=null"),
         )
     }
 

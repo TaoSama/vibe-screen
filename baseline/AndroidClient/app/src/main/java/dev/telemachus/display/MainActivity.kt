@@ -258,6 +258,15 @@ class MainActivity : AppCompatActivity() {
     private val clipboardRequestHandler = Handler(Looper.getMainLooper())
     private val fileTransferApprovalHandler = Handler(Looper.getMainLooper())
     private var clipboardRequestTimeout: Runnable? = null
+    private var pendingConnectionPanelLayoutWidthPx: Int? = null
+    private val pendingConnectionPanelLayoutRunnable =
+        Runnable {
+            val expectedWidthPx = pendingConnectionPanelLayoutWidthPx ?: return@Runnable
+            pendingConnectionPanelLayoutWidthPx = null
+            if (binding.root.width == expectedWidthPx) {
+                applyConnectionPanelLayout()
+            }
+        }
     private var lastToastMessage: String? = null
     private var lastToastShownAtMs = 0L
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
@@ -956,6 +965,7 @@ class MainActivity : AppCompatActivity() {
                 // Apply chrome margins before cloning the root constraints in
                 // reclampFloatingControls(), so the clone preserves them.
                 applySafeAreaToChrome()
+                applyConnectionPanelLayout()
                 applyControlBarLayout()
                 applyStatusOverlayLayout()
                 clampOverlayIntoSafeRect()
@@ -979,6 +989,7 @@ class MainActivity : AppCompatActivity() {
         ConnectionPanelLayoutApplier.apply(
             resources,
             ConnectionPanelLayoutApplier.Views(
+                panel = binding.settingsPanel,
                 content = binding.connectionContent,
                 header = binding.connectionHeader,
                 actions = binding.connectionActions,
@@ -995,7 +1006,20 @@ class MainActivity : AppCompatActivity() {
      */
     private fun applySafeAreaToChrome() {
         setInsetMargins(binding.controlBar)
+        refreshConnectionPanelBaseMargins()
         setInsetMargins(binding.settingsPanel)
+    }
+
+    private fun refreshConnectionPanelBaseMargins() {
+        val horizontalMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)
+        val verticalMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)
+        baseChromeMargins[binding.settingsPanel.id] =
+            SafeAreaGeometry.Insets.of(
+                left = horizontalMargin,
+                top = verticalMargin,
+                right = horizontalMargin,
+                bottom = verticalMargin,
+            )
     }
 
     private fun setInsetMargins(view: View) {
@@ -1049,6 +1073,7 @@ class MainActivity : AppCompatActivity() {
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
         connectionSubtitleDisclosure.reset()
+        applySafeAreaToChrome()
         applyControlBarLayout()
         applyStatusOverlayLayout()
         if (!isConnected) {
@@ -1172,12 +1197,21 @@ class MainActivity : AppCompatActivity() {
         }
         binding.inputViewport.isFocusableInTouchMode = true
         binding.root.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
-            if (right - left != oldRight - oldLeft) {
+            val widthPx = right - left
+            if (widthPx != oldRight - oldLeft) {
                 applyControlBarLayout()
                 applyStatusOverlayLayout()
+                scheduleConnectionPanelLayoutAfterRootWidthChange(widthPx)
             }
             updateSurfaceViewportLayout()
         }
+    }
+
+    private fun scheduleConnectionPanelLayoutAfterRootWidthChange(widthPx: Int) {
+        if (widthPx <= 0) return
+        pendingConnectionPanelLayoutWidthPx = widthPx
+        binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
+        binding.root.post(pendingConnectionPanelLayoutRunnable)
     }
 
     private fun handleRenderTargetReady(holder: SurfaceHolder) {
@@ -7610,6 +7644,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
+        if (::binding.isInitialized) {
+            binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
+        }
+        pendingConnectionPanelLayoutWidthPx = null
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         clearPendingUsbReconnectCountdown()
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)

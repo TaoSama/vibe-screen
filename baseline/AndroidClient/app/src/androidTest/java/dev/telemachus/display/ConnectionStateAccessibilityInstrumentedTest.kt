@@ -758,6 +758,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
 
     private fun connectionPanelViews(root: ViewGroup): ConnectionPanelLayoutApplier.Views =
         ConnectionPanelLayoutApplier.Views(
+            panel = root.findViewById(R.id.settingsPanel),
             content = root.findViewById(R.id.connectionContent),
             header = root.findViewById(R.id.connectionHeader),
             actions = root.findViewById(R.id.connectionActions),

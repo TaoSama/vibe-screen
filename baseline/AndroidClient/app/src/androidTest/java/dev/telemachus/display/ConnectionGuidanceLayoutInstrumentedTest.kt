@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
@@ -269,6 +270,55 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 layout.assertMinimumTouchTarget(button)
                 layout.assertFullyReachableByScroll(button)
             }
+        }
+    }
+
+    @Test
+    fun portraitToExpandedLandscapeSecondPassUsesSettledRootWidth() {
+        val portraitContext = configuredContext(widthDp = 361, heightDp = 800, fontScale = 1.3f)
+        val landscapeContext = configuredContext(widthDp = 1200, heightDp = 700, fontScale = 1.3f)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(portraitContext)
+            val portrait = MeasuredLayout(portraitContext, root, widthDp = 361, heightDp = 800)
+            portrait.showModeContent(R.id.internetModeContent)
+            portrait.showDisconnectedInternetSecondaryActions()
+            portrait.applyPanel(
+                resources = portraitContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            portrait.measureAndLayout()
+            portrait.assertConfigurationUsesTwoColumns(expected = false)
+            portrait.assertModeToggleStacked()
+            portrait.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            portrait.assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp = 8)
+
+            val staleLandscape = MeasuredLayout(landscapeContext, root, widthDp = 1200, heightDp = 700)
+            staleLandscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            staleLandscape.assertConfigurationUsesTwoColumns(expected = true)
+            staleLandscape.assertModeToggleStacked()
+            staleLandscape.assertInternetProfileActionsStacked(expectedGapDp = 8)
+            staleLandscape.assertDisconnectedInternetSecondaryActionsStacked(expectedGapDp = 8)
+
+            staleLandscape.measureAndLayout()
+            staleLandscape.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            staleLandscape.measureAndLayout()
+
+            staleLandscape.assertConfigurationUsesTwoColumns(expected = true)
+            staleLandscape.assertPanelGeometryUsesResources(landscapeContext.resources)
+            staleLandscape.assertModeToggleHorizontal()
+            staleLandscape.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            staleLandscape.assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+            staleLandscape.assertHeaderAndActionsSeparated()
         }
     }
 
@@ -576,6 +626,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     ) {
         val header = root.findViewById<LinearLayout>(R.id.connectionHeader)
         val actions = root.findViewById<LinearLayout>(R.id.connectionActions)
+        val panel = root.findViewById<View>(R.id.settingsPanel)
         val content = root.findViewById<LinearLayout>(R.id.connectionContent)
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
@@ -622,6 +673,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
 
         private fun views() =
             ConnectionPanelLayoutApplier.Views(
+                panel = panel,
                 content = content,
                 header = header,
                 actions = actions,
@@ -633,12 +685,24 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             connectionMode: ConnectionMode,
             subtitleExpanded: Boolean,
         ) {
+            applyPanelMargins(resources)
             ConnectionPanelLayoutApplier.apply(
                 resources = resources,
                 views = views(),
                 connectionMode = connectionMode,
                 subtitleExpanded = subtitleExpanded,
             )
+        }
+
+        private fun applyPanelMargins(resources: android.content.res.Resources) {
+            val params = panel.layoutParams as ViewGroup.MarginLayoutParams
+            val horizontalMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)
+            val verticalMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)
+            params.marginStart = horizontalMargin
+            params.marginEnd = horizontalMargin
+            params.topMargin = verticalMargin
+            params.bottomMargin = verticalMargin
+            panel.layoutParams = params
         }
 
         fun showModeContent(modeContentId: Int) {
@@ -753,6 +817,18 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(
                 if (expected) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL,
                 content.orientation,
+            )
+        }
+
+        fun assertPanelGeometryUsesResources(resources: android.content.res.Resources) {
+            val params = panel.layoutParams as ConstraintLayout.LayoutParams
+            val expectedMargin = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)
+            assertEquals(resources.getDimensionPixelSize(R.dimen.connection_panel_max_width), params.matchConstraintMaxWidth)
+            assertEquals(expectedMargin, params.marginStart)
+            assertEquals(expectedMargin, params.marginEnd)
+            assertTrue(
+                "panel width ${panel.measuredWidth}px must not exceed max ${params.matchConstraintMaxWidth}px",
+                panel.measuredWidth <= params.matchConstraintMaxWidth,
             )
         }
 
@@ -921,6 +997,21 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(0, linearMargins(internetConnectionSettingsButton).topMargin)
             assertEquals(0, linearMargins(internetRevokeButton).marginStart)
             assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).topMargin)
+        }
+
+        fun assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp: Int) {
+            assertEquals(LinearLayout.HORIZONTAL, internetSecondaryActions.orientation)
+            assertEquals(View.VISIBLE, internetConnectionSettingsButton.visibility)
+            assertEquals(View.GONE, internetDisconnectButton.visibility)
+            assertEquals(View.VISIBLE, internetRevokeButton.visibility)
+            assertEquals(0, internetConnectionSettingsButton.layoutParams.width)
+            assertEquals(0, internetRevokeButton.layoutParams.width)
+            assertEquals(1f, linearMargins(internetConnectionSettingsButton).weight, 0f)
+            assertEquals(1f, linearMargins(internetRevokeButton).weight, 0f)
+            assertEquals(0, linearMargins(internetConnectionSettingsButton).marginStart)
+            assertEquals(0, linearMargins(internetConnectionSettingsButton).topMargin)
+            assertEquals(dp(expectedGapDp), linearMargins(internetRevokeButton).marginStart)
+            assertEquals(0, linearMargins(internetRevokeButton).topMargin)
         }
 
         fun assertPortraitDimensionsInflated() {
