@@ -922,6 +922,103 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun narrowPortraitLargeTextKeepsWirelessAndInternetPrimaryActionsSelfSizing() {
+        listOf(320 to 640, 360 to 800).forEach { (widthDp, heightDp) ->
+            listOf(1.5f, 2.0f).forEach { fontScale ->
+                withLayout(widthDp = widthDp, heightDp = heightDp, fontScale = fontScale) { layout ->
+                    layout.showModeContent(R.id.internetModeContent)
+                    layout.applyPanel(
+                        resources = layout.context.resources,
+                        connectionMode = ConnectionMode.INTERNET,
+                        subtitleExpanded = false,
+                    )
+                    layout.measureAndLayout()
+                    layout.assertPrimaryActionSelfSizes(layout.internetConnectButton)
+
+                    layout.showWirelessState(layout.wirelessFirstTime)
+                    layout.applyPanel(
+                        resources = layout.context.resources,
+                        connectionMode = ConnectionMode.WIRELESS,
+                        subtitleExpanded = false,
+                    )
+                    layout.measureAndLayout()
+                    layout.assertPrimaryActionSelfSizes(layout.wirelessScanButton)
+
+                    layout.showWirelessState(layout.wirelessPairedIdle)
+                    layout.applyPanel(
+                        resources = layout.context.resources,
+                        connectionMode = ConnectionMode.WIRELESS,
+                        subtitleExpanded = false,
+                    )
+                    layout.measureAndLayout()
+                    layout.assertPrimaryActionSelfSizes(layout.wirelessReconnectButton)
+
+                    layout.showWirelessState(layout.wirelessTokenMismatch)
+                    layout.applyPanel(
+                        resources = layout.context.resources,
+                        connectionMode = ConnectionMode.WIRELESS,
+                        subtitleExpanded = false,
+                    )
+                    layout.measureAndLayout()
+                    layout.assertPrimaryActionSelfSizes(layout.wirelessRescanButton)
+
+                    layout.showWirelessState(layout.wirelessPermDenied)
+                    layout.applyPanel(
+                        resources = layout.context.resources,
+                        connectionMode = ConnectionMode.WIRELESS,
+                        subtitleExpanded = false,
+                    )
+                    layout.measureAndLayout()
+                    layout.assertPrimaryActionSelfSizes(layout.wirelessOpenSettingsButton)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun primaryActionSelfSizingSurvivesNarrowWideRoundTripsAtLargeFontScales() {
+        listOf(1.5f to 2.0f, 2.0f to 1.5f).forEach { (narrowFontScale, wideFontScale) ->
+            val narrowContext = configuredContext(widthDp = 320, heightDp = 640, fontScale = narrowFontScale)
+            val wideContext = configuredContext(widthDp = 600, heightDp = 360, fontScale = wideFontScale)
+            val narrowAgainContext = configuredContext(widthDp = 360, heightDp = 800, fontScale = narrowFontScale)
+
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                val root = inflateLayout(narrowContext)
+                val narrow = MeasuredLayout(narrowContext, root, widthDp = 320, heightDp = 640)
+                narrow.showModeContent(R.id.internetModeContent)
+                narrow.applyPanel(
+                    resources = narrowContext.resources,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = false,
+                )
+                narrow.measureAndLayout()
+                narrow.assertConfigurationUsesTwoColumns(expected = false)
+                narrow.assertAllWirelessAndInternetPrimaryActionsSelfSize()
+
+                val wide = MeasuredLayout(wideContext, root, widthDp = 600, heightDp = 360)
+                wide.applyPanel(
+                    resources = wideContext.resources,
+                    connectionMode = ConnectionMode.WIRELESS,
+                    subtitleExpanded = false,
+                )
+                wide.measureAndLayout()
+                wide.assertConfigurationUsesTwoColumns(expected = true)
+                wide.assertAllWirelessAndInternetPrimaryActionsSelfSize()
+
+                val narrowAgain = MeasuredLayout(narrowAgainContext, root, widthDp = 360, heightDp = 800)
+                narrowAgain.applyPanel(
+                    resources = narrowAgainContext.resources,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = false,
+                )
+                narrowAgain.measureAndLayout()
+                narrowAgain.assertConfigurationUsesTwoColumns(expected = false)
+                narrowAgain.assertAllWirelessAndInternetPrimaryActionsSelfSize()
+            }
+        }
+    }
+
+    @Test
     fun openSourceLicensesButtonOpensPackagedNoticesDialog() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val launchIntent = Intent(applicationContext(), MainActivity::class.java)
@@ -1081,7 +1178,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val usbErrorTitle = root.findViewById<TextView>(R.id.connectionErrorTitle)
         val usbErrorMessage = root.findViewById<TextView>(R.id.connectionErrorMessage)
         val checklistContainer = root.findViewById<View>(R.id.checklistContainer)
-        val connectButton = root.findViewById<View>(R.id.connectButton)
+        val connectButton = root.findViewById<TextView>(R.id.connectButton)
         val inlineSettingsButton = root.findViewById<View>(R.id.connectionSettingsButton)
         val usbModeButton = root.findViewById<TextView>(R.id.modeUSB)
         val wirelessModeButton = root.findViewById<TextView>(R.id.modeWireless)
@@ -1090,9 +1187,17 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val internetProfileSummary = root.findViewById<TextView>(R.id.internetProfileSummary)
         val internetStateText = root.findViewById<TextView>(R.id.internetStateText)
         val modeToggle = root.findViewById<LinearLayout>(R.id.modeToggleGroup)
+        val wirelessFirstTime = root.findViewById<View>(R.id.wirelessFirstTime)
+        val wirelessPairedIdle = root.findViewById<View>(R.id.wirelessPairedIdle)
+        val wirelessTokenMismatch = root.findViewById<View>(R.id.wirelessTokenMismatch)
+        val wirelessPermDenied = root.findViewById<View>(R.id.wirelessPermDenied)
+        val wirelessScanButton = root.findViewById<TextView>(R.id.wirelessScanButton)
+        val wirelessReconnectButton = root.findViewById<TextView>(R.id.wirelessReconnectButton)
+        val wirelessRescanButton = root.findViewById<TextView>(R.id.wirelessRescanButton)
+        val wirelessOpenSettingsButton = root.findViewById<TextView>(R.id.wirelessOpenSettingsButton)
         val internetScanProfileButton = root.findViewById<TextView>(R.id.internetScanProfileButton)
         val internetImportProfileButton = root.findViewById<TextView>(R.id.internetImportProfileButton)
-        val internetConnectButton = root.findViewById<View>(R.id.internetConnectButton)
+        val internetConnectButton = root.findViewById<TextView>(R.id.internetConnectButton)
         val internetSecondaryActions = root.findViewById<LinearLayout>(R.id.internetSecondaryActions)
         val internetConnectionSettingsButton = root.findViewById<TextView>(R.id.internetConnectionSettingsButton)
         val internetDisconnectButton = root.findViewById<TextView>(R.id.internetDisconnectButton)
@@ -1148,6 +1253,12 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             internetModeContent.visibility = if (modeContentId == R.id.internetModeContent) View.VISIBLE else View.GONE
         }
 
+        fun showWirelessState(activeState: View) {
+            showModeContent(R.id.wirelessModeContent)
+            listOf(wirelessFirstTime, wirelessPairedIdle, wirelessTokenMismatch, wirelessPermDenied)
+                .forEach { state -> state.visibility = if (state === activeState) View.VISIBLE else View.GONE }
+        }
+
         fun showAllInternetSecondaryActions() {
             internetConnectionSettingsButton.visibility = View.VISIBLE
             internetDisconnectButton.visibility = View.VISIBLE
@@ -1164,6 +1275,53 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             internetConnectionSettingsButton.visibility = View.VISIBLE
             internetDisconnectButton.visibility = View.GONE
             internetRevokeButton.visibility = View.VISIBLE
+        }
+
+        fun assertAllWirelessAndInternetPrimaryActionsSelfSize() {
+            showModeContent(R.id.internetModeContent)
+            applyPanel(
+                resources = context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            measureAndLayout()
+            assertPrimaryActionSelfSizes(internetConnectButton)
+
+            showWirelessState(wirelessFirstTime)
+            applyPanel(
+                resources = context.resources,
+                connectionMode = ConnectionMode.WIRELESS,
+                subtitleExpanded = false,
+            )
+            measureAndLayout()
+            assertPrimaryActionSelfSizes(wirelessScanButton)
+
+            showWirelessState(wirelessPairedIdle)
+            applyPanel(
+                resources = context.resources,
+                connectionMode = ConnectionMode.WIRELESS,
+                subtitleExpanded = false,
+            )
+            measureAndLayout()
+            assertPrimaryActionSelfSizes(wirelessReconnectButton)
+
+            showWirelessState(wirelessTokenMismatch)
+            applyPanel(
+                resources = context.resources,
+                connectionMode = ConnectionMode.WIRELESS,
+                subtitleExpanded = false,
+            )
+            measureAndLayout()
+            assertPrimaryActionSelfSizes(wirelessRescanButton)
+
+            showWirelessState(wirelessPermDenied)
+            applyPanel(
+                resources = context.resources,
+                connectionMode = ConnectionMode.WIRELESS,
+                subtitleExpanded = false,
+            )
+            measureAndLayout()
+            assertPrimaryActionSelfSizes(wirelessOpenSettingsButton)
         }
 
         fun useLongConnectionActionLabels() {
@@ -1277,6 +1435,33 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             )
         }
 
+        fun assertPrimaryActionSelfSizes(button: TextView) {
+            val viewName = button.resources.getResourceEntryName(button.id)
+            assertEquals("$viewName should allow exactly two rendered text lines", 2, button.maxLines)
+            assertEquals("$viewName must not enable ellipsis", null, button.ellipsize)
+            assertTrue("$viewName height was " + button.height + "px", button.height >= dp(56))
+            assertTextRenderedWithoutEllipsis(button)
+            assertTextVerticallyUnclipped(button)
+            assertFullyReachableByScroll(button)
+            assertNoVisibleSiblingOverlap(button)
+        }
+
+        fun assertTextVerticallyUnclipped(text: TextView) {
+            val textLayout = checkNotNull(text.layout)
+            val viewName = text.resources.getResourceEntryName(text.id)
+            val availableTextHeight = (text.height - text.compoundPaddingTop - text.compoundPaddingBottom).coerceAtLeast(0)
+            val lastLineBottom = textLayout.getLineBottom(textLayout.lineCount - 1)
+            assertTrue(
+                "$viewName text bottom $lastLineBottom exceeded available height $availableTextHeight " +
+                    "viewHeight=" + text.height +
+                    " paddingTop=" + text.compoundPaddingTop +
+                    " paddingBottom=" + text.compoundPaddingBottom +
+                    " lineCount=" + textLayout.lineCount +
+                    " text='" + text.text + "'",
+                lastLineBottom <= availableTextHeight,
+            )
+        }
+
         fun assertReadableActionRowFitsActionsColumn(
             gapDp: Int,
             vararg ids: Int,
@@ -1362,6 +1547,26 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 Rect.intersects(boundsInContent(first), boundsInContent(second)),
             )
         }
+
+        fun assertNoVisibleSiblingOverlap(target: View) {
+            val parent = target.parent as? ViewGroup ?: return
+            val targetBounds = boundsInContent(target)
+            for (index in 0 until parent.childCount) {
+                val sibling = parent.getChildAt(index)
+                if (sibling === target || sibling.visibility == View.GONE) continue
+                assertFalse(
+                    viewName(target) + " must not overlap visible sibling " + viewName(sibling),
+                    Rect.intersects(targetBounds, boundsInContent(sibling)),
+                )
+            }
+        }
+
+        private fun viewName(view: View): String =
+            if (view.id != View.NO_ID) {
+                view.resources.getResourceEntryName(view.id)
+            } else {
+                view.javaClass.simpleName
+            }
 
         fun assertGroupedDiagnosticsAccessibility() {
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, usbErrorContainer.accessibilityLiveRegion)

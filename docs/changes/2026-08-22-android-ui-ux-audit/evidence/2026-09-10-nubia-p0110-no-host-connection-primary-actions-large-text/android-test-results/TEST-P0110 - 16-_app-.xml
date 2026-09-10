@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="1.111" timestamp="2026-09-10T09:27:32" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="primaryActionSelfSizingSurvivesNarrowWideRoundTripsAtLargeFontScales" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.3" />
+  <testcase name="narrowPortraitLargeTextKeepsWirelessAndInternetPrimaryActionsSelfSizing" classname="dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest" time="0.175" />
+</testsuite>

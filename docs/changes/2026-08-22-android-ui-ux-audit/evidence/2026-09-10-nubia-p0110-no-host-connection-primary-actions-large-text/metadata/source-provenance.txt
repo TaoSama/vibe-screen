@@ -1,0 +1,7 @@
+repo=git@github.com:TaoSama/vibe-screen.git
+branch=codex/android-connection-button-large-text
+head=d8ef52c8cf23fa8d7de0565d7b3882304f327346
+origin_main=d8ef52c8cf23fa8d7de0565d7b3882304f327346
+head_subject=fix(android): keep legal footer accessible
+pr757_merge=d8ef52c8cf23fa8d7de0565d7b3882304f327346
+local_change=Applies the Android connection primary-action large-text self-sizing diff on top of this source base before running verification.
