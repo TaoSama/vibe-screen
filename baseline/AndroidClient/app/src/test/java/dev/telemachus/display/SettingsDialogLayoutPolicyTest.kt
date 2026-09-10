@@ -43,8 +43,38 @@ class SettingsDialogLayoutPolicyTest {
                 availableWidthPx = 600,
                 availableHeightPx = 420,
                 minimumWidthPx = 600,
+                minimumHeightPx = SETTINGS_TWO_COLUMN_MIN_HEIGHT,
             ),
         )
+    }
+
+    @Test
+    fun `short landscape keeps one settings column`() {
+        assertFalse(
+            SettingsDialogLayoutPolicy.shouldUseTwoColumns(
+                availableWidthPx = 640,
+                availableHeightPx = 320,
+                minimumWidthPx = 600,
+                minimumHeightPx = SETTINGS_TWO_COLUMN_MIN_HEIGHT,
+            ),
+        )
+    }
+
+    @Test
+    fun `columns stay single column when landscape height is too short`() {
+        val columns =
+            SettingsDialogLayoutPolicy.columns(
+                availableWidthPx = 640,
+                availableHeightPx = 320,
+                minimumWidthPx = 600,
+                gapPx = 0,
+                minimumHeightPx = SETTINGS_TWO_COLUMN_MIN_HEIGHT,
+            )
+
+        assertFalse(columns.twoColumns)
+        assertEquals(640, columns.primaryWidthPx)
+        assertEquals(640, columns.controlsWidthPx)
+        assertEquals(640, columns.fullWidthPx)
     }
 
     @Test
@@ -55,6 +85,7 @@ class SettingsDialogLayoutPolicyTest {
                 availableHeightPx = 420,
                 minimumWidthPx = 600,
                 gapPx = 20,
+                minimumHeightPx = SETTINGS_TWO_COLUMN_MIN_HEIGHT,
                 decisionWidthPx = 600,
             )
 
@@ -71,6 +102,7 @@ class SettingsDialogLayoutPolicyTest {
                 availableWidthPx = 600,
                 availableHeightPx = 960,
                 minimumWidthPx = 600,
+                minimumHeightPx = SETTINGS_TWO_COLUMN_MIN_HEIGHT,
             ),
         )
         assertFalse(
@@ -78,7 +110,12 @@ class SettingsDialogLayoutPolicyTest {
                 availableWidthPx = 599,
                 availableHeightPx = 360,
                 minimumWidthPx = 600,
+                minimumHeightPx = SETTINGS_TWO_COLUMN_MIN_HEIGHT,
             ),
         )
+    }
+
+    private companion object {
+        const val SETTINGS_TWO_COLUMN_MIN_HEIGHT = 336
     }
 }

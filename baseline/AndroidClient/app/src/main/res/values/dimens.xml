@@ -7,6 +7,7 @@
     <dimen name="settings_content_padding_bottom">24dp</dimen>
     <dimen name="settings_dialog_max_width">680dp</dimen>
     <dimen name="settings_two_column_min_width">600dp</dimen>
+    <dimen name="settings_two_column_min_height">336dp</dimen>
     <dimen name="settings_column_gap">0dp</dimen>
     <dimen name="settings_header_margin_bottom">32dp</dimen>
     <dimen name="settings_section_padding">16dp</dimen>

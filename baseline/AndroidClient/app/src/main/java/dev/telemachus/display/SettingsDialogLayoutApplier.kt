@@ -31,8 +31,10 @@ internal object SettingsDialogLayoutPolicy {
         availableWidthPx: Int,
         availableHeightPx: Int,
         minimumWidthPx: Int,
+        minimumHeightPx: Int = 0,
     ): Boolean =
         availableWidthPx >= minimumWidthPx &&
+            availableHeightPx >= minimumHeightPx &&
             availableWidthPx > availableHeightPx
 
     fun columns(
@@ -40,16 +42,24 @@ internal object SettingsDialogLayoutPolicy {
         availableHeightPx: Int,
         minimumWidthPx: Int,
         gapPx: Int,
+        minimumHeightPx: Int = 0,
         decisionWidthPx: Int = availableWidthPx,
     ): Columns {
-        val twoColumns = shouldUseTwoColumns(decisionWidthPx, availableHeightPx, minimumWidthPx)
         val width = availableWidthPx.coerceAtLeast(0)
+        val gap = gapPx.coerceAtLeast(0)
+        val candidateColumnWidth = ((width - gap) / 2).coerceAtLeast(0)
+        val twoColumns =
+            shouldUseTwoColumns(
+                availableWidthPx = decisionWidthPx,
+                availableHeightPx = availableHeightPx,
+                minimumWidthPx = minimumWidthPx,
+                minimumHeightPx = minimumHeightPx,
+            )
         return if (twoColumns) {
-            val columnWidth = ((width - gapPx.coerceAtLeast(0)) / 2).coerceAtLeast(0)
             Columns(
                 twoColumns = true,
-                primaryWidthPx = columnWidth,
-                controlsWidthPx = columnWidth,
+                primaryWidthPx = candidateColumnWidth,
+                controlsWidthPx = candidateColumnWidth,
                 fullWidthPx = width,
             )
         } else {
@@ -181,6 +191,7 @@ internal object SettingsDialogLayoutApplier {
                 availableHeightPx = availableHeight,
                 minimumWidthPx = root.resources.getDimensionPixelSize(R.dimen.settings_two_column_min_width),
                 gapPx = gap,
+                minimumHeightPx = root.resources.getDimensionPixelSize(R.dimen.settings_two_column_min_height),
                 decisionWidthPx = measuredWidth(root),
             )
         container.orientation = if (columns.twoColumns) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
@@ -286,9 +297,12 @@ internal object SettingsDialogLayoutApplier {
         twoColumns: Boolean,
         columnWidthPx: Int,
     ): Int {
-        if (!twoColumns) return group.width
         val parent = group.parent as? ViewGroup
         val parentHorizontalPadding = (parent?.paddingStart ?: 0) + (parent?.paddingEnd ?: 0)
+        if (!twoColumns) {
+            return group.width.takeIf { it > 0 }
+                ?: (columnWidthPx - parentHorizontalPadding).coerceAtLeast(0)
+        }
         return (columnWidthPx - parentHorizontalPadding).coerceAtLeast(0)
     }
 
