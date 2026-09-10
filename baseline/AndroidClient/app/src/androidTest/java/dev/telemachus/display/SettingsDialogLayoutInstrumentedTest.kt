@@ -128,9 +128,49 @@ class SettingsDialogLayoutInstrumentedTest {
             assertEquals(LinearLayout.VERTICAL, group.orientation)
             assertTrue(group.isSingleSelection)
             assertTrue(group.isSelectionRequired)
-            assertEquals(layout.context.getString(R.string.display_selection_available), group.contentDescription)
+            assertEquals(layout.context.getString(R.string.display_selection_host_only), group.contentDescription)
             assertReadable(layout, R.id.scaleModeGroup)
             assertAllTextReadable(group)
+        }
+    }
+
+    @Test
+    fun capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow() {
+        listOf(320, 360).forEach { screenWidthDp ->
+            withLayout(screenWidthDp = screenWidthDp, fontScale = 2f) { layout ->
+                renderLongRuntimeCapabilityCopy(layout)
+                layout.measureAndLayout()
+                val displayCapability = layout.root.findViewById<TextView>(R.id.displayCapability)
+                val inputCapability = layout.root.findViewById<TextView>(R.id.inputCapability)
+                val scaleModeGroup = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
+
+                assertEquals(layout.context.getString(R.string.display_selection_available), displayCapability.text.toString())
+                assertEquals(layout.context.getString(R.string.input_capability_touch_only), inputCapability.text.toString())
+                assertEquals(displayCapability.text.toString(), scaleModeGroup.contentDescription.toString())
+                assertCapabilityCopyReadableAndReachable(layout, displayCapability)
+                assertCapabilityCopyReadableAndReachable(layout, inputCapability)
+                assertVerticallyOrdered(layout.root.findViewById(R.id.viewportSection))
+
+                val firstNarrowState = layout.captureCapabilityCopyState()
+                layout.applySettingsDialogLayoutForWidth(600)
+                renderLongRuntimeCapabilityCopy(layout)
+                layout.measureAndLayout()
+                assertCapabilityCopyReadableAndReachable(layout, displayCapability)
+                assertCapabilityCopyReadableAndReachable(layout, inputCapability)
+                val firstWideState = layout.captureCapabilityCopyState()
+
+                layout.applySettingsDialogLayoutForWidth(screenWidthDp)
+                renderLongRuntimeCapabilityCopy(layout)
+                layout.measureAndLayout()
+                assertEquals(firstNarrowState, layout.captureCapabilityCopyState())
+                assertCapabilityCopyReadableAndReachable(layout, displayCapability)
+                assertCapabilityCopyReadableAndReachable(layout, inputCapability)
+
+                layout.applySettingsDialogLayoutForWidth(600)
+                renderLongRuntimeCapabilityCopy(layout)
+                layout.measureAndLayout()
+                assertEquals(firstWideState, layout.captureCapabilityCopyState())
+            }
         }
     }
 
@@ -528,6 +568,24 @@ class SettingsDialogLayoutInstrumentedTest {
         }
     }
 
+    private fun renderLongRuntimeCapabilityCopy(layout: MeasuredLayout) {
+        val displayCapability = layout.root.findViewById<TextView>(R.id.displayCapability)
+        val inputCapability = layout.root.findViewById<TextView>(R.id.inputCapability)
+        val scaleModeGroup = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
+        displayCapability.setText(R.string.display_selection_available)
+        inputCapability.setText(R.string.input_capability_touch_only)
+        scaleModeGroup.contentDescription = displayCapability.text
+    }
+
+    private fun assertCapabilityCopyReadableAndReachable(
+        layout: MeasuredLayout,
+        textView: TextView,
+    ) {
+        assertTrue("${textView.resources.getResourceEntryName(textView.id)} is selectable", textView.isTextSelectable)
+        assertAllTextReadable(textView)
+        assertFullyReachableByScroll(layout, textView)
+    }
+
     private fun captureRoot(layout: MeasuredLayout): File {
         assertNotNull(layout.root.background)
         val bitmap = Bitmap.createBitmap(layout.root.width, layout.root.height, Bitmap.Config.ARGB_8888)
@@ -827,6 +885,21 @@ class SettingsDialogLayoutInstrumentedTest {
         )
     }
 
+    private fun MeasuredLayout.captureCapabilityCopyState(): CapabilityCopyState {
+        val displayCapability = root.findViewById<TextView>(R.id.displayCapability)
+        val inputCapability = root.findViewById<TextView>(R.id.inputCapability)
+        val scaleModeGroup = root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
+        return CapabilityCopyState(
+            displayLineCount = requireNotNull(displayCapability.layout).lineCount,
+            displayWidth = displayCapability.measuredWidth,
+            displayHeight = displayCapability.measuredHeight,
+            inputLineCount = requireNotNull(inputCapability.layout).lineCount,
+            inputWidth = inputCapability.measuredWidth,
+            inputHeight = inputCapability.measuredHeight,
+            scaleModeDescription = scaleModeGroup.contentDescription.toString(),
+        )
+    }
+
     private fun MeasuredLayout.applySettingsDialogLayoutForWidth(widthDp: Int) {
         measureAndLayout(dp(widthDp))
         SettingsDialogLayoutApplier.apply(root)
@@ -923,6 +996,16 @@ class SettingsDialogLayoutInstrumentedTest {
         val switchMarginStart: Int,
         val switchTopMargin: Int,
         val switchGravity: Int,
+    )
+
+    private data class CapabilityCopyState(
+        val displayLineCount: Int,
+        val displayWidth: Int,
+        val displayHeight: Int,
+        val inputLineCount: Int,
+        val inputWidth: Int,
+        val inputHeight: Int,
+        val scaleModeDescription: String,
     )
 
     private companion object {

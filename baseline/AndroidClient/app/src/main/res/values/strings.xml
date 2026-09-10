@@ -58,8 +58,8 @@
     <string name="open_settings">Open Settings</string>
     <string name="display_settings">Display settings</string>
     <string name="viewport">Viewport</string>
-    <string name="display_selection_available">Adjust how the Mac screen fits and rotates on this device.</string>
-    <string name="display_selection_host_only">Adjust fit and rotation here. Display switching is unavailable for this connection.</string>
+    <string name="display_selection_available">Fit and rotation are local. Use stream controls to switch Protocol v1 Mac displays.</string>
+    <string name="display_selection_host_only">Fit and rotation are local. Display switching needs multiple Protocol v1 Mac displays.</string>
     <string name="scale_fit">Fit</string>
     <string name="scale_fill">Fill</string>
     <string name="rotation_description">Change client rotation</string>
@@ -67,7 +67,7 @@
     <string name="rotation_90">90°</string>
     <string name="rotation_180">180°</string>
     <string name="rotation_270">270°</string>
-    <string name="input_capability_touch_only">Touch, long-press right click, drag, scroll, and pinch use the current host touch path. Keyboard shortcuts and native pointer buttons require a compatible negotiated host session.</string>
+    <string name="input_capability_touch_only">Touch uses host touch. Other inputs need negotiated support.</string>
     <string name="transfer_readiness_title">Clipboard &amp; files</string>
     <string name="transfer_readiness_waiting_status">Waiting for a compatible Mac session</string>
     <string name="transfer_readiness_waiting_summary">Clipboard and file controls require Protocol v1.</string>

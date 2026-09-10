@@ -4419,6 +4419,7 @@ class MainActivity : AppCompatActivity() {
         val closeButton = view.findViewById<View>(R.id.closeButton)
         val scaleFitButton = view.findViewById<MaterialButton>(R.id.scaleFitButton)
         val scaleFillButton = view.findViewById<MaterialButton>(R.id.scaleFillButton)
+        val scaleModeGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
         val rotationGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.rotationGroup)
         val rotationButtons =
             mapOf(
@@ -4479,13 +4480,14 @@ class MainActivity : AppCompatActivity() {
         showStatsSwitch.isChecked = prefs.showStatsOverlay
         opacitySlider.value = prefs.overlayOpacity
         opacityValue.text = "${(prefs.overlayOpacity * 100).toInt()}%"
-        displayCapability.setText(
+        val displayCapabilityText =
             if (currentSessionBinding().capabilities.displaySelection) {
                 R.string.display_selection_available
             } else {
                 R.string.display_selection_host_only
-            },
-        )
+            }
+        displayCapability.setText(displayCapabilityText)
+        scaleModeGroup.contentDescription = getString(displayCapabilityText)
         renderTransferReadiness(transferReadinessStatus, transferReadinessSummary)
         renderAudioReadiness(audioReadinessStatus, audioReadinessSummary, audioReadinessCounters)
 

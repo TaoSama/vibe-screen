@@ -104,6 +104,52 @@ class MainActivitySettingsAccessibilityContractTest {
     }
 
     @Test
+    fun viewportCapabilityCopyStaysSourceBoundAndDoesNotOverstateInputSupport() {
+        val source = mainActivitySource()
+        val layout = settingsLayoutSource()
+        val strings = stringsSource()
+        val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
+
+        assertTrue(
+            "Display capability text should default to the unavailable runtime state in raw XML",
+            extractXmlElement(layout, xmlAttribute("android:id", "@+id/displayCapability"))
+                .contains(xmlAttribute("android:text", "@string/display_selection_host_only")),
+        )
+        assertTrue(
+            "The scale-mode group should not announce display switching before runtime capabilities are bound",
+            extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeGroup"))
+                .contains(xmlAttribute("android:contentDescription", "@string/display_selection_host_only")),
+        )
+        assertTrue(
+            "Capability copy should stay selectable so long text can be read and copied under large text",
+            extractXmlElement(layout, xmlAttribute("android:id", "@+id/displayCapability"))
+                .contains(xmlAttribute("android:textIsSelectable", "true")) &&
+                extractXmlElement(layout, xmlAttribute("android:id", "@+id/inputCapability"))
+                    .contains(xmlAttribute("android:textIsSelectable", "true")),
+        )
+        assertTrue(
+            "Runtime display selection state should bind one source of truth to visible and accessibility copy",
+            showSettingsDialog.contains("val displayCapabilityText =") &&
+                showSettingsDialog.contains("R.string.display_selection_available") &&
+                showSettingsDialog.contains("R.string.display_selection_host_only") &&
+                showSettingsDialog.contains("displayCapability.setText(displayCapabilityText)") &&
+                showSettingsDialog.contains("scaleModeGroup.contentDescription = getString(displayCapabilityText)"),
+        )
+        assertTrue(
+            "Available display copy should be scoped to a negotiated Mac session",
+            strings.contains("Use stream controls to switch Protocol v1 Mac displays"),
+        )
+        assertTrue(
+            "Unavailable display copy should explain the Protocol v1 and multiple-display requirement",
+            strings.contains("Display switching needs multiple Protocol v1 Mac displays"),
+        )
+        assertTrue(
+            "Input copy should not claim hardware keyboard, pointer, stylus, or controller acceptance from touch-only evidence",
+            strings.contains("Other inputs need negotiated support"),
+        )
+    }
+
+    @Test
     fun controlBarManagedPolicyDenialKeepsDisabledControlsExplainable() {
         val source = mainActivitySource()
         val strings = stringsSource()

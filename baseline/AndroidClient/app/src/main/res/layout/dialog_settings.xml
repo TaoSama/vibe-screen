@@ -259,14 +259,16 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:layout_marginBottom="12dp"
+                        android:text="@string/display_selection_host_only"
                         android:textColor="@color/on_surface_muted"
+                        android:textIsSelectable="true"
                         android:textSize="13sp" />
 
                     <com.google.android.material.button.MaterialButtonToggleGroup
                         android:id="@+id/scaleModeGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:contentDescription="@string/display_selection_available"
+                        android:contentDescription="@string/display_selection_host_only"
                         app:selectionRequired="true"
                         app:singleSelection="true">
 
@@ -352,11 +354,13 @@
                     </com.google.android.material.button.MaterialButtonToggleGroup>
 
                     <TextView
+                        android:id="@+id/inputCapability"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         android:text="@string/input_capability_touch_only"
                         android:textColor="@color/warning"
+                        android:textIsSelectable="true"
                         android:textSize="13sp" />
                 </LinearLayout>
             </LinearLayout>
