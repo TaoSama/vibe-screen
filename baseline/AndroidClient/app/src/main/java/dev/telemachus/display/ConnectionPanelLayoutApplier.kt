@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.google.android.material.button.MaterialButtonToggleGroup
+import kotlin.math.roundToInt
 
 internal object ConnectionPanelLayoutApplier {
     data class Views(
@@ -38,12 +39,16 @@ internal object ConnectionPanelLayoutApplier {
             }
         views.content.gravity = layout.contentGravity
         val stackedContent = layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL
+        val actionsAvailableWidthPx = actionsAvailableWidthPx(resources, views, layout)
         applyModeToggleLayout(
             views = views,
             layout =
                 ConnectionModeToggleLayoutPolicy.resolve(
                     stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
+                    availableWidthPx = actionsAvailableWidthPx,
+                    minimumHorizontalButtonWidthPx =
+                        dp(resources, ConnectionModeToggleLayoutPolicy.MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP),
                 ),
         )
         applyInternetProfileActionsLayout(
@@ -52,7 +57,10 @@ internal object ConnectionPanelLayoutApplier {
                 InternetProfileActionsLayoutPolicy.resolve(
                     stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
+                    availableWidthPx = actionsAvailableWidthPx,
                     gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
+                    minimumHorizontalButtonWidthPx =
+                        dp(resources, InternetProfileActionsLayoutPolicy.MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP),
                 ),
         )
         applyInternetSecondaryActionsLayout(
@@ -61,7 +69,11 @@ internal object ConnectionPanelLayoutApplier {
                 InternetSecondaryActionsLayoutPolicy.resolve(
                     stackedContent = stackedContent,
                     fontScale = resources.configuration.fontScale,
+                    availableWidthPx = actionsAvailableWidthPx,
                     gapPx = resources.getDimensionPixelSize(R.dimen.connection_profile_action_gap),
+                    minimumHorizontalButtonWidthPx =
+                        dp(resources, InternetSecondaryActionsLayoutPolicy.MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP),
+                    layoutButtonCount = layoutPresentInternetSecondaryActionCount(views),
                 ),
         )
         applyDiagnosticsLayout(
@@ -95,6 +107,70 @@ internal object ConnectionPanelLayoutApplier {
         applyColumn(views.actions, layout.actions, startGapPx = layout.columnGapPx)
         ConnectionStateAccessibilityApplier.apply(views.content)
         return layout
+    }
+
+    private fun actionsAvailableWidthPx(
+        resources: Resources,
+        views: Views,
+        layout: ConnectionPanelLayoutPolicy.Layout,
+    ): Int {
+        val contentWidthPx = connectionContentWidthPx(resources, views)
+        if (layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL) {
+            return contentWidthPx
+        }
+        val columnsWidthPx = (contentWidthPx - layout.columnGapPx).coerceAtLeast(0)
+        val totalWeight = ConnectionPanelLayoutPolicy.HEADER_WEIGHT + ConnectionPanelLayoutPolicy.ACTIONS_WEIGHT
+        return (columnsWidthPx * ConnectionPanelLayoutPolicy.ACTIONS_WEIGHT / totalWeight).roundToInt()
+    }
+
+    private fun connectionContentWidthPx(
+        resources: Resources,
+        views: Views,
+    ): Int {
+        val measuredContentWidthPx = views.content.width - views.content.paddingStart - views.content.paddingEnd
+        val measuredActionsWidthPx = views.actions.width
+        val measuredWidthPx = maxOf(measuredContentWidthPx, measuredActionsWidthPx).takeIf { it > 0 }
+        val screenWidthPx =
+            if (resources.configuration.screenWidthDp > 0) {
+                dp(resources, resources.configuration.screenWidthDp.toFloat())
+            } else {
+                resources.displayMetrics.widthPixels
+            }
+        val panelWidthPx =
+            (screenWidthPx - connectionPanelHorizontalMarginsPx(resources, views))
+                .coerceAtLeast(0)
+                .coerceAtMost(resources.getDimensionPixelSize(R.dimen.connection_panel_max_width))
+        val configuredContentWidthPx =
+            (panelWidthPx - resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding) * 2)
+                .coerceAtLeast(0)
+        return measuredWidthPx?.coerceAtMost(configuredContentWidthPx) ?: configuredContentWidthPx
+    }
+
+    private fun dp(
+        resources: Resources,
+        value: Float,
+    ): Int = (value * resources.displayMetrics.density).roundToInt()
+
+    private fun connectionPanelHorizontalMarginsPx(
+        resources: Resources,
+        views: Views,
+    ): Int {
+        val panel = views.content.rootView.findViewById<View>(R.id.settingsPanel)
+        val margins = panel?.layoutParams as? ViewGroup.MarginLayoutParams
+        return if (margins != null) {
+            (margins.marginStart + margins.marginEnd).coerceAtLeast(0)
+        } else {
+            resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal) * 2
+        }
+    }
+
+    private fun layoutPresentInternetSecondaryActionCount(views: Views): Int {
+        val actions = requiredView(views.actions, R.id.internetSecondaryActions) as? LinearLayout ?: return 0
+        return listOf(
+            R.id.internetConnectionSettingsButton,
+            R.id.internetDisconnectButton,
+            R.id.internetRevokeButton,
+        ).count { id -> requiredView(actions, id).visibility != View.GONE }
     }
 
     private fun applySubtitleDisclosure(

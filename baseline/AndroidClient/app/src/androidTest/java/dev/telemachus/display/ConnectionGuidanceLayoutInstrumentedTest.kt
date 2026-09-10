@@ -197,10 +197,78 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             layout.assertConfigurationUsesTwoColumns(expected = true)
             layout.assertTextRenderedWithoutEllipsis(layout.internetProfileSummary)
             layout.assertTextRenderedWithoutEllipsis(layout.internetStateText)
-            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            layout.assertInternetProfileActionsStacked(expectedGapDp = 8)
             layout.assertPrimaryInternetActionVisible()
             layout.assertMinimumTouchTarget(layout.internetConnectButton)
             layout.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
+    fun narrowTwoColumnLandscapeLargeTextStacksActionRowsWithoutClipping() {
+        listOf(1.3f, 1.5f, 2.0f).forEach { fontScale ->
+            withLayout(widthDp = 600, heightDp = 360, fontScale = fontScale) { layout ->
+                layout.showModeContent(R.id.internetModeContent)
+                layout.showAllInternetSecondaryActions()
+                layout.applyPanel(
+                    resources = layout.context.resources,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = false,
+                )
+                layout.measureAndLayout()
+
+                layout.assertConfigurationUsesTwoColumns(expected = true)
+                layout.assertModeToggleStacked()
+                layout.assertInternetProfileActionsStacked(expectedGapDp = 8)
+                layout.assertInternetSecondaryActionsStacked(expectedGapDp = 8)
+                listOf(
+                    layout.usbModeButton,
+                    layout.wirelessModeButton,
+                    layout.internetModeButton,
+                    layout.internetScanProfileButton,
+                    layout.internetImportProfileButton,
+                    layout.internetConnectionSettingsButton,
+                    layout.internetDisconnectButton,
+                    layout.internetRevokeButton,
+                ).forEach { button ->
+                    layout.assertTextRenderedWithoutEllipsis(button)
+                    layout.assertMinimumTouchTarget(button)
+                    layout.assertFullyReachableByScroll(button)
+                }
+                layout.assertHeaderAndActionsSeparated()
+            }
+        }
+    }
+
+    @Test
+    fun wideTwoColumnLandscapeDefaultTextKeepsActionRowsHorizontal() {
+        withLayout(widthDp = 800, heightDp = 361, fontScale = 1.0f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.showAllInternetSecondaryActions()
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertModeToggleHorizontal()
+            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            layout.assertInternetSecondaryActionsHorizontal(expectedGapDp = 8)
+            listOf(
+                layout.usbModeButton,
+                layout.wirelessModeButton,
+                layout.internetModeButton,
+                layout.internetScanProfileButton,
+                layout.internetImportProfileButton,
+                layout.internetConnectionSettingsButton,
+                layout.internetDisconnectButton,
+                layout.internetRevokeButton,
+            ).forEach { button ->
+                layout.assertMinimumTouchTarget(button)
+                layout.assertFullyReachableByScroll(button)
+            }
         }
     }
 
@@ -523,6 +591,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val internetProfileActions = root.findViewById<LinearLayout>(R.id.internetProfileActions)
         val internetProfileSummary = root.findViewById<TextView>(R.id.internetProfileSummary)
         val internetStateText = root.findViewById<TextView>(R.id.internetStateText)
+        val modeToggle = root.findViewById<LinearLayout>(R.id.modeToggleGroup)
         val internetScanProfileButton = root.findViewById<TextView>(R.id.internetScanProfileButton)
         val internetImportProfileButton = root.findViewById<TextView>(R.id.internetImportProfileButton)
         val internetConnectButton = root.findViewById<View>(R.id.internetConnectButton)
@@ -535,7 +604,6 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
         private val title = root.findViewById<View>(R.id.connectionTitle)
         private val progress = root.findViewById<View>(R.id.connectionProgress)
-        private val modeToggle = root.findViewById<View>(R.id.modeToggleGroup)
         private val internetRouteLabel = root.findViewById<View>(R.id.internetRouteLabel)
         private val internetRouteToggle = root.findViewById<View>(R.id.internetRouteToggleGroup)
         private val internetConnect = internetConnectButton
@@ -728,6 +796,22 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(dp(12), usbErrorContainer.paddingEnd)
             assertEquals(dp(12), usbErrorContainer.paddingBottom)
             assertEquals(dp(8), margins(usbErrorTitle).bottomMargin)
+        }
+
+        fun assertModeToggleStacked() {
+            assertEquals(LinearLayout.VERTICAL, modeToggle.orientation)
+            listOf(usbModeButton, wirelessModeButton, internetModeButton).forEach { button ->
+                assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, button.layoutParams.width)
+                assertEquals(0f, linearMargins(button).weight, 0f)
+            }
+        }
+
+        fun assertModeToggleHorizontal() {
+            assertEquals(LinearLayout.HORIZONTAL, modeToggle.orientation)
+            listOf(usbModeButton, wirelessModeButton, internetModeButton).forEach { button ->
+                assertEquals(0, button.layoutParams.width)
+                assertEquals(1f, linearMargins(button).weight, 0f)
+            }
         }
 
         fun assertLandscapeDimensionsApplied() {
