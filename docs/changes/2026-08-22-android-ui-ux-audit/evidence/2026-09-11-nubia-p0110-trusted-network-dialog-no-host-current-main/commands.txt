@@ -1,0 +1,22 @@
+# Source and no-Host boundary checks
+git fetch origin main --prune
+git diff --check
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+adb -s <target-nubia-serial> reverse --list
+adb devices -l
+adb -s <target-nubia-serial> shell getprop ro.serialno
+adb -s <target-nubia-serial> shell getprop ro.product.manufacturer
+adb -s <target-nubia-serial> shell getprop ro.product.model
+adb -s <target-nubia-serial> shell getprop ro.product.device
+adb -s <target-nubia-serial> shell getprop ro.build.version.release
+adb -s <target-nubia-serial> shell getprop ro.build.version.sdk
+adb -s <target-nubia-serial> shell getprop ro.build.fingerprint
+adb -s <target-nubia-serial> shell wm size
+adb -s <target-nubia-serial> shell wm density
+adb -s <target-nubia-serial> shell settings get system font_scale
+
+# Android verification, run from baseline/AndroidClient
+./gradlew --no-daemon --max-workers=1 --no-watch-fs -Dkotlin.compiler.execution.strategy=in-process clean
+./gradlew --no-daemon --max-workers=1 --no-watch-fs -Dkotlin.compiler.execution.strategy=in-process :app:testDebugUnitTest --tests dev.telemachus.display.WirelessTabControllerContractTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest
+./gradlew --no-daemon --max-workers=1 --no-watch-fs -Dkotlin.compiler.execution.strategy=in-process :app:compileDebugAndroidTestKotlin
+ANDROID_SERIAL=<target-nubia-serial> ./gradlew --no-daemon --max-workers=1 --no-watch-fs -Dkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest

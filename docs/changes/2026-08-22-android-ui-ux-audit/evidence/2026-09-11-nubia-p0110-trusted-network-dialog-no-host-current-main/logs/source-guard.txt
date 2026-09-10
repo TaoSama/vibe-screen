@@ -1,0 +1,11 @@
+tests=       3
+forbidden=src=76:        .setTitle(R.string.trusted_network_dialog_title)
+77:        .setView(content)
+contract=145:        assertTrue(createDialog.contains(".setTitle(R.string.trusted_network_dialog_title)"))
+202:        assertTrue(createDialog.contains(".setTitle(R.string.trusted_network_dialog_title)"))
+layout=9:    android:paddingStart="8dp"
+11:    android:paddingEnd="8dp"
+25:            android:breakStrategy="balanced"
+26:            android:hyphenationFrequency="normal"
+30:            android:textSize="14sp" />
+main=814:                showDialog = ::showImmersiveDialog,

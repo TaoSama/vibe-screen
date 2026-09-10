@@ -1,0 +1,9 @@
+repository=git@github.com:TaoSama/vibe-screen.git
+branch=codex/trusted-network-material-dialog
+head=035fca2fe61cb1a3879ffcaf6fd811b6df635967
+origin_main=035fca2fe61cb1a3879ffcaf6fd811b6df635967
+merge_base=035fca2fe61cb1a3879ffcaf6fd811b6df635967
+date=2026-09-11
+timezone=Asia/Shanghai
+local_change=trusted network confirmation dialog uses MaterialAlertDialogBuilder with a scrollable custom message view and large-font no-Host Android coverage
+working_tree_diff_sha256=d61b52600c0c8ff5632f754d6220ab12d0bbb0802069eca55ec2abf186461867

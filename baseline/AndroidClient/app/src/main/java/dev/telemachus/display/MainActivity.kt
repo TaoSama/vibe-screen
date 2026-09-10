@@ -811,6 +811,7 @@ class MainActivity : AppCompatActivity() {
                 cameraPerm = cameraPerm,
                 isTrustedLanAcknowledged = { prefs.trustedLanAcknowledged },
                 acknowledgeTrustedLan = { prefs.trustedLanAcknowledged = true },
+                showDialog = ::showImmersiveDialog,
                 onConnectRequested = { host, port, token, deviceName, macName ->
                     wirelessAutoReconnectEnabled = true
                     pendingAutomaticReconnectDelayMs = null

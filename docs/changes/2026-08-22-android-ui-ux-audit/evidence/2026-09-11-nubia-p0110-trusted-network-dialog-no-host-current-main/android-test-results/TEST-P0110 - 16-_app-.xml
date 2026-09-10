@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest" tests="3" failures="0" errors="0" skipped="0" time="0.682" timestamp="2026-09-10T21:31:09" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="materialDialogBuilderAcceptsTrustedNetworkLayoutAndActions" classname="dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest" time="0.03" />
+  <testcase name="restrictedLandscapeLargeFontTrustedNetworkDialogKeepsContentReachable" classname="dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest" time="0.007" />
+  <testcase name="narrowAndLargeFontTrustedNetworkDialogKeepsCopyReadableAndScrollable" classname="dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest" time="0.004" />
+</testsuite>

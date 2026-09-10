@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/trustedNetworkDialogScroll"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fadeScrollbars="true"
+    android:fillViewport="true"
+    android:overScrollMode="ifContentScrolls"
+    android:paddingStart="8dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="16dp"
+    android:scrollIndicators="bottom">
+
+    <LinearLayout
+        android:id="@+id/trustedNetworkDialogContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/trustedNetworkDialogMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:breakStrategy="balanced"
+            android:hyphenationFrequency="normal"
+            android:lineSpacingExtra="2dp"
+            android:text="@string/trusted_network_dialog_message"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>
