@@ -37,6 +37,54 @@ toolchains.
 
 ## Verification
 
+Additional offline capture-lifecycle regression added on 2026-09-10: when
+`ScreenCapture` installs transient streaming resources and then reaches a
+terminal startup/switch/restart failure after `CGDisplayStream` fallback is
+unavailable, it must clear the frame pacer, latest retained pixel buffer,
+stream output callback, stream/delegate references, encoder, display reference,
+SCStream-started state, and encoded-output marker log before surfacing the
+failure. The same contract now also covers terminal-failure restart/start task
+cancellation, single-fire terminal failure reporting, explicit deferred
+`SCStream.stopCapture()` teardown, and main-thread-safe frame-monitor cleanup
+when terminal failure arrives from asynchronous restart work. This covers resource-lifecycle risks
+that are adjacent to Host RSS but does not run the Host or prove long-window
+resident-memory behavior.
+
+Focused offline checks for that lifecycle contract:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest \
+  tools/tests/test_screen_capture_lifecycle_contract.py \
+  tools/tests/test_host_rss_gate.py \
+  tools/tests/test_host_memory_diagnostic.py \
+  tools/tests/test_real_device_gate.py
+```
+
+Current local result: pass, 140 tests.
+
+```sh
+cd baseline/MacHost && swift build -c release
+```
+
+Current local result: pass. The release target built successfully without
+starting the Host application.
+
+```sh
+cd baseline/MacHost && swift test --filter LatestRetainedSlotTests
+```
+
+Current local result: blocked before focused XCTest execution because this
+machine's Command Line Tools environment cannot import XCTest. Representative
+error:
+
+```text
+error: no such module 'XCTest'
+```
+
+No Host GUI, product binary, TCC prompt/change, signing change, Keychain access,
+ADB reverse mapping, Android device session, or two-hour soak was run for this
+offline cleanup check.
+
 Expected focused gate when full Xcode XCTest is available:
 
 ```sh

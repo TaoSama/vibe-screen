@@ -1,4 +1,5 @@
 import XCTest
+import CoreVideo
 @testable import Telemachus
 
 final class LatestRetainedSlotTests: XCTestCase {
@@ -14,6 +15,17 @@ final class LatestRetainedSlotTests: XCTestCase {
         deinit {
             onDeinit?()
         }
+    }
+
+    private final class FakeFrameSink: EncodedFrameSink {
+        let currentSessionEpoch: UInt64 = 1
+
+        func sendFrame(
+            _ data: Data,
+            timestamp: UInt64,
+            isKeyframe: Bool,
+            sessionEpoch: UInt64
+        ) {}
     }
 
     func testStoresOnlyLatestValue() {
@@ -120,5 +132,36 @@ final class LatestRetainedSlotTests: XCTestCase {
         await capture.stopStreaming()
 
         XCTAssertEqual(capture.encodedOutputMarkerCountForSelfTest(), 0)
+    }
+
+    func testScreenCaptureStartFailureClearsTransientStreamingResources() async throws {
+        let capture = try await ScreenCapture()
+        let sink = FakeFrameSink()
+        var pixelBuffer: CVPixelBuffer?
+        XCTAssertEqual(
+            CVPixelBufferCreate(
+                kCFAllocatorDefault,
+                16,
+                16,
+                kCVPixelFormatType_32BGRA,
+                nil,
+                &pixelBuffer
+            ),
+            kCVReturnSuccess
+        )
+        capture.retainPixelBufferForSelfTest(try XCTUnwrap(pixelBuffer))
+        XCTAssertTrue(capture.markEncodedOutputForSelfTest(sessionEpoch: 1))
+        XCTAssertEqual(capture.resourceLifecycleSnapshotForSelfTest().latestPixelBufferRetained, 1)
+
+        do {
+            try await capture.startStreaming(to: sink)
+            XCTFail("startStreaming without configured display should fail closed")
+        } catch {
+            let snapshot = capture.resourceLifecycleSnapshotForSelfTest()
+            XCTAssertFalse(snapshot.encoderPresent)
+            XCTAssertEqual(snapshot.latestPixelBufferRetained, 0)
+            XCTAssertEqual(snapshot.encodedOutputMarkerCount, 0)
+            XCTAssertFalse(snapshot.frameSinkPresent)
+        }
     }
 }

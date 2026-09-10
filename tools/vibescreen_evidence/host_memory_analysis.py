@@ -244,7 +244,13 @@ def _heap_class_watch_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
             "_SetStorage<Int>",
         ),
         "autorelease_pool": ("AutoreleasePool", "NSAutoreleasePool", "@autoreleasepool"),
-        "video_frames": ("FrameContext", "PixelBufferBox", "CVPixelBuffer", "IOSurface"),
+        "video_frames": (
+            "FrameContext",
+            "PixelBufferBox",
+            "LatestRetainedSlot",
+            "CVPixelBuffer",
+            "IOSurface",
+        ),
     }
     empty_group = {
         "first_count": 0,

@@ -404,6 +404,22 @@ All zones: 1 nodes (4K)
             [item["name"] for item in payload["classes"]],
         )
 
+    def test_heap_payload_keeps_latest_retained_slot_outside_top_twenty(self):
+        classes = tuple(
+            HeapClass(f"LargeClass{index}", 1, (100 - index) * 1024, "Swift")
+            for index in range(20)
+        ) + (HeapClass("LatestRetainedSlot<CVPixelBuffer>.Box", 1, 64, "Swift"),)
+
+        payload = _heap_payload(
+            HeapSnapshot(node_count=21, allocated_bytes=MIB, classes=classes),
+            DEFAULT_WATCHED_CLASSES,
+        )
+
+        self.assertIn(
+            "LatestRetainedSlot<CVPixelBuffer>.Box",
+            [item["name"] for item in payload["classes"]],
+        )
+
 
 class HostMemoryAnalysisTests(unittest.TestCase):
     def analyze(self, kind: str, *, depth: int = 1, records=None):
@@ -437,6 +453,7 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         records = memory_records("flat")
         records[0]["heap"]["classes"] = [
             {"name": "PixelBufferBox", "count": 2, "allocated_bytes": 200},
+            {"name": "LatestRetainedSlot<CVPixelBuffer>.Box", "count": 1, "allocated_bytes": 64},
             {"name": "ObservationEntry", "count": 3, "allocated_bytes": 300},
         ]
         records[-1]["heap"]["classes"] = [
@@ -456,10 +473,10 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         self.assertEqual(watched["swiftui_observation"]["allocated_bytes_drift"], 1000)
         self.assertEqual(
             watched["video_frames"]["matched_classes"],
-            ["IOSurface", "PixelBufferBox"],
+            ["IOSurface", "LatestRetainedSlot<CVPixelBuffer>.Box", "PixelBufferBox"],
         )
-        self.assertEqual(watched["video_frames"]["count_drift"], -1)
-        self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 800)
+        self.assertEqual(watched["video_frames"]["count_drift"], -2)
+        self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 736)
 
     def test_custom_heap_watch_extends_required_diagnostic_classes(self):
         watched = _watched_classes(
