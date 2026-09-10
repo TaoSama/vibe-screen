@@ -648,6 +648,46 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun wirelessAndInternetPrimaryActionsMatchUsbSelfSizingButtonContract() {
+        val source = mainActivityLayoutSource()
+        val usbButton = extractXmlElement(source, "android:id=\"@+id/connectButton\"")
+        val targetButtons =
+            listOf(
+                "internetConnectButton",
+                "wirelessScanButton",
+                "wirelessReconnectButton",
+                "wirelessRescanButton",
+                "wirelessOpenSettingsButton",
+            )
+
+        assertSelfSizingPrimaryAction("connectButton", usbButton)
+        targetButtons.forEach { id ->
+            val button = extractXmlElement(source, "android:id=\"@+id/$id\"")
+            assertSelfSizingPrimaryAction(id, button)
+        }
+    }
+
+    @Test
+    fun fontScaleChangesReinflateMainActivityInsteadOfNeedingAButtonHeightApplier() {
+        val manifest = resourceSource("app/src/main/AndroidManifest.xml")
+        val mainActivity = extractXmlElement(manifest, "android:name=\".MainActivity\"")
+        val configChanges =
+            Regex("android:configChanges=\\\"([^\\\"]*)\\\"")
+                .find(mainActivity)
+                ?.groupValues
+                ?.get(1)
+                ?: error("MainActivity configChanges missing")
+
+        assertTrue(configChanges.contains("orientation"))
+        assertTrue(configChanges.contains("screenSize"))
+        assertTrue(configChanges.contains("screenLayout"))
+        assertFalse(
+            "Font-scale changes should use Activity reinflation, so primary button heights do not need a dynamic applier",
+            configChanges.contains("fontScale"),
+        )
+    }
+
+    @Test
     fun internetSecondaryActionsUseResponsiveAccessibleLayout() {
         val source = mainActivityLayoutSource()
         val row = source.substring(
@@ -2117,6 +2157,24 @@ class MainActivityTerminalGuidanceContractTest {
         val selfClosingEnd = source.indexOf("/>", idIndex)
         require(selfClosingEnd >= 0) { "XML element end not found: $idAttribute" }
         return source.substring(openStart, selfClosingEnd + 2)
+    }
+
+    private fun assertSelfSizingPrimaryAction(
+        id: String,
+        button: String,
+    ) {
+        assertFalse(
+            "$id must not pin its height to 56dp because large font text needs room to wrap",
+            button.contains("android:layout_height=\"56dp\""),
+        )
+        assertTrue(
+            "$id should grow from the USB primary action contract instead of clipping text",
+            button.contains("android:layout_height=\"wrap_content\"") &&
+                button.contains("android:minHeight=\"56dp\"") &&
+                button.contains("android:maxLines=\"2\"") &&
+                button.contains("android:singleLine=\"false\"") &&
+                button.contains("android:ellipsize=\"none\""),
+        )
     }
 
     private companion object {

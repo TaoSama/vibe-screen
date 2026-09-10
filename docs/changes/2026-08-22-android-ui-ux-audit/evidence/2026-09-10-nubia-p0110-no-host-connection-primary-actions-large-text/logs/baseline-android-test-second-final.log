@@ -1,0 +1,60 @@
+cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
+Starting a Gradle Daemon, 11 stopped Daemons could not be reused, use --status for details
+> Task :transport:checkKotlinGradlePluginConfigurationErrors
+> Task :transport:compileKotlin UP-TO-DATE
+> Task :transport:compileJava NO-SOURCE
+> Task :transport:processResources NO-SOURCE
+> Task :transport:classes UP-TO-DATE
+> Task :transport:jar UP-TO-DATE
+> Task :transport:compileTestKotlin UP-TO-DATE
+> Task :transport:compileTestJava NO-SOURCE
+> Task :transport:processTestResources NO-SOURCE
+> Task :transport:testClasses UP-TO-DATE
+> Task :transport:test UP-TO-DATE
+> Task :transport:testTransportBoundaryVerifier
+> Task :transport:verifyTransportModuleBoundary
+> Task :transport:check
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateReleaseDependencyLicenses UP-TO-DATE
+> Task :app:generateReleaseSbom UP-TO-DATE
+> Task :app:syncOpenSourceNotices UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:dataBindingGenBaseClassesDebug UP-TO-DATE
+> Task :app:extractDebugProto UP-TO-DATE
+> Task :app:extractIncludeDebugProto UP-TO-DATE
+> Task :app:extractProto UP-TO-DATE
+> Task :app:generateDebugProto UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:extractIncludeDebugUnitTestProto UP-TO-DATE
+> Task :app:extractTestDebugProto UP-TO-DATE
+> Task :app:extractTestProto UP-TO-DATE
+> Task :app:generateDebugUnitTestProto NO-SOURCE
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest UP-TO-DATE
+
+BUILD SUCCESSFUL in 6s
+43 actionable tasks: 4 executed, 39 up-to-date

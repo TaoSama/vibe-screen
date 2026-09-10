@@ -1,0 +1,25 @@
+cd /Users/luwentao/.codex/worktrees/040e/vibe-screen
+EVIDENCE_SERIAL=REDACTED_P0110_USB_SERIAL
+
+git fetch origin main --prune
+gh pr view 757 --json number,title,state,mergeCommit,headRefName,baseRefName,url
+adb devices -l
+adb -s "$EVIDENCE_SERIAL" reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+git diff --check
+
+cd baseline/AndroidClient
+./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --rerun-tasks
+./gradlew --no-daemon :app:compileDebugAndroidTestKotlin
+ANDROID_SERIAL="$EVIDENCE_SERIAL" ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest
+ANDROID_SERIAL="$EVIDENCE_SERIAL" ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest#narrowPortraitLargeTextKeepsWirelessAndInternetPrimaryActionsSelfSizing,dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest#primaryActionSelfSizingSurvivesNarrowWideRoundTripsAtLargeFontScales
+./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest
+./gradlew --no-daemon :app:compileDebugAndroidTestKotlin
+ANDROID_SERIAL="$EVIDENCE_SERIAL" ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest#narrowPortraitLargeTextKeepsWirelessAndInternetPrimaryActionsSelfSizing,dev.telemachus.display.ConnectionGuidanceLayoutInstrumentedTest#primaryActionSelfSizingSurvivesNarrowWideRoundTripsAtLargeFontScales
+./gradlew --no-daemon :transport:check testDebugUnitTest
+
+cd /Users/luwentao/.codex/worktrees/040e/vibe-screen
+make baseline-android-test
+adb devices -l
+adb -s "$EVIDENCE_SERIAL" reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
