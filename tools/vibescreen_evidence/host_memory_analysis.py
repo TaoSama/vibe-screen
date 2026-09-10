@@ -60,6 +60,14 @@ SUFFICIENCY_FIELDS = (
     *(f"heap_{field}_complete" for field in HEAP_COMPLETENESS_FIELDS),
     "stream_telemetry",
 )
+VIDEO_FRAME_HEAP_CLASS_SUBSTRINGS = (
+    "FrameContext",
+    "PixelBufferBox",
+    "LatestRetainedSlot",
+    "LatestRetainedSlot<CVPixelBuffer>.Box",
+    "CVPixelBuffer",
+    "IOSurface",
+)
 
 
 def thresholds() -> dict[str, float | int]:
@@ -244,13 +252,7 @@ def _heap_class_watch_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
             "_SetStorage<Int>",
         ),
         "autorelease_pool": ("AutoreleasePool", "NSAutoreleasePool", "@autoreleasepool"),
-        "video_frames": (
-            "FrameContext",
-            "PixelBufferBox",
-            "LatestRetainedSlot",
-            "CVPixelBuffer",
-            "IOSurface",
-        ),
+        "video_frames": VIDEO_FRAME_HEAP_CLASS_SUBSTRINGS,
     }
     empty_group = {
         "first_count": 0,

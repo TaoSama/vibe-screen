@@ -24,6 +24,7 @@ from . import SCHEMA_VERSION
 from .host_memory_analysis import (
     INTERPRETATION,
     SUFFICIENCY_FIELDS,
+    VIDEO_FRAME_HEAP_CLASS_SUBSTRINGS,
     analyze_records,
     thresholds,
 )
@@ -52,11 +53,7 @@ DEFAULT_WATCHED_CLASSES = (
     "_SetStorage<Int>",
     "AutoreleasePool",
     "NSAutoreleasePool",
-    "FrameContext",
-    "PixelBufferBox",
-    "LatestRetainedSlot",
-    "CVPixelBuffer",
-    "IOSurface",
+    *VIDEO_FRAME_HEAP_CLASS_SUBSTRINGS,
 )
 
 
