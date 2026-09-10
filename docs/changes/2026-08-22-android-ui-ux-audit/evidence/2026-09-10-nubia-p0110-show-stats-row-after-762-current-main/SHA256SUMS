@@ -1,0 +1,24 @@
+2851d0b2f14f4ff1b75f0d01438887911eb474e235be93e561709227cefb18db  ./android-test-report/css/base-style.css
+f1b366319836f8726d0939654d0eeddfc5b20f67d9e5954b9a1632c60f2f31bf  ./android-test-report/css/style.css
+733c721caaa8c624b137926d014c6f2406d6e04bf85fe37059bdaac79b686278  ./android-test-report/dev.telemachus.display.html
+b53b8fd00507e43a3c126a48608d85450b17dafb5848bd8d6e2bee06898d440d  ./android-test-report/dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.html
+fc12fc9c36cbbcf4f28d38465c9dac022b35c3f51264e5bf51826197f921a479  ./android-test-report/index.html
+0aa306f94805890682c639b2d5c06108801d64b859a171a3c6eea66c8bab4c6a  ./android-test-report/js/report.js
+313fd5595547f068ca2ef83e14e8e9df56e01022fa940573a8a3d27da5b484fe  ./android-test-results/TEST-P0110 - 16-_app-.xml
+e42f569dacf695f1dd66ab7215ba8841cbb19a76076ada01bc2805b1a1436366  ./commands.txt
+061e460d739a1f52d052b33927e472b289d2d8add3bc2477bca127c2f186f02f  ./logs/adb-devices.txt
+d307ca86b139c7dd7f4e8e8822f9673a48c6ddd3570dced9c2710c969f4f2994  ./logs/connected-settings-dialog-instrumentation.log
+4de1ea0e2e3720b3dc8990e1c4c6362c7f3bd492c2249c5e6cd509d2d9c588d9  ./logs/focused-settings-jvm.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/git-diff-check.txt
+9ab5fb97704566842ba264b7839c3fb8b980320297ef91005d0c8dddcea15f13  ./logs/gradle-compile-debug-androidtest-kotlin.log
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  ./logs/no-host-boundary-lsof-54321-after-status.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/no-host-boundary-lsof-54321-after.txt
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  ./logs/no-host-boundary-lsof-54321-before-status.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/no-host-boundary-lsof-54321-before.txt
+5a2d8e008650aa864f85f5d8b42e2f911c7db26d7e35f9ae68f5f311b41db271  ./logs/no-host-boundary-lsof-command.txt
+7c38aa6481ad37f1b1b6b3ebf6002b2c2e829d7fc9a10353198138ac6fd13f73  ./metadata/device-identity.txt
+6fb43016d6153dd58a1cc616640e813e54a2c9fcfb2a0146c337ec2fbf1eb0a4  ./metadata/source-provenance.txt
+b6dccbf54135383d7071d5adde7de18f3e65a738e50ffab55ce5f160aedf620d  ./README.md
+41de429e1fdc5cfc2bb41ba2646f8485e12f597f79911cc365b3765df0cb9c32  ./unit-test-results/TEST-dev.telemachus.display.DesignTokenContrastTest.xml
+104c0f568c1edb6943d829ad3836109a1adb5dd4a87dea9575b5473bdde2db82  ./unit-test-results/TEST-dev.telemachus.display.MainActivitySettingsAccessibilityContractTest.xml
+da3ecdcf0a7cb9a7f7d62ac017d37f9ab0ea4a51562fd7576b50330745296fc5  ./unit-test-results/TEST-dev.telemachus.display.SettingsDialogLayoutPolicyTest.xml

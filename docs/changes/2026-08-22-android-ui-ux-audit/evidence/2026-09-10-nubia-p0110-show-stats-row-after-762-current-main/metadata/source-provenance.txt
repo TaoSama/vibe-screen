@@ -1,0 +1,10 @@
+repository=git@github.com:TaoSama/vibe-screen.git
+branch=codex/settings-show-stats-row-responsive
+head=6f463421efb2a7a8c89c3cccb111b4d1441aa6c3
+origin_main=6f463421efb2a7a8c89c3cccb111b4d1441aa6c3
+origin_main_contains_pr_762_merge=yes
+base_subject=fix(android): improve pairing completion error guidance (#762)
+date=2026-09-10
+timezone=Asia/Shanghai
+local_change=Android Settings dialog showStatsRow side-effect-free responsive layout and accessibility regression coverage.
+working_tree_diff_sha256=604b0555437920ad08c81d5392bfb426515acd3ceb1214bbb97abb77eba25d9c

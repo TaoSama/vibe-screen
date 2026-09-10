@@ -1,0 +1,60 @@
+All commands were run from the repository root unless noted. Device commands
+used the connected Nubia P0110/pacific serial verified by `adb devices -l`;
+retained artifacts redact it as `<redacted-adb-serial>`. No `adb reverse`
+command was run.
+
+EVID=docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-10-nubia-p0110-show-stats-row-after-762-current-main
+SERIAL=<redacted-adb-serial>
+
+git fetch origin main --prune
+git rebase origin/main
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base --is-ancestor 6f463421efb2a7a8c89c3cccb111b4d1441aa6c3 origin/main
+
+adb devices -l > "$EVID/logs/adb-devices.txt"
+adb -s "$SERIAL" shell getprop ro.product.manufacturer
+adb -s "$SERIAL" shell getprop ro.product.model
+adb -s "$SERIAL" shell getprop ro.product.device
+adb -s "$SERIAL" shell getprop ro.build.version.release
+adb -s "$SERIAL" shell getprop ro.build.version.sdk
+adb -s "$SERIAL" shell getprop ro.build.fingerprint
+adb -s "$SERIAL" shell wm size
+adb -s "$SERIAL" shell wm density
+adb -s "$SERIAL" shell settings get system font_scale
+
+command -v lsof > "$EVID/logs/no-host-boundary-lsof-command.txt"
+if lsof -nP -iTCP:54321 -sTCP:LISTEN > "$EVID/logs/no-host-boundary-lsof-54321-before.txt" 2>&1; then
+  printf '0\n' > "$EVID/logs/no-host-boundary-lsof-54321-before-status.txt"
+else
+  printf '%s\n' "$?" > "$EVID/logs/no-host-boundary-lsof-54321-before-status.txt"
+fi
+
+git diff --check > "$EVID/logs/git-diff-check.txt" 2>&1
+
+(cd baseline/AndroidClient && ./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests dev.telemachus.display.SettingsDialogLayoutPolicyTest \
+  --tests dev.telemachus.display.MainActivitySettingsAccessibilityContractTest \
+  --tests dev.telemachus.display.DesignTokenContrastTest) > "$EVID/logs/focused-settings-jvm.log" 2>&1
+
+(cd baseline/AndroidClient && ./gradlew --no-daemon :app:compileDebugAndroidTestKotlin) > "$EVID/logs/gradle-compile-debug-androidtest-kotlin.log" 2>&1
+
+(cd baseline/AndroidClient && ANDROID_SERIAL="$SERIAL" ./gradlew --no-daemon :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest) > "$EVID/logs/connected-settings-dialog-instrumentation.log" 2>&1
+
+if lsof -nP -iTCP:54321 -sTCP:LISTEN > "$EVID/logs/no-host-boundary-lsof-54321-after.txt" 2>&1; then
+  printf '0\n' > "$EVID/logs/no-host-boundary-lsof-54321-after-status.txt"
+else
+  printf '%s\n' "$?" > "$EVID/logs/no-host-boundary-lsof-54321-after-status.txt"
+fi
+
+cp "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/TEST-P0110 - 16-_app-.xml" "$EVID/android-test-results/"
+cp "baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/test-result.textproto" "$EVID/android-test-results/" 2>/dev/null || true
+cp baseline/AndroidClient/app/build/test-results/testDebugUnitTest/TEST-dev.telemachus.display.SettingsDialogLayoutPolicyTest.xml "$EVID/unit-test-results/"
+cp baseline/AndroidClient/app/build/test-results/testDebugUnitTest/TEST-dev.telemachus.display.MainActivitySettingsAccessibilityContractTest.xml "$EVID/unit-test-results/"
+cp baseline/AndroidClient/app/build/test-results/testDebugUnitTest/TEST-dev.telemachus.display.DesignTokenContrastTest.xml "$EVID/unit-test-results/"
+cp -R baseline/AndroidClient/app/build/reports/androidTests/connected/debug/. "$EVID/android-test-report/"
+
+find "$EVID" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 | sed "s#  $EVID/#  ./#" > "$EVID/SHA256SUMS"
+(cd "$EVID" && shasum -a 256 -c SHA256SUMS) > "$EVID/logs/sha256-check.txt" 2>&1

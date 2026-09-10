@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CompoundButton
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -55,6 +56,8 @@ class SettingsDialogLayoutInstrumentedTest {
     fun showStatsRowRestoresLayoutAcrossNarrowWideReflow() {
         withLayout(screenWidthDp = 600, fontScale = 2f) { layout ->
             val sameRow = layout.root.findViewById<LinearLayout>(R.id.showStatsRow)
+            val statsSwitch = layout.root.findViewById<CompoundButton>(R.id.showStatsSwitch)
+            statsSwitch.isChecked = true
 
             assertShowStatsRowState(layout, LinearLayout.HORIZONTAL)
             val firstHorizontal = layout.captureShowStatsState()
@@ -62,23 +65,25 @@ class SettingsDialogLayoutInstrumentedTest {
             assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
             assertEquals(firstHorizontal, layout.captureShowStatsState())
 
-            layout.applySettingsDialogLayoutForWidth(320)
-            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
-            assertShowStatsRowState(layout, LinearLayout.VERTICAL)
-            val firstStacked = layout.captureShowStatsState()
-            layout.applySettingsDialogLayoutForWidth(320)
-            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
-            assertEquals(firstStacked, layout.captureShowStatsState())
+            listOf(320, 360).forEach { narrowWidthDp ->
+                layout.applySettingsDialogLayoutForWidth(narrowWidthDp)
+                assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+                assertShowStatsRowState(layout, LinearLayout.VERTICAL)
+                val firstStacked = layout.captureShowStatsState()
+                layout.applySettingsDialogLayoutForWidth(narrowWidthDp)
+                assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+                assertEquals(firstStacked, layout.captureShowStatsState())
 
-            layout.applySettingsDialogLayoutForWidth(600)
-            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
-            assertShowStatsRowState(layout, LinearLayout.HORIZONTAL)
-            assertEquals(firstHorizontal, layout.captureShowStatsState())
+                layout.applySettingsDialogLayoutForWidth(600)
+                assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+                assertShowStatsRowState(layout, LinearLayout.HORIZONTAL)
+                assertEquals(firstHorizontal, layout.captureShowStatsState())
 
-            layout.applySettingsDialogLayoutForWidth(320)
-            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
-            assertShowStatsRowState(layout, LinearLayout.VERTICAL)
-            assertEquals(firstStacked, layout.captureShowStatsState())
+                layout.applySettingsDialogLayoutForWidth(narrowWidthDp)
+                assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+                assertShowStatsRowState(layout, LinearLayout.VERTICAL)
+                assertEquals(firstStacked, layout.captureShowStatsState())
+            }
         }
     }
 
@@ -865,13 +870,17 @@ class SettingsDialogLayoutInstrumentedTest {
         val textGroup = layout.root.findViewById<LinearLayout>(R.id.showStatsTextGroup)
         val title = layout.root.findViewById<TextView>(R.id.showStatsTitle)
         val description = layout.root.findViewById<TextView>(R.id.showStatsDescription)
-        val statsSwitch = layout.root.findViewById<View>(R.id.showStatsSwitch)
+        val statsSwitch = layout.root.findViewById<CompoundButton>(R.id.showStatsSwitch)
         val textParams = textGroup.layoutParams as LinearLayout.LayoutParams
         val switchParams = statsSwitch.layoutParams as LinearLayout.LayoutParams
 
         assertEquals(expectedOrientation, row.orientation)
         assertEquals(statsSwitch.id, title.labelFor)
         assertEquals(layout.context.getString(R.string.stats_description), description.text.toString())
+        assertNull(row.contentDescription)
+        assertNull(textGroup.contentDescription)
+        assertNull(title.contentDescription)
+        assertNull(description.contentDescription)
         assertNull(statsSwitch.contentDescription)
         assertTrue("show stats switch width", statsSwitch.measuredWidth >= layout.dp(48))
         assertTrue("show stats switch height", statsSwitch.measuredHeight >= layout.dp(48))
@@ -893,13 +902,15 @@ class SettingsDialogLayoutInstrumentedTest {
             assertEquals(layout.context.resources.getDimensionPixelSize(R.dimen.settings_show_stats_switch_gap), switchParams.marginStart)
             assertEquals(0, switchParams.topMargin)
             assertEquals(Gravity.NO_GRAVITY, switchParams.gravity)
+            assertTrue("horizontal show stats text and switch fit row width", textGroup.right <= statsSwitch.left)
+            assertTrue("horizontal show stats switch stays inside row", statsSwitch.right <= row.width - row.paddingEnd)
         }
     }
 
     private fun MeasuredLayout.captureShowStatsState(): ShowStatsRowState {
         val row = root.findViewById<LinearLayout>(R.id.showStatsRow)
         val textGroup = root.findViewById<LinearLayout>(R.id.showStatsTextGroup)
-        val statsSwitch = root.findViewById<View>(R.id.showStatsSwitch)
+        val statsSwitch = root.findViewById<CompoundButton>(R.id.showStatsSwitch)
         val textParams = textGroup.layoutParams as LinearLayout.LayoutParams
         val switchParams = statsSwitch.layoutParams as LinearLayout.LayoutParams
         return ShowStatsRowState(
@@ -910,6 +921,7 @@ class SettingsDialogLayoutInstrumentedTest {
             switchMarginStart = switchParams.marginStart,
             switchTopMargin = switchParams.topMargin,
             switchGravity = switchParams.gravity,
+            switchChecked = statsSwitch.isChecked,
         )
     }
 
@@ -1024,6 +1036,7 @@ class SettingsDialogLayoutInstrumentedTest {
         val switchMarginStart: Int,
         val switchTopMargin: Int,
         val switchGravity: Int,
+        val switchChecked: Boolean,
     )
 
     private data class CapabilityCopyState(
