@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.ProtocolV1Session
+import dev.vibescreen.protocol.v1.FileOffer
 
 /**
  * Owns Protocol v1 session/generation gates for side effects that outlive one
@@ -16,7 +17,7 @@ internal class StreamProtocolSideEffectOwner(
 ) {
     private var activeOwner: ProtocolOwner? = null
     private val pendingWakeHostRequests = LinkedHashMap<ByteString, PendingWakeHostRequest>()
-    private val pendingFileOffers = LinkedHashMap<ByteString, ProtocolOwner>()
+    private val pendingFileOffers = LinkedHashMap<ByteString, PendingFileOffer>()
 
     init {
         require(maximumPendingWakeHostRequests > 0) { "maximumPendingWakeHostRequests must be positive" }
@@ -32,6 +33,11 @@ internal class StreamProtocolSideEffectOwner(
         val requestId: ByteString,
         val owner: ProtocolOwner,
         val correlationId: Long,
+    )
+
+    data class PendingFileOffer(
+        val offer: FileOffer,
+        val owner: ProtocolOwner,
     )
 
     @Synchronized
@@ -74,20 +80,24 @@ internal class StreamProtocolSideEffectOwner(
 
     @Synchronized
     fun trackFileOffer(
-        transferId: ByteString,
+        offer: FileOffer,
         session: ProtocolV1Session,
         connectionGeneration: Long,
     ): Boolean {
         if (!isCurrent(session, connectionGeneration)) return false
+        val transferId = offer.transferId
         if (pendingFileOffers.containsKey(transferId)) return false
         if (pendingFileOffers.size >= maximumPendingFileOffers) return false
-        pendingFileOffers[transferId] = ProtocolOwner(session, connectionGeneration)
+        pendingFileOffers[transferId] = PendingFileOffer(
+            offer = offer,
+            owner = ProtocolOwner(session, connectionGeneration),
+        )
         return true
     }
 
     @Synchronized
     fun claimFileOffer(transferId: ByteString): ProtocolOwner? {
-        val owner = pendingFileOffers.remove(transferId) ?: return null
+        val owner = pendingFileOffers.remove(transferId)?.owner ?: return null
         return if (isCurrent(owner.session, owner.connectionGeneration)) owner else null
     }
 
@@ -98,6 +108,16 @@ internal class StreamProtocolSideEffectOwner(
 
     @Synchronized
     fun hasFileOffer(transferId: ByteString): Boolean = pendingFileOffers.containsKey(transferId)
+
+    @Synchronized
+    fun cancelFileOffersExceeding(maximumFileBytes: Long): List<PendingFileOffer> {
+        val cancelled = pendingFileOffers
+            .values
+            .filter { pending -> pending.offer.byteLength > maximumFileBytes }
+            .toList()
+        cancelled.forEach { pending -> pendingFileOffers.remove(pending.offer.transferId) }
+        return cancelled
+    }
 
     @Synchronized
     fun clearFileOffers() {

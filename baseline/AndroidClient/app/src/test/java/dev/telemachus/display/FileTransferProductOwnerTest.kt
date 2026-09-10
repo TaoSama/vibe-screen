@@ -364,6 +364,48 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `managed policy denial notifies policy denied for active incoming transfers`() {
+        val staging = stagingDirectory()
+        val owner = realIncomingOwner(staging)
+        val cancellations = mutableListOf<Pair<ByteString, String>>()
+        val results = mutableListOf<Pair<Boolean, String>>()
+        owner.onIncomingFileCancelled = { transferId, reason -> cancellations += transferId to reason }
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        val offer = offer(id = 8, payload = "active-incoming".toByteArray())
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(maximumFileBytes = 1024),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+        assertTrue(
+            owner.receiveIncomingChunk(
+                chunk(offer, payload = "active".toByteArray(), final = false),
+                canTransferFiles = true,
+                sessionEpoch = 7,
+            ) is FileTransferProductOwner.IncomingChunkResult.Accepted,
+        )
+        assertTrue(staging.containsPartialDownload())
+
+        owner.applyManagedPolicy(
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = false,
+                maximumFileBytes = 1024,
+            ).toStatus(),
+        )
+
+        assertEquals(listOf(offer.transferId to "policy_denied"), cancellations)
+        assertEquals(listOf(false to "policy_denied"), results)
+        assertEquals(0, owner.activeIncomingTransferCount())
+        assertFalse(staging.containsPartialDownload())
+        staging.deleteRecursively()
+    }
+
+    @Test
     fun `prepared outgoing transfers are cancelled when owner clears before start`() {
         val outgoing = FakeOutgoingTransferStore(id = 9, payload = "pending".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -490,6 +532,200 @@ class FileTransferProductOwnerTest {
             owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
         )
         assertEquals(1, outgoing.cancelCount)
+    }
+
+    @Test
+    fun `managed policy size shrink cancels oversized prepared outgoing before start`() {
+        val outgoing = FakeOutgoingTransferStore(id = 113, payload = "oversized-prepared".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        val results = mutableListOf<Pair<Boolean, String>>()
+        val finished = mutableListOf<ByteString>()
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        owner.onOutgoingFileFinished = { transferId -> finished += transferId }
+        owner.activateSession()
+
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "oversized-prepared.txt").also { it.writeText("oversized-prepared") },
+            "text/plain",
+            FileTransferPolicy(maximumFileBytes = 1024),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+
+        owner.applyManagedPolicy(
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 4,
+            ).toStatus(),
+        )
+
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(listOf(outgoing.offer.transferId), finished)
+        assertEquals(listOf(false to "file_too_large"), results)
+        assertEquals(0, owner.activeOutgoingTransferCount())
+        assertEquals(
+            FileTransferProductOwner.StartOutgoingResult.Stale(null),
+            owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true),
+        )
+        assertEquals(1, outgoing.cancelCount)
+    }
+
+    @Test
+    fun `managed policy size shrink cancels oversized active outgoing transfer`() {
+        val outgoing = FakeOutgoingTransferStore(id = 115, payload = "oversized-active".toByteArray())
+        val owner = owner(outgoing = outgoing)
+        val results = mutableListOf<Pair<Boolean, String>>()
+        val finished = mutableListOf<ByteString>()
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        owner.onOutgoingFileFinished = { transferId -> finished += transferId }
+        owner.activateSession()
+
+        val prepared = owner.prepareOutgoingFile(
+            File(stagingDirectory(), "oversized-active.txt").also { it.writeText("oversized-active") },
+            "text/plain",
+            FileTransferPolicy(maximumFileBytes = 1024),
+        ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        owner.applyManagedPolicy(
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 4,
+            ).toStatus(),
+        )
+
+        assertEquals(1, outgoing.cancelCount)
+        assertEquals(listOf(transferId), finished)
+        assertEquals(listOf(false to "file_too_large"), results)
+        assertEquals(0, owner.activeOutgoingTransferCount())
+        val lateComplete = owner.handleFileComplete(
+            FileTransferComplete.newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(true)
+                .setSha256(outgoing.offer.sha256)
+                .build(),
+        )
+        assertNull(lateComplete.result)
+    }
+
+    @Test
+    fun `managed policy size shrink cancels oversized active incoming transfer`() {
+        val staging = stagingDirectory()
+        val owner = realIncomingOwner(staging)
+        val cancellations = mutableListOf<Pair<ByteString, String>>()
+        val results = mutableListOf<Pair<Boolean, String>>()
+        owner.onIncomingFileCancelled = { transferId, reason -> cancellations += transferId to reason }
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        val offer = offer(id = 114, payload = "oversized-incoming".toByteArray())
+        owner.activateSession()
+        assertTrue(
+            owner.decideFileOffer(
+                offer = offer,
+                acceptedByUser = true,
+                negotiatedPolicy = FileTransferPolicy(maximumFileBytes = 1024),
+                sessionEpoch = 7,
+            ).accepted,
+        )
+        assertEquals(1, owner.activeIncomingTransferCount())
+        assertTrue(
+            owner.receiveIncomingChunk(
+                chunk(offer, payload = "oversized".toByteArray(), final = false),
+                canTransferFiles = true,
+                sessionEpoch = 7,
+            ) is FileTransferProductOwner.IncomingChunkResult.Accepted,
+        )
+        assertTrue(staging.containsPartialDownload())
+
+        owner.applyManagedPolicy(
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 4,
+            ).toStatus(),
+        )
+
+        assertEquals(listOf(offer.transferId to "file_too_large"), cancellations)
+        assertEquals(listOf(false to "file_too_large"), results)
+        assertEquals(0, owner.activeIncomingTransferCount())
+        assertFalse(staging.containsPartialDownload())
+        val lateChunk = owner.receiveIncomingChunk(
+            chunk(offer, payload = "oversized-incoming".toByteArray(), final = true),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+        assertTrue(lateChunk is FileTransferProductOwner.IncomingChunkResult.Rejected)
+        assertEquals("unknown_transfer", (lateChunk as FileTransferProductOwner.IncomingChunkResult.Rejected).reasonCode)
+        staging.deleteRecursively()
+    }
+
+    @Test
+    fun `managed policy size shrink rejects only oversized pending incoming offers`() {
+        val gate = FakePendingOfferGate(maximumPendingOffers = 2)
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val owner = owner(gate = gate, store = store)
+        val session = Any()
+        val cancellations = mutableListOf<Pair<ByteString, String>>()
+        val results = mutableListOf<Pair<Boolean, String>>()
+        val smallOffer = offer(id = 116, payload = ByteArray(4) { 1 })
+        val largeOffer = offer(id = 117, payload = ByteArray(16) { 2 })
+        var callbackCount = 0
+        owner.onFileOffer = { callbackCount += 1 }
+        owner.onIncomingFileCancelled = { transferId, reason -> cancellations += transferId to reason }
+        owner.onFileTransferResult = { accepted, reason -> results += accepted to reason }
+        owner.activateSession()
+
+        assertNull(owner.receiveFileOffer(session, connectionGeneration = 31, offer = smallOffer))
+        assertNull(owner.receiveFileOffer(session, connectionGeneration = 31, offer = largeOffer))
+
+        val update = owner.applyManagedPolicy(
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 8,
+            ).toStatus(),
+        )
+
+        assertEquals(2, callbackCount)
+        val rejection = update.rejectedPendingOffers.single()
+        assertEquals(largeOffer.transferId, rejection.offer.transferId)
+        assertSame(session, rejection.owner.ownerToken)
+        assertEquals(31, rejection.owner.connectionGeneration)
+        assertEquals("file_too_large", rejection.reasonCode)
+        assertEquals(listOf(largeOffer.transferId to "file_too_large"), cancellations)
+        assertEquals(listOf(false to "file_too_large"), results)
+        assertNull(owner.claimFileOfferDecision(largeOffer))
+        assertNotNull(owner.claimFileOfferDecision(smallOffer))
+        assertEquals(0, store.cancelAllCount)
+    }
+
+    @Test
+    fun `managed policy zero size denies and clears pending incoming offers`() {
+        val gate = FakePendingOfferGate(maximumPendingOffers = 2)
+        val owner = owner(gate = gate, store = FakeIncomingTransferStore(stagingDirectory()))
+        val session = Any()
+        val firstOffer = offer(id = 118, payload = ByteArray(1) { 3 })
+        val secondOffer = offer(id = 119, payload = ByteArray(2) { 4 })
+        val cancellations = mutableListOf<ByteString>()
+        owner.onFileOffer = {}
+        owner.onIncomingFileCancelled = { transferId, _ -> cancellations += transferId }
+        owner.activateSession()
+        assertNull(owner.receiveFileOffer(session, connectionGeneration = 37, offer = firstOffer))
+        assertNull(owner.receiveFileOffer(session, connectionGeneration = 37, offer = secondOffer))
+
+        val update = owner.applyManagedPolicy(
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                isManaged = true,
+                fileTransferAllowed = true,
+                maximumFileBytes = 0,
+            ).toStatus(),
+        )
+
+        assertTrue(update.rejectedPendingOffers.isEmpty())
+        assertTrue(cancellations.isEmpty())
+        assertNull(owner.claimFileOfferDecision(firstOffer))
+        assertNull(owner.claimFileOfferDecision(secondOffer))
     }
 
     @Test
@@ -1219,28 +1455,41 @@ class FileTransferProductOwnerTest {
     private class FakePendingOfferGate(
         private val maximumPendingOffers: Int = 16,
     ) : FileTransferProductOwner.PendingOfferGate {
-        private val offers = LinkedHashMap<ByteString, FileTransferProductOwner.PendingOfferOwner>()
+        private val offers = LinkedHashMap<ByteString, FileTransferProductOwner.PendingFileOffer>()
         var clearCount = 0
             private set
 
         override fun trackFileOffer(
-            transferId: ByteString,
+            offer: FileOffer,
             ownerToken: Any,
             connectionGeneration: Long,
         ): Boolean {
+            val transferId = offer.transferId
             if (offers.containsKey(transferId) || offers.size >= maximumPendingOffers) return false
-            offers[transferId] = FileTransferProductOwner.PendingOfferOwner(ownerToken, connectionGeneration)
+            offers[transferId] = FileTransferProductOwner.PendingFileOffer(
+                offer = offer,
+                owner = FileTransferProductOwner.PendingOfferOwner(ownerToken, connectionGeneration),
+            )
             return true
         }
 
         override fun claimFileOffer(transferId: ByteString): FileTransferProductOwner.PendingOfferOwner? =
-            offers.remove(transferId)
+            offers.remove(transferId)?.owner
 
         override fun releaseFileOffer(transferId: ByteString) {
             offers.remove(transferId)
         }
 
         override fun hasFileOffer(transferId: ByteString): Boolean = offers.containsKey(transferId)
+
+        override fun cancelFileOffersExceeding(maximumFileBytes: Long): List<FileTransferProductOwner.PendingFileOffer> {
+            val cancelled = offers
+                .values
+                .filter { pending -> pending.offer.byteLength > maximumFileBytes }
+                .toList()
+            cancelled.forEach { pending -> offers.remove(pending.offer.transferId) }
+            return cancelled
+        }
 
         override fun clearFileOffers() {
             clearCount += 1
@@ -1300,11 +1549,22 @@ class FileTransferProductOwnerTest {
             return removed
         }
 
+        override fun cancelTransfersExceeding(maximumFileBytes: Long): List<ByteString> {
+            val cancelled = activeOffers
+                .filterValues { offer -> offer.byteLength > maximumFileBytes }
+                .keys
+                .toList()
+            cancelled.forEach(::cancel)
+            return cancelled
+        }
+
         override fun contains(transferId: ByteString): Boolean = activeOffers.containsKey(transferId)
 
-        override fun cancelAll() {
+        override fun cancelAll(): List<ByteString> {
             cancelAllCount += 1
+            val cancelled = activeOffers.keys.toList()
             activeOffers.clear()
+            return cancelled
         }
 
         override fun activeTransferCount(): Int = activeOffers.size

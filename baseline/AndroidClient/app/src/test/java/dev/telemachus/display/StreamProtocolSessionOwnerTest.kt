@@ -3,6 +3,7 @@ package dev.telemachus.display
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.FileOffer
 import dev.vibescreen.protocol.v1.TransportKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -86,7 +87,7 @@ class StreamProtocolSessionOwnerTest {
         owner.markConnected()
 
         val transferId = ByteString.copyFromUtf8("transfer")
-        assertTrue(owner.trackFileOffer(transferId, session, owner.connectionGeneration))
+        assertTrue(owner.trackFileOffer(fileOffer(transferId), session, owner.connectionGeneration))
 
         val claimed = owner.claimFileOffer(transferId)
         assertNotNull(claimed)
@@ -103,7 +104,7 @@ class StreamProtocolSessionOwnerTest {
         owner.markConnected()
 
         val transferId = ByteString.copyFromUtf8("transfer")
-        assertTrue(owner.trackFileOffer(transferId, session, owner.connectionGeneration))
+        assertTrue(owner.trackFileOffer(fileOffer(transferId), session, owner.connectionGeneration))
 
         owner.markDisconnected()
         assertNull(owner.claimFileOffer(transferId))
@@ -131,14 +132,14 @@ class StreamProtocolSessionOwnerTest {
         owner.activate(session)
         owner.markConnected()
         val transferId = ByteString.copyFromUtf8("transfer")
-        assertTrue(owner.trackFileOffer(transferId, session, owner.connectionGeneration))
+        assertTrue(owner.trackFileOffer(fileOffer(transferId), session, owner.connectionGeneration))
 
         owner.markTerminationClaimed(SessionFailure.userRequested())
         owner.clearSideEffectAdmission()
 
         assertSame(session, owner.currentSession)
         assertTrue(owner.retainsSession(session, owner.connectionGeneration))
-        assertFalse(owner.trackFileOffer(ByteString.copyFromUtf8("new-transfer"), session, owner.connectionGeneration))
+        assertFalse(owner.trackFileOffer(fileOffer(ByteString.copyFromUtf8("new-transfer")), session, owner.connectionGeneration))
         assertFalse(owner.trackWakeHostRequest(ByteString.copyFromUtf8("new-wake"), session, owner.connectionGeneration))
         assertNull(owner.claimFileOffer(transferId))
         assertFalse(owner.isCurrent(session, owner.connectionGeneration))
@@ -176,7 +177,7 @@ class StreamProtocolSessionOwnerTest {
         owner.markConnected()
 
         val transferId = ByteString.copyFromUtf8("transfer")
-        assertTrue(owner.trackFileOffer(transferId, session, owner.connectionGeneration))
+        assertTrue(owner.trackFileOffer(fileOffer(transferId), session, owner.connectionGeneration))
 
         owner.clear()
 
@@ -213,6 +214,15 @@ class StreamProtocolSessionOwnerTest {
             advertiseController = false,
             advertisePeripheralInputFramework = false,
         )
+
+    private fun fileOffer(transferId: ByteString): FileOffer =
+        FileOffer.newBuilder()
+            .setTransferId(transferId)
+            .setFileName("${transferId.toStringUtf8()}.txt")
+            .setMimeType("text/plain")
+            .setByteLength(1)
+            .setSha256(ByteString.copyFrom(ByteArray(32) { 1 }))
+            .build()
 
     private fun source(relativePath: String): String {
         var current = java.io.File(requireNotNull(System.getProperty("user.dir"))).canonicalFile

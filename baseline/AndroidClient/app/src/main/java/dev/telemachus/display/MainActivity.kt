@@ -309,6 +309,7 @@ class MainActivity : AppCompatActivity() {
     private var localFixedHostAllowed = true
     private var pendingInternetOutgoingFileTransfer: File? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    private var pendingIncomingFileOfferTransferId: ByteString? = null
     private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var pendingOutgoingFileTimeout: Runnable? = null
     private var pendingOutgoingFileSubmissionInFlight = false
@@ -2844,7 +2845,7 @@ class MainActivity : AppCompatActivity() {
             if (!isInForeground ||
                 isFinishing ||
                 isDestroyed ||
-                !productSessionCoordinator.beginIncomingFileOffer(client, generation, offer)
+                !productSessionCoordinator.beginIncomingFileOffer(client, generation, offer.transferId)
             ) {
                 client.respondToFileOffer(offer, accepted = false)
                 return@runOnUiThread
@@ -2852,11 +2853,11 @@ class MainActivity : AppCompatActivity() {
             promptIncomingFileOffer(
                 offer = offer,
                 isCurrentAndAllowed = {
-                    productSessionCoordinator.acceptsIncomingFileOffer(client, generation, offer) &&
+                    productSessionCoordinator.acceptsIncomingFileOffer(client, generation, offer.transferId) &&
                         isCurrentSession(client, generation) &&
                         client.canTransferFiles
                 },
-                finishDecision = { productSessionCoordinator.finishIncomingFileOffer(client, generation, offer) },
+                finishDecision = { productSessionCoordinator.finishIncomingFileOffer(client, generation, offer.transferId) },
                 clearDecision = { productSessionCoordinator.clearIncomingFileOffer() },
                 beginTransfer = {
                     beginIncomingFileTransferState(
@@ -2908,12 +2909,14 @@ class MainActivity : AppCompatActivity() {
 
             var decided = false
             lateinit var timeout: Runnable
+            pendingIncomingFileOfferTransferId = offer.transferId
             val rejectDecision = {
                 if (pendingIncomingFileDialog != null && !decided && finishDecision()) {
                     decided = true
                     fileTransferApprovalHandler.removeCallbacks(timeout)
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
+                    pendingIncomingFileOfferTransferId = null
                     respond(false, "user_denied")
                 }
             }
@@ -2923,6 +2926,7 @@ class MainActivity : AppCompatActivity() {
                     decided = true
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
+                    pendingIncomingFileOfferTransferId = null
                     respond(false, "approval_timeout")
                 }
                 showDedupedToast(R.string.file_transfer_offer_expired)
@@ -2942,6 +2946,7 @@ class MainActivity : AppCompatActivity() {
                         if (!finishDecision()) return@setPositiveButton
                         decided = true
                         pendingIncomingFileDialog = null
+                        pendingIncomingFileOfferTransferId = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
                         if (rejectionReason != null) {
                             respond(false, rejectionReason)
@@ -3212,7 +3217,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hasOutgoingFileTransferAlreadyFinished(transferId: ByteString): Boolean =
-        recentlyFinishedOutgoingTransferIds.remove(transferId)
+        recentlyFinishedOutgoingTransferIds.contains(transferId)
 
     private fun outgoingFileProgressLabel(active: ActiveOutgoingFileTransfer): String {
         val totalBytes = active.byteLength.coerceAtLeast(0L)
@@ -3478,7 +3483,18 @@ class MainActivity : AppCompatActivity() {
     private fun rejectPendingIncomingFileOffer() {
         pendingIncomingFileDialog?.cancel()
         pendingIncomingFileDialog = null
+        pendingIncomingFileOfferTransferId = null
         productSessionCoordinator.clearIncomingFileOffer()
+    }
+
+    private fun rejectPendingIncomingFileOffer(transferId: ByteString): Boolean {
+        if (pendingIncomingFileOfferTransferId != transferId) return false
+        productSessionCoordinator.clearIncomingFileOffer(transferId)
+        pendingIncomingFileDialog?.setOnCancelListener(null)
+        pendingIncomingFileDialog?.dismiss()
+        pendingIncomingFileDialog = null
+        pendingIncomingFileOfferTransferId = null
+        return true
     }
 
     private fun File.deleteRecursivelyBestEffort() {
@@ -5579,6 +5595,7 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@fileCancelled
             runOnUiThread {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                rejectPendingIncomingFileOffer(transferId)
                 if (finishIncomingFileTransferState(transferId)) revealControlBar()
             }
         }
@@ -5920,6 +5937,7 @@ class MainActivity : AppCompatActivity() {
                     if (!isCurrentInternetSession()) return
                     runOnUiThread {
                         if (!isCurrentInternetSession()) return@runOnUiThread
+                        rejectPendingIncomingFileOffer(transferId)
                         if (finishIncomingFileTransferState(transferId)) revealControlBar()
                     }
                 }

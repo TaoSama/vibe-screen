@@ -131,6 +131,59 @@ final class ProtocolV1FileTransferTests: XCTestCase {
         XCTAssertEqual(manager.activeTransferCount, 0)
     }
 
+    func testIncomingManagerFinishDigestMismatchCleansStagingFile() throws {
+        let payload = Data("actual".utf8)
+        let expected = Data("expect".utf8)
+        let directory = temporaryDirectory()
+        let manager = try ProtocolV1IncomingFileTransferManager(
+            policy: ProtocolV1FileTransferPolicy(maximumChunkBytes: 8),
+            directory: directory,
+            approval: { _ in true }
+        )
+        var incomingOffer = offer(payload: expected)
+        incomingOffer.byteLength = UInt64(payload.count)
+        _ = try manager.accept(incomingOffer, remotePolicy: .unmanaged, negotiatedPolicy: .default, sessionEpoch: 7)
+
+        XCTAssertEqual(try manager.append(chunk(offer: incomingOffer, offset: 0, payload: payload, final: true), sessionEpoch: 7), UInt64(payload.count))
+        XCTAssertThrowsError(try manager.finish(transferID: incomingOffer.transferID)) { error in
+            XCTAssertEqual(error as? ProtocolV1FileTransferError, .digestMismatch)
+        }
+
+        XCTAssertEqual(manager.activeTransferCount, 0)
+        XCTAssertTrue((try FileManager.default.contentsOfDirectory(atPath: directory.path)).isEmpty)
+    }
+
+    func testIncomingManagerCancelsOnlyTransfersExceedingShrunkPolicyLimit() throws {
+        let directory = temporaryDirectory()
+        let manager = try ProtocolV1IncomingFileTransferManager(
+            policy: ProtocolV1FileTransferPolicy(
+                maximumFileBytes: 32,
+                maximumChunkBytes: 8,
+                maximumConcurrentTransfers: 2
+            ),
+            directory: directory,
+            approval: { _ in true }
+        )
+        let smallPayload = Data("four".utf8)
+        let largePayload = Data("sixteen-byte-data".utf8)
+        var smallOffer = offer(payload: smallPayload)
+        smallOffer.transferID = Data(repeating: 0x10, count: 16)
+        var largeOffer = offer(payload: largePayload)
+        largeOffer.transferID = Data(repeating: 0x20, count: 16)
+        _ = try manager.accept(smallOffer, remotePolicy: .unmanaged, negotiatedPolicy: manager.policy, sessionEpoch: 7)
+        _ = try manager.accept(largeOffer, remotePolicy: .unmanaged, negotiatedPolicy: manager.policy, sessionEpoch: 7)
+
+        let cancelled = manager.cancelTransfersExceeding(maximumFileBytes: 8)
+
+        XCTAssertEqual(Set(cancelled), Set([largeOffer.transferID]))
+        XCTAssertEqual(manager.activeTransferCount, 1)
+        XCTAssertEqual(try manager.append(chunk(offer: smallOffer, offset: 0, payload: smallPayload, final: true), sessionEpoch: 7), UInt64(smallPayload.count))
+        let completed = try manager.finish(transferID: smallOffer.transferID)
+        XCTAssertEqual(try Data(contentsOf: completed.stagingURL), smallPayload)
+        try FileManager.default.removeItem(at: completed.stagingURL)
+        XCTAssertTrue((try FileManager.default.contentsOfDirectory(atPath: directory.path)).isEmpty)
+    }
+
     func testIncomingManagerAcceptsSingleFinalChunkForEmptyFile() throws {
         let directory = temporaryDirectory()
         let manager = try ProtocolV1IncomingFileTransferManager(

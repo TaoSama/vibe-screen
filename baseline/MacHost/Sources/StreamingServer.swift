@@ -539,7 +539,7 @@ class StreamingServer: EncodedFrameSink {
     private var protocolV1TouchAggregator = ProtocolV1TouchAggregator()
     private var lanSecureRecordFramer = LANSecureRecordStreamFramer()
     private var protocolV1IncomingFiles: ProtocolV1IncomingFileTransferManager?
-    private var protocolV1PendingIncomingFileApprovals: Set<Data> = []
+    private var protocolV1PendingIncomingFileApprovals: [Data: VSFileOffer] = [:]
     private var protocolV1ApprovedIncomingFileOffers: Set<Data> = []
     private var protocolV1ActiveIncomingFileTransfers: Set<Data> = []
     private var protocolV1OutgoingFiles: [Data: ProtocolV1OutgoingFileTransfer] = [:]
@@ -2768,6 +2768,15 @@ class StreamingServer: EncodedFrameSink {
                     cancelProtocolV1ActiveFileTransfers(
                         reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode
                     )
+                } else if let session = protocolV1Session, let conn = connection {
+                    let maximumFileBytes = session.negotiatedFileTransferPolicySnapshot().maximumFileBytes
+                    cancelProtocolV1FileTransfersExceeding(
+                        maximumFileBytes: maximumFileBytes,
+                        reasonCode: ProtocolV1FileTransferError.fileTooLarge(maximumFileBytes).reasonCode,
+                        session: session,
+                        connection: conn,
+                        generation: generation
+                    )
                 }
             case .startAudio(let config):
                 startProtocolV1Audio(config: config, connection: conn, generation: generation)
@@ -2793,7 +2802,7 @@ class StreamingServer: EncodedFrameSink {
         guard let incomingFiles = protocolV1IncomingFiles,
               let session = protocolV1Session else { return }
         do {
-            guard !protocolV1PendingIncomingFileApprovals.contains(offer.transferID) else {
+            guard protocolV1PendingIncomingFileApprovals[offer.transferID] == nil else {
                 throw ProtocolV1FileTransferError.duplicateTransfer
             }
             _ = try incomingFiles.validateOfferForApproval(
@@ -2836,7 +2845,7 @@ class StreamingServer: EncodedFrameSink {
             )
             return
         }
-        protocolV1PendingIncomingFileApprovals.insert(offer.transferID)
+        protocolV1PendingIncomingFileApprovals[offer.transferID] = offer
         Self.requestFileTransferApproval(
             offer: offer,
             approval: onFileTransferApprovalRequested
@@ -2850,7 +2859,7 @@ class StreamingServer: EncodedFrameSink {
                       !self.isStopped,
                       let incomingFiles = self.protocolV1IncomingFiles,
                       let session = self.protocolV1Session,
-                      self.protocolV1PendingIncomingFileApprovals.remove(offer.transferID) != nil else { return }
+                      self.protocolV1PendingIncomingFileApprovals.removeValue(forKey: offer.transferID) != nil else { return }
                 guard self.clientCallbackGeneration.isCurrent(generation) else { return }
                 let response: VSFileAccept
                 if accepted {
@@ -3889,7 +3898,7 @@ class StreamingServer: EncodedFrameSink {
     @discardableResult
     private func cancelProtocolV1IncomingFileTransfer(transferID: Data) -> Bool {
         protocolV1IncomingFiles?.cancel(transferID: transferID)
-        let wasPending = protocolV1PendingIncomingFileApprovals.remove(transferID) != nil
+        let wasPending = protocolV1PendingIncomingFileApprovals.removeValue(forKey: transferID) != nil
         let wasApproved = protocolV1ApprovedIncomingFileOffers.remove(transferID) != nil
         let wasActive = protocolV1ActiveIncomingFileTransfers.remove(transferID) != nil
         return wasPending || wasApproved || wasActive
@@ -3914,7 +3923,7 @@ class StreamingServer: EncodedFrameSink {
 
     private func cancelProtocolV1ActiveFileTransfers(reasonCode: String = "session_deactivated") {
         protocolV1IncomingFiles?.cancelAll()
-        let incomingTransferIDs = protocolV1PendingIncomingFileApprovals
+        let incomingTransferIDs = Set(protocolV1PendingIncomingFileApprovals.keys)
             .union(protocolV1ApprovedIncomingFileOffers)
             .union(protocolV1ActiveIncomingFileTransfers)
         protocolV1PendingIncomingFileApprovals.removeAll()
@@ -3961,6 +3970,77 @@ class StreamingServer: EncodedFrameSink {
         reason: String
     ) {
         onFileTransferResult?(transferID, direction, accepted, reason)
+    }
+
+    private func cancelProtocolV1FileTransfersExceeding(
+        maximumFileBytes: UInt64,
+        reasonCode: String,
+        session: ProtocolV1SessionCoordinator,
+        connection conn: NWConnection,
+        generation: UInt64
+    ) {
+        let rejectedPendingTransferIDs = protocolV1PendingIncomingFileApprovals.compactMap { transferID, offer in
+            offer.byteLength > maximumFileBytes ? transferID : nil
+        }
+        for transferID in rejectedPendingTransferIDs {
+            protocolV1PendingIncomingFileApprovals.removeValue(forKey: transferID)
+            applyProtocolV1Actions(
+                session.makeFileAccept(VSFileAccept.rejected(
+                    transferID: transferID,
+                    reasonCode: reasonCode
+                )),
+                connection: conn,
+                generation: generation
+            )
+            notifyProtocolV1FileTransferResult(
+                transferID: transferID,
+                direction: .incoming,
+                accepted: false,
+                reason: reasonCode
+            )
+        }
+
+        let cancelledIncomingTransferIDs = protocolV1IncomingFiles?.cancelTransfersExceeding(
+            maximumFileBytes: maximumFileBytes
+        ) ?? []
+        for transferID in cancelledIncomingTransferIDs {
+            protocolV1ApprovedIncomingFileOffers.remove(transferID)
+            protocolV1ActiveIncomingFileTransfers.remove(transferID)
+            applyProtocolV1Actions(
+                session.makeFileTransferCancel(
+                    transferID: transferID,
+                    reasonCode: reasonCode
+                ),
+                connection: conn,
+                generation: generation
+            )
+            notifyProtocolV1FileTransferResult(
+                transferID: transferID,
+                direction: .incoming,
+                accepted: false,
+                reason: reasonCode
+            )
+        }
+
+        let cancelledOutgoingTransferIDs = protocolV1OutgoingFiles.compactMap { transferID, transfer in
+            transfer.byteLength > maximumFileBytes ? transferID : nil
+        }
+        for transferID in cancelledOutgoingTransferIDs {
+            protocolV1OutgoingFiles.removeValue(forKey: transferID)?.cancel()
+            applyProtocolV1Actions(
+                session.makeFileTransferCancel(
+                    transferID: transferID,
+                    reasonCode: reasonCode
+                ),
+                connection: conn,
+                generation: generation
+            )
+            notifyProtocolV1OutgoingFileTransferResult(
+                transferID: transferID,
+                accepted: false,
+                reason: reasonCode
+            )
+        }
     }
 }
 

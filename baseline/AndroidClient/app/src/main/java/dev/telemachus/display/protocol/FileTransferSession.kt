@@ -236,8 +236,20 @@ internal class IncomingFileTransferManager(
     }
 
     @Synchronized
-    fun cancelAll() {
-        transfers.keys.toList().forEach { cancelLocked(it) }
+    fun cancelTransfersExceeding(maximumFileBytes: Long): List<ByteString> {
+        val cancelled = transfers
+            .filterValues { state -> state.offer.byteLength > maximumFileBytes }
+            .keys
+            .toList()
+        cancelled.forEach(::cancelLocked)
+        return cancelled
+    }
+
+    @Synchronized
+    fun cancelAll(): List<ByteString> {
+        val cancelled = transfers.keys.toList()
+        cancelled.forEach { cancelLocked(it) }
+        return cancelled
     }
 
     @Synchronized

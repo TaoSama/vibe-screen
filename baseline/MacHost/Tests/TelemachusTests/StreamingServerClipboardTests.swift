@@ -883,6 +883,124 @@ final class StreamingServerClipboardTests: XCTestCase {
         XCTAssertEqual(cancellation.reasonCode, ProtocolV1FileTransferError.incompleteFile.reasonCode)
     }
 
+    func testManagedPolicyShrinkingMaximumFileBytesCancelsIncomingProtocolV1File() throws {
+        let port = try startServer { streamingServer in
+            streamingServer.onFileTransferApprovalRequested = { offer in
+                offer.fileName == "oversized.txt"
+            }
+        }
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(
+            clipboard: false,
+            fileTransfer: true,
+            managedConfiguration: true
+        )
+
+        let payload = Data("oversized".utf8)
+        let transferID = Data(repeating: 0x5A, count: 16)
+        try sendControl(
+            payload: .fileOffer(fileOffer(
+                transferID: transferID,
+                fileName: "oversized.txt",
+                payload: payload
+            )),
+            messageID: 10
+        )
+
+        let acceptEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileAccept = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileAccept(let accept)? = acceptEnvelope?.payload else {
+            return XCTFail("Missing FileAccept")
+        }
+        XCTAssertTrue(accept.accepted)
+
+        try sendBulk(chunk(
+            transferID: transferID,
+            offset: 0,
+            payload: Data("over".utf8),
+            final: false
+        ))
+
+        try sendControl(
+            payload: .managedPolicyStatus(managedPolicyStatus(fileTransferAllowed: true, maximumFileBytes: 4)),
+            messageID: 11
+        )
+
+        let cancelEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileTransferCancel = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileTransferCancel(let cancellation)? = cancelEnvelope?.payload else {
+            return XCTFail("Missing FileTransferCancel")
+        }
+        XCTAssertEqual(cancellation.transferID, transferID)
+        XCTAssertEqual(cancellation.reasonCode, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+    }
+
+    func testManagedPolicyShrinkingMaximumFileBytesCancelsOutgoingProtocolV1File() throws {
+        let port = try startServer()
+
+        client = try readyClient(port: port)
+        try upgradeToProtocolV1()
+        try driveHandshakeToStreaming(
+            clipboard: false,
+            fileTransfer: true,
+            managedConfiguration: true
+        )
+
+        let payload = Data("oversized".utf8)
+        let fileURL = temporaryDirectory().appendingPathComponent("oversized-send.txt")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try payload.write(to: fileURL)
+
+        try server.offerProtocolV1File(fileURL: fileURL, mimeType: "text/plain")
+        let offerEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileOffer = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileOffer(let offer)? = offerEnvelope?.payload else {
+            return XCTFail("Missing FileOffer")
+        }
+
+        var accept = VSFileAccept()
+        accept.transferID = offer.transferID
+        accept.accepted = true
+        accept.maximumChunkBytes = 4
+        try sendControl(payload: .fileAccept(accept), messageID: 10)
+        _ = try receiveFrame(channel: .bulk, timeout: 2)
+
+        try sendControl(
+            payload: .managedPolicyStatus(managedPolicyStatus(fileTransferAllowed: true, maximumFileBytes: 4)),
+            messageID: 11
+        )
+
+        let cancelEnvelope = try receiveControlEnvelopes(
+            until: { envelope in
+                if case .fileTransferCancel = envelope.payload { return true }
+                return false
+            },
+            timeout: 2
+        ).last
+        guard case .fileTransferCancel(let cancellation)? = cancelEnvelope?.payload else {
+            return XCTFail("Missing FileTransferCancel")
+        }
+        XCTAssertEqual(cancellation.transferID, offer.transferID)
+        XCTAssertEqual(cancellation.reasonCode, ProtocolV1FileTransferError.fileTooLarge(4).reasonCode)
+    }
+
     func testOfferProtocolV1FileIsNoOpWhenFileTransferNotNegotiated() throws {
         let port = try startServer()
 
@@ -1016,7 +1134,8 @@ final class StreamingServerClipboardTests: XCTestCase {
     @discardableResult
     private func driveHandshakeToStreaming(
         clipboard: Bool,
-        fileTransfer: Bool = false
+        fileTransfer: Bool = false,
+        managedConfiguration: Bool = false
     ) throws -> UInt64 {
         guard client != nil else { throw TestError.noClient }
 
@@ -1037,6 +1156,7 @@ final class StreamingServerClipboardTests: XCTestCase {
         var capabilities: [VSCapability] = [.touch, .multiDisplay]
         if clipboard { capabilities.append(.clipboard) }
         if fileTransfer { capabilities.append(.fileTransfer) }
+        if managedConfiguration { capabilities.append(.managedConfiguration) }
         var hello = VSClientHello()
         hello.supportedProtocols = { var r = VSProtocolRange(); r.minimum = 1; r.maximum = 1; return r }()
         hello.deviceID = clientDeviceID
@@ -1064,11 +1184,21 @@ final class StreamingServerClipboardTests: XCTestCase {
         sessionID = accepted.sessionID
         sessionEpoch = accepted.sessionEpoch
 
+        var nextMessageID: UInt64 = 2
+        if managedConfiguration {
+            try sendControl(
+                payload: .managedPolicyStatus(managedPolicyStatus(fileTransferAllowed: true, maximumFileBytes: 1_024)),
+                messageID: nextMessageID
+            )
+            nextMessageID += 1
+        }
+
         // 2. StartDisplayRequest for the active display.
         var start = VSStartDisplayRequest()
         start.mode = .existing
         start.sourceDisplayID = "active-display"
-        try sendControl(payload: .startDisplayRequest(start), messageID: 2)
+        try sendControl(payload: .startDisplayRequest(start), messageID: nextMessageID)
+        nextMessageID += 1
 
         let responses = try receiveControlEnvelopes(
             until: { envelope in
@@ -1089,7 +1219,7 @@ final class StreamingServerClipboardTests: XCTestCase {
         result.configEpoch = videoConfig.configEpoch
         result.streamID = videoConfig.streamID
         result.accepted = true
-        try sendControl(payload: .videoConfigResult(result), messageID: 3)
+        try sendControl(payload: .videoConfigResult(result), messageID: nextMessageID)
 
         wait(for: [connected], timeout: 2)
         return try XCTUnwrap(generation)
@@ -1282,6 +1412,24 @@ final class StreamingServerClipboardTests: XCTestCase {
         header.chunkSha256 = sha256(payload)
         header.final = final
         return ProtocolV1FileChunk(header: header, payload: payload)
+    }
+
+    private func managedPolicyStatus(
+        fileTransferAllowed: Bool,
+        maximumFileBytes: UInt64
+    ) -> VSManagedPolicyStatus {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: fileTransferAllowed,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: maximumFileBytes,
+            allowedHosts: []
+        )
+        return policy.protocolStatus
     }
 
     private func sha256(_ data: Data) -> Data {
