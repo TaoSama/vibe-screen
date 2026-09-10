@@ -65,6 +65,43 @@ class SettingsDialogLayoutPolicyTest {
     }
 
     @Test
+    fun `short landscape video choices stack inside constrained column width`() {
+        val controlsColumnContentWidth =
+            SettingsDialogLayoutPolicy.constrainedGroupWidth(
+                columnWidthPx = 278,
+                groupWidthPx = 576,
+                groupMeasuredWidthPx = 576,
+                parentHorizontalPaddingPx = 24,
+            )
+
+        assertEquals(254, controlsColumnContentWidth)
+        assertTrue(
+            SettingsDialogLayoutPolicy.shouldStack(
+                availableWidthPx = controlsColumnContentWidth,
+                requiredButtonWidthsPx = listOf(132, 132, 132),
+            ),
+        )
+    }
+
+    @Test
+    fun `short landscape stays single column when split columns are too narrow`() {
+        val columns =
+            SettingsDialogLayoutPolicy.columns(
+                availableWidthPx = 592,
+                availableHeightPx = 272,
+                minimumWidthPx = 600,
+                gapPx = 0,
+                decisionWidthPx = 640,
+                minimumColumnContentWidthPx = 352,
+            )
+
+        assertFalse(columns.twoColumns)
+        assertEquals(592, columns.primaryWidthPx)
+        assertEquals(592, columns.controlsWidthPx)
+        assertEquals(592, columns.fullWidthPx)
+    }
+
+    @Test
     fun `tablet portrait and narrow landscape keep one settings column`() {
         assertFalse(
             SettingsDialogLayoutPolicy.shouldUseTwoColumns(
@@ -78,6 +115,45 @@ class SettingsDialogLayoutPolicyTest {
                 availableWidthPx = 599,
                 availableHeightPx = 360,
                 minimumWidthPx = 600,
+            ),
+        )
+    }
+
+    @Test
+    fun `option groups use the constrained rendered content width`() {
+        assertEquals(
+            272,
+            SettingsDialogLayoutPolicy.constrainedGroupWidth(
+                columnWidthPx = 312,
+                groupWidthPx = 320,
+                groupMeasuredWidthPx = 320,
+                parentHorizontalPaddingPx = 40,
+            ),
+        )
+    }
+
+    @Test
+    fun `option groups recover to the expanded column content width after reflow`() {
+        assertEquals(
+            448,
+            SettingsDialogLayoutPolicy.constrainedGroupWidth(
+                columnWidthPx = 480,
+                groupWidthPx = 280,
+                groupMeasuredWidthPx = 280,
+                parentHorizontalPaddingPx = 32,
+            ),
+        )
+    }
+
+    @Test
+    fun `option groups fall back to column content width before first layout`() {
+        assertEquals(
+            280,
+            SettingsDialogLayoutPolicy.constrainedGroupWidth(
+                columnWidthPx = 312,
+                groupWidthPx = 0,
+                groupMeasuredWidthPx = 0,
+                parentHorizontalPaddingPx = 32,
             ),
         )
     }

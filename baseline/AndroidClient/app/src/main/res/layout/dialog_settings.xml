@@ -490,6 +490,10 @@
                     android:minHeight="48dp"
                     android:layout_weight="1"
                     android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
                     android:text="@string/video_frame_rate_30" />
 
                 <com.google.android.material.button.MaterialButton
@@ -500,6 +504,10 @@
                     android:minHeight="48dp"
                     android:layout_weight="1"
                     android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
                     android:text="@string/video_frame_rate_60" />
 
                 <com.google.android.material.button.MaterialButton
@@ -510,6 +518,10 @@
                     android:minHeight="48dp"
                     android:layout_weight="1"
                     android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
                     android:text="@string/video_frame_rate_120" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
