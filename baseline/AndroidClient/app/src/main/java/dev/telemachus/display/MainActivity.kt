@@ -258,6 +258,15 @@ class MainActivity : AppCompatActivity() {
     private val clipboardRequestHandler = Handler(Looper.getMainLooper())
     private val fileTransferApprovalHandler = Handler(Looper.getMainLooper())
     private var clipboardRequestTimeout: Runnable? = null
+    private var pendingConnectionPanelLayoutWidthPx: Int? = null
+    private val pendingConnectionPanelLayoutRunnable =
+        Runnable {
+            val expectedWidthPx = pendingConnectionPanelLayoutWidthPx ?: return@Runnable
+            pendingConnectionPanelLayoutWidthPx = null
+            if (binding.root.width == expectedWidthPx) {
+                applyConnectionPanelLayout()
+            }
+        }
     private var lastToastMessage: String? = null
     private var lastToastShownAtMs = 0L
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
@@ -1172,12 +1181,21 @@ class MainActivity : AppCompatActivity() {
         }
         binding.inputViewport.isFocusableInTouchMode = true
         binding.root.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
-            if (right - left != oldRight - oldLeft) {
+            val widthPx = right - left
+            if (widthPx != oldRight - oldLeft) {
                 applyControlBarLayout()
                 applyStatusOverlayLayout()
+                scheduleConnectionPanelLayoutAfterRootWidthChange(widthPx)
             }
             updateSurfaceViewportLayout()
         }
+    }
+
+    private fun scheduleConnectionPanelLayoutAfterRootWidthChange(widthPx: Int) {
+        if (widthPx <= 0) return
+        pendingConnectionPanelLayoutWidthPx = widthPx
+        binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
+        binding.root.post(pendingConnectionPanelLayoutRunnable)
     }
 
     private fun handleRenderTargetReady(holder: SurfaceHolder) {
@@ -7610,6 +7628,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
+        binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
+        pendingConnectionPanelLayoutWidthPx = null
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         clearPendingUsbReconnectCountdown()
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)

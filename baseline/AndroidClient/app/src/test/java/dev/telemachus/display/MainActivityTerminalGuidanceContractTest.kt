@@ -1372,6 +1372,43 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun rootWidthChangesReevaluateConnectionPanelAfterLayoutSettles() {
+        val source = mainActivitySource()
+        val setupSurface = extractMethod(source, "private fun setupSurface")
+        val scheduler = extractMethod(source, "private fun scheduleConnectionPanelLayoutAfterRootWidthChange")
+        val onDestroy = extractMethod(source, "override fun onDestroy")
+        val compactSource = source.replace(Regex("\\s+"), "")
+        val compactSetupSurface = setupSurface.replace(Regex("\\s+"), "")
+        val compactScheduler = scheduler.replace(Regex("\\s+"), "")
+        val compactOnDestroy = onDestroy.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Root width changes must schedule a connection panel relayout after the new width is measured",
+            compactSetupSurface.contains("valwidthPx=right-left") &&
+                compactSetupSurface.contains("if(widthPx!=oldRight-oldLeft)") &&
+                compactSetupSurface.contains("scheduleConnectionPanelLayoutAfterRootWidthChange(widthPx)"),
+        )
+        assertTrue(
+            "The deferred relayout must replace older posts so quick rotations cannot replay stale widths",
+            compactScheduler.contains("pendingConnectionPanelLayoutWidthPx=widthPx") &&
+                compactScheduler.contains("binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)") &&
+                compactScheduler.contains("binding.root.post(pendingConnectionPanelLayoutRunnable)"),
+        )
+        assertTrue(
+            "The posted relayout must only run for the still-current root width",
+            compactScheduler.contains("if(widthPx<=0)return") &&
+                compactSource.contains("valexpectedWidthPx=pendingConnectionPanelLayoutWidthPx?:return@Runnable") &&
+                compactSource.contains("pendingConnectionPanelLayoutWidthPx=null") &&
+                compactSource.contains("if(binding.root.width==expectedWidthPx){applyConnectionPanelLayout()}"),
+        )
+        assertTrue(
+            "Activity teardown must not leave a deferred root relayout callback behind",
+            compactOnDestroy.contains("binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)") &&
+                compactOnDestroy.contains("pendingConnectionPanelLayoutWidthPx=null"),
+        )
+    }
+
+    @Test
     fun updateDisconnectedHeaderUsesLiveRegionApplierForTitleAndSubtitle() {
         val source = mainActivitySource()
         val updateHeader = extractMethod(source, "private fun updateDisconnectedHeader")
