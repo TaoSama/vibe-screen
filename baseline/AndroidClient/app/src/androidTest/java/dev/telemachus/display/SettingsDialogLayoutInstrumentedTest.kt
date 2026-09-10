@@ -49,7 +49,7 @@ class SettingsDialogLayoutInstrumentedTest {
         listOf(320, 360).forEach { screenWidthDp ->
             listOf(1.5f, 2f).forEach { fontScale ->
                 withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
-                    assertReadable(layout, R.id.scaleModeGroup)
+                    assertStackedAndReadable(layout, R.id.scaleModeGroup)
                     assertStackedAndReadable(layout, R.id.rotationGroup)
                     assertStackedAndReadable(layout, R.id.videoQualityGroup)
                     assertStackedAndReadable(layout, R.id.videoFrameRateGroup)
@@ -63,7 +63,7 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
-    fun scaleModeGroupUsesResponsiveProductionLayoutOnNarrowLargeText() {
+    fun scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText() {
         withLayout(screenWidthDp = 320, fontScale = 2f) { layout ->
             val group = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
             val modes = SettingsDialogLayoutApplier.apply(layout.root)
@@ -71,14 +71,8 @@ class SettingsDialogLayoutInstrumentedTest {
             val mode = modes[R.id.scaleModeGroup]
 
             assertTrue("scale mode group participates in responsive layout", modes.containsKey(R.id.scaleModeGroup))
-            assertEquals(
-                if (mode == SettingsDialogLayoutApplier.Mode.STACKED) {
-                    LinearLayout.VERTICAL
-                } else {
-                    LinearLayout.HORIZONTAL
-                },
-                group.orientation,
-            )
+            assertEquals(SettingsDialogLayoutApplier.Mode.STACKED, mode)
+            assertEquals(LinearLayout.VERTICAL, group.orientation)
             assertTrue(group.isSingleSelection)
             assertTrue(group.isSelectionRequired)
             assertEquals(layout.context.getString(R.string.display_selection_available), group.contentDescription)
