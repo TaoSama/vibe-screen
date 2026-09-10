@@ -331,6 +331,34 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText() {
+        listOf(320, 360).forEach { screenWidthDp ->
+            listOf(1.5f, 2f).forEach { fontScale ->
+                withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
+                    val section = layout.root.findViewById<View>(R.id.videoSection)
+                    val label = layout.root.findViewById<TextView>(R.id.videoBitrateLabel)
+                    val value = layout.root.findViewById<TextView>(R.id.videoBitrateValue)
+                    val slider = layout.root.findViewById<Slider>(R.id.videoBitrateSlider)
+                    value.text = layout.context.getString(R.string.video_bitrate_value, 100)
+                    layout.measureAndLayout()
+
+                    assertEquals(slider.id, label.labelFor)
+                    assertTrue(label.isAccessibilityHeading)
+                    assertNull(slider.contentDescription)
+                    assertEquals(layout.context.getString(R.string.video_bitrate_label), label.text.toString())
+                    assertTrue(slider.measuredWidth >= layout.dp(48))
+                    assertTrue(slider.measuredHeight >= layout.dp(48))
+                    assertAllTextReadable(section)
+                    assertFullyReachableByScroll(layout, label)
+                    assertFullyReachableByScroll(layout, value)
+                    assertFullyReachableByScroll(layout, slider)
+                    assertVerticallyOrdered(section as ViewGroup)
+                }
+            }
+        }
+    }
+
+    @Test
     fun unavailableVideoControlsExposeNoteInsteadOfDeadControls() {
         unavailableNoteLayouts { layout ->
             val note = layout.root.findViewById<TextView>(R.id.videoControlUnavailable)
