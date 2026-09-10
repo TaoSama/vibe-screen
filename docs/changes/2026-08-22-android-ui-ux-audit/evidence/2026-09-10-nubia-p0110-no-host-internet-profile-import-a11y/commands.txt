@@ -1,0 +1,15 @@
+# Commands
+
+Working tree: `<repo>/baseline/AndroidClient` unless noted. Device serial is redacted.
+
+- `git fetch origin main --prune`
+- `git rebase --autostash origin/main`
+- `./gradlew --no-daemon :app:testDebugUnitTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest --tests dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --tests dev.telemachus.display.MainActivityTransferReadinessContractTest`
+- `./gradlew --no-daemon :app:compileDebugAndroidTestKotlin`
+- `adb -s <redacted-adb-serial> reverse --list`
+- `adb -s <redacted-adb-serial> shell pidof dev.telemachus.display.test`
+- `lsof -nP -iTCP:54321 -sTCP:LISTEN`
+- `ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest`
+- `adb -s <redacted-adb-serial> reverse --list`
+- `adb -s <redacted-adb-serial> shell pidof dev.telemachus.display.test`
+- `lsof -nP -iTCP:54321 -sTCP:LISTEN`

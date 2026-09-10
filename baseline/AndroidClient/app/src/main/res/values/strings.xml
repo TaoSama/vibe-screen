@@ -297,8 +297,10 @@
     <string name="internet_route_direct">direct</string>
     <string name="internet_route_relay">TURN relay · encrypted application records</string>
     <string name="internet_import_title">Import preview session profile</string>
+    <string name="internet_import_label">Session profile JSON</string>
     <string name="internet_import_hint">Paste the complete JSON profile from your Mac</string>
     <string name="internet_import_action">Import</string>
+    <string name="internet_import_error_format">Import failed. %1$s</string>
     <string name="internet_profile_imported">Fresh session profile imported</string>
     <string name="internet_fresh_session_required">A fresh one-time session is required: %1$s. Import a newer lease; the old session was closed.</string>
     <string name="internet_revoked">Pairing revoked: %1$s</string>

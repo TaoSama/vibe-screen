@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" tests="6" failures="0" errors="0" skipped="0" time="3.214" timestamp="2026-09-10T11:49:48" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="productionBuilderConstrainsPairingDialogContent" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.952" />
+  <testcase name="imeConstrainedImportDialogKeepsLabelInputAndErrorReachable" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.084" />
+  <testcase name="imeConstrainedPairingDialogKeepsAcceptanceInputReachable" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.09" />
+  <testcase name="importDialogUsesProtectedMultiLineInputWithoutHorizontalScroll" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.062" />
+  <testcase name="narrowPhoneKeepsPairingDialogContentReadableAndScrollable" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.031" />
+  <testcase name="productionBuilderConstrainsImportDialogContentAndButtons" classname="dev.telemachus.display.InternetPairingDialogLayoutInstrumentedTest" time="0.938" />
+</testsuite>

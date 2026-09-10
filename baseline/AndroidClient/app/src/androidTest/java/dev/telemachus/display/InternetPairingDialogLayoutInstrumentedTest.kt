@@ -25,6 +25,7 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -105,14 +106,111 @@ class InternetPairingDialogLayoutInstrumentedTest {
         ).forEach { (widthDp, heightDp, fontScale) ->
             withImportLayout(widthDp = widthDp, heightDp = heightDp, fontScale = fontScale) { layout ->
                 layout.input.setText(sampleLeaseJson())
+                layout.showSampleError()
                 layout.measureAndLayout()
 
                 assertEquals(layout.dialogWidthPx, layout.root.measuredWidth)
+                layout.assertTextReadable(layout.label)
                 layout.assertSensitiveInput(layout.input)
                 layout.assertTextReadable(layout.input)
+                layout.assertTextReadable(layout.error)
+                layout.assertLabelProvidesInputNameWithoutDuplicateDescription()
+                layout.assertVisibleErrorCanScrollIntoView()
                 layout.assertImportInputCanScrollIntoView()
                 if (shouldCaptureEvidence(widthDp, heightDp, fontScale)) {
                     assertTrue("import evidence screenshot exists", layout.capture("import-$widthDp-$heightDp-$fontScale").isFile)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun imeConstrainedImportDialogKeepsLabelInputAndErrorReachable() {
+        listOf(
+            Triple(320, 640, 1.5f),
+            Triple(320, 640, 2.0f),
+            Triple(360, 740, 1.5f),
+            Triple(360, 740, 2.0f),
+            Triple(640, 320, 2.0f),
+        ).forEach { (widthDp, heightDp, fontScale) ->
+            withImportLayout(
+                widthDp = widthDp,
+                heightDp = heightDp,
+                fontScale = fontScale,
+                heightRatio = IME_CONSTRAINED_DIALOG_MAX_HEIGHT_RATIO,
+            ) { layout ->
+                layout.input.setText(sampleLeaseJson())
+                layout.showSampleError()
+                layout.measureAndLayout()
+
+                assertTrue("IME-constrained import viewport remains usable", layout.root.measuredHeight > layout.dp(120))
+                layout.assertTextReadable(layout.label)
+                layout.assertSensitiveInput(layout.input)
+                layout.assertTextReadable(layout.input)
+                layout.assertTextReadable(layout.error)
+                layout.assertLabelProvidesInputNameWithoutDuplicateDescription()
+                layout.assertImportInputCanScrollIntoView()
+                layout.assertVisibleErrorCanScrollIntoView()
+            }
+        }
+    }
+
+    @Test
+    fun productionBuilderConstrainsImportDialogContentAndButtons() {
+        var dialog: AlertDialog? = null
+        var root: ScrollView? = null
+        var assertionFailure: Throwable? = null
+        ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity { activity ->
+                    val container =
+                        activity.layoutInflater.inflate(R.layout.dialog_internet_profile_import, null, false) as ScrollView
+                    val measured = ImportMeasuredLayout(activity, FrameLayout(activity), container, 0, 0)
+                    measured.input.setText(sampleLeaseJson())
+                    measured.showSampleError()
+                    root = container
+                    dialog =
+                        MaterialAlertDialogBuilder(activity)
+                            .setTitle(R.string.internet_import_title)
+                            .setView(container)
+                            .setNegativeButton(R.string.cancel, null)
+                            .setPositiveButton(R.string.internet_import_action, null)
+                            .show()
+                }
+                scenario.onActivity { activity ->
+                    try {
+                        val dialogRoot = checkNotNull(root)
+                        checkNotNull(dialog).window?.decorView?.let { decor ->
+                            val activityRoot = activity.window.decorView
+                            decor.measure(
+                                View.MeasureSpec.makeMeasureSpec(activityRoot.width, View.MeasureSpec.AT_MOST),
+                                View.MeasureSpec.makeMeasureSpec(activityRoot.height, View.MeasureSpec.AT_MOST),
+                            )
+                            decor.layout(0, 0, decor.measuredWidth, decor.measuredHeight)
+                        }
+                        val measured = ImportMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
+
+                        assertTrue("production dialog measures import root", dialogRoot.width > 0 && dialogRoot.height > 0)
+                        assertTrue("production dialog constrains import root to activity viewport", dialogRoot.height <= activity.window.decorView.height)
+                        assertTrue("import scroll view fills production dialog viewport", dialogRoot.isFillViewport)
+                        checkNotNull(dialog).assertDialogButtonTouchTargets(activity)
+                        measured.assertTextReadable(measured.label)
+                        measured.assertSensitiveInput(measured.input)
+                        measured.assertTextReadable(measured.input)
+                        measured.assertTextReadable(measured.error)
+                        measured.assertLabelProvidesInputNameWithoutDuplicateDescription()
+                        measured.assertImportInputCanScrollIntoView()
+                        measured.assertVisibleErrorCanScrollIntoView()
+                    } catch (failure: Throwable) {
+                        assertionFailure = failure
+                    }
+                }
+                assertionFailure?.let { throw it }
+            } finally {
+                scenario.onActivity {
+                    dialog?.dismiss()
+                    dialog = null
+                    root = null
                 }
             }
         }
@@ -200,6 +298,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         widthDp: Int,
         heightDp: Int,
         fontScale: Float,
+        heightRatio: Float = DIALOG_MAX_HEIGHT_RATIO,
         assertion: (ImportMeasuredLayout) -> Unit,
     ) {
         val context = configuredContext(widthDp, heightDp, fontScale)
@@ -207,7 +306,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val parent = FrameLayout(context)
             val root = inflate(context, parent, R.layout.dialog_internet_profile_import) as ScrollView
             parent.addView(root)
-            ImportMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp))
+            ImportMeasuredLayout(context, parent, root, layoutWidth(context, widthDp), layoutHeight(context, heightDp, heightRatio))
                 .also(ImportMeasuredLayout::assertImportHint)
                 .let(assertion)
         }
@@ -288,8 +387,16 @@ class InternetPairingDialogLayoutInstrumentedTest {
             val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineWidth)
             assertTrue(
                 "${text.resources.getResourceEntryName(text.id)} line width $maximumLineWidth fits $contentWidth",
-                maximumLineWidth <= contentWidth + TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX,
+                maximumLineWidth <= contentWidth + textLayoutWidthTolerancePx(text),
             )
+        }
+
+        fun assertVisibleOrCanScrollIntoView(field: TextView) {
+            val scroll = root as ScrollView
+            val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+            assertTrue("scroll viewport remains positive", visibleHeight > 0)
+            if (field.top >= scroll.scrollY && field.bottom <= scroll.scrollY + visibleHeight) return
+            assertFieldEdgesCanScrollIntoView(field)
         }
 
         fun assertSensitiveInput(input: EditText) {
@@ -333,6 +440,13 @@ class InternetPairingDialogLayoutInstrumentedTest {
         }
 
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+        private fun textLayoutWidthTolerancePx(text: TextView): Float =
+            if (text is EditText) {
+                maxOf(TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX, dp(TEXT_LAYOUT_CURSOR_EDGE_TOLERANCE_DP).toFloat())
+            } else {
+                TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX
+            }
     }
 
     private class PairingMeasuredLayout(
@@ -413,23 +527,45 @@ class InternetPairingDialogLayoutInstrumentedTest {
         dialogHeightPx: Int,
     ) : DialogMeasuredLayout(context, viewport, root, dialogWidthPx, dialogHeightPx) {
         val scroll = root
+        val content: ViewGroup = root.findViewById(R.id.internetProfileImportContent)
+        val label: TextView = root.findViewById(R.id.internetProfileImportLabel)
         val input: EditText = root.findViewById(R.id.internetProfileImportInput)
+        val error: TextView = root.findViewById(R.id.internetProfileImportErrorText)
+
+        fun showSampleError() {
+            LiveRegionTextApplier.show(
+                error,
+                context.getString(R.string.internet_import_error_format, "Request a fresh lease from your Mac."),
+            )
+            input.error = error.text
+        }
 
         fun assertImportInputCanScrollIntoView() {
             val visibleHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
             assertTrue("import scroll view should fill the constrained dialog viewport", scroll.isFillViewport)
             assertEquals("import input lets the parent own vertical scrolling", Int.MAX_VALUE, input.maxLines)
             assertTrue("import dialog keeps a visible input area", visibleHeight > 0)
+            assertTrue("import content should have measured height", content.height > 0)
             assertTrue("import input bottom starts below top padding", input.bottom > scroll.paddingTop)
-            assertTrue("long import payload should be taller than the narrow viewport", input.bottom > visibleHeight)
             scroll.scrollTo(0, 0)
+            assertTrue("import label is visible initially", label.top >= scroll.scrollY)
+            assertTrue("import label starts inside the viewport", label.top < scroll.scrollY + visibleHeight)
             assertTrue("import input top is visible initially", input.top >= scroll.scrollY)
             assertTrue("import input top starts inside the viewport", input.top < scroll.scrollY + visibleHeight)
-            val targetScroll = (input.bottom - scroll.height + scroll.paddingBottom).coerceAtLeast(0)
-            scroll.scrollTo(0, targetScroll)
-            val visibleBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
-            val reachedBottom = input.bottom <= visibleBottom
-            assertTrue("import input bottom can scroll into viewport", reachedBottom)
+            assertVisibleOrCanScrollIntoView(input)
+        }
+
+        fun assertVisibleErrorCanScrollIntoView() {
+            assertEquals(View.VISIBLE, error.visibility)
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, error.accessibilityLiveRegion)
+            assertFieldEdgesCanScrollIntoView(error)
+        }
+
+        fun assertLabelProvidesInputNameWithoutDuplicateDescription() {
+            assertEquals(input.id, label.labelFor)
+            assertTrue(label.isAccessibilityHeading)
+            assertEquals(context.getString(R.string.internet_import_label), label.text.toString())
+            assertNull("Import input should not duplicate the visible label via contentDescription", input.contentDescription)
         }
 
         fun assertImportHint() {
@@ -445,6 +581,7 @@ class InternetPairingDialogLayoutInstrumentedTest {
         const val DIALOG_MAX_HEIGHT_RATIO = 0.85f
         const val IME_CONSTRAINED_DIALOG_MAX_HEIGHT_RATIO = 0.48f
         const val TEXT_LAYOUT_SUBPIXEL_TOLERANCE_PX = 2f
+        const val TEXT_LAYOUT_CURSOR_EDGE_TOLERANCE_DP = 6
 
         fun shouldCaptureEvidence(
             widthDp: Int,

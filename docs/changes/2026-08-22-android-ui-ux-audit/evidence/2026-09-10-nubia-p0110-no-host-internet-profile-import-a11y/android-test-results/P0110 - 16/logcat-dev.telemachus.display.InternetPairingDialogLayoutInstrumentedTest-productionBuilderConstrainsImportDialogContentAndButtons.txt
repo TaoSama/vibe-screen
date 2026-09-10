@@ -1,0 +1,1 @@
+Redacted: raw device logcat omitted because unrelated system and third-party telemetry may include identifiers or network metadata. See TEST-P0110 - 16-_app-.xml, test-result.textproto, and the Gradle log for the focused instrumentation verdict.
