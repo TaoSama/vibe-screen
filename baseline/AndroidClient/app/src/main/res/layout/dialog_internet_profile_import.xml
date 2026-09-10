@@ -12,20 +12,56 @@
     android:paddingBottom="16dp"
     android:scrollIndicators="bottom">
 
-    <EditText
-        android:id="@+id/internetProfileImportInput"
+    <LinearLayout
+        android:id="@+id/internetProfileImportContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="top|start"
-        android:hint="@string/internet_import_hint"
-        android:importantForAutofill="noExcludeDescendants"
-        android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
-        android:inputType="textMultiLine"
-        android:breakStrategy="simple"
-        android:minHeight="128dp"
-        android:minLines="4"
-        android:overScrollMode="ifContentScrolls"
-        android:saveEnabled="false"
-        android:singleLine="false"
-        android:textSize="11sp" />
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/internetProfileImportLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:labelFor="@id/internetProfileImportInput"
+            android:text="@string/internet_import_label"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/internetProfileImportInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/dialog_field_bg"
+            android:breakStrategy="simple"
+            android:gravity="top|start"
+            android:hint="@string/internet_import_hint"
+            android:importantForAutofill="noExcludeDescendants"
+            android:imeOptions="flagNoExtractUi|flagNoPersonalizedLearning"
+            android:inputType="textMultiLine"
+            android:minHeight="128dp"
+            android:minLines="4"
+            android:overScrollMode="ifContentScrolls"
+            android:paddingStart="8dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="12dp"
+            android:saveEnabled="false"
+            android:scrollHorizontally="false"
+            android:singleLine="false"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/internetProfileImportErrorText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:accessibilityLiveRegion="polite"
+            android:breakStrategy="balanced"
+            android:textColor="?attr/colorError"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
 </ScrollView>

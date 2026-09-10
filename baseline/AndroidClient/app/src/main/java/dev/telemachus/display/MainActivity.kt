@@ -1911,6 +1911,7 @@ class MainActivity : AppCompatActivity() {
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                 isSaveEnabled = false
             }
+        val errorText = content.findViewById<TextView>(R.id.internetProfileImportErrorText)
         val dialog =
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.internet_import_title)
@@ -1921,6 +1922,8 @@ class MainActivity : AppCompatActivity() {
         dialog.setOnShowListener {
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
+                    input.error = null
+                    LiveRegionTextApplier.hide(errorText)
                     check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
                     internetProfileStore.import(
                         input.text.toString(),
@@ -1934,7 +1937,13 @@ class MainActivity : AppCompatActivity() {
                     refreshInternetProfileUi()
                     dialog.dismiss()
                 } catch (failure: Throwable) {
-                    input.error = failure.message ?: getString(R.string.internet_error_title)
+                    val message =
+                        getString(
+                            R.string.internet_import_error_format,
+                            failure.message ?: getString(R.string.internet_error_title),
+                        )
+                    input.error = message
+                    LiveRegionTextApplier.show(errorText, message)
                 }
             }
         }
