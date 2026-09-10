@@ -1,0 +1,120 @@
+# 2026-09-10T16:14:43.892734Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 2
+}
+test_status: PASSED
+test_result {
+  test_case {
+    test_class: "WirelessTrustedDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "standardMaterialMessageDialogKeepsTrustedLanCopyReadable"
+    start_time {
+      seconds: 1789056873
+      nanos: 537000000
+    }
+    end_time {
+      seconds: 1789056880
+      nanos: 46000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-redacted-logcat>"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-device-info>"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-device-info>"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-device-info>"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "WirelessTrustedDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "trustedLanDialogConfirmationAndCancelCallbacksStayIsolated"
+    start_time {
+      seconds: 1789056880
+      nanos: 99000000
+    }
+    end_time {
+      seconds: 1789056883
+      nanos: 57000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-redacted-logcat>"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-device-info>"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-device-info>"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<local-worktree>/<omitted-device-info>"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "<local-worktree>/android-test-results/test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}

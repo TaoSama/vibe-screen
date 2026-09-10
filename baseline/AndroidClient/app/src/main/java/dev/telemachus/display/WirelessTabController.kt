@@ -6,6 +6,8 @@ import android.content.res.Resources
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 internal interface WirelessTabHost {
     val resources: Resources
@@ -50,19 +52,40 @@ private class ActivityWirelessTabHost(
     ): String = activity.getString(resId, *formatArgs)
 
     override fun showTrustedNetworkDialog(onConfirmed: () -> Unit) {
-        android.app.AlertDialog
-            .Builder(activity)
-            .setTitle(R.string.trusted_network_dialog_title)
-            .setMessage(R.string.trusted_network_dialog_message)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }
-            .show()
+        showTrustedNetworkDialog(activity, onConfirmed)
     }
 
     override fun launchScanner() {
         val intent = Intent(activity, QRScannerActivity::class.java)
         activity.startActivityForResult(intent, WirelessTabController.REQ_SCAN)
     }
+}
+
+internal fun showTrustedNetworkDialog(
+    activity: Activity,
+    onConfirmed: () -> Unit,
+): AlertDialog? {
+    if (activity.isFinishing || activity.isDestroyed) return null
+    val builder =
+        MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.trusted_network_dialog_title)
+            .setMessage(R.string.trusted_network_dialog_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }
+    val dialog =
+        if (activity is MainActivity) {
+            activity.showImmersiveDialog(builder)
+        } else {
+            builder.show()
+        }
+    listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { buttonId ->
+        dialog.getButton(buttonId)?.apply {
+            isSingleLine = false
+            maxLines = 2
+            ellipsize = null
+        }
+    }
+    return dialog
 }
 
 /**

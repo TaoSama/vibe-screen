@@ -1,0 +1,13 @@
+Manufacturer: Nubia
+Model: P0110
+Codename: pacific
+Android release: 16
+API level: 36
+ADB serial: <redacted-adb-serial>
+
+Serial handling policy:
+The raw ADB serial is intentionally not recorded in this evidence package.
+
+Evidence identity boundary:
+This is Nubia P0110/pacific Android 16 / API 36 evidence only. It must not be
+relabeled as Xiaomi 13/fuxi evidence or as evidence for any other device.

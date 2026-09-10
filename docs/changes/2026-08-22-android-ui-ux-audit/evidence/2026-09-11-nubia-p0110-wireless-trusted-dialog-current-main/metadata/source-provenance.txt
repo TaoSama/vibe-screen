@@ -1,0 +1,25 @@
+Evidence package: 2026-09-11-nubia-p0110-wireless-trusted-dialog-current-main
+Captured date: 2026-09-11
+Timezone: Asia/Shanghai
+
+Repository worktree: .claude/worktrees/wireless-trusted-dialog
+Branch: codex/wireless-trusted-dialog-material
+Baseline/source HEAD: a322bbdedfa92989d928294cdcbf6f6089c59314
+Baseline/source short: a322bbd
+
+This package organizes existing focused Android instrumentation artifacts only.
+It does not run Gradle, does not run device tests, and does not modify
+production code.
+
+Working-tree Android dialog/test changes observed before packaging:
+- baseline/AndroidClient/app/src/debug/java/dev/telemachus/display/DialogHostActivity.kt
+- baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+- baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WirelessTabController.kt
+- baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WirelessTabControllerContractTest.kt
+- baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/WirelessTrustedDialogLayoutInstrumentedTest.kt
+
+Focused instrumentation class:
+dev.telemachus.display.WirelessTrustedDialogLayoutInstrumentedTest
+
+Retained test artifact timestamp:
+2026-09-10T16:14:43Z in the JUnit XML / UTP textproto metadata.

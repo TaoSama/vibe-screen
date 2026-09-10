@@ -1,0 +1,31 @@
+Retained artifacts:
+
+- android-test-results/TEST-P0110-16-app.xml
+- android-test-results/test-results.log
+- android-test-results/test-result.redacted.textproto
+- android-test-report/index.html
+- android-test-report/dev.telemachus.display.html
+- android-test-report/dev.telemachus.display.WirelessTrustedDialogLayoutInstrumentedTest.html
+- android-test-report/css/base-style.css
+- android-test-report/css/style.css
+- android-test-report/js/report.js
+
+Redactions applied:
+
+- Local absolute worktree paths were replaced with <local-worktree> in the
+  retained UTP textproto.
+- Per-test logcat artifact paths were replaced with <omitted-redacted-logcat>.
+- Device-info, meminfo, and cpuinfo artifact paths were replaced with
+  <omitted-device-info>.
+
+Omitted artifacts:
+
+- Raw per-test logcat files.
+- UTP runtime logs such as utp.0.log.
+- Binary device metadata and binary test result files.
+- cpuinfo, meminfo, lock files, and unrelated runtime artifacts.
+
+Reason:
+The retained JUnit XML, instrumentation status log, redacted textproto, and HTML
+report preserve the focused instrumentation verdict without storing raw device
+identifiers or unrelated telemetry.

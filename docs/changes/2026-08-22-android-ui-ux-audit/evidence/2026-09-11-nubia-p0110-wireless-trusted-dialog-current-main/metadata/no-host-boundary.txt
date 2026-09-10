@@ -1,0 +1,15 @@
+No-Host boundary for the focused instrumentation run:
+
+- No macOS Host was started.
+- No macOS Host was installed, modified, re-signed, or granted Screen Recording,
+  Accessibility, Microphone, or other TCC permissions for this run.
+- No adb reverse tcp:54321 tcp:54321 mapping was created for this run.
+- No local tcp:54321 listener was present for this run.
+- The retained artifacts cover Android UI/UX dialog layout and callback
+  behavior only.
+
+Retained evidence note:
+Raw adb/lsof captures were not added while packaging because this package was
+created after the focused instrumentation had already run. The boundary is kept
+as run-scope metadata, and no post-hoc local or device sampling is represented
+as run-time proof.

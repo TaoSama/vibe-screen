@@ -137,6 +137,38 @@ class WirelessTabControllerContractTest {
         assertTrue(hideRetry.contains("LiveRegionTextApplier.hide(views.permissionRetryMessage)"))
     }
 
+    @Test
+    fun trustedNetworkConfirmationUsesMaterialImmersiveDialogWithLifecycleGuard() {
+        val source = wirelessTabControllerSource()
+        val trustedDialog = extractMethod(source, "internal fun showTrustedNetworkDialog")
+        val triggerScan = extractMethod(source, "private fun triggerScan")
+        val compactTrustedDialog = trustedDialog.replace(Regex("\\s+"), "")
+        val compactTriggerScan = triggerScan.replace(Regex("\\s+"), "")
+
+        assertFalse("Wireless trusted dialog must not use platform AlertDialog", source.contains("android.app.AlertDialog"))
+        assertTrue(trustedDialog.contains("MaterialAlertDialogBuilder(activity)"))
+        assertTrue(trustedDialog.contains(".setTitle(R.string.trusted_network_dialog_title)"))
+        assertTrue(trustedDialog.contains(".setMessage(R.string.trusted_network_dialog_message)"))
+        assertFalse(trustedDialog.contains("dialog_trusted_network_confirmation"))
+        assertTrue(trustedDialog.contains(".setNegativeButton(android.R.string.cancel, null)"))
+        assertTrue(trustedDialog.contains(".setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }"))
+        assertTrue(trustedDialog.contains("activity.showImmersiveDialog(builder)"))
+        assertTrue(trustedDialog.contains("builder.show()"))
+        assertTrue(trustedDialog.contains("isSingleLine = false"))
+        assertTrue(trustedDialog.contains("maxLines = 2"))
+        assertTrue(trustedDialog.contains("ellipsize = null"))
+        assertTrue(compactTrustedDialog.contains("if(activity.isFinishing||activity.isDestroyed)return"))
+        assertTrue(
+            "Lifecycle guard should run before the dialog builder is created",
+            trustedDialog.indexOf("activity.isFinishing") < trustedDialog.indexOf("MaterialAlertDialogBuilder(activity)"),
+        )
+        assertTrue(
+            "Unacknowledged LAN scans must acknowledge only after the dialog confirmation callback",
+            compactTriggerScan.contains("host.showTrustedNetworkDialog{acknowledgeTrustedLan()continueScan()}"),
+        )
+        assertTrue(compactTriggerScan.contains("if(!isTrustedLanAcknowledged())"))
+    }
+
     private fun extractMethod(source: String, signature: String): String {
         val declaration =
             Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")

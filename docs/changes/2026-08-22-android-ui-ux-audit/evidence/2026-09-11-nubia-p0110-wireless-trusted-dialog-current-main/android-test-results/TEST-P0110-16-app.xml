@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.WirelessTrustedDialogLayoutInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="10.145" timestamp="2026-09-10T16:14:43" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="standardMaterialMessageDialogKeepsTrustedLanCopyReadable" classname="dev.telemachus.display.WirelessTrustedDialogLayoutInstrumentedTest" time="6.35" />
+  <testcase name="trustedLanDialogConfirmationAndCancelCallbacksStayIsolated" classname="dev.telemachus.display.WirelessTrustedDialogLayoutInstrumentedTest" time="2.972" />
+</testsuite>
