@@ -1682,12 +1682,12 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-        android.app.AlertDialog
-            .Builder(this)
-            .setTitle(R.string.open_source_notices_title)
-            .setMessage(notice)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
+        showImmersiveDialog(
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.open_source_notices_title)
+                .setMessage(notice)
+                .setPositiveButton(android.R.string.ok, null),
+        )
     }
 
     private fun showError(message: String) {

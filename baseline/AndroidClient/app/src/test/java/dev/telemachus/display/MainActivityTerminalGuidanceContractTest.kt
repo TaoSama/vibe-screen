@@ -713,8 +713,17 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "The notices entry must remain a 48dp accessible tap target",
-            openSourceButton.contains("android:layout_height=\"48dp\"") &&
+            openSourceButton.contains("android:layout_height=\"wrap_content\"") &&
+                openSourceButton.contains("android:minHeight=\"48dp\"") &&
                 openSourceButton.contains("android:contentDescription=\"@string/open_source_licenses_description\""),
+        )
+        assertTrue(
+            "The notices entry should wrap instead of truncating on narrow large-text layouts",
+            openSourceButton.contains("android:layout_width=\"match_parent\"") &&
+                openSourceButton.contains("android:maxLines=\"2\"") &&
+                openSourceButton.contains("android:ellipsize=\"none\"") &&
+                openSourceButton.contains("android:singleLine=\"false\"") &&
+                openSourceButton.contains("android:textAllCaps=\"false\""),
         )
         assertTrue(
             "Packaged notices must include the project NOTICE and generated runtime dependency license report",
@@ -725,7 +734,9 @@ class MainActivityTerminalGuidanceContractTest {
             "The dialog should show complete packaged upstream and dependency notices",
             noticeDialog.contains("assets.open(UPSTREAM_NOTICE_ASSET)") &&
                 noticeDialog.contains("assets.open(DEPENDENCY_LICENSES_ASSET)") &&
-                noticeDialog.contains("setTitle(R.string.open_source_notices_title)"),
+                noticeDialog.contains("MaterialAlertDialogBuilder(this)") &&
+                noticeDialog.contains("setTitle(R.string.open_source_notices_title)") &&
+                noticeDialog.contains("showImmersiveDialog("),
         )
     }
 
