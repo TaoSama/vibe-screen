@@ -205,6 +205,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val discard = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
         val clearPendingOutgoing = extractMethod(source, "private fun clearPendingOutgoingFileTransfer")
         val failureMessage = extractMethod(source, "private fun fileTransferFailureMessageId")
+        val showError = extractMethod(source, "private fun showFileTransferRecoverableError")
         val callback = extractCallback(source, "callbackClient.onOutgoingFileProgress = outgoingProgress@")
         val finishedCallback = extractCallback(source, "callbackClient.onOutgoingFileFinished = outgoingFinished@")
         val resultCallback = extractCallback(source, "callbackClient.onFileTransferResult = fileResult@")
@@ -409,11 +410,51 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 internetResult.contains("showDedupedToast(message)"),
         )
         assertTrue(
+            "Recoverable outgoing errors should keep the choose-another-file retry action",
+            showError.contains("allowRetry: Boolean = true") &&
+                showError.contains("if (allowRetry)") &&
+                showError.contains(".setPositiveButton(R.string.file_transfer_error_retry)") &&
+                showError.contains("beginChooseFileForTransfer()") &&
+                showError.contains(".setNegativeButton(R.string.cancel)"),
+        )
+        assertTrue(
             "File-transfer result callbacks have no transfer id and must not clear active send UI",
             !resultCallback.contains("discardPendingOutgoingFileTransfer") &&
                 !internetResult.contains("discardPendingOutgoingFileTransfer") &&
                 resultCallback.contains("refreshFileTransferControl()") &&
                 internetResult.contains("refreshFileTransferControl()"),
+        )
+    }
+
+    @Test
+    fun unavailableFileTransferDialogDismissesWithoutRetryLoop() {
+        val source = mainActivitySource()
+        val beginChoose = extractMethod(source, "private fun beginChooseFileForTransfer")
+        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val showError = extractMethod(source, "private fun showFileTransferRecoverableError")
+
+        assertTrue(
+            "No active file-transfer session should show a dismiss-only unavailable dialog before opening the picker",
+            beginChoose.contains("activeFileTransferSession() == null") &&
+                beginChoose.contains("title = R.string.file_transfer_unavailable_title") &&
+                beginChoose.contains("message = R.string.file_transfer_unavailable") &&
+                beginChoose.contains("allowRetry = false") &&
+                assertBeforeValue(beginChoose, "allowRetry = false", "Intent(Intent.ACTION_OPEN_DOCUMENT)"),
+        )
+        assertTrue(
+            "A picked file whose session disappeared should also use the dismiss-only unavailable dialog",
+            handlePicker.contains("val session = activeFileTransferSession()") &&
+                handlePicker.contains("title = R.string.file_transfer_unavailable_title") &&
+                handlePicker.contains("message = R.string.file_transfer_unavailable") &&
+                handlePicker.contains("allowRetry = false"),
+        )
+        assertTrue(
+            "Dismiss-only unavailable dialogs should use OK without wiring another picker launch",
+            showError.contains("allowRetry: Boolean = true") &&
+                showError.contains("if (allowRetry)") &&
+                showError.contains("beginChooseFileForTransfer()") &&
+                showError.contains("builder.setPositiveButton(android.R.string.ok)") &&
+                assertBeforeValue(showError, "if (allowRetry)", "builder.setPositiveButton(android.R.string.ok)"),
         )
     }
 
