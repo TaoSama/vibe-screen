@@ -2,10 +2,12 @@ package dev.telemachus.display
 
 import android.content.res.Configuration
 import android.text.Layout
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.google.android.material.button.MaterialButton
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
@@ -91,6 +93,7 @@ internal object SettingsDialogLayoutApplier {
 
     fun apply(root: View): Map<Int, Mode> {
         val columns = applyAdaptiveColumns(root)
+        applyShowStatsRow(root, columns.primaryWidthPx)
         return mapOf(
             R.id.scaleModeGroup to columns.primaryWidthPx,
             R.id.rotationGroup to columns.primaryWidthPx,
@@ -113,6 +116,49 @@ internal object SettingsDialogLayoutApplier {
                 availableWidthPx = resolvedWidth,
             )
         }
+    }
+
+    private fun applyShowStatsRow(
+        root: View,
+        primaryWidthPx: Int,
+    ) {
+        val row = root.findViewById<LinearLayout>(R.id.showStatsRow) ?: return
+        val textGroup = row.findViewById<LinearLayout>(R.id.showStatsTextGroup) ?: return
+        val switch = row.findViewById<View>(R.id.showStatsSwitch) ?: return
+        val title = row.findViewById<TextView>(R.id.showStatsTitle) ?: return
+        val description = row.findViewById<TextView>(R.id.showStatsDescription) ?: return
+
+        val availableWidthPx =
+            ((primaryWidthPx.takeIf { it > 0 } ?: measuredWidth(row)) - row.paddingStart - row.paddingEnd)
+                .coerceAtLeast(0)
+        val switchGap = root.resources.getDimensionPixelSize(R.dimen.settings_show_stats_switch_gap)
+        val requiredTextWidth = max(requiredTextWidth(title), requiredTextWidth(description))
+        val requiredSwitchWidth = max(measuredWidth(switch), dp(switch, MINIMUM_TOUCH_TARGET_DP))
+        val stacked =
+            SettingsDialogLayoutPolicy.shouldStack(
+                availableWidthPx,
+                listOf(requiredTextWidth, requiredSwitchWidth + switchGap),
+            )
+
+        row.orientation = if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        row.gravity = if (stacked) Gravity.START else Gravity.CENTER_VERTICAL
+
+        val textParams = textGroup.layoutParams as LinearLayout.LayoutParams
+        textParams.width = if (stacked) ViewGroup.LayoutParams.MATCH_PARENT else 0
+        textParams.weight = if (stacked) 0f else 1f
+        textGroup.layoutParams = textParams
+
+        val switchParams = switch.layoutParams as LinearLayout.LayoutParams
+        switchParams.marginStart = if (stacked) 0 else switchGap
+        switchParams.topMargin = if (stacked) switchGap else 0
+        switchParams.gravity = if (stacked) Gravity.END else Gravity.NO_GRAVITY
+        switch.layoutParams = switchParams
+    }
+
+    private fun requiredTextWidth(textView: TextView): Int {
+        val displayedText =
+            textView.transformationMethod?.getTransformation(textView.text, textView) ?: textView.text
+        return ceil(Layout.getDesiredWidth(displayedText, textView.paint).toDouble()).toInt()
     }
 
     fun applyAdaptiveColumns(root: View): SettingsDialogLayoutPolicy.Columns {
@@ -238,6 +284,7 @@ internal object SettingsDialogLayoutApplier {
 
     private const val MINIMUM_OPTION_WIDTH_DP = 88f
     private const val MINIMUM_HORIZONTAL_PADDING_DP = 32f
+    private const val MINIMUM_TOUCH_TARGET_DP = 48f
     private const val MAX_OPTION_LINES = 2
 
     private data class PendingLayoutListener(

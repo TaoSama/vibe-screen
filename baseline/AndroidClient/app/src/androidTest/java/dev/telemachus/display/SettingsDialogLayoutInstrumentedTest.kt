@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +22,8 @@ import com.google.android.material.slider.Slider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,6 +33,55 @@ import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
 class SettingsDialogLayoutInstrumentedTest {
+    @Test
+    fun showStatsRowStaysReadableAndReachableOnNarrowLargeText() {
+        listOf(320, 360).forEach { screenWidthDp ->
+            listOf(1.5f, 2f).forEach { fontScale ->
+                withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
+                    assertShowStatsRowState(layout, LinearLayout.VERTICAL)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun showStatsRowKeepsHorizontalLayoutWhenContentFits() {
+        withLayout(screenWidthDp = 600) { layout ->
+            assertShowStatsRowState(layout, LinearLayout.HORIZONTAL)
+        }
+    }
+
+    @Test
+    fun showStatsRowRestoresLayoutAcrossNarrowWideReflow() {
+        withLayout(screenWidthDp = 600, fontScale = 2f) { layout ->
+            val sameRow = layout.root.findViewById<LinearLayout>(R.id.showStatsRow)
+
+            assertShowStatsRowState(layout, LinearLayout.HORIZONTAL)
+            val firstHorizontal = layout.captureShowStatsState()
+            layout.applySettingsDialogLayoutForWidth(600)
+            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+            assertEquals(firstHorizontal, layout.captureShowStatsState())
+
+            layout.applySettingsDialogLayoutForWidth(320)
+            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+            assertShowStatsRowState(layout, LinearLayout.VERTICAL)
+            val firstStacked = layout.captureShowStatsState()
+            layout.applySettingsDialogLayoutForWidth(320)
+            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+            assertEquals(firstStacked, layout.captureShowStatsState())
+
+            layout.applySettingsDialogLayoutForWidth(600)
+            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+            assertShowStatsRowState(layout, LinearLayout.HORIZONTAL)
+            assertEquals(firstHorizontal, layout.captureShowStatsState())
+
+            layout.applySettingsDialogLayoutForWidth(320)
+            assertSame(sameRow, layout.root.findViewById<LinearLayout>(R.id.showStatsRow))
+            assertShowStatsRowState(layout, LinearLayout.VERTICAL)
+            assertEquals(firstStacked, layout.captureShowStatsState())
+        }
+    }
+
     @Test
     fun narrowPhoneWindowsStackOptionGroupsWithoutClipping() {
         listOf(320, 360).forEach { screenWidthDp ->
@@ -718,6 +771,96 @@ class SettingsDialogLayoutInstrumentedTest {
         assertTrue("last item bottom is below the viewport", lastItem.bottom <= visibleBottom)
     }
 
+    private fun assertShowStatsRowState(
+        layout: MeasuredLayout,
+        expectedOrientation: Int,
+    ) {
+        val row = layout.root.findViewById<LinearLayout>(R.id.showStatsRow)
+        val textGroup = layout.root.findViewById<LinearLayout>(R.id.showStatsTextGroup)
+        val title = layout.root.findViewById<TextView>(R.id.showStatsTitle)
+        val description = layout.root.findViewById<TextView>(R.id.showStatsDescription)
+        val statsSwitch = layout.root.findViewById<View>(R.id.showStatsSwitch)
+        val textParams = textGroup.layoutParams as LinearLayout.LayoutParams
+        val switchParams = statsSwitch.layoutParams as LinearLayout.LayoutParams
+
+        assertEquals(expectedOrientation, row.orientation)
+        assertEquals(statsSwitch.id, title.labelFor)
+        assertEquals(layout.context.getString(R.string.stats_description), description.text.toString())
+        assertNull(statsSwitch.contentDescription)
+        assertTrue("show stats switch width", statsSwitch.measuredWidth >= layout.dp(48))
+        assertTrue("show stats switch height", statsSwitch.measuredHeight >= layout.dp(48))
+        assertAllTextReadable(row)
+        assertNoOverlapInShowStatsRow(row, textGroup, statsSwitch)
+        assertFullyReachableByScroll(layout, row)
+
+        if (expectedOrientation == LinearLayout.VERTICAL) {
+            assertEquals(Gravity.START or Gravity.TOP, row.gravity)
+            assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, textParams.width)
+            assertEquals(0f, textParams.weight, 0f)
+            assertEquals(0, switchParams.marginStart)
+            assertEquals(layout.context.resources.getDimensionPixelSize(R.dimen.settings_show_stats_switch_gap), switchParams.topMargin)
+            assertEquals(Gravity.END, switchParams.gravity)
+        } else {
+            assertEquals(Gravity.START or Gravity.CENTER_VERTICAL, row.gravity)
+            assertEquals(0, textParams.width)
+            assertEquals(1f, textParams.weight, 0f)
+            assertEquals(layout.context.resources.getDimensionPixelSize(R.dimen.settings_show_stats_switch_gap), switchParams.marginStart)
+            assertEquals(0, switchParams.topMargin)
+            assertEquals(Gravity.NO_GRAVITY, switchParams.gravity)
+        }
+    }
+
+    private fun MeasuredLayout.captureShowStatsState(): ShowStatsRowState {
+        val row = root.findViewById<LinearLayout>(R.id.showStatsRow)
+        val textGroup = root.findViewById<LinearLayout>(R.id.showStatsTextGroup)
+        val statsSwitch = root.findViewById<View>(R.id.showStatsSwitch)
+        val textParams = textGroup.layoutParams as LinearLayout.LayoutParams
+        val switchParams = statsSwitch.layoutParams as LinearLayout.LayoutParams
+        return ShowStatsRowState(
+            rowOrientation = row.orientation,
+            rowGravity = row.gravity,
+            textWidth = textParams.width,
+            textWeight = textParams.weight,
+            switchMarginStart = switchParams.marginStart,
+            switchTopMargin = switchParams.topMargin,
+            switchGravity = switchParams.gravity,
+        )
+    }
+
+    private fun MeasuredLayout.applySettingsDialogLayoutForWidth(widthDp: Int) {
+        measureAndLayout(dp(widthDp))
+        SettingsDialogLayoutApplier.apply(root)
+        measureAndLayout(dp(widthDp))
+    }
+
+    private fun assertFullyReachableByScroll(
+        layout: MeasuredLayout,
+        target: View,
+    ) {
+        val scrollView = layout.root.getChildAt(0) as ScrollView
+        val targetBounds = Rect(0, 0, target.width, target.height)
+        val content = scrollView.getChildAt(0) as ViewGroup
+        content.offsetDescendantRectToMyCoords(target, targetBounds)
+        scrollView.scrollTo(0, targetBounds.top)
+        val visibleTop = scrollView.scrollY
+        val visibleBottom = visibleTop + scrollView.height - scrollView.paddingBottom
+        assertTrue("target top is above the viewport", targetBounds.top >= visibleTop)
+        assertTrue("target bottom is below the viewport", targetBounds.bottom <= visibleBottom)
+    }
+
+    private fun assertNoOverlapInShowStatsRow(
+        row: LinearLayout,
+        textGroup: View,
+        statsSwitch: View,
+    ) {
+        val textBounds = Rect(textGroup.left, textGroup.top, textGroup.right, textGroup.bottom)
+        val switchBounds = Rect(statsSwitch.left, statsSwitch.top, statsSwitch.right, statsSwitch.bottom)
+        assertFalse(
+            "show stats text and switch overlap in ${if (row.orientation == LinearLayout.VERTICAL) "stacked" else "horizontal"} layout",
+            Rect.intersects(textBounds, switchBounds),
+        )
+    }
+
     private fun assertFullyVisibleInInitialViewport(
         layout: MeasuredLayout,
         viewId: Int,
@@ -771,6 +914,16 @@ class SettingsDialogLayoutInstrumentedTest {
 
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
     }
+
+    private data class ShowStatsRowState(
+        val rowOrientation: Int,
+        val rowGravity: Int,
+        val textWidth: Int,
+        val textWeight: Float,
+        val switchMarginStart: Int,
+        val switchTopMargin: Int,
+        val switchGravity: Int,
+    )
 
     private companion object {
         const val SETTINGS_WINDOW_MARGIN_DP = 24

@@ -54,8 +54,10 @@
 
                 <!-- Show Stats Toggle -->
                 <LinearLayout
+                    android:id="@+id/showStatsRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:minHeight="48dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:background="@drawable/settings_item_bg"
@@ -63,18 +65,22 @@
                     android:layout_marginBottom="@dimen/settings_section_margin_bottom">
 
                     <LinearLayout
+                        android:id="@+id/showStatsTextGroup"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:orientation="vertical">
                         <TextView
+                            android:id="@+id/showStatsTitle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:labelFor="@id/showStatsSwitch"
                             android:text="@string/show_stats"
                             android:textColor="@color/on_surface"
                             android:textSize="17sp"
                             android:textStyle="bold" />
                         <TextView
+                            android:id="@+id/showStatsDescription"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/stats_description"
@@ -86,9 +92,10 @@
                         android:id="@+id/showStatsSwitch"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/settings_show_stats_switch_gap"
                         android:minHeight="48dp"
+                        android:minWidth="48dp"
                         android:checked="false"
-                        android:contentDescription="@string/show_stats"
                         app:thumbTint="@color/switch_thumb_color"
                         app:trackTint="@color/switch_track_color" />
                 </LinearLayout>
