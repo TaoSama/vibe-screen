@@ -1681,13 +1681,18 @@ final class InternetProductSessionTests: XCTestCase {
                 maximumChunkBytes: 4
             ))
             XCTAssertTrue(harness.waitForSentBulkCount(1))
-            harness.receiveControl(harness.fileProgress(
-                messageID: 4,
-                transferID: transferID,
-                receivedBytes: UInt64(payload.count)
-            ))
+            for (index, receivedBytes) in stride(from: 4, through: payload.count, by: 4).enumerated() {
+                harness.receiveControl(harness.fileProgress(
+                    messageID: UInt64(4 + index),
+                    transferID: transferID,
+                    receivedBytes: UInt64(receivedBytes)
+                ))
+                if receivedBytes < payload.count {
+                    XCTAssertTrue(harness.waitForSentBulkCount(index + 2))
+                }
+            }
             harness.receiveControl(harness.fileTransferComplete(
-                messageID: 5,
+                messageID: 8,
                 transferID: transferID,
                 accepted: true,
                 digest: sha256(payload)
