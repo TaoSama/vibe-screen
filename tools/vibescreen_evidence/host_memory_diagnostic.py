@@ -54,6 +54,7 @@ DEFAULT_WATCHED_CLASSES = (
     "NSAutoreleasePool",
     "FrameContext",
     "PixelBufferBox",
+    "LatestRetainedSlot",
     "CVPixelBuffer",
     "IOSurface",
 )
