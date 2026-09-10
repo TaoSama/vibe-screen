@@ -829,6 +829,10 @@ class MainActivityTerminalGuidanceContractTest {
     @Test
     fun connectionPanelOuterGeometryUsesResponsiveResources() {
         val mainActivity = mainActivitySource()
+        val containerApplier =
+            resourceSource(
+                "app/src/main/java/dev/telemachus/display/ConnectionPanelContainerGeometryApplier.kt",
+            ).replace(Regex("\\s+"), "")
         val applier =
             resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
                 .replace(Regex("\\s+"), "")
@@ -841,7 +845,6 @@ class MainActivityTerminalGuidanceContractTest {
         val compactOnConfigurationChanged = onConfigurationChanged.replace(Regex("\\s+"), "")
         val controlBarMarginIndex = compactApplySafeAreaToChrome.indexOf("setInsetMargins(binding.controlBar)")
         val containerRefreshIndex = compactApplySafeAreaToChrome.indexOf("refreshConnectionPanelContainerGeometry()")
-        val settingsPanelMarginIndex = compactApplySafeAreaToChrome.indexOf("setInsetMargins(binding.settingsPanel)")
         val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
         val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
 
@@ -864,23 +867,34 @@ class MainActivityTerminalGuidanceContractTest {
             settingsPanel.contains("layout_constraintWidth_max=\"680dp\""),
         )
         assertTrue(
-            "MainActivity must refresh connection panel container geometry before applying settingsPanel safe-area margins",
+            "MainActivity must apply connection panel geometry through the atomic container refresh",
             controlBarMarginIndex >= 0 &&
                 containerRefreshIndex > controlBarMarginIndex &&
-                settingsPanelMarginIndex > containerRefreshIndex,
+                !compactApplySafeAreaToChrome.contains("setInsetMargins(binding.settingsPanel)"),
         )
         assertTrue(
             "Connection panel base margins must be refreshed from current resource qualifiers",
-            compactRefreshContainerGeometry.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)") &&
-                compactRefreshContainerGeometry.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)") &&
-                compactRefreshContainerGeometry.contains("baseChromeMargins[binding.settingsPanel.id]=SafeAreaGeometry.Insets.of"),
+            containerApplier.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal)") &&
+                containerApplier.contains("resources.getDimensionPixelSize(R.dimen.connection_panel_margin_vertical)") &&
+                containerApplier.contains("valbaseMargins=SafeAreaGeometry.Insets.of"),
         )
         assertTrue(
             "Connection panel max width must be refreshed from current resource qualifiers",
-            compactRefreshContainerGeometry.contains("params.matchConstraintMaxWidth!=maxWidthPx") &&
-                compactRefreshContainerGeometry.contains("params.matchConstraintMaxWidth=maxWidthPx") &&
-                compactRefreshContainerGeometry.contains("binding.settingsPanel.layoutParams=params") &&
-                compactRefreshContainerGeometry.contains("R.dimen.connection_panel_max_width"),
+            containerApplier.contains("params.matchConstraintMaxWidth!=maxWidthPx") &&
+                containerApplier.contains("params.matchConstraintMaxWidth=maxWidthPx") &&
+                containerApplier.contains("panel.layoutParams=params") &&
+                containerApplier.contains("R.dimen.connection_panel_max_width"),
+        )
+        assertEquals(
+            "Connection panel geometry must update layout params atomically",
+            1,
+            Regex("panel\\.layoutParams=params").findAll(containerApplier).count(),
+        )
+        assertTrue(
+            "MainActivity must delegate outer geometry refresh to the production container applier",
+            compactRefreshContainerGeometry.contains("ConnectionPanelContainerGeometryApplier.apply") &&
+                compactRefreshContainerGeometry.contains("panel=binding.settingsPanel") &&
+                compactRefreshContainerGeometry.contains("safeAreaInsets=safeAreaInsets"),
         )
         assertTrue(
             "Configuration changes must refresh connection panel container geometry before reading panel layout",
