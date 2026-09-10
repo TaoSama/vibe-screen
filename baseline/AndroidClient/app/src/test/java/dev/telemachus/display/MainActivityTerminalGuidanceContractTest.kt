@@ -830,6 +830,7 @@ class MainActivityTerminalGuidanceContractTest {
     fun connectionPanelOuterGeometryUsesResponsiveResources() {
         val settingsPanel = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/settingsPanel\"")
         val connectionContent = extractXmlElement(mainActivityLayoutSource(), "android:id=\"@+id/connectionContent\"")
+        val mainActivity = mainActivitySource().replace(Regex("\\s+"), "")
 
         assertTrue(
             "Connection panel horizontal margin should adapt by resource qualifier",
@@ -852,6 +853,66 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Horizontal connection layouts must not baseline-align the header against the actions column",
             connectionContent.contains("android:baselineAligned=\"false\""),
+        )
+        assertTrue(
+            "configChanges keeps MainActivity alive, so it must refresh settingsPanel outer geometry before laying out panel contents",
+            mainActivity.contains(
+                "privatefunapplyConnectionPanelLayout(connectionMode:ConnectionMode=prefs.connectionMode){" +
+                    "valouterGeometry=applyConnectionPanelOuterGeometry()ConnectionPanelLayoutApplier.apply(",
+            ),
+        )
+    }
+
+    @Test
+    fun connectionPanelOuterGeometryStaysOwnedByMainActivityContainer() {
+        val mainActivity = mainActivitySource()
+        val setupSafeAreaInsets = extractMethod(mainActivity, "private fun setupSafeAreaInsets")
+        val outerApplier = resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelOuterGeometryApplier.kt")
+        val connectionApplier = resourceSource("app/src/main/java/dev/telemachus/display/ConnectionPanelLayoutApplier.kt")
+        val viewsClass = connectionApplier.substring(
+            connectionApplier.indexOf("data class Views"),
+            connectionApplier.indexOf("fun apply", connectionApplier.indexOf("data class Views")),
+        )
+        val compactOuter = outerApplier.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "MainActivity should keep the settingsPanel as outer container geometry, not as connection content layout input",
+            mainActivity.contains("private fun applyConnectionPanelOuterGeometry()") &&
+                mainActivity.contains("panel = binding.settingsPanel"),
+        )
+        assertTrue(
+            "MainActivity should pass only applied outer geometry values into the connection content layout",
+            mainActivity.contains("panelHorizontalMarginsPx = outerGeometry.horizontalMarginsPx"),
+        )
+        assertTrue(
+            "Safe-area changes must rerun the connection panel layout so content width uses the applied inset margins",
+            setupSafeAreaInsets.indexOf("applySafeAreaToChrome()") <
+                setupSafeAreaInsets.indexOf("applyConnectionPanelLayout()"),
+        )
+        assertTrue(
+            "The outer geometry applier must refresh the resource-qualified max width after configChanges",
+            compactOuter.contains("params.matchConstraintMaxWidth=maxWidth") &&
+                compactOuter.contains("R.dimen.connection_panel_max_width"),
+        )
+        assertTrue(
+            "The outer geometry applier must refresh base margins before applying safe-area insets",
+            compactOuter.contains("baseChromeMargins[panel.id]=baseMargins") &&
+                compactOuter.contains("ChromeSafeAreaApplier.applyMargins(panel,baseMargins,safeAreaInsets)"),
+        )
+        assertTrue(
+            "The outer geometry applier should report applied margins so content layout can honor safe-area width",
+            compactOuter.contains("AppliedGeometry(valhorizontalMarginsPx:Int)") &&
+                compactOuter.contains("horizontalMarginsPx=") &&
+                compactOuter.contains("appliedParams.marginStart+appliedParams.marginEnd"),
+        )
+        assertFalse(
+            "ConnectionPanelLayoutApplier.Views must not accept the outer settingsPanel view",
+            viewsClass.contains("settingsPanel"),
+        )
+        assertFalse(
+            "ConnectionPanelLayoutApplier should not own settingsPanel lookup or mutation",
+            connectionApplier.contains("R.id.settingsPanel") ||
+                connectionApplier.contains("matchConstraintMaxWidth"),
         )
     }
 

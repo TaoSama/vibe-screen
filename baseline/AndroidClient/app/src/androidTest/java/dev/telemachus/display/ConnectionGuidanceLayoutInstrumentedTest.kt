@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
@@ -317,6 +318,105 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             staleLandscape.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
             staleLandscape.assertDisconnectedInternetSecondaryActionsHorizontal(expectedGapDp = 8)
             staleLandscape.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
+    fun connectionPanelOuterGeometryRebindsPhoneAndWideResourcesWithoutReinflating() {
+        val phoneContext = configuredContext(widthDp = 361, heightDp = 800)
+        val widePortraitContext = configuredContext(widthDp = 680, heightDp = 880)
+        val wideLandscapeContext = configuredContext(widthDp = 880, heightDp = 680)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(phoneContext)
+            val panel = root.findViewById<View>(R.id.settingsPanel)
+            val baseMargins = mutableMapOf<Int, SafeAreaGeometry.Insets>()
+
+            applyOuterGeometry(phoneContext, panel, baseMargins)
+            assertConnectionPanelOuterGeometry(
+                context = phoneContext,
+                panel = panel,
+                maxWidthDp = 680,
+                horizontalMarginDp = 24,
+                verticalMarginDp = 20,
+                safeAreaInsets = SafeAreaGeometry.Insets.NONE,
+                baseMargins = baseMargins,
+            )
+
+            applyOuterGeometry(widePortraitContext, panel, baseMargins)
+            assertConnectionPanelOuterGeometry(
+                context = widePortraitContext,
+                panel = panel,
+                maxWidthDp = 880,
+                horizontalMarginDp = 32,
+                verticalMarginDp = 28,
+                safeAreaInsets = SafeAreaGeometry.Insets.NONE,
+                baseMargins = baseMargins,
+            )
+
+            val safeInsets =
+                SafeAreaGeometry.Insets.of(
+                    left = dp(wideLandscapeContext, 7),
+                    top = dp(wideLandscapeContext, 5),
+                    right = dp(wideLandscapeContext, 11),
+                    bottom = dp(wideLandscapeContext, 13),
+                )
+            applyOuterGeometry(wideLandscapeContext, panel, baseMargins, safeInsets)
+            assertConnectionPanelOuterGeometry(
+                context = wideLandscapeContext,
+                panel = panel,
+                maxWidthDp = 880,
+                horizontalMarginDp = 32,
+                verticalMarginDp = 12,
+                safeAreaInsets = safeInsets,
+                baseMargins = baseMargins,
+            )
+        }
+    }
+
+    @Test
+    fun connectionPanelOuterGeometrySurvivesMultiWindowWidthRoundTrip() {
+        val phoneContext = configuredContext(widthDp = 500, heightDp = 800)
+        val wideContext = configuredContext(widthDp = 680, heightDp = 880)
+        val phoneAgainContext = configuredContext(widthDp = 500, heightDp = 800)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(phoneContext)
+            val panel = root.findViewById<View>(R.id.settingsPanel)
+            val baseMargins = mutableMapOf<Int, SafeAreaGeometry.Insets>()
+
+            applyOuterGeometry(phoneContext, panel, baseMargins)
+            assertConnectionPanelOuterGeometry(
+                context = phoneContext,
+                panel = panel,
+                maxWidthDp = 680,
+                horizontalMarginDp = 24,
+                verticalMarginDp = 20,
+                safeAreaInsets = SafeAreaGeometry.Insets.NONE,
+                baseMargins = baseMargins,
+            )
+
+            applyOuterGeometry(wideContext, panel, baseMargins)
+            assertConnectionPanelOuterGeometry(
+                context = wideContext,
+                panel = panel,
+                maxWidthDp = 880,
+                horizontalMarginDp = 32,
+                verticalMarginDp = 28,
+                safeAreaInsets = SafeAreaGeometry.Insets.NONE,
+                baseMargins = baseMargins,
+            )
+
+            applyOuterGeometry(phoneAgainContext, panel, baseMargins)
+            assertConnectionPanelOuterGeometry(
+                context = phoneAgainContext,
+                panel = panel,
+                maxWidthDp = 680,
+                horizontalMarginDp = 24,
+                verticalMarginDp = 20,
+                safeAreaInsets = SafeAreaGeometry.Insets.NONE,
+                baseMargins = baseMargins,
+            )
         }
     }
 
@@ -698,6 +798,51 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
+
+    private fun dp(
+        context: Context,
+        value: Int,
+    ): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+    private fun applyOuterGeometry(
+        context: Context,
+        panel: View,
+        baseMargins: MutableMap<Int, SafeAreaGeometry.Insets>,
+        safeAreaInsets: SafeAreaGeometry.Insets = SafeAreaGeometry.Insets.NONE,
+    ) {
+        ConnectionPanelOuterGeometryApplier.apply(
+            resources = context.resources,
+            panel = panel,
+            baseChromeMargins = baseMargins,
+            safeAreaInsets = safeAreaInsets,
+        )
+    }
+
+    private fun assertConnectionPanelOuterGeometry(
+        context: Context,
+        panel: View,
+        maxWidthDp: Int,
+        horizontalMarginDp: Int,
+        verticalMarginDp: Int,
+        safeAreaInsets: SafeAreaGeometry.Insets,
+        baseMargins: Map<Int, SafeAreaGeometry.Insets>,
+    ) {
+        val params = panel.layoutParams as ConstraintLayout.LayoutParams
+        assertEquals(dp(context, maxWidthDp), params.matchConstraintMaxWidth)
+        assertEquals(dp(context, horizontalMarginDp) + safeAreaInsets.left, params.marginStart)
+        assertEquals(dp(context, verticalMarginDp) + safeAreaInsets.top, params.topMargin)
+        assertEquals(dp(context, horizontalMarginDp) + safeAreaInsets.right, params.marginEnd)
+        assertEquals(dp(context, verticalMarginDp) + safeAreaInsets.bottom, params.bottomMargin)
+        assertEquals(
+            SafeAreaGeometry.Insets.of(
+                left = dp(context, horizontalMarginDp),
+                top = dp(context, verticalMarginDp),
+                right = dp(context, horizontalMarginDp),
+                bottom = dp(context, verticalMarginDp),
+            ),
+            baseMargins[panel.id],
+        )
+    }
 
     private class MeasuredLayout(
         val context: Context,

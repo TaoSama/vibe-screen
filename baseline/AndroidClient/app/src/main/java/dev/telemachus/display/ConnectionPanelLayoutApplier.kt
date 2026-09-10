@@ -25,6 +25,7 @@ internal object ConnectionPanelLayoutApplier {
         views: Views,
         connectionMode: ConnectionMode,
         subtitleExpanded: Boolean,
+        panelHorizontalMarginsPx: Int = resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal) * 2,
     ): ConnectionPanelLayoutPolicy.Layout {
         applyConfigurationDimensions(resources, views)
         val layout =
@@ -39,7 +40,7 @@ internal object ConnectionPanelLayoutApplier {
             }
         views.content.gravity = layout.contentGravity
         val stackedContent = layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL
-        val actionsAvailableWidthPx = actionsAvailableWidthPx(resources, views, layout)
+        val actionsAvailableWidthPx = actionsAvailableWidthPx(resources, views, layout, panelHorizontalMarginsPx)
         applyModeToggleLayout(
             views = views,
             layout =
@@ -113,8 +114,9 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         views: Views,
         layout: ConnectionPanelLayoutPolicy.Layout,
+        panelHorizontalMarginsPx: Int,
     ): Int {
-        val contentWidthPx = connectionContentWidthPx(resources, views)
+        val contentWidthPx = connectionContentWidthPx(resources, views, panelHorizontalMarginsPx)
         if (layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL) {
             return contentWidthPx
         }
@@ -126,6 +128,7 @@ internal object ConnectionPanelLayoutApplier {
     private fun connectionContentWidthPx(
         resources: Resources,
         views: Views,
+        panelHorizontalMarginsPx: Int,
     ): Int {
         val screenWidthPx =
             if (resources.configuration.screenWidthDp > 0) {
@@ -135,7 +138,7 @@ internal object ConnectionPanelLayoutApplier {
             }
         val rootWidthPx = stableRootWidthPx(resources, views.content.rootView) ?: screenWidthPx
         val panelWidthPx =
-            (rootWidthPx - connectionPanelHorizontalMarginsPx(resources, views))
+            (rootWidthPx - panelHorizontalMarginsPx)
                 .coerceAtLeast(0)
                 .coerceAtMost(resources.getDimensionPixelSize(R.dimen.connection_panel_max_width))
         return (panelWidthPx - resources.getDimensionPixelSize(R.dimen.connection_panel_horizontal_padding) * 2)
@@ -163,19 +166,6 @@ internal object ConnectionPanelLayoutApplier {
         resources: Resources,
         value: Float,
     ): Int = (value * resources.displayMetrics.density).roundToInt()
-
-    private fun connectionPanelHorizontalMarginsPx(
-        resources: Resources,
-        views: Views,
-    ): Int {
-        val panel = views.content.rootView.findViewById<View>(R.id.settingsPanel)
-        val margins = panel?.layoutParams as? ViewGroup.MarginLayoutParams
-        return if (margins != null) {
-            (margins.marginStart + margins.marginEnd).coerceAtLeast(0)
-        } else {
-            resources.getDimensionPixelSize(R.dimen.connection_panel_margin_horizontal) * 2
-        }
-    }
 
     private fun layoutPresentInternetSecondaryActionCount(views: Views): Int {
         val actions = requiredView(views.actions, R.id.internetSecondaryActions) as? LinearLayout ?: return 0

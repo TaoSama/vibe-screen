@@ -965,6 +965,7 @@ class MainActivity : AppCompatActivity() {
                 // Apply chrome margins before cloning the root constraints in
                 // reclampFloatingControls(), so the clone preserves them.
                 applySafeAreaToChrome()
+                applyConnectionPanelLayout()
                 applyControlBarLayout()
                 applyStatusOverlayLayout()
                 clampOverlayIntoSafeRect()
@@ -985,6 +986,7 @@ class MainActivity : AppCompatActivity() {
      * on a single narrow column. Video and safe-area handling are untouched.
      */
     private fun applyConnectionPanelLayout(connectionMode: ConnectionMode = prefs.connectionMode) {
+        val outerGeometry = applyConnectionPanelOuterGeometry()
         ConnectionPanelLayoutApplier.apply(
             resources,
             ConnectionPanelLayoutApplier.Views(
@@ -995,6 +997,16 @@ class MainActivity : AppCompatActivity() {
             ),
             connectionMode = connectionMode,
             subtitleExpanded = connectionSubtitleDisclosure.expanded,
+            panelHorizontalMarginsPx = outerGeometry.horizontalMarginsPx,
+        )
+    }
+
+    private fun applyConnectionPanelOuterGeometry(): ConnectionPanelOuterGeometryApplier.AppliedGeometry {
+        return ConnectionPanelOuterGeometryApplier.apply(
+            resources = resources,
+            panel = binding.settingsPanel,
+            baseChromeMargins = baseChromeMargins,
+            safeAreaInsets = safeAreaInsets,
         )
     }
 
