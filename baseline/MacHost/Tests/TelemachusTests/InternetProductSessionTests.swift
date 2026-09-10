@@ -1432,8 +1432,7 @@ final class InternetProductSessionTests: XCTestCase {
             replacementSessionEpoch: 2,
             fileTransferPolicy: ProtocolV1FileTransferPolicy(
                 maximumFileBytes: 1_024,
-                maximumChunkBytes: 4,
-                maximumConcurrentTransfers: 2
+                maximumChunkBytes: 4
             )
         )
         let replacement = try XCTUnwrap(harness.replacementEngine)
