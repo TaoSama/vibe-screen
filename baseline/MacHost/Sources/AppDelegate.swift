@@ -2120,6 +2120,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.fileTransferController?.handleIncomingFileCompleted(completed)
                 }
             }
+            streamingServer?.onFileTransferResult = { [weak self, weak configuredServer] _, direction, accepted, reason in
+                DispatchQueue.main.async { [weak self, weak configuredServer] in
+                    guard let self, let configuredServer,
+                          self.streamingServer === configuredServer else { return }
+                    self.fileTransferController?.handleFileTransferResult(
+                        direction: direction,
+                        accepted: accepted,
+                        reason: reason
+                    )
+                }
+            }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
