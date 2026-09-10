@@ -1,0 +1,14 @@
+c2fe1c8e2885dd4b3ac8f998fcdcf9fb8bfc4de00e5371170c0d968d6e4d2ca7  ./README.md
+981845ab36777271147aa058f0d33bf467efe8aa68623495e225e637cf24e7f9  ./android-test-report/css/base-style.css
+f1b366319836f8726d0939654d0eeddfc5b20f67d9e5954b9a1632c60f2f31bf  ./android-test-report/css/style.css
+0ed404f869fc104e47267de15b44ee18b64dc23bfc7bd6548899fe34a82f7e80  ./android-test-report/dev.telemachus.display.WirelessTrustedDialogLayoutInstrumentedTest.html
+1b638c5d60b51797583850b02419641a4b46655852a641082c1eb1bfc011b91f  ./android-test-report/dev.telemachus.display.html
+d774d26b5594e2851154d06f916e48746ce8f9d93b16fb4b7d0e8e1ebe8da203  ./android-test-report/index.html
+0aa306f94805890682c639b2d5c06108801d64b859a171a3c6eea66c8bab4c6a  ./android-test-report/js/report.js
+3d22bc74a6faf6d151a39027904b168be8e521eaae9acb33cd5b0678b42688fa  ./android-test-results/TEST-P0110-16-app.xml
+0ba1067be9530b1bb2372500f8edde0871c90843a14d5673c1843fa642e66c2d  ./android-test-results/test-result.redacted.textproto
+49175ac6f6904a210abab52a7970f088b1f6685c1c0e82402467d449aedab453  ./android-test-results/test-results.log
+d1cd03b86a9b3faa9727770ae64200007cfd7711526d8545ec2154a053058c83  ./metadata/artifact-redaction.txt
+aeee0eadeadf6647c1b5b9eda91e2cb5033bb32f86017ee762625fc1ab4a5437  ./metadata/device-identity.txt
+5d09777e2a3f384a698fb441287d26e5a53471ec5994145f6436fa4a49066c5a  ./metadata/no-host-boundary.txt
+be68a7c29c9565ff68f00d10248092d78841dd040185be333dad6e34ff0b871e  ./metadata/source-provenance.txt

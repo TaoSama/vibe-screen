@@ -1101,7 +1101,7 @@ class MainActivity : AppCompatActivity() {
      * immediately after, and immersive mode is re-applied when the dialog is
      * dismissed. Returns the shown dialog for optional further wiring.
      */
-    private fun showImmersiveDialog(builder: MaterialAlertDialogBuilder): androidx.appcompat.app.AlertDialog {
+    internal fun showImmersiveDialog(builder: MaterialAlertDialogBuilder): androidx.appcompat.app.AlertDialog {
         val dialog = builder.create()
         return showImmersiveDialog(dialog)
     }
