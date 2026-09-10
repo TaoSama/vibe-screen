@@ -184,6 +184,27 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     }
 
     @Test
+    fun p0110LandscapeLargeTextKeepsInternetConnectPreviewOnFirstScreen() {
+        withLayout(widthDp = 800, heightDp = 361, fontScale = 1.3f) { layout ->
+            layout.showModeContent(R.id.internetModeContent)
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
+            layout.measureAndLayout()
+
+            layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertTextRenderedWithoutEllipsis(layout.internetProfileSummary)
+            layout.assertTextRenderedWithoutEllipsis(layout.internetStateText)
+            layout.assertInternetProfileActionsHorizontal(expectedGapDp = 8)
+            layout.assertPrimaryInternetActionVisible()
+            layout.assertMinimumTouchTarget(layout.internetConnectButton)
+            layout.assertHeaderAndActionsSeparated()
+        }
+    }
+
+    @Test
     fun narrowPortraitKeepsModeLabelsReadableAtLargeFontScale() {
         withLayout(widthDp = 361, heightDp = 800, fontScale = 2f) { layout ->
             layout.measureAndLayout()
@@ -500,8 +521,11 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val wirelessModeButton = root.findViewById<TextView>(R.id.modeWireless)
         val internetModeButton = root.findViewById<TextView>(R.id.modeInternet)
         val internetProfileActions = root.findViewById<LinearLayout>(R.id.internetProfileActions)
+        val internetProfileSummary = root.findViewById<TextView>(R.id.internetProfileSummary)
+        val internetStateText = root.findViewById<TextView>(R.id.internetStateText)
         val internetScanProfileButton = root.findViewById<TextView>(R.id.internetScanProfileButton)
         val internetImportProfileButton = root.findViewById<TextView>(R.id.internetImportProfileButton)
+        val internetConnectButton = root.findViewById<View>(R.id.internetConnectButton)
         val internetSecondaryActions = root.findViewById<LinearLayout>(R.id.internetSecondaryActions)
         val internetConnectionSettingsButton = root.findViewById<TextView>(R.id.internetConnectionSettingsButton)
         val internetDisconnectButton = root.findViewById<TextView>(R.id.internetDisconnectButton)
@@ -514,7 +538,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         private val modeToggle = root.findViewById<View>(R.id.modeToggleGroup)
         private val internetRouteLabel = root.findViewById<View>(R.id.internetRouteLabel)
         private val internetRouteToggle = root.findViewById<View>(R.id.internetRouteToggleGroup)
-        private val internetConnect = root.findViewById<View>(R.id.internetConnectButton)
+        private val internetConnect = internetConnectButton
         private val widthPx = dp(widthDp)
         private val heightPx = dp(heightDp)
 
@@ -834,6 +858,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         fun assertPrimaryInternetActionVisible() {
             scrollView.scrollTo(0, 0)
             val actionBounds = boundsInContent(internetConnect)
+            val profileActionsBounds = boundsInContent(internetProfileActions)
             assertTrue(
                 "Internet action height was " + internetConnect.height + "px",
                 internetConnect.height >= dp(48),
@@ -842,6 +867,10 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 "Internet action " + actionBounds + " starts below the " +
                     scrollView.height + "px first-screen viewport",
                 actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
+            )
+            assertTrue(
+                "Internet action " + actionBounds + " should precede profile actions " + profileActionsBounds,
+                actionBounds.bottom <= profileActionsBounds.top,
             )
         }
 

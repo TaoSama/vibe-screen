@@ -121,7 +121,7 @@
     <string name="gesture_action_default">Default</string>
     <string name="gesture_action_move_window">Move here</string>
     <string name="gesture_action_return_windows">Return</string>
-    <string name="gesture_shortcuts_unavailable">Connect to a compatible Mac session with window actions to use shortcuts.</string>
+    <string name="gesture_shortcuts_unavailable">Requires a Mac session with window actions.</string>
     <string name="gesture_shortcuts_policy_disabled">Gesture shortcuts are disabled by this device or Mac session policy.</string>
     <string name="video_quality_request_sent">Quality request sent to Mac</string>
     <string name="video_frame_rate_request_sent">Frame-rate request sent to Mac</string>
