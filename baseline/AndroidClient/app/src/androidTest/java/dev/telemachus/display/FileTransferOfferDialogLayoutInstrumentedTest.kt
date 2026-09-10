@@ -5,13 +5,17 @@ import android.content.res.Configuration
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -85,6 +89,64 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 layout.assertLabelsOwnFields()
                 layout.assertDialogActionLabels()
                 layout.assertOutgoingContentCanScrollIntoView()
+            }
+        }
+    }
+
+    @Test
+    fun unavailableErrorDialogUsesDismissOnlyAction() {
+        var dialog: AlertDialog? = null
+        ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity { activity ->
+                    dialog =
+                        MaterialAlertDialogBuilder(activity)
+                            .setTitle(R.string.file_transfer_unavailable_title)
+                            .setMessage(R.string.file_transfer_unavailable)
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                }
+                scenario.onActivity { activity ->
+                    val shownDialog = checkNotNull(dialog)
+                    val positive = shownDialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    val negative = shownDialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                    val neutral = shownDialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                    assertEquals(activity.getString(android.R.string.ok), positive.text.toString())
+                    assertTrue("dismiss-only dialog keeps cancel button hidden", negative.visibility != View.VISIBLE)
+                    assertTrue("dismiss-only dialog keeps neutral button hidden", neutral.visibility != View.VISIBLE)
+                    positive.assertMinimumTouchTarget(activity)
+                }
+            } finally {
+                dialog?.dismiss()
+            }
+        }
+    }
+
+    @Test
+    fun recoverableErrorDialogKeepsChooseAnotherFileRetryAction() {
+        var dialog: AlertDialog? = null
+        ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity { activity ->
+                    dialog =
+                        MaterialAlertDialogBuilder(activity)
+                            .setTitle(R.string.file_transfer_pick_failed_title)
+                            .setMessage(R.string.file_transfer_pick_failed)
+                            .setPositiveButton(R.string.file_transfer_error_retry, null)
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                }
+                scenario.onActivity { activity ->
+                    val shownDialog = checkNotNull(dialog)
+                    val positive = shownDialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    val negative = shownDialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                    assertEquals(activity.getString(R.string.file_transfer_error_retry), positive.text.toString())
+                    assertEquals(activity.getString(R.string.cancel), negative.text.toString())
+                    positive.assertMinimumTouchTarget(activity)
+                    negative.assertMinimumTouchTarget(activity)
+                }
+            } finally {
+                dialog?.dismiss()
             }
         }
     }
@@ -374,6 +436,12 @@ private fun dp(
     context: Context,
     value: Int,
 ): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+private fun Button.assertMinimumTouchTarget(context: Context) {
+    val minimum = dp(context, 48)
+    assertTrue("$text button is at least 48dp wide", width >= minimum)
+    assertTrue("$text button is at least 48dp tall", height >= minimum)
+}
 
 private fun renderSampleOffer(
     context: Context,

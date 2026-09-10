@@ -2629,6 +2629,7 @@ class MainActivity : AppCompatActivity() {
             showFileTransferRecoverableError(
                 title = R.string.file_transfer_unavailable_title,
                 message = R.string.file_transfer_unavailable,
+                allowRetry = false,
             )
             return
         }
@@ -2657,6 +2658,7 @@ class MainActivity : AppCompatActivity() {
             showFileTransferRecoverableError(
                 title = R.string.file_transfer_unavailable_title,
                 message = R.string.file_transfer_unavailable,
+                allowRetry = false,
             )
             return
         }
@@ -3801,22 +3803,27 @@ class MainActivity : AppCompatActivity() {
     private fun showFileTransferRecoverableError(
         @StringRes title: Int = R.string.file_transfer_failed_title,
         @StringRes message: Int,
+        allowRetry: Boolean = true,
     ) {
         if (isFinishing || isDestroyed) return
         fileTransferErrorDialog?.dismiss()
         fileTransferErrorDialog = null
-        fileTransferErrorDialog =
-            showImmersiveDialog(
-                MaterialAlertDialogBuilder(this)
-                    .setTitle(title)
-                    .setMessage(message)
-                    .setPositiveButton(R.string.file_transfer_error_retry) { _, _ ->
-                        fileTransferErrorDialog = null
-                        beginChooseFileForTransfer()
-                    }
-                    .setNegativeButton(R.string.cancel) { _, _ -> fileTransferErrorDialog = null }
-                    .setOnCancelListener { fileTransferErrorDialog = null },
-            )
+        val builder =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setOnCancelListener { fileTransferErrorDialog = null }
+        if (allowRetry) {
+            builder
+                .setPositiveButton(R.string.file_transfer_error_retry) { _, _ ->
+                    fileTransferErrorDialog = null
+                    beginChooseFileForTransfer()
+                }
+                .setNegativeButton(R.string.cancel) { _, _ -> fileTransferErrorDialog = null }
+        } else {
+            builder.setPositiveButton(android.R.string.ok) { _, _ -> fileTransferErrorDialog = null }
+        }
+        fileTransferErrorDialog = showImmersiveDialog(builder)
     }
 
     private fun hostActionFailureMessageId(rejectionReason: String): Int =
