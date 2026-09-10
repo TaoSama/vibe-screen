@@ -2530,7 +2530,7 @@ class StreamClientProtocolV1IntegrationTest {
             val content = "complete-before-flush-failure".toByteArray(Charsets.UTF_8)
             val completed = AtomicReference<dev.telemachus.display.protocol.CompletedIncomingFile?>()
             val completionSeen = CountDownLatch(1)
-            val failingFlushSocket = AtomicReference<FailingFlushSocket?>()
+            val completeEnvelopeWritten = CountDownLatch(1)
             val writeFailure = AtomicReference<String?>()
             val serverJob =
                 async(Dispatchers.IO) {
@@ -2555,7 +2555,6 @@ class StreamClientProtocolV1IntegrationTest {
                         assertTrue(accept.fileAccept.accepted)
                         assertEquals(transferId, accept.fileAccept.transferId)
 
-                        checkNotNull(failingFlushSocket.get()).failNextFlush()
                         ProtocolV1Framing.write(
                             peer.getOutputStream(),
                             ProtocolChannel.BULK,
@@ -2569,7 +2568,12 @@ class StreamClientProtocolV1IntegrationTest {
                 StreamClient(
                     host = "127.0.0.1",
                     port = server.localPort,
-                    socketFactory = { FailingFlushSocket().also(failingFlushSocket::set) },
+                    socketFactory = {
+                        FailAfterCompleteEnvelopeSocket(
+                            transferId = transferId,
+                            completeEnvelopeWritten = completeEnvelopeWritten,
+                        )
+                    },
                 )
             client.acceptVideoConfigurations()
             client.onFileOffer = { offer -> client.respondToFileOffer(offer, accepted = true) }
@@ -2583,8 +2587,9 @@ class StreamClientProtocolV1IntegrationTest {
             }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            withTimeout(8_000) { serverJob.await() }
+            assertTrue(completeEnvelopeWritten.await(8, TimeUnit.SECONDS))
             assertTrue(completionSeen.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { serverJob.await() }
             withTimeout(8_000) { clientJob.await() }
 
             val received = checkNotNull(completed.get())
@@ -4483,23 +4488,30 @@ class StreamClientProtocolV1IntegrationTest {
         }
     }
 
-    private class FailingFlushSocket : Socket() {
-        private val failNextFlush = AtomicBoolean(false)
-
-        fun failNextFlush() {
-            failNextFlush.set(true)
-        }
+    private class FailAfterCompleteEnvelopeSocket(
+        private val transferId: ByteString,
+        private val completeEnvelopeWritten: CountDownLatch,
+    ) : Socket() {
+        private val output = AtomicReference<OutputStream?>()
 
         override fun getOutputStream(): OutputStream {
-            val delegate = super.getOutputStream()
-            return object : OutputStream() {
+            output.get()?.let { return it }
+            val stream = object : OutputStream() {
+                private val delegate = super@FailAfterCompleteEnvelopeSocket.getOutputStream()
+                private val frameBuffer = java.io.ByteArrayOutputStream()
+                private val failNextFlush = AtomicBoolean(false)
+
                 override fun write(value: Int) = delegate.write(value)
 
                 override fun write(
                     bytes: ByteArray,
                     offset: Int,
                     length: Int,
-                ) = delegate.write(bytes, offset, length)
+                ) {
+                    delegate.write(bytes, offset, length)
+                    frameBuffer.write(bytes, offset, length)
+                    armFailureAfterCompleteEnvelope()
+                }
 
                 override fun flush() {
                     if (failNextFlush.compareAndSet(true, false)) throw IOException("forced flush failure")
@@ -4507,7 +4519,24 @@ class StreamClientProtocolV1IntegrationTest {
                 }
 
                 override fun close() = delegate.close()
+
+                private fun armFailureAfterCompleteEnvelope() {
+                    val bytes = frameBuffer.toByteArray()
+                    if (bytes.size < 5 || bytes[0].toInt() != ProtocolChannel.CONTROL.wireValue) return
+                    val frameLength = java.nio.ByteBuffer.wrap(bytes, 1, 4).order(java.nio.ByteOrder.BIG_ENDIAN).int
+                    if (bytes.size < 5 + frameLength) return
+                    val envelope = Envelope.parseFrom(bytes.copyOfRange(5, 5 + frameLength))
+                    frameBuffer.reset()
+                    if (envelope.payloadCase == Envelope.PayloadCase.FILE_TRANSFER_COMPLETE &&
+                        envelope.fileTransferComplete.transferId == transferId
+                    ) {
+                        failNextFlush.set(true)
+                        completeEnvelopeWritten.countDown()
+                    }
+                }
             }
+            output.compareAndSet(null, stream)
+            return output.get() ?: stream
         }
     }
 
