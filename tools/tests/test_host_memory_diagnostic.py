@@ -16,6 +16,7 @@ from vibescreen_evidence.host_memory_analysis import (
     EvidenceInputError,
     INTERPRETATION,
     SUFFICIENCY_FIELDS,
+    VIDEO_FRAME_HEAP_CLASS_SUBSTRINGS,
     _validate_final_state,
     analyze_records,
 )
@@ -420,6 +421,18 @@ All zones: 1 nodes (4K)
             [item["name"] for item in payload["classes"]],
         )
 
+    def test_default_watched_classes_include_current_and_legacy_video_slots(self):
+        self.assertIn(
+            "LatestRetainedSlot<CVPixelBuffer>.Box",
+            DEFAULT_WATCHED_CLASSES,
+        )
+        self.assertIn("LatestRetainedSlot", DEFAULT_WATCHED_CLASSES)
+        self.assertIn("PixelBufferBox", DEFAULT_WATCHED_CLASSES)
+
+    def test_default_watched_classes_reuse_video_frame_group_substrings(self):
+        for class_name in VIDEO_FRAME_HEAP_CLASS_SUBSTRINGS:
+            self.assertIn(class_name, DEFAULT_WATCHED_CLASSES)
+
 
 class HostMemoryAnalysisTests(unittest.TestCase):
     def analyze(self, kind: str, *, depth: int = 1, records=None):
@@ -477,6 +490,33 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         )
         self.assertEqual(watched["video_frames"]["count_drift"], -2)
         self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 736)
+
+    def test_heap_watch_summary_matches_current_retained_slot_box(self):
+        records = memory_records("flat")
+        records[0]["heap"]["classes"] = [
+            {
+                "name": "LatestRetainedSlot<CVPixelBuffer>.Box",
+                "count": 1,
+                "allocated_bytes": 64,
+            }
+        ]
+        records[-1]["heap"]["classes"] = [
+            {
+                "name": "LatestRetainedSlot<CVPixelBuffer>.Box",
+                "count": 2,
+                "allocated_bytes": 128,
+            }
+        ]
+
+        result = self.analyze("flat", records=records)
+        watched = result["metrics"]["heap_watch_summary"]["video_frames"]
+
+        self.assertEqual(
+            watched["matched_classes"],
+            ["LatestRetainedSlot<CVPixelBuffer>.Box"],
+        )
+        self.assertEqual(watched["count_drift"], 1)
+        self.assertEqual(watched["allocated_bytes_drift"], 64)
 
     def test_custom_heap_watch_extends_required_diagnostic_classes(self):
         watched = _watched_classes(
