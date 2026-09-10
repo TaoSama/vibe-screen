@@ -1,0 +1,5 @@
+source_head=9aeb7e3253f61025cb3ce6c0303ff632d462ccef
+origin_main=4c16432427d573aa5239f9d56de8ae1a77a04661
+branch=codex/internet-pairing-completion-a11y-2
+status=clean product source before evidence commit
+reviewed_product_diff_against_source_head=0
