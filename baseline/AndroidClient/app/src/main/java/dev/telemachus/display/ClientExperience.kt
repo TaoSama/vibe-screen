@@ -4,6 +4,7 @@ import android.content.pm.ActivityInfo
 import android.view.Gravity
 import dev.telemachus.display.audio.PcmAudioStreamFormat
 import dev.vibescreen.protocol.v1.VideoQualityPreset
+import kotlin.math.roundToInt
 
 internal object ControlBarAccessibilityPolicy {
     const val STANDARD_AUTO_HIDE_MS = 5_000L
@@ -1388,10 +1389,37 @@ internal object ConnectionPanelLayoutPolicy {
 }
 
 /**
+ * Shared readable-row guard for compact connection-panel action groups. Large
+ * text stacks in single-column layouts, or when the current column cannot give
+ * each button a readable horizontal slot.
+ */
+internal object ConnectionActionRowLayoutPolicy {
+    const val LARGE_FONT_SCALE_THRESHOLD = 1.3f
+
+    fun shouldStack(
+        stackedContent: Boolean,
+        fontScale: Float,
+        availableWidthPx: Int,
+        buttonCount: Int,
+        gapPx: Int,
+        minimumHorizontalButtonWidthPx: Int,
+    ): Boolean {
+        if (fontScale < LARGE_FONT_SCALE_THRESHOLD) return false
+        if (stackedContent) return true
+        if (buttonCount <= 1) return false
+
+        val gapCount = (buttonCount - 1).coerceAtLeast(0)
+        val horizontalButtonWidthPx =
+            (availableWidthPx - gapPx.coerceAtLeast(0) * gapCount).coerceAtLeast(0) / buttonCount
+        val readableButtonWidthPx =
+            (minimumHorizontalButtonWidthPx.coerceAtLeast(0) * fontScale).roundToInt()
+        return horizontalButtonWidthPx < readableButtonWidthPx
+    }
+}
+
+/**
  * Keeps the mode switch compact in normal layouts while giving each label a
- * full-width row in single-column large-text mode. The P0110 portrait and
- * narrow-landscape widths can fit three equal touch targets at the default
- * scale, but 1.3x text needs the extra horizontal room to keep labels readable.
+ * full-width row when the current action column is too narrow for large text.
  */
 internal object ConnectionModeToggleLayoutPolicy {
     enum class Orientation {
@@ -1405,13 +1433,26 @@ internal object ConnectionModeToggleLayoutPolicy {
         val buttonWeight: Float,
     )
 
-    const val STACKED_FONT_SCALE_THRESHOLD = 1.3f
+    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionActionRowLayoutPolicy.LARGE_FONT_SCALE_THRESHOLD
+    const val MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP = 96f
+    private const val BUTTON_COUNT = 3
 
     fun resolve(
         stackedContent: Boolean,
         fontScale: Float,
+        availableWidthPx: Int,
+        minimumHorizontalButtonWidthPx: Int,
     ): Layout =
-        if (stackedContent && fontScale >= STACKED_FONT_SCALE_THRESHOLD) {
+        if (
+            ConnectionActionRowLayoutPolicy.shouldStack(
+                stackedContent = stackedContent,
+                fontScale = fontScale,
+                availableWidthPx = availableWidthPx,
+                buttonCount = BUTTON_COUNT,
+                gapPx = 0,
+                minimumHorizontalButtonWidthPx = minimumHorizontalButtonWidthPx,
+            )
+        ) {
             Layout(
                 orientation = Orientation.VERTICAL,
                 buttonWidthMatchParent = true,
@@ -1444,15 +1485,28 @@ internal object InternetProfileActionsLayoutPolicy {
         val importMarginTopPx: Int,
     )
 
-    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionModeToggleLayoutPolicy.STACKED_FONT_SCALE_THRESHOLD
+    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionActionRowLayoutPolicy.LARGE_FONT_SCALE_THRESHOLD
+    const val MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP = 150f
+    private const val BUTTON_COUNT = 2
 
     fun resolve(
         stackedContent: Boolean,
         fontScale: Float,
+        availableWidthPx: Int,
         gapPx: Int,
+        minimumHorizontalButtonWidthPx: Int,
     ): Layout {
         val resolvedGapPx = gapPx.coerceAtLeast(0)
-        return if (stackedContent && fontScale >= STACKED_FONT_SCALE_THRESHOLD) {
+        return if (
+            ConnectionActionRowLayoutPolicy.shouldStack(
+                stackedContent = stackedContent,
+                fontScale = fontScale,
+                availableWidthPx = availableWidthPx,
+                buttonCount = BUTTON_COUNT,
+                gapPx = resolvedGapPx,
+                minimumHorizontalButtonWidthPx = minimumHorizontalButtonWidthPx,
+            )
+        ) {
             Layout(
                 orientation = Orientation.VERTICAL,
                 buttonWidthMatchParent = true,
@@ -1490,15 +1544,29 @@ internal object InternetSecondaryActionsLayoutPolicy {
         val interButtonMarginTopPx: Int,
     )
 
-    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionModeToggleLayoutPolicy.STACKED_FONT_SCALE_THRESHOLD
+    const val STACKED_FONT_SCALE_THRESHOLD = ConnectionActionRowLayoutPolicy.LARGE_FONT_SCALE_THRESHOLD
+    const val MINIMUM_HORIZONTAL_BUTTON_WIDTH_DP = 150f
+    private const val BUTTON_COUNT = 3
 
     fun resolve(
         stackedContent: Boolean,
         fontScale: Float,
+        availableWidthPx: Int,
         gapPx: Int,
+        minimumHorizontalButtonWidthPx: Int,
+        layoutButtonCount: Int = BUTTON_COUNT,
     ): Layout {
         val resolvedGapPx = gapPx.coerceAtLeast(0)
-        return if (stackedContent && fontScale >= STACKED_FONT_SCALE_THRESHOLD) {
+        return if (
+            ConnectionActionRowLayoutPolicy.shouldStack(
+                stackedContent = stackedContent,
+                fontScale = fontScale,
+                availableWidthPx = availableWidthPx,
+                buttonCount = layoutButtonCount,
+                gapPx = resolvedGapPx,
+                minimumHorizontalButtonWidthPx = minimumHorizontalButtonWidthPx,
+            )
+        ) {
             Layout(
                 orientation = Orientation.VERTICAL,
                 buttonWidthMatchParent = true,
