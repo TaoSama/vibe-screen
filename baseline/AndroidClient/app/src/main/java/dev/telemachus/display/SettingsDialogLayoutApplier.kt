@@ -114,6 +114,8 @@ internal object SettingsDialogLayoutApplier {
     fun apply(root: View): Map<Int, Mode> {
         val columns = applyAdaptiveColumns(root)
         applyShowStatsRow(root, columns.primaryWidthPx)
+        applyActionButtonText(root.findViewById(R.id.disconnectSettingsButton), MINIMUM_TOUCH_TARGET_DP)
+        applyActionButtonText(root.findViewById(R.id.closeButton), PRIMARY_ACTION_MINIMUM_TOUCH_TARGET_DP)
         return mapOf(
             R.id.scaleModeGroup to columns.primaryWidthPx,
             R.id.rotationGroup to columns.primaryWidthPx,
@@ -259,6 +261,18 @@ internal object SettingsDialogLayoutApplier {
         return mode
     }
 
+    private fun applyActionButtonText(
+        button: MaterialButton?,
+        minimumTouchTargetDp: Float,
+    ) {
+        if (button == null) return
+        button.isSingleLine = false
+        button.setHorizontallyScrolling(false)
+        button.ellipsize = null
+        button.maxLines = MAX_OPTION_LINES
+        button.minHeight = max(button.minimumHeight, dp(button, minimumTouchTargetDp))
+    }
+
     private fun requiredButtonWidth(button: MaterialButton): Int {
         val density = button.resources.displayMetrics.density
         val fontScale = button.resources.configuration.fontScale.coerceAtLeast(1f)
@@ -348,6 +362,7 @@ internal object SettingsDialogLayoutApplier {
     private const val MINIMUM_OPTION_WIDTH_DP = 88f
     private const val MINIMUM_HORIZONTAL_PADDING_DP = 32f
     private const val MINIMUM_TOUCH_TARGET_DP = 48f
+    private const val PRIMARY_ACTION_MINIMUM_TOUCH_TARGET_DP = 56f
     private const val MINIMUM_COLUMN_CONTENT_WIDTH_DP = 176f
     private const val MAX_OPTION_LINES = 2
     private const val STACKED_OPTION_GAP_DP = 4f

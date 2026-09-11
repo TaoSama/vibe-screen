@@ -85,6 +85,39 @@ class MainActivitySettingsAccessibilityContractTest {
     }
 
     @Test
+    fun settingsChoiceLabelsNameTheirControlsAndStayHeadings() {
+        val layout = settingsLayoutSource()
+        listOf(
+            xmlAttribute("android:id", "@+id/videoQualityLabel") to xmlAttribute("android:labelFor", "@id/videoQualityGroup"),
+            xmlAttribute("android:id", "@+id/videoFrameRateLabel") to xmlAttribute("android:labelFor", "@id/videoFrameRateGroup"),
+            xmlAttribute("android:id", "@+id/gestureSwipeUpLabel") to xmlAttribute("android:labelFor", "@id/gestureSwipeUpGroup"),
+            xmlAttribute("android:id", "@+id/gestureSwipeDownLabel") to xmlAttribute("android:labelFor", "@id/gestureSwipeDownGroup"),
+        ).forEach { (idAttribute, labelForAttribute) ->
+            val element = extractXmlElement(layout, idAttribute)
+            assertTrue("$idAttribute names its option group", element.contains(labelForAttribute))
+            assertTrue(
+                "$idAttribute is reachable as a screen-reader heading",
+                element.contains(xmlAttribute("android:accessibilityHeading", "true")),
+            )
+        }
+    }
+
+    @Test
+    fun settingsActionButtonsAllowTwoLineLabelsWithoutEllipsizing() {
+        val layout = settingsLayoutSource()
+        listOf(
+            xmlAttribute("android:id", "@+id/disconnectSettingsButton") to xmlAttribute("android:minHeight", "48dp"),
+            xmlAttribute("android:id", "@+id/closeButton") to xmlAttribute("android:minHeight", "56dp"),
+        ).forEach { (idAttribute, minimumHeightAttribute) ->
+            val element = extractXmlElement(layout, idAttribute)
+            assertTrue("$idAttribute preserves its minimum touch target", element.contains(minimumHeightAttribute))
+            assertTrue("$idAttribute can wrap naturally", element.contains(xmlAttribute("android:singleLine", "false")))
+            assertTrue("$idAttribute allows at most two lines", element.contains(xmlAttribute("android:maxLines", "2")))
+            assertTrue("$idAttribute disables ellipsizing", element.contains(xmlAttribute("android:ellipsize", "none")))
+        }
+    }
+
+    @Test
     fun settingsSectionTitlesRemainAccessibilityHeadings() {
         val layout = settingsLayoutSource()
         listOf(
