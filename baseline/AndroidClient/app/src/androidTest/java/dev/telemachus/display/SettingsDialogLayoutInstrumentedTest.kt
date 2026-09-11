@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.os.LocaleList
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -30,6 +31,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
@@ -393,6 +395,64 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun videoAndGestureChoiceLabelsKeepTalkBackSemantics() {
+        listOf(320, 360).forEach { screenWidthDp ->
+            listOf(1f, 2f).forEach { fontScale ->
+                withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
+                    assertLabelSemantics(layout, R.id.videoQualityLabel, R.id.videoQualityGroup)
+                    assertLabelSemantics(layout, R.id.videoFrameRateLabel, R.id.videoFrameRateGroup)
+                    assertLabelSemantics(layout, R.id.gestureSwipeUpLabel, R.id.gestureSwipeUpGroup)
+                    assertLabelSemantics(layout, R.id.gestureSwipeDownLabel, R.id.gestureSwipeDownGroup)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows() {
+        listOf(false, true).forEach { rtl ->
+            listOf(
+                Triple(320, 800, 2f),
+                Triple(640, 320, 2f),
+            ).forEach { (screenWidthDp, screenHeightDp, fontScale) ->
+                withLayout(
+                    screenWidthDp = screenWidthDp,
+                    screenHeightDp = screenHeightDp,
+                    fontScale = fontScale,
+                    rtl = rtl,
+                ) { layout ->
+                    assertSettingsActionButton(layout, R.id.disconnectSettingsButton, minimumTouchTargetDp = 48)
+                    assertSettingsActionButton(layout, R.id.closeButton, minimumTouchTargetDp = 56)
+                    assertLastItemCanScrollIntoView(layout)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun settingsActionButtonsRestoreWrappingAfterRotationReflow() {
+        withLayout(screenWidthDp = 320, screenHeightDp = 800, fontScale = 2f) { layout ->
+            val disconnect = layout.root.findViewById<MaterialButton>(R.id.disconnectSettingsButton)
+            val close = layout.root.findViewById<MaterialButton>(R.id.closeButton)
+
+            assertSettingsActionButton(layout, R.id.disconnectSettingsButton, minimumTouchTargetDp = 48)
+            assertSettingsActionButton(layout, R.id.closeButton, minimumTouchTargetDp = 56)
+
+            layout.applySettingsDialogLayoutForSize(widthDp = 640, heightDp = 320)
+            assertSame(disconnect, layout.root.findViewById<MaterialButton>(R.id.disconnectSettingsButton))
+            assertSame(close, layout.root.findViewById<MaterialButton>(R.id.closeButton))
+            assertSettingsActionButton(layout, R.id.disconnectSettingsButton, minimumTouchTargetDp = 48)
+            assertSettingsActionButton(layout, R.id.closeButton, minimumTouchTargetDp = 56)
+
+            layout.applySettingsDialogLayoutForSize(widthDp = 320, heightDp = 800)
+            assertSame(disconnect, layout.root.findViewById<MaterialButton>(R.id.disconnectSettingsButton))
+            assertSame(close, layout.root.findViewById<MaterialButton>(R.id.closeButton))
+            assertSettingsActionButton(layout, R.id.disconnectSettingsButton, minimumTouchTargetDp = 48)
+            assertSettingsActionButton(layout, R.id.closeButton, minimumTouchTargetDp = 56)
+        }
+    }
+
+    @Test
     fun unavailableVideoControlsExposeNoteInsteadOfDeadControls() {
         unavailableNoteLayouts { layout ->
             val note = layout.root.findViewById<TextView>(R.id.videoControlUnavailable)
@@ -607,6 +667,47 @@ class SettingsDialogLayoutInstrumentedTest {
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, note.importantForAccessibility)
         assertEquals(null, note.contentDescription)
         assertNotNull(note.background)
+    }
+
+    private fun assertLabelSemantics(
+        layout: MeasuredLayout,
+        labelId: Int,
+        controlId: Int,
+    ) {
+        val label = layout.root.findViewById<TextView>(labelId)
+        val control = layout.root.findViewById<View>(controlId)
+        assertEquals(control.id, label.labelFor)
+        assertTrue("${label.resources.getResourceEntryName(labelId)} is an accessibility heading", label.isAccessibilityHeading)
+        assertNull(label.contentDescription)
+        assertAllTextReadable(label)
+        assertFullyReachableByScroll(layout, label)
+        assertFullyReachableByScroll(layout, control)
+    }
+
+    private fun assertSettingsActionButton(
+        layout: MeasuredLayout,
+        buttonId: Int,
+        minimumTouchTargetDp: Int,
+    ) {
+        val button = layout.root.findViewById<MaterialButton>(buttonId)
+        assertFalse("${button.resources.getResourceEntryName(buttonId)} is multi-line capable", button.isSingleLine)
+        assertFalse("${button.resources.getResourceEntryName(buttonId)} does not scroll text horizontally", button.isHorizontallyScrollable)
+        assertNull(button.ellipsize)
+        assertEquals(2, button.maxLines)
+        assertTrue(
+            "${button.resources.getResourceEntryName(buttonId)} minimum height",
+            button.minimumHeight >= layout.dp(minimumTouchTargetDp),
+        )
+        assertTrue(
+            "${button.resources.getResourceEntryName(buttonId)} measured height",
+            button.measuredHeight >= layout.dp(minimumTouchTargetDp),
+        )
+        assertButtonReadable(layout, button)
+        assertTrue(
+            "${button.resources.getResourceEntryName(buttonId)} uses no more than two lines",
+            requireNotNull(button.layout).lineCount <= 2,
+        )
+        assertFullyReachableByScroll(layout, button)
     }
 
     private fun assertUnavailableNoteTouchTarget(
@@ -830,6 +931,7 @@ class SettingsDialogLayoutInstrumentedTest {
         fontScale: Float = 1f,
         dialogWidthDp: Int? = null,
         dialogHeightDp: Int? = null,
+        rtl: Boolean = false,
         assertion: (MeasuredLayout) -> Unit,
     ) {
         val configuration = Configuration(applicationContext().resources.configuration)
@@ -842,6 +944,13 @@ class SettingsDialogLayoutInstrumentedTest {
                 Configuration.ORIENTATION_PORTRAIT
             }
         configuration.fontScale = fontScale
+        if (rtl) {
+            configuration.setLocales(LocaleList(Locale("ar")))
+            configuration.setLayoutDirection(Locale("ar"))
+        } else {
+            configuration.setLocales(LocaleList(Locale.US))
+            configuration.setLayoutDirection(Locale.US)
+        }
         val configuredContext = applicationContext().createConfigurationContext(configuration)
         val themedContext = ContextThemeWrapper(configuredContext, R.style.AppTheme)
         val parent = FrameLayout(themedContext)
