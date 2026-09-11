@@ -32,6 +32,7 @@ import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.Executors
 
 class QRScannerActivity : AppCompatActivity() {
@@ -40,18 +41,18 @@ class QRScannerActivity : AppCompatActivity() {
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private var waitingForSettingsGrant = false
     @Volatile private var pendingResultRaw: String? = null
+    private val resultDeliveryGate = QRScannerDeliveryGate()
     private val decodeHints =
         mapOf(
             DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
             DecodeHintType.TRY_HARDER to true,
         )
-    @Volatile private var alreadyDelivered = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         waitingForSettingsGrant = savedInstanceState?.getBoolean(KEY_WAITING_FOR_SETTINGS_GRANT) ?: false
         pendingResultRaw = savedInstanceState?.getString(KEY_PENDING_RESULT_RAW)
-        alreadyDelivered = pendingResultRaw != null
+        resultDeliveryGate.setClaimed(pendingResultRaw != null)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableScannerEdgeToEdge()
         setContentView(R.layout.activity_qr_scanner)
@@ -231,7 +232,7 @@ class QRScannerActivity : AppCompatActivity() {
     }
 
     private fun analyze(proxy: ImageProxy) {
-        if (alreadyDelivered) {
+        if (resultDeliveryGate.isClaimed()) {
             proxy.close()
             return
         }
@@ -272,20 +273,23 @@ class QRScannerActivity : AppCompatActivity() {
     }
 
     private fun deliverResult(raw: String) {
-        if (alreadyDelivered) return
+        if (resultDeliveryGate.isClaimed()) return
         val validLegacy = PairingURL.parse(raw) != null
         val validInternet = raw.startsWith(INTERNET_PAIRING_PREFIX)
+        if (!resultDeliveryGate.tryClaim()) return
         if (validLegacy || validInternet) {
             pendingResultRaw = raw
-            alreadyDelivered = true
         }
         runOnUiThread {
             // Product pairing is parsed exactly once by InternetPairingCoordinator,
             // which owns and clears the one-time credential. The scanner only routes
             // the namespaced payload and never interprets its security fields.
             if (!validLegacy && !validInternet) {
-                showScannerStatus(getString(R.string.invalid_pairing_qr))
-                alreadyDelivered = false
+                try {
+                    showScannerStatus(getString(R.string.invalid_pairing_qr))
+                } finally {
+                    resultDeliveryGate.releaseForRetry()
+                }
             } else {
                 deliverAcceptedResult(raw)
             }
@@ -372,6 +376,22 @@ class QRScannerActivity : AppCompatActivity() {
             }
             return LumaImage(target, targetWidth, targetHeight)
         }
+    }
+}
+
+internal class QRScannerDeliveryGate {
+    private val claimed = AtomicBoolean(false)
+
+    fun isClaimed(): Boolean = claimed.get()
+
+    fun setClaimed(value: Boolean) {
+        claimed.set(value)
+    }
+
+    fun tryClaim(): Boolean = claimed.compareAndSet(false, true)
+
+    fun releaseForRetry() {
+        claimed.set(false)
     }
 }
 

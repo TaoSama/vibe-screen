@@ -73,7 +73,7 @@ class QRScannerAccessibilityContractTest {
         val retryFocusIndex = source.indexOf("requestFocus()")
 
         assertFalse("QR scanner should not rely on Toast feedback", source.contains("Toast.makeText"))
-        assertTrue(source.contains("@Volatile private var alreadyDelivered = false"))
+        assertTrue(source.contains("private val resultDeliveryGate = QRScannerDeliveryGate()"))
         assertTrue(source.contains("showScannerError(R.string.qr_scanner_camera_bind_failed)"))
         assertTrue(source.contains("findViewById<Button>(R.id.retryCameraButton).apply"))
         assertTrue(source.contains("visibility = View.VISIBLE"))
@@ -118,9 +118,12 @@ class QRScannerAccessibilityContractTest {
     @Test
     fun invalidQrUsesReadableInlineStatus() {
         val source = qrScannerActivitySource()
+        val deliverResult = extractMethod(source, "private fun deliverResult")
 
         assertTrue(source.contains("showScannerStatus(getString(R.string.invalid_pairing_qr))"))
-        assertTrue(source.contains("alreadyDelivered = false"))
+        assertTrue(deliverResult.contains("resultDeliveryGate.tryClaim()"))
+        assertTrue(deliverResult.contains("resultDeliveryGate.releaseForRetry()"))
+        assertFalse("Invalid QR handling must not clear accepted result state", deliverResult.contains("setClaimed(false"))
     }
 
     @Test
@@ -135,7 +138,7 @@ class QRScannerAccessibilityContractTest {
         assertTrue(source.contains("@Volatile private var pendingResultRaw: String? = null"))
         assertTrue(onCreate.contains("waitingForSettingsGrant = savedInstanceState?.getBoolean(KEY_WAITING_FOR_SETTINGS_GRANT) ?: false"))
         assertTrue(onCreate.contains("pendingResultRaw = savedInstanceState?.getString(KEY_PENDING_RESULT_RAW)"))
-        assertTrue(onCreate.contains("alreadyDelivered = pendingResultRaw != null"))
+        assertTrue(onCreate.contains("resultDeliveryGate.setClaimed(pendingResultRaw != null)"))
         assertTrue(onCreate.contains("pendingResultRaw?.let { raw ->"))
         assertTrue(onCreate.contains("deliverAcceptedResult(raw)"))
         assertTrue(onSave.contains("outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT, waitingForSettingsGrant)"))
