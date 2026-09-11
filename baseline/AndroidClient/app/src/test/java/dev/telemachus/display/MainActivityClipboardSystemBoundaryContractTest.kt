@@ -275,6 +275,30 @@ class MainActivityClipboardSystemBoundaryContractTest {
         )
     }
 
+    @Test
+    fun clipboardConfirmationDialogsApplyReadableActionButtonLayout() {
+        val source = mainActivitySource()
+        val send = extractMethod(source, "private fun beginSendLocalClipboard")
+        val receive = extractMethod(source, "private fun beginReceiveRemoteClipboard")
+        val overwrite = extractMethod(source, "private fun showClipboardOverwriteConfirmation")
+
+        assertTrue(
+            "LAN send clipboard dialog applies DialogActionButtonLayoutApplier",
+            send.contains("showImmersiveDialog(") &&
+                send.contains(".also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "LAN receive clipboard dialog applies DialogActionButtonLayoutApplier",
+            receive.contains("showImmersiveDialog(") &&
+                receive.contains(".also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "Direct overwrite clipboard dialog applies DialogActionButtonLayoutApplier",
+            overwrite.contains("showImmersiveDialog(") &&
+                overwrite.contains(".also(DialogActionButtonLayoutApplier::apply)"),
+        )
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
