@@ -58,7 +58,8 @@
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/scannerInstruction" />
+        app:layout_constraintTop_toBottomOf="@id/scannerInstruction"
+        app:layout_goneMarginTop="8dp" />
 
     <Button
         android:id="@+id/retryCameraButton"
@@ -77,8 +78,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintVertical_bias="0"
         app:layout_goneMarginTop="8dp"
-        app:layout_goneMarginBottom="8dp"
-        app:layout_constrainedHeight="true" />
+        app:layout_goneMarginBottom="8dp" />
 
     <Button
         android:id="@+id/cancelButton"

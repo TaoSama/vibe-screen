@@ -110,10 +110,79 @@ class QRScannerLayoutInstrumentedTest {
         }
     }
 
+    @Test
+    @UiThreadTest
+    fun safeInsetsKeepScannerControlsAwayFromSystemBars() {
+        listOf(
+            InsetsCase(widthDp = 320, heightDp = 568, leftDp = 0, topDp = 32, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 48, topDp = 0, rightDp = 48, bottomDp = 0),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+        ).forEach { item ->
+            withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
+                layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertSeparated()
+                layout.assertInvalidQrStateSeparated()
+            }
+        }
+    }
+
+    @Test
+    @UiThreadTest
+    fun rtlAsymmetricSafeInsetsKeepRelativeMarginsMappedToPhysicalEdges() {
+        val item = InsetsCase(widthDp = 640, heightDp = 320, leftDp = 16, topDp = 24, rightDp = 72, bottomDp = 48)
+        withLayout(
+            widthDp = item.widthDp,
+            heightDp = item.heightDp,
+            fontScale = 2f,
+            layoutDirection = View.LAYOUT_DIRECTION_RTL,
+        ) { layout ->
+            layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+            layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+            layout.assertRelativeSafeInsetsApplied(item.leftDp, item.rightDp)
+            layout.assertSeparated()
+            layout.assertInvalidQrStateSeparated()
+            layout.assertCameraErrorStateSeparated(topInsetDp = item.topDp)
+            layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+            layout.assertRelativeSafeInsetsApplied(item.leftDp, item.rightDp)
+            assertTrue(layout.retry.height >= layout.dp(48))
+            assertTrue(layout.cancel.height >= layout.dp(48))
+        }
+    }
+
+    @Test
+    @UiThreadTest
+    fun safeInsetErrorStatesKeepRecoveryActionReachable() {
+        listOf(
+            InsetsCase(widthDp = 320, heightDp = 400, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 320, heightDp = 640, leftDp = 0, topDp = 48, rightDp = 0, bottomDp = 64),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 48, topDp = 48, rightDp = 48, bottomDp = 48),
+        ).forEach { item ->
+            withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
+                layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertCameraErrorStateSeparated(topInsetDp = item.topDp)
+                layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                assertEquals(View.GONE, layout.instruction.visibility)
+                assertTrue(layout.retry.height >= layout.dp(48))
+                assertTrue(layout.cancel.height >= layout.dp(48))
+            }
+            withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
+                layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertCameraPermissionBlockedStateSeparated(topInsetDp = item.topDp)
+                layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                assertEquals(View.GONE, layout.instruction.visibility)
+                assertTrue(layout.retry.height >= layout.dp(48))
+                assertTrue(layout.cancel.height >= layout.dp(48))
+            }
+        }
+    }
+
     private fun withLayout(
         widthDp: Int,
         heightDp: Int,
         fontScale: Float = 1f,
+        layoutDirection: Int = View.LAYOUT_DIRECTION_LTR,
         assertion: (MeasuredLayout) -> Unit,
     ) {
         val configuration = Configuration(applicationContext().resources.configuration)
@@ -127,6 +196,7 @@ class QRScannerLayoutInstrumentedTest {
         val root =
             LayoutInflater.from(context)
                 .inflate(R.layout.activity_qr_scanner, null, false) as ConstraintLayout
+        root.layoutDirection = layoutDirection
         val measured = MeasuredLayout(context, root, widthDp, heightDp)
         measured.measureAndLayout()
         assertion(measured)
@@ -148,6 +218,7 @@ class QRScannerLayoutInstrumentedTest {
         val cancel = root.findViewById<Button>(R.id.cancelButton)
         private val widthPx = dp(widthDp)
         private val heightPx = dp(heightDp)
+        private val baseMargins = QRScannerSafeInsets.capture(root)
 
         fun measureAndLayout() {
             root.measure(
@@ -206,7 +277,8 @@ class QRScannerLayoutInstrumentedTest {
             assertTrue(cancel.bottom <= root.height)
         }
 
-        fun assertCameraErrorStateSeparated() {
+        fun assertCameraErrorStateSeparated(topInsetDp: Int = 0) {
+            instruction.visibility = View.GONE
             target.visibility = View.GONE
             retry.visibility = View.VISIBLE
             status.visibility = View.VISIBLE
@@ -217,6 +289,7 @@ class QRScannerLayoutInstrumentedTest {
 
             assertEquals(View.VISIBLE, status.visibility)
             assertEquals(View.VISIBLE, retry.visibility)
+            assertEquals(View.GONE, instruction.visibility)
             assertEquals(View.GONE, target.visibility)
             assertEquals(message, status.contentDescription.toString())
             assertEquals(
@@ -236,9 +309,9 @@ class QRScannerLayoutInstrumentedTest {
                 statusLayout.getLineBottom(statusLayout.lineCount - 1) <=
                     status.height - status.compoundPaddingBottom,
             )
-            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
-            assertFalse(Rect.intersects(bounds(status), bounds(retry)))
-            assertFalse(Rect.intersects(bounds(retry), bounds(cancel)))
+            assertNotVisiblyIntersecting(status, retry)
+            assertNotVisiblyIntersecting(retry, cancel)
+            assertTrue(status.top >= dp(topInsetDp))
             assertTrue(status.left >= 0)
             assertTrue(status.right <= root.width)
             assertTrue(retry.left >= 0)
@@ -262,9 +335,11 @@ class QRScannerLayoutInstrumentedTest {
             assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
             assertFalse(Rect.intersects(bounds(status), bounds(target)))
             assertFalse(Rect.intersects(bounds(target), bounds(cancel)))
+            assertEquals(instruction.bottom + dp(8), status.top)
         }
 
-        fun assertCameraPermissionBlockedStateSeparated() {
+        fun assertCameraPermissionBlockedStateSeparated(topInsetDp: Int = 0) {
+            instruction.visibility = View.GONE
             target.visibility = View.GONE
             retry.visibility = View.VISIBLE
             status.visibility = View.VISIBLE
@@ -277,6 +352,7 @@ class QRScannerLayoutInstrumentedTest {
 
             assertEquals(View.VISIBLE, status.visibility)
             assertEquals(View.VISIBLE, retry.visibility)
+            assertEquals(View.GONE, instruction.visibility)
             assertEquals(View.GONE, target.visibility)
             assertEquals(message, status.contentDescription.toString())
             assertEquals(context.getString(R.string.open_settings), retry.text.toString())
@@ -284,9 +360,9 @@ class QRScannerLayoutInstrumentedTest {
                 context.getString(R.string.qr_scanner_open_settings_description),
                 retry.contentDescription.toString(),
             )
-            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
-            assertFalse(Rect.intersects(bounds(status), bounds(retry)))
-            assertFalse(Rect.intersects(bounds(retry), bounds(cancel)))
+            assertNotVisiblyIntersecting(status, retry)
+            assertNotVisiblyIntersecting(retry, cancel)
+            assertTrue(status.top >= dp(topInsetDp))
             assertTrue(status.left >= 0)
             assertTrue(status.right <= root.width)
             assertTrue(retry.left >= 0)
@@ -294,8 +370,99 @@ class QRScannerLayoutInstrumentedTest {
             assertTrue(cancel.bottom <= root.height)
         }
 
+        fun applySafeInsets(
+            leftDp: Int,
+            topDp: Int,
+            rightDp: Int,
+            bottomDp: Int,
+        ) {
+            QRScannerSafeInsets.apply(
+                root,
+                baseMargins,
+                left = dp(leftDp),
+                top = dp(topDp),
+                right = dp(rightDp),
+                bottom = dp(bottomDp),
+            )
+            measureAndLayout()
+        }
+
+        fun assertSafeInsetsApplied(
+            leftDp: Int,
+            topDp: Int,
+            rightDp: Int,
+            bottomDp: Int,
+        ) {
+            val leftInset = dp(leftDp)
+            val topInset = dp(topDp)
+            val rightInset = widthPx - dp(rightDp)
+            val bottomInset = heightPx - dp(bottomDp)
+
+            assertWithinHorizontalSafeInsets(instruction, leftInset, rightInset)
+            if (instruction.visibility == View.VISIBLE) {
+                assertTrue(instruction.top >= topInset)
+            }
+            if (status.visibility == View.VISIBLE && instruction.visibility == View.GONE) {
+                assertTrue(status.top >= topInset)
+            }
+            assertWithinHorizontalSafeInsets(status, leftInset, rightInset)
+            assertWithinHorizontalSafeInsets(target, leftInset, rightInset)
+            assertWithinHorizontalSafeInsets(retry, leftInset, rightInset)
+            assertWithinHorizontalSafeInsets(cancel, leftInset, rightInset)
+            assertTrue(cancel.bottom <= bottomInset)
+        }
+
+        fun assertRelativeSafeInsetsApplied(
+            leftDp: Int,
+            rightDp: Int,
+        ) {
+            val expectedStart = dp(24 + if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) rightDp else leftDp)
+            val expectedEnd = dp(24 + if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) leftDp else rightDp)
+            listOf(instruction, status, target).forEach { view ->
+                val margins = view.layoutParams as ViewGroup.MarginLayoutParams
+                assertEquals(expectedStart, margins.marginStart)
+                assertEquals(expectedEnd, margins.marginEnd)
+            }
+            val expectedControlStart = dp(if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) rightDp else leftDp)
+            val expectedControlEnd = dp(if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) leftDp else rightDp)
+            listOf(retry, cancel).forEach { view ->
+                val margins = view.layoutParams as ViewGroup.MarginLayoutParams
+                assertEquals(expectedControlStart, margins.marginStart)
+                assertEquals(expectedControlEnd, margins.marginEnd)
+            }
+        }
+
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+        private fun assertWithinHorizontalSafeInsets(
+            view: View,
+            leftInset: Int,
+            rightInset: Int,
+        ) {
+            if (view.visibility == View.VISIBLE) {
+                assertTrue(view.left >= leftInset)
+                assertTrue(view.right <= rightInset)
+            }
+        }
+
+        private fun assertNotVisiblyIntersecting(
+            first: View,
+            second: View,
+        ) {
+            if (first.visibility == View.VISIBLE && second.visibility == View.VISIBLE) {
+                assertFalse(Rect.intersects(bounds(first), bounds(second)))
+            }
+        }
 
         private fun bounds(view: View): Rect = Rect(view.left, view.top, view.right, view.bottom)
     }
+
+    private data class InsetsCase(
+        val widthDp: Int,
+        val heightDp: Int,
+        val leftDp: Int,
+        val topDp: Int,
+        val rightDp: Int,
+        val bottomDp: Int,
+    )
 }
