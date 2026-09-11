@@ -1,0 +1,48 @@
+Evidence package: 2026-09-11-pr768-trusted-network-dialog-local-head
+Captured date: 2026-09-11
+Timezone: Asia/Shanghai
+
+Repository worktree: .claude/worktrees/trusted-network-dialog-pr768
+Branch: codex/trusted-network-material-dialog-clean
+Base HEAD after rebase: 2e8ad308097f49a5323d9fa20d6b0484930bf70e
+Tested source state: PR #768 standard-message baseline/AndroidClient source/test diff from the base HEAD to this package's head
+Base-to-head baseline/AndroidClient diff SHA-256: 5d9a4c4c0a99e72f126c1712beeb6465df698d4f34daf20233d9d1a0d9319175
+Diff checksum command: git diff --binary 2e8ad308097f49a5323d9fa20d6b0484930bf70e HEAD -- baseline/AndroidClient | shasum -a 256
+Previous remote PR #768 head: fdd5934599f5ee0a0b9aba522b0af02b37c4c4d4
+
+Local source state summary:
+- Rebuilt PR #768 on a local branch and rebased it onto current origin/main,
+  including #770 and #763.
+- Did not stack the unrelated PR #769 string-copy changes.
+- Kept strings.xml unchanged from the local base, including the full trusted-LAN
+  safety copy.
+- Kept the Material dialog and routed MainActivity through showImmersiveDialog.
+- Kept the lifecycle guard before dialog creation.
+- Final trusted-network dialog creation uses
+  MaterialAlertDialogBuilder.setMessage(R.string.trusted_network_dialog_message)
+  and does not use a custom trusted-network dialog layout.
+- Final onShow configuration only adjusts android.R.id.message line breaking and
+  hyphenation, allows dialog actions to wrap, disables action ellipsizing, and
+  wires the positive action through the confirmation callback before dismissing.
+- The abandoned custom-content attempts were removed from the final source.
+  Their failed device logs are retained only as diagnostics.
+
+Changed source/test files:
+- baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+- baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WirelessTabController.kt
+- baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityTerminalGuidanceContractTest.kt
+- baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WirelessTabControllerContractTest.kt
+- baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/TrustedNetworkDialogLayoutInstrumentedTest.kt
+- baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/WirelessTrustedDialogLayoutInstrumentedTest.kt (renamed/replaced in the local worktree)
+
+Verification state:
+- Final local focused Gradle command passed and is retained in
+  logs/focused-jvm-and-androidtest-compile-standard-message.log.
+- Final local JVM XML reports WirelessTabControllerContractTest 6/6 and
+  MainActivityTerminalGuidanceContractTest 72/72.
+- Android instrumentation sources compile through :app:compileDebugAndroidTestKotlin.
+- Full local Android CI-equivalent gate passes through `make baseline-android-check`.
+- Two earlier device instrumentation attempts failed and are intentionally
+  retained. They predate the final standard-message source state and must not be
+  read as final device evidence.
+- No final device rerun was performed after the final standard-message pivot.

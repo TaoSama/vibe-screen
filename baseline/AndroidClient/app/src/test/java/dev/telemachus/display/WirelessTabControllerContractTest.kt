@@ -140,27 +140,50 @@ class WirelessTabControllerContractTest {
     @Test
     fun trustedNetworkConfirmationUsesMaterialImmersiveDialogWithLifecycleGuard() {
         val source = wirelessTabControllerSource()
+        val mainActivity = mainActivitySource()
+        val hostClass = extractClass(source, "private class ActivityWirelessTabHost")
         val trustedDialog = extractMethod(source, "internal fun showTrustedNetworkDialog")
+        val createDialog = extractMethod(source, "internal fun createTrustedNetworkDialog")
+        val configureActions = extractMethod(source, "private fun configureTrustedNetworkDialogActions")
+        val setupWirelessController = extractMethod(mainActivity, "private fun setupWirelessController")
         val triggerScan = extractMethod(source, "private fun triggerScan")
         val compactTrustedDialog = trustedDialog.replace(Regex("\\s+"), "")
+        val compactConfigureActions = configureActions.replace(Regex("\\s+"), "")
         val compactTriggerScan = triggerScan.replace(Regex("\\s+"), "")
 
         assertFalse("Wireless trusted dialog must not use platform AlertDialog", source.contains("android.app.AlertDialog"))
-        assertTrue(trustedDialog.contains("MaterialAlertDialogBuilder(activity)"))
-        assertTrue(trustedDialog.contains(".setTitle(R.string.trusted_network_dialog_title)"))
-        assertTrue(trustedDialog.contains(".setMessage(R.string.trusted_network_dialog_message)"))
-        assertFalse(trustedDialog.contains("dialog_trusted_network_confirmation"))
-        assertTrue(trustedDialog.contains(".setNegativeButton(android.R.string.cancel, null)"))
-        assertTrue(trustedDialog.contains(".setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }"))
-        assertTrue(trustedDialog.contains("activity.showImmersiveDialog(builder)"))
-        assertTrue(trustedDialog.contains("builder.show()"))
-        assertTrue(trustedDialog.contains("isSingleLine = false"))
-        assertTrue(trustedDialog.contains("maxLines = 2"))
-        assertTrue(trustedDialog.contains("ellipsize = null"))
+        assertTrue(hostClass.contains("private val showDialog: (Dialog) -> Dialog"))
+        assertTrue(hostClass.contains("showTrustedNetworkDialog(activity, onConfirmed, showDialog)"))
+        assertTrue(source.contains("showDialog: (Dialog) -> Dialog,"))
+        assertTrue(source.contains("= showTrustedNetworkDialog(activity, onConfirmed) { dialog ->"))
+        assertTrue(setupWirelessController.contains("showDialog = ::showImmersiveDialog"))
+        assertTrue(createDialog.contains("MaterialAlertDialogBuilder(context)"))
+        assertTrue(createDialog.contains(".setTitle(R.string.trusted_network_dialog_title)"))
+        assertTrue(createDialog.contains(".setMessage(R.string.trusted_network_dialog_message)"))
+        assertFalse(createDialog.contains(".setView("))
+        assertFalse(source.contains("dialog_trusted_network"))
+        assertTrue(createDialog.contains(".setNegativeButton(R.string.cancel, null)"))
+        assertTrue(createDialog.contains(".setPositiveButton(R.string.trusted_network_dialog_confirm, null)"))
+        assertTrue(createDialog.contains(".also { dialog -> configureTrustedNetworkDialogActions(dialog, onConfirmed) }"))
+        assertTrue(configureActions.contains("dialog.setOnShowListener"))
+        assertTrue(configureActions.contains("dialog.findViewById<TextView>(android.R.id.message)"))
+        assertTrue(configureActions.contains("breakStrategy = Layout.BREAK_STRATEGY_BALANCED"))
+        assertTrue(configureActions.contains("hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL"))
+        assertTrue(configureActions.contains("setSingleLine(false)"))
+        assertTrue(configureActions.contains("maxLines = TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES"))
+        assertTrue(configureActions.contains("ellipsize = null"))
+        assertTrue(configureActions.contains("checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE))"))
+        assertTrue(compactConfigureActions.contains("onConfirmed()dialog.dismiss()"))
+        assertFalse(source.contains("layoutParams"))
+        assertFalse(source.contains("ViewTreeObserver"))
+        assertFalse(source.contains("OnGlobalLayoutListener"))
+        assertFalse(source.contains("current" + "WindowMetrics"))
+        assertFalse(source.contains("TRUSTED_NETWORK_DIALOG_CONTENT_MAX_HEIGHT_RATIO"))
         assertTrue(compactTrustedDialog.contains("if(activity.isFinishing||activity.isDestroyed)return"))
+        assertTrue(compactTrustedDialog.contains("returnshowDialog(createTrustedNetworkDialog(activity,onConfirmed))"))
         assertTrue(
             "Lifecycle guard should run before the dialog builder is created",
-            trustedDialog.indexOf("activity.isFinishing") < trustedDialog.indexOf("MaterialAlertDialogBuilder(activity)"),
+            trustedDialog.indexOf("activity.isFinishing") < trustedDialog.indexOf("createTrustedNetworkDialog(activity, onConfirmed)"),
         )
         assertTrue(
             "Unacknowledged LAN scans must acknowledge only after the dialog confirmation callback",
@@ -169,11 +192,19 @@ class WirelessTabControllerContractTest {
         assertTrue(compactTriggerScan.contains("if(!isTrustedLanAcknowledged())"))
     }
 
-    private fun extractMethod(source: String, signature: String): String {
+    private fun extractClass(source: String, signature: String): String = extractBlock(source, signature, "Class")
+
+    private fun extractMethod(source: String, signature: String): String = extractBlock(source, signature, "Method")
+
+    private fun extractBlock(
+        source: String,
+        signature: String,
+        label: String,
+    ): String {
         val declaration =
             Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")
                 .find(source)
-                ?: error("Method not found: $signature")
+                ?: error("$label not found: $signature")
         val start = declaration.range.first
         var braceDepth = 0
         var methodStarted = false
@@ -277,11 +308,28 @@ class WirelessTabControllerContractTest {
         error("WirelessTabController.kt not found from " + System.getProperty("user.dir"))
     }
 
+    private fun mainActivitySource(): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            MAIN_ACTIVITY_PATHS
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("MainActivity.kt not found from " + System.getProperty("user.dir"))
+    }
+
     private companion object {
         val WIRELESS_TAB_CONTROLLER_PATHS =
             listOf(
                 "app/src/main/java/dev/telemachus/display/WirelessTabController.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WirelessTabController.kt",
+            )
+        val MAIN_ACTIVITY_PATHS =
+            listOf(
+                "app/src/main/java/dev/telemachus/display/MainActivity.kt",
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
             )
     }
 }

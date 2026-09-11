@@ -1,0 +1,3 @@
+force_stop_status=0
+test_pid_absent=true
+reverse_empty_after_whitespace_trim=true

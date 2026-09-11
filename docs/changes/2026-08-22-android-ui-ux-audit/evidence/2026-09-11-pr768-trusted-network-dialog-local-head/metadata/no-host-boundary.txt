@@ -1,0 +1,12 @@
+No-Host boundary statement:
+
+- The retained checks did not start, install, re-sign, or grant permissions to a
+  macOS Host build.
+- No Screen Recording, Accessibility, Microphone, or other macOS TCC readiness
+  is claimed by this package.
+- No `adb reverse tcp:54321 tcp:54321` mapping was created for the retained
+  attempts. The retained `adb-reverse-*.raw.txt` files are empty, and
+  `logs/after-second-failure-cleanup.summary` records
+  `reverse_empty_after_whitespace_trim=true`.
+- This package validates local Android source/test behavior only and retains
+  failed no-Host device attempts for diagnosis.

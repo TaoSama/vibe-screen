@@ -1,0 +1,13 @@
+Artifact redaction and retention notes:
+
+- Raw ADB serials are not retained; commands and metadata use
+  `<redacted-adb-serial>`.
+- The forbidden serial is not used in this package.
+- Device storage serial properties are not retained.
+- Local absolute user paths are not retained in the evidence metadata or command
+  notes.
+- Raw logcat, binary UTP metadata, and unrelated runtime artifacts were not
+  retained.
+- The earlier failed `am instrument` outputs are retained because they explain
+  the rejected custom-height investigation before the final standard-message
+  source state.

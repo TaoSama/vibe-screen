@@ -1,0 +1,47 @@
+All commands were run from the PR #768 local worktree unless noted. The final
+verification command is local-only: it runs focused JVM tests and compiles
+Android instrumentation Kotlin sources. It does not execute instrumentation, use
+ADB, start a Host, request TCC permissions, commit, push, or update the PR.
+
+```bash
+git status --short --branch
+git rev-parse HEAD origin/main
+
+cd baseline/AndroidClient
+./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests dev.telemachus.display.WirelessTabControllerContractTest \
+  --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest \
+  :app:compileDebugAndroidTestKotlin \
+  2>&1 | tee ../../docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-11-pr768-trusted-network-dialog-local-head/logs/focused-jvm-and-androidtest-compile-standard-message.log
+printf 'exit_code=0\n' > ../../docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-11-pr768-trusted-network-dialog-local-head/logs/focused-jvm-and-androidtest-compile-standard-message.status
+cp app/build/test-results/testDebugUnitTest/TEST-dev.telemachus.display.WirelessTabControllerContractTest.xml ../../docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-11-pr768-trusted-network-dialog-local-head/unit-test-results/
+cp app/build/test-results/testDebugUnitTest/TEST-dev.telemachus.display.MainActivityTerminalGuidanceContractTest.xml ../../docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-11-pr768-trusted-network-dialog-local-head/unit-test-results/
+```
+
+The retained failed device logs were produced earlier in the investigation and
+are kept only as diagnostics. They are not replay instructions and are not final
+evidence for the standard `setMessage(...)` source. Their raw ADB serial was
+redacted to `<redacted-adb-serial>` before retention.
+
+Retained diagnostic files:
+
+```text
+android-test-results/trusted-network-dialog-am-instrument.failed-before-height-fix.raw.txt
+android-test-results/trusted-network-dialog-am-instrument.failed-after-content-height-fix.raw.txt
+android-test-results/trusted-network-dialog-am-instrument.raw.txt
+logs/after-second-failure-cleanup.summary
+```
+
+Final integrity command after evidence cleanup:
+
+```bash
+cd docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-11-pr768-trusted-network-dialog-local-head
+find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+shasum -a 256 -c SHA256SUMS
+```
+
+Base-to-head Android source/test diff checksum command:
+
+```bash
+git diff --binary 2e8ad308097f49a5323d9fa20d6b0484930bf70e HEAD -- baseline/AndroidClient | shasum -a 256
+```

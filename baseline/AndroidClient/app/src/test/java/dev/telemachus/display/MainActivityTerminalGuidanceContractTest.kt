@@ -345,6 +345,16 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun trustedNetworkConfirmationUsesMainActivityImmersiveMaterialDialog() {
+        val setupWirelessController = extractMethod(mainActivitySource(), "private fun setupWirelessController")
+
+        assertTrue(setupWirelessController.contains("WirelessTabController("))
+        assertTrue(setupWirelessController.contains("showDialog = ::showImmersiveDialog"))
+        assertFalse(setupWirelessController.contains("showTrustedNetworkDialog(this"))
+        assertFalse(setupWirelessController.contains("android.app.AlertDialog"))
+    }
+
+    @Test
     fun statusLiveRegionCopyUsesStringResources() {
         val source = mainActivitySource()
         val setupUi = extractMethod(source, "private fun setupUI")
