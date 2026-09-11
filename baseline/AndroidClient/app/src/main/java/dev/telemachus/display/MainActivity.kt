@@ -3648,7 +3648,7 @@ class MainActivity : AppCompatActivity() {
                         sendLocalClipboard(client, generation)
                     }
                     .setNegativeButton(R.string.cancel, null),
-            )
+            ).also(DialogActionButtonLayoutApplier::apply)
             return true
         }
         return sendLocalClipboard(client, generation)
@@ -3738,7 +3738,7 @@ class MainActivity : AppCompatActivity() {
                     receiveRemoteClipboard(client, generation)
                 }
                 .setNegativeButton(R.string.cancel, null),
-        )
+        ).also(DialogActionButtonLayoutApplier::apply)
         return true
     }
 
@@ -3789,7 +3789,7 @@ class MainActivity : AppCompatActivity() {
                     discardContent()
                     refreshClipboardControl()
                 },
-        )
+        ).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun clipboardOverwriteConfirmationDetails(
