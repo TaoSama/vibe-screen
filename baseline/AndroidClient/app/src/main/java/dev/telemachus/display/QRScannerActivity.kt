@@ -2,9 +2,12 @@ package dev.telemachus.display
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
@@ -17,6 +20,10 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -31,6 +38,7 @@ class QRScannerActivity : AppCompatActivity() {
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private var waitingForSettingsGrant = false
+    @Volatile private var pendingResultRaw: String? = null
     private val decodeHints =
         mapOf(
             DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
@@ -40,11 +48,60 @@ class QRScannerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        waitingForSettingsGrant = savedInstanceState?.getBoolean(KEY_WAITING_FOR_SETTINGS_GRANT) ?: false
+        pendingResultRaw = savedInstanceState?.getString(KEY_PENDING_RESULT_RAW)
+        alreadyDelivered = pendingResultRaw != null
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        enableScannerEdgeToEdge()
         setContentView(R.layout.activity_qr_scanner)
+        setupScannerSafeInsets()
         findViewById<Button>(R.id.cancelButton).setOnClickListener { finishCanceled() }
         findViewById<Button>(R.id.retryCameraButton).setOnClickListener { handleCameraRetry() }
+        pendingResultRaw?.let { raw ->
+            deliverAcceptedResult(raw)
+            return
+        }
         startCamera()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT, waitingForSettingsGrant)
+        pendingResultRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun enableScannerEdgeToEdge() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+
+    private fun setupScannerSafeInsets() {
+        val root = findViewById<View>(R.id.qrScannerRoot)
+        val baseMargins = QRScannerSafeInsets.capture(root)
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, windowInsets ->
+            val bars = windowInsets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
+            val cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            QRScannerSafeInsets.apply(
+                root,
+                baseMargins,
+                left = maxOf(bars.left, cutout.left),
+                top = maxOf(bars.top, cutout.top),
+                right = maxOf(bars.right, cutout.right),
+                bottom = maxOf(bars.bottom, cutout.bottom),
+            )
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     override fun onResume() {
@@ -140,6 +197,7 @@ class QRScannerActivity : AppCompatActivity() {
     private fun hasCameraPermission(): Boolean = cameraPerm.isGranted()
 
     private fun showScannerReady() {
+        findViewById<TextView>(R.id.scannerInstruction).visibility = View.VISIBLE
         findViewById<PreviewView>(R.id.preview).visibility = View.VISIBLE
         findViewById<View>(R.id.targetFrame).visibility = View.VISIBLE
         findViewById<Button>(R.id.retryCameraButton).visibility = View.GONE
@@ -153,6 +211,7 @@ class QRScannerActivity : AppCompatActivity() {
         @StringRes actionTextRes: Int = R.string.retry_now,
         @StringRes actionDescriptionRes: Int = R.string.qr_scanner_retry_camera_description,
     ) {
+        findViewById<TextView>(R.id.scannerInstruction).visibility = View.GONE
         findViewById<PreviewView>(R.id.preview).visibility = View.INVISIBLE
         findViewById<View>(R.id.targetFrame).visibility = View.GONE
         showScannerStatus(getString(messageRes))
@@ -213,21 +272,28 @@ class QRScannerActivity : AppCompatActivity() {
 
     private fun deliverResult(raw: String) {
         if (alreadyDelivered) return
-        alreadyDelivered = true
+        val validLegacy = PairingURL.parse(raw) != null
+        val validInternet = raw.startsWith(INTERNET_PAIRING_PREFIX)
+        if (validLegacy || validInternet) {
+            pendingResultRaw = raw
+            alreadyDelivered = true
+        }
         runOnUiThread {
-            val validLegacy = PairingURL.parse(raw) != null
             // Product pairing is parsed exactly once by InternetPairingCoordinator,
             // which owns and clears the one-time credential. The scanner only routes
             // the namespaced payload and never interprets its security fields.
-            val validInternet = raw.startsWith(INTERNET_PAIRING_PREFIX)
             if (!validLegacy && !validInternet) {
                 showScannerStatus(getString(R.string.invalid_pairing_qr))
                 alreadyDelivered = false
             } else {
-                setResult(RESULT_OK, Intent().putExtra(EXTRA_URL, raw))
-                finish()
+                deliverAcceptedResult(raw)
             }
         }
+    }
+
+    private fun deliverAcceptedResult(raw: String) {
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_URL, raw))
+        finish()
     }
 
     override fun onDestroy() {
@@ -244,6 +310,8 @@ class QRScannerActivity : AppCompatActivity() {
         private const val TAG = "QRScanner"
         private const val INTERNET_PAIRING_PREFIX = "vibescreen://pair?"
         private const val REQ_CAMERA = 1201
+        private const val KEY_WAITING_FOR_SETTINGS_GRANT = "qr_scanner_waiting_for_settings_grant"
+        private const val KEY_PENDING_RESULT_RAW = "qr_scanner_pending_result_raw"
         const val EXTRA_URL = "qr_url"
 
         internal fun isSupportedPairingNamespace(raw: String): Boolean =
@@ -302,6 +370,80 @@ class QRScannerActivity : AppCompatActivity() {
                 }
             }
             return LumaImage(target, targetWidth, targetHeight)
+        }
+    }
+}
+
+internal object QRScannerSafeInsets {
+    data class Snapshot(
+        val instruction: MarginSnapshot,
+        val status: MarginSnapshot,
+        val retry: MarginSnapshot,
+        val cancel: MarginSnapshot,
+        val target: MarginSnapshot,
+    )
+
+    data class MarginSnapshot(
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+    )
+
+    fun capture(root: View): Snapshot =
+        Snapshot(
+            instruction = root.findViewById<View>(R.id.scannerInstruction).marginSnapshot(),
+            status = root.findViewById<View>(R.id.scannerStatus).marginSnapshot(),
+            retry = root.findViewById<View>(R.id.retryCameraButton).marginSnapshot(),
+            cancel = root.findViewById<View>(R.id.cancelButton).marginSnapshot(),
+            target = root.findViewById<View>(R.id.targetFrame).marginSnapshot(),
+        )
+
+    fun apply(
+        root: View,
+        base: Snapshot,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+    ) {
+        root.findViewById<View>(R.id.scannerInstruction)
+            .applyMargins(base.instruction, left = left, top = top, right = right)
+        root.findViewById<View>(R.id.scannerStatus)
+            .applyMargins(base.status, left = left, right = right)
+        root.findViewById<View>(R.id.retryCameraButton)
+            .applyMargins(base.retry, left = left, right = right)
+        root.findViewById<View>(R.id.cancelButton)
+            .applyMargins(base.cancel, left = left, right = right, bottom = bottom)
+        root.findViewById<View>(R.id.targetFrame)
+            .applyMargins(base.target, left = left, right = right)
+    }
+
+    private fun View.marginSnapshot(): MarginSnapshot {
+        val margins = layoutParams as ViewGroup.MarginLayoutParams
+        return MarginSnapshot(margins.leftMargin, margins.topMargin, margins.rightMargin, margins.bottomMargin)
+    }
+
+    private fun View.applyMargins(
+        base: MarginSnapshot,
+        left: Int = 0,
+        top: Int = 0,
+        right: Int = 0,
+        bottom: Int = 0,
+    ) {
+        val margins = layoutParams as ViewGroup.MarginLayoutParams
+        val nextLeft = base.left + left
+        val nextTop = base.top + top
+        val nextRight = base.right + right
+        val nextBottom = base.bottom + bottom
+        if (
+            margins.leftMargin != nextLeft ||
+            margins.topMargin != nextTop ||
+            margins.rightMargin != nextRight ||
+            margins.bottomMargin != nextBottom
+        ) {
+            margins.setMargins(nextLeft, nextTop, nextRight, nextBottom)
+            layoutParams = margins
         }
     }
 }
