@@ -18,6 +18,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -453,6 +454,7 @@ class ClipboardConfirmationDialogLayoutInstrumentedTest {
     )
 
     private fun Button.assertReadableDialogActionButton(context: Context) {
+        assertNull("$text button relies on its visible label for TalkBack", contentDescription)
         assertEquals("$text button allows two rendered lines", 2, maxLines)
         assertTrue("$text button is allowed to wrap", !isSingleLine)
         assertTrue("$text button has no ellipsize policy", ellipsize == null)
@@ -484,6 +486,7 @@ class ClipboardConfirmationDialogLayoutInstrumentedTest {
     private fun assertDialogTitleReadable(text: TextView?) {
         val label = text?.resources?.getResourceEntryName(text.id) ?: "dialog title"
         val textView = checkNotNull(text) { "$label exists" }
+        assertNull("$label relies on its visible text for TalkBack", textView.contentDescription)
         val textLayout = checkNotNull(textView.layout) { "$label has text layout" }
         assertTrue("$label has visible width", textView.measuredWidth > 0)
         assertTrue("$label has visible height", textView.measuredHeight > 0)
