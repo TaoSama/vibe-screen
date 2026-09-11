@@ -10,8 +10,6 @@
     "collected_at",
     "result",
     "blockers",
-    "source",
-    "repository",
     "configuration",
     "safety",
     "device",
@@ -136,24 +134,6 @@
           "field": {"type": "string", "minLength": 1},
           "message": {"type": "string", "minLength": 1}
         }
-      }
-    },
-    "source": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["base_commit"],
-      "properties": {
-        "base_commit": {"type": ["string", "null"]}
-      }
-    },
-    "repository": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["revision", "dirty", "status_porcelain"],
-      "properties": {
-        "revision": {"type": ["string", "null"]},
-        "dirty": {"type": ["boolean", "null"]},
-        "status_porcelain": {"type": "array", "items": {"type": "string"}}
       }
     },
     "configuration": {

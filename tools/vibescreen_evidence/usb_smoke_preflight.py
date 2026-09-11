@@ -21,7 +21,6 @@ from typing import Any, Callable, Sequence
 
 from . import SCHEMA_VERSION
 from .adb import ADBClient, ADBError
-from .manifest import ManifestError, repository_state
 from .usb_live_smoke_summary import (
     DEFAULT_PORT,
     parse_adb_reverse,
@@ -467,17 +466,6 @@ def build_document(
         blockers.extend(listener_blockers)
         blockers.extend(preflight_blockers)
 
-    try:
-        repository = repository_state(repository_root.resolve())
-    except ManifestError as error:
-        repository = {
-            "revision": None,
-            "dirty": None,
-            "status_porcelain": [],
-            "error": str(error),
-        }
-        blockers.append(blocker("source.repository", f"source repository state unavailable: {error}"))
-
     result = "ready" if not blockers else "blocked"
     return {
         "schema_version": SCHEMA_VERSION,
@@ -485,8 +473,6 @@ def build_document(
         "collected_at": wall_clock(),
         "result": result,
         "blockers": blockers,
-        "source": {"base_commit": repository.get("revision")},
-        "repository": repository,
         "configuration": {
             "serial": serial,
             "package": package_name,

@@ -55,8 +55,6 @@ class USBSmokePreflightTests(unittest.TestCase):
         self.assertTrue(document["claims"]["host_listener_observed"])
         self.assertTrue(document["claims"]["adb_reverse_tcp_54321_present"])
         self.assertTrue(document["claims"]["android_app_foreground"])
-        self.assertRegex(document["source"]["base_commit"], r"^[0-9a-f]{40}$")
-        self.assertFalse(document["repository"]["dirty"])
         self.assertFalse(document["claims"]["live_usb_stream_observed"])
         self.assertFalse(document["claims"]["readme_gate_closure"])
         assert_schema_shape(self, document)
