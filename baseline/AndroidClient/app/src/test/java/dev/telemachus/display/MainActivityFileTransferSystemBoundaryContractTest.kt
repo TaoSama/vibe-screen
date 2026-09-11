@@ -431,6 +431,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             showError.contains("allowRetry: Boolean = true") &&
                 showError.contains("if (allowRetry)") &&
                 showError.contains(".setPositiveButton(R.string.file_transfer_error_retry)") &&
+                showError.contains(".setNegativeButton(R.string.cancel) { _, _ -> fileTransferErrorDialog = null }") &&
                 showError.contains("beginChooseFileForTransfer()") &&
                 showError.contains(".setNegativeButton(R.string.cancel)"),
         )
@@ -446,6 +447,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     @Test
     fun unavailableFileTransferDialogDismissesWithoutRetryLoop() {
         val source = mainActivitySource()
+        val helper = dialogActionButtonLayoutApplierSource()
         val beginChoose = extractMethod(source, "private fun beginChooseFileForTransfer")
         val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
         val showError = extractMethod(source, "private fun showFileTransferRecoverableError")
@@ -472,6 +474,20 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 showError.contains("beginChooseFileForTransfer()") &&
                 showError.contains("builder.setPositiveButton(android.R.string.ok)") &&
                 assertBeforeValue(showError, "if (allowRetry)", "builder.setPositiveButton(android.R.string.ok)"),
+        )
+        assertTrue(
+            "Recoverable error dialogs should apply the shared readable Material dialog action-button layout after showing the real dialog",
+            showError.contains("showImmersiveDialog(builder).also(DialogActionButtonLayoutApplier::apply)") &&
+                helper.contains("AlertDialog.BUTTON_NEGATIVE") &&
+                helper.contains("AlertDialog.BUTTON_POSITIVE") &&
+                helper.contains("AlertDialog.BUTTON_NEUTRAL") &&
+                helper.contains("isSingleLine = false") &&
+                helper.contains("setHorizontallyScrolling(false)") &&
+                helper.contains("ellipsize = null") &&
+                helper.contains("maxLines = MAX_ACTION_BUTTON_LINES") &&
+                helper.contains("minHeight = max(minHeight, minimumTouchTarget)") &&
+                !helper.contains("minHeight = max(minimumHeight, minimumTouchTarget)") &&
+                helper.contains("MINIMUM_TOUCH_TARGET_DP = 48"),
         )
     }
 
@@ -699,6 +715,10 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         return sourceFile(STRINGS_PATHS).readText()
     }
 
+    private fun dialogActionButtonLayoutApplierSource(): String {
+        return sourceFile(DIALOG_ACTION_BUTTON_LAYOUT_APPLIER_PATHS).readText()
+    }
+
     private fun sourceFile(paths: List<String>): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -783,6 +803,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             listOf(
                 "app/src/main/res/values/strings.xml",
                 "baseline/AndroidClient/app/src/main/res/values/strings.xml",
+            )
+        val DIALOG_ACTION_BUTTON_LAYOUT_APPLIER_PATHS =
+            listOf(
+                "app/src/main/java/dev/telemachus/display/DialogActionButtonLayoutApplier.kt",
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DialogActionButtonLayoutApplier.kt",
             )
     }
 }
