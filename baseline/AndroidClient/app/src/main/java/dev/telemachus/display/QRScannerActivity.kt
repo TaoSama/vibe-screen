@@ -386,9 +386,9 @@ internal object QRScannerSafeInsets {
     )
 
     data class MarginSnapshot(
-        val left: Int,
+        val start: Int,
         val top: Int,
-        val right: Int,
+        val end: Int,
         val bottom: Int,
     )
 
@@ -410,44 +410,50 @@ internal object QRScannerSafeInsets {
         right: Int,
         bottom: Int,
     ) {
+        val isRtl = ViewCompat.getLayoutDirection(root) == ViewCompat.LAYOUT_DIRECTION_RTL
+        val startInset = if (isRtl) right else left
+        val endInset = if (isRtl) left else right
         root.findViewById<View>(R.id.scannerInstruction)
-            .applyMargins(base.instruction, left = left, top = top, right = right)
+            .applyMargins(base.instruction, start = startInset, top = top, end = endInset)
         root.findViewById<View>(R.id.scannerStatus)
-            .applyMargins(base.status, left = left, right = right)
+            .applyMargins(base.status, start = startInset, end = endInset)
         root.findViewById<View>(R.id.scannerStatus)
             .applyGoneTopMargin(base.statusGoneTop, top)
         root.findViewById<View>(R.id.retryCameraButton)
-            .applyMargins(base.retry, left = left, right = right)
+            .applyMargins(base.retry, start = startInset, end = endInset)
         root.findViewById<View>(R.id.cancelButton)
-            .applyMargins(base.cancel, left = left, right = right, bottom = bottom)
+            .applyMargins(base.cancel, start = startInset, end = endInset, bottom = bottom)
         root.findViewById<View>(R.id.targetFrame)
-            .applyMargins(base.target, left = left, right = right)
+            .applyMargins(base.target, start = startInset, end = endInset)
     }
 
     private fun View.marginSnapshot(): MarginSnapshot {
         val margins = layoutParams as ViewGroup.MarginLayoutParams
-        return MarginSnapshot(margins.leftMargin, margins.topMargin, margins.rightMargin, margins.bottomMargin)
+        return MarginSnapshot(margins.marginStart, margins.topMargin, margins.marginEnd, margins.bottomMargin)
     }
 
     private fun View.applyMargins(
         base: MarginSnapshot,
-        left: Int = 0,
+        start: Int = 0,
         top: Int = 0,
-        right: Int = 0,
+        end: Int = 0,
         bottom: Int = 0,
     ) {
         val margins = layoutParams as ViewGroup.MarginLayoutParams
-        val nextLeft = base.left + left
+        val nextStart = base.start + start
         val nextTop = base.top + top
-        val nextRight = base.right + right
+        val nextEnd = base.end + end
         val nextBottom = base.bottom + bottom
         if (
-            margins.leftMargin != nextLeft ||
+            margins.marginStart != nextStart ||
             margins.topMargin != nextTop ||
-            margins.rightMargin != nextRight ||
+            margins.marginEnd != nextEnd ||
             margins.bottomMargin != nextBottom
         ) {
-            margins.setMargins(nextLeft, nextTop, nextRight, nextBottom)
+            margins.marginStart = nextStart
+            margins.topMargin = nextTop
+            margins.marginEnd = nextEnd
+            margins.bottomMargin = nextBottom
             layoutParams = margins
         }
     }

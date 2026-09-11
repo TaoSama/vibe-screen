@@ -46,6 +46,9 @@ class QRScannerAccessibilityContractTest {
         assertTrue(source.contains("root.findViewById<View>(R.id.targetFrame)"))
         assertTrue(source.contains("statusGoneTop = root.findViewById<View>(R.id.scannerStatus).goneTopMargin()"))
         assertTrue(source.contains(".applyGoneTopMargin(base.statusGoneTop, top)"))
+        assertTrue(source.contains("margins.marginStart"))
+        assertTrue(source.contains("margins.marginEnd"))
+        assertFalse("Relative start/end margins must not be rewritten through physical setMargins", source.contains("margins.setMargins"))
         assertFalse("Preview must stay edge-to-edge for camera framing", source.contains("R.id.preview).applyMargins"))
     }
 

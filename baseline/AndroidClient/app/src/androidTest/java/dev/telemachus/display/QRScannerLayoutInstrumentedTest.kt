@@ -129,6 +129,29 @@ class QRScannerLayoutInstrumentedTest {
 
     @Test
     @UiThreadTest
+    fun rtlAsymmetricSafeInsetsKeepRelativeMarginsMappedToPhysicalEdges() {
+        val item = InsetsCase(widthDp = 640, heightDp = 320, leftDp = 16, topDp = 24, rightDp = 72, bottomDp = 48)
+        withLayout(
+            widthDp = item.widthDp,
+            heightDp = item.heightDp,
+            fontScale = 2f,
+            layoutDirection = View.LAYOUT_DIRECTION_RTL,
+        ) { layout ->
+            layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+            layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+            layout.assertRelativeSafeInsetsApplied(item.leftDp, item.rightDp)
+            layout.assertSeparated()
+            layout.assertInvalidQrStateSeparated()
+            layout.assertCameraErrorStateSeparated(topInsetDp = item.topDp)
+            layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+            layout.assertRelativeSafeInsetsApplied(item.leftDp, item.rightDp)
+            assertTrue(layout.retry.height >= layout.dp(48))
+            assertTrue(layout.cancel.height >= layout.dp(48))
+        }
+    }
+
+    @Test
+    @UiThreadTest
     fun safeInsetErrorStatesKeepRecoveryActionReachable() {
         listOf(
             InsetsCase(widthDp = 320, heightDp = 400, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
@@ -159,6 +182,7 @@ class QRScannerLayoutInstrumentedTest {
         widthDp: Int,
         heightDp: Int,
         fontScale: Float = 1f,
+        layoutDirection: Int = View.LAYOUT_DIRECTION_LTR,
         assertion: (MeasuredLayout) -> Unit,
     ) {
         val configuration = Configuration(applicationContext().resources.configuration)
@@ -172,6 +196,7 @@ class QRScannerLayoutInstrumentedTest {
         val root =
             LayoutInflater.from(context)
                 .inflate(R.layout.activity_qr_scanner, null, false) as ConstraintLayout
+        root.layoutDirection = layoutDirection
         val measured = MeasuredLayout(context, root, widthDp, heightDp)
         measured.measureAndLayout()
         assertion(measured)
@@ -373,26 +398,52 @@ class QRScannerLayoutInstrumentedTest {
             val rightInset = widthPx - dp(rightDp)
             val bottomInset = heightPx - dp(bottomDp)
 
-            assertTrue(instruction.left >= leftInset)
+            assertWithinHorizontalSafeInsets(instruction, leftInset, rightInset)
             if (instruction.visibility == View.VISIBLE) {
                 assertTrue(instruction.top >= topInset)
             }
-            assertTrue(instruction.right <= rightInset)
             if (status.visibility == View.VISIBLE && instruction.visibility == View.GONE) {
                 assertTrue(status.top >= topInset)
             }
-            assertTrue(status.left >= leftInset)
-            assertTrue(status.right <= rightInset)
-            assertTrue(target.left >= leftInset)
-            assertTrue(target.right <= rightInset)
-            assertTrue(retry.left >= leftInset)
-            assertTrue(retry.right <= rightInset)
-            assertTrue(cancel.left >= leftInset)
-            assertTrue(cancel.right <= rightInset)
+            assertWithinHorizontalSafeInsets(status, leftInset, rightInset)
+            assertWithinHorizontalSafeInsets(target, leftInset, rightInset)
+            assertWithinHorizontalSafeInsets(retry, leftInset, rightInset)
+            assertWithinHorizontalSafeInsets(cancel, leftInset, rightInset)
             assertTrue(cancel.bottom <= bottomInset)
         }
 
+        fun assertRelativeSafeInsetsApplied(
+            leftDp: Int,
+            rightDp: Int,
+        ) {
+            val expectedStart = dp(24 + if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) rightDp else leftDp)
+            val expectedEnd = dp(24 + if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) leftDp else rightDp)
+            listOf(instruction, status, target).forEach { view ->
+                val margins = view.layoutParams as ViewGroup.MarginLayoutParams
+                assertEquals(expectedStart, margins.marginStart)
+                assertEquals(expectedEnd, margins.marginEnd)
+            }
+            val expectedControlStart = dp(if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) rightDp else leftDp)
+            val expectedControlEnd = dp(if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) leftDp else rightDp)
+            listOf(retry, cancel).forEach { view ->
+                val margins = view.layoutParams as ViewGroup.MarginLayoutParams
+                assertEquals(expectedControlStart, margins.marginStart)
+                assertEquals(expectedControlEnd, margins.marginEnd)
+            }
+        }
+
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+        private fun assertWithinHorizontalSafeInsets(
+            view: View,
+            leftInset: Int,
+            rightInset: Int,
+        ) {
+            if (view.visibility == View.VISIBLE) {
+                assertTrue(view.left >= leftInset)
+                assertTrue(view.right <= rightInset)
+            }
+        }
 
         private fun assertNotVisiblyIntersecting(
             first: View,
