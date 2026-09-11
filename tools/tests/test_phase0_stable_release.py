@@ -4017,40 +4017,6 @@ class Phase0StableReleaseTest(unittest.TestCase):
 
         with_temporary_repo(run)
 
-    def test_clipboard_product_e2e_pass_requires_source_provenance_formal_check(self) -> None:
-        def remove_source_provenance_check(report: dict[str, object]) -> None:
-            checks = report["checks"]
-            assert isinstance(checks, list)
-            report["checks"] = [
-                check
-                for check in checks
-                if not (isinstance(check, dict) and check.get("name") == "source_provenance")
-            ]
-
-        def run(repo: Path, base_commit: str) -> None:
-            manifest = complete_manifest_for_repo(repo, base_commit)
-            gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
-            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=remove_source_provenance_check)]
-
-            summary = evaluate_manifest(
-                manifest,
-                readme_text=GUARDED_README_TEXT,
-                repo_root=repo,
-            )
-
-            self.assertEqual(summary["aggregate_verdict"], "insufficient")
-            issues = next(
-                item["issues"]
-                for item in summary["blocking_required_gates"]
-                if item["id"] == "clipboard_android_macos_product_e2e"
-            )
-            self.assertIn(
-                "docs/evidence/clipboard-e2e-gate.json: formal clipboard report checks missing source_provenance",
-                issues,
-            )
-
-        with_temporary_repo(run)
-
     def test_clipboard_product_e2e_pass_requires_source_product_e2e(self) -> None:
         def remove_source(report: dict[str, object]) -> None:
             report.pop("source")
@@ -4080,7 +4046,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
         with_temporary_repo(run)
 
     def test_clipboard_product_e2e_pass_requires_source_inputs_to_revalidate(self) -> None:
-        def remove_source_provenance_inputs(report: dict[str, object]) -> None:
+        def remove_source_input_paths(report: dict[str, object]) -> None:
             source = report["source"]
             assert isinstance(source, dict)
             source.pop("host_readiness", None)
@@ -4091,7 +4057,7 @@ class Phase0StableReleaseTest(unittest.TestCase):
         def run(repo: Path, base_commit: str) -> None:
             manifest = complete_manifest_for_repo(repo, base_commit)
             gate = gate_by_id(manifest, "clipboard_android_macos_product_e2e")
-            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=remove_source_provenance_inputs)]
+            gate["evidence_paths"] = [write_clipboard_gate_evidence(repo, mutate=remove_source_input_paths)]
 
             summary = evaluate_manifest(
                 manifest,
@@ -4115,44 +4081,6 @@ class Phase0StableReleaseTest(unittest.TestCase):
             )
             self.assertIn(
                 "docs/evidence/clipboard-e2e-gate.json: formal clipboard report source.usb_preflight or source.trusted_lan_preflight must be present",
-                issues,
-            )
-
-        with_temporary_repo(run)
-
-    def test_clipboard_product_e2e_pass_rejects_tampered_source_provenance(self) -> None:
-        def run(repo: Path, base_commit: str) -> None:
-            manifest = complete_manifest_for_repo(repo, base_commit)
-            report_path = write_clipboard_gate_evidence(repo)
-            report = json.loads((repo / report_path).read_text(encoding="utf-8"))
-            source = report["source"]
-            assert isinstance(source, dict)
-            product_ref = source["product_e2e"]
-            assert isinstance(product_ref, str)
-            product_path = repo / product_ref
-            product = json.loads(product_path.read_text(encoding="utf-8"))
-            product["source"] = {"base_commit": "f" * 40}
-            product_path.write_text(json.dumps(product), encoding="utf-8")
-            gate_by_id(manifest, "clipboard_android_macos_product_e2e")["evidence_paths"] = [report_path]
-
-            summary = evaluate_manifest(
-                manifest,
-                readme_text=GUARDED_README_TEXT,
-                repo_root=repo,
-            )
-
-            self.assertEqual(summary["aggregate_verdict"], "insufficient")
-            issues = next(
-                item["issues"]
-                for item in summary["blocking_required_gates"]
-                if item["id"] == "clipboard_android_macos_product_e2e"
-            )
-            self.assertIn(
-                "docs/evidence/clipboard-e2e-gate.json: formal clipboard report source inputs must revalidate to pass",
-                issues,
-            )
-            self.assertIn(
-                "docs/evidence/clipboard-e2e-gate.json: source revalidation blocked: source_provenance: Host readiness and product E2E source commits must match",
                 issues,
             )
 

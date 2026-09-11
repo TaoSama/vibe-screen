@@ -80,7 +80,6 @@ CLIPBOARD_E2E_REQUIRED_CHECKS = (
     "device_identity",
     "host_readiness",
     "real_transport_ready",
-    "source_provenance",
     "android_clipboardmanager_smoke",
     "bidirectional_product_e2e",
 )

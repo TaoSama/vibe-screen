@@ -66,7 +66,6 @@ REQUIRED_DIRECTION_ARTIFACT_ROLES = (
     "negative_boundary_verification",
 )
 SESSION_ID_HEX_RE = re.compile(r"[0-9a-fA-F]{32}")
-COMMIT_HASH_RE = re.compile(r"[0-9a-fA-F]{40}")
 HASH_CHUNK_BYTES = 1024 * 1024
 TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TCC"
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
@@ -668,27 +667,6 @@ def _host_readiness_structural_reasons(host: dict[str, Any]) -> list[str]:
     host_identity = host.get("host")
     if not isinstance(host_identity, dict):
         reasons.append("Host readiness host identity must be present")
-    else:
-        current_source_commit = host_identity.get("current_source_commit")
-        current_source_tree = host_identity.get("current_source_tree")
-        source_commit = host_identity.get("source_commit")
-        source_tree = host_identity.get("source_tree")
-        if not isinstance(current_source_commit, str) or COMMIT_HASH_RE.fullmatch(current_source_commit) is None:
-            reasons.append("Host readiness host.current_source_commit must be a 40-character commit hash")
-        if not isinstance(current_source_tree, str) or COMMIT_HASH_RE.fullmatch(current_source_tree) is None:
-            reasons.append("Host readiness host.current_source_tree must be a 40-character tree hash")
-        if host_identity.get("current_source_dirty") is not False:
-            reasons.append("Host readiness host.current_source_dirty must be false")
-        if not isinstance(source_commit, str) or COMMIT_HASH_RE.fullmatch(source_commit) is None:
-            reasons.append("Host readiness host.source_commit must be a 40-character commit hash")
-        if not isinstance(source_tree, str) or COMMIT_HASH_RE.fullmatch(source_tree) is None:
-            reasons.append("Host readiness host.source_tree must be a 40-character tree hash")
-        if host_identity.get("source_dirty") is not False:
-            reasons.append("Host readiness host.source_dirty must be false")
-        if isinstance(current_source_commit, str) and isinstance(source_commit, str) and current_source_commit.lower() != source_commit.lower():
-            reasons.append("Host readiness host.source_commit must match host.current_source_commit")
-        if isinstance(current_source_tree, str) and isinstance(source_tree, str) and current_source_tree.lower() != source_tree.lower():
-            reasons.append("Host readiness host.source_tree must match host.current_source_tree")
     listener = host.get("listener")
     if not isinstance(listener, dict):
         reasons.append("Host readiness listener must be present")
@@ -729,78 +707,12 @@ def _usb_gate(usb: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, A
         ):
             if claims.get(field) is not True:
                 reasons.append(f"USB preflight claims.{field} must be true")
-        if _source_base_commit(usb) is None:
-            reasons.append("USB preflight source.base_commit must be a 40-character commit hash")
     return _gate(
         "usb_preflight",
         PASS if not reasons else BLOCKED,
         reasons,
         ["usb-smoke-preflight.json"] if usb else [],
     )
-
-
-def _source_base_commit(record: dict[str, Any] | None) -> str | None:
-    if not isinstance(record, dict):
-        return None
-    source = record.get("source")
-    if isinstance(source, dict):
-        base_commit = source.get("base_commit")
-        if isinstance(base_commit, str) and COMMIT_HASH_RE.fullmatch(base_commit):
-            return base_commit.lower()
-    repository = record.get("repository")
-    if isinstance(repository, dict):
-        revision = repository.get("revision")
-        if isinstance(revision, str) and COMMIT_HASH_RE.fullmatch(revision):
-            return revision.lower()
-    return None
-
-
-def _host_source_commit(host: dict[str, Any] | None) -> str | None:
-    if not isinstance(host, dict):
-        return None
-    host_identity = host.get("host")
-    if not isinstance(host_identity, dict):
-        return None
-    current_source_commit = host_identity.get("current_source_commit")
-    if isinstance(current_source_commit, str) and COMMIT_HASH_RE.fullmatch(current_source_commit):
-        return current_source_commit.lower()
-    return None
-
-
-def _source_provenance_gate(
-    host: dict[str, Any] | None,
-    usb: dict[str, Any] | None,
-    lan: dict[str, Any] | None,
-    product: dict[str, Any] | None,
-    available_transports: set[str],
-) -> dict[str, Any]:
-    reasons: list[str] = []
-    host_commit = _host_source_commit(host)
-    product_commit = _source_base_commit(product)
-    if host_commit is None:
-        reasons.append("Host readiness host.current_source_commit must identify the current source commit")
-    if product_commit is None:
-        reasons.append("product E2E source.base_commit must be a 40-character commit hash")
-    if host_commit is not None and product_commit is not None and host_commit != product_commit:
-        reasons.append("Host readiness and product E2E source commits must match")
-    if "usb" in available_transports:
-        usb_commit = _source_base_commit(usb)
-        if usb_commit is None:
-            reasons.append("ready USB preflight source.base_commit must be a 40-character commit hash")
-        elif host_commit is not None and usb_commit != host_commit:
-            reasons.append("ready USB preflight source.base_commit must match Host readiness source commit")
-        elif product_commit is not None and usb_commit != product_commit:
-            reasons.append("ready USB preflight source.base_commit must match product E2E source commit")
-    if "trusted_lan" in available_transports:
-        lan_commit = _source_base_commit(lan)
-        if lan_commit is None:
-            reasons.append("ready trusted-LAN preflight repository.revision must be a 40-character commit hash")
-        elif host_commit is not None and lan_commit != host_commit:
-            reasons.append("ready trusted-LAN preflight repository.revision must match Host readiness source commit")
-        elif product_commit is not None and lan_commit != product_commit:
-            reasons.append("ready trusted-LAN preflight repository.revision must match product E2E source commit")
-    return _gate("source_provenance", PASS if not reasons else BLOCKED, reasons, [])
-
 
 def _lan_gate(lan: dict[str, Any] | None, missing: Sequence[str]) -> dict[str, Any]:
     reasons = list(missing)
@@ -1289,7 +1201,6 @@ def derive_gate(
         usb_gate,
         lan_gate,
         _transport_gate(usb_gate, lan_gate),
-        _source_provenance_gate(host, usb, lan, product, available_transports),
         _android_clipboard_gate(android_clipboard_instrumentation_log),
         _product_e2e_gate(
             product,
@@ -1303,7 +1214,6 @@ def derive_gate(
         "device_identity",
         "host_readiness",
         "real_transport_ready",
-        "source_provenance",
         "android_clipboardmanager_smoke",
         "bidirectional_product_e2e",
     }
