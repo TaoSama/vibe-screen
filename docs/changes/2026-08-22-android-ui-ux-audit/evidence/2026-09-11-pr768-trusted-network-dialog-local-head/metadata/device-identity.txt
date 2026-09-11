@@ -1,0 +1,12 @@
+Device identity for retained failed instrumentation attempts:
+
+Manufacturer: Nubia
+Model: P0110
+Codename: pacific
+Android release: 16
+API level: 36
+ADB serial: <redacted-adb-serial>
+
+This device identity applies only to the retained failed instrumentation logs in
+this package. It must not be relabeled as Xiaomi 13/fuxi evidence. No final
+device rerun exists for the final local source state recorded here.

@@ -1,0 +1,140 @@
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=
+dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest:
+INSTRUMENTATION_STATUS: test=restrictedLandscapeLargeFontTrustedNetworkDialogRequiresScrollableContent
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=restrictedLandscapeLargeFontTrustedNetworkDialogRequiresScrollableContent
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=productionMaterialDialogInvokesConfirmCallbackOnlyFromPositiveAction
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=productionMaterialDialogInvokesConfirmCallbackOnlyFromPositiveAction
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=productionMaterialDialogKeepsTitleBodyAndActionsReachable
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: trusted network content stays above dialog actions
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.assertTrustedNetworkContentStaysAboveActions(TrustedNetworkDialogLayoutInstrumentedTest.kt:289)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.access$assertTrustedNetworkContentStaysAboveActions(TrustedNetworkDialogLayoutInstrumentedTest.kt:25)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$productionMaterialDialogKeepsTitleBodyAndActionsReachable$1$1.invoke(TrustedNetworkDialogLayoutInstrumentedTest.kt:80)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$productionMaterialDialogKeepsTitleBodyAndActionsReachable$1$1.invoke(TrustedNetworkDialogLayoutInstrumentedTest.kt:65)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.withProductionTrustedNetworkDialog$lambda$8$lambda$5(TrustedNetworkDialogLayoutInstrumentedTest.kt:163)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.$r8$lambda$Z4OrS6WyD00LGrXh8iFmNcMuoj4(Unknown Source:0)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$$ExternalSyntheticLambda1.perform(D8$$SyntheticClass:0)
+	at androidx.test.core.app.ActivityScenario.lambda$onActivity$2$androidx-test-core-app-ActivityScenario(ActivityScenario.java:794)
+	at androidx.test.core.app.ActivityScenario$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:524)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2653)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:290)
+	at android.os.Looper.loop(Looper.java:404)
+	at android.app.ActivityThread.main(ActivityThread.java:10386)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:628)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:956)
+
+INSTRUMENTATION_STATUS: stream=
+Error in productionMaterialDialogKeepsTitleBodyAndActionsReachable(dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest):
+java.lang.AssertionError: trusted network content stays above dialog actions
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.assertTrustedNetworkContentStaysAboveActions(TrustedNetworkDialogLayoutInstrumentedTest.kt:289)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.access$assertTrustedNetworkContentStaysAboveActions(TrustedNetworkDialogLayoutInstrumentedTest.kt:25)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$productionMaterialDialogKeepsTitleBodyAndActionsReachable$1$1.invoke(TrustedNetworkDialogLayoutInstrumentedTest.kt:80)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$productionMaterialDialogKeepsTitleBodyAndActionsReachable$1$1.invoke(TrustedNetworkDialogLayoutInstrumentedTest.kt:65)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.withProductionTrustedNetworkDialog$lambda$8$lambda$5(TrustedNetworkDialogLayoutInstrumentedTest.kt:163)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.$r8$lambda$Z4OrS6WyD00LGrXh8iFmNcMuoj4(Unknown Source:0)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$$ExternalSyntheticLambda1.perform(D8$$SyntheticClass:0)
+	at androidx.test.core.app.ActivityScenario.lambda$onActivity$2$androidx-test-core-app-ActivityScenario(ActivityScenario.java:794)
+	at androidx.test.core.app.ActivityScenario$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:524)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2653)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:290)
+	at android.os.Looper.loop(Looper.java:404)
+	at android.app.ActivityThread.main(ActivityThread.java:10386)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:628)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:956)
+
+INSTRUMENTATION_STATUS: test=productionMaterialDialogKeepsTitleBodyAndActionsReachable
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=narrowAndLargeFontTrustedNetworkDialogKeepsCopyReadableAndReachable
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=4
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=narrowAndLargeFontTrustedNetworkDialogKeepsCopyReadableAndReachable
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 3.104
+There was 1 failure:
+1) productionMaterialDialogKeepsTitleBodyAndActionsReachable(dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest)
+java.lang.AssertionError: trusted network content stays above dialog actions
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.assertTrustedNetworkContentStaysAboveActions(TrustedNetworkDialogLayoutInstrumentedTest.kt:289)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.access$assertTrustedNetworkContentStaysAboveActions(TrustedNetworkDialogLayoutInstrumentedTest.kt:25)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$productionMaterialDialogKeepsTitleBodyAndActionsReachable$1$1.invoke(TrustedNetworkDialogLayoutInstrumentedTest.kt:80)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$productionMaterialDialogKeepsTitleBodyAndActionsReachable$1$1.invoke(TrustedNetworkDialogLayoutInstrumentedTest.kt:65)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.withProductionTrustedNetworkDialog$lambda$8$lambda$5(TrustedNetworkDialogLayoutInstrumentedTest.kt:163)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest.$r8$lambda$Z4OrS6WyD00LGrXh8iFmNcMuoj4(Unknown Source:0)
+	at dev.telemachus.display.TrustedNetworkDialogLayoutInstrumentedTest$$ExternalSyntheticLambda1.perform(D8$$SyntheticClass:0)
+	at androidx.test.core.app.ActivityScenario.lambda$onActivity$2$androidx-test-core-app-ActivityScenario(ActivityScenario.java:794)
+	at androidx.test.core.app.ActivityScenario$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:524)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2653)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:290)
+	at android.os.Looper.loop(Looper.java:404)
+	at android.app.ActivityThread.main(ActivityThread.java:10386)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:628)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:956)
+
+FAILURES!!!
+Tests run: 4,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

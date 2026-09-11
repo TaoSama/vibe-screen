@@ -1,0 +1,14 @@
+5593d0fa75c11d393ab080bf0ebde9939f7f426c73181ef1034e8b98cf05898b  ./android-test-results/trusted-network-dialog-am-instrument.failed-after-content-height-fix.raw.txt
+5e0b32517dd828414893c3bfbc0031278ccc481e07f9c53c217c77d4ce1797c1  ./android-test-results/trusted-network-dialog-am-instrument.failed-before-height-fix.raw.txt
+5593d0fa75c11d393ab080bf0ebde9939f7f426c73181ef1034e8b98cf05898b  ./android-test-results/trusted-network-dialog-am-instrument.raw.txt
+f43f7280e5d1c675ee75e4edeae720d136045b668b3ce50b93f3c8581aab89a8  ./commands.txt
+0342f638000856048d23154c38befa04485b2df415f57723b880a53a115ba968  ./logs/after-second-failure-cleanup.summary
+c408a082437a074f824e9fd33a32fbbeff96d4e5dc641e8e4aee2cc3f9daa6ad  ./logs/focused-jvm-and-androidtest-compile-standard-message.log
+bde294368bfed77c2cddf8cec271d398aee9cdbab3b26e1059281bd33adb0120  ./logs/focused-jvm-and-androidtest-compile-standard-message.status
+d89a076bcdf8851ba8d422998262b3b7d05af76dac5b53e023a26f2a0be069f3  ./metadata/artifact-redaction.txt
+bb0cb64922b26a4c1c77048bcf42598f1ba6e9dc2dcb2794fa4294746b151077  ./metadata/device-identity.txt
+5047369c67be7e5d39eb5c2cf2919a23c9653b442baf72f88831ae8f6bc0a376  ./metadata/no-host-boundary.txt
+ebb0b655590b3052b82a1234249b59fc3048c99b33355a876ee3dfc5b0f09c2f  ./metadata/source-provenance.txt
+f24fdc7ffd07643045191d24884c1db1ba103cf9e4ffe6f42dfcd60977661a74  ./README.md
+9ed805ce1ce53061ed215384b15adbb61e9617981c3792f82284b2347ebcb64e  ./unit-test-results/TEST-dev.telemachus.display.MainActivityTerminalGuidanceContractTest.xml
+02e2371e34efab4c7a78fbdf5ada54781e8614a70f19ef33991efe10146d54c5  ./unit-test-results/TEST-dev.telemachus.display.WirelessTabControllerContractTest.xml

@@ -1,8 +1,12 @@
 package dev.telemachus.display
 
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
+import android.text.Layout
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -42,6 +46,7 @@ interface WirelessCameraPermission {
 
 private class ActivityWirelessTabHost(
     private val activity: Activity,
+    private val showDialog: (Dialog) -> Dialog,
 ) : WirelessTabHost {
     override val resources: Resources
         get() = activity.resources
@@ -52,7 +57,7 @@ private class ActivityWirelessTabHost(
     ): String = activity.getString(resId, *formatArgs)
 
     override fun showTrustedNetworkDialog(onConfirmed: () -> Unit) {
-        showTrustedNetworkDialog(activity, onConfirmed)
+        showTrustedNetworkDialog(activity, onConfirmed, showDialog)
     }
 
     override fun launchScanner() {
@@ -64,29 +69,62 @@ private class ActivityWirelessTabHost(
 internal fun showTrustedNetworkDialog(
     activity: Activity,
     onConfirmed: () -> Unit,
-): AlertDialog? {
+    showDialog: (Dialog) -> Dialog,
+): Dialog? {
     if (activity.isFinishing || activity.isDestroyed) return null
-    val builder =
-        MaterialAlertDialogBuilder(activity)
-            .setTitle(R.string.trusted_network_dialog_title)
-            .setMessage(R.string.trusted_network_dialog_message)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.trusted_network_dialog_confirm) { _, _ -> onConfirmed() }
-    val dialog =
-        if (activity is MainActivity) {
-            activity.showImmersiveDialog(builder)
-        } else {
-            builder.show()
+    return showDialog(createTrustedNetworkDialog(activity, onConfirmed))
+}
+
+internal fun showTrustedNetworkDialog(
+    activity: Activity,
+    onConfirmed: () -> Unit,
+): Dialog? = showTrustedNetworkDialog(activity, onConfirmed) { dialog ->
+    dialog.show()
+    dialog
+}
+
+internal fun createTrustedNetworkDialog(
+    context: Context,
+    onConfirmed: () -> Unit,
+): AlertDialog {
+    return MaterialAlertDialogBuilder(context)
+        .setTitle(R.string.trusted_network_dialog_title)
+        .setMessage(R.string.trusted_network_dialog_message)
+        .setNegativeButton(R.string.cancel, null)
+        .setPositiveButton(R.string.trusted_network_dialog_confirm, null)
+        .create()
+        .also { dialog -> configureTrustedNetworkDialogActions(dialog, onConfirmed) }
+}
+
+@SuppressLint("WrongConstant")
+private fun configureTrustedNetworkDialogActions(
+    dialog: AlertDialog,
+    onConfirmed: () -> Unit,
+) {
+    dialog.setOnShowListener {
+        dialog.findViewById<TextView>(android.R.id.message)?.apply {
+            breakStrategy = Layout.BREAK_STRATEGY_BALANCED
+            hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL
         }
-    listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { buttonId ->
-        dialog.getButton(buttonId)?.apply {
-            isSingleLine = false
-            maxLines = 2
-            ellipsize = null
+        listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { buttonId ->
+            checkNotNull(dialog.getButton(buttonId)) {
+                "trusted network dialog button $buttonId exists"
+            }.apply {
+                setSingleLine(false)
+                maxLines = TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES
+                ellipsize = null
+            }
+        }
+        checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE)) {
+            "trusted network dialog positive button exists"
+        }.setOnClickListener {
+            onConfirmed()
+            dialog.dismiss()
         }
     }
-    return dialog
 }
+
+private const val TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES = 2
 
 /**
  * Five-state UI machine for the Wireless tab on Android.
@@ -117,6 +155,10 @@ class WirelessTabController internal constructor(
         cameraPerm: CameraPermissionManager,
         isTrustedLanAcknowledged: () -> Boolean,
         acknowledgeTrustedLan: () -> Unit,
+        showDialog: (Dialog) -> Dialog = { dialog ->
+            dialog.show()
+            dialog
+        },
         onConnectRequested: (
             host: String,
             port: Int,
@@ -125,7 +167,7 @@ class WirelessTabController internal constructor(
             macName: String,
         ) -> Unit,
     ) : this(
-        host = ActivityWirelessTabHost(activity),
+        host = ActivityWirelessTabHost(activity, showDialog),
         views = views,
         storage = storage,
         cameraPerm = cameraPerm,
