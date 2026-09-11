@@ -113,6 +113,7 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -473,6 +474,8 @@ dependencies {
     implementation("com.google.protobuf:protobuf-javalite:$protobufVersion")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.7.0")
+    testImplementation("org.robolectric:robolectric:4.12.1")
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")

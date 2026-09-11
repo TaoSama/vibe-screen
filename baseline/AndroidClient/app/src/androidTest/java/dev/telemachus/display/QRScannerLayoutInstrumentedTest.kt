@@ -122,6 +122,7 @@ class QRScannerLayoutInstrumentedTest {
                 layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
                 layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
                 layout.assertSeparated()
+                layout.assertInvalidQrStateSeparated()
             }
         }
     }
@@ -131,11 +132,13 @@ class QRScannerLayoutInstrumentedTest {
     fun safeInsetErrorStatesKeepRecoveryActionReachable() {
         listOf(
             InsetsCase(widthDp = 320, heightDp = 400, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 320, heightDp = 640, leftDp = 0, topDp = 48, rightDp = 0, bottomDp = 64),
             InsetsCase(widthDp = 640, heightDp = 320, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 48, topDp = 48, rightDp = 48, bottomDp = 48),
         ).forEach { item ->
             withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
                 layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
-                layout.assertCameraErrorStateSeparated()
+                layout.assertCameraErrorStateSeparated(topInsetDp = item.topDp)
                 layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
                 assertEquals(View.GONE, layout.instruction.visibility)
                 assertTrue(layout.retry.height >= layout.dp(48))
@@ -143,7 +146,7 @@ class QRScannerLayoutInstrumentedTest {
             }
             withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
                 layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
-                layout.assertCameraPermissionBlockedStateSeparated()
+                layout.assertCameraPermissionBlockedStateSeparated(topInsetDp = item.topDp)
                 layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
                 assertEquals(View.GONE, layout.instruction.visibility)
                 assertTrue(layout.retry.height >= layout.dp(48))
@@ -249,7 +252,7 @@ class QRScannerLayoutInstrumentedTest {
             assertTrue(cancel.bottom <= root.height)
         }
 
-        fun assertCameraErrorStateSeparated() {
+        fun assertCameraErrorStateSeparated(topInsetDp: Int = 0) {
             instruction.visibility = View.GONE
             target.visibility = View.GONE
             retry.visibility = View.VISIBLE
@@ -281,9 +284,9 @@ class QRScannerLayoutInstrumentedTest {
                 statusLayout.getLineBottom(statusLayout.lineCount - 1) <=
                     status.height - status.compoundPaddingBottom,
             )
-            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
-            assertFalse(Rect.intersects(bounds(status), bounds(retry)))
-            assertFalse(Rect.intersects(bounds(retry), bounds(cancel)))
+            assertNotVisiblyIntersecting(status, retry)
+            assertNotVisiblyIntersecting(retry, cancel)
+            assertTrue(status.top >= dp(topInsetDp))
             assertTrue(status.left >= 0)
             assertTrue(status.right <= root.width)
             assertTrue(retry.left >= 0)
@@ -307,9 +310,10 @@ class QRScannerLayoutInstrumentedTest {
             assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
             assertFalse(Rect.intersects(bounds(status), bounds(target)))
             assertFalse(Rect.intersects(bounds(target), bounds(cancel)))
+            assertEquals(instruction.bottom + dp(8), status.top)
         }
 
-        fun assertCameraPermissionBlockedStateSeparated() {
+        fun assertCameraPermissionBlockedStateSeparated(topInsetDp: Int = 0) {
             instruction.visibility = View.GONE
             target.visibility = View.GONE
             retry.visibility = View.VISIBLE
@@ -331,9 +335,9 @@ class QRScannerLayoutInstrumentedTest {
                 context.getString(R.string.qr_scanner_open_settings_description),
                 retry.contentDescription.toString(),
             )
-            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
-            assertFalse(Rect.intersects(bounds(status), bounds(retry)))
-            assertFalse(Rect.intersects(bounds(retry), bounds(cancel)))
+            assertNotVisiblyIntersecting(status, retry)
+            assertNotVisiblyIntersecting(retry, cancel)
+            assertTrue(status.top >= dp(topInsetDp))
             assertTrue(status.left >= 0)
             assertTrue(status.right <= root.width)
             assertTrue(retry.left >= 0)
@@ -370,8 +374,13 @@ class QRScannerLayoutInstrumentedTest {
             val bottomInset = heightPx - dp(bottomDp)
 
             assertTrue(instruction.left >= leftInset)
-            assertTrue(instruction.top >= topInset)
+            if (instruction.visibility == View.VISIBLE) {
+                assertTrue(instruction.top >= topInset)
+            }
             assertTrue(instruction.right <= rightInset)
+            if (status.visibility == View.VISIBLE && instruction.visibility == View.GONE) {
+                assertTrue(status.top >= topInset)
+            }
             assertTrue(status.left >= leftInset)
             assertTrue(status.right <= rightInset)
             assertTrue(target.left >= leftInset)
@@ -384,6 +393,15 @@ class QRScannerLayoutInstrumentedTest {
         }
 
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+        private fun assertNotVisiblyIntersecting(
+            first: View,
+            second: View,
+        ) {
+            if (first.visibility == View.VISIBLE && second.visibility == View.VISIBLE) {
+                assertFalse(Rect.intersects(bounds(first), bounds(second)))
+            }
+        }
 
         private fun bounds(view: View): Rect = Rect(view.left, view.top, view.right, view.bottom)
     }

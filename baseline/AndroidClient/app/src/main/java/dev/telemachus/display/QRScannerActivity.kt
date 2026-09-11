@@ -19,6 +19,7 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -381,6 +382,7 @@ internal object QRScannerSafeInsets {
         val retry: MarginSnapshot,
         val cancel: MarginSnapshot,
         val target: MarginSnapshot,
+        val statusGoneTop: Int,
     )
 
     data class MarginSnapshot(
@@ -397,6 +399,7 @@ internal object QRScannerSafeInsets {
             retry = root.findViewById<View>(R.id.retryCameraButton).marginSnapshot(),
             cancel = root.findViewById<View>(R.id.cancelButton).marginSnapshot(),
             target = root.findViewById<View>(R.id.targetFrame).marginSnapshot(),
+            statusGoneTop = root.findViewById<View>(R.id.scannerStatus).goneTopMargin(),
         )
 
     fun apply(
@@ -411,6 +414,8 @@ internal object QRScannerSafeInsets {
             .applyMargins(base.instruction, left = left, top = top, right = right)
         root.findViewById<View>(R.id.scannerStatus)
             .applyMargins(base.status, left = left, right = right)
+        root.findViewById<View>(R.id.scannerStatus)
+            .applyGoneTopMargin(base.statusGoneTop, top)
         root.findViewById<View>(R.id.retryCameraButton)
             .applyMargins(base.retry, left = left, right = right)
         root.findViewById<View>(R.id.cancelButton)
@@ -444,6 +449,23 @@ internal object QRScannerSafeInsets {
         ) {
             margins.setMargins(nextLeft, nextTop, nextRight, nextBottom)
             layoutParams = margins
+        }
+    }
+
+    private fun View.goneTopMargin(): Int {
+        val params = layoutParams as? ConstraintLayout.LayoutParams ?: return 0
+        return params.goneTopMargin
+    }
+
+    private fun View.applyGoneTopMargin(
+        base: Int,
+        top: Int,
+    ) {
+        val params = layoutParams as? ConstraintLayout.LayoutParams ?: return
+        val nextTop = base + top
+        if (params.goneTopMargin != nextTop) {
+            params.goneTopMargin = nextTop
+            layoutParams = params
         }
     }
 }
