@@ -17,7 +17,6 @@ class QRScannerStateRecoveryTest {
         ActivityScenario.launchActivityForResult(QRScannerActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setPrivateField("pendingResultRaw", VALID_PAIRING_QR)
-                activity.setPrivateField("alreadyDelivered", true)
             }
 
             scenario.recreate()
