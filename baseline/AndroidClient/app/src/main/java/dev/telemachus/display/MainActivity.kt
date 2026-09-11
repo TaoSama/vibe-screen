@@ -3937,7 +3937,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             builder.setPositiveButton(android.R.string.ok) { _, _ -> fileTransferErrorDialog = null }
         }
-        fileTransferErrorDialog = showImmersiveDialog(builder)
+        fileTransferErrorDialog = showImmersiveDialog(builder).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun hostActionFailureMessageId(rejectionReason: String): Int =
