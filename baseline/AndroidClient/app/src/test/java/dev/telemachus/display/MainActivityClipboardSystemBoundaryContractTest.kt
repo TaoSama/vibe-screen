@@ -275,6 +275,44 @@ class MainActivityClipboardSystemBoundaryContractTest {
         )
     }
 
+    @Test
+    fun clipboardConfirmationDialogsApplyReadableActionButtonLayout() {
+        val source = mainActivitySource()
+        val helper = dialogActionButtonLayoutApplierSource()
+        val send = extractMethod(source, "private fun beginSendLocalClipboard")
+        val receive = extractMethod(source, "private fun beginReceiveRemoteClipboard")
+        val overwrite = extractMethod(source, "private fun showClipboardOverwriteConfirmation")
+
+        assertTrue(
+            "LAN send clipboard dialog applies DialogActionButtonLayoutApplier",
+            send.contains("showImmersiveDialog(") &&
+                send.contains(".also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "LAN receive clipboard dialog applies DialogActionButtonLayoutApplier",
+            receive.contains("showImmersiveDialog(") &&
+                receive.contains(".also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "Direct overwrite clipboard dialog applies DialogActionButtonLayoutApplier",
+            overwrite.contains("showImmersiveDialog(") &&
+                overwrite.contains(".also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "DialogActionButtonLayoutApplier enforces readable buttons with minimum touch target",
+            helper.contains("AlertDialog.BUTTON_NEGATIVE") &&
+                helper.contains("AlertDialog.BUTTON_POSITIVE") &&
+                helper.contains("AlertDialog.BUTTON_NEUTRAL") &&
+                helper.contains("isSingleLine = false") &&
+                helper.contains("setHorizontallyScrolling(false)") &&
+                helper.contains("ellipsize = null") &&
+                helper.contains("maxLines = MAX_ACTION_BUTTON_LINES") &&
+                helper.contains("minWidth = max(minWidth, minimumTouchTarget)") &&
+                helper.contains("minHeight = max(minHeight, minimumTouchTarget)") &&
+                helper.contains("MINIMUM_TOUCH_TARGET_DP = 48"),
+        )
+    }
+
     private fun mainActivitySource(): String {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -285,6 +323,22 @@ class MainActivityClipboardSystemBoundaryContractTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("MainActivity.kt not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun dialogActionButtonLayoutApplierSource(): String {
+        return sourceFile(DIALOG_ACTION_BUTTON_LAYOUT_APPLIER_PATHS).readText()
+    }
+
+    private fun sourceFile(paths: List<String>): File {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            paths
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error("Source file not found for paths $paths from " + System.getProperty("user.dir"))
     }
 
     private fun extractMethod(
@@ -360,6 +414,11 @@ class MainActivityClipboardSystemBoundaryContractTest {
             listOf(
                 "app/src/main/java/dev/telemachus/display/MainActivity.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+            )
+        val DIALOG_ACTION_BUTTON_LAYOUT_APPLIER_PATHS =
+            listOf(
+                "app/src/main/java/dev/telemachus/display/DialogActionButtonLayoutApplier.kt",
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/DialogActionButtonLayoutApplier.kt",
             )
     }
 }
