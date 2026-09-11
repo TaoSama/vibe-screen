@@ -412,6 +412,7 @@ class SettingsDialogLayoutInstrumentedTest {
     fun settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows() {
         listOf(false, true).forEach { rtl ->
             listOf(
+                Triple(320, 640, 2f),
                 Triple(320, 800, 2f),
                 Triple(640, 320, 2f),
             ).forEach { (screenWidthDp, screenHeightDp, fontScale) ->
@@ -426,6 +427,23 @@ class SettingsDialogLayoutInstrumentedTest {
                     assertLastItemCanScrollIntoView(layout)
                 }
             }
+        }
+    }
+
+    @Test
+    fun settingsActionButtonsGrowToTwoLinesForLongLabels() {
+        withLayout(screenWidthDp = 320, screenHeightDp = 640, fontScale = 2f) { layout ->
+            val disconnect = layout.root.findViewById<MaterialButton>(R.id.disconnectSettingsButton)
+            val close = layout.root.findViewById<MaterialButton>(R.id.closeButton)
+            disconnect.text = "Disconnect from this Mac"
+            close.text = "Save settings and close"
+            layout.measureAndLayout()
+
+            assertSettingsActionButton(layout, R.id.disconnectSettingsButton, minimumTouchTargetDp = 48)
+            assertSettingsActionButton(layout, R.id.closeButton, minimumTouchTargetDp = 56)
+            assertEquals("disconnect label wraps to two lines", 2, requireNotNull(disconnect.layout).lineCount)
+            assertEquals("close label wraps to two lines", 2, requireNotNull(close.layout).lineCount)
+            assertLastItemCanScrollIntoView(layout)
         }
     }
 
