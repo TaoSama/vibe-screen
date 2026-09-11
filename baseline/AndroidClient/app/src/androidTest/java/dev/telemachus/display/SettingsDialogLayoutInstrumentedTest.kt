@@ -725,6 +725,11 @@ class SettingsDialogLayoutInstrumentedTest {
             "${button.resources.getResourceEntryName(buttonId)} uses no more than two lines",
             requireNotNull(button.layout).lineCount <= 2,
         )
+        assertEquals(
+            "${button.resources.getResourceEntryName(buttonId)} renders its complete label",
+            button.text.length,
+            requireNotNull(button.layout).getLineEnd(requireNotNull(button.layout).lineCount - 1),
+        )
         assertFullyReachableByScroll(layout, button)
     }
 
