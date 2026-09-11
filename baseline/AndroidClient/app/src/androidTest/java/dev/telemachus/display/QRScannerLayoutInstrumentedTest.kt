@@ -110,6 +110,48 @@ class QRScannerLayoutInstrumentedTest {
         }
     }
 
+    @Test
+    @UiThreadTest
+    fun safeInsetsKeepScannerControlsAwayFromSystemBars() {
+        listOf(
+            InsetsCase(widthDp = 320, heightDp = 568, leftDp = 0, topDp = 32, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 48, topDp = 0, rightDp = 48, bottomDp = 0),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+        ).forEach { item ->
+            withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
+                layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertSeparated()
+            }
+        }
+    }
+
+    @Test
+    @UiThreadTest
+    fun safeInsetErrorStatesKeepRecoveryActionReachable() {
+        listOf(
+            InsetsCase(widthDp = 320, heightDp = 400, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+            InsetsCase(widthDp = 640, heightDp = 320, leftDp = 0, topDp = 24, rightDp = 0, bottomDp = 48),
+        ).forEach { item ->
+            withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
+                layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertCameraErrorStateSeparated()
+                layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                assertEquals(View.GONE, layout.instruction.visibility)
+                assertTrue(layout.retry.height >= layout.dp(48))
+                assertTrue(layout.cancel.height >= layout.dp(48))
+            }
+            withLayout(widthDp = item.widthDp, heightDp = item.heightDp, fontScale = 2f) { layout ->
+                layout.applySafeInsets(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                layout.assertCameraPermissionBlockedStateSeparated()
+                layout.assertSafeInsetsApplied(item.leftDp, item.topDp, item.rightDp, item.bottomDp)
+                assertEquals(View.GONE, layout.instruction.visibility)
+                assertTrue(layout.retry.height >= layout.dp(48))
+                assertTrue(layout.cancel.height >= layout.dp(48))
+            }
+        }
+    }
+
     private fun withLayout(
         widthDp: Int,
         heightDp: Int,
@@ -148,6 +190,7 @@ class QRScannerLayoutInstrumentedTest {
         val cancel = root.findViewById<Button>(R.id.cancelButton)
         private val widthPx = dp(widthDp)
         private val heightPx = dp(heightDp)
+        private val baseMargins = QRScannerSafeInsets.capture(root)
 
         fun measureAndLayout() {
             root.measure(
@@ -207,6 +250,7 @@ class QRScannerLayoutInstrumentedTest {
         }
 
         fun assertCameraErrorStateSeparated() {
+            instruction.visibility = View.GONE
             target.visibility = View.GONE
             retry.visibility = View.VISIBLE
             status.visibility = View.VISIBLE
@@ -217,6 +261,7 @@ class QRScannerLayoutInstrumentedTest {
 
             assertEquals(View.VISIBLE, status.visibility)
             assertEquals(View.VISIBLE, retry.visibility)
+            assertEquals(View.GONE, instruction.visibility)
             assertEquals(View.GONE, target.visibility)
             assertEquals(message, status.contentDescription.toString())
             assertEquals(
@@ -265,6 +310,7 @@ class QRScannerLayoutInstrumentedTest {
         }
 
         fun assertCameraPermissionBlockedStateSeparated() {
+            instruction.visibility = View.GONE
             target.visibility = View.GONE
             retry.visibility = View.VISIBLE
             status.visibility = View.VISIBLE
@@ -277,6 +323,7 @@ class QRScannerLayoutInstrumentedTest {
 
             assertEquals(View.VISIBLE, status.visibility)
             assertEquals(View.VISIBLE, retry.visibility)
+            assertEquals(View.GONE, instruction.visibility)
             assertEquals(View.GONE, target.visibility)
             assertEquals(message, status.contentDescription.toString())
             assertEquals(context.getString(R.string.open_settings), retry.text.toString())
@@ -294,8 +341,59 @@ class QRScannerLayoutInstrumentedTest {
             assertTrue(cancel.bottom <= root.height)
         }
 
+        fun applySafeInsets(
+            leftDp: Int,
+            topDp: Int,
+            rightDp: Int,
+            bottomDp: Int,
+        ) {
+            QRScannerSafeInsets.apply(
+                root,
+                baseMargins,
+                left = dp(leftDp),
+                top = dp(topDp),
+                right = dp(rightDp),
+                bottom = dp(bottomDp),
+            )
+            measureAndLayout()
+        }
+
+        fun assertSafeInsetsApplied(
+            leftDp: Int,
+            topDp: Int,
+            rightDp: Int,
+            bottomDp: Int,
+        ) {
+            val leftInset = dp(leftDp)
+            val topInset = dp(topDp)
+            val rightInset = widthPx - dp(rightDp)
+            val bottomInset = heightPx - dp(bottomDp)
+
+            assertTrue(instruction.left >= leftInset)
+            assertTrue(instruction.top >= topInset)
+            assertTrue(instruction.right <= rightInset)
+            assertTrue(status.left >= leftInset)
+            assertTrue(status.right <= rightInset)
+            assertTrue(target.left >= leftInset)
+            assertTrue(target.right <= rightInset)
+            assertTrue(retry.left >= leftInset)
+            assertTrue(retry.right <= rightInset)
+            assertTrue(cancel.left >= leftInset)
+            assertTrue(cancel.right <= rightInset)
+            assertTrue(cancel.bottom <= bottomInset)
+        }
+
         fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
 
         private fun bounds(view: View): Rect = Rect(view.left, view.top, view.right, view.bottom)
     }
+
+    private data class InsetsCase(
+        val widthDp: Int,
+        val heightDp: Int,
+        val leftDp: Int,
+        val topDp: Int,
+        val rightDp: Int,
+        val bottomDp: Int,
+    )
 }
