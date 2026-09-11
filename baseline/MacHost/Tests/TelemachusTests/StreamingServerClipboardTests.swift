@@ -66,8 +66,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testShareClipboardReturnsFalseWhenClipboardNotNegotiated() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
 
         // Drive the handshake to STREAMING without the clipboard capability.
         try driveHandshakeToStreaming(clipboard: false)
@@ -78,8 +77,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testRequestClipboardReturnsFalseWhenClipboardNotNegotiated() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
 
         try driveHandshakeToStreaming(clipboard: false)
 
@@ -92,8 +90,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testClipboardOfferCallbackFiresOnMainActorWithGeneration() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         let generation = try driveHandshakeToStreaming(clipboard: true)
 
         let offerReceived = expectation(description: "clipboard offer received")
@@ -129,8 +126,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testSolicitedClipboardContentCallbackFires() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: true)
 
         let text = "solicited content"
@@ -175,8 +171,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testDirectClipboardContentCallbackFires() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: true)
 
         let text = "unsolicited content"
@@ -206,8 +201,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testStaleClipboardOfferCallbackIsDroppedAfterGenerationAdvance() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: true)
 
         // The offer callback must not fire after the client-callback generation
@@ -256,8 +250,7 @@ final class StreamingServerClipboardTests: XCTestCase {
             }
         }
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("from android file".utf8)
@@ -336,8 +329,7 @@ final class StreamingServerClipboardTests: XCTestCase {
             streamingServer.onFileTransferApprovalRequested = { _ in true }
         }
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("cancelled by android".utf8)
@@ -384,8 +376,7 @@ final class StreamingServerClipboardTests: XCTestCase {
             streamingServer.onFileTransferApprovalRequested = { _ in false }
         }
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("denied by mac".utf8)
@@ -426,8 +417,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testIncomingFileOfferWithoutApprovalCallbackReportsIncomingResult() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("no approval callback".utf8)
@@ -470,8 +460,7 @@ final class StreamingServerClipboardTests: XCTestCase {
             streamingServer.onFileTransferApprovalRequested = { _ in true }
         }
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("invalid incoming offer".utf8)
@@ -511,8 +500,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileSendsOfferAndBulkChunkAfterAccept() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("from mac file".utf8)
@@ -572,8 +560,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileReportsOutgoingResultWhenPeerRejectsOffer() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("rejected mac file".utf8)
@@ -613,8 +600,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileReportsOutgoingResultWhenPeerCancelsTransfer() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("cancel mac file".utf8)
@@ -653,8 +639,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileCancelsOnUnexpectedProgressOffset() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("from mac file".utf8)
@@ -703,8 +688,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileReportsOutgoingResultWhenNextChunkFails() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("file disappears before chunk read".utf8)
@@ -761,8 +745,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileCancelsOnCompletionDigestMismatch() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("from mac file".utf8)
@@ -825,8 +808,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileCancelsCompletionBeforeAllBytesAreAcknowledged() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: true)
 
         let payload = Data("from mac multi chunk file".utf8)
@@ -890,8 +872,7 @@ final class StreamingServerClipboardTests: XCTestCase {
             }
         }
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(
             clipboard: false,
             fileTransfer: true,
@@ -950,8 +931,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testManagedPolicyShrinkingMaximumFileBytesCancelsOutgoingProtocolV1File() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(
             clipboard: false,
             fileTransfer: true,
@@ -1004,8 +984,7 @@ final class StreamingServerClipboardTests: XCTestCase {
     func testOfferProtocolV1FileIsNoOpWhenFileTransferNotNegotiated() throws {
         let port = try startServer()
 
-        client = try readyClient(port: port)
-        try upgradeToProtocolV1()
+        client = try readyProtocolV1Client(port: port)
         try driveHandshakeToStreaming(clipboard: false, fileTransfer: false)
 
         let fileURL = temporaryDirectory().appendingPathComponent("blocked.txt")
@@ -1111,20 +1090,43 @@ final class StreamingServerClipboardTests: XCTestCase {
         return connection
     }
 
-    /// Sends the Protocol v1 upgrade byte and consumes the acknowledgement.
-    private func upgradeToProtocolV1() throws {
-        guard let client else { throw TestError.noClient }
+    /// Starts the client and queues the Protocol v1 upgrade byte immediately.
+    /// Waiting for the ready state before sending lets the server's legacy
+    /// fallback grace timer win under loaded CI, which injects legacy bytes
+    /// before the test switches to the Protocol v1 framer.
+    private func readyProtocolV1Client(port: UInt16) throws -> NWConnection {
+        let ready = expectation(description: "client ready")
         let ack = expectation(description: "protocol v1 acknowledgement")
-        client.receive(minimumIncompleteLength: 2, maximumLength: 2) { data, _, _, error in
+        var failure: Error?
+        let connection = NWConnection(
+            host: NWEndpoint.Host("127.0.0.1"),
+            port: NWEndpoint.Port(rawValue: port)!,
+            using: .tcp
+        )
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                ready.fulfill()
+            case .failed(let error):
+                failure = error
+                ready.fulfill()
+            default:
+                break
+            }
+        }
+        connection.receive(minimumIncompleteLength: 2, maximumLength: 2) { data, _, _, error in
             XCTAssertNil(error)
             XCTAssertEqual(data, ProtocolV1Upgrade.acknowledgement)
             ack.fulfill()
         }
-        client.send(
+        connection.start(queue: queue)
+        connection.send(
             content: Data([ProtocolV1Upgrade.offer]),
             completion: .contentProcessed { error in XCTAssertNil(error) }
         )
-        wait(for: [ack], timeout: 2)
+        wait(for: [ready, ack], timeout: 2)
+        if let failure { throw failure }
+        return connection
     }
 
     /// Drives the Protocol v1 handshake to the STREAMING phase.
