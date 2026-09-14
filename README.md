@@ -928,8 +928,8 @@ The earlier current-base QR pairing blocked record covers only offline
 Swift/Kotlin fixture and fail-closed checks. The 2026-09-15 Nubia P0110 run adds
 a real rear-camera attempt, but it remains blocked before decode because the
 physical camera did not face the presented QR code. Neither record proves a
-successful camera scan, device-to-authority pairing, production TLS/public-
-Internet deployment, or a Host-backed session.
+successful camera scan, device-to-authority pairing, production
+TLS/public-Internet deployment, or a Host-backed session.
 Current fail-closed Internet soak evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked/README.md).
 The current-base public Internet WebRTC/TURN relay E2E owner record is
