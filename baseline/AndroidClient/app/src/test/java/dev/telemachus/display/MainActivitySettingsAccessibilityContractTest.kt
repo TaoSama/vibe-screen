@@ -107,15 +107,22 @@ class MainActivitySettingsAccessibilityContractTest {
         val layout = settingsLayoutSource()
         val applier = settingsDialogLayoutApplierSource()
         val displayCapability = extractXmlElement(layout, xmlAttribute("android:id", "@+id/displayCapability"))
+        val scaleLabel = extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeLabel"))
         val scaleGroup = extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeGroup"))
         val rotationLabel = extractXmlElement(layout, xmlAttribute("android:id", "@+id/rotationLabel"))
         val rotationGroup = extractXmlElement(layout, xmlAttribute("android:id", "@+id/rotationGroup"))
 
         assertTrue(
-            "Display capability copy should label the scale-mode group without becoming another heading",
-            displayCapability.contains(xmlAttribute("android:labelFor", "@id/scaleModeGroup")) &&
-                displayCapability.contains(xmlAttribute("android:text", "@string/display_selection_host_only")) &&
+            "Display capability copy should remain descriptive rather than naming the scale options",
+            displayCapability.contains(xmlAttribute("android:text", "@string/display_selection_host_only")) &&
+                !displayCapability.contains("android:labelFor") &&
                 !displayCapability.contains("android:accessibilityHeading"),
+        )
+        assertTrue(
+            "The concise scale label should name the option group without becoming another heading",
+            scaleLabel.contains(xmlAttribute("android:labelFor", "@id/scaleModeGroup")) &&
+                scaleLabel.contains(xmlAttribute("android:text", "@string/scale_mode_label")) &&
+                !scaleLabel.contains("android:accessibilityHeading"),
         )
         assertTrue(
             "Rotation copy should label the rotation group without duplicating the Viewport heading",
@@ -134,7 +141,7 @@ class MainActivitySettingsAccessibilityContractTest {
         assertTrue(
             "The responsive applier should move option-group context to individual buttons and clear group descriptions",
             applier.contains("R.id.scaleModeGroup to OptionGroupLayout(") &&
-                applier.contains("R.id.displayCapability") &&
+                applier.contains("R.id.scaleModeLabel") &&
                 applier.contains("R.id.rotationGroup to OptionGroupLayout(") &&
                 applier.contains("R.id.rotationLabel") &&
                 applier.contains("applyOptionAccessibilityContext(button, normalizedAccessibilityContext)") &&
@@ -219,8 +226,8 @@ class MainActivitySettingsAccessibilityContractTest {
                 .contains(xmlAttribute("android:text", "@string/display_selection_host_only")),
         )
         assertTrue(
-            "The scale-mode group should rely on the visible display capability label before runtime capabilities are bound",
-            extractXmlElement(layout, xmlAttribute("android:id", "@+id/displayCapability"))
+            "The scale-mode group should rely on a concise stable label before runtime capabilities are bound",
+            extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeLabel"))
                 .contains(xmlAttribute("android:labelFor", "@id/scaleModeGroup")) &&
                 !extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeGroup"))
                     .contains("android:contentDescription"),
@@ -237,7 +244,8 @@ class MainActivitySettingsAccessibilityContractTest {
             showSettingsDialog.contains("val displayCapabilityText =") &&
                 showSettingsDialog.contains("R.string.display_selection_available") &&
                 showSettingsDialog.contains("R.string.display_selection_host_only") &&
-                showSettingsDialog.contains("displayCapability.setText(displayCapabilityText)"),
+                showSettingsDialog.contains("displayCapability.setText(displayCapabilityText)") &&
+                !showSettingsDialog.contains("scaleModeGroup.contentDescription = getString(displayCapabilityText)"),
         )
         assertTrue(
             "Available display copy should be scoped to a negotiated Mac session",

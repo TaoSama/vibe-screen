@@ -164,7 +164,7 @@ class SettingsDialogLayoutInstrumentedTest {
                 screenHeightDp = screenHeightDp,
                 fontScale = fontScale,
             ) { layout ->
-                assertChoiceGroupContext(layout, R.id.scaleModeGroup, R.string.display_selection_host_only)
+                assertChoiceGroupContext(layout, R.id.scaleModeGroup, R.string.scale_mode_label)
                 assertChoiceGroupContext(layout, R.id.rotationGroup, R.string.rotation_description)
                 assertChoiceGroupContext(layout, R.id.videoQualityGroup, R.string.video_quality_label)
                 assertChoiceGroupContext(layout, R.id.videoFrameRateGroup, R.string.video_frame_rate_label)
@@ -188,7 +188,7 @@ class SettingsDialogLayoutInstrumentedTest {
             assertTrue(group.isSingleSelection)
             assertTrue(group.isSelectionRequired)
             assertNull(group.contentDescription)
-            assertOptionContentDescriptions(layout, group, layout.context.getString(R.string.display_selection_host_only))
+            assertOptionContentDescriptions(layout, group, layout.context.getString(R.string.scale_mode_label))
             assertReadable(layout, R.id.scaleModeGroup)
             assertAllTextReadable(group)
         }
@@ -207,7 +207,7 @@ class SettingsDialogLayoutInstrumentedTest {
                 assertEquals(layout.context.getString(R.string.display_selection_available), displayCapability.text.toString())
                 assertEquals(layout.context.getString(R.string.input_capability_touch_only), inputCapability.text.toString())
                 assertNull(scaleModeGroup.contentDescription)
-                assertOptionContentDescriptions(layout, scaleModeGroup, displayCapability.text.toString())
+                assertOptionContentDescriptions(layout, scaleModeGroup, layout.context.getString(R.string.scale_mode_label))
                 assertCapabilityCopyReadableAndReachable(layout, displayCapability)
                 assertCapabilityCopyReadableAndReachable(layout, inputCapability)
                 assertVerticallyOrdered(layout.root.findViewById(R.id.viewportSection))
@@ -424,7 +424,7 @@ class SettingsDialogLayoutInstrumentedTest {
         listOf(320, 360).forEach { screenWidthDp ->
             listOf(1f, 2f).forEach { fontScale ->
                 withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
-                    assertLabelSemantics(layout, R.id.displayCapability, R.id.scaleModeGroup, isHeading = false)
+                    assertLabelSemantics(layout, R.id.scaleModeLabel, R.id.scaleModeGroup, isHeading = false)
                     assertLabelSemantics(layout, R.id.rotationLabel, R.id.rotationGroup, isHeading = false)
                     assertLabelSemantics(layout, R.id.videoQualityLabel, R.id.videoQualityGroup)
                     assertLabelSemantics(layout, R.id.videoFrameRateLabel, R.id.videoFrameRateGroup)

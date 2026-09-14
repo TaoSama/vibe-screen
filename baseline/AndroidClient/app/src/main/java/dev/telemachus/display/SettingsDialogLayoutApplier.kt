@@ -119,7 +119,7 @@ internal object SettingsDialogLayoutApplier {
         return mapOf(
             R.id.scaleModeGroup to OptionGroupLayout(
                 availableWidthPx = columns.primaryWidthPx,
-                accessibilityContext = root.findViewById<TextView>(R.id.displayCapability)?.text,
+                accessibilityContext = root.findViewById<TextView>(R.id.scaleModeLabel)?.text,
             ),
             R.id.rotationGroup to OptionGroupLayout(
                 availableWidthPx = columns.primaryWidthPx,
