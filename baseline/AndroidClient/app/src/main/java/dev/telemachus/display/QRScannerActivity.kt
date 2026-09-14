@@ -32,7 +32,6 @@ import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.Executors
 
 class QRScannerActivity : AppCompatActivity() {
@@ -40,7 +39,6 @@ class QRScannerActivity : AppCompatActivity() {
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private var waitingForSettingsGrant = false
-    @Volatile private var pendingResultRaw: String? = null
     private val resultDeliveryGate = QRScannerDeliveryGate()
     private val decodeHints =
         mapOf(
@@ -51,15 +49,14 @@ class QRScannerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         waitingForSettingsGrant = savedInstanceState?.getBoolean(KEY_WAITING_FOR_SETTINGS_GRANT) ?: false
-        pendingResultRaw = savedInstanceState?.getString(KEY_PENDING_RESULT_RAW)
-        resultDeliveryGate.setClaimed(pendingResultRaw != null)
+        resultDeliveryGate.restorePending(savedInstanceState?.getString(KEY_PENDING_RESULT_RAW))
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableScannerEdgeToEdge()
         setContentView(R.layout.activity_qr_scanner)
         setupScannerSafeInsets()
         findViewById<Button>(R.id.cancelButton).setOnClickListener { finishCanceled() }
         findViewById<Button>(R.id.retryCameraButton).setOnClickListener { handleCameraRetry() }
-        pendingResultRaw?.let { raw ->
+        resultDeliveryGate.pendingResultRaw()?.let { raw ->
             deliverAcceptedResult(raw)
             return
         }
@@ -68,7 +65,8 @@ class QRScannerActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT, waitingForSettingsGrant)
-        pendingResultRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }
+        val deliverySnapshot = resultDeliveryGate.snapshotForSave()
+        deliverySnapshot.pendingRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }
         super.onSaveInstanceState(outState)
     }
 
@@ -276,9 +274,10 @@ class QRScannerActivity : AppCompatActivity() {
         if (resultDeliveryGate.isClaimed()) return
         val validLegacy = PairingURL.parse(raw) != null
         val validInternet = raw.startsWith(INTERNET_PAIRING_PREFIX)
-        if (!resultDeliveryGate.tryClaim()) return
         if (validLegacy || validInternet) {
-            pendingResultRaw = raw
+            if (!resultDeliveryGate.tryClaimAccepted(raw)) return
+        } else {
+            if (!resultDeliveryGate.tryClaimInvalid()) return
         }
         runOnUiThread {
             // Product pairing is parsed exactly once by InternetPairingCoordinator,
@@ -386,20 +385,81 @@ class QRScannerActivity : AppCompatActivity() {
     }
 }
 
+internal data class QRScannerDeliverySnapshot(
+    val claimState: QRScannerDeliveryClaimState,
+    val pendingRaw: String?,
+)
+
+internal enum class QRScannerDeliveryClaimState {
+    UNCLAIMED,
+    CLAIMED_INVALID,
+    CLAIMED_ACCEPTED,
+}
+
 internal class QRScannerDeliveryGate {
-    private val claimed = AtomicBoolean(false)
+    private val lock = Any()
+    private var state: State = State.Idle
 
-    fun isClaimed(): Boolean = claimed.get()
+    fun isClaimed(): Boolean = synchronized(lock) { state !is State.Idle }
 
-    fun setClaimed(value: Boolean) {
-        claimed.set(value)
+    fun restorePending(raw: String?) {
+        synchronized(lock) {
+            state = raw?.let(State::Accepted) ?: State.Idle
+        }
     }
 
-    fun tryClaim(): Boolean = claimed.compareAndSet(false, true)
+    fun pendingResultRaw(): String? = synchronized(lock) { state.acceptedRaw() }
+
+    fun tryClaimInvalid(): Boolean =
+        synchronized(lock) {
+            if (state !is State.Idle) {
+                false
+            } else {
+                state = State.InvalidInFlight
+                true
+            }
+        }
+
+    fun tryClaimAccepted(raw: String): Boolean =
+        synchronized(lock) {
+            if (state !is State.Idle) {
+                false
+            } else {
+                state = State.Accepted(raw)
+                true
+            }
+        }
 
     fun releaseForRetry() {
-        claimed.set(false)
+        synchronized(lock) {
+            if (state is State.InvalidInFlight) {
+                state = State.Idle
+            }
+        }
     }
+
+    fun snapshotForSave(): QRScannerDeliverySnapshot =
+        synchronized(lock) {
+            QRScannerDeliverySnapshot(
+                claimState = state.claimState(),
+                pendingRaw = state.acceptedRaw(),
+            )
+        }
+
+    private sealed interface State {
+        data object Idle : State
+        data object InvalidInFlight : State
+        data class Accepted(val raw: String) : State
+    }
+
+    private fun State.acceptedRaw(): String? = (this as? State.Accepted)?.raw
+
+    private fun State.claimState(): QRScannerDeliveryClaimState =
+        when (this) {
+            State.Idle -> QRScannerDeliveryClaimState.UNCLAIMED
+            State.InvalidInFlight -> QRScannerDeliveryClaimState.CLAIMED_INVALID
+            is State.Accepted -> QRScannerDeliveryClaimState.CLAIMED_ACCEPTED
+        }
 }
 
 internal object QRScannerSafeInsets {

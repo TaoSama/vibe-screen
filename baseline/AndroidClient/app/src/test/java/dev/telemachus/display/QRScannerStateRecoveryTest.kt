@@ -16,7 +16,7 @@ class QRScannerStateRecoveryTest {
     fun recreateRestoresPendingResultAndFinishesWithOk() {
         ActivityScenario.launchActivityForResult(QRScannerActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                activity.setPrivateField("pendingResultRaw", VALID_PAIRING_QR)
+                activity.deliveryGate().restorePending(VALID_PAIRING_QR)
             }
 
             scenario.recreate()
@@ -49,6 +49,9 @@ class QRScannerStateRecoveryTest {
     }
 
     private fun Any.getPrivateField(name: String): Any? = privateField(name).get(this)
+
+    private fun Any.deliveryGate(): QRScannerDeliveryGate =
+        getPrivateField("resultDeliveryGate") as QRScannerDeliveryGate
 
     private fun Any.privateField(name: String) =
         QRScannerActivity::class.java.getDeclaredField(name).apply { isAccessible = true }

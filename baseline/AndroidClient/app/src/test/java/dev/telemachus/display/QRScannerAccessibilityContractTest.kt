@@ -120,10 +120,11 @@ class QRScannerAccessibilityContractTest {
         val source = qrScannerActivitySource()
         val deliverResult = extractMethod(source, "private fun deliverResult")
 
+        assertTrue(source.contains("private fun showInvalidPairingStatus()"))
         assertTrue(source.contains("showScannerStatus(getString(R.string.invalid_pairing_qr))"))
-        assertTrue(deliverResult.contains("resultDeliveryGate.tryClaim()"))
+        assertTrue(deliverResult.contains("resultDeliveryGate.tryClaimInvalid()"))
         assertTrue(deliverResult.contains("resultDeliveryGate.releaseForRetry()"))
-        assertFalse("Invalid QR handling must not clear accepted result state", deliverResult.contains("setClaimed(false"))
+        assertFalse("Invalid QR handling must not clear accepted result state", deliverResult.contains("restorePending(null"))
     }
 
     @Test
@@ -135,15 +136,17 @@ class QRScannerAccessibilityContractTest {
 
         assertTrue(source.contains("private const val KEY_WAITING_FOR_SETTINGS_GRANT"))
         assertTrue(source.contains("private const val KEY_PENDING_RESULT_RAW"))
-        assertTrue(source.contains("@Volatile private var pendingResultRaw: String? = null"))
+        assertTrue(source.contains("private val resultDeliveryGate = QRScannerDeliveryGate()"))
         assertTrue(onCreate.contains("waitingForSettingsGrant = savedInstanceState?.getBoolean(KEY_WAITING_FOR_SETTINGS_GRANT) ?: false"))
-        assertTrue(onCreate.contains("pendingResultRaw = savedInstanceState?.getString(KEY_PENDING_RESULT_RAW)"))
-        assertTrue(onCreate.contains("resultDeliveryGate.setClaimed(pendingResultRaw != null)"))
-        assertTrue(onCreate.contains("pendingResultRaw?.let { raw ->"))
+        assertTrue(onCreate.contains("resultDeliveryGate.restorePending(savedInstanceState?.getString(KEY_PENDING_RESULT_RAW))"))
+        assertTrue(onCreate.contains("resultDeliveryGate.pendingResultRaw()?.let { raw ->"))
         assertTrue(onCreate.contains("deliverAcceptedResult(raw)"))
         assertTrue(onSave.contains("outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT, waitingForSettingsGrant)"))
-        assertTrue(onSave.contains("pendingResultRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }"))
-        assertTrue(deliverResult.indexOf("pendingResultRaw = raw") < deliverResult.indexOf("runOnUiThread"))
+        assertTrue(onSave.contains("val deliverySnapshot = resultDeliveryGate.snapshotForSave()"))
+        assertTrue(onSave.contains("deliverySnapshot.pendingRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }"))
+        assertTrue(deliverResult.contains("resultDeliveryGate.tryClaimAccepted(raw)"))
+        assertTrue(deliverResult.contains("resultDeliveryGate.tryClaimInvalid()"))
+        assertTrue(deliverResult.indexOf("tryClaimAccepted(raw)") < deliverResult.indexOf("runOnUiThread"))
         assertTrue(onSave.indexOf("outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT") < onSave.indexOf("super.onSaveInstanceState(outState)"))
     }
 
