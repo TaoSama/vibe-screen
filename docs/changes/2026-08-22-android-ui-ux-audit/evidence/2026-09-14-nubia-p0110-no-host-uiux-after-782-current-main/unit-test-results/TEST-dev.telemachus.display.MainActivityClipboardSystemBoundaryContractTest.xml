@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-14T13:54:47" hostname="Mac.local" time="0.026">
+  <properties/>
+  <testcase name="clipboardConfirmationDialogsApplyReadableActionButtonLayout" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.01"/>
+  <testcase name="noHostClipboardControlSurfaceRefreshDoesNotTouchAndroidClipboardBoundary" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.005"/>
+  <testcase name="managedPolicyDenyAndNewSessionsClearClipboardApprovalState" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.002"/>
+  <testcase name="sendToMacReadsClipboardOnlyAfterCurrentSessionAndCapabilityChecks" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.001"/>
+  <testcase name="writeRemoteClipboardIsTheOnlyAndroidClipboardWriteBoundary" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.001"/>
+  <testcase name="receiveFromMacWritesClipboardOnlyAfterApprovalStateConsumptionAndOverwriteConfirmation" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.003"/>
+  <testcase name="pendingClipboardReceiveOwnsVisibleStatusUntilUserAction" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.002"/>
+  <testcase name="getFromMacRequestsClipboardOnlyAfterCurrentSessionAndCapabilityChecks" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.001"/>
+  <testcase name="clipboardMenuDoesNotReadAndroidClipboardBeforeExplicitSendAction" classname="dev.telemachus.display.MainActivityClipboardSystemBoundaryContractTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

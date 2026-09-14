@@ -1,0 +1,27 @@
+Retained artifacts:
+- android-test-results/TEST-P0110-16-app.xml (or JUnit XML)
+- android-test-results/test-result.redacted.textproto
+- android-test-results/test-results.log
+- android-test-results/utp.0.redacted.log
+- android-test-report/ (HTML report, CSS, and JS)
+- logs/connected-no-host-uiux-instrumentation.accepted.log
+- logs/connected-no-host-uiux-instrumentation.failed-diagnostic.log
+- logs/focused-control-surface-jvm.log
+- unit-test-results/ (eight focused JVM JUnit XML files)
+- logs/adb-reverse-before-tests.txt, logs/adb-reverse-after-tests.txt
+- logs/no-host-boundary-lsof-command.txt
+- logs/no-host-boundary-lsof-54321-before.txt, logs/no-host-boundary-lsof-54321-before-status.txt
+- logs/no-host-boundary-lsof-54321-after.txt, logs/no-host-boundary-lsof-54321-after-status.txt
+- logs/device-precheck.txt, logs/device-power-before-accepted.txt
+- logs/device-manufacturer.txt, logs/device-model.txt, logs/device-codename.txt, logs/device-os.txt, logs/device-api.txt
+- metadata/ (source-provenance.txt, device-identity.txt, scope-boundary.txt, artifact-redaction.txt)
+- commands.txt, README.md, SHA256SUMS
+
+Redactions applied:
+- All real ADB serial numbers are replaced with <redacted-adb-serial>.
+- All local user/worktree paths are replaced with <workspace>.
+- Manufacturer (nubia), model (P0110), codename (pacific), Android OS (16), SDK/API (36), display resolution/density, and font scale are preserved.
+
+Omitted artifacts:
+- Binary protobuf files (device-info.pb, test-result.pb).
+- cpuinfo, meminfo, lock files, and raw per-test logcat files.

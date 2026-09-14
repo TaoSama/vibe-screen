@@ -1,0 +1,23 @@
+No macOS Host, Vibe Screen Host, or Telemachus macOS GUI was launched.
+No swift run, macOS TCC, Screen Recording, Accessibility, Microphone, Keychain, System Settings, signing configuration, or adb reverse tcp:54321 tcp:54321 command was used.
+The only reverse command used was read-only adb reverse --list to verify that no reverse mapping was present before and after tests.
+No local tcp:54321 listener was present; lsof -nP -iTCP:54321 -sTCP:LISTEN returned exit code 1 (no listener) before and after tests.
+The only Android device used was the connected Nubia P0110/pacific Android 16 (API 36) device with serial redacted as <redacted-adb-serial>.
+The initial instrumentation run produced 134/135 passing tests and 1 failure due to device screen sleep (mWakefulness=Dozing); that run is retained strictly as a diagnostic log (logs/connected-no-host-uiux-instrumentation.failed-diagnostic.log) and explicitly does not belong to the accepted run.
+The accepted instrumentation run passed 135/135 tests across all 11 UI/UX instrumentation classes with 0 failures, 0 errors, and 0 skipped.
+The focused JVM run passed 129/129 tests across eight classes with 0 failures, 0 errors, and 0 skipped.
+
+Evidence boundary statement:
+This package does not prove or close:
+1. macOS Host readiness or macOS hardware compatibility matrix
+2. Screen Recording, Accessibility, or Microphone TCC permissions
+3. Host resident-memory (RSS) two-hour no-growth gate
+4. External-camera or sub-5ms synchronized latency archive gate
+5. Native pointer HID confirmation
+6. Controller runtime acceptance
+7. Physical stylus drawing or injection acceptance
+8. Real Android ClipboardManager <-> macOS NSPasteboard USB/LAN product E2E transfer
+9. Real Android/macOS bidirectional file transfer product E2E bytes landing
+10. Real LAN streaming or Internet traversal
+11. iOS signed device or simulator acceptance
+12. Xiaomi 13 / fuxi hardware acceptance

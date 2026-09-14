@@ -1,0 +1,9 @@
+repository=TaoSama/vibe-screen
+worktree=<workspace>
+branch=codex/android-nohost-uiux-refresh
+base_head=9c32bc5da1e24edc511be509ad05aac732570dfb
+origin_main=9c32bc5da1e24edc511be509ad05aac732570dfb
+base_subject=fix(android): keep dialog actions readable (#782)
+date=2026-09-14
+timezone=Asia/Shanghai
+local_change=Adds a fail-closed wake/keyguard precondition to the visible notices-dialog instrumentation test, then refreshes Nubia P0110 no-Host Android UI/UX instrumentation evidence and eight focused JVM contract classes after current main advanced through PR #782.

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.WirelessTabControllerContractTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-14T13:54:48" hostname="Mac.local" time="2.071">
+  <properties/>
+  <testcase name="pairedIdleStateClearsCountdownAndKeepsReconnectActionReady" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="1.189"/>
+  <testcase name="wirelessLifecycleRoutesThroughExpectedStatePanels" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="0.012"/>
+  <testcase name="temporaryCameraDenialReturnsToReadableScanEntry" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="0.009"/>
+  <testcase name="trustedNetworkConfirmationUsesMaterialImmersiveDialogWithLifecycleGuard" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="0.012"/>
+  <testcase name="connectAndRepairCopyUsesStringResourcesWithoutWarningEmoji" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="0.009"/>
+  <testcase name="scheduledReconnectShowsRetryCardAndStateTransitionsHideTerminalPanels" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="0.009"/>
+  <testcase name="trustedNetworkConfirmationCallbackIsPositiveOnlyAndSingleUse" classname="dev.telemachus.display.WirelessTabControllerContractTest" time="0.831"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

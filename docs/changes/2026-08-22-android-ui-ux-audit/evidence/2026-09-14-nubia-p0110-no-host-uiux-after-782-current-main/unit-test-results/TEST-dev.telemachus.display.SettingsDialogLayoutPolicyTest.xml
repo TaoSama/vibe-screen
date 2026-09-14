@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.SettingsDialogLayoutPolicyTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-09-14T13:54:47" hostname="Mac.local" time="0.0">
+  <properties/>
+  <testcase name="options stay horizontal when every option fits" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="short landscape stays single column when split columns are too narrow" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="option groups use the constrained rendered content width" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="dialog width can select two columns while content width sizes columns" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="option groups fall back to column content width before first layout" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="options stack when their required widths exceed the group" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="short landscape video choices stack inside constrained column width" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="option groups recover to the expanded column content width after reflow" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="tablet portrait and narrow landscape keep one settings column" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="tablet landscape can use two settings columns" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <testcase name="unmeasured groups use the safe stacked layout" classname="dev.telemachus.display.SettingsDialogLayoutPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
