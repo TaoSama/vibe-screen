@@ -165,6 +165,8 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var internetRoute: PeerRoute? = null
     private var pendingInternetPairing: PendingInternetPairing? = null
     private var pendingInternetPairingIdentity: PendingPairingIdentityAlias? = null
+    private var internetCameraPermissionPanelState = InternetCameraPermissionPanelState.HIDDEN
+    private var internetCameraSettingsReturnPending = false
     private val internetInputIds = SessionInputIdSequence()
     private val nextStreamStylusTrackingId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
@@ -387,6 +389,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        restoreInternetCameraPermissionState(savedInstanceState)
         applyConnectionPanelLayout()
 
         runCatching(::retryPendingPairingIdentityAliasCleanup).onFailure { failure ->
@@ -417,6 +420,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(STATE_AUTOMATIC_USB_CONNECT, automaticUsbConnect)
+        outState.putString(STATE_INTERNET_CAMERA_PERMISSION_PANEL, internetCameraPermissionPanelState.name)
+        outState.putBoolean(STATE_INTERNET_CAMERA_SETTINGS_PENDING, internetCameraSettingsReturnPending)
         super.onSaveInstanceState(outState)
     }
 
@@ -433,6 +438,7 @@ class MainActivity : AppCompatActivity() {
                 prefs.connectionMode == ConnectionMode.WIRELESS &&
                 wirelessController.onHostForegrounded()
         if (scannerLaunched) return
+        if (prefs.connectionMode == ConnectionMode.INTERNET && handleInternetCameraSettingsReturn()) return
         if (isConnected) {
             setStreamingWindowState(true)
             streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)
@@ -849,8 +855,9 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == WirelessTabController.REQ_CAMERA) {
             val granted = grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
             wirelessController.onCameraPermissionResult(granted)
-        } else if (requestCode == REQ_INTERNET_CAMERA && grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            launchInternetScanner()
+        } else if (requestCode == REQ_INTERNET_CAMERA) {
+            val granted = grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            handleInternetCameraPermissionResult(granted)
         }
     }
 
@@ -1851,6 +1858,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupInternetUi() {
         QUARANTINED_INTERNET_SESSION.get()?.let { internetSession = it }
+        renderInternetCameraPermissionPanel()
         binding.internetRouteToggleGroup.check(
             if (prefs.internetForceRelay) R.id.internetForceRelay else R.id.internetPreferDirect,
         )
@@ -1859,13 +1867,8 @@ class MainActivity : AppCompatActivity() {
             prefs.internetForceRelay = checkedId == R.id.internetForceRelay
         }
         binding.internetImportProfileButton.setOnClickListener { showInternetProfileImportDialog() }
-        binding.internetScanProfileButton.setOnClickListener {
-            when {
-                cameraPerm.isGranted() -> launchInternetScanner()
-                cameraPerm.isPermanentlyDenied() -> showInternetCameraPermissionBlocked()
-                else -> cameraPerm.request(REQ_INTERNET_CAMERA)
-            }
-        }
+        binding.internetScanProfileButton.setOnClickListener { handleInternetScanRequested() }
+        binding.internetCameraOpenSettingsButton.setOnClickListener { openInternetCameraPermissionSettings() }
         binding.internetConnectButton.setOnClickListener { connectInternet() }
         binding.internetDisconnectButton.setOnClickListener { disconnect() }
         binding.internetRevokeButton.setOnClickListener {
@@ -1951,9 +1954,117 @@ class MainActivity : AppCompatActivity() {
         showSecureImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
     }
 
-    private fun launchInternetScanner() {
-        if (!allowInternetCredentialMutation()) return
+    private fun launchInternetScanner(): Boolean {
+        if (!allowInternetCredentialMutation()) return false
+        clearInternetCameraPermissionPanel()
         startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)
+        return true
+    }
+
+    private fun handleInternetScanRequested() {
+        if (!allowInternetCredentialMutation()) return
+        when (
+            InternetCameraPermissionRecoveryPolicy.scanRequested(
+                granted = cameraPerm.isGranted(),
+                permanentlyDenied = cameraPerm.isPermanentlyDenied(),
+            )
+        ) {
+            InternetCameraScanAction.LAUNCH_SCANNER -> launchInternetScanner()
+            InternetCameraScanAction.REQUEST_PERMISSION -> {
+                clearInternetCameraPermissionPanel()
+                cameraPerm.request(REQ_INTERNET_CAMERA)
+            }
+            InternetCameraScanAction.SHOW_SETTINGS_PANEL -> showInternetCameraPermissionSettingsPanel()
+        }
+    }
+
+    private fun handleInternetCameraPermissionResult(granted: Boolean) {
+        when (
+            InternetCameraPermissionRecoveryPolicy.permissionResult(
+                granted = granted,
+                permanentlyDenied = cameraPerm.isPermanentlyDenied(),
+            )
+        ) {
+            InternetCameraPermissionResultAction.LAUNCH_SCANNER -> launchInternetScanner()
+            InternetCameraPermissionResultAction.SHOW_FIRST_DENIED_PANEL -> showInternetCameraPermissionFirstDenied()
+            InternetCameraPermissionResultAction.SHOW_SETTINGS_PANEL -> showInternetCameraPermissionSettingsPanel()
+        }
+    }
+
+    private fun handleInternetCameraSettingsReturn(): Boolean {
+        val action =
+            InternetCameraPermissionRecoveryPolicy.settingsReturn(
+                settingsPending = internetCameraSettingsReturnPending,
+                granted = cameraPerm.isGranted(),
+                permanentlyDenied = cameraPerm.isPermanentlyDenied(),
+            )
+        if (action != InternetCameraSettingsReturnAction.NOOP) {
+            internetCameraSettingsReturnPending = false
+        }
+        when (action) {
+            InternetCameraSettingsReturnAction.NOOP -> return false
+            InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE -> return launchInternetScanner()
+            InternetCameraSettingsReturnAction.SHOW_FIRST_DENIED_PANEL -> showInternetCameraPermissionFirstDenied()
+            InternetCameraSettingsReturnAction.SHOW_SETTINGS_PANEL -> showInternetCameraPermissionSettingsPanel()
+        }
+        return false
+    }
+
+    private fun restoreInternetCameraPermissionState(savedInstanceState: Bundle?) {
+        internetCameraPermissionPanelState =
+            InternetCameraPermissionRecoveryPolicy.restoredPanelState(
+                savedInstanceState?.getString(STATE_INTERNET_CAMERA_PERMISSION_PANEL),
+            )
+        internetCameraSettingsReturnPending =
+            savedInstanceState?.getBoolean(STATE_INTERNET_CAMERA_SETTINGS_PENDING) == true
+    }
+
+    private fun showInternetCameraPermissionFirstDenied() {
+        internetCameraPermissionPanelState = InternetCameraPermissionPanelState.FIRST_DENIED
+        renderInternetCameraPermissionPanel()
+    }
+
+    private fun showInternetCameraPermissionSettingsPanel() {
+        internetCameraPermissionPanelState = InternetCameraPermissionPanelState.SETTINGS_REQUIRED
+        renderInternetCameraPermissionPanel()
+    }
+
+    private fun clearInternetCameraPermissionPanel() {
+        internetCameraPermissionPanelState = InternetCameraPermissionPanelState.HIDDEN
+        renderInternetCameraPermissionPanel()
+    }
+
+    private fun renderInternetCameraPermissionPanel() {
+        if (!::binding.isInitialized) return
+        val messageResource =
+            when (internetCameraPermissionPanelState) {
+                InternetCameraPermissionPanelState.HIDDEN -> null
+                InternetCameraPermissionPanelState.FIRST_DENIED -> R.string.internet_camera_permission_retry_instructions
+                InternetCameraPermissionPanelState.SETTINGS_REQUIRED -> R.string.internet_camera_permission_settings_instructions
+            }
+        if (messageResource == null) {
+            binding.internetCameraPermissionPanel.visibility = View.GONE
+            binding.internetCameraPermissionPanel.contentDescription = null
+            LiveRegionTextApplier.hide(binding.internetCameraPermissionMessage)
+            binding.internetCameraOpenSettingsButton.visibility = View.GONE
+            return
+        }
+        val message = getString(messageResource)
+        binding.internetCameraPermissionPanel.visibility = View.VISIBLE
+        binding.internetCameraPermissionPanel.contentDescription = message
+        LiveRegionTextApplier.show(binding.internetCameraPermissionMessage, message)
+        binding.internetCameraOpenSettingsButton.visibility =
+            if (internetCameraPermissionPanelState == InternetCameraPermissionPanelState.SETTINGS_REQUIRED) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+    }
+
+    private fun openInternetCameraPermissionSettings() {
+        internetCameraSettingsReturnPending = true
+        showInternetCameraPermissionSettingsPanel()
+        cameraPerm.openAppSettings()
     }
 
     private fun beginInternetPairing(encodedUrl: String) {
@@ -2203,14 +2314,6 @@ class MainActivity : AppCompatActivity() {
             } else {
                 getString(R.string.internet_connect_profile_missing_description)
             }
-    }
-
-    private fun showInternetCameraPermissionBlocked() {
-        LiveRegionTextApplier.show(
-            binding.internetErrorText,
-            getString(R.string.internet_camera_permission_blocked),
-        )
-        cameraPerm.openAppSettings()
     }
 
     private fun showConnectedStreamUi() {
@@ -7706,6 +7809,8 @@ class MainActivity : AppCompatActivity() {
         private const val CLIPBOARD_REQUEST_TIMEOUT_MS = 10_000L
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
+        private const val STATE_INTERNET_CAMERA_PERMISSION_PANEL = "internet_camera_permission_panel"
+        private const val STATE_INTERNET_CAMERA_SETTINGS_PENDING = "internet_camera_settings_pending"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
         private const val EXTRA_USB_CONFIGURED = "configured"

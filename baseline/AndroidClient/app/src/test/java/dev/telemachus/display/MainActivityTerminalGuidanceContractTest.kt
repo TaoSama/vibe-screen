@@ -1684,24 +1684,111 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
-    fun internetCameraPermissionBlockedShowsInlineGuidanceBeforeOpeningSettings() {
+    fun internetCameraPermissionBlockedShowsInlineGuidanceWithoutAutomaticSettingsLaunch() {
         val source = mainActivitySource()
         val setup = extractMethod(source, "private fun setupInternetUi")
-        val blocked = extractMethod(source, "private fun showInternetCameraPermissionBlocked")
-        val compactBlocked = blocked.replace(Regex("\\s+"), "")
+        val scanRequested = extractMethod(source, "private fun handleInternetScanRequested")
+        val openSettings = extractMethod(source, "private fun openInternetCameraPermissionSettings")
+        val settingsReturn = extractMethod(source, "private fun handleInternetCameraSettingsReturn")
+        val compactSetup = setup.replace(Regex("\\s+"), "")
+        val compactScanRequested = scanRequested.replace(Regex("\\s+"), "")
+        val compactOpenSettings = openSettings.replace(Regex("\\s+"), "")
+        val compactSettingsReturn = settingsReturn.replace(Regex("\\s+"), "")
 
         assertTrue(
-            "Internet scan permanent-denial path should leave recovery context in the panel",
-            setup.contains("cameraPerm.isPermanentlyDenied() -> showInternetCameraPermissionBlocked()"),
+            "Internet scan control should delegate permission decisions to the focused handler",
+            compactSetup.contains("binding.internetScanProfileButton.setOnClickListener{handleInternetScanRequested()}"),
         )
-        assertNoDirectInternetErrorTextAssignment(blocked, "showInternetCameraPermissionBlocked")
-        assertUsesLiveRegionShow(blocked, "internetErrorText", "showInternetCameraPermissionBlocked")
-        assertTrue(compactBlocked.contains("R.string.internet_camera_permission_blocked"))
+        assertFalse(
+            "Permanent camera denial must not automatically jump to Android Settings",
+            scanRequested.contains("cameraPerm.openAppSettings()"),
+        )
         assertTrue(
-            "System Settings should open only after the inline recovery message is visible",
-            compactBlocked.indexOf("LiveRegionTextApplier.show(binding.internetErrorText,") <
-                compactBlocked.indexOf("cameraPerm.openAppSettings()"),
+            "Permanent camera denial should render the explicit settings panel",
+            compactScanRequested.contains("InternetCameraPermissionRecoveryPolicy.scanRequested(") &&
+                compactScanRequested.contains("InternetCameraScanAction.SHOW_SETTINGS_PANEL->showInternetCameraPermissionSettingsPanel()"),
         )
+        assertTrue(
+            "Opening Android Settings must be an explicit user action that records pending return state",
+            compactOpenSettings.contains("internetCameraSettingsReturnPending=true") &&
+                compactOpenSettings.contains("showInternetCameraPermissionSettingsPanel()") &&
+                compactOpenSettings.contains("cameraPerm.openAppSettings()"),
+        )
+        assertTrue(
+            "Settings-return recovery must launch only from a pending settings return grant",
+            compactSettingsReturn.contains("settingsPending=internetCameraSettingsReturnPending") &&
+                compactSettingsReturn.contains("granted=cameraPerm.isGranted()") &&
+                compactSettingsReturn.contains("permanentlyDenied=cameraPerm.isPermanentlyDenied()") &&
+                compactSettingsReturn.contains("internetCameraSettingsReturnPending=false") &&
+                compactSettingsReturn.contains("InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE->returnlaunchInternetScanner()"),
+        )
+    }
+
+    @Test
+    fun internetCameraPermissionRecoveryStateSurvivesConfigurationChanges() {
+        val source = mainActivitySource()
+        val onCreate = extractMethod(source, "override fun onCreate")
+        val onSave = extractMethod(source, "override fun onSaveInstanceState")
+        val restore = extractMethod(source, "private fun restoreInternetCameraPermissionState")
+        val companion = extractBlockAfterMarker(source, "companion object")
+
+        assertTrue(onCreate.contains("restoreInternetCameraPermissionState(savedInstanceState)"))
+        assertTrue(onSave.contains("STATE_INTERNET_CAMERA_PERMISSION_PANEL"))
+        assertTrue(onSave.contains("STATE_INTERNET_CAMERA_SETTINGS_PENDING"))
+        assertTrue(restore.contains("InternetCameraPermissionRecoveryPolicy.restoredPanelState"))
+        assertTrue(restore.contains("getBoolean(STATE_INTERNET_CAMERA_SETTINGS_PENDING)"))
+        assertTrue(companion.contains("STATE_INTERNET_CAMERA_PERMISSION_PANEL"))
+        assertTrue(companion.contains("STATE_INTERNET_CAMERA_SETTINGS_PENDING"))
+    }
+
+    @Test
+    fun internetScannerLaunchAndPermissionRequestRespectCredentialMutationQuarantine() {
+        val source = mainActivitySource()
+        val launch = extractMethod(source, "private fun launchInternetScanner")
+        val scanRequested = extractMethod(source, "private fun handleInternetScanRequested")
+        val pairing = extractMethod(source, "private fun beginInternetPairing")
+
+        assertTrue(
+            "Internet scanner launch must re-check credential mutation quarantine before QRScannerActivity starts",
+            launch.indexOf("allowInternetCredentialMutation()") <
+                launch.indexOf("clearInternetCameraPermissionPanel()") &&
+                launch.indexOf("clearInternetCameraPermissionPanel()") <
+                launch.indexOf("startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)"),
+        )
+        assertTrue(
+            "Internet scan click should avoid even requesting Camera while revocation quarantine blocks new credentials",
+            scanRequested.replace(Regex("\\s+"), "").contains("if(!allowInternetCredentialMutation())return"),
+        )
+        assertTrue(
+            "A scanner result must still pass through the existing credential mutation gate before parsing or storing credentials",
+            pairing.indexOf("check(allowInternetCredentialMutation())") <
+                pairing.indexOf("InternetPairingCoordinator"),
+        )
+    }
+
+    @Test
+    fun internetCameraPermissionPanelIsDedicatedAndActionable() {
+        val source = mainActivityLayoutSource()
+        val internetMode = source.substring(
+            source.indexOf("android:id=\"@+id/internetModeContent\""),
+            source.indexOf("<!-- ============= /INTERNET MODE CONTENT ============= -->"),
+        )
+        val panel = extractXmlElement(internetMode, "android:id=\"@+id/internetCameraPermissionPanel\"")
+        val message = extractXmlElement(panel, "android:id=\"@+id/internetCameraPermissionMessage\"")
+        val action = extractXmlElement(panel, "android:id=\"@+id/internetCameraOpenSettingsButton\"")
+        val scanIndex = internetMode.indexOf("android:id=\"@+id/internetScanProfileButton\"")
+        val panelIndex = internetMode.indexOf("android:id=\"@+id/internetCameraPermissionPanel\"")
+        val secondaryIndex = internetMode.indexOf("android:id=\"@+id/internetSecondaryActions\"")
+
+        assertTrue(scanIndex >= 0 && panelIndex > scanIndex && secondaryIndex > panelIndex)
+        assertTrue(panel.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(panel.contains("android:importantForAccessibility=\"yes\""))
+        assertTrue(message.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(message.contains("android:textIsSelectable=\"true\""))
+        assertTrue(action.contains("android:contentDescription=\"@string/internet_camera_permission_open_settings_description\""))
+        assertTrue(action.contains("android:minHeight=\"48dp\""))
+        assertTrue(action.contains("android:maxLines=\"2\""))
+        assertTrue(action.contains("app:autoSizeTextType=\"uniform\""))
     }
 
     @Test
