@@ -1,0 +1,7 @@
+repository=git@github.com:TaoSama/vibe-screen.git
+source_commit=092f05c2208fa1833fb1d9e541ec2e30c2bd379f
+source_branch=codex/p0110-file-transfer-smoke-evidence
+base=origin/main
+merged_pr=785
+collection_date=2026-09-15
+worktree_clean_before_collection=true

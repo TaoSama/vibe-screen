@@ -1,0 +1,22 @@
+# Commands are recorded with the raw ADB serial and local paths redacted.
+
+git rev-parse HEAD
+./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest
+mkdir /tmp/vibe-screen-device-android.lock
+adb -s <redacted-adb-serial> get-state
+adb -s <redacted-adb-serial> shell getprop ro.product.manufacturer
+adb -s <redacted-adb-serial> shell getprop ro.product.model
+adb -s <redacted-adb-serial> shell getprop ro.product.device
+adb -s <redacted-adb-serial> shell getprop ro.build.version.release
+adb -s <redacted-adb-serial> shell getprop ro.build.version.sdk
+adb -s <redacted-adb-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+adb -s <redacted-adb-serial> shell input keyevent KEYCODE_WAKEUP
+adb -s <redacted-adb-serial> shell wm dismiss-keyguard
+adb -s <redacted-adb-serial> install -r app-debug.apk
+adb -s <redacted-adb-serial> install -r app-debug-androidTest.apk
+adb -s <redacted-adb-serial> shell am instrument -w -r -e class <five-file-transfer-smoke-methods> dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s <redacted-adb-serial> uninstall dev.telemachus.display.test
+rmdir /tmp/vibe-screen-device-android.lock
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_smoke_preflight --serial <redacted-adb-serial> --serial-label REDACTED_P0110_USB_SERIAL --package dev.telemachus.display --port 54321 --repository-root . --held-lock /tmp/vibe-screen-device-android.lock --expected-manufacturer nubia --expected-model P0110 --expected-device pacific --expected-android-release 16 --expected-sdk 36 --output <evidence-dir>/usb-smoke-preflight.json
+make file-transfer-android-smoke EVIDENCE_DIR=<evidence-dir>
