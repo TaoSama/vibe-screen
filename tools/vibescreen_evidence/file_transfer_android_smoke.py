@@ -37,7 +37,7 @@ TCC_PATH_COMPONENT = "Application" + r"\s+" + "Support/com" + r"\.apple\." + "TC
 TCC_BUNDLE_COMPONENT = "com" + r"\.apple\." + "TCC"
 TCC_DATABASE_COMPONENT = "TCC" + r"\.db"
 SENSITIVE_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"EP[0-9A-Z]{14,}", re.IGNORECASE), SAFE_SERIAL_LABEL),
+    (re.compile(r"(?<![0-9A-Z])EP[0-9A-Z]{14,}(?![0-9A-Z])", re.IGNORECASE), SAFE_SERIAL_LABEL),
     (re.compile(TCC_PATH_COMPONENT, re.IGNORECASE), "<redacted-tcc-reference>"),
     (re.compile(TCC_BUNDLE_COMPONENT, re.IGNORECASE), "<redacted-tcc-reference>"),
     (re.compile(TCC_DATABASE_COMPONENT, re.IGNORECASE), "<redacted-tcc-reference>"),
@@ -90,6 +90,25 @@ EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_CLASSES = (
     "dev.telemachus.display.ControlBarLayoutInstrumentedTest",
     "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
 )
+EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHOD_OWNERS = {
+    "fileTransferControlPreservesTouchTargetsWhenVisible":
+        "dev.telemachus.display.ControlBarLayoutInstrumentedTest",
+    "productionApplierCoversStackedColumnAndHiddenSelectorBoundaries":
+        "dev.telemachus.display.ControlBarLayoutInstrumentedTest",
+    "narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable":
+        "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+    "offerLayoutKeepsDecisionCopyStructuredForDialogButtons":
+        "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+    "outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable":
+        "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+}
+ANDROID_INSTRUMENTATION_STATUS_RE = re.compile(r"^INSTRUMENTATION_STATUS:\s+([^=\s]+)=(.*)\r?$")
+ANDROID_INSTRUMENTATION_STATUS_CODE_RE = re.compile(
+    r"^INSTRUMENTATION_STATUS_CODE:\s+(-?\d+)\r?$",
+    re.MULTILINE,
+)
+ANDROID_INSTRUMENTATION_CODE_RE = re.compile(r"^INSTRUMENTATION_CODE:\s+(-?\d+)\r?$", re.MULTILINE)
+ANDROID_INSTRUMENTATION_OK_RE = re.compile(r"^OK \((\d+) tests?\)\r?$", re.MULTILINE)
 EXPECTED_DIRECTION_ENDPOINTS = {
     "android_to_macos_file_transfer": (
         "android_saf_selected_file",
@@ -779,6 +798,12 @@ def _android_file_transfer_gate(log_path: Path | None) -> dict[str, Any]:
             ["current-run Android file-transfer instrumentation log is missing"],
         )
     raw_text = log_path.read_text(encoding="utf-8", errors="replace")
+    if "INSTRUMENTATION_STATUS:" in raw_text:
+        return _android_file_transfer_instrumentation_gate(raw_text, log_path.name)
+    return _android_file_transfer_legacy_gate(raw_text, log_path.name)
+
+
+def _android_file_transfer_legacy_gate(raw_text: str, log_name: str) -> dict[str, Any]:
     executed_tests = _android_file_transfer_test_count(raw_text)
     passed_methods = _android_file_transfer_passed_methods(raw_text)
     class_executed_tests = _android_file_transfer_class_test_count(raw_text)
@@ -811,7 +836,47 @@ def _android_file_transfer_gate(log_path: Path | None) -> dict[str, Any]:
         reasons.append("Android file-transfer instrumentation log contains a skipped or failed file-transfer smoke method")
     if not has_success_summary:
         reasons.append("Android file-transfer instrumentation log does not show an OK result")
-    return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_path.name])
+    return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_name])
+
+
+def _android_file_transfer_instrumentation_gate(raw_text: str, log_name: str) -> dict[str, Any]:
+    parsed = _parse_android_file_transfer_instrumentation(raw_text)
+    executed_tests = parsed["executed_tests"]
+    passed_methods = parsed["passed_methods"]
+    has_failure_signal = (
+        "FAILURES!!!" in raw_text
+        or "BUILD FAILED" in raw_text
+        or _android_file_transfer_has_junit_failures(raw_text)
+    )
+    terminal_reasons = _android_file_transfer_success_terminal_reasons(raw_text, executed_tests)
+    has_method_rejection = _android_file_transfer_has_method_rejection(raw_text)
+    expected_methods = set(EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHODS)
+    missing_methods = sorted(expected_methods - passed_methods)
+    passed = (
+        executed_tests > 0
+        and not missing_methods
+        and not has_failure_signal
+        and not has_method_rejection
+        and not parsed["reasons"]
+        and not terminal_reasons
+    )
+    reasons = []
+    if executed_tests <= 0:
+        reasons.append("Android file-transfer instrumentation log does not show any executed tests")
+    if missing_methods:
+        reasons.append(
+            "Android file-transfer instrumentation log is missing passed raw instrumentation records "
+            "for expected file-transfer smoke method(s): " + ", ".join(missing_methods)
+        )
+    if has_failure_signal:
+        reasons.append("Android file-transfer instrumentation log contains a failure result")
+    if has_method_rejection:
+        reasons.append("Android file-transfer instrumentation log contains a skipped or failed file-transfer smoke method")
+    reasons.extend(parsed["reasons"])
+    reasons.extend(terminal_reasons)
+    if not ANDROID_INSTRUMENTATION_OK_RE.search(raw_text):
+        reasons.append("Android file-transfer instrumentation log does not show an OK result")
+    return _gate("android_file_transfer_smoke", PASS if passed else BLOCKED, reasons, [log_name])
 
 
 def _android_file_transfer_test_count(text: str) -> int:
@@ -824,6 +889,197 @@ def _android_file_transfer_test_count(text: str) -> int:
         int(match.group(1)) for match in re.finditer(r"Finished\s+(\d+)\s+tests?\s+on\s+", text)
     )
     return max(counts, default=0)
+
+
+def _parse_android_file_transfer_instrumentation(text: str) -> dict[str, Any]:
+    active: dict[tuple[str, str], tuple[str, str]] = {}
+    completed: set[tuple[str, str]] = set()
+    current_record: dict[str, str] = {}
+    record_start_line: int | None = None
+    executed_tests = 0
+    passed_methods: set[str] = set()
+    reported_numtests: set[int] = set()
+    reasons: list[str] = []
+
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        status_match = ANDROID_INSTRUMENTATION_STATUS_RE.fullmatch(stripped)
+        if status_match:
+            key, value = status_match.group(1), status_match.group(2).strip()
+            if record_start_line is None:
+                record_start_line = line_number
+            if key == "test" and "class" not in current_record:
+                reasons.append(
+                    "Android file-transfer instrumentation status record lists test before class "
+                    f"at line {line_number}"
+                )
+            if key in {"class", "test", "current", "numtests"}:
+                if key in current_record:
+                    reasons.append(
+                        "Android file-transfer instrumentation status record repeats "
+                        f"{key} before STATUS_CODE at line {line_number}"
+                    )
+                current_record[key] = value
+            continue
+
+        code_match = ANDROID_INSTRUMENTATION_STATUS_CODE_RE.fullmatch(stripped)
+        if not code_match:
+            continue
+        if not current_record:
+            reasons.append(
+                "Android file-transfer instrumentation STATUS_CODE appears without a status record "
+                f"at line {line_number}"
+            )
+            continue
+
+        class_name = current_record.get("class", "")
+        test_name = current_record.get("test", "")
+        current = current_record.get("current")
+        numtests_text = current_record.get("numtests")
+        current_record = {}
+        record_start_line = None
+        if not class_name or not test_name:
+            reasons.append(
+                "Android file-transfer instrumentation status record must include class and test "
+                f"before STATUS_CODE at line {line_number}"
+            )
+            continue
+        if numtests_text is None:
+            reasons.append(
+                "Android file-transfer instrumentation status record must include numtests "
+                f"before STATUS_CODE at line {line_number}"
+            )
+        else:
+            try:
+                numtests = int(numtests_text)
+            except ValueError:
+                reasons.append(
+                    "Android file-transfer instrumentation numtests must be an integer "
+                    f"at line {line_number}: {numtests_text}"
+                )
+            else:
+                if numtests <= 0:
+                    reasons.append(
+                        "Android file-transfer instrumentation numtests must be positive "
+                        f"at line {line_number}: {numtests}"
+                    )
+                else:
+                    reported_numtests.add(numtests)
+
+        record_key = ("current", current) if current else ("test", f"{class_name}#{test_name}")
+        pair = (class_name, test_name)
+        code = int(code_match.group(1))
+        if code == 1:
+            if record_key in active:
+                active_class, active_test = active[record_key]
+                reasons.append(
+                    "Android file-transfer instrumentation record started before the previous record finished "
+                    f"at line {line_number}: active {active_class}#{active_test}"
+                )
+            elif record_key in completed:
+                reasons.append(
+                    "Android file-transfer instrumentation record repeats a completed test boundary "
+                    f"at line {line_number}: {class_name}#{test_name}"
+                )
+            else:
+                active[record_key] = pair
+        elif code == 0:
+            active_pair = active.get(record_key)
+            if active_pair == pair:
+                active.pop(record_key, None)
+                completed.add(record_key)
+                executed_tests += 1
+                if EXPECTED_ANDROID_FILE_TRANSFER_SMOKE_METHOD_OWNERS.get(test_name) == class_name:
+                    passed_methods.add(test_name)
+            elif record_key in completed:
+                reasons.append(
+                    "Android file-transfer instrumentation record repeats a completed test boundary "
+                    f"at line {line_number}: {class_name}#{test_name}"
+                )
+            elif active_pair is None:
+                reasons.append(
+                    "Android file-transfer instrumentation pass record has no matching start record "
+                    f"at line {line_number}: {class_name}#{test_name}"
+                )
+            else:
+                reasons.append(
+                    "Android file-transfer instrumentation pass record does not match its start record "
+                    f"at line {line_number}: started {active_pair[0]}#{active_pair[1]}, "
+                    f"finished {class_name}#{test_name}"
+                )
+        else:
+            active.pop(record_key, None)
+            reasons.append(
+                "Android file-transfer instrumentation record finished with non-pass status code "
+                f"{code}: {class_name}#{test_name}"
+            )
+
+    if current_record:
+        reasons.append(
+            "Android file-transfer instrumentation log has an incomplete status record starting at line "
+            f"{record_start_line}"
+        )
+    for class_name, test_name in active.values():
+        reasons.append(
+            "Android file-transfer instrumentation log has an unfinished test record: "
+            f"{class_name}#{test_name}"
+        )
+    if len(reported_numtests) > 1:
+        reasons.append(
+            "Android file-transfer instrumentation status records report inconsistent numtests: "
+            + ", ".join(str(value) for value in sorted(reported_numtests))
+        )
+    elif reported_numtests and next(iter(reported_numtests)) != executed_tests:
+        reasons.append(
+            "Android file-transfer instrumentation numtests must match parsed passed records "
+            f"({next(iter(reported_numtests))} != {executed_tests})"
+        )
+    return {
+        "executed_tests": executed_tests,
+        "passed_methods": passed_methods,
+        "reasons": reasons,
+    }
+
+
+def _android_file_transfer_success_terminal_reasons(text: str, executed_tests: int) -> list[str]:
+    reasons: list[str] = []
+    instrumentation_code_matches = list(ANDROID_INSTRUMENTATION_CODE_RE.finditer(text))
+    instrumentation_codes = [int(match.group(1)) for match in instrumentation_code_matches]
+    if not instrumentation_codes:
+        reasons.append("Android file-transfer instrumentation log must show final INSTRUMENTATION_CODE")
+    elif instrumentation_codes[-1] != -1:
+        reasons.append("Android file-transfer instrumentation log must finish with INSTRUMENTATION_CODE -1")
+    if len(instrumentation_codes) > 1:
+        reasons.append("Android file-transfer instrumentation log must contain exactly one final INSTRUMENTATION_CODE")
+
+    ok_matches = list(ANDROID_INSTRUMENTATION_OK_RE.finditer(text))
+    ok_counts = [int(match.group(1)) for match in ok_matches]
+    if not ok_counts:
+        reasons.append("Android file-transfer instrumentation log must show final OK (N tests) summary")
+    elif len(ok_counts) > 1:
+        reasons.append("Android file-transfer instrumentation log must contain exactly one OK (N tests) summary")
+    elif ok_counts[-1] <= 0:
+        reasons.append("Android file-transfer instrumentation OK summary must report at least one test")
+    elif executed_tests > 0 and ok_counts[-1] != executed_tests:
+        reasons.append(
+            "Android file-transfer instrumentation OK summary count must match parsed passed records "
+            f"({ok_counts[-1]} != {executed_tests})"
+        )
+
+    status_code_matches = list(ANDROID_INSTRUMENTATION_STATUS_CODE_RE.finditer(text))
+    if len(ok_matches) == 1 and status_code_matches and ok_matches[0].start() < status_code_matches[-1].end():
+        reasons.append(
+            "Android file-transfer instrumentation OK summary must follow the final STATUS_CODE record"
+        )
+    if (
+        len(ok_matches) == 1
+        and len(instrumentation_code_matches) == 1
+        and instrumentation_code_matches[0].start() < ok_matches[0].end()
+    ):
+        reasons.append(
+            "Android file-transfer instrumentation final INSTRUMENTATION_CODE must follow the OK summary"
+        )
+    return reasons
 
 
 def _android_file_transfer_has_junit_failures(text: str) -> bool:
