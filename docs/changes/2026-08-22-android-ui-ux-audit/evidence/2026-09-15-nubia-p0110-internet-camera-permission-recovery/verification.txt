@@ -1,0 +1,14 @@
+focused_jvm=pass
+android_test_compile=pass
+lint_debug=pass
+baseline_android_check=pass
+p0110_focused_instrumentation=1/1_pass
+first_denial_inline_guidance=pass
+permanent_denial_explicit_settings_action=pass
+settings_return_scanner_launch_once=pass
+adb_reverse_tcp_54321_before=absent
+adb_reverse_tcp_54321_after=absent
+local_tcp_54321_listener_before=absent
+local_tcp_54321_listener_after=absent
+macos_host_started=no
+macos_tcc_requested=no

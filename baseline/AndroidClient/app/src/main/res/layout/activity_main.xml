@@ -1458,6 +1458,67 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/internetCameraPermissionPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:background="@drawable/connection_error_bg"
+                    android:importantForAccessibility="yes"
+                    android:orientation="vertical"
+                    android:padding="@dimen/connection_diagnostics_padding"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/internetCameraPermissionTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:importantForAccessibility="no"
+                        android:text="@string/internet_camera_permission_title"
+                        android:textColor="@color/on_surface"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/internetCameraPermissionMessage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:accessibilityLiveRegion="polite"
+                        android:lineSpacingExtra="2dp"
+                        android:textColor="@color/on_surface_secondary"
+                        android:textIsSelectable="true"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetCameraOpenSettingsButton"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:contentDescription="@string/internet_camera_permission_open_settings_description"
+                        android:ellipsize="none"
+                        android:gravity="center"
+                        android:letterSpacing="0"
+                        android:maxLines="2"
+                        android:minHeight="48dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="0dp"
+                        android:paddingRight="0dp"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:singleLine="false"
+                        android:text="@string/open_settings"
+                        android:textAllCaps="false"
+                        android:textColor="@color/internet_action_text"
+                        android:visibility="gone"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:textAllCaps="false" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/internetSecondaryActions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

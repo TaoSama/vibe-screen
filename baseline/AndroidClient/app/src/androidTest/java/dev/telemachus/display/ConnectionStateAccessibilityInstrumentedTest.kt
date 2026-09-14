@@ -42,6 +42,8 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 R.id.statusText,
                 R.id.internetProfileSummary,
                 R.id.internetStateText,
+                R.id.internetCameraPermissionPanel,
+                R.id.internetCameraPermissionMessage,
                 R.id.wirelessConnecting,
                 R.id.wirelessFirstTime,
                 R.id.wirelessConnected,
@@ -111,6 +113,11 @@ class ConnectionStateAccessibilityInstrumentedTest {
                     clickableDescendants.isEmpty(),
                 )
             }
+            val permissionPanel = root.findViewById<View>(R.id.internetCameraPermissionPanel)
+            val permissionButton = root.findViewById<MaterialButton>(R.id.internetCameraOpenSettingsButton)
+            assertFalse(ViewCompat.isScreenReaderFocusable(permissionPanel))
+            assertTrue(permissionButton.isClickable)
+            assertNotEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, permissionButton.importantForAccessibility)
             listOf(
                 R.id.wirelessFirstTime to R.id.wirelessScanButton,
                 R.id.wirelessConnected to R.id.wirelessDisconnectButton,
@@ -602,6 +609,61 @@ class ConnectionStateAccessibilityInstrumentedTest {
                     root.resources.getResourceEntryName(id),
                     button.autoSizeMinTextSize >= sp(root.context, 12),
                 )
+            }
+        }
+    }
+
+    @Test
+    fun internetCameraPermissionPanelKeepsRecoveryCopyAndSettingsActionReadable() {
+        listOf(
+            configuredContext(widthDp = 320, heightDp = 640, fontScale = 1.8f),
+            configuredContext(widthDp = 640, heightDp = 320, fontScale = 1.8f),
+        ).forEach { context ->
+            withProductionLayout(context) { root ->
+                val content = root.findViewById<ViewGroup>(R.id.connectionContent)
+                val panel = root.findViewById<ViewGroup>(R.id.internetCameraPermissionPanel)
+                val title = root.findViewById<TextView>(R.id.internetCameraPermissionTitle)
+                val message = root.findViewById<TextView>(R.id.internetCameraPermissionMessage)
+                val settings = root.findViewById<MaterialButton>(R.id.internetCameraOpenSettingsButton)
+
+                root.findViewById<View>(R.id.internetModeContent).visibility = View.VISIBLE
+                panel.visibility = View.VISIBLE
+                panel.contentDescription = context.getString(R.string.internet_camera_permission_settings_instructions)
+                message.text = context.getString(R.string.internet_camera_permission_settings_instructions)
+                settings.visibility = View.VISIBLE
+
+                measureAndLayout(
+                    root,
+                    context,
+                    widthDp = context.resources.configuration.screenWidthDp,
+                    heightDp = context.resources.configuration.screenHeightDp,
+                )
+
+                assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, panel.accessibilityLiveRegion)
+                assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, panel.importantForAccessibility)
+                assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, title.importantForAccessibility)
+                assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, message.accessibilityLiveRegion)
+                assertTrue(message.isTextSelectable)
+                assertEquals(
+                    context.getString(R.string.internet_camera_permission_settings_instructions),
+                    panel.contentDescription,
+                )
+                assertEquals(
+                    context.getString(R.string.internet_camera_permission_open_settings_description),
+                    settings.contentDescription,
+                )
+                assertTrue(settings.measuredHeight >= dp(context, 48))
+                assertTextRenderedWithoutEllipsis(title)
+                assertTextRenderedWithoutEllipsis(message)
+                assertTextRenderedWithoutEllipsis(settings)
+
+                val scan = root.findViewById<View>(R.id.internetScanProfileButton)
+                val secondary = root.findViewById<View>(R.id.internetSecondaryActions)
+                val panelBounds = boundsInAncestor(content, panel)
+                val scanBounds = boundsInAncestor(content, scan)
+                val secondaryBounds = boundsInAncestor(content, secondary)
+                assertTrue("permission panel follows scan/import actions", panelBounds.top >= scanBounds.bottom)
+                assertTrue("secondary Internet actions remain below permission panel", secondaryBounds.top >= panelBounds.bottom)
             }
         }
     }

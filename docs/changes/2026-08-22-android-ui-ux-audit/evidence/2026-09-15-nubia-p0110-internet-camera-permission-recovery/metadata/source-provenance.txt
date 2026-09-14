@@ -1,0 +1,6 @@
+repository=TaoSama/vibe-screen
+source_commit=8d526cfc5e13e37f635641273f8241dfb7811250
+base_commit=7720ca9bf5e510a64cdae46763fa24764ed9a8ca
+branch=codex/internet-camera-permission-recovery
+date=2026-09-15
+timezone=Asia/Shanghai
