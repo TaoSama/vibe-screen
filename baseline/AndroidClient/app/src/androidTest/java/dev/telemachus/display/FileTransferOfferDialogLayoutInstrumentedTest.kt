@@ -108,7 +108,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 onNegative = { rejected++ },
             ) { activity, dialog, content ->
                 dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.INCOMING)
-                dialog.assertCustomContentStaysAboveActions(content)
+                dialog.assertCustomContentStaysAboveActions(activity, content)
                 dialog.assertNoDuplicateTalkBackSemantics(
                     title = activity.getString(R.string.file_transfer_offer_title),
                     content = content,
@@ -127,6 +127,8 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
             assertEquals("reject must not accept the incoming offer", 0, accepted)
             assertEquals("reject callback is delivered exactly once", 1, rejected)
 
+            accepted = 0
+            rejected = 0
             withFileTransferBusinessDialog(
                 configuration = configuration,
                 kind = FileTransferBusinessDialogKind.INCOMING,
@@ -143,7 +145,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 )
             }
             assertEquals("accept callback is delivered exactly once", 1, accepted)
-            assertEquals("accept must not run the reject callback", 1, rejected)
+            assertEquals("accept must not run the reject callback", 0, rejected)
         }
     }
 
@@ -160,7 +162,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 onNegative = { cancelled++ },
             ) { activity, dialog, content ->
                 dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.OUTGOING)
-                dialog.assertCustomContentStaysAboveActions(content)
+                dialog.assertCustomContentStaysAboveActions(activity, content)
                 dialog.assertNoDuplicateTalkBackSemantics(
                     title = activity.getString(R.string.file_transfer_outgoing_title),
                     content = content,
@@ -179,6 +181,8 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
             assertEquals("cancel must not send the outgoing file", 0, sent)
             assertEquals("cancel callback is delivered exactly once", 1, cancelled)
 
+            sent = 0
+            cancelled = 0
             withFileTransferBusinessDialog(
                 configuration = configuration,
                 kind = FileTransferBusinessDialogKind.OUTGOING,
@@ -195,7 +199,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 )
             }
             assertEquals("send callback is delivered exactly once", 1, sent)
-            assertEquals("send must not run the cancel callback", 1, cancelled)
+            assertEquals("send must not run the cancel callback", 0, cancelled)
         }
     }
 
@@ -326,7 +330,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
         var dialog: AlertDialog? = null
         var contentView: ScrollView? = null
         var assertionFailure: Throwable? = null
-        var decided = false
+        val decision = FileTransferDialogDecision()
         DialogHostActivity.configurationOverride =
             DialogHostActivity.ConfigurationOverride(
                 widthDp = configuration.widthDp,
@@ -350,13 +354,11 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                                 .setTitle(kind.titleRes)
                                 .setView(content)
                                 .setPositiveButton(kind.positiveButtonRes) { _, _ ->
-                                    if (decided) return@setPositiveButton
-                                    decided = true
+                                    if (!decision.tryFinish()) return@setPositiveButton
                                     onPositive()
                                 }
                                 .setNegativeButton(kind.negativeButtonRes) { _, _ ->
-                                    if (decided) return@setNegativeButton
-                                    decided = true
+                                    if (!decision.tryFinish()) return@setNegativeButton
                                     onNegative()
                                 }
                                 .show()
@@ -716,18 +718,22 @@ private fun AlertDialog.assertFileTransferBusinessActions(
     negative.assertReadableDialogActionButton(activity)
 }
 
-private fun AlertDialog.assertCustomContentStaysAboveActions(content: ScrollView) {
+private fun AlertDialog.assertCustomContentStaysAboveActions(
+    activity: DialogHostActivity,
+    content: ScrollView,
+) {
     val positive = getButton(AlertDialog.BUTTON_POSITIVE)
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
     val actionTop = minOf(positive.screenTop(), negative.screenTop())
     val contentBottom = content.screenBottom()
     val decorBottom = checkNotNull(window?.decorView) { "dialog decor exists" }.screenBottom()
+    val screenBottom = activity.window.decorView.screenBottom()
     val geometry =
         "contentBottom=$contentBottom actionTop=$actionTop " +
             "contentTop=${content.screenTop()} contentHeight=${content.height} " +
             "positiveTop=${positive.screenTop()} positiveHeight=${positive.height} " +
             "negativeTop=${negative.screenTop()} negativeHeight=${negative.height} " +
-            "decorBottom=$decorBottom"
+            "decorBottom=$decorBottom screenBottom=$screenBottom"
 
     assertTrue("file-transfer dialog content stays above actions: $geometry", contentBottom <= actionTop)
     assertTrue("file-transfer dialog content has a visible top edge", content.screenTop() >= 0)
@@ -736,22 +742,29 @@ private fun AlertDialog.assertCustomContentStaysAboveActions(content: ScrollView
         "file-transfer dialog actions stay within decor bounds: $geometry",
         positive.screenBottom() <= decorBottom && negative.screenBottom() <= decorBottom,
     )
+    assertTrue("file-transfer dialog decor stays within the configured screen: $geometry", decorBottom <= screenBottom)
 }
 
 private fun AlertDialog.assertNoDuplicateTalkBackSemantics(
     title: String,
     content: View,
 ) {
-    val titleView = window?.decorView?.findTextViewWithText(title)
+    val titleView = checkNotNull(window?.decorView?.findTextViewWithText(title)) { "dialog title exists" }
     val positive = getButton(AlertDialog.BUTTON_POSITIVE)
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
 
-    assertNull("dialog title text should not duplicate itself as a content description", titleView?.contentDescription)
+    assertNull("dialog title text should not duplicate itself as a content description", titleView.contentDescription)
     assertNull("positive action should not duplicate itself as a content description", positive.contentDescription)
     assertNull("negative action should not duplicate itself as a content description", negative.contentDescription)
     content.forEachTextView { textView ->
+        val label =
+            if (textView.id == View.NO_ID) {
+                "anonymous text view"
+            } else {
+                textView.resources.getResourceEntryName(textView.id)
+            }
         assertNull(
-            "${textView.resources.getResourceEntryName(textView.id)} should not duplicate itself as a content description",
+            "$label should not duplicate itself as a content description",
             textView.contentDescription,
         )
     }
