@@ -186,7 +186,7 @@ class WirelessTabControllerContractTest {
         assertTrue(configureActions.contains("checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE))"))
         assertTrue(configureActions.contains("var decided = false"))
         assertTrue(configureActions.contains("dialog.setOnCancelListener { decided = true }"))
-        assertTrue(configureActions.contains("dialog.setOnDismissListener { decided = true }"))
+        assertFalse("Wireless dialog must preserve the host fullscreen-restoration listener", configureActions.contains("setOnDismissListener"))
         assertTrue(compactConfigureActions.contains("if(decided)return@setOnClickListener"))
         assertTrue(compactConfigureActions.contains("decided=trueonConfirmed()dialog.dismiss()"))
         assertTrue(compactConfigureActions.contains("onConfirmed()dialog.dismiss()"))

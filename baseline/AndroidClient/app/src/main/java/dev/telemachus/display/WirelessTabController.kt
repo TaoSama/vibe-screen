@@ -109,7 +109,6 @@ private fun configureTrustedNetworkDialogActions(
         }
         DialogActionButtonLayoutApplier.apply(dialog)
         dialog.setOnCancelListener { decided = true }
-        dialog.setOnDismissListener { decided = true }
         checkNotNull(dialog.getButton(AlertDialog.BUTTON_NEGATIVE)) {
             "trusted network dialog negative button exists"
         }.setOnClickListener {
