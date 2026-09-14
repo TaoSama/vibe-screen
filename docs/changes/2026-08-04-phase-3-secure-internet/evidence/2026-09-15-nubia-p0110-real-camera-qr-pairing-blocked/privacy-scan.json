@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "bytes": 2533,
+      "bytes": 2655,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -11,10 +11,10 @@
       ],
       "path": "README.md",
       "result": "pass",
-      "sha256": "b7462d7e90e92e886f620e680d2473975c740facb13d62975088d730a52be0b3"
+      "sha256": "8b1683672901047de22477d6e42845015ef8c8880851bab331316aef7e38a43f"
     },
     {
-      "bytes": 1669,
+      "bytes": 1732,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -24,7 +24,7 @@
       ],
       "path": "blocked-result.json",
       "result": "pass",
-      "sha256": "9fca89544b3697ad6b7c4c7a84b28ddc9354ad0c860c59b1c83bb96079c70c9f"
+      "sha256": "becea1aa4924537a1d1ca97a0c17ddd0ce2bec779c6178f40cb5ea1f6ac9a51e"
     },
     {
       "bytes": 714,

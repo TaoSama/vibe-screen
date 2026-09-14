@@ -23,8 +23,9 @@ credential material are not retained in this repository.
 
 ## Verified supporting gates
 
-- Focused runner tests: 40/40 passed.
-- Full Python script suite: 476/476 passed.
+- Focused runner tests: 41/41 passed on macOS; Linux retains the cross-platform
+  source contract and skips the three AppKit/CoreImage runtime probes.
+- Full Python script suite: 477/477 passed on macOS.
 - Android JVM/build gates passed: focused contracts, release Kotlin compile,
   debug instrumentation APK assembly, lintDebug, and baseline Android tests.
 - Device teardown passed: application and test processes stopped, app-private

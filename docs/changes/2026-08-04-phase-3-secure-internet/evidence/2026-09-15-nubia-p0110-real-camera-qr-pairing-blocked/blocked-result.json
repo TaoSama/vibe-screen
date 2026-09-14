@@ -35,8 +35,8 @@
   "source_commit": "9511483bdcc2dad9289a331b09c98f4586f26657",
   "supporting_checks": {
     "android_build_and_test_gates": "pass",
-    "python_full_suite": "476/476 pass",
-    "python_runner_suite": "40/40 pass"
+    "python_full_suite": "477/477 pass on macOS",
+    "python_runner_suite": "41/41 pass on macOS; AppKit runtime probes skipped on non-Darwin"
   },
   "timing_utc": {
     "finished": "2026-09-14T23:08:18.012484+00:00",

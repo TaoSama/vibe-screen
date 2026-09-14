@@ -1009,6 +1009,15 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
             self.assertIn("started_at_utc", data)
             self.assertIn("finished_at_utc", data)
 
+    def test_qr_presenter_source_contract_is_cross_platform(self) -> None:
+        presenter_path = Path(__file__).resolve().parents[1] / "phase3" / "qr_presenter.swift"
+        source = presenter_path.read_text(encoding="utf-8")
+        self.assertIn("if CommandLine.arguments.count > 1", source)
+        self.assertIn("accepts no command-line arguments", source)
+        self.assertIn("readLine(strippingNewline: true)", source)
+        self.assertIn('print("QR_PRESENTER_READY")', source)
+
+    @unittest.skipUnless(sys.platform == "darwin", "AppKit presenter requires macOS")
     def test_qr_presenter_swift_rejects_cli_args(self) -> None:
         presenter_path = Path(__file__).resolve().parents[1] / "phase3" / "qr_presenter.swift"
         self.assertTrue(presenter_path.is_file())
@@ -1022,6 +1031,7 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
         self.assertEqual(res.returncode, 2)
         self.assertIn("qr_presenter.swift accepts no command-line arguments", res.stderr)
 
+    @unittest.skipUnless(sys.platform == "darwin", "CoreImage presenter check requires macOS")
     def test_qr_presenter_swift_check_mode(self) -> None:
         presenter_path = Path(__file__).resolve().parents[1] / "phase3" / "qr_presenter.swift"
         self.assertTrue(presenter_path.is_file())
@@ -1036,6 +1046,7 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         self.assertIn("CHECK_PASS", res.stdout)
 
+    @unittest.skipUnless(sys.platform == "darwin", "AppKit presenter requires macOS")
     def test_qr_presenter_swift_empty_stdin_fails(self) -> None:
         presenter_path = Path(__file__).resolve().parents[1] / "phase3" / "qr_presenter.swift"
         self.assertTrue(presenter_path.is_file())
