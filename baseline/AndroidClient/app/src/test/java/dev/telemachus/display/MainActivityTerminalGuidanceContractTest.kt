@@ -8,6 +8,43 @@ import org.junit.Test
 
 class MainActivityTerminalGuidanceContractTest {
     @Test
+    fun businessConfirmationDialogsApplyReadableActionLayoutAfterShowing() {
+        val source = mainActivitySource()
+        val setupInternetUi = extractMethod(source, "private fun setupInternetUi").replace(Regex("\\s+"), "")
+        val importDialog = extractMethod(source, "private fun showInternetProfileImportDialog").replace(Regex("\\s+"), "")
+        val pairingDialog = extractMethod(source, "private fun showInternetPairingCompletionDialog").replace(Regex("\\s+"), "")
+        val disconnectDialog = extractMethod(source, "private fun confirmDisconnect").replace(Regex("\\s+"), "")
+        val hostActionDialog = extractMethod(source, "private fun requestHostAction").replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Internet revoke confirmation must adapt long actions after the secure dialog is shown",
+            setupInternetUi.contains("showSecureImmersiveDialog(MaterialAlertDialogBuilder(this)") &&
+                setupInternetUi.contains("revokeInternetPairing(\"user_requested\")},).also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "Internet profile import must preserve its custom positive listener and then adapt actions",
+            importDialog.contains("dialog.setOnShowListener") &&
+                importDialog.contains("showSecureImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "Internet pairing completion must preserve its lifecycle listeners and then adapt actions",
+            pairingDialog.contains("dialog.setOnShowListener") &&
+                pairingDialog.contains("dialog.setOnCancelListener") &&
+                pairingDialog.contains("showSecureImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "Disconnect confirmation must adapt actions after the dialog is shown",
+            disconnectDialog.contains("showImmersiveDialog(MaterialAlertDialogBuilder(this)") &&
+                disconnectDialog.contains(".setNegativeButton(R.string.disconnect_confirm_cancel,null),).also(DialogActionButtonLayoutApplier::apply)"),
+        )
+        assertTrue(
+            "Host action confirmation must adapt actions after the dialog is shown",
+            hostActionDialog.contains("showImmersiveDialog(MaterialAlertDialogBuilder(this)") &&
+                hostActionDialog.contains(".setNegativeButton(R.string.cancel,null),).also(DialogActionButtonLayoutApplier::apply)"),
+        )
+    }
+
+    @Test
     fun onSessionEndedUsesRetainedSessionPortInsteadOfCurrentUiPort() {
         val callback = onSessionEndedCallback(mainActivitySource())
         val compactCallback = callback.replace(Regex("\\s+"), " ")
