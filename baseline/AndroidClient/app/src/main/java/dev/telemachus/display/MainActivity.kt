@@ -1957,7 +1957,9 @@ class MainActivity : AppCompatActivity() {
     private fun launchInternetScanner(): Boolean {
         if (!allowInternetCredentialMutation()) return false
         clearInternetCameraPermissionPanel()
-        startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)
+        val intent = Intent(this, QRScannerActivity::class.java)
+        InternetPairingTestHooks.attachQrScanMarkerExtra(this, intent)
+        startActivityForResult(intent, REQ_INTERNET_SCAN)
         return true
     }
 

@@ -705,6 +705,15 @@ macOS XCTest filters blocked where the selected Command Line Tools environment
 could not compile XCTest, so those local artifacts must not be treated as an
 executed macOS XCTest pass. This does not prove production account/session-
 authority profile issuance or a real camera QR pairing round trip.
+The [2026-09-15 Nubia P0110 real-camera QR pairing blocked run](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-09-15-nubia-p0110-real-camera-qr-pairing-blocked/README.md)
+adds a no-Host acceptance harness that uses the product rear-camera CameraX
+ImageAnalysis path and ZXing QRCodeReader, then exercises the product pairing
+request, strict lease import, and local revoke path only after a real decode.
+The retained device run reached the scanner with Camera permission granted, but
+the fixed phone camera was not pointed at the Mac QR window and no decode
+occurred before the 60-second timeout. It is blocked evidence, not a QR pairing
+pass, and does not prove production Authority issuance, public Internet, or a
+Host-backed session.
 The [2026-09-15 Nubia P0110 no-Host Camera permission recovery run](docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-camera-permission-recovery/README.md)
 verifies that the Android Internet scanner keeps first and permanent Camera
 denials inside Vibe Screen, opens app settings only from an explicit action,
@@ -915,9 +924,12 @@ in the Phase 3 test plan: it must either produce a current-source `blocked`
 result or accept fresh current-source P0110 evidence through the requested proof
 profile. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
-The current-base QR pairing blocked record covers only offline Swift/Kotlin
-fixture and fail-closed checks; it records that no production TLS/public-Internet
-deployment or real Android camera QR scan was available in this environment.
+The earlier current-base QR pairing blocked record covers only offline
+Swift/Kotlin fixture and fail-closed checks. The 2026-09-15 Nubia P0110 run adds
+a real rear-camera attempt, but it remains blocked before decode because the
+physical camera did not face the presented QR code. Neither record proves a
+successful camera scan, device-to-authority pairing, production TLS/public-
+Internet deployment, or a Host-backed session.
 Current fail-closed Internet soak evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-26-internet-soak-current-base-blocked/README.md).
 The current-base public Internet WebRTC/TURN relay E2E owner record is

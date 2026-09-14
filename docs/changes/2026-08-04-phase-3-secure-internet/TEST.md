@@ -880,6 +880,34 @@ Nubia P0110 local direct/forced-coturn product-session record is listed below;
 it does not close the target Xiaomi, public-Internet, real-capture, handoff,
 latency, or soak criteria.
 
+The 2026-09-15 Nubia P0110 no-Host real-camera QR attempt is retained under
+evidence/2026-09-15-nubia-p0110-real-camera-qr-pairing-blocked. The runner
+requires an explicit device serial, an exclusive Android device lock, no
+listener on TCP 54321, no ADB reverse mapping, and clean app-private temporary
+files before and after the run. It presents the one-time offer through a local
+AppKit/CoreImage window using stdin only, waits for the product rear-camera
+CameraX ImageAnalysis and ZXing QRCodeReader marker, and admits pairing, lease
+import, and revoke assertions only after that marker. The retained run launched
+the real scanner with Camera permission granted but timed out before decode
+because the fixed phone camera did not face the Mac display. Therefore the
+result is blocked; it does not prove a decoded QR payload, pairing request
+acceptance, lease import, revoke, production Authority issuance, public
+Internet, or Host-backed media.
+
+The focused runner can be reproduced without starting MacHost or configuring
+ADB reverse:
+
+    python3 -m unittest scripts.tests.test_android_real_qr_pairing_acceptance
+    python3 scripts/phase3/android_real_qr_pairing_acceptance.py \
+      --serial <ANDROID_SERIAL> \
+      --evidence /tmp/vibe-screen-real-qr-pairing.json
+
+Exit code 0 requires the exact instrumentation pass marker after a real
+CameraX/ZXing decode and successful product pairing/import/revoke assertions.
+Any missing marker, timeout, device/Host/reverse ambiguity, cleanup failure, or
+postflight discrepancy fails closed. A blocked record may document the reason,
+but must never be relabeled as a pass.
+
 Local verification on 2026-08-04 and 2026-08-05 proved the following layers in
 recorded shared-tree snapshots. A result applies only to the layer and tree state
 named by that run:

@@ -39,6 +39,7 @@ class QRScannerActivity : AppCompatActivity() {
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private var waitingForSettingsGrant = false
+    private var qrScanMarkerName: String? = null
     private val resultDeliveryGate = QRScannerDeliveryGate()
     private val decodeHints =
         mapOf(
@@ -49,6 +50,12 @@ class QRScannerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         waitingForSettingsGrant = savedInstanceState?.getBoolean(KEY_WAITING_FOR_SETTINGS_GRANT) ?: false
+        qrScanMarkerName =
+            savedInstanceState?.getString(KEY_QR_SCAN_MARKER_NAME)
+                ?: InternetPairingTestHooks.consumeAppPrivateFileNameExtra(
+                    intent,
+                    InternetPairingTestHooks.EXTRA_QR_SCAN_MARKER_NAME,
+                )
         resultDeliveryGate.restorePending(savedInstanceState?.getString(KEY_PENDING_RESULT_RAW))
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableScannerEdgeToEdge()
@@ -70,6 +77,7 @@ class QRScannerActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT, waitingForSettingsGrant)
+        qrScanMarkerName?.let { outState.putString(KEY_QR_SCAN_MARKER_NAME, it) }
         val deliverySnapshot = resultDeliveryGate.markStateSavedAndSnapshot()
         deliverySnapshot.pendingRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }
         super.onSaveInstanceState(outState)
@@ -263,6 +271,25 @@ class QRScannerActivity : AppCompatActivity() {
                 )
             val raw = reader.decode(BinaryBitmap(HybridBinarizer(source)), decodeHints).text
             if (isSupportedPairingNamespace(raw)) {
+                val markerName = qrScanMarkerName
+                if (markerName != null && InternetPairingTestHooks.isMarkerActive(markerName)) {
+                    InternetPairingTestHooks.writeQrScanMarker(
+                        context = this,
+                        name = markerName,
+                        marker =
+                            InternetPairingTestHooks.QrScanMarker(
+                                payloadSha256Hex = InternetPairingTestHooks.sha256Hex(raw),
+                                payloadBytes = raw.toByteArray(Charsets.UTF_8).size,
+                                frameWidth = proxy.width,
+                                frameHeight = proxy.height,
+                                rowStride = plane.rowStride,
+                                pixelStride = plane.pixelStride,
+                                rotationDegrees = proxy.imageInfo.rotationDegrees,
+                                lumaWidth = packed.width,
+                                lumaHeight = packed.height,
+                            ),
+                    )
+                }
                 deliverResult(raw)
             }
         } catch (_: NotFoundException) {
@@ -328,6 +355,7 @@ class QRScannerActivity : AppCompatActivity() {
         private const val REQ_CAMERA = 1201
         private const val KEY_WAITING_FOR_SETTINGS_GRANT = "qr_scanner_waiting_for_settings_grant"
         private const val KEY_PENDING_RESULT_RAW = "qr_scanner_pending_result_raw"
+        private const val KEY_QR_SCAN_MARKER_NAME = "qr_scanner_marker_name"
         const val EXTRA_URL = "qr_url"
 
         internal fun isSupportedPairingNamespace(raw: String): Boolean =

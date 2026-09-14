@@ -1,0 +1,45 @@
+{
+  "assertions": {
+    "adb_reverse_absent": "pass",
+    "app_private_cleanup": "pass",
+    "camera_permission_granted": "pass",
+    "host_listener_absent": "pass",
+    "local_revoke": "not_reached",
+    "pairing_request_acceptance": "not_reached",
+    "product_scanner_launched": "pass",
+    "real_camerax_zxing_decode": "blocked",
+    "secure_dialogs": "not_reached",
+    "strict_lease_import": "not_reached"
+  },
+  "base_commit": "9511483bdcc2dad9289a331b09c98f4586f26657",
+  "blocker": "The fixed phone rear camera did not face the Mac QR window; no CameraX/ZXing decode marker appeared before the 60-second timeout.",
+  "device": {
+    "android_release": "16",
+    "codename": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36,
+    "serial": "redacted"
+  },
+  "evidence_boundaries": {
+    "adb_reverse": "not_used",
+    "camera_input": "real_camerax_imageanalysis_rear_camera",
+    "host_server": "no_host_server_in_memory_authority_only",
+    "macos_tcc": "screen_recording_accessibility_microphone_not_requested",
+    "qr_decoder": "real_zxing_qrcodereader",
+    "transport_mode": "no_host_harness"
+  },
+  "instrumentation_log_sha256": "d078177cfc596b16bb456e2b47cfb37969b402fa535160e1969596632d5f1d75",
+  "result": "blocked",
+  "schema": "dev.vibescreen.phase3-real-qr-pairing-blocked/v1",
+  "source_commit": "9511483bdcc2dad9289a331b09c98f4586f26657",
+  "supporting_checks": {
+    "android_build_and_test_gates": "pass",
+    "python_full_suite": "476/476 pass",
+    "python_runner_suite": "40/40 pass"
+  },
+  "timing_utc": {
+    "finished": "2026-09-14T23:08:18.012484+00:00",
+    "started": "2026-09-14T23:07:05.445304+00:00"
+  }
+}

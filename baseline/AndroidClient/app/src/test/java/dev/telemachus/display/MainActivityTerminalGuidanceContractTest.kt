@@ -1756,8 +1756,9 @@ class MainActivityTerminalGuidanceContractTest {
         val pairing = extractMethod(source, "private fun beginInternetPairing")
         val launchAdmissionIndex = launch.indexOf("allowInternetCredentialMutation()")
         val panelClearIndex = launch.indexOf("clearInternetCameraPermissionPanel()")
+        val hookIndex = launch.indexOf("InternetPairingTestHooks.attachQrScanMarkerExtra(this, intent)")
         val scannerStartIndex =
-            launch.indexOf("startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)")
+            launch.indexOf("startActivityForResult(intent, REQ_INTERNET_SCAN)")
         val pairingAdmissionIndex = pairing.indexOf("check(allowInternetCredentialMutation())")
         val pairingCoordinatorIndex = pairing.indexOf("InternetPairingCoordinator")
 
@@ -1765,9 +1766,11 @@ class MainActivityTerminalGuidanceContractTest {
             "Internet scanner launch must re-check credential mutation quarantine before QRScannerActivity starts",
             launchAdmissionIndex >= 0 &&
                 panelClearIndex >= 0 &&
+                hookIndex >= 0 &&
                 scannerStartIndex >= 0 &&
                 launchAdmissionIndex < panelClearIndex &&
-                panelClearIndex < scannerStartIndex,
+                panelClearIndex < hookIndex &&
+                hookIndex < scannerStartIndex,
         )
         assertTrue(
             "Internet scan click should avoid even requesting Camera while revocation quarantine blocks new credentials",
