@@ -1,0 +1,11 @@
+pre_existing_worker_residual_detected=true
+pre_existing_worker_residual_action=stopped stale connectedDebugAndroidTest host processes and force-stopped/uninstalled target app/test packages before the accepted run
+accepted_run_started_utc=2026-09-14T12:09:44Z
+accepted_pre_reverse_empty=true
+accepted_pre_processes=none
+accepted_pre_instrumentation_package=not_installed
+post_reverse_empty=true
+post_processes=none
+post_instrumentation_package=not_installed
+host_instrumentation_processes_post=none
+rerun_timestamp_utc=2026-09-14T12:10:06Z

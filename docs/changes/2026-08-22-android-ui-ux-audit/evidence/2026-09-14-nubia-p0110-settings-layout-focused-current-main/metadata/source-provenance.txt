@@ -1,0 +1,8 @@
+repository=TaoSama/vibe-screen
+branch=codex/settings-layout-p0110-evidence
+base_head=58aeecc0b392cbe1e5d47dc37722b95d121b9707
+origin_main=58aeecc0b392cbe1e5d47dc37722b95d121b9707
+base_subject=fix(android): keep file transfer dialog actions readable (#778)
+date=2026-09-14
+timezone=Asia/Shanghai
+local_change=Adds retained SettingsDialogLayoutInstrumentedTest focused Nubia P0110 evidence after the Settings accessibility fix reached origin/main, rerun on the current post-PR-778 main baseline with the accepted 2026-09-14T12:10:06Z device run.
