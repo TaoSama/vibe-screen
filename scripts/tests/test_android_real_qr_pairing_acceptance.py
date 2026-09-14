@@ -49,7 +49,6 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
             "--adb", "/usr/local/bin/adb",
             "--timeout", "45.5",
             "--poll-interval", "0.2",
-            "--presenter-ready-file", "custom_ready.sentinel",
             "--device-lock", "/tmp/custom-device.lock",
             "--skip-presenter",
             "--allow-blocked",
@@ -59,10 +58,28 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
         self.assertEqual(args.adb, "/usr/local/bin/adb")
         self.assertEqual(args.timeout, 45.5)
         self.assertEqual(args.poll_interval, 0.2)
-        self.assertEqual(args.presenter_ready_file, "custom_ready.sentinel")
+        self.assertEqual(args.presenter_ready_file, runner.DEFAULT_PRESENTER_READY_FILENAME)
         self.assertEqual(args.device_lock, Path("/tmp/custom-device.lock"))
         self.assertTrue(args.skip_presenter)
         self.assertTrue(args.allow_blocked)
+
+    def test_app_private_filenames_are_not_cli_configurable(self) -> None:
+        parser = runner.build_parser()
+        with mock.patch("sys.stderr"):
+            with self.assertRaises(SystemExit):
+                parser.parse_args([
+                    "--serial", "mock-serial-1",
+                    "--evidence", "/tmp/out.json",
+                    "--marker-file", "custom.json",
+                ])
+
+    def test_attach_exception_note_falls_back_without_add_note(self) -> None:
+        class LegacyError(Exception):
+            add_note = None
+
+        error = LegacyError("primary")
+        runner.attach_exception_note(error, "cleanup failed")
+        self.assertEqual(str(error), "primary\ncleanup failed")
 
     def test_redact_text_sanitizes_sensitive_data(self) -> None:
         sample_serial = "nubia-pacific-test-serial"
@@ -288,8 +305,9 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
 
         def mock_runner(cmd, input=None, *args, **kwargs):
             history.append((cmd, input))
-            joined = " ".join(cmd)
-            if "if [ -f files/test.txt" in joined:
+            if cmd[-2:] == ["ls", "files/test.txt"]:
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd[-2:] == ["cat", "files/test.txt"]:
                 return subprocess.CompletedProcess(cmd, 0, "file-content\n", "")
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -301,16 +319,24 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
         # Read
         content = runner.run_as_read_file("dev.pkg", "test.txt", "ser1", command_runner=mock_runner)
         self.assertEqual(content, "file-content")
+        self.assertEqual(
+            history[2][0],
+            ["adb", "-s", "ser1", "shell", "run-as", "dev.pkg", "ls", "files/test.txt"],
+        )
+        self.assertEqual(
+            history[3][0],
+            ["adb", "-s", "ser1", "shell", "run-as", "dev.pkg", "cat", "files/test.txt"],
+        )
 
         # Read absent file (device script exit code 3) returns None
         def mock_runner_absent(cmd, *args, **kwargs):
-            return subprocess.CompletedProcess(cmd, 3, "", "")
+            return subprocess.CompletedProcess(cmd, 1, "", "No such file or directory")
 
         self.assertIsNone(runner.run_as_read_file("dev.pkg", "test.txt", "ser1", command_runner=mock_runner_absent))
 
         # Read error (exit code 1) raises AcceptanceError
         def mock_runner_error(cmd, *args, **kwargs):
-            return subprocess.CompletedProcess(cmd, 1, "", "permission denied")
+            return subprocess.CompletedProcess(cmd, 2, "", "permission denied")
 
         with self.assertRaises(runner.AcceptanceError):
             runner.run_as_read_file("dev.pkg", "test.txt", "ser1", command_runner=mock_runner_error)
@@ -505,11 +531,18 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
                         if f"files/{f}" in joined:
                             device_files[f] = input or ""
                     return subprocess.CompletedProcess(cmd, 0, "", "")
-                if "if [ -f files/" in joined:
+                if "ls files/" in joined:
+                    return subprocess.CompletedProcess(
+                        cmd,
+                        0 if any(f"files/{f}" in joined for f in device_files) else 1,
+                        "",
+                        "" if any(f"files/{f}" in joined for f in device_files) else "No such file or directory",
+                    )
+                if "cat files/" in joined:
                     for f, val in device_files.items():
                         if f"files/{f}" in joined:
                             return subprocess.CompletedProcess(cmd, 0, val + "\n", "")
-                    return subprocess.CompletedProcess(cmd, 3, "", "")
+                    return subprocess.CompletedProcess(cmd, 1, "", "missing")
                 if "lsof" in joined:
                     return subprocess.CompletedProcess(cmd, 1, "", "")
                 return subprocess.CompletedProcess(cmd, 0, "", "")
@@ -657,7 +690,13 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, "dummy\n", "")
                 if "reverse --list" in joined or "rm -f" in joined or "chmod 600" in joined or "tee files/" in joined:
                     return subprocess.CompletedProcess(cmd, 0, "", "")
-                if "if [ -f files/" in joined:
+                if "ls files/" in joined:
+                    exists = (
+                        f"files/{runner.OFFER_FILENAME}" in joined
+                        or f"files/{runner.MARKER_FILENAME}" in joined
+                    )
+                    return subprocess.CompletedProcess(cmd, 0 if exists else 1, "", "" if exists else "No such file or directory")
+                if "cat files/" in joined:
                     if f"files/{runner.OFFER_FILENAME}" in joined:
                         return subprocess.CompletedProcess(cmd, 0, sample_offer + "\n", "")
                     if f"files/{runner.MARKER_FILENAME}" in joined:
@@ -734,7 +773,13 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, "dummy\n", "")
                 if "reverse --list" in joined or "rm -f" in joined or "chmod 600" in joined or "tee files/" in joined:
                     return subprocess.CompletedProcess(cmd, 0, "", "")
-                if "if [ -f files/" in joined:
+                if "ls files/" in joined:
+                    exists = (
+                        f"files/{runner.OFFER_FILENAME}" in joined
+                        or f"files/{runner.MARKER_FILENAME}" in joined
+                    )
+                    return subprocess.CompletedProcess(cmd, 0 if exists else 1, "", "" if exists else "No such file or directory")
+                if "cat files/" in joined:
                     if f"files/{runner.OFFER_FILENAME}" in joined:
                         return subprocess.CompletedProcess(cmd, 0, sample_offer + "\n", "")
                     if f"files/{runner.MARKER_FILENAME}" in joined:
@@ -817,7 +862,13 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, "", "")
                 if "rm -f" in joined or "chmod 600" in joined or "tee files/" in joined:
                     return subprocess.CompletedProcess(cmd, 0, "", "")
-                if "if [ -f files/" in joined:
+                if "ls files/" in joined:
+                    exists = (
+                        f"files/{runner.OFFER_FILENAME}" in joined
+                        or f"files/{runner.MARKER_FILENAME}" in joined
+                    )
+                    return subprocess.CompletedProcess(cmd, 0 if exists else 1, "", "" if exists else "No such file or directory")
+                if "cat files/" in joined:
                     if f"files/{runner.OFFER_FILENAME}" in joined:
                         return subprocess.CompletedProcess(cmd, 0, sample_offer + "\n", "")
                     if f"files/{runner.MARKER_FILENAME}" in joined:
@@ -894,7 +945,9 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, "dummy\n", "")
                 if "reverse --list" in joined or "rm -f" in joined or "chmod 600" in joined or "tee files/" in joined:
                     return subprocess.CompletedProcess(cmd, 0, "", "")
-                if "if [ -f files/" in joined:
+                if "ls files/" in joined:
+                    return subprocess.CompletedProcess(cmd, 0, "", "")
+                if "cat files/" in joined:
                     # Always returns file content, simulating failed rm
                     if f"files/{runner.OFFER_FILENAME}" in joined:
                         return subprocess.CompletedProcess(cmd, 0, sample_offer + "\n", "")
@@ -1002,12 +1055,14 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue(evidence_file.is_file())
             data = json.loads(evidence_file.read_text(encoding="utf-8"))
-            self.assertEqual(data["result"], "fail")
+            self.assertEqual(data["result"], "blocked")
+            self.assertEqual(data["schema"], runner.BLOCKED_SCHEMA)
             self.assertIn("device", data)
             self.assertEqual(data["device"]["manufacturer"], "nubia")
             self.assertEqual(data["device"]["model"], "P0110")
-            self.assertIn("started_at_utc", data)
-            self.assertIn("finished_at_utc", data)
+            self.assertIn("started", data["timing_utc"])
+            self.assertIn("finished", data["timing_utc"])
+            self.assertIn("blocker", data)
 
     def test_qr_presenter_source_contract_is_cross_platform(self) -> None:
         presenter_path = Path(__file__).resolve().parents[1] / "phase3" / "qr_presenter.swift"

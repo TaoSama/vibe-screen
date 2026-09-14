@@ -6,6 +6,6 @@ cd baseline/AndroidClient
 ./gradlew :app:testDebugUnitTest --tests dev.telemachus.display.RealQrPairingStaticContractTest --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest
 ./gradlew :app:compileReleaseKotlin :app:assembleDebugAndroidTest :app:lintDebug
 cd ../..
-python3 scripts/phase3/android_real_qr_pairing_acceptance.py --serial <ANDROID_SERIAL> --evidence /tmp/vibe-screen-real-qr-pairing.json
+python3 scripts/phase3/android_real_qr_pairing_acceptance.py --serial <ANDROID_SERIAL> --evidence /tmp/vibe-screen-real-qr-pairing.json --allow-blocked
 adb -s <ANDROID_SERIAL> reverse --list
 lsof -nP -iTCP:54321 -sTCP:LISTEN

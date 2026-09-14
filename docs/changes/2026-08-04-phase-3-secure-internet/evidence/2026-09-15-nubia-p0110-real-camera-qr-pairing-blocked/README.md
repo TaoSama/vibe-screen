@@ -6,7 +6,8 @@ ZXing QRCodeReader path. It is blocked evidence, not a pairing pass.
 
 ## Result
 
-- Source/base commit: recorded in blocked-result.json.
+- Source/base commit: `9511483bdcc2dad9289a331b09c98f4586f26657`; the
+  runner output intentionally records runtime facts only.
 - Device: Nubia P0110, codename pacific, Android 16, API 36.
 - Device serial: <redacted>
 - MacHost: not started; TCP 54321 had no listener.
@@ -23,9 +24,9 @@ credential material are not retained in this repository.
 
 ## Verified supporting gates
 
-- Focused runner tests: 41/41 passed on macOS; Linux retains the cross-platform
+- Focused runner tests: 43/43 passed on macOS; Linux retains the cross-platform
   source contract and skips the three AppKit/CoreImage runtime probes.
-- Full Python script suite: 477/477 passed on macOS.
+- Full Python script suite: 479/479 passed on macOS.
 - Android JVM/build gates passed: focused contracts, release Kotlin compile,
   debug instrumentation APK assembly, lintDebug, and baseline Android tests.
 - Device teardown passed: application and test processes stopped, app-private
@@ -48,7 +49,8 @@ not satisfy this gate and is intentionally prohibited by static contracts.
 
 ## Artifacts
 
-- blocked-result.json: sanitized structured result and exact claim boundary.
+- blocked-result.json: sanitized runner-shaped blocked result; supporting gate
+  results and claim boundaries are recorded separately in this README.
 - commands.txt: reproducible commands with the device serial redacted.
 - privacy-scan.json: repository evidence privacy scan.
 - SHA256SUMS: package integrity manifest.

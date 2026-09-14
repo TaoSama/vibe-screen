@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 SCHEMA = "dev.vibescreen.phase3-real-qr-pairing/v1"
+BLOCKED_SCHEMA = "dev.vibescreen.phase3-real-qr-pairing-blocked/v1"
 MARKER_SCHEMA = "dev.vibescreen.phase3-real-qr-scan-marker/v1"
 PRESENTER_READY_SCHEMA = "dev.vibescreen.phase3-real-qr-presenter-ready/v1"
 
@@ -377,15 +378,21 @@ def run_as_read_file(
     adb_path: str = "adb",
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> str | None:
-    """Reads an app-private file via adb shell run-as with an explicit missing-file exit code."""
+    """Reads an app-private file with run-as without device-shell quoting."""
     clean_serial = require_serial(serial)
     validate_app_private_filename(filename)
-    device_script = f"'if [ -f files/{filename} ]; then cat files/{filename}; else exit 3; fi'"
-    read_cmd = [adb_path, "-s", clean_serial, "shell", "run-as", package, "sh", "-c", device_script]
+    path = f"files/{filename}"
+    exists_cmd = [adb_path, "-s", clean_serial, "shell", "run-as", package, "ls", path]
+    read_cmd = [adb_path, "-s", clean_serial, "shell", "run-as", package, "cat", path]
     try:
-        proc = command_runner(read_cmd, capture_output=True, text=True, check=False, timeout=10.0)
-        if proc.returncode == 3:
+        exists = command_runner(exists_cmd, capture_output=True, text=True, check=False, timeout=10.0)
+        if exists.returncode == 1 and "No such file or directory" in exists.stderr:
             return None
+        if exists.returncode != 0:
+            raise AcceptanceError(
+                f"Failed to inspect app-private file {filename} (exit {exists.returncode}): {exists.stderr.strip()}"
+            )
+        proc = command_runner(read_cmd, capture_output=True, text=True, check=False, timeout=10.0)
         if proc.returncode != 0:
             raise AcceptanceError(
                 f"Failed to read app-private file {filename} (exit {proc.returncode}): {proc.stderr.strip()}"
@@ -454,6 +461,16 @@ def run_as_delete_file(
 def validate_app_private_filename(filename: str) -> None:
     if not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", filename):
         raise AcceptanceError(f"Unsafe app-private filename: {filename!r}")
+
+
+def attach_exception_note(error: BaseException, note: str) -> None:
+    """Preserves teardown diagnostics on Python versions before add_note()."""
+    add_note = getattr(error, "add_note", None)
+    if callable(add_note):
+        add_note(note)
+        return
+    message = str(error)
+    error.args = (f"{message}\n{note}", *error.args[1:])
 
 
 class PresenterController:
@@ -753,7 +770,12 @@ def run_acceptance(
                     raise AcceptanceError(
                         f"Instrumentation terminated before CameraX QR decode (exit {instrumentation_proc.returncode}, log_sha256={log_sha}): {summary}"
                     )
-                raise AcceptanceError(f"Timed out waiting for CameraX QR decode marker ({args.marker_file})")
+                raw_log = read_inst_log()
+                log_sha, summary = sanitize_and_summarize_log(raw_log, serial)
+                raise AcceptanceError(
+                    f"Timed out waiting for CameraX QR decode marker ({args.marker_file}, "
+                    f"log_sha256={log_sha}): {summary}"
+                )
 
             marker_data = validate_qr_marker(raw_marker, offer_sha256)
 
@@ -850,11 +872,9 @@ def run_acceptance(
 
         if in_flight_exc is not None:
             for err in cleanup_errors:
-                if hasattr(in_flight_exc, "add_note"):
-                    in_flight_exc.add_note(f"Teardown cleanup error: {err}")
+                attach_exception_note(in_flight_exc, f"Teardown cleanup error: {err}")
             for err_msg in postflight_errors:
-                if hasattr(in_flight_exc, "add_note"):
-                    in_flight_exc.add_note(f"Teardown postflight error: {err_msg}")
+                attach_exception_note(in_flight_exc, f"Teardown postflight error: {err_msg}")
         else:
             if cleanup_errors:
                 raise AcceptanceError(f"Teardown cleanup failed: {'; '.join(str(e) for e in cleanup_errors)}")
@@ -951,23 +971,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.5,
         help="Device file polling interval in seconds (default: 0.5).",
     )
-    parser.add_argument(
-        "--offer-file",
-        type=str,
-        default=OFFER_FILENAME,
-        help=f"App-private offer filename (default: {OFFER_FILENAME}).",
-    )
-    parser.add_argument(
-        "--marker-file",
-        type=str,
-        default=MARKER_FILENAME,
-        help=f"App-private marker filename (default: {MARKER_FILENAME}).",
-    )
-    parser.add_argument(
-        "--presenter-ready-file",
-        type=str,
-        default=DEFAULT_PRESENTER_READY_FILENAME,
-        help=f"App-private presenter-ready sentinel filename (default: {DEFAULT_PRESENTER_READY_FILENAME}).",
+    parser.set_defaults(
+        offer_file=OFFER_FILENAME,
+        marker_file=MARKER_FILENAME,
+        presenter_ready_file=DEFAULT_PRESENTER_READY_FILENAME,
     )
     parser.add_argument(
         "--device-lock",
@@ -1020,12 +1027,15 @@ def main(
         return 0
     except (AcceptanceError, Exception) as error:
         safe_error = redact_text(str(error), getattr(args, "serial", None))
+        is_blocked = bool(args.allow_blocked)
         failure_report: dict[str, Any] = {
-            "schema": SCHEMA,
-            "result": "fail",
-            "started_at_utc": context.started_at_utc,
-            "finished_at_utc": datetime.now(timezone.utc).isoformat(),
-            "error": safe_error,
+            "schema": BLOCKED_SCHEMA if is_blocked else SCHEMA,
+            "result": "blocked" if is_blocked else "fail",
+            "timing_utc": {
+                "started": context.started_at_utc,
+                "finished": datetime.now(timezone.utc).isoformat(),
+            },
+            "blocker" if is_blocked else "error": safe_error,
             "evidence_boundaries": dict(EVIDENCE_BOUNDARIES),
         }
         if context.device_identity is not None:
