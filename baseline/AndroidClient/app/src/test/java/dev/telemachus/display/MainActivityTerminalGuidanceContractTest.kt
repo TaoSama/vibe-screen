@@ -869,6 +869,37 @@ class MainActivityTerminalGuidanceContractTest {
                 "$id should keep the 48dp touch target minimum",
                 button.contains("android:minHeight=\"48dp\""),
             )
+            assertTrue(
+                "$id should grow vertically from its touch target instead of clipping large text",
+                button.contains("android:layout_height=\"wrap_content\""),
+            )
+            assertTrue(
+                "$id should allow natural two-line labels at large font scale",
+                button.contains("android:maxLines=\"2\"") &&
+                    button.contains("android:singleLine=\"false\""),
+            )
+            assertTrue(
+                "$id must render complete large-font labels without ellipsis",
+                button.contains("android:ellipsize=\"none\""),
+            )
+            assertTrue(
+                "$id should keep compact centered text geometry so two-line large-font labels fit narrow screens",
+                button.contains("android:gravity=\"center\"") &&
+                    button.contains("android:letterSpacing=\"0\"") &&
+                    button.contains("android:minWidth=\"0dp\"") &&
+                    button.contains("android:paddingLeft=\"0dp\"") &&
+                    button.contains("android:paddingRight=\"0dp\"") &&
+                    button.contains("android:paddingStart=\"4dp\"") &&
+                    button.contains("android:paddingEnd=\"4dp\""),
+            )
+            assertTrue(
+                "$id should disable Material all-caps expansion and allow autosizing before clipping",
+                button.contains("android:textAllCaps=\"false\"") &&
+                    button.contains("app:textAllCaps=\"false\"") &&
+                    button.contains("app:autoSizeTextType=\"uniform\"") &&
+                    button.contains("app:autoSizeMinTextSize=\"10sp\"") &&
+                    button.contains("app:autoSizeMaxTextSize=\"14sp\""),
+            )
         }
     }
 

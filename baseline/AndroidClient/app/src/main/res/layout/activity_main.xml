@@ -1060,8 +1060,23 @@
                         style="?attr/materialButtonOutlinedStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:ellipsize="none"
+                        android:gravity="center"
+                        android:letterSpacing="0"
+                        android:maxLines="2"
                         android:minHeight="48dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="0dp"
+                        android:paddingRight="0dp"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:singleLine="false"
                         android:text="@string/disconnect"
+                        android:textAllCaps="false"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:textAllCaps="false"
                         android:layout_marginBottom="8dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -1069,10 +1084,25 @@
                         style="?attr/materialButtonOutlinedStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:ellipsize="none"
+                        android:gravity="center"
+                        android:letterSpacing="0"
+                        android:maxLines="2"
                         android:minHeight="48dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="0dp"
+                        android:paddingRight="0dp"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:singleLine="false"
                         android:text="@string/forget_this_mac"
+                        android:textAllCaps="false"
                         android:textColor="@color/danger_text"
-                        app:strokeColor="@color/danger_stroke" />
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:strokeColor="@color/danger_stroke"
+                        app:textAllCaps="false" />
                 </LinearLayout>
 
                 <!-- State: Paired idle (after explicit Disconnect) -->
@@ -1151,10 +1181,25 @@
                         style="?attr/materialButtonOutlinedStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:ellipsize="none"
+                        android:gravity="center"
+                        android:letterSpacing="0"
+                        android:maxLines="2"
                         android:minHeight="48dp"
+                        android:minWidth="0dp"
+                        android:paddingLeft="0dp"
+                        android:paddingRight="0dp"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:singleLine="false"
                         android:text="@string/forget_this_mac"
+                        android:textAllCaps="false"
                         android:textColor="@color/danger_text"
-                        app:strokeColor="@color/danger_stroke" />
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        app:strokeColor="@color/danger_stroke"
+                        app:textAllCaps="false" />
                 </LinearLayout>
 
                 <!-- State 4: Token mismatch / re-pair -->
