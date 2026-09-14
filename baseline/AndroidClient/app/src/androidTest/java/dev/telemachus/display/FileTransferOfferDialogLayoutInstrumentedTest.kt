@@ -108,7 +108,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 onNegative = { rejected++ },
             ) { activity, dialog, content ->
                 dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.INCOMING)
-                dialog.assertCustomContentStaysAboveActions(content)
+                dialog.assertCustomContentStaysAboveActions(activity, content)
                 dialog.assertNoDuplicateTalkBackSemantics(
                     title = activity.getString(R.string.file_transfer_offer_title),
                     content = content,
@@ -160,7 +160,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 onNegative = { cancelled++ },
             ) { activity, dialog, content ->
                 dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.OUTGOING)
-                dialog.assertCustomContentStaysAboveActions(content)
+                dialog.assertCustomContentStaysAboveActions(activity, content)
                 dialog.assertNoDuplicateTalkBackSemantics(
                     title = activity.getString(R.string.file_transfer_outgoing_title),
                     content = content,
@@ -716,18 +716,22 @@ private fun AlertDialog.assertFileTransferBusinessActions(
     negative.assertReadableDialogActionButton(activity)
 }
 
-private fun AlertDialog.assertCustomContentStaysAboveActions(content: ScrollView) {
+private fun AlertDialog.assertCustomContentStaysAboveActions(
+    activity: DialogHostActivity,
+    content: ScrollView,
+) {
     val positive = getButton(AlertDialog.BUTTON_POSITIVE)
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
     val actionTop = minOf(positive.screenTop(), negative.screenTop())
     val contentBottom = content.screenBottom()
     val decorBottom = checkNotNull(window?.decorView) { "dialog decor exists" }.screenBottom()
+    val screenBottom = activity.window.decorView.screenBottom()
     val geometry =
         "contentBottom=$contentBottom actionTop=$actionTop " +
             "contentTop=${content.screenTop()} contentHeight=${content.height} " +
             "positiveTop=${positive.screenTop()} positiveHeight=${positive.height} " +
             "negativeTop=${negative.screenTop()} negativeHeight=${negative.height} " +
-            "decorBottom=$decorBottom"
+            "decorBottom=$decorBottom screenBottom=$screenBottom"
 
     assertTrue("file-transfer dialog content stays above actions: $geometry", contentBottom <= actionTop)
     assertTrue("file-transfer dialog content has a visible top edge", content.screenTop() >= 0)
@@ -736,17 +740,18 @@ private fun AlertDialog.assertCustomContentStaysAboveActions(content: ScrollView
         "file-transfer dialog actions stay within decor bounds: $geometry",
         positive.screenBottom() <= decorBottom && negative.screenBottom() <= decorBottom,
     )
+    assertTrue("file-transfer dialog decor stays within the configured screen: $geometry", decorBottom <= screenBottom)
 }
 
 private fun AlertDialog.assertNoDuplicateTalkBackSemantics(
     title: String,
     content: View,
 ) {
-    val titleView = window?.decorView?.findTextViewWithText(title)
+    val titleView = checkNotNull(window?.decorView?.findTextViewWithText(title)) { "dialog title exists" }
     val positive = getButton(AlertDialog.BUTTON_POSITIVE)
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
 
-    assertNull("dialog title text should not duplicate itself as a content description", titleView?.contentDescription)
+    assertNull("dialog title text should not duplicate itself as a content description", titleView.contentDescription)
     assertNull("positive action should not duplicate itself as a content description", positive.contentDescription)
     assertNull("negative action should not duplicate itself as a content description", negative.contentDescription)
     content.forEachTextView { textView ->
