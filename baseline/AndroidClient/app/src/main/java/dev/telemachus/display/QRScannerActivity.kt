@@ -447,7 +447,7 @@ internal object QRScannerSafeInsets {
         root.findViewById<View>(R.id.scannerStatus)
             .applyGoneTopMargin(base.statusGoneTop, top)
         root.findViewById<View>(R.id.retryCameraButton)
-            .applyMargins(base.retry, start = startInset, end = endInset)
+            .applyMargins(base.retry, start = startInset, end = endInset, bottom = bottom)
         root.findViewById<View>(R.id.cancelButton)
             .applyMargins(base.cancel, start = startInset, end = endInset, bottom = bottom)
         root.findViewById<View>(R.id.targetFrame)
