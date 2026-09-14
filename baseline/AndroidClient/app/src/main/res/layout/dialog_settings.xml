@@ -259,6 +259,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:layout_marginBottom="12dp"
+                        android:labelFor="@id/scaleModeGroup"
                         android:text="@string/display_selection_host_only"
                         android:textColor="@color/on_surface_muted"
                         android:textIsSelectable="true"
@@ -268,7 +269,6 @@
                         android:id="@+id/scaleModeGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:contentDescription="@string/display_selection_host_only"
                         app:selectionRequired="true"
                         app:singleSelection="true">
 
@@ -293,12 +293,21 @@
                     android:text="@string/scale_fill" />
                     </com.google.android.material.button.MaterialButtonToggleGroup>
 
+                    <TextView
+                        android:id="@+id/rotationLabel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:labelFor="@id/rotationGroup"
+                        android:text="@string/rotation_description"
+                        android:textColor="@color/on_surface_muted"
+                        android:textSize="13sp" />
+
                     <com.google.android.material.button.MaterialButtonToggleGroup
                         android:id="@+id/rotationGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:contentDescription="@string/rotation_description"
                         app:selectionRequired="true"
                         app:singleSelection="true">
 

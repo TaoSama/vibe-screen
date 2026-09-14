@@ -152,6 +152,29 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun allChoiceGroupsStayDistinctOnLargeTextPhonesAndShortLandscape() {
+        listOf(
+            Triple(320, 800, 1.5f),
+            Triple(320, 800, 2f),
+            Triple(640, 320, 1.5f),
+            Triple(640, 320, 2f),
+        ).forEach { (screenWidthDp, screenHeightDp, fontScale) ->
+            withLayout(
+                screenWidthDp = screenWidthDp,
+                screenHeightDp = screenHeightDp,
+                fontScale = fontScale,
+            ) { layout ->
+                assertChoiceGroupContext(layout, R.id.scaleModeGroup, R.string.display_selection_host_only)
+                assertChoiceGroupContext(layout, R.id.rotationGroup, R.string.rotation_description)
+                assertChoiceGroupContext(layout, R.id.videoQualityGroup, R.string.video_quality_label)
+                assertChoiceGroupContext(layout, R.id.videoFrameRateGroup, R.string.video_frame_rate_label)
+                assertChoiceGroupContext(layout, R.id.gestureSwipeUpGroup, R.string.gesture_swipe_up_label)
+                assertChoiceGroupContext(layout, R.id.gestureSwipeDownGroup, R.string.gesture_swipe_down_label)
+            }
+        }
+    }
+
+    @Test
     fun scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText() {
         withLayout(screenWidthDp = 320, fontScale = 2f) { layout ->
             val group = layout.root.findViewById<MaterialButtonToggleGroup>(R.id.scaleModeGroup)
@@ -164,7 +187,8 @@ class SettingsDialogLayoutInstrumentedTest {
             assertEquals(LinearLayout.VERTICAL, group.orientation)
             assertTrue(group.isSingleSelection)
             assertTrue(group.isSelectionRequired)
-            assertEquals(layout.context.getString(R.string.display_selection_host_only), group.contentDescription)
+            assertNull(group.contentDescription)
+            assertOptionContentDescriptions(layout, group, layout.context.getString(R.string.display_selection_host_only))
             assertReadable(layout, R.id.scaleModeGroup)
             assertAllTextReadable(group)
         }
@@ -182,7 +206,8 @@ class SettingsDialogLayoutInstrumentedTest {
 
                 assertEquals(layout.context.getString(R.string.display_selection_available), displayCapability.text.toString())
                 assertEquals(layout.context.getString(R.string.input_capability_touch_only), inputCapability.text.toString())
-                assertEquals(displayCapability.text.toString(), scaleModeGroup.contentDescription.toString())
+                assertNull(scaleModeGroup.contentDescription)
+                assertOptionContentDescriptions(layout, scaleModeGroup, displayCapability.text.toString())
                 assertCapabilityCopyReadableAndReachable(layout, displayCapability)
                 assertCapabilityCopyReadableAndReachable(layout, inputCapability)
                 assertVerticallyOrdered(layout.root.findViewById(R.id.viewportSection))
@@ -399,6 +424,8 @@ class SettingsDialogLayoutInstrumentedTest {
         listOf(320, 360).forEach { screenWidthDp ->
             listOf(1f, 2f).forEach { fontScale ->
                 withLayout(screenWidthDp = screenWidthDp, fontScale = fontScale) { layout ->
+                    assertLabelSemantics(layout, R.id.displayCapability, R.id.scaleModeGroup, isHeading = false)
+                    assertLabelSemantics(layout, R.id.rotationLabel, R.id.rotationGroup, isHeading = false)
                     assertLabelSemantics(layout, R.id.videoQualityLabel, R.id.videoQualityGroup)
                     assertLabelSemantics(layout, R.id.videoFrameRateLabel, R.id.videoFrameRateGroup)
                     assertLabelSemantics(layout, R.id.gestureSwipeUpLabel, R.id.gestureSwipeUpGroup)
@@ -691,11 +718,16 @@ class SettingsDialogLayoutInstrumentedTest {
         layout: MeasuredLayout,
         labelId: Int,
         controlId: Int,
+        isHeading: Boolean = true,
     ) {
         val label = layout.root.findViewById<TextView>(labelId)
         val control = layout.root.findViewById<View>(controlId)
         assertEquals(control.id, label.labelFor)
-        assertTrue("${label.resources.getResourceEntryName(labelId)} is an accessibility heading", label.isAccessibilityHeading)
+        assertEquals(
+            "${label.resources.getResourceEntryName(labelId)} heading state",
+            isHeading,
+            label.isAccessibilityHeading,
+        )
         assertNull(label.contentDescription)
         assertAllTextReadable(label)
         assertFullyReachableByScroll(layout, label)
@@ -792,6 +824,7 @@ class SettingsDialogLayoutInstrumentedTest {
         displayCapability.setText(R.string.display_selection_available)
         inputCapability.setText(R.string.input_capability_touch_only)
         scaleModeGroup.contentDescription = displayCapability.text
+        SettingsDialogLayoutApplier.apply(layout.root)
     }
 
     private fun assertCapabilityCopyReadableAndReachable(
@@ -924,6 +957,44 @@ class SettingsDialogLayoutInstrumentedTest {
         }
     }
 
+    private fun assertChoiceGroupContext(
+        layout: MeasuredLayout,
+        groupId: Int,
+        contextStringId: Int,
+    ) {
+        val group = layout.root.findViewById<LinearLayout>(groupId)
+        assertReadable(layout, groupId)
+        assertNoContentOverlapBetweenVisibleChildren(group)
+        if (group.orientation == LinearLayout.VERTICAL) {
+            assertStackedOptionsHaveDividerSpacing(layout, group)
+        }
+        assertNull(group.contentDescription)
+        assertOptionContentDescriptions(layout, group, layout.context.getString(contextStringId))
+        assertFullyReachableByScroll(layout, group)
+    }
+
+    private fun assertOptionContentDescriptions(
+        layout: MeasuredLayout,
+        group: LinearLayout,
+        groupContext: String,
+    ) {
+        (0 until group.childCount).forEach { index ->
+            val button = group.getChildAt(index) as MaterialButton
+            val expected = groupContext + ", " + button.text
+            assertEquals(
+                "${button.resources.getResourceEntryName(button.id)} has its unique option-group context",
+                expected,
+                button.contentDescription.toString(),
+            )
+            assertFalse(
+                "${button.resources.getResourceEntryName(button.id)} should not repeat its option text",
+                button.contentDescription.toString().contains(button.text.toString() + ", " + button.text.toString()),
+            )
+            assertTrue(button.measuredWidth >= layout.dp(48))
+            assertTrue(button.measuredHeight >= layout.dp(48))
+        }
+    }
+
     private fun assertButtonReadable(
         layout: MeasuredLayout,
         button: MaterialButton,
@@ -1027,7 +1098,9 @@ class SettingsDialogLayoutInstrumentedTest {
                     (0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 },
                 )
                 val contentWidth = view.width - view.compoundPaddingLeft - view.compoundPaddingRight
-                val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineWidth)
+                // getLineWidth includes trailing whitespace before a wrap; getLineMax is the
+                // visible glyph extent that can actually be clipped by the TextView bounds.
+                val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineMax)
                 assertTrue(
                     "$label line width $maximumLineWidth fits content width $contentWidth",
                     maximumLineWidth <= contentWidth,
@@ -1153,7 +1226,7 @@ class SettingsDialogLayoutInstrumentedTest {
         assertNotNull("stacked option group has divider", divider)
         assertTrue(
             "stacked option divider height",
-            requireNotNull(divider).intrinsicHeight >= layout.dp(4),
+            requireNotNull(divider).intrinsicHeight >= layout.dp(8),
         )
     }
 
@@ -1178,9 +1251,12 @@ class SettingsDialogLayoutInstrumentedTest {
             inputLineCount = requireNotNull(inputCapability.layout).lineCount,
             inputWidth = inputCapability.measuredWidth,
             inputHeight = inputCapability.measuredHeight,
-            scaleModeDescription = scaleModeGroup.contentDescription.toString(),
+            scaleButtonDescriptions = scaleModeGroup.buttonContentDescriptions(),
         )
     }
+
+    private fun LinearLayout.buttonContentDescriptions(): List<String> =
+        (0 until childCount).map { index -> getChildAt(index).contentDescription.toString() }
 
     private fun MeasuredLayout.applySettingsDialogLayoutForWidth(widthDp: Int) {
         measureAndLayout(dp(widthDp))
@@ -1307,7 +1383,7 @@ class SettingsDialogLayoutInstrumentedTest {
         val inputLineCount: Int,
         val inputWidth: Int,
         val inputHeight: Int,
-        val scaleModeDescription: String,
+        val scaleButtonDescriptions: List<String>,
     )
 
     private data class VideoChoiceGroupState(
