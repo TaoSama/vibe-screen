@@ -117,25 +117,44 @@ internal object SettingsDialogLayoutApplier {
         applyActionButtonText(root.findViewById(R.id.disconnectSettingsButton), MINIMUM_TOUCH_TARGET_DP)
         applyActionButtonText(root.findViewById(R.id.closeButton), PRIMARY_ACTION_MINIMUM_TOUCH_TARGET_DP)
         return mapOf(
-            R.id.scaleModeGroup to columns.primaryWidthPx,
-            R.id.rotationGroup to columns.primaryWidthPx,
-            R.id.videoQualityGroup to columns.controlsWidthPx,
-            R.id.videoFrameRateGroup to columns.controlsWidthPx,
-            R.id.gestureSwipeUpGroup to columns.controlsWidthPx,
-            R.id.gestureSwipeDownGroup to columns.controlsWidthPx,
-            R.id.settingsResetActions to columns.fullWidthPx,
-        ).mapValues { (groupId, availableWidthPx) ->
+            R.id.scaleModeGroup to OptionGroupLayout(
+                availableWidthPx = columns.primaryWidthPx,
+                accessibilityContext = root.findViewById<TextView>(R.id.scaleModeLabel)?.text,
+            ),
+            R.id.rotationGroup to OptionGroupLayout(
+                availableWidthPx = columns.primaryWidthPx,
+                accessibilityContext = root.findViewById<TextView>(R.id.rotationLabel)?.text,
+            ),
+            R.id.videoQualityGroup to OptionGroupLayout(
+                availableWidthPx = columns.controlsWidthPx,
+                accessibilityContext = root.findViewById<TextView>(R.id.videoQualityLabel)?.text,
+            ),
+            R.id.videoFrameRateGroup to OptionGroupLayout(
+                availableWidthPx = columns.controlsWidthPx,
+                accessibilityContext = root.findViewById<TextView>(R.id.videoFrameRateLabel)?.text,
+            ),
+            R.id.gestureSwipeUpGroup to OptionGroupLayout(
+                availableWidthPx = columns.controlsWidthPx,
+                accessibilityContext = root.findViewById<TextView>(R.id.gestureSwipeUpLabel)?.text,
+            ),
+            R.id.gestureSwipeDownGroup to OptionGroupLayout(
+                availableWidthPx = columns.controlsWidthPx,
+                accessibilityContext = root.findViewById<TextView>(R.id.gestureSwipeDownLabel)?.text,
+            ),
+            R.id.settingsResetActions to OptionGroupLayout(availableWidthPx = columns.fullWidthPx),
+        ).mapValues { (groupId, layout) ->
             val group = root.findViewById<LinearLayout>(groupId)
             val resolvedWidth =
                 if (groupId == R.id.settingsResetActions) {
-                    availableWidthPx
+                    layout.availableWidthPx
                 } else {
-                    groupAvailableWidth(group, columns.twoColumns, availableWidthPx)
+                    groupAvailableWidth(group, columns.twoColumns, layout.availableWidthPx)
                 }
             apply(
                 group = group,
                 separateStackedButtons = groupId == R.id.settingsResetActions,
                 availableWidthPx = resolvedWidth,
+                accessibilityContext = layout.accessibilityContext,
             )
         }
     }
@@ -216,6 +235,7 @@ internal object SettingsDialogLayoutApplier {
         group: LinearLayout,
         separateStackedButtons: Boolean = false,
         availableWidthPx: Int = group.width,
+        accessibilityContext: CharSequence? = null,
     ): Mode {
         val buttons =
             (0 until group.childCount).mapNotNull { index ->
@@ -232,11 +252,13 @@ internal object SettingsDialogLayoutApplier {
         group.orientation =
             if (mode == Mode.STACKED) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         applyGroupDividers(group, mode, separateStackedButtons)
+        val normalizedAccessibilityContext = accessibilityContext?.toString()?.trim().orEmpty()
         buttons.forEach { button ->
             button.isSingleLine = false
             button.setHorizontallyScrolling(false)
             button.ellipsize = null
             button.maxLines = MAX_OPTION_LINES
+            applyOptionAccessibilityContext(button, normalizedAccessibilityContext)
             val params = button.layoutParams as LinearLayout.LayoutParams
             val isAfterFirstButton = group.indexOfChild(button) > 0
             if (mode == Mode.STACKED) {
@@ -258,7 +280,26 @@ internal object SettingsDialogLayoutApplier {
             button.minHeight = max(button.minimumHeight, dp(button, MINIMUM_TOUCH_TARGET_DP))
             button.layoutParams = params
         }
+        if (normalizedAccessibilityContext.isNotEmpty()) {
+            group.contentDescription = null
+        }
         return mode
+    }
+
+    private fun applyOptionAccessibilityContext(
+        button: MaterialButton,
+        groupContext: String,
+    ) {
+        if (groupContext.isEmpty()) {
+            return
+        }
+        val optionLabel = button.text?.toString()?.trim().orEmpty()
+        button.contentDescription =
+            if (optionLabel.isEmpty() || optionLabel == groupContext) {
+                groupContext
+            } else {
+                groupContext + ACCESSIBILITY_CONTEXT_SEPARATOR + optionLabel
+            }
     }
 
     private fun applyActionButtonText(
@@ -366,7 +407,13 @@ internal object SettingsDialogLayoutApplier {
     private const val PRIMARY_ACTION_MINIMUM_TOUCH_TARGET_DP = 56f
     private const val MINIMUM_COLUMN_CONTENT_WIDTH_DP = 176f
     private const val MAX_OPTION_LINES = 2
-    private const val STACKED_OPTION_GAP_DP = 4f
+    private const val STACKED_OPTION_GAP_DP = 8f
+    private const val ACCESSIBILITY_CONTEXT_SEPARATOR = ", "
+
+    private data class OptionGroupLayout(
+        val availableWidthPx: Int,
+        val accessibilityContext: CharSequence? = null,
+    )
 
     private data class PendingLayoutListener(
         val observer: ViewTreeObserver,

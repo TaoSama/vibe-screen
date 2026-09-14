@@ -103,6 +103,61 @@ class MainActivitySettingsAccessibilityContractTest {
     }
 
     @Test
+    fun viewportChoiceLabelsNameGroupsWithoutDuplicateHeadingsOrGroupDescriptions() {
+        val layout = settingsLayoutSource()
+        val applier = settingsDialogLayoutApplierSource()
+        val displayCapability = extractXmlElement(layout, xmlAttribute("android:id", "@+id/displayCapability"))
+        val scaleLabel = extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeLabel"))
+        val scaleGroup = extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeGroup"))
+        val rotationLabel = extractXmlElement(layout, xmlAttribute("android:id", "@+id/rotationLabel"))
+        val rotationGroup = extractXmlElement(layout, xmlAttribute("android:id", "@+id/rotationGroup"))
+
+        assertTrue(
+            "Display capability copy should remain descriptive rather than naming the scale options",
+            displayCapability.contains(xmlAttribute("android:text", "@string/display_selection_host_only")) &&
+                !displayCapability.contains("android:labelFor") &&
+                !displayCapability.contains("android:accessibilityHeading"),
+        )
+        assertTrue(
+            "The concise scale label should name the option group without becoming another heading",
+            scaleLabel.contains(xmlAttribute("android:labelFor", "@id/scaleModeGroup")) &&
+                scaleLabel.contains(xmlAttribute("android:text", "@string/scale_mode_label")) &&
+                !scaleLabel.contains("android:accessibilityHeading"),
+        )
+        assertTrue(
+            "Rotation copy should label the rotation group without duplicating the Viewport heading",
+            rotationLabel.contains(xmlAttribute("android:labelFor", "@id/rotationGroup")) &&
+                rotationLabel.contains(xmlAttribute("android:text", "@string/rotation_description")) &&
+                !rotationLabel.contains("android:accessibilityHeading"),
+        )
+        assertFalse(
+            "Scale options should not duplicate the visible display capability copy on the group container",
+            scaleGroup.contains("android:contentDescription"),
+        )
+        assertFalse(
+            "Rotation options should not duplicate the visible rotation label on the group container",
+            rotationGroup.contains("android:contentDescription"),
+        )
+        assertTrue(
+            "The responsive applier should move option-group context to individual buttons and clear group descriptions",
+            applier.contains("R.id.scaleModeGroup to OptionGroupLayout(") &&
+                applier.contains("R.id.scaleModeLabel") &&
+                applier.contains("R.id.rotationGroup to OptionGroupLayout(") &&
+                applier.contains("R.id.rotationLabel") &&
+                applier.contains("applyOptionAccessibilityContext(button, normalizedAccessibilityContext)") &&
+                applier.contains("group.contentDescription = null") &&
+                applier.contains("ACCESSIBILITY_CONTEXT_SEPARATOR") &&
+                applier.contains("groupContext + ACCESSIBILITY_CONTEXT_SEPARATOR + optionLabel"),
+        )
+        assertTrue(
+            "Stacked options should stay visually separated while preserving the 48dp touch target",
+            applier.contains("private const val STACKED_OPTION_GAP_DP = 8f") &&
+                applier.contains("private const val MINIMUM_TOUCH_TARGET_DP = 48f") &&
+                applier.contains("button.minHeight = max(button.minimumHeight, dp(button, MINIMUM_TOUCH_TARGET_DP))"),
+        )
+    }
+
+    @Test
     fun settingsActionButtonsAllowTwoLineLabelsWithoutEllipsizing() {
         val layout = settingsLayoutSource()
         listOf(
@@ -171,9 +226,11 @@ class MainActivitySettingsAccessibilityContractTest {
                 .contains(xmlAttribute("android:text", "@string/display_selection_host_only")),
         )
         assertTrue(
-            "The scale-mode group should not announce display switching before runtime capabilities are bound",
-            extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeGroup"))
-                .contains(xmlAttribute("android:contentDescription", "@string/display_selection_host_only")),
+            "The scale-mode group should rely on a concise stable label before runtime capabilities are bound",
+            extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeLabel"))
+                .contains(xmlAttribute("android:labelFor", "@id/scaleModeGroup")) &&
+                !extractXmlElement(layout, xmlAttribute("android:id", "@+id/scaleModeGroup"))
+                    .contains("android:contentDescription"),
         )
         assertTrue(
             "Capability copy should stay selectable so long text can be read and copied under large text",
@@ -188,7 +245,7 @@ class MainActivitySettingsAccessibilityContractTest {
                 showSettingsDialog.contains("R.string.display_selection_available") &&
                 showSettingsDialog.contains("R.string.display_selection_host_only") &&
                 showSettingsDialog.contains("displayCapability.setText(displayCapabilityText)") &&
-                showSettingsDialog.contains("scaleModeGroup.contentDescription = getString(displayCapabilityText)"),
+                !showSettingsDialog.contains("scaleModeGroup.contentDescription = getString(displayCapabilityText)"),
         )
         assertTrue(
             "Available display copy should be scoped to a negotiated Mac session",
@@ -287,6 +344,9 @@ class MainActivitySettingsAccessibilityContractTest {
     private fun settingsUnavailableControlsAccessibilityApplierSource(): String =
         sourceFile(SETTINGS_UNAVAILABLE_CONTROLS_ACCESSIBILITY_APPLIER_PATHS).readText()
 
+    private fun settingsDialogLayoutApplierSource(): String =
+        sourceFile(SETTINGS_DIALOG_LAYOUT_APPLIER_PATHS).readText()
+
     private fun sourceFile(paths: List<String>): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(8) {
@@ -373,6 +433,11 @@ class MainActivitySettingsAccessibilityContractTest {
             listOf(
                 "app/src/main/java/dev/telemachus/display/SettingsUnavailableControlsAccessibilityApplier.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SettingsUnavailableControlsAccessibilityApplier.kt",
+            )
+        val SETTINGS_DIALOG_LAYOUT_APPLIER_PATHS =
+            listOf(
+                "app/src/main/java/dev/telemachus/display/SettingsDialogLayoutApplier.kt",
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/SettingsDialogLayoutApplier.kt",
             )
     }
 }

@@ -60,6 +60,7 @@
     <string name="viewport">Viewport</string>
     <string name="display_selection_available">Fit and rotation are local. Use stream controls to switch Protocol v1 Mac displays.</string>
     <string name="display_selection_host_only">Fit and rotation are local. Display switching needs multiple Protocol v1 Mac displays.</string>
+    <string name="scale_mode_label">Scaling</string>
     <string name="scale_fit">Fit</string>
     <string name="scale_fill">Fill</string>
     <string name="rotation_description">Change client rotation</string>
