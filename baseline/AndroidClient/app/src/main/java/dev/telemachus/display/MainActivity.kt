@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -20,7 +19,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.text.Editable
@@ -102,12 +100,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
 import java.io.IOException
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
@@ -3452,44 +3447,14 @@ class MainActivity : AppCompatActivity() {
         completed: dev.telemachus.display.protocol.CompletedIncomingFile,
         displayName: String,
     ): Uri {
-        AppSpecificDownloadsSaver.validateDisplayName(displayName)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values =
-                ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, displayName)
-                    put(MediaStore.Downloads.MIME_TYPE, completed.mimeType.ifBlank { "application/octet-stream" })
-                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                }
-            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: throw IOException("Unable to create downloads entry")
-            try {
-                contentResolver.openOutputStream(uri)?.use { output ->
-                    copyFileTo(completed.stagingFile, output)
-                } ?: throw IOException("Unable to open downloads entry")
-                val published =
-                    ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }.let {
-                        contentResolver.update(uri, it, null, null)
-                    }
-                if (published <= 0) throw IOException("Unable to publish downloads entry")
-                return uri
-            } catch (failure: Throwable) {
-                runCatching { contentResolver.delete(uri, null, null) }
-                throw failure
-            }
-        }
-
-        val downloads = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: throw IOException("Downloads directory is unavailable")
-        val target =
-            AppSpecificDownloadsSaver.saveCompletedIncomingFile(
-                completed = completed,
-                downloads = downloads,
-                maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
-                fallbackDisplayName = displayName,
-                copy = ::copyFileTo,
-            )
-        return Uri.fromFile(target)
+        return IncomingFileDownloadsSaver(
+            appSpecificDownloads = { getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) },
+            mediaStoreDownloads = { ContentResolverMediaStoreDownloadsCollection(contentResolver) },
+        ).saveCompletedIncomingFile(
+            completed = completed,
+            displayName = displayName,
+            maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+        )
     }
 
     private fun fileTransferDestinationLabel(): String =
@@ -3508,19 +3473,6 @@ class MainActivity : AppCompatActivity() {
             R.string.file_transfer_saved_to_app_downloads
         }
 
-
-    private fun copyFileTo(source: File, output: OutputStream) {
-        BufferedInputStream(source.inputStream()).use { input ->
-            BufferedOutputStream(output).use { bufferedOutput ->
-                val buffer = ByteArray(FILE_TRANSFER_COPY_BUFFER_BYTES)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    bufferedOutput.write(buffer, 0, read)
-                }
-            }
-        }
-    }
 
     private fun discardPendingOutgoingFileTransfer(
         clearFinishedTransferMarkers: Boolean = true,
