@@ -2978,12 +2978,11 @@ class MainActivity : AppCompatActivity() {
                 return@runOnUiThread
             }
 
-            var decided = false
+            val decision = FileTransferDialogDecision()
             lateinit var timeout: Runnable
             pendingIncomingFileOfferTransferId = offer.transferId
             val rejectDecision = {
-                if (pendingIncomingFileDialog != null && !decided && finishDecision()) {
-                    decided = true
+                if (pendingIncomingFileDialog != null && decision.tryFinish(finishDecision)) {
                     fileTransferApprovalHandler.removeCallbacks(timeout)
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
@@ -2992,9 +2991,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             timeout = Runnable {
-                if (pendingIncomingFileDialog != null && !decided) {
-                    if (!finishDecision()) return@Runnable
-                    decided = true
+                if (pendingIncomingFileDialog != null && decision.isPending) {
+                    if (!decision.tryFinish(finishDecision)) return@Runnable
                     pendingIncomingFileDialog?.dismiss()
                     pendingIncomingFileDialog = null
                     pendingIncomingFileOfferTransferId = null
@@ -3007,15 +3005,14 @@ class MainActivity : AppCompatActivity() {
                     .setTitle(R.string.file_transfer_offer_title)
                     .setView(fileTransferOfferView(offer))
                     .setPositiveButton(R.string.file_transfer_accept) { _, _ ->
-                        if (decided) return@setPositiveButton
+                        if (!decision.isPending) return@setPositiveButton
                         val rejectionReason =
                             when {
                                 !isCurrentAndAllowed() -> "user_denied"
                                 hasActiveFileTransfer() -> "concurrent_limit"
                                 else -> null
                             }
-                        if (!finishDecision()) return@setPositiveButton
-                        decided = true
+                        if (!decision.tryFinish(finishDecision)) return@setPositiveButton
                         pendingIncomingFileDialog = null
                         pendingIncomingFileOfferTransferId = null
                         fileTransferApprovalHandler.removeCallbacks(timeout)
@@ -3071,7 +3068,7 @@ class MainActivity : AppCompatActivity() {
                 return@runOnUiThread
             }
 
-            var decided = false
+            val decision = FileTransferDialogDecision()
             fun clearPendingDialog(
                 dialog: Dialog? = pendingOutgoingFileDialog,
                 dismiss: Boolean = false,
@@ -3083,8 +3080,7 @@ class MainActivity : AppCompatActivity() {
                 pendingOutgoingFileDialog = null
             }
             fun cancelPending() {
-                if (decided) return
-                decided = true
+                if (!decision.tryFinish()) return
                 clearPendingDialog()
                 discardPendingOutgoingFileTransfer(refreshControl = true)
             }
@@ -3092,8 +3088,7 @@ class MainActivity : AppCompatActivity() {
                 object : Runnable {
                     override fun run() {
                         if (pendingOutgoingFileTimeout !== this) return
-                        if (pendingOutgoingFileDialog == null || decided) return
-                        decided = true
+                        if (pendingOutgoingFileDialog == null || !decision.tryFinish()) return
                         clearPendingDialog(dismiss = true)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
                         showFileTransferRecoverableError(
@@ -3107,8 +3102,7 @@ class MainActivity : AppCompatActivity() {
                     .setTitle(R.string.file_transfer_outgoing_title)
                     .setView(outgoingFileTransferView(pending))
                     .setPositiveButton(R.string.file_transfer_outgoing_send) { _, _ ->
-                        if (decided) return@setPositiveButton
-                        decided = true
+                        if (!decision.tryFinish()) return@setPositiveButton
                         clearPendingDialog()
                         if (!session.isCurrentAndAllowed() || hasActiveFileTransfer()) {
                             discardPendingOutgoingFileTransfer(refreshControl = true)
