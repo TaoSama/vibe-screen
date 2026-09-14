@@ -119,6 +119,10 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     "reject click is handled by the incoming offer callback",
                     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
                 )
+                assertTrue(
+                    "late accept click reaches the same incoming decision",
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
+                )
             }
             assertEquals("reject must not accept the incoming offer", 0, accepted)
             assertEquals("reject callback is delivered exactly once", 1, rejected)
@@ -132,6 +136,10 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 assertTrue(
                     "accept click is handled by the incoming offer callback",
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
+                )
+                assertTrue(
+                    "late reject click reaches the same incoming decision",
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
                 )
             }
             assertEquals("accept callback is delivered exactly once", 1, accepted)
@@ -163,6 +171,10 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     "cancel click is handled by the outgoing preflight callback",
                     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
                 )
+                assertTrue(
+                    "late send click reaches the same outgoing decision",
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
+                )
             }
             assertEquals("cancel must not send the outgoing file", 0, sent)
             assertEquals("cancel callback is delivered exactly once", 1, cancelled)
@@ -176,6 +188,10 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 assertTrue(
                     "send click is handled by the outgoing preflight callback",
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
+                )
+                assertTrue(
+                    "late cancel click reaches the same outgoing decision",
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
                 )
             }
             assertEquals("send callback is delivered exactly once", 1, sent)
@@ -310,6 +326,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
         var dialog: AlertDialog? = null
         var contentView: ScrollView? = null
         var assertionFailure: Throwable? = null
+        var decided = false
         DialogHostActivity.configurationOverride =
             DialogHostActivity.ConfigurationOverride(
                 widthDp = configuration.widthDp,
@@ -332,8 +349,16 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                             MaterialAlertDialogBuilder(activity)
                                 .setTitle(kind.titleRes)
                                 .setView(content)
-                                .setPositiveButton(kind.positiveButtonRes) { _, _ -> onPositive() }
-                                .setNegativeButton(kind.negativeButtonRes) { _, _ -> onNegative() }
+                                .setPositiveButton(kind.positiveButtonRes) { _, _ ->
+                                    if (decided) return@setPositiveButton
+                                    decided = true
+                                    onPositive()
+                                }
+                                .setNegativeButton(kind.negativeButtonRes) { _, _ ->
+                                    if (decided) return@setNegativeButton
+                                    decided = true
+                                    onNegative()
+                                }
                                 .show()
                                 .also(DialogActionButtonLayoutApplier::apply)
                     }
@@ -696,15 +721,21 @@ private fun AlertDialog.assertCustomContentStaysAboveActions(content: ScrollView
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
     val actionTop = minOf(positive.screenTop(), negative.screenTop())
     val contentBottom = content.screenBottom()
+    val decorBottom = checkNotNull(window?.decorView) { "dialog decor exists" }.screenBottom()
     val geometry =
         "contentBottom=$contentBottom actionTop=$actionTop " +
             "contentTop=${content.screenTop()} contentHeight=${content.height} " +
             "positiveTop=${positive.screenTop()} positiveHeight=${positive.height} " +
-            "negativeTop=${negative.screenTop()} negativeHeight=${negative.height}"
+            "negativeTop=${negative.screenTop()} negativeHeight=${negative.height} " +
+            "decorBottom=$decorBottom"
 
     assertTrue("file-transfer dialog content stays above actions: $geometry", contentBottom <= actionTop)
     assertTrue("file-transfer dialog content has a visible top edge", content.screenTop() >= 0)
     assertTrue("file-transfer dialog actions are visible", positive.screenBottom() > actionTop && negative.screenBottom() > actionTop)
+    assertTrue(
+        "file-transfer dialog actions stay within decor bounds: $geometry",
+        positive.screenBottom() <= decorBottom && negative.screenBottom() <= decorBottom,
+    )
 }
 
 private fun AlertDialog.assertNoDuplicateTalkBackSemantics(
