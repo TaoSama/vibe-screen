@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -78,6 +79,25 @@ class QRScannerDeliveryGateTest {
     }
 
     @Test
+    fun invalidInFlightBlocksAcceptedClaimUntilRetryRelease() {
+        val gate = QRScannerDeliveryGate()
+
+        assertTrue(gate.tryClaimInvalid())
+        assertFalse(gate.tryClaimAccepted(VALID_PAIRING_QR))
+
+        val invalidSnapshot = gate.snapshotForSave()
+        assertEquals(QRScannerDeliveryClaimState.CLAIMED_INVALID, invalidSnapshot.claimState)
+        assertNull(invalidSnapshot.pendingRaw)
+
+        gate.releaseForRetry()
+
+        assertTrue(gate.tryClaimAccepted(VALID_PAIRING_QR))
+        val acceptedSnapshot = gate.snapshotForSave()
+        assertEquals(QRScannerDeliveryClaimState.CLAIMED_ACCEPTED, acceptedSnapshot.claimState)
+        assertEquals(VALID_PAIRING_QR, acceptedSnapshot.pendingRaw)
+    }
+
+    @Test
     fun concurrentSaveAroundAcceptedClaimOnlySeesNoPayloadOrFullPayload() {
         val gate = QRScannerDeliveryGate()
         val ready = CountDownLatch(2)
@@ -114,6 +134,37 @@ class QRScannerDeliveryGateTest {
     }
 
     @Test
+    fun concurrentAcceptedClaimsAllowExactlyOneWinner() {
+        val gate = QRScannerDeliveryGate()
+        val workerCount = 8
+        val ready = CountDownLatch(workerCount)
+        val start = CountDownLatch(1)
+        val winners = Collections.synchronizedList(mutableListOf<String>())
+
+        val workers =
+            (0 until workerCount).map { index ->
+                val raw = "vibescreen://pair?v=1&o=winner-$index"
+                Thread({
+                    ready.countDown()
+                    start.await()
+                    if (gate.tryClaimAccepted(raw)) {
+                        winners.add(raw)
+                    }
+                }, "qr-accepted-writer-$index")
+            }
+
+        workers.forEach(Thread::start)
+        assertTrue(ready.await(5, TimeUnit.SECONDS))
+        start.countDown()
+        workers.forEach(Thread::join)
+
+        assertEquals(1, winners.size)
+        val snapshot = gate.snapshotForSave()
+        assertEquals(QRScannerDeliveryClaimState.CLAIMED_ACCEPTED, snapshot.claimState)
+        assertEquals(winners.single(), snapshot.pendingRaw)
+    }
+
+    @Test
     fun invalidReleaseDoesNotClearAcceptedResult() {
         val gate = QRScannerDeliveryGate()
 
@@ -129,6 +180,7 @@ class QRScannerDeliveryGateTest {
     fun restoreWithoutPendingResultStartsUnclaimed() {
         val gate = QRScannerDeliveryGate()
 
+        assertTrue(gate.tryClaimAccepted(VALID_PAIRING_QR))
         gate.restorePending(null)
 
         assertFalse(gate.isClaimed())
@@ -136,6 +188,18 @@ class QRScannerDeliveryGateTest {
         assertEquals(QRScannerDeliveryClaimState.UNCLAIMED, snapshot.claimState)
         assertNull(snapshot.pendingRaw)
         assertTrue(gate.tryClaimInvalid())
+    }
+
+    @Test
+    fun releaseForRetryOnIdleKeepsGateUnclaimed() {
+        val gate = QRScannerDeliveryGate()
+
+        gate.releaseForRetry()
+
+        val snapshot = gate.snapshotForSave()
+        assertEquals(QRScannerDeliveryClaimState.UNCLAIMED, snapshot.claimState)
+        assertNull(snapshot.pendingRaw)
+        assertTrue(gate.tryClaimAccepted(VALID_PAIRING_QR))
     }
 
     private companion object {
