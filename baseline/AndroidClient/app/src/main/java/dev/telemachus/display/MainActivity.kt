@@ -3031,7 +3031,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     .setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }
                     .setOnCancelListener { rejectDecision() }
-            pendingIncomingFileDialog = showImmersiveDialog(dialog)
+            pendingIncomingFileDialog = showImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
     }
@@ -3135,7 +3135,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     .setNegativeButton(R.string.cancel) { _, _ -> cancelPending() }
                     .setOnCancelListener { cancelPending() }
-            pendingOutgoingFileDialog = showImmersiveDialog(dialog)
+            pendingOutgoingFileDialog = showImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
             pendingOutgoingFileTimeout = timeout
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }

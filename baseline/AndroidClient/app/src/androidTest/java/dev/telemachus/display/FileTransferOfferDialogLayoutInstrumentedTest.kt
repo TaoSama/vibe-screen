@@ -19,6 +19,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -91,6 +92,94 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                 layout.assertDialogActionLabels()
                 layout.assertOutgoingContentCanScrollIntoView()
             }
+        }
+    }
+
+    @Test
+    fun productionIncomingOfferDialogKeepsActionsReadableAndNonDuplicated() {
+        productionDialogConfigurations().forEach { configuration ->
+            var accepted = 0
+            var rejected = 0
+
+            withFileTransferBusinessDialog(
+                configuration = configuration,
+                kind = FileTransferBusinessDialogKind.INCOMING,
+                onPositive = { accepted++ },
+                onNegative = { rejected++ },
+            ) { activity, dialog, content ->
+                dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.INCOMING)
+                dialog.assertCustomContentStaysAboveActions(content)
+                dialog.assertNoDuplicateTalkBackSemantics(
+                    title = activity.getString(R.string.file_transfer_offer_title),
+                    content = content,
+                )
+                content.assertBusinessDialogContentCanScrollIntoView(R.id.fileTransferOfferVerification)
+
+                assertTrue(
+                    "reject click is handled by the incoming offer callback",
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
+                )
+            }
+            assertEquals("reject must not accept the incoming offer", 0, accepted)
+            assertEquals("reject callback is delivered exactly once", 1, rejected)
+
+            withFileTransferBusinessDialog(
+                configuration = configuration,
+                kind = FileTransferBusinessDialogKind.INCOMING,
+                onPositive = { accepted++ },
+                onNegative = { rejected++ },
+            ) { _, dialog, _ ->
+                assertTrue(
+                    "accept click is handled by the incoming offer callback",
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
+                )
+            }
+            assertEquals("accept callback is delivered exactly once", 1, accepted)
+            assertEquals("accept must not run the reject callback", 1, rejected)
+        }
+    }
+
+    @Test
+    fun productionOutgoingPreflightDialogKeepsActionsReadableAndNonDuplicated() {
+        productionDialogConfigurations().forEach { configuration ->
+            var sent = 0
+            var cancelled = 0
+
+            withFileTransferBusinessDialog(
+                configuration = configuration,
+                kind = FileTransferBusinessDialogKind.OUTGOING,
+                onPositive = { sent++ },
+                onNegative = { cancelled++ },
+            ) { activity, dialog, content ->
+                dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.OUTGOING)
+                dialog.assertCustomContentStaysAboveActions(content)
+                dialog.assertNoDuplicateTalkBackSemantics(
+                    title = activity.getString(R.string.file_transfer_outgoing_title),
+                    content = content,
+                )
+                content.assertBusinessDialogContentCanScrollIntoView(R.id.fileTransferOutgoingVerification)
+
+                assertTrue(
+                    "cancel click is handled by the outgoing preflight callback",
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
+                )
+            }
+            assertEquals("cancel must not send the outgoing file", 0, sent)
+            assertEquals("cancel callback is delivered exactly once", 1, cancelled)
+
+            withFileTransferBusinessDialog(
+                configuration = configuration,
+                kind = FileTransferBusinessDialogKind.OUTGOING,
+                onPositive = { sent++ },
+                onNegative = { cancelled++ },
+            ) { _, dialog, _ ->
+                assertTrue(
+                    "send click is handled by the outgoing preflight callback",
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
+                )
+            }
+            assertEquals("send callback is delivered exactly once", 1, sent)
+            assertEquals("send must not run the cancel callback", 1, cancelled)
         }
     }
 
@@ -203,6 +292,68 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     scenario.onActivity {
                         dialog?.dismiss()
                         dialog = null
+                    }
+                }
+            }
+        } finally {
+            DialogHostActivity.configurationOverride = null
+        }
+    }
+
+    private fun withFileTransferBusinessDialog(
+        configuration: DialogConfiguration,
+        kind: FileTransferBusinessDialogKind,
+        onPositive: () -> Unit,
+        onNegative: () -> Unit,
+        assertion: (DialogHostActivity, AlertDialog, ScrollView) -> Unit,
+    ) {
+        var dialog: AlertDialog? = null
+        var contentView: ScrollView? = null
+        var assertionFailure: Throwable? = null
+        DialogHostActivity.configurationOverride =
+            DialogHostActivity.ConfigurationOverride(
+                widthDp = configuration.widthDp,
+                heightDp = configuration.heightDp,
+                fontScale = configuration.fontScale,
+            )
+        try {
+            ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
+                try {
+                    scenario.onActivity { activity ->
+                        val content =
+                            activity.layoutInflater.inflate(
+                                kind.layoutRes,
+                                null,
+                                false,
+                            ) as ScrollView
+                        kind.render(activity, content)
+                        contentView = content
+                        dialog =
+                            MaterialAlertDialogBuilder(activity)
+                                .setTitle(kind.titleRes)
+                                .setView(content)
+                                .setPositiveButton(kind.positiveButtonRes) { _, _ -> onPositive() }
+                                .setNegativeButton(kind.negativeButtonRes) { _, _ -> onNegative() }
+                                .show()
+                                .also(DialogActionButtonLayoutApplier::apply)
+                    }
+                    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                    scenario.onActivity { activity ->
+                        try {
+                            val shownDialog = checkNotNull(dialog)
+                            shownDialog.window?.decorView?.measureAndLayoutWithin(activity, configuration)
+                            assertion(activity, shownDialog, checkNotNull(contentView))
+                        } catch (failure: Throwable) {
+                            assertionFailure = failure
+                        }
+                    }
+                    assertionFailure?.let { throw it }
+                    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                } finally {
+                    scenario.onActivity {
+                        dialog?.dismiss()
+                        dialog = null
+                        contentView = null
                     }
                 }
             }
@@ -490,6 +641,14 @@ private fun layoutHeight(
     screenHeightDp: Int,
 ): Int = dp(context, (screenHeightDp * FILE_OFFER_DIALOG_MAX_HEIGHT_RATIO).roundToInt())
 
+private fun productionDialogConfigurations(): List<DialogConfiguration> =
+    listOf(
+        DialogConfiguration(widthDp = 320, heightDp = 640, fontScale = 1.5f),
+        DialogConfiguration(widthDp = 320, heightDp = 640, fontScale = 2.0f),
+        DialogConfiguration(widthDp = 640, heightDp = 320, fontScale = 1.5f),
+        DialogConfiguration(widthDp = 640, heightDp = 320, fontScale = 2.0f),
+    )
+
 private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
 
 private fun dp(
@@ -515,6 +674,71 @@ private fun Button.assertReadableDialogActionButton(context: Context) {
     val contentBottom = height - compoundPaddingBottom
     val lastLineBottom = compoundPaddingTop + layout.getLineBottom(layout.lineCount - 1)
     assertTrue("$text button text is not vertically clipped", lastLineBottom <= contentBottom + DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX)
+}
+
+private fun AlertDialog.assertFileTransferBusinessActions(
+    activity: DialogHostActivity,
+    kind: FileTransferBusinessDialogKind,
+) {
+    val positive = getButton(AlertDialog.BUTTON_POSITIVE)
+    val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
+    val buttonPanel = findViewById<View>(androidx.appcompat.R.id.buttonPanel)
+
+    assertTrue("file-transfer business dialog uses the real Material button panel", buttonPanel != null)
+    assertEquals(activity.getString(kind.positiveButtonRes), positive.text.toString())
+    assertEquals(activity.getString(kind.negativeButtonRes), negative.text.toString())
+    positive.assertReadableDialogActionButton(activity)
+    negative.assertReadableDialogActionButton(activity)
+}
+
+private fun AlertDialog.assertCustomContentStaysAboveActions(content: ScrollView) {
+    val positive = getButton(AlertDialog.BUTTON_POSITIVE)
+    val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
+    val actionTop = minOf(positive.screenTop(), negative.screenTop())
+    val contentBottom = content.screenBottom()
+    val geometry =
+        "contentBottom=$contentBottom actionTop=$actionTop " +
+            "contentTop=${content.screenTop()} contentHeight=${content.height} " +
+            "positiveTop=${positive.screenTop()} positiveHeight=${positive.height} " +
+            "negativeTop=${negative.screenTop()} negativeHeight=${negative.height}"
+
+    assertTrue("file-transfer dialog content stays above actions: $geometry", contentBottom <= actionTop)
+    assertTrue("file-transfer dialog content has a visible top edge", content.screenTop() >= 0)
+    assertTrue("file-transfer dialog actions are visible", positive.screenBottom() > actionTop && negative.screenBottom() > actionTop)
+}
+
+private fun AlertDialog.assertNoDuplicateTalkBackSemantics(
+    title: String,
+    content: View,
+) {
+    val titleView = window?.decorView?.findTextViewWithText(title)
+    val positive = getButton(AlertDialog.BUTTON_POSITIVE)
+    val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
+
+    assertNull("dialog title text should not duplicate itself as a content description", titleView?.contentDescription)
+    assertNull("positive action should not duplicate itself as a content description", positive.contentDescription)
+    assertNull("negative action should not duplicate itself as a content description", negative.contentDescription)
+    content.forEachTextView { textView ->
+        assertNull(
+            "${textView.resources.getResourceEntryName(textView.id)} should not duplicate itself as a content description",
+            textView.contentDescription,
+        )
+    }
+}
+
+private fun ScrollView.assertBusinessDialogContentCanScrollIntoView(targetId: Int) {
+    val target = checkNotNull(findViewById<TextView>(targetId)) { "target field exists" }
+    val visibleHeight = height - paddingTop - paddingBottom
+    assertTrue("file-transfer dialog leaves a usable viewport", visibleHeight > 0)
+    if (target.height > visibleHeight || target.bottom > scrollY + visibleHeight) {
+        scrollTo(0, target.top.coerceAtLeast(0))
+        assertTrue("target top can scroll into viewport", target.top >= scrollY)
+        assertTrue("target top is visible after targeted scroll", target.top < scrollY + visibleHeight)
+        scrollTo(0, (target.bottom - visibleHeight).coerceAtLeast(0))
+        assertTrue("target bottom can scroll into viewport", target.bottom <= scrollY + visibleHeight)
+    } else {
+        assertTrue("target is visible when dialog content fits", target.bottom <= scrollY + visibleHeight)
+    }
 }
 
 private fun assertTextReadable(text: TextView?) {
@@ -545,6 +769,31 @@ private fun TextView.hasNestedScrollAncestor(): Boolean {
     return false
 }
 
+private fun View.findTextViewWithText(expected: String): TextView? {
+    if (this is TextView && text.toString() == expected) return this
+    if (this !is ViewGroup) return null
+    for (index in 0 until childCount) {
+        getChildAt(index).findTextViewWithText(expected)?.let { return it }
+    }
+    return null
+}
+
+private fun View.forEachTextView(action: (TextView) -> Unit) {
+    if (this is TextView) action(this)
+    if (this !is ViewGroup) return
+    for (index in 0 until childCount) {
+        getChildAt(index).forEachTextView(action)
+    }
+}
+
+private fun View.screenTop(): Int {
+    val location = IntArray(2)
+    getLocationOnScreen(location)
+    return location[1]
+}
+
+private fun View.screenBottom(): Int = screenTop() + height
+
 private fun View.measureAndLayoutWithin(
     context: Context,
     configuration: DialogConfiguration,
@@ -561,6 +810,36 @@ private data class DialogConfiguration(
     val heightDp: Int,
     val fontScale: Float,
 )
+
+private enum class FileTransferBusinessDialogKind(
+    val layoutRes: Int,
+    val titleRes: Int,
+    val positiveButtonRes: Int,
+    val negativeButtonRes: Int,
+) {
+    INCOMING(
+        layoutRes = R.layout.dialog_file_transfer_offer,
+        titleRes = R.string.file_transfer_offer_title,
+        positiveButtonRes = R.string.file_transfer_accept,
+        negativeButtonRes = R.string.file_transfer_reject,
+    ) {
+        override fun render(context: Context, root: View) {
+            renderSampleOffer(context, root)
+        }
+    },
+    OUTGOING(
+        layoutRes = R.layout.dialog_file_transfer_outgoing,
+        titleRes = R.string.file_transfer_outgoing_title,
+        positiveButtonRes = R.string.file_transfer_outgoing_send,
+        negativeButtonRes = R.string.cancel,
+    ) {
+        override fun render(context: Context, root: View) {
+            renderSampleOutgoing(context, root)
+        }
+    };
+
+    abstract fun render(context: Context, root: View)
+}
 
 private const val DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX = 2f
 
