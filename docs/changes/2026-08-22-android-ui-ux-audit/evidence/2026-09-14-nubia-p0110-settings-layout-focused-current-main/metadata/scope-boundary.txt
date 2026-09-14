@@ -1,4 +1,4 @@
 No macOS Host, Vibe Screen Host, Telemachus macOS GUI, adb reverse tcp:54321 tcp:54321, Screen Recording, Accessibility, Microphone, signing, re-signing, Keychain, System Settings, or TCC operation was used.
 The only Android device used for the focused connected test was the Nubia P0110/pacific Android 16 device with raw serial redacted here.
-The other attached Nubia P0110 device was not targeted.
+The selected Nubia P0110 was the only attached Android device during this rerun.
 Pre-run and post-run adb reverse --list on the target device were empty. Post-run pidof checks for dev.telemachus.display, dev.telemachus.display.test, androidx.test.orchestrator, and com.android.commands.am returned no process IDs. Post-run pm list instrumentation had no dev.telemachus.display instrumentation entries.

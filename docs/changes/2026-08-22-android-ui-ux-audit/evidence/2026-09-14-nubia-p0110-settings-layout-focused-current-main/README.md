@@ -22,9 +22,9 @@ pointer, stylus, controller, iOS behavior, macOS hardware acceptance, or Xiaomi
 | Field | Value |
 | --- | --- |
 | Branch | `codex/settings-layout-p0110-evidence` |
-| Baseline/source HEAD | `7a2b53df6c95f5b24a32f399728bd06522952b37` |
-| Baseline/source short | `7a2b53d` |
-| Source subject | `fix(android): improve settings choice accessibility (#780)` |
+| Baseline/source HEAD | `58aeecc0b392cbe1e5d47dc37722b95d121b9707` |
+| Baseline/source short | `58aeecc0b` |
+| Source subject | `fix(android): keep file transfer dialog actions readable (#778)` |
 | Evidence package date | 2026-09-14 |
 | Timezone | Asia/Shanghai |
 
@@ -47,7 +47,7 @@ focused device and offline verification evidence.
 
 The local ADB serial is intentionally redacted from retained artifacts. This
 record is Nubia P0110/pacific evidence only and must not be reported as Xiaomi
-13/fuxi evidence. The other attached Nubia P0110 device was not targeted.
+13/fuxi evidence. It was the only attached Android device during this rerun.
 
 ## Boundaries
 
@@ -75,8 +75,8 @@ ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon --console=plain \
 ```
 
 The Gradle runner log reports `Starting 30 tests on P0110 - 16`, `Finished 30
-tests on P0110 - 16`, and `BUILD SUCCESSFUL in 17s` for the final rerun at
-`2026-09-14T11:36:56Z`.
+tests on P0110 - 16`, and `BUILD SUCCESSFUL in 46s` for the final rerun at
+`2026-09-14T12:07:41Z`.
 
 ## Results
 
@@ -85,7 +85,7 @@ tests on P0110 - 16`, and `BUILD SUCCESSFUL in 17s` for the final rerun at
 | Focused Settings instrumentation | `android-test-results/TEST-P0110-16-app.xml`, `android-test-results/test-result.redacted.textproto`, `android-test-results/utp.0.redacted.log`, `android-test-results/test-results.log`, `logs/connected-settings-layout-gradle.log` | PASS, 30/30 tests |
 | Runner exit | local command result | exit code 0 |
 | Textproto | `scheduled_test_case_count: 30`, 30 `test_result` entries, 30 method statuses `PASSED`, no failed/error/skipped statuses | PASS |
-| JUnit XML | `tests=30`, `failures=0`, `errors=0`, `skipped=0`, `testcase_count=30`, `classname=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest`, `timestamp=2026-09-14T11:36:56` | PASS |
+| JUnit XML | `tests=30`, `failures=0`, `errors=0`, `skipped=0`, `testcase_count=30`, `classname=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest`, `timestamp=2026-09-14T12:07:41` | PASS |
 | Instrumentation status log | `OK (30 tests)` and `INSTRUMENTATION_CODE: -1` | PASS |
 | UTP device targeting | install/uninstall lines reference only `<redacted-adb-serial>` for `dev.telemachus.display` and `dev.telemachus.display.test` | PASS |
 | Post-run cleanup | `logs/device-postcheck-summary.txt` | PASS: reverse empty, no target/test/orchestrator/am processes, no instrumentation package |
