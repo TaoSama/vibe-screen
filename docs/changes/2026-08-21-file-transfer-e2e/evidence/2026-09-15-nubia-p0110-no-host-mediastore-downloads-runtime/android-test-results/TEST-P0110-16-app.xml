@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.MediaStoreDownloadsSaverInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.703" timestamp="2026-09-14T18:46:39" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="productionSaverPublishesIncomingFileToMediaStoreDownloads" classname="dev.telemachus.display.MediaStoreDownloadsSaverInstrumentedTest" time="0.033" />
+  <testcase name="failedMediaStorePublishDeletesInsertedEntryAndKeepsStagingForCallerCleanup" classname="dev.telemachus.display.MediaStoreDownloadsSaverInstrumentedTest" time="0.001" />
+</testsuite>

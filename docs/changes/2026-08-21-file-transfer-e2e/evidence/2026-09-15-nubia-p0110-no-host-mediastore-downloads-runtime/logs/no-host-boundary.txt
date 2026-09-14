@@ -1,0 +1,8 @@
+before_adb_reverse_tcp_54321=absent
+before_local_tcp_54321_listener=absent
+after_adb_reverse_tcp_54321=absent
+after_local_tcp_54321_listener=absent
+macos_host_started=false
+macos_tcc_requested_or_modified=false
+device_lock=/tmp/vibe-screen-device-android.lock
+device_lock_released=true

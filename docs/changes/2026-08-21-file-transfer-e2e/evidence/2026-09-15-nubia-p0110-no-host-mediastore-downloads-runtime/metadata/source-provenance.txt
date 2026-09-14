@@ -1,0 +1,6 @@
+repository=git@github.com:TaoSama/vibe-screen.git
+source_commit=4d258122b5e58f88e1a83d35b0aa0e330bc7e962
+base_commit=1c079c6b5f8daedd59fcd919cc51520391220180
+source_branch=codex/p0110-mediastore-downloads-smoke
+collection_date=2026-09-15
+timezone=Asia/Shanghai

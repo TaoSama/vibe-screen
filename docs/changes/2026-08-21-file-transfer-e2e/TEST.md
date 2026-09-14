@@ -487,3 +487,22 @@ no `tcp:54321` reverse mapping existed before or after testing, and no Host
 listener was present. Consequently Host readiness, real transport,
 bidirectional product transfer, and cancel/disconnect cleanup remain blocked;
 `gate_closed=false` and `can_close_file_transfer_android_smoke_gate=false`.
+
+## 2026-09-15 Nubia P0110 no-Host MediaStore Downloads runtime smoke
+
+Evidence:
+[evidence/2026-09-15-nubia-p0110-no-host-mediastore-downloads-runtime](evidence/2026-09-15-nubia-p0110-no-host-mediastore-downloads-runtime/README.md).
+
+The P0110 / pacific / Android 16 / SDK 36 accepted run executes two focused
+instrumentation methods against the production `IncomingFileDownloadsSaver`.
+It proves an Android-local incoming file can be inserted into
+`MediaStore.Downloads`, published with `IS_PENDING=0`, read back with exact
+bytes and SHA-256, and removed after verification. A real-row failure injection
+also proves the inserted unpublished entry is deleted while private staging
+ownership remains with the caller. No Host, TCC, `tcp:54321` reverse, or local
+listener participated.
+
+This advances only the Android system-service save boundary. It does not prove
+sender selection, receiver approval, Protocol v1 packets, Host-backed remote
+write, same-session bidirectional transfer, or cancel/disconnect cleanup, so
+the product E2E gate remains blocked.

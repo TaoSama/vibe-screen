@@ -1,0 +1,12 @@
+git diff --check: pass
+focused JVM tests with --rerun-tasks: pass
+  IncomingFileDownloadsSaverTest
+  AppSpecificDownloadsSaverTest
+  MainActivityFileTransferSystemBoundaryContractTest
+compileDebugAndroidTestKotlin: pass
+P0110 Android 16 focused instrumentation accepted rerun: 2/2 pass
+  productionSaverPublishesIncomingFileToMediaStoreDownloads
+  failedMediaStorePublishDeletesInsertedEntryAndKeepsStagingForCallerCleanup
+accepted instrumentation build: BUILD SUCCESSFUL
+post-run instrumentation package: absent
+post-run vibescreen-p0110-mediastore-* Downloads rows: absent
