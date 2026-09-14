@@ -1,0 +1,9 @@
+scope=no-host Android file-transfer UI smoke only
+macos_host_started=false
+screen_recording_requested=false
+accessibility_requested=false
+microphone_requested=false
+tcc_modified=false
+adb_reverse_tcp_54321_created=false
+host_listener_tcp_54321_observed=false
+product_file_bytes_transferred=false

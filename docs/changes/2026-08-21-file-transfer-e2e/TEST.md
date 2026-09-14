@@ -468,3 +468,22 @@ Result: the focused file-transfer gate suite passed 37 tests, the related
 aggregate/Phase 0 suite passed 146 tests, and the full evidence-tool suite
 passed 1440 tests. The default `file-transfer-android-smoke` invocation still
 generated a blocked report because real Host/product evidence is absent.
+
+## 2026-09-15 Nubia P0110 no-Host file-transfer smoke after PR #785
+
+Evidence:
+[evidence/2026-09-15-nubia-p0110-no-host-file-transfer-smoke-after-785](evidence/2026-09-15-nubia-p0110-no-host-file-transfer-smoke-after-785/README.md).
+
+Status remains open. On current `origin/main` at
+`092f05c2208fa1833fb1d9e541ec2e30c2bd379f`, the Nubia P0110 / pacific /
+Android 16 / SDK 36 ran all five required file-transfer control-bar and
+offer/preflight dialog methods. The raw `INSTRUMENTATION_STATUS` log records
+five paired start/pass results, consistent `numtests=5`, `OK (5 tests)`, and a
+final `INSTRUMENTATION_CODE: -1`. The formal gate reports
+`android_file_transfer_smoke=pass`.
+
+This was deliberately a no-Host run: no macOS Host or TCC prompt was started,
+no `tcp:54321` reverse mapping existed before or after testing, and no Host
+listener was present. Consequently Host readiness, real transport,
+bidirectional product transfer, and cancel/disconnect cleanup remain blocked;
+`gate_closed=false` and `can_close_file_transfer_android_smoke_gate=false`.

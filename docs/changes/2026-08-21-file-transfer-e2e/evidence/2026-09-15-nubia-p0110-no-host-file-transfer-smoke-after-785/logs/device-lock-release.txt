@@ -1,0 +1,1 @@
+/tmp/vibe-screen-device-android.lock released after the device run.
