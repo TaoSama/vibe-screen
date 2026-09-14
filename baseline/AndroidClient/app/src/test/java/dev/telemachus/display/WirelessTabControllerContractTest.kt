@@ -1,10 +1,22 @@
 package dev.telemachus.display
 
+import android.app.Activity
+import android.os.Bundle
+import android.os.Looper
+import androidx.appcompat.app.AlertDialog
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class WirelessTabControllerContractTest {
     @Test
     fun connectAndRepairCopyUsesStringResourcesWithoutWarningEmoji() {
@@ -169,16 +181,20 @@ class WirelessTabControllerContractTest {
         assertTrue(configureActions.contains("dialog.findViewById<TextView>(android.R.id.message)"))
         assertTrue(configureActions.contains("breakStrategy = Layout.BREAK_STRATEGY_BALANCED"))
         assertTrue(configureActions.contains("hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL"))
-        assertTrue(configureActions.contains("setSingleLine(false)"))
-        assertTrue(configureActions.contains("maxLines = TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES"))
-        assertTrue(configureActions.contains("ellipsize = null"))
+        assertTrue(configureActions.contains("DialogActionButtonLayoutApplier.apply(dialog)"))
         assertTrue(configureActions.contains("checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE))"))
+        assertTrue(configureActions.contains("var confirmed = false"))
+        assertTrue(compactConfigureActions.contains("if(confirmed)return@setOnClickListener"))
+        assertTrue(compactConfigureActions.contains("confirmed=trueonConfirmed()dialog.dismiss()"))
         assertTrue(compactConfigureActions.contains("onConfirmed()dialog.dismiss()"))
-        assertFalse(source.contains("layoutParams"))
-        assertFalse(source.contains("ViewTreeObserver"))
-        assertFalse(source.contains("OnGlobalLayoutListener"))
-        assertFalse(source.contains("current" + "WindowMetrics"))
-        assertFalse(source.contains("TRUSTED_NETWORK_DIALOG_CONTENT_MAX_HEIGHT_RATIO"))
+        val dialogImplementation = createDialog + configureActions
+        assertFalse(dialogImplementation.contains("layoutParams"))
+        assertFalse(dialogImplementation.contains(".post("))
+        assertFalse(dialogImplementation.contains("ViewTreeObserver"))
+        assertFalse(dialogImplementation.contains("OnGlobalLayoutListener"))
+        assertFalse(dialogImplementation.contains("callOnClick"))
+        assertFalse(dialogImplementation.contains("current" + "WindowMetrics"))
+        assertFalse(dialogImplementation.contains("TRUSTED_NETWORK_DIALOG_CONTENT_MAX_HEIGHT_RATIO"))
         assertTrue(compactTrustedDialog.contains("if(activity.isFinishing||activity.isDestroyed)return"))
         assertTrue(compactTrustedDialog.contains("returnshowDialog(createTrustedNetworkDialog(activity,onConfirmed))"))
         assertTrue(
@@ -190,6 +206,41 @@ class WirelessTabControllerContractTest {
             compactTriggerScan.contains("host.showTrustedNetworkDialog{acknowledgeTrustedLan()continueScan()}"),
         )
         assertTrue(compactTriggerScan.contains("if(!isTrustedLanAcknowledged())"))
+    }
+
+    @Test
+    fun trustedNetworkConfirmationCallbackIsPositiveOnlyAndSingleUse() {
+        val cancelActivity = trustedNetworkDialogActivity()
+        var cancelConfirmed = 0
+        createTrustedNetworkDialog(cancelActivity) { cancelConfirmed++ }.useShownDialog { dialog ->
+            assertTrue(
+                "cancel click is handled without confirming trusted LAN",
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
+            )
+        }
+        assertEquals("cancel must not acknowledge trusted LAN", 0, cancelConfirmed)
+
+        val confirmActivity = trustedNetworkDialogActivity()
+        var positiveConfirmed = 0
+        createTrustedNetworkDialog(confirmActivity) { positiveConfirmed++ }.useShownDialog { dialog ->
+            val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            assertTrue("first confirm click is handled", positive.performClick())
+            assertTrue("repeated confirm click is handled without a second callback", positive.performClick())
+        }
+        assertEquals("confirm acknowledges trusted LAN exactly once", 1, positiveConfirmed)
+    }
+
+    private fun trustedNetworkDialogActivity(): TrustedNetworkDialogTestActivity =
+        Robolectric.buildActivity(TrustedNetworkDialogTestActivity::class.java).setup().get()
+
+    private fun AlertDialog.useShownDialog(assertion: (AlertDialog) -> Unit) {
+        show()
+        shadowOf(Looper.getMainLooper()).idle()
+        try {
+            assertion(this)
+        } finally {
+            dismiss()
+        }
     }
 
     private fun extractClass(source: String, signature: String): String = extractBlock(source, signature, "Class")
@@ -331,5 +382,12 @@ class WirelessTabControllerContractTest {
                 "app/src/main/java/dev/telemachus/display/MainActivity.kt",
                 "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
             )
+    }
+}
+
+private class TrustedNetworkDialogTestActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.AppTheme)
+        super.onCreate(savedInstanceState)
     }
 }
