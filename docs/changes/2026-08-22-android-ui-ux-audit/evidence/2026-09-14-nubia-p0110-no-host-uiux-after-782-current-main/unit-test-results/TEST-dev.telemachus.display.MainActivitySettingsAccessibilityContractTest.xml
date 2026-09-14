@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-09-14T13:54:47" hostname="Mac.local" time="0.009">
+  <properties/>
+  <testcase name="settingsActionButtonsAllowTwoLineLabelsWithoutEllipsizing" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.001"/>
+  <testcase name="controlBarManagedPolicyDenialKeepsDisabledControlsExplainable" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.002"/>
+  <testcase name="settingsSectionTitlesRemainAccessibilityHeadings" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.0"/>
+  <testcase name="viewportChoiceLabelsNameGroupsWithoutDuplicateHeadingsOrGroupDescriptions" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.002"/>
+  <testcase name="settingsChoiceLabelsNameTheirControlsAndStayHeadings" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.0"/>
+  <testcase name="viewportCapabilityCopyStaysSourceBoundAndDoesNotOverstateInputSupport" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.001"/>
+  <testcase name="videoBitrateSliderUsesVisibleLabelInsteadOfDuplicateDescription" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.001"/>
+  <testcase name="unavailableVideoAndGestureControlsUseSharedAccessibilityApplier" classname="dev.telemachus.display.MainActivitySettingsAccessibilityContractTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

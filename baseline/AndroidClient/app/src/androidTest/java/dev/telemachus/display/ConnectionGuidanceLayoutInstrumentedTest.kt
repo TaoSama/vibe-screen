@@ -1,10 +1,14 @@
 package dev.telemachus.display
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Paint
 import android.graphics.Rect
+import android.os.ParcelFileDescriptor
+import android.os.PowerManager
+import android.os.SystemClock
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
@@ -1050,6 +1054,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
     @Test
     fun openSourceLicensesButtonOpensPackagedNoticesDialog() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.ensureInteractiveDevice()
         val launchIntent = Intent(applicationContext(), MainActivity::class.java)
             .putExtra(AUTO_CONNECT_EXTRA, false)
         ActivityScenario.launch<MainActivity>(launchIntent).use { scenario ->
@@ -1066,6 +1071,30 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 instrumentation.waitForVisibleText(expectedTitle),
             )
         }
+    }
+
+    private fun android.app.Instrumentation.ensureInteractiveDevice(
+        timeoutMs: Long = 5_000L,
+    ) {
+        runShellCommand("input keyevent KEYCODE_WAKEUP")
+        runShellCommand("wm dismiss-keyguard")
+
+        val context = applicationContext()
+        val powerManager = checkNotNull(context.getSystemService(PowerManager::class.java))
+        val keyguardManager = checkNotNull(context.getSystemService(KeyguardManager::class.java))
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (
+            (!powerManager.isInteractive || keyguardManager.isKeyguardLocked) &&
+                SystemClock.elapsedRealtime() < deadline
+        ) {
+            SystemClock.sleep(50)
+        }
+        assertTrue("Device must be interactive before checking a visible dialog", powerManager.isInteractive)
+        assertFalse("Device must be unlocked before checking a visible dialog", keyguardManager.isKeyguardLocked)
+    }
+
+    private fun android.app.Instrumentation.runShellCommand(command: String) {
+        ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand(command)).use { it.readBytes() }
     }
 
     private fun withLayout(
