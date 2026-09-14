@@ -4,7 +4,8 @@
 
 This evidence records the post-merge, focused Android device validation for
 `SettingsDialogLayoutInstrumentedTest` after the Settings choice accessibility
-fix reached current `origin/main` as PR #780. The checked surface is the
+fix reached `origin/main` as PR #780 and after the branch was refreshed to the
+current `origin/main` baseline. The checked surface is the
 Settings dialog layout and accessibility behavior: unique visible headings,
 concise option-group context, large-text and short-landscape wrapping, measured
 48dp touch targets, non-overlap, scroll reachability, and UI-only readiness
@@ -47,7 +48,8 @@ focused device and offline verification evidence.
 
 The local ADB serial is intentionally redacted from retained artifacts. This
 record is Nubia P0110/pacific evidence only and must not be reported as Xiaomi
-13/fuxi evidence. It was the only attached Android device during this rerun.
+13/fuxi evidence. It was the only attached Android device during the accepted
+rerun.
 
 ## Boundaries
 
@@ -56,8 +58,12 @@ tcp:54321 tcp:54321`, Screen Recording, Accessibility, Microphone, signing,
 re-signing, Keychain, System Settings, or TCC operation was used. The run was
 strictly UI-only on the selected Android device.
 
-Pre-run checks observed the target device online, an empty `adb reverse --list`,
-and no `dev.telemachus.display`, `dev.telemachus.display.test`,
+The first pre-run check for this turn detected stale instrumentation state from
+another worker. Those host-side test processes were stopped and the target
+app/test packages were force-stopped and uninstalled on the selected device
+before this evidence run started. The accepted pre-run checks then observed the
+target device online, an empty `adb reverse --list`, and no
+`dev.telemachus.display`, `dev.telemachus.display.test`,
 `androidx.test.orchestrator`, or `com.android.commands.am` process. Post-run
 checks again observed an empty reverse list, no target/test/orchestrator/am
 processes, and no retained `dev.telemachus.display` instrumentation package.
@@ -75,8 +81,8 @@ ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon --console=plain \
 ```
 
 The Gradle runner log reports `Starting 30 tests on P0110 - 16`, `Finished 30
-tests on P0110 - 16`, and `BUILD SUCCESSFUL in 46s` for the final rerun at
-`2026-09-14T12:07:41Z`.
+tests on P0110 - 16`, and `BUILD SUCCESSFUL in 20s` for the accepted rerun at
+`2026-09-14T12:10:06Z`.
 
 ## Results
 
@@ -85,7 +91,7 @@ tests on P0110 - 16`, and `BUILD SUCCESSFUL in 46s` for the final rerun at
 | Focused Settings instrumentation | `android-test-results/TEST-P0110-16-app.xml`, `android-test-results/test-result.redacted.textproto`, `android-test-results/utp.0.redacted.log`, `android-test-results/test-results.log`, `logs/connected-settings-layout-gradle.log` | PASS, 30/30 tests |
 | Runner exit | local command result | exit code 0 |
 | Textproto | `scheduled_test_case_count: 30`, 30 `test_result` entries, 30 method statuses `PASSED`, no failed/error/skipped statuses | PASS |
-| JUnit XML | `tests=30`, `failures=0`, `errors=0`, `skipped=0`, `testcase_count=30`, `classname=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest`, `timestamp=2026-09-14T12:07:41` | PASS |
+| JUnit XML | `tests=30`, `failures=0`, `errors=0`, `skipped=0`, `testcase_count=30`, `classname=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest`, `timestamp=2026-09-14T12:10:06` | PASS |
 | Instrumentation status log | `OK (30 tests)` and `INSTRUMENTATION_CODE: -1` | PASS |
 | UTP device targeting | install/uninstall lines reference only `<redacted-adb-serial>` for `dev.telemachus.display` and `dev.telemachus.display.test` | PASS |
 | Post-run cleanup | `logs/device-postcheck-summary.txt` | PASS: reverse empty, no target/test/orchestrator/am processes, no instrumentation package |
@@ -102,7 +108,7 @@ interest for this fix, the passing run includes:
 
 ## Offline Verification
 
-After rebasing onto current `origin/main`, the full offline gate was rerun from
+After this accepted device rerun, the full offline gate was rerun from
 `baseline/AndroidClient` and passed:
 
 ```bash
@@ -120,6 +126,8 @@ git diff --check origin/main && git diff --check HEAD
 ```
 
 All commands completed with `BUILD SUCCESSFUL` or no diff-check output.
+The final clean offline rerun started at `2026-09-14T12:19:48Z` and completed
+with every listed command returning exit code 0.
 
 ## Artifact Notes
 

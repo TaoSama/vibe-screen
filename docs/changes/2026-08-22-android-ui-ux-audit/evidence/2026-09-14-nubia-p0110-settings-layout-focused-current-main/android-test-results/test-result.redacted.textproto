@@ -1,4 +1,4 @@
-# 2026-09-14T12:07:41.805256Z:
+# 2026-09-14T12:10:06.384562Z:
 test_suite_meta_data {
   scheduled_test_case_count: 30
 }
@@ -9,12 +9,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "transferReadinessUsesSinglePoliteLiveRegion"
     start_time {
-      seconds: 1789387658
-      nanos: 716000000
+      seconds: 1789387803
+      nanos: 292000000
     }
     end_time {
-      seconds: 1789387658
-      nanos: 794000000
+      seconds: 1789387803
+      nanos: 371000000
     }
   }
   test_status: PASSED
@@ -61,12 +61,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText"
     start_time {
-      seconds: 1789387658
-      nanos: 817000000
+      seconds: 1789387803
+      nanos: 381000000
     }
     end_time {
-      seconds: 1789387658
-      nanos: 853000000
+      seconds: 1789387803
+      nanos: 414000000
     }
   }
   test_status: PASSED
@@ -113,12 +113,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "settingsActionButtonsGrowToTwoLinesForLongLabels"
     start_time {
-      seconds: 1789387658
-      nanos: 854000000
+      seconds: 1789387803
+      nanos: 417000000
     }
     end_time {
-      seconds: 1789387658
-      nanos: 884000000
+      seconds: 1789387803
+      nanos: 447000000
     }
   }
   test_status: PASSED
@@ -165,12 +165,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow"
     start_time {
-      seconds: 1789387658
-      nanos: 886000000
+      seconds: 1789387803
+      nanos: 448000000
     }
     end_time {
-      seconds: 1789387658
-      nanos: 946000000
+      seconds: 1789387803
+      nanos: 538000000
     }
   }
   test_status: PASSED
@@ -217,12 +217,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "unavailableVideoControlsExposeNoteInsteadOfDeadControls"
     start_time {
-      seconds: 1789387658
-      nanos: 948000000
+      seconds: 1789387803
+      nanos: 541000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 71000000
+      seconds: 1789387803
+      nanos: 634000000
     }
   }
   test_status: PASSED
@@ -269,12 +269,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion"
     start_time {
-      seconds: 1789387659
-      nanos: 73000000
+      seconds: 1789387803
+      nanos: 637000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 223000000
+      seconds: 1789387803
+      nanos: 816000000
     }
   }
   test_status: PASSED
@@ -321,12 +321,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "videoChoiceGroupsPreserveSelectionAcrossPhoneAndLandscapeReflows"
     start_time {
-      seconds: 1789387659
-      nanos: 225000000
+      seconds: 1789387803
+      nanos: 820000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 291000000
+      seconds: 1789387803
+      nanos: 886000000
     }
   }
   test_status: PASSED
@@ -373,12 +373,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices"
     start_time {
-      seconds: 1789387659
-      nanos: 292000000
+      seconds: 1789387803
+      nanos: 892000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 323000000
+      seconds: 1789387803
+      nanos: 897000000
     }
   }
   test_status: PASSED
@@ -425,12 +425,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls"
     start_time {
-      seconds: 1789387659
-      nanos: 325000000
+      seconds: 1789387803
+      nanos: 900000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 420000000
+      seconds: 1789387803
+      nanos: 989000000
     }
   }
   test_status: PASSED
@@ -477,12 +477,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "showStatsRowKeepsHorizontalLayoutWhenContentFits"
     start_time {
-      seconds: 1789387659
-      nanos: 421000000
+      seconds: 1789387803
+      nanos: 991000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 457000000
+      seconds: 1789387804
+      nanos: 27000000
     }
   }
   test_status: PASSED
@@ -529,12 +529,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "sixHundredDpPortraitWindowKeepsOneSettingsColumn"
     start_time {
-      seconds: 1789387659
-      nanos: 458000000
+      seconds: 1789387804
+      nanos: 31000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 462000000
+      seconds: 1789387804
+      nanos: 37000000
     }
   }
   test_status: PASSED
@@ -581,12 +581,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "largeTextStacksOptionGroupsWithoutClipping"
     start_time {
-      seconds: 1789387659
-      nanos: 464000000
+      seconds: 1789387804
+      nanos: 39000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 568000000
+      seconds: 1789387804
+      nanos: 161000000
     }
   }
   test_status: PASSED
@@ -633,12 +633,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "wideWindowKeepsOptionGroupsHorizontal"
     start_time {
-      seconds: 1789387659
-      nanos: 570000000
+      seconds: 1789387804
+      nanos: 164000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 612000000
+      seconds: 1789387804
+      nanos: 169000000
     }
   }
   test_status: PASSED
@@ -685,12 +685,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "showStatsRowRestoresLayoutAcrossNarrowWideReflow"
     start_time {
-      seconds: 1789387659
-      nanos: 615000000
+      seconds: 1789387804
+      nanos: 170000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 620000000
+      seconds: 1789387804
+      nanos: 205000000
     }
   }
   test_status: PASSED
@@ -737,12 +737,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "opacitySliderKeepsAccessibilityContract"
     start_time {
-      seconds: 1789387659
-      nanos: 621000000
+      seconds: 1789387804
+      nanos: 207000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 655000000
+      seconds: 1789387804
+      nanos: 240000000
     }
   }
   test_status: PASSED
@@ -789,12 +789,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable"
     start_time {
-      seconds: 1789387659
-      nanos: 657000000
+      seconds: 1789387804
+      nanos: 241000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 716000000
+      seconds: 1789387804
+      nanos: 270000000
     }
   }
   test_status: PASSED
@@ -841,12 +841,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions"
     start_time {
-      seconds: 1789387659
-      nanos: 719000000
+      seconds: 1789387804
+      nanos: 273000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 721000000
+      seconds: 1789387804
+      nanos: 304000000
     }
   }
   test_status: PASSED
@@ -893,12 +893,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics"
     start_time {
-      seconds: 1789387659
-      nanos: 723000000
+      seconds: 1789387804
+      nanos: 305000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 756000000
+      seconds: 1789387804
+      nanos: 337000000
     }
   }
   test_status: PASSED
@@ -945,12 +945,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "settingsActionButtonsRestoreWrappingAfterRotationReflow"
     start_time {
-      seconds: 1789387659
-      nanos: 758000000
+      seconds: 1789387804
+      nanos: 339000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 794000000
+      seconds: 1789387804
+      nanos: 374000000
     }
   }
   test_status: PASSED
@@ -997,12 +997,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "videoAndGestureChoiceLabelsKeepTalkBackSemantics"
     start_time {
-      seconds: 1789387659
-      nanos: 795000000
+      seconds: 1789387804
+      nanos: 375000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 902000000
+      seconds: 1789387804
+      nanos: 465000000
     }
   }
   test_status: PASSED
@@ -1049,12 +1049,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "narrowPhoneWindowsStackOptionGroupsWithoutClipping"
     start_time {
-      seconds: 1789387659
-      nanos: 904000000
+      seconds: 1789387804
+      nanos: 467000000
     }
     end_time {
-      seconds: 1789387659
-      nanos: 937000000
+      seconds: 1789387804
+      nanos: 503000000
     }
   }
   test_status: PASSED
@@ -1101,12 +1101,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "showStatsRowStaysReadableAndReachableOnNarrowLargeText"
     start_time {
-      seconds: 1789387659
-      nanos: 939000000
+      seconds: 1789387804
+      nanos: 506000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 24000000
+      seconds: 1789387804
+      nanos: 596000000
     }
   }
   test_status: PASSED
@@ -1153,12 +1153,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "smallTabletPortraitKeepsSettingsSingleColumnForReadableCards"
     start_time {
-      seconds: 1789387660
-      nanos: 26000000
+      seconds: 1789387804
+      nanos: 603000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 58000000
+      seconds: 1789387804
+      nanos: 642000000
     }
   }
   test_status: PASSED
@@ -1205,12 +1205,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "allChoiceGroupsStayDistinctOnLargeTextPhonesAndShortLandscape"
     start_time {
-      seconds: 1789387660
-      nanos: 59000000
+      seconds: 1789387804
+      nanos: 648000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 177000000
+      seconds: 1789387804
+      nanos: 740000000
     }
   }
   test_status: PASSED
@@ -1257,12 +1257,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows"
     start_time {
-      seconds: 1789387660
-      nanos: 178000000
+      seconds: 1789387804
+      nanos: 742000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 300000000
+      seconds: 1789387804
+      nanos: 864000000
     }
   }
   test_status: PASSED
@@ -1309,12 +1309,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "settingsSectionsExposeScreenReaderHeadings"
     start_time {
-      seconds: 1789387660
-      nanos: 302000000
+      seconds: 1789387804
+      nanos: 865000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 306000000
+      seconds: 1789387804
+      nanos: 898000000
     }
   }
   test_status: PASSED
@@ -1361,12 +1361,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText"
     start_time {
-      seconds: 1789387660
-      nanos: 307000000
+      seconds: 1789387804
+      nanos: 900000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 421000000
+      seconds: 1789387804
+      nanos: 994000000
     }
   }
   test_status: PASSED
@@ -1413,12 +1413,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "sixHundredDpLandscapeWindowUsesTwoSettingsColumns"
     start_time {
-      seconds: 1789387660
-      nanos: 422000000
+      seconds: 1789387804
+      nanos: 996000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 455000000
+      seconds: 1789387805
+      nanos: 32000000
     }
   }
   test_status: PASSED
@@ -1465,12 +1465,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "capturesSustainedUseStatusEvidenceImages"
     start_time {
-      seconds: 1789387660
-      nanos: 456000000
+      seconds: 1789387805
+      nanos: 33000000
     }
     end_time {
-      seconds: 1789387660
-      nanos: 895000000
+      seconds: 1789387805
+      nanos: 469000000
     }
   }
   test_status: PASSED
@@ -1517,12 +1517,12 @@ test_result {
     test_package: "dev.telemachus.display"
     test_method: "videoChoiceGroupsRemainReadableOnLargeTextPhonesAndShortLandscape"
     start_time {
-      seconds: 1789387660
-      nanos: 896000000
+      seconds: 1789387805
+      nanos: 471000000
     }
     end_time {
-      seconds: 1789387661
-      nanos: 70000000
+      seconds: 1789387805
+      nanos: 651000000
     }
   }
   test_status: PASSED
