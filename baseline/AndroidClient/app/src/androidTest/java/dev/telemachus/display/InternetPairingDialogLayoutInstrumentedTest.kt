@@ -170,11 +170,48 @@ class InternetPairingDialogLayoutInstrumentedTest {
 
     @Test
     fun productionBuilderConstrainsImportDialogContentAndButtons() {
+        productionDialogConfigurations().forEach { configuration ->
+            withProductionImportDialog(configuration)
+        }
+    }
+
+    @Test
+    fun productionBuilderConstrainsPairingDialogContent() {
+        productionDialogConfigurations().forEach { configuration ->
+            withProductionPairingDialog(configuration)
+        }
+    }
+
+    @Test
+    fun remainingBusinessConfirmationsKeepLongActionsReadable() {
+        productionDialogConfigurations().forEach { configuration ->
+            BusinessConfirmation.entries.forEach { confirmation ->
+                withBusinessConfirmationDialog(configuration, confirmation) { activity, dialog ->
+                    assertEquals(activity.getString(confirmation.positiveButtonRes), dialog.getButton(AlertDialog.BUTTON_POSITIVE).text.toString())
+                    assertEquals(activity.getString(confirmation.negativeButtonRes), dialog.getButton(AlertDialog.BUTTON_NEGATIVE).text.toString())
+                    dialog.assertReadableDialogActions(activity)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun readableActionLayoutWrapsLongLocalizedActionWithoutClipping() {
+        val configuration = InternetDialogConfiguration(widthDp = 320, heightDp = 640, fontScale = 2.0f)
+        withCustomActionDialog(configuration, "Complete pairing now") { activity, dialog ->
+            val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            dialog.assertReadableDialogActions(activity)
+            assertEquals("long localized action renders on two lines", 2, checkNotNull(positive.layout).lineCount)
+        }
+    }
+
+    private fun withProductionImportDialog(configuration: InternetDialogConfiguration) {
         var dialog: AlertDialog? = null
         var root: ScrollView? = null
         var assertionFailure: Throwable? = null
-        ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
-            try {
+        DialogHostActivity.configurationOverride = configuration.asOverride()
+        try {
+            ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
                     val container =
                         activity.layoutInflater.inflate(R.layout.dialog_internet_profile_import, null, false) as ScrollView
@@ -189,24 +226,21 @@ class InternetPairingDialogLayoutInstrumentedTest {
                             .setNegativeButton(R.string.cancel, null)
                             .setPositiveButton(R.string.internet_import_action, null)
                             .show()
+                            .also(DialogActionButtonLayoutApplier::apply)
                 }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { activity ->
                     try {
                         val dialogRoot = checkNotNull(root)
                         checkNotNull(dialog).window?.decorView?.let { decor ->
-                            val activityRoot = activity.window.decorView
-                            decor.measure(
-                                View.MeasureSpec.makeMeasureSpec(activityRoot.width, View.MeasureSpec.AT_MOST),
-                                View.MeasureSpec.makeMeasureSpec(activityRoot.height, View.MeasureSpec.AT_MOST),
-                            )
-                            decor.layout(0, 0, decor.measuredWidth, decor.measuredHeight)
+                            decor.measureAndLayoutWithin(activity, configuration)
                         }
                         val measured = ImportMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
 
                         assertTrue("production dialog measures import root", dialogRoot.width > 0 && dialogRoot.height > 0)
                         assertTrue("production dialog constrains import root to activity viewport", dialogRoot.height <= activity.window.decorView.height)
                         assertTrue("import scroll view fills production dialog viewport", dialogRoot.isFillViewport)
-                        checkNotNull(dialog).assertDialogButtonTouchTargets(activity)
+                        checkNotNull(dialog).assertReadableDialogActions(activity)
                         measured.assertTextReadable(measured.label)
                         measured.assertSensitiveInput(measured.input)
                         measured.assertTextReadable(measured.input)
@@ -219,23 +253,24 @@ class InternetPairingDialogLayoutInstrumentedTest {
                     }
                 }
                 assertionFailure?.let { throw it }
-            } finally {
                 scenario.onActivity {
                     dialog?.dismiss()
                     dialog = null
                     root = null
                 }
             }
+        } finally {
+            DialogHostActivity.configurationOverride = null
         }
     }
 
-    @Test
-    fun productionBuilderConstrainsPairingDialogContent() {
+    private fun withProductionPairingDialog(configuration: InternetDialogConfiguration) {
         var dialog: AlertDialog? = null
         var root: ScrollView? = null
         var assertionFailure: Throwable? = null
-        ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
-            try {
+        DialogHostActivity.configurationOverride = configuration.asOverride()
+        try {
+            ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
                     val container =
                         activity.layoutInflater.inflate(R.layout.dialog_internet_pairing_completion, null, false) as ScrollView
@@ -250,24 +285,21 @@ class InternetPairingDialogLayoutInstrumentedTest {
                             .setNegativeButton(R.string.cancel, null)
                             .setPositiveButton(R.string.internet_pairing_complete_action, null)
                             .show()
+                            .also(DialogActionButtonLayoutApplier::apply)
                 }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { activity ->
                     try {
                         val dialogRoot = checkNotNull(root)
                         checkNotNull(dialog).window?.decorView?.let { decor ->
-                            val activityRoot = activity.window.decorView
-                            decor.measure(
-                                View.MeasureSpec.makeMeasureSpec(activityRoot.width, View.MeasureSpec.AT_MOST),
-                                View.MeasureSpec.makeMeasureSpec(activityRoot.height, View.MeasureSpec.AT_MOST),
-                            )
-                            decor.layout(0, 0, decor.measuredWidth, decor.measuredHeight)
+                            decor.measureAndLayoutWithin(activity, configuration)
                         }
                         val measured = PairingMeasuredLayout(activity, FrameLayout(activity), dialogRoot, dialogRoot.width, dialogRoot.height)
 
                         assertTrue("production dialog measures pairing root", dialogRoot.width > 0 && dialogRoot.height > 0)
                         assertTrue("production dialog constrains pairing root to activity viewport", dialogRoot.height <= activity.window.decorView.height)
                         assertTrue("pairing scroll view fills production dialog viewport", dialogRoot.isFillViewport)
-                        checkNotNull(dialog).assertDialogButtonTouchTargets(activity)
+                        checkNotNull(dialog).assertReadableDialogActions(activity)
                         measured.assertTextReadable(measured.identity)
                         measured.assertTextReadable(measured.request)
                         measured.assertSensitiveInput(measured.acceptance)
@@ -282,13 +314,96 @@ class InternetPairingDialogLayoutInstrumentedTest {
                     }
                 }
                 assertionFailure?.let { throw it }
-            } finally {
                 scenario.onActivity {
                     dialog?.dismiss()
                     dialog = null
                     root = null
                 }
             }
+        } finally {
+            DialogHostActivity.configurationOverride = null
+        }
+    }
+
+    private fun withBusinessConfirmationDialog(
+        configuration: InternetDialogConfiguration,
+        confirmation: BusinessConfirmation,
+        assertion: (DialogHostActivity, AlertDialog) -> Unit,
+    ) {
+        var dialog: AlertDialog? = null
+        var assertionFailure: Throwable? = null
+        DialogHostActivity.configurationOverride = configuration.asOverride()
+        try {
+            ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    dialog =
+                        MaterialAlertDialogBuilder(activity)
+                            .setTitle(confirmation.titleRes)
+                            .setMessage(confirmation.messageRes)
+                            .setNegativeButton(confirmation.negativeButtonRes, null)
+                            .setPositiveButton(confirmation.positiveButtonRes, null)
+                            .show()
+                            .also(DialogActionButtonLayoutApplier::apply)
+                }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { activity ->
+                    try {
+                        val shownDialog = checkNotNull(dialog)
+                        shownDialog.window?.decorView?.measureAndLayoutWithin(activity, configuration)
+                        assertion(activity, shownDialog)
+                    } catch (failure: Throwable) {
+                        assertionFailure = failure
+                    }
+                }
+                assertionFailure?.let { throw it }
+                scenario.onActivity {
+                    dialog?.dismiss()
+                    dialog = null
+                }
+            }
+        } finally {
+            DialogHostActivity.configurationOverride = null
+        }
+    }
+
+    private fun withCustomActionDialog(
+        configuration: InternetDialogConfiguration,
+        positiveLabel: String,
+        assertion: (DialogHostActivity, AlertDialog) -> Unit,
+    ) {
+        var dialog: AlertDialog? = null
+        var assertionFailure: Throwable? = null
+        DialogHostActivity.configurationOverride = configuration.asOverride()
+        try {
+            ActivityScenario.launch(DialogHostActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    dialog =
+                        MaterialAlertDialogBuilder(activity)
+                            .setTitle(R.string.internet_pairing_complete_title)
+                            .setMessage(R.string.internet_pairing_complete_message)
+                            .setNegativeButton(R.string.cancel, null)
+                            .setPositiveButton(positiveLabel, null)
+                            .show()
+                            .also(DialogActionButtonLayoutApplier::apply)
+                }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { activity ->
+                    try {
+                        val shownDialog = checkNotNull(dialog)
+                        shownDialog.window?.decorView?.measureAndLayoutWithin(activity, configuration)
+                        assertion(activity, shownDialog)
+                    } catch (failure: Throwable) {
+                        assertionFailure = failure
+                    }
+                }
+                assertionFailure?.let { throw it }
+                scenario.onActivity {
+                    dialog?.dismiss()
+                    dialog = null
+                }
+            }
+        } finally {
+            DialogHostActivity.configurationOverride = null
         }
     }
 
@@ -642,15 +757,98 @@ class InternetPairingDialogLayoutInstrumentedTest {
     }
 }
 
-private fun AlertDialog.assertDialogButtonTouchTargets(context: Context) {
+private fun AlertDialog.assertReadableDialogActions(context: Context) {
     listOf(
         getButton(AlertDialog.BUTTON_NEGATIVE),
         getButton(AlertDialog.BUTTON_POSITIVE),
     ).forEach { button: Button ->
         val minimum = (48 * context.resources.displayMetrics.density).roundToInt()
+        assertEquals("${button.text} button allows two rendered lines", 2, button.maxLines)
+        assertTrue("${button.text} button is allowed to wrap", !button.isSingleLine)
+        assertNull("${button.text} button has no ellipsize policy", button.ellipsize)
+        assertTrue("${button.text} button does not horizontally scroll", !button.isHorizontallyScrollable)
         assertTrue("${button.text} button is at least 48dp wide", button.width >= minimum)
         assertTrue("${button.text} button is at least 48dp tall", button.height >= minimum)
+        val layout = checkNotNull(button.layout) { "${button.text} button has text layout" }
+        assertTrue("${button.text} button uses at most two rendered lines", layout.lineCount <= 2)
+        assertTrue(
+            "${button.text} button renders without ellipsis",
+            (0 until layout.lineCount).all { line -> layout.getEllipsisCount(line) == 0 },
+        )
+        assertEquals(
+            "${button.text} button renders every character",
+            button.text.length,
+            layout.getLineEnd(layout.lineCount - 1),
+        )
+        val contentWidth = button.width - button.compoundPaddingLeft - button.compoundPaddingRight
+        val maximumLineWidth = (0 until layout.lineCount).maxOf(layout::getLineWidth)
+        assertTrue(
+            "${button.text} button text fits the available width",
+            maximumLineWidth <= contentWidth + DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX,
+        )
+        val contentBottom = button.height - button.compoundPaddingBottom
+        val lastLineBottom = button.compoundPaddingTop + layout.getLineBottom(layout.lineCount - 1)
+        assertTrue(
+            "${button.text} button text is not vertically clipped",
+            lastLineBottom <= contentBottom + DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX,
+        )
     }
+}
+
+private const val DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX = 2f
+
+private data class InternetDialogConfiguration(
+    val widthDp: Int,
+    val heightDp: Int,
+    val fontScale: Float,
+) {
+    fun asOverride(): DialogHostActivity.ConfigurationOverride =
+        DialogHostActivity.ConfigurationOverride(widthDp, heightDp, fontScale)
+}
+
+private fun productionDialogConfigurations(): List<InternetDialogConfiguration> =
+    listOf(
+        InternetDialogConfiguration(widthDp = 320, heightDp = 640, fontScale = 1.5f),
+        InternetDialogConfiguration(widthDp = 320, heightDp = 640, fontScale = 2.0f),
+        InternetDialogConfiguration(widthDp = 640, heightDp = 320, fontScale = 1.5f),
+        InternetDialogConfiguration(widthDp = 640, heightDp = 320, fontScale = 2.0f),
+    )
+
+private fun View.measureAndLayoutWithin(
+    context: Context,
+    configuration: InternetDialogConfiguration,
+) {
+    measure(
+        View.MeasureSpec.makeMeasureSpec((configuration.widthDp * context.resources.displayMetrics.density).roundToInt(), View.MeasureSpec.AT_MOST),
+        View.MeasureSpec.makeMeasureSpec((configuration.heightDp * context.resources.displayMetrics.density).roundToInt(), View.MeasureSpec.AT_MOST),
+    )
+    layout(0, 0, measuredWidth, measuredHeight)
+}
+
+private enum class BusinessConfirmation(
+    val titleRes: Int,
+    val messageRes: Int,
+    val positiveButtonRes: Int,
+    val negativeButtonRes: Int,
+) {
+    REVOKE(
+        R.string.internet_revoke_confirm_title,
+        R.string.internet_revoke_confirm_message,
+        R.string.internet_revoke_confirm_action,
+        R.string.cancel,
+    ),
+    DISCONNECT(
+        R.string.disconnect_confirm_title,
+        R.string.disconnect_confirm_message,
+        R.string.disconnect_confirm_action,
+        R.string.disconnect_confirm_cancel,
+    ),
+    HOST_ACTION(
+        R.string.control_host_actions,
+        R.string.host_action_confirm_message,
+        R.string.host_action_confirm_action,
+        R.string.cancel,
+    ),
 }
 
 private fun renderSamplePairingPayloads(

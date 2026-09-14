@@ -1882,7 +1882,7 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.internet_revoke_confirm_action) { _, _ ->
                     revokeInternetPairing("user_requested")
                 },
-            )
+            ).also(DialogActionButtonLayoutApplier::apply)
         }
         val pendingCleanup = retryPendingInternetRevocationCleanup()
         if (pendingCleanup.isNotEmpty()) {
@@ -1953,7 +1953,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        showSecureImmersiveDialog(dialog)
+        showSecureImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun launchInternetScanner() {
@@ -2144,7 +2144,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { discardPendingInternetPairing(pending) }.onFailure(::showInternetFailure)
         }
         dialog.setCanceledOnTouchOutside(false)
-        showSecureImmersiveDialog(dialog)
+        showSecureImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun pairingCompletionErrorMessage(failure: Throwable): String {
@@ -2323,7 +2323,7 @@ class MainActivity : AppCompatActivity() {
                 .setMessage(R.string.disconnect_confirm_message)
                 .setPositiveButton(R.string.disconnect_confirm_action) { _, _ -> disconnect() }
                 .setNegativeButton(R.string.disconnect_confirm_cancel, null),
-        )
+        ).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun revealControlBar(
@@ -4122,7 +4122,7 @@ class MainActivity : AppCompatActivity() {
                     invokeHostActionIfAvailable(option.id, label)
                 }
                 .setNegativeButton(R.string.cancel, null),
-        )
+        ).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun invokeHostActionIfAvailable(actionId: String, label: String) {
