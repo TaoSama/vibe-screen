@@ -75,7 +75,8 @@ ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon --console=plain \
 ```
 
 The Gradle runner log reports `Starting 30 tests on P0110 - 16`, `Finished 30
-tests on P0110 - 16`, and `BUILD SUCCESSFUL in 17s`.
+tests on P0110 - 16`, and `BUILD SUCCESSFUL in 17s` for the final rerun at
+`2026-09-14T11:36:56Z`.
 
 ## Results
 
@@ -84,7 +85,7 @@ tests on P0110 - 16`, and `BUILD SUCCESSFUL in 17s`.
 | Focused Settings instrumentation | `android-test-results/TEST-P0110-16-app.xml`, `android-test-results/test-result.redacted.textproto`, `android-test-results/utp.0.redacted.log`, `android-test-results/test-results.log`, `logs/connected-settings-layout-gradle.log` | PASS, 30/30 tests |
 | Runner exit | local command result | exit code 0 |
 | Textproto | `scheduled_test_case_count: 30`, 30 `test_result` entries, 30 method statuses `PASSED`, no failed/error/skipped statuses | PASS |
-| JUnit XML | `tests=30`, `failures=0`, `errors=0`, `skipped=0`, `testcase_count=30`, `classname=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest`, `timestamp=2026-09-14T11:00:14` | PASS |
+| JUnit XML | `tests=30`, `failures=0`, `errors=0`, `skipped=0`, `testcase_count=30`, `classname=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest`, `timestamp=2026-09-14T11:36:56` | PASS |
 | Instrumentation status log | `OK (30 tests)` and `INSTRUMENTATION_CODE: -1` | PASS |
 | UTP device targeting | install/uninstall lines reference only `<redacted-adb-serial>` for `dev.telemachus.display` and `dev.telemachus.display.test` | PASS |
 | Post-run cleanup | `logs/device-postcheck-summary.txt` | PASS: reverse empty, no target/test/orchestrator/am processes, no instrumentation package |
