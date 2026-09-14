@@ -7,7 +7,83 @@ import tempfile
 import unittest
 
 from vibescreen_evidence import SCHEMA_VERSION
-from vibescreen_evidence.file_transfer_android_smoke import derive_gate, main
+from vibescreen_evidence.file_transfer_android_smoke import derive_gate, main, sanitize_text
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+AFTER_782_TEST_RESULTS_LOG = (
+    REPOSITORY_ROOT
+    / "docs/changes/2026-08-22-android-ui-ux-audit/evidence"
+    / "2026-09-14-nubia-p0110-no-host-uiux-after-782-current-main"
+    / "android-test-results/test-results.log"
+)
+
+
+FILE_TRANSFER_METHODS = (
+    (
+        "dev.telemachus.display.ControlBarLayoutInstrumentedTest",
+        "productionApplierCoversStackedColumnAndHiddenSelectorBoundaries",
+    ),
+    (
+        "dev.telemachus.display.ControlBarLayoutInstrumentedTest",
+        "fileTransferControlPreservesTouchTargetsWhenVisible",
+    ),
+    (
+        "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+        "offerLayoutKeepsDecisionCopyStructuredForDialogButtons",
+    ),
+    (
+        "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+        "narrowAndLargeFontOfferDialogKeepsDecisionContentReadableAndScrollable",
+    ),
+    (
+        "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+        "outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable",
+    ),
+)
+
+
+def instrumentation_record(
+    class_name: str,
+    test_name: str,
+    current: int,
+    *,
+    numtests: int,
+    finish_code: int = 0,
+    class_before_test: bool = True,
+) -> str:
+    start_status = [
+        f"INSTRUMENTATION_STATUS: class={class_name}",
+        f"INSTRUMENTATION_STATUS: current={current}",
+        "INSTRUMENTATION_STATUS: id=AndroidJUnitRunner",
+        f"INSTRUMENTATION_STATUS: numtests={numtests}",
+        "INSTRUMENTATION_STATUS: stream=",
+        f"INSTRUMENTATION_STATUS: test={test_name}",
+    ]
+    finish_status = [
+        f"INSTRUMENTATION_STATUS: class={class_name}",
+        f"INSTRUMENTATION_STATUS: current={current}",
+        "INSTRUMENTATION_STATUS: id=AndroidJUnitRunner",
+        f"INSTRUMENTATION_STATUS: numtests={numtests}",
+        "INSTRUMENTATION_STATUS: stream=.",
+        f"INSTRUMENTATION_STATUS: test={test_name}",
+    ]
+    if not class_before_test:
+        start_status[0], start_status[-1] = start_status[-1], start_status[0]
+    return "\n".join((*start_status, "INSTRUMENTATION_STATUS_CODE: 1", *finish_status, f"INSTRUMENTATION_STATUS_CODE: {finish_code}")) + "\n"
+
+
+def file_transfer_instrumentation_success_log(methods: tuple[tuple[str, str], ...] = FILE_TRANSFER_METHODS) -> str:
+    body = []
+    for current, (class_name, test_name) in enumerate(methods, start=1):
+        body.append(instrumentation_record(class_name, test_name, current, numtests=len(methods)))
+    return (
+        "".join(body)
+        + "INSTRUMENTATION_RESULT: stream=\n\n"
+        + "Time: 1.234\n\n"
+        + f"OK ({len(methods)} tests)\n\n"
+        + "INSTRUMENTATION_CODE: -1\n"
+    )
 
 
 def file_transfer_control_bar_success_log() -> str:
@@ -315,6 +391,16 @@ def write_pass_inputs(root: Path) -> dict[str, Path]:
 
 
 class FileTransferAndroidSmokeGateTests(unittest.TestCase):
+    def test_serial_redaction_preserves_file_transfer_method_names(self) -> None:
+        raw_serial = "EP0110PZ0B9110152B"
+        method_name = "offerLayoutKeepsDecisionCopyStructuredForDialogButtons"
+
+        sanitized = sanitize_text(f"serial={raw_serial} test={method_name}")
+
+        self.assertNotIn(raw_serial, sanitized)
+        self.assertIn("REDACTED_P0110_USB_SERIAL", sanitized)
+        self.assertIn(method_name, sanitized)
+
     def test_make_target_records_repo_relative_source_paths(self) -> None:
         makefile = Path(__file__).parents[2] / "Makefile"
         recipe = makefile.read_text(encoding="utf-8").split(
@@ -584,6 +670,227 @@ class FileTransferAndroidSmokeGateTests(unittest.TestCase):
             item for item in result["checks"] if item["name"] == "android_file_transfer_smoke"
         )
         self.assertEqual(android_gate["status"], "pass")
+
+    def test_android_log_accepts_after_782_raw_instrumentation_results(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                AFTER_782_TEST_RESULTS_LOG.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "pass")
+        android_gate = next(
+            item for item in result["checks"] if item["name"] == "android_file_transfer_smoke"
+        )
+        self.assertEqual(android_gate["status"], "pass")
+
+    def test_android_log_rejects_raw_instrumentation_failure_code(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            methods = FILE_TRANSFER_METHODS[:-1] + (
+                (
+                    "dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest",
+                    "outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable",
+                ),
+            )
+            body = []
+            for current, (class_name, test_name) in enumerate(methods, start=1):
+                body.append(
+                    instrumentation_record(
+                        class_name,
+                        test_name,
+                        current,
+                        numtests=len(methods),
+                        finish_code=-2 if current == len(methods) else 0,
+                    )
+                )
+            paths["android_log"].write_text(
+                "".join(body) + f"OK ({len(methods)} tests)\n\nINSTRUMENTATION_CODE: -1\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any("non-pass status code -2" in blocker for blocker in result["blockers"]),
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_raw_instrumentation_missing_expected_method(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            paths["android_log"].write_text(
+                file_transfer_instrumentation_success_log(FILE_TRANSFER_METHODS[:-1]),
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any("outgoingConfirmationLayoutKeepsPreflightDetailsReadableAndScrollable" in blocker for blocker in result["blockers"]),
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_truncated_raw_instrumentation_numtests(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            body = [
+                instrumentation_record(class_name, test_name, current, numtests=135)
+                for current, (class_name, test_name) in enumerate(FILE_TRANSFER_METHODS, start=1)
+            ]
+            paths["android_log"].write_text(
+                "".join(body) + "OK (5 tests)\n\nINSTRUMENTATION_CODE: -1\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any("numtests must match parsed passed records (135 != 5)" in blocker for blocker in result["blockers"]),
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_success_markers_before_status_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            body = [
+                instrumentation_record(
+                    class_name,
+                    test_name,
+                    current,
+                    numtests=len(FILE_TRANSFER_METHODS),
+                )
+                for current, (class_name, test_name) in enumerate(FILE_TRANSFER_METHODS, start=1)
+            ]
+            paths["android_log"].write_text(
+                "OK (5 tests)\nINSTRUMENTATION_CODE: -1\n" + "".join(body),
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any("OK summary must follow the final STATUS_CODE" in blocker for blocker in result["blockers"]),
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_final_code_before_ok_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            body = [
+                instrumentation_record(
+                    class_name,
+                    test_name,
+                    current,
+                    numtests=len(FILE_TRANSFER_METHODS),
+                )
+                for current, (class_name, test_name) in enumerate(FILE_TRANSFER_METHODS, start=1)
+            ]
+            paths["android_log"].write_text(
+                "".join(body) + "INSTRUMENTATION_CODE: -1\nOK (5 tests)\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(
+            any("final INSTRUMENTATION_CODE must follow the OK summary" in blocker for blocker in result["blockers"]),
+            result["blockers"],
+        )
+
+    def test_android_log_rejects_raw_instrumentation_test_before_class(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            class_name, test_name = FILE_TRANSFER_METHODS[0]
+            paths["android_log"].write_text(
+                instrumentation_record(class_name, test_name, 1, numtests=1, class_before_test=False)
+                + "OK (1 test)\n\nINSTRUMENTATION_CODE: -1\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(any("test before class" in blocker for blocker in result["blockers"]))
+
+    def test_android_log_rejects_raw_instrumentation_duplicate_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            root = Path(directory_name)
+            paths = write_pass_inputs(root)
+            class_name, test_name = FILE_TRANSFER_METHODS[0]
+            record = instrumentation_record(class_name, test_name, 1, numtests=2)
+            paths["android_log"].write_text(
+                record + record + "OK (2 tests)\n\nINSTRUMENTATION_CODE: -1\n",
+                encoding="utf-8",
+            )
+
+            result = derive_gate(
+                host_readiness=paths["host"],
+                usb_preflight=paths["usb"],
+                trusted_lan_preflight=paths["lan"],
+                android_file_transfer_instrumentation_log=paths["android_log"],
+                product_e2e=paths["product"],
+            )
+
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertTrue(any("repeats a completed test boundary" in blocker for blocker in result["blockers"]))
 
     def test_android_log_accepts_later_file_transfer_class_summary(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
