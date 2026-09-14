@@ -96,7 +96,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
     }
 
     @Test
-    fun productionIncomingOfferDialogKeepsActionsReadableAndNonDuplicated() {
+    fun renderedIncomingOfferDialogKeepsActionsReadableAndNonDuplicated() {
         productionDialogConfigurations().forEach { configuration ->
             var accepted = 0
             var rejected = 0
@@ -119,14 +119,12 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     "reject click is handled by the incoming offer callback",
                     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
                 )
-                assertTrue(
-                    "late accept click reaches the same incoming decision",
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
-                )
             }
             assertEquals("reject must not accept the incoming offer", 0, accepted)
             assertEquals("reject callback is delivered exactly once", 1, rejected)
 
+            accepted = 0
+            rejected = 0
             withFileTransferBusinessDialog(
                 configuration = configuration,
                 kind = FileTransferBusinessDialogKind.INCOMING,
@@ -137,18 +135,14 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     "accept click is handled by the incoming offer callback",
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
                 )
-                assertTrue(
-                    "late reject click reaches the same incoming decision",
-                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
-                )
             }
             assertEquals("accept callback is delivered exactly once", 1, accepted)
-            assertEquals("accept must not run the reject callback", 1, rejected)
+            assertEquals("accept must not run the reject callback", 0, rejected)
         }
     }
 
     @Test
-    fun productionOutgoingPreflightDialogKeepsActionsReadableAndNonDuplicated() {
+    fun renderedOutgoingPreflightDialogKeepsActionsReadableAndNonDuplicated() {
         productionDialogConfigurations().forEach { configuration ->
             var sent = 0
             var cancelled = 0
@@ -171,14 +165,12 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     "cancel click is handled by the outgoing preflight callback",
                     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
                 )
-                assertTrue(
-                    "late send click reaches the same outgoing decision",
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
-                )
             }
             assertEquals("cancel must not send the outgoing file", 0, sent)
             assertEquals("cancel callback is delivered exactly once", 1, cancelled)
 
+            sent = 0
+            cancelled = 0
             withFileTransferBusinessDialog(
                 configuration = configuration,
                 kind = FileTransferBusinessDialogKind.OUTGOING,
@@ -189,13 +181,9 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     "send click is handled by the outgoing preflight callback",
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(),
                 )
-                assertTrue(
-                    "late cancel click reaches the same outgoing decision",
-                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
-                )
             }
             assertEquals("send callback is delivered exactly once", 1, sent)
-            assertEquals("send must not run the cancel callback", 1, cancelled)
+            assertEquals("send must not run the cancel callback", 0, cancelled)
         }
     }
 
@@ -326,7 +314,6 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
         var dialog: AlertDialog? = null
         var contentView: ScrollView? = null
         var assertionFailure: Throwable? = null
-        var decided = false
         DialogHostActivity.configurationOverride =
             DialogHostActivity.ConfigurationOverride(
                 widthDp = configuration.widthDp,
@@ -350,13 +337,9 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                                 .setTitle(kind.titleRes)
                                 .setView(content)
                                 .setPositiveButton(kind.positiveButtonRes) { _, _ ->
-                                    if (decided) return@setPositiveButton
-                                    decided = true
                                     onPositive()
                                 }
                                 .setNegativeButton(kind.negativeButtonRes) { _, _ ->
-                                    if (decided) return@setNegativeButton
-                                    decided = true
                                     onNegative()
                                 }
                                 .show()
@@ -755,8 +738,14 @@ private fun AlertDialog.assertNoDuplicateTalkBackSemantics(
     assertNull("positive action should not duplicate itself as a content description", positive.contentDescription)
     assertNull("negative action should not duplicate itself as a content description", negative.contentDescription)
     content.forEachTextView { textView ->
+        val label =
+            if (textView.id == View.NO_ID) {
+                "anonymous text view"
+            } else {
+                textView.resources.getResourceEntryName(textView.id)
+            }
         assertNull(
-            "${textView.resources.getResourceEntryName(textView.id)} should not duplicate itself as a content description",
+            "$label should not duplicate itself as a content description",
             textView.contentDescription,
         )
     }
