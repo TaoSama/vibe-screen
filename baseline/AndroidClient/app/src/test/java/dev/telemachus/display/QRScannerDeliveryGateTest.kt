@@ -52,9 +52,38 @@ class QRScannerDeliveryGateTest {
 
         assertTrue(gate.tryClaimAccepted(VALID_PAIRING_QR))
 
-        val snapshot = gate.snapshotForSave()
+        val snapshot = gate.markStateSavedAndSnapshot()
         assertEquals(QRScannerDeliveryClaimState.CLAIMED_ACCEPTED, snapshot.claimState)
         assertEquals(VALID_PAIRING_QR, snapshot.pendingRaw)
+        assertFalse(gate.tryClaimAccepted("vibescreen://pair?v=1&o=second"))
+    }
+
+    @Test
+    fun stateSavedSnapshotRejectsLaterClaimsFromOldInstance() {
+        val gate = QRScannerDeliveryGate()
+
+        val snapshot = gate.markStateSavedAndSnapshot()
+
+        assertEquals(QRScannerDeliveryClaimState.UNCLAIMED, snapshot.claimState)
+        assertNull(snapshot.pendingRaw)
+        assertFalse(gate.tryClaimAccepted(VALID_PAIRING_QR))
+        assertFalse(gate.tryClaimInvalid())
+        val finalSnapshot = gate.snapshotForSave()
+        assertEquals(QRScannerDeliveryClaimState.UNCLAIMED, finalSnapshot.claimState)
+        assertNull(finalSnapshot.pendingRaw)
+    }
+
+    @Test
+    fun reopenAfterStateSaveAllowsSameInstanceToScanAgain() {
+        val gate = QRScannerDeliveryGate()
+
+        gate.markStateSavedAndSnapshot()
+        assertFalse(gate.tryClaimAccepted(VALID_PAIRING_QR))
+
+        gate.reopenAfterStateSave()
+
+        assertTrue(gate.tryClaimAccepted(VALID_PAIRING_QR))
+        assertEquals(VALID_PAIRING_QR, gate.pendingResultRaw())
     }
 
     @Test
@@ -98,21 +127,22 @@ class QRScannerDeliveryGateTest {
     }
 
     @Test
-    fun concurrentSaveAroundAcceptedClaimOnlySeesNoPayloadOrFullPayload() {
+    fun concurrentStateSaveAndAcceptedClaimCannotLoseAcceptedPayload() {
         val gate = QRScannerDeliveryGate()
         val ready = CountDownLatch(2)
         val start = CountDownLatch(1)
         val savedSnapshot = AtomicReference<QRScannerDeliverySnapshot>()
+        val claimResult = AtomicReference<Boolean>()
 
         val writer = Thread({
             ready.countDown()
             start.await()
-            gate.tryClaimAccepted(VALID_PAIRING_QR)
+            claimResult.set(gate.tryClaimAccepted(VALID_PAIRING_QR))
         }, "qr-accepted-writer")
         val saver = Thread({
             ready.countDown()
             start.await()
-            savedSnapshot.set(gate.snapshotForSave())
+            savedSnapshot.set(gate.markStateSavedAndSnapshot())
         }, "qr-state-saver")
 
         writer.start()
@@ -123,14 +153,38 @@ class QRScannerDeliveryGateTest {
         saver.join()
 
         val saved = savedSnapshot.get()
-        assertTrue(
-            "A concurrent save may run before the accepted claim or after the raw is bound, but never sees a partial accepted state",
-            (saved.claimState == QRScannerDeliveryClaimState.UNCLAIMED && saved.pendingRaw == null) ||
-                (saved.claimState == QRScannerDeliveryClaimState.CLAIMED_ACCEPTED && saved.pendingRaw == VALID_PAIRING_QR),
-        )
         val finalSnapshot = gate.snapshotForSave()
-        assertEquals(QRScannerDeliveryClaimState.CLAIMED_ACCEPTED, finalSnapshot.claimState)
-        assertEquals(VALID_PAIRING_QR, finalSnapshot.pendingRaw)
+        when (saved.claimState) {
+            QRScannerDeliveryClaimState.UNCLAIMED -> {
+                assertNull(saved.pendingRaw)
+                assertEquals(false, claimResult.get())
+                assertEquals(QRScannerDeliveryClaimState.UNCLAIMED, finalSnapshot.claimState)
+                assertNull(finalSnapshot.pendingRaw)
+            }
+            QRScannerDeliveryClaimState.CLAIMED_ACCEPTED -> {
+                assertEquals(VALID_PAIRING_QR, saved.pendingRaw)
+                assertEquals(true, claimResult.get())
+                assertEquals(QRScannerDeliveryClaimState.CLAIMED_ACCEPTED, finalSnapshot.claimState)
+                assertEquals(VALID_PAIRING_QR, finalSnapshot.pendingRaw)
+            }
+            QRScannerDeliveryClaimState.CLAIMED_INVALID -> error("unexpected invalid state")
+        }
+    }
+
+    @Test
+    fun stateSaveDuringInvalidInFlightDoesNotReopenAfterRetryRelease() {
+        val gate = QRScannerDeliveryGate()
+
+        assertTrue(gate.tryClaimInvalid())
+        val snapshot = gate.markStateSavedAndSnapshot()
+        assertEquals(QRScannerDeliveryClaimState.CLAIMED_INVALID, snapshot.claimState)
+        assertNull(snapshot.pendingRaw)
+
+        gate.releaseForRetry()
+
+        assertFalse(gate.tryClaimAccepted(VALID_PAIRING_QR))
+        gate.reopenAfterStateSave()
+        assertTrue(gate.tryClaimAccepted(VALID_PAIRING_QR))
     }
 
     @Test

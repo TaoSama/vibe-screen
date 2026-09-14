@@ -63,9 +63,14 @@ class QRScannerActivity : AppCompatActivity() {
         startCamera()
     }
 
+    override fun onStart() {
+        super.onStart()
+        resultDeliveryGate.reopenAfterStateSave()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(KEY_WAITING_FOR_SETTINGS_GRANT, waitingForSettingsGrant)
-        val deliverySnapshot = resultDeliveryGate.snapshotForSave()
+        val deliverySnapshot = resultDeliveryGate.markStateSavedAndSnapshot()
         deliverySnapshot.pendingRaw?.let { outState.putString(KEY_PENDING_RESULT_RAW, it) }
         super.onSaveInstanceState(outState)
     }
@@ -399,12 +404,20 @@ internal enum class QRScannerDeliveryClaimState {
 internal class QRScannerDeliveryGate {
     private val lock = Any()
     private var state: State = State.Idle
+    private var stateSaved = false
 
     fun isClaimed(): Boolean = synchronized(lock) { state !is State.Idle }
 
     fun restorePending(raw: String?) {
         synchronized(lock) {
+            stateSaved = false
             state = raw?.let(State::Accepted) ?: State.Idle
+        }
+    }
+
+    fun reopenAfterStateSave() {
+        synchronized(lock) {
+            stateSaved = false
         }
     }
 
@@ -412,7 +425,7 @@ internal class QRScannerDeliveryGate {
 
     fun tryClaimInvalid(): Boolean =
         synchronized(lock) {
-            if (state !is State.Idle) {
+            if (stateSaved || state !is State.Idle) {
                 false
             } else {
                 state = State.InvalidInFlight
@@ -422,7 +435,7 @@ internal class QRScannerDeliveryGate {
 
     fun tryClaimAccepted(raw: String): Boolean =
         synchronized(lock) {
-            if (state !is State.Idle) {
+            if (stateSaved || state !is State.Idle) {
                 false
             } else {
                 state = State.Accepted(raw)
@@ -440,6 +453,15 @@ internal class QRScannerDeliveryGate {
 
     fun snapshotForSave(): QRScannerDeliverySnapshot =
         synchronized(lock) {
+            QRScannerDeliverySnapshot(
+                claimState = state.claimState(),
+                pendingRaw = state.acceptedRaw(),
+            )
+        }
+
+    fun markStateSavedAndSnapshot(): QRScannerDeliverySnapshot =
+        synchronized(lock) {
+            stateSaved = true
             QRScannerDeliverySnapshot(
                 claimState = state.claimState(),
                 pendingRaw = state.acceptedRaw(),
