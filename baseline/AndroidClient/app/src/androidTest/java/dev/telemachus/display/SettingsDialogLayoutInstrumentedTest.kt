@@ -943,7 +943,7 @@ class SettingsDialogLayoutInstrumentedTest {
             maximumLineWidth <= contentWidth,
         )
         assertTrue(
-            "$label line fits height",
+            "$label line fits height: lineBottom=${textLayout.getLineBottom(textLayout.lineCount - 1)} height=${button.height} paddingBottom=${button.compoundPaddingBottom} paddingTop=${button.compoundPaddingTop} paddingLeft=${button.compoundPaddingLeft} paddingRight=${button.compoundPaddingRight} contentWidth=$contentWidth minHeight=${button.minHeight} minimumHeight=${button.minimumHeight} lineHeight=${button.lineHeight} lineCount=${textLayout.lineCount} isAllCaps=${button.isAllCaps} transformed='${button.transformationMethod?.getTransformation(button.text, button)}'",
             textLayout.getLineBottom(textLayout.lineCount - 1) <= button.height - button.compoundPaddingBottom,
         )
     }
