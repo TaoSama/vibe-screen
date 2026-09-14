@@ -14,16 +14,24 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.widget.NestedScrollView
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.RootMatchers.isDialog
+import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.button.MaterialButton
+import org.hamcrest.Description
+import org.hamcrest.Matcher
+import org.hamcrest.TypeSafeMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -1070,8 +1078,30 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 "Open-source notices dialog title should be visible after clicking the production entry point",
                 instrumentation.waitForVisibleText(expectedTitle),
             )
+            onView(withId(android.R.id.button1))
+                .inRoot(isDialog())
+                .check(matches(isReadableNoticesDialogActionButton()))
         }
     }
+
+    private fun isReadableNoticesDialogActionButton(): Matcher<View> =
+        object : TypeSafeMatcher<View>() {
+            override fun describeTo(description: Description) {
+                description.appendText("a readable open-source notices dialog action button")
+            }
+
+            override fun matchesSafely(view: View): Boolean {
+                val button = view as? Button ?: return false
+                val minimumTouchTarget = dp(button.context, 48)
+                return button.isEnabled &&
+                    button.width >= minimumTouchTarget &&
+                    button.height >= minimumTouchTarget &&
+                    button.maxLines == 2 &&
+                    !button.isSingleLine &&
+                    button.ellipsize == null &&
+                    !button.isHorizontallyScrollable
+            }
+        }
 
     private fun android.app.Instrumentation.ensureInteractiveDevice(
         timeoutMs: Long = 5_000L,

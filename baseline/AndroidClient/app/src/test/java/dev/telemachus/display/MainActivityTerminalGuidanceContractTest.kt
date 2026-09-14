@@ -45,6 +45,34 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun terminalFallbackDialogsApplyReadableActionLayoutAfterShowing() {
+        val source = mainActivitySource()
+        val noticesDialog = extractMethod(source, "private fun showOpenSourceNotices").replace(Regex("\\s+"), "")
+        val showError = extractMethod(source, "private fun showError").replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Open-source notices must adapt the positive action after the dialog is shown",
+            noticesDialog.contains(
+                "showImmersiveDialog(MaterialAlertDialogBuilder(this)" +
+                    ".setTitle(R.string.open_source_notices_title)" +
+                    ".setMessage(notice)" +
+                    ".setPositiveButton(android.R.string.ok,null),)" +
+                    ".also(DialogActionButtonLayoutApplier::apply)",
+            ),
+        )
+        assertTrue(
+            "Terminal error dialogs must adapt the positive action after the dialog is shown",
+            showError.contains(
+                "showImmersiveDialog(MaterialAlertDialogBuilder(this)" +
+                    ".setTitle(R.string.connection_error_title)" +
+                    ".setMessage(message)" +
+                    ".setPositiveButton(android.R.string.ok,null),)" +
+                    ".also(DialogActionButtonLayoutApplier::apply)",
+            ),
+        )
+    }
+
+    @Test
     fun onSessionEndedUsesRetainedSessionPortInsteadOfCurrentUiPort() {
         val callback = onSessionEndedCallback(mainActivitySource())
         val compactCallback = callback.replace(Regex("\\s+"), " ")
@@ -376,6 +404,7 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(showError.contains("MaterialAlertDialogBuilder(this)"))
         assertTrue(showError.contains("R.string.connection_error_title"))
         assertTrue(showError.contains("android.R.string.ok"))
+        assertTrue(showError.contains(".also(DialogActionButtonLayoutApplier::apply)"))
         assertFalse(showError.contains("android.app.AlertDialog"))
         assertFalse(showError.contains("Connection Error"))
         assertFalse(showError.contains("\"OK\""))
@@ -823,7 +852,8 @@ class MainActivityTerminalGuidanceContractTest {
                 noticeDialog.contains("assets.open(DEPENDENCY_LICENSES_ASSET)") &&
                 noticeDialog.contains("MaterialAlertDialogBuilder(this)") &&
                 noticeDialog.contains("setTitle(R.string.open_source_notices_title)") &&
-                noticeDialog.contains("showImmersiveDialog("),
+                noticeDialog.contains("showImmersiveDialog(") &&
+                noticeDialog.contains(".also(DialogActionButtonLayoutApplier::apply)"),
         )
     }
 

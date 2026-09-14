@@ -1693,7 +1693,7 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(R.string.open_source_notices_title)
                 .setMessage(notice)
                 .setPositiveButton(android.R.string.ok, null),
-        )
+        ).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun showError(message: String) {
@@ -1703,7 +1703,7 @@ class MainActivity : AppCompatActivity() {
                     .setTitle(R.string.connection_error_title)
                     .setMessage(message)
                     .setPositiveButton(android.R.string.ok, null),
-            )
+            ).also(DialogActionButtonLayoutApplier::apply)
         }
     }
 
