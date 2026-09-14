@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.annotation.TargetApi
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.net.Uri
@@ -82,6 +83,7 @@ internal interface MediaStoreDownloadsCollection {
     fun delete(uri: Uri)
 }
 
+@TargetApi(Build.VERSION_CODES.Q)
 internal class ContentResolverMediaStoreDownloadsCollection(
     private val contentResolver: ContentResolver,
 ) : MediaStoreDownloadsCollection {
