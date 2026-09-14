@@ -172,7 +172,7 @@ internal object AppSpecificDownloadsSaver {
         throw IOException("Unable to allocate downloads file name")
     }
 
-    private fun copyFileTo(
+    fun copyFileTo(
         source: File,
         output: OutputStream,
     ) {
