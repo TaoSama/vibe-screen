@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -707,18 +708,27 @@ private fun AlertDialog.assertCustomContentStaysAboveActions(
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
     val actionTop = minOf(positive.screenTop(), negative.screenTop())
     val contentBottom = content.screenBottom()
-    val decorBottom = checkNotNull(window?.decorView) { "dialog decor exists" }.screenBottom()
+    val decorView = checkNotNull(window?.decorView) { "dialog decor exists" }
+    val decorBottom = decorView.screenBottom()
     val screenBottom = activity.window.decorView.screenBottom()
+    val visibleFrame = Rect()
+    decorView.getWindowVisibleDisplayFrame(visibleFrame)
     val geometry =
         "contentBottom=$contentBottom actionTop=$actionTop " +
             "contentTop=${content.screenTop()} contentHeight=${content.height} " +
             "positiveTop=${positive.screenTop()} positiveHeight=${positive.height} " +
             "negativeTop=${negative.screenTop()} negativeHeight=${negative.height} " +
-            "decorBottom=$decorBottom screenBottom=$screenBottom"
+            "decorBottom=$decorBottom screenBottom=$screenBottom " +
+            "visibleFrameBottom=${visibleFrame.bottom}"
 
     assertTrue("file-transfer dialog content stays above actions: $geometry", contentBottom <= actionTop)
     assertTrue("file-transfer dialog content has a visible top edge", content.screenTop() >= 0)
     assertTrue("file-transfer dialog actions are visible", positive.screenBottom() > actionTop && negative.screenBottom() > actionTop)
+    assertTrue("file-transfer dialog visible frame is available: $geometry", !visibleFrame.isEmpty)
+    assertTrue(
+        "file-transfer dialog actions stay inside the visible window: $geometry",
+        positive.screenBottom() <= visibleFrame.bottom && negative.screenBottom() <= visibleFrame.bottom,
+    )
     assertTrue(
         "file-transfer dialog actions stay within decor bounds: $geometry",
         positive.screenBottom() <= decorBottom && negative.screenBottom() <= decorBottom,
