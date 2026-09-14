@@ -1,0 +1,8 @@
+repository=TaoSama/vibe-screen
+branch=codex/settings-layout-p0110-evidence
+base_head=7a2b53df6c95f5b24a32f399728bd06522952b37
+origin_main=7a2b53df6c95f5b24a32f399728bd06522952b37
+base_subject=fix(android): improve settings choice accessibility (#780)
+date=2026-09-14
+timezone=Asia/Shanghai
+local_change=Adds retained SettingsDialogLayoutInstrumentedTest focused Nubia P0110 evidence after the Settings accessibility fix reached origin/main.

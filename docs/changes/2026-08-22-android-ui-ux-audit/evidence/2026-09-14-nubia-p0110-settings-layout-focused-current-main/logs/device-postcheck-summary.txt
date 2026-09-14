@@ -1,0 +1,4 @@
+pre_reverse_empty=true
+post_reverse_empty=true
+post_processes=none
+post_instrumentation_package=not_installed

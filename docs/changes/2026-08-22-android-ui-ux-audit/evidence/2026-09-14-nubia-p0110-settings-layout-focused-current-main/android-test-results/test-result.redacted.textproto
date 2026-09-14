@@ -1,0 +1,1576 @@
+# 2026-09-14T11:00:14.638198Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 30
+}
+test_status: PASSED
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "transferReadinessUsesSinglePoliteLiveRegion"
+    start_time {
+      seconds: 1789383611
+      nanos: 533000000
+    }
+    end_time {
+      seconds: 1789383611
+      nanos: 641000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-transferReadinessUsesSinglePoliteLiveRegion.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText"
+    start_time {
+      seconds: 1789383611
+      nanos: 649000000
+    }
+    end_time {
+      seconds: 1789383611
+      nanos: 681000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "settingsActionButtonsGrowToTwoLinesForLongLabels"
+    start_time {
+      seconds: 1789383611
+      nanos: 683000000
+    }
+    end_time {
+      seconds: 1789383611
+      nanos: 717000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-settingsActionButtonsGrowToTwoLinesForLongLabels.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow"
+    start_time {
+      seconds: 1789383611
+      nanos: 718000000
+    }
+    end_time {
+      seconds: 1789383611
+      nanos: 782000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "unavailableVideoControlsExposeNoteInsteadOfDeadControls"
+    start_time {
+      seconds: 1789383611
+      nanos: 785000000
+    }
+    end_time {
+      seconds: 1789383611
+      nanos: 898000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-unavailableVideoControlsExposeNoteInsteadOfDeadControls.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion"
+    start_time {
+      seconds: 1789383611
+      nanos: 900000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 68000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "videoChoiceGroupsPreserveSelectionAcrossPhoneAndLandscapeReflows"
+    start_time {
+      seconds: 1789383612
+      nanos: 73000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 114000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-videoChoiceGroupsPreserveSelectionAcrossPhoneAndLandscapeReflows.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices"
+    start_time {
+      seconds: 1789383612
+      nanos: 122000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 193000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls"
+    start_time {
+      seconds: 1789383612
+      nanos: 197000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 261000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "showStatsRowKeepsHorizontalLayoutWhenContentFits"
+    start_time {
+      seconds: 1789383612
+      nanos: 266000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 273000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-showStatsRowKeepsHorizontalLayoutWhenContentFits.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "sixHundredDpPortraitWindowKeepsOneSettingsColumn"
+    start_time {
+      seconds: 1789383612
+      nanos: 275000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 306000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-sixHundredDpPortraitWindowKeepsOneSettingsColumn.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "largeTextStacksOptionGroupsWithoutClipping"
+    start_time {
+      seconds: 1789383612
+      nanos: 310000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 399000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-largeTextStacksOptionGroupsWithoutClipping.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "wideWindowKeepsOptionGroupsHorizontal"
+    start_time {
+      seconds: 1789383612
+      nanos: 404000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 437000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-wideWindowKeepsOptionGroupsHorizontal.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "showStatsRowRestoresLayoutAcrossNarrowWideReflow"
+    start_time {
+      seconds: 1789383612
+      nanos: 439000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 473000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-showStatsRowRestoresLayoutAcrossNarrowWideReflow.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "opacitySliderKeepsAccessibilityContract"
+    start_time {
+      seconds: 1789383612
+      nanos: 480000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 483000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-opacitySliderKeepsAccessibilityContract.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable"
+    start_time {
+      seconds: 1789383612
+      nanos: 484000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 543000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions"
+    start_time {
+      seconds: 1789383612
+      nanos: 545000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 578000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics"
+    start_time {
+      seconds: 1789383612
+      nanos: 579000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 609000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "settingsActionButtonsRestoreWrappingAfterRotationReflow"
+    start_time {
+      seconds: 1789383612
+      nanos: 610000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 643000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-settingsActionButtonsRestoreWrappingAfterRotationReflow.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "videoAndGestureChoiceLabelsKeepTalkBackSemantics"
+    start_time {
+      seconds: 1789383612
+      nanos: 644000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 746000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-videoAndGestureChoiceLabelsKeepTalkBackSemantics.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "narrowPhoneWindowsStackOptionGroupsWithoutClipping"
+    start_time {
+      seconds: 1789383612
+      nanos: 750000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 784000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-narrowPhoneWindowsStackOptionGroupsWithoutClipping.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "showStatsRowStaysReadableAndReachableOnNarrowLargeText"
+    start_time {
+      seconds: 1789383612
+      nanos: 785000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 880000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-showStatsRowStaysReadableAndReachableOnNarrowLargeText.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "smallTabletPortraitKeepsSettingsSingleColumnForReadableCards"
+    start_time {
+      seconds: 1789383612
+      nanos: 882000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 885000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-smallTabletPortraitKeepsSettingsSingleColumnForReadableCards.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "allChoiceGroupsStayDistinctOnLargeTextPhonesAndShortLandscape"
+    start_time {
+      seconds: 1789383612
+      nanos: 886000000
+    }
+    end_time {
+      seconds: 1789383612
+      nanos: 980000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-allChoiceGroupsStayDistinctOnLargeTextPhonesAndShortLandscape.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows"
+    start_time {
+      seconds: 1789383612
+      nanos: 982000000
+    }
+    end_time {
+      seconds: 1789383613
+      nanos: 129000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "settingsSectionsExposeScreenReaderHeadings"
+    start_time {
+      seconds: 1789383613
+      nanos: 132000000
+    }
+    end_time {
+      seconds: 1789383613
+      nanos: 165000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-settingsSectionsExposeScreenReaderHeadings.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText"
+    start_time {
+      seconds: 1789383613
+      nanos: 168000000
+    }
+    end_time {
+      seconds: 1789383613
+      nanos: 261000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "sixHundredDpLandscapeWindowUsesTwoSettingsColumns"
+    start_time {
+      seconds: 1789383613
+      nanos: 264000000
+    }
+    end_time {
+      seconds: 1789383613
+      nanos: 299000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-sixHundredDpLandscapeWindowUsesTwoSettingsColumns.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "capturesSustainedUseStatusEvidenceImages"
+    start_time {
+      seconds: 1789383613
+      nanos: 303000000
+    }
+    end_time {
+      seconds: 1789383613
+      nanos: 751000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-capturesSustainedUseStatusEvidenceImages.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "SettingsDialogLayoutInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "videoChoiceGroupsRemainReadableOnLargeTextPhonesAndShortLandscape"
+    start_time {
+      seconds: 1789383613
+      nanos: 758000000
+    }
+    end_time {
+      seconds: 1789383613
+      nanos: 886000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.SettingsDialogLayoutInstrumentedTest-videoChoiceGroupsRemainReadableOnLargeTextPhonesAndShortLandscape.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "<workspace>/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/testlog/test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}

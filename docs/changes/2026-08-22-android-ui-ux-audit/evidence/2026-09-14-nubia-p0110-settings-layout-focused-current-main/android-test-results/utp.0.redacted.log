@@ -1,0 +1,58 @@
+INFO: Constructing runner from config.
+INFO: Configuring Android Instrumentation driver: android_instrumentation_runtime {
+  instrumentation_info {
+    app_package: "dev.telemachus.display"
+    test_package: "dev.telemachus.display.test"
+    test_runner_class: "androidx.test.runner.AndroidJUnitRunner"
+  }
+  instrumentation_args {
+    args_map {
+      key: "additionalTestOutputDir"
+      value: "/sdcard/Android/media/dev.telemachus.display/additional_test_output"
+    }
+    args_map {
+      key: "class"
+      value: "dev.telemachus.display.SettingsDialogLayoutInstrumentedTest"
+    }
+  }
+}
+am_instrument_timeout: 31536000
+
+INFO: No installables found in test fixture. Nothing to install.
+INFO: Installing [<workspace>/baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk] on device <redacted-adb-serial>.
+INFO: Installing [<workspace>/baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk] on device <redacted-adb-serial>.
+INFO: Start logcat streaming.
+INFO: Running Android Instrumentation driver.
+INFO: Stop logcat streaming.
+INFO: Uninstalling dev.telemachus.display for device <redacted-adb-serial>.
+INFO: Uninstalling dev.telemachus.display.test for device <redacted-adb-serial>.
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.transferReadinessUsesSinglePoliteLiveRegion: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.settingsActionButtonsGrowToTwoLinesForLongLabels: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.unavailableVideoControlsExposeNoteInsteadOfDeadControls: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.videoChoiceGroupsPreserveSelectionAcrossPhoneAndLandscapeReflows: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.showStatsRowKeepsHorizontalLayoutWhenContentFits: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.sixHundredDpPortraitWindowKeepsOneSettingsColumn: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.largeTextStacksOptionGroupsWithoutClipping: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.wideWindowKeepsOptionGroupsHorizontal: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.showStatsRowRestoresLayoutAcrossNarrowWideReflow: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.opacitySliderKeepsAccessibilityContract: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.settingsActionButtonsRestoreWrappingAfterRotationReflow: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.videoAndGestureChoiceLabelsKeepTalkBackSemantics: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.narrowPhoneWindowsStackOptionGroupsWithoutClipping: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.showStatsRowStaysReadableAndReachableOnNarrowLargeText: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.smallTabletPortraitKeepsSettingsSingleColumnForReadableCards: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.allChoiceGroupsStayDistinctOnLargeTextPhonesAndShortLandscape: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.settingsSectionsExposeScreenReaderHeadings: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.sixHundredDpLandscapeWindowUsesTwoSettingsColumns: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.capturesSustainedUseStatusEvidenceImages: PASSED
+INFO: Execute dev.telemachus.display.SettingsDialogLayoutInstrumentedTest.videoChoiceGroupsRemainReadableOnLargeTextPhonesAndShortLandscape: PASSED

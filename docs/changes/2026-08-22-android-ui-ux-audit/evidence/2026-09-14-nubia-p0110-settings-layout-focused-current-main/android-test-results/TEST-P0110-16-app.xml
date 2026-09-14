@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" tests="30" failures="0" errors="0" skipped="0" time="3.073" timestamp="2026-09-14T11:00:14" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="transferReadinessUsesSinglePoliteLiveRegion" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.093" />
+  <testcase name="scaleModeGroupStacksInResponsiveProductionLayoutOnNarrowLargeText" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.031" />
+  <testcase name="settingsActionButtonsGrowToTwoLinesForLongLabels" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="capabilityCopyStaysReadableScrollableAndRestoresAfterResponsiveReflow" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.062" />
+  <testcase name="unavailableVideoControlsExposeNoteInsteadOfDeadControls" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.114" />
+  <testcase name="audioReadinessCardStaysReadableAndUsesSinglePoliteLiveRegion" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.171" />
+  <testcase name="videoChoiceGroupsPreserveSelectionAcrossPhoneAndLandscapeReflows" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.041" />
+  <testcase name="p0110LandscapeInitialSettingsViewportShowsSustainedUseAndVideoChoices" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.073" />
+  <testcase name="unavailableGestureShortcutControlsExposeNoteInsteadOfDeadControls" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.064" />
+  <testcase name="showStatsRowKeepsHorizontalLayoutWhenContentFits" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.005" />
+  <testcase name="sixHundredDpPortraitWindowKeepsOneSettingsColumn" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.035" />
+  <testcase name="largeTextStacksOptionGroupsWithoutClipping" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.091" />
+  <testcase name="wideWindowKeepsOptionGroupsHorizontal" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="showStatsRowRestoresLayoutAcrossNarrowWideReflow" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.038" />
+  <testcase name="opacitySliderKeepsAccessibilityContract" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.0" />
+  <testcase name="smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.059" />
+  <testcase name="smallTabletLandscapeUsesTwoSettingsColumnsWithoutLosingActions" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="repeatedResponsiveLayoutPreservesToggleSelectionAndSemantics" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.029" />
+  <testcase name="settingsActionButtonsRestoreWrappingAfterRotationReflow" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.033" />
+  <testcase name="videoAndGestureChoiceLabelsKeepTalkBackSemantics" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.104" />
+  <testcase name="narrowPhoneWindowsStackOptionGroupsWithoutClipping" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.034" />
+  <testcase name="showStatsRowStaysReadableAndReachableOnNarrowLargeText" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.095" />
+  <testcase name="smallTabletPortraitKeepsSettingsSingleColumnForReadableCards" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.003" />
+  <testcase name="allChoiceGroupsStayDistinctOnLargeTextPhonesAndShortLandscape" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.092" />
+  <testcase name="settingsActionButtonsWrapWithoutEllipsizingAcrossCompactWindows" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.149" />
+  <testcase name="settingsSectionsExposeScreenReaderHeadings" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.031" />
+  <testcase name="videoBitrateSliderKeepsVisibleLabelSemanticsOnNarrowLargeText" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.091" />
+  <testcase name="sixHundredDpLandscapeWindowUsesTwoSettingsColumns" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.036" />
+  <testcase name="capturesSustainedUseStatusEvidenceImages" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.45" />
+  <testcase name="videoChoiceGroupsRemainReadableOnLargeTextPhonesAndShortLandscape" classname="dev.telemachus.display.SettingsDialogLayoutInstrumentedTest" time="0.129" />
+</testsuite>
