@@ -43,16 +43,16 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 acceptDecision.contains("respond(false, rejectionReason)") &&
                 acceptDecision.contains("return@setPositiveButton") &&
                 acceptDecision.contains("""if (respond(true, ""))""") &&
-                assertBeforeValue(acceptDecision, "val rejectionReason =", "if (!finishDecision()) return@setPositiveButton") &&
+                assertBeforeValue(acceptDecision, "val rejectionReason =", "if (!decision.tryFinish(finishDecision)) return@setPositiveButton") &&
                 assertBeforeValue(acceptDecision, "if (rejectionReason != null)", """if (respond(true, ""))"""),
         )
         assertTrue(
             "Incoming offer accept/reject/cancel decisions should retain once-only guards while applying dialog button layout",
-            promptOffer.contains("var decided = false") &&
-                acceptDecision.contains("if (decided) return@setPositiveButton") &&
-                acceptDecision.contains("decided = true") &&
+            promptOffer.contains("val decision = FileTransferDialogDecision()") &&
+                acceptDecision.contains("if (!decision.isPending) return@setPositiveButton") &&
+                acceptDecision.contains("if (!decision.tryFinish(finishDecision)) return@setPositiveButton") &&
                 promptOffer.contains("val rejectDecision = {") &&
-                promptOffer.contains("pendingIncomingFileDialog != null && !decided && finishDecision()") &&
+                promptOffer.contains("pendingIncomingFileDialog != null && decision.tryFinish(finishDecision)") &&
                 promptOffer.contains(".setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }") &&
                 promptOffer.contains(".setOnCancelListener { rejectDecision() }"),
         )
@@ -315,11 +315,10 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Outgoing send/cancel decisions should retain once-only guards while applying dialog button layout",
-            promptOutgoing.contains("var decided = false") &&
+            promptOutgoing.contains("val decision = FileTransferDialogDecision()") &&
                 promptOutgoing.contains("fun cancelPending()") &&
-                promptOutgoing.contains("if (decided) return") &&
-                promptOutgoing.contains("if (decided) return@setPositiveButton") &&
-                promptOutgoing.contains("decided = true") &&
+                promptOutgoing.contains("if (!decision.tryFinish()) return") &&
+                promptOutgoing.contains("if (!decision.tryFinish()) return@setPositiveButton") &&
                 promptOutgoing.contains(".setNegativeButton(R.string.cancel) { _, _ -> cancelPending() }") &&
                 promptOutgoing.contains(".setOnCancelListener { cancelPending() }"),
         )
