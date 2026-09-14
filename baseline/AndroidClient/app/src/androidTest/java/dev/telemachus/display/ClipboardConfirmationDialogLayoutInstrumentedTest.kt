@@ -468,6 +468,12 @@ class ClipboardConfirmationDialogLayoutInstrumentedTest {
             (0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 },
         )
         assertEquals("$text button renders complete text", text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
+        val contentWidth = width - compoundPaddingLeft - compoundPaddingRight
+        val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineWidth)
+        assertTrue(
+            "$text button line width $maximumLineWidth fits $contentWidth",
+            maximumLineWidth <= contentWidth + DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX,
+        )
         assertTrue("$text button uses at most two rendered lines", textLayout.lineCount <= 2)
         val contentBottom = height - compoundPaddingBottom
         val lastLineBottom = compoundPaddingTop + textLayout.getLineBottom(textLayout.lineCount - 1)
