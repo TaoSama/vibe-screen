@@ -1,0 +1,7 @@
+serial=<redacted-adb-serial>
+manufacturer=nubia
+model=P0110
+device=pacific
+release=16
+sdk=36
+display=1264x2800

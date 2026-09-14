@@ -705,6 +705,11 @@ macOS XCTest filters blocked where the selected Command Line Tools environment
 could not compile XCTest, so those local artifacts must not be treated as an
 executed macOS XCTest pass. This does not prove production account/session-
 authority profile issuance or a real camera QR pairing round trip.
+The [2026-09-15 Nubia P0110 no-Host Camera permission recovery run](docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-camera-permission-recovery/README.md)
+verifies that the Android Internet scanner keeps first and permanent Camera
+denials inside Vibe Screen, opens app settings only from an explicit action,
+and launches the scanner once after permission is granted on return. It does
+not prove QR decoding, Internet pairing, or a Host-backed public-network session.
 
 Main commit `73be8c0` hardens this slice at the source level: the Internet
 session lease issuer validates the pairing binding before reading identity

@@ -1,0 +1,9 @@
+4ff124f6cdc5964ce23deaa8540de0c2ae675d62a786542726b3b817adb11838  ./commands.txt
+ce91557add28a96a2fc7afd1bb373bf6a409e6c1460e39d79a6ff6216b74ad5b  ./metadata/device-identity.txt
+8032f13e665a1ad6fa4df2bf6eeb1df048d7c46aa7035f7941b324f943a1c1c3  ./metadata/source-provenance.txt
+b31d5c87dda1f539235cc53bca8e9616e0a579b4cc79520f701a3c68f850572a  ./README.md
+773d62294e0d4ea631f44eea0ef61f0e704dfdab6b623b0518106961d60ba03e  ./screenshots/01-first-denial-inline-guidance.png
+3aca2fc4106e891ec7488000c34cd6edda768083310f061be2b1555b3b3bf042  ./screenshots/02-permanent-denial-settings-action.png
+e253c0083df566e4a5a353ef2c7c42fae29931746a0419a0e0802545a84d0116  ./screenshots/03-explicit-app-settings.png
+c45a67f99cac12ae239efa1fe9ae005bca1334e5091f3ebfa36ec28e79f6ca24  ./screenshots/04-authorized-settings-return-scanner.png
+0bc9f50e48d959f652f5fceed0c3bc742f779783ee093f0d2f786cb41ec83dc8  ./verification.txt
