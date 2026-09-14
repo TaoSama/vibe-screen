@@ -16,6 +16,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.test.annotation.UiThreadTest
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.core.view.ViewCompat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -196,7 +197,7 @@ class QRScannerLayoutInstrumentedTest {
         val root =
             LayoutInflater.from(context)
                 .inflate(R.layout.activity_qr_scanner, null, false) as ConstraintLayout
-        root.layoutDirection = layoutDirection
+        ViewCompat.setLayoutDirection(root, layoutDirection)
         val measured = MeasuredLayout(context, root, widthDp, heightDp)
         measured.measureAndLayout()
         assertion(measured)
@@ -320,7 +321,10 @@ class QRScannerLayoutInstrumentedTest {
         }
 
         fun assertInvalidQrStateSeparated() {
+            instruction.visibility = View.GONE
             status.visibility = View.VISIBLE
+            target.visibility = View.VISIBLE
+            retry.visibility = View.GONE
             val message = context.getString(R.string.invalid_pairing_qr)
             status.text = message
             status.contentDescription = message
@@ -329,13 +333,13 @@ class QRScannerLayoutInstrumentedTest {
             assertEquals(View.VISIBLE, status.visibility)
             assertEquals(View.VISIBLE, target.visibility)
             assertEquals(View.GONE, retry.visibility)
+            assertEquals(View.GONE, instruction.visibility)
             assertEquals(message, status.contentDescription.toString())
             assertTrue(target.width > 0)
             assertTrue(target.width <= dp(240))
-            assertFalse(Rect.intersects(bounds(instruction), bounds(status)))
             assertFalse(Rect.intersects(bounds(status), bounds(target)))
             assertFalse(Rect.intersects(bounds(target), bounds(cancel)))
-            assertEquals(instruction.bottom + dp(8), status.top)
+            assertTrue(status.top >= 0)
         }
 
         fun assertCameraPermissionBlockedStateSeparated(topInsetDp: Int = 0) {

@@ -286,7 +286,7 @@ class QRScannerActivity : AppCompatActivity() {
             // the namespaced payload and never interprets its security fields.
             if (!validLegacy && !validInternet) {
                 try {
-                    showScannerStatus(getString(R.string.invalid_pairing_qr))
+                    showInvalidPairingStatus()
                 } finally {
                     resultDeliveryGate.releaseForRetry()
                 }
@@ -299,6 +299,13 @@ class QRScannerActivity : AppCompatActivity() {
     private fun deliverAcceptedResult(raw: String) {
         setResult(RESULT_OK, Intent().putExtra(EXTRA_URL, raw))
         finish()
+    }
+
+    private fun showInvalidPairingStatus() {
+        findViewById<TextView>(R.id.scannerInstruction).visibility = View.GONE
+        findViewById<View>(R.id.targetFrame).visibility = View.VISIBLE
+        findViewById<Button>(R.id.retryCameraButton).visibility = View.GONE
+        showScannerStatus(getString(R.string.invalid_pairing_qr))
     }
 
     override fun onDestroy() {
