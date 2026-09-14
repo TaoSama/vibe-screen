@@ -161,8 +161,25 @@ class TrustedNetworkDialogLayoutInstrumentedTest {
     private fun AlertDialog.assertDialogButton(button: Button) {
         assertTrue("${button.text} button is at least 48dp wide", button.width >= context.dp(48))
         assertTrue("${button.text} button is at least 48dp tall", button.height >= context.dp(48))
-        assertTrue("${button.text} button can wrap to two lines", button.maxLines >= 2)
+        assertTrue("${button.text} button can wrap to two lines", button.maxLines == 2)
+        assertTrue("${button.text} button is allowed to wrap", !button.isSingleLine)
+        assertTrue("${button.text} button does not horizontally scroll", !button.isHorizontallyScrollable)
         assertNull("${button.text} button should not ellipsize", button.ellipsize)
+        assertTextReadable(button)
+        val layout = checkNotNull(button.layout) { "${button.text} button has text layout" }
+        assertTrue("${button.text} button uses at most two rendered lines", layout.lineCount <= 2)
+        val contentWidth = button.width - button.compoundPaddingLeft - button.compoundPaddingRight
+        val maximumLineWidth = (0 until layout.lineCount).maxOf(layout::getLineWidth)
+        assertTrue(
+            "${button.text} button line width $maximumLineWidth fits $contentWidth",
+            maximumLineWidth <= contentWidth + DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX,
+        )
+        val contentBottom = button.height - button.compoundPaddingBottom
+        val lastLineBottom = button.compoundPaddingTop + layout.getLineBottom(layout.lineCount - 1)
+        assertTrue(
+            "${button.text} button text is not vertically clipped",
+            lastLineBottom <= contentBottom + DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX,
+        )
     }
 
     private fun AlertDialog.assertNoDuplicateTalkBackSemantics() {
@@ -191,7 +208,22 @@ class TrustedNetworkDialogLayoutInstrumentedTest {
         assertTrue("trusted network message scroll stays above dialog actions: $geometry", contentBottom <= actionTop)
         assertTrue("trusted network message scroll has a visible top edge", messageScroll.screenTop() >= 0)
         assertTrue("trusted network actions are visible", positive.screenBottom() > actionTop && negative.screenBottom() > actionTop)
+        assertTrue("trusted network positive and negative actions do not overlap", !positive.overlaps(negative))
     }
+
+    private fun View.overlaps(other: View): Boolean =
+        screenLeft() < other.screenRight() &&
+            screenRight() > other.screenLeft() &&
+            screenTop() < other.screenBottom() &&
+            screenBottom() > other.screenTop()
+
+    private fun View.screenLeft(): Int {
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        return location[0]
+    }
+
+    private fun View.screenRight(): Int = screenLeft() + width
 
     private fun NestedScrollView.assertMessageCanScrollIntoView(message: TextView) {
         val visibleHeight = visibleHeight()
@@ -248,4 +280,8 @@ class TrustedNetworkDialogLayoutInstrumentedTest {
         val heightDp: Int,
         val fontScale: Float,
     )
+
+    private companion object {
+        private const val DIALOG_ACTION_TEXT_LAYOUT_TOLERANCE_PX = 1f
+    }
 }

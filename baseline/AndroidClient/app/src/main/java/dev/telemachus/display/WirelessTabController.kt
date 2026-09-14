@@ -102,29 +102,30 @@ private fun configureTrustedNetworkDialogActions(
     onConfirmed: () -> Unit,
 ) {
     dialog.setOnShowListener {
+        var decided = false
         dialog.findViewById<TextView>(android.R.id.message)?.apply {
             breakStrategy = Layout.BREAK_STRATEGY_BALANCED
             hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL
         }
-        listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { buttonId ->
-            checkNotNull(dialog.getButton(buttonId)) {
-                "trusted network dialog button $buttonId exists"
-            }.apply {
-                setSingleLine(false)
-                maxLines = TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES
-                ellipsize = null
-            }
+        DialogActionButtonLayoutApplier.apply(dialog)
+        dialog.setOnCancelListener { decided = true }
+        checkNotNull(dialog.getButton(AlertDialog.BUTTON_NEGATIVE)) {
+            "trusted network dialog negative button exists"
+        }.setOnClickListener {
+            if (decided) return@setOnClickListener
+            decided = true
+            dialog.dismiss()
         }
         checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE)) {
             "trusted network dialog positive button exists"
         }.setOnClickListener {
+            if (decided) return@setOnClickListener
+            decided = true
             onConfirmed()
             dialog.dismiss()
         }
     }
 }
-
-private const val TRUSTED_NETWORK_DIALOG_ACTION_MAX_LINES = 2
 
 /**
  * Five-state UI machine for the Wireless tab on Android.
