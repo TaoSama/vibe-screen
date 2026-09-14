@@ -47,6 +47,16 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 assertBeforeValue(acceptDecision, "if (rejectionReason != null)", """if (respond(true, ""))"""),
         )
         assertTrue(
+            "Incoming offer accept/reject/cancel decisions should retain once-only guards while applying dialog button layout",
+            promptOffer.contains("var decided = false") &&
+                acceptDecision.contains("if (decided) return@setPositiveButton") &&
+                acceptDecision.contains("decided = true") &&
+                promptOffer.contains("val rejectDecision = {") &&
+                promptOffer.contains("pendingIncomingFileDialog != null && !decided && finishDecision()") &&
+                promptOffer.contains(".setNegativeButton(R.string.file_transfer_reject) { _, _ -> rejectDecision() }") &&
+                promptOffer.contains(".setOnCancelListener { rejectDecision() }"),
+        )
+        assertTrue(
             "Active receive state should retain transfer id, display name, byte length, and cancel command",
             begin.contains("ActiveIncomingFileTransfer(transferId, displayName, byteLength, cancel)"),
         )
@@ -136,6 +146,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "Incoming file offers should use structured, scrollable dialog content instead of a single long AlertDialog message",
             promptOffer.contains(".setView(fileTransferOfferView(offer))") &&
+                promptOffer.contains("pendingIncomingFileDialog = showImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)") &&
                 !strings.contains("file_transfer_offer_message") &&
                 offerView.contains("R.layout.dialog_file_transfer_offer") &&
                 offerView.contains("R.id.fileTransferOfferFileName") &&
@@ -273,7 +284,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             "Outgoing progress should stay on the non-modal control bar so the cancel action remains reachable",
             begin.contains("revealControlBar(ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER)") &&
                 !source.contains("showOutgoingFileProgressDialog") &&
-                promptOutgoing.contains("pendingOutgoingFileDialog = showImmersiveDialog(dialog)"),
+                promptOutgoing.contains("pendingOutgoingFileDialog = showImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)"),
         )
         assertTrue(
             "Outgoing confirmation should use structured preflight content before sending file bytes",
@@ -301,6 +312,16 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             "Outgoing confirmation must re-check session validity and mutual exclusion immediately before sending",
             promptOutgoing.contains("if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())") &&
                 assertBeforeValue(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue ="),
+        )
+        assertTrue(
+            "Outgoing send/cancel decisions should retain once-only guards while applying dialog button layout",
+            promptOutgoing.contains("var decided = false") &&
+                promptOutgoing.contains("fun cancelPending()") &&
+                promptOutgoing.contains("if (decided) return") &&
+                promptOutgoing.contains("if (decided) return@setPositiveButton") &&
+                promptOutgoing.contains("decided = true") &&
+                promptOutgoing.contains(".setNegativeButton(R.string.cancel) { _, _ -> cancelPending() }") &&
+                promptOutgoing.contains(".setOnCancelListener { cancelPending() }"),
         )
         assertTrue(
             "The file-transfer button should switch between picker and cancellation behavior",
