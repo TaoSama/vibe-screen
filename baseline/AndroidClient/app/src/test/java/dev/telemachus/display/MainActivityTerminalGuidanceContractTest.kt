@@ -1694,6 +1694,12 @@ class MainActivityTerminalGuidanceContractTest {
         val compactScanRequested = scanRequested.replace(Regex("\\s+"), "")
         val compactOpenSettings = openSettings.replace(Regex("\\s+"), "")
         val compactSettingsReturn = settingsReturn.replace(Regex("\\s+"), "")
+        val settingsPendingResetIndex =
+            compactSettingsReturn.indexOf("internetCameraSettingsReturnPending=false")
+        val scannerLaunchIndex =
+            compactSettingsReturn.indexOf(
+                "InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE->returnlaunchInternetScanner()",
+            )
 
         assertTrue(
             "Internet scan control should delegate permission decisions to the focused handler",
@@ -1719,8 +1725,9 @@ class MainActivityTerminalGuidanceContractTest {
             compactSettingsReturn.contains("settingsPending=internetCameraSettingsReturnPending") &&
                 compactSettingsReturn.contains("granted=cameraPerm.isGranted()") &&
                 compactSettingsReturn.contains("permanentlyDenied=cameraPerm.isPermanentlyDenied()") &&
-                compactSettingsReturn.contains("internetCameraSettingsReturnPending=false") &&
-                compactSettingsReturn.contains("InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE->returnlaunchInternetScanner()"),
+                settingsPendingResetIndex >= 0 &&
+                scannerLaunchIndex >= 0 &&
+                settingsPendingResetIndex < scannerLaunchIndex,
         )
     }
 
@@ -1747,13 +1754,20 @@ class MainActivityTerminalGuidanceContractTest {
         val launch = extractMethod(source, "private fun launchInternetScanner")
         val scanRequested = extractMethod(source, "private fun handleInternetScanRequested")
         val pairing = extractMethod(source, "private fun beginInternetPairing")
+        val launchAdmissionIndex = launch.indexOf("allowInternetCredentialMutation()")
+        val panelClearIndex = launch.indexOf("clearInternetCameraPermissionPanel()")
+        val scannerStartIndex =
+            launch.indexOf("startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)")
+        val pairingAdmissionIndex = pairing.indexOf("check(allowInternetCredentialMutation())")
+        val pairingCoordinatorIndex = pairing.indexOf("InternetPairingCoordinator")
 
         assertTrue(
             "Internet scanner launch must re-check credential mutation quarantine before QRScannerActivity starts",
-            launch.indexOf("allowInternetCredentialMutation()") <
-                launch.indexOf("clearInternetCameraPermissionPanel()") &&
-                launch.indexOf("clearInternetCameraPermissionPanel()") <
-                launch.indexOf("startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)"),
+            launchAdmissionIndex >= 0 &&
+                panelClearIndex >= 0 &&
+                scannerStartIndex >= 0 &&
+                launchAdmissionIndex < panelClearIndex &&
+                panelClearIndex < scannerStartIndex,
         )
         assertTrue(
             "Internet scan click should avoid even requesting Camera while revocation quarantine blocks new credentials",
@@ -1761,8 +1775,9 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "A scanner result must still pass through the existing credential mutation gate before parsing or storing credentials",
-            pairing.indexOf("check(allowInternetCredentialMutation())") <
-                pairing.indexOf("InternetPairingCoordinator"),
+            pairingAdmissionIndex >= 0 &&
+                pairingCoordinatorIndex >= 0 &&
+                pairingAdmissionIndex < pairingCoordinatorIndex,
         )
     }
 
