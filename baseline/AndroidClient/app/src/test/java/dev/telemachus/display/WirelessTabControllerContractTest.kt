@@ -182,10 +182,13 @@ class WirelessTabControllerContractTest {
         assertTrue(configureActions.contains("breakStrategy = Layout.BREAK_STRATEGY_BALANCED"))
         assertTrue(configureActions.contains("hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL"))
         assertTrue(configureActions.contains("DialogActionButtonLayoutApplier.apply(dialog)"))
+        assertTrue(configureActions.contains("checkNotNull(dialog.getButton(AlertDialog.BUTTON_NEGATIVE))"))
         assertTrue(configureActions.contains("checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE))"))
-        assertTrue(configureActions.contains("var confirmed = false"))
-        assertTrue(compactConfigureActions.contains("if(confirmed)return@setOnClickListener"))
-        assertTrue(compactConfigureActions.contains("confirmed=trueonConfirmed()dialog.dismiss()"))
+        assertTrue(configureActions.contains("var decided = false"))
+        assertTrue(configureActions.contains("dialog.setOnCancelListener { decided = true }"))
+        assertTrue(configureActions.contains("dialog.setOnDismissListener { decided = true }"))
+        assertTrue(compactConfigureActions.contains("if(decided)return@setOnClickListener"))
+        assertTrue(compactConfigureActions.contains("decided=trueonConfirmed()dialog.dismiss()"))
         assertTrue(compactConfigureActions.contains("onConfirmed()dialog.dismiss()"))
         val dialogImplementation = createDialog + configureActions
         assertFalse(dialogImplementation.contains("layoutParams"))
@@ -213,10 +216,12 @@ class WirelessTabControllerContractTest {
         val cancelActivity = trustedNetworkDialogActivity()
         var cancelConfirmed = 0
         createTrustedNetworkDialog(cancelActivity) { cancelConfirmed++ }.useShownDialog { dialog ->
+            val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             assertTrue(
                 "cancel click is handled without confirming trusted LAN",
                 dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick(),
             )
+            assertTrue("stale confirm click is consumed after cancel", positive.performClick())
         }
         assertEquals("cancel must not acknowledge trusted LAN", 0, cancelConfirmed)
 
@@ -228,6 +233,18 @@ class WirelessTabControllerContractTest {
             assertTrue("repeated confirm click is handled without a second callback", positive.performClick())
         }
         assertEquals("confirm acknowledges trusted LAN exactly once", 1, positiveConfirmed)
+
+        confirmActivity.runOnUiThread {
+            val reusableDialog = createTrustedNetworkDialog(confirmActivity) { positiveConfirmed++ }
+            reusableDialog.show()
+            shadowOf(Looper.getMainLooper()).idle()
+            reusableDialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            reusableDialog.show()
+            shadowOf(Looper.getMainLooper()).idle()
+            reusableDialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("a fresh show lifecycle can confirm once after an earlier cancel", 2, positiveConfirmed)
     }
 
     private fun trustedNetworkDialogActivity(): TrustedNetworkDialogTestActivity =

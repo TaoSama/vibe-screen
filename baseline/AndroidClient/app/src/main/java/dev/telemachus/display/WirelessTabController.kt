@@ -101,18 +101,27 @@ private fun configureTrustedNetworkDialogActions(
     dialog: AlertDialog,
     onConfirmed: () -> Unit,
 ) {
-    var confirmed = false
     dialog.setOnShowListener {
+        var decided = false
         dialog.findViewById<TextView>(android.R.id.message)?.apply {
             breakStrategy = Layout.BREAK_STRATEGY_BALANCED
             hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL
         }
         DialogActionButtonLayoutApplier.apply(dialog)
+        dialog.setOnCancelListener { decided = true }
+        dialog.setOnDismissListener { decided = true }
+        checkNotNull(dialog.getButton(AlertDialog.BUTTON_NEGATIVE)) {
+            "trusted network dialog negative button exists"
+        }.setOnClickListener {
+            if (decided) return@setOnClickListener
+            decided = true
+            dialog.dismiss()
+        }
         checkNotNull(dialog.getButton(AlertDialog.BUTTON_POSITIVE)) {
             "trusted network dialog positive button exists"
         }.setOnClickListener {
-            if (confirmed) return@setOnClickListener
-            confirmed = true
+            if (decided) return@setOnClickListener
+            decided = true
             onConfirmed()
             dialog.dismiss()
         }
