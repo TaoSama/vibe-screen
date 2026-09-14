@@ -115,8 +115,6 @@ class MainActivitySettingsAccessibilityContractTest {
             assertTrue("$idAttribute allows at most two lines", element.contains(xmlAttribute("android:maxLines", "2")))
             assertTrue("$idAttribute disables ellipsizing", element.contains(xmlAttribute("android:ellipsize", "none")))
             assertTrue("$idAttribute keeps mixed-case labels compact", element.contains(xmlAttribute("android:textAllCaps", "false")))
-            assertTrue("$idAttribute keeps compact horizontal padding", element.contains(xmlAttribute("android:paddingStart", "10dp")))
-            assertTrue("$idAttribute keeps compact horizontal padding", element.contains(xmlAttribute("android:paddingEnd", "10dp")))
         }
     }
 

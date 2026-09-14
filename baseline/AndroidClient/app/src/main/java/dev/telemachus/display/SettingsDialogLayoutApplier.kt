@@ -271,18 +271,7 @@ internal object SettingsDialogLayoutApplier {
         button.setHorizontallyScrolling(false)
         button.ellipsize = null
         button.maxLines = MAX_OPTION_LINES
-        val compactHorizontalPadding = dp(button, ACTION_BUTTON_HORIZONTAL_PADDING_DP)
-        button.setPaddingRelative(
-            compactHorizontalPadding,
-            button.paddingTop,
-            compactHorizontalPadding,
-            button.paddingBottom,
-        )
-        val twoLineContentHeight = button.lineHeight * MAX_OPTION_LINES +
-            button.compoundPaddingTop + button.compoundPaddingBottom
-        val requiredHeight = max(max(button.minimumHeight, dp(button, minimumTouchTargetDp)), twoLineContentHeight)
-        button.minHeight = requiredHeight
-        button.minimumHeight = requiredHeight
+        button.minHeight = max(button.minimumHeight, dp(button, minimumTouchTargetDp))
     }
 
     private fun requiredButtonWidth(button: MaterialButton): Int {
@@ -375,7 +364,6 @@ internal object SettingsDialogLayoutApplier {
     private const val MINIMUM_HORIZONTAL_PADDING_DP = 32f
     private const val MINIMUM_TOUCH_TARGET_DP = 48f
     private const val PRIMARY_ACTION_MINIMUM_TOUCH_TARGET_DP = 56f
-    private const val ACTION_BUTTON_HORIZONTAL_PADDING_DP = 10f
     private const val MINIMUM_COLUMN_CONTENT_WIDTH_DP = 176f
     private const val MAX_OPTION_LINES = 2
     private const val STACKED_OPTION_GAP_DP = 4f

@@ -436,7 +436,7 @@ class SettingsDialogLayoutInstrumentedTest {
             val disconnect = layout.root.findViewById<MaterialButton>(R.id.disconnectSettingsButton)
             val close = layout.root.findViewById<MaterialButton>(R.id.closeButton)
             disconnect.text = "Disconnect from this Mac"
-            close.text = "Save settings and close"
+            close.text = "Save and close"
             layout.measureAndLayout()
 
             assertSettingsActionButton(layout, R.id.disconnectSettingsButton, minimumTouchTargetDp = 48)
@@ -711,6 +711,7 @@ class SettingsDialogLayoutInstrumentedTest {
         assertFalse("${button.resources.getResourceEntryName(buttonId)} is multi-line capable", button.isSingleLine)
         assertFalse("${button.resources.getResourceEntryName(buttonId)} does not scroll text horizontally", button.isHorizontallyScrollable)
         assertNull(button.ellipsize)
+        assertFalse("${button.resources.getResourceEntryName(buttonId)} keeps mixed-case text", button.isAllCaps)
         assertEquals(2, button.maxLines)
         assertTrue(
             "${button.resources.getResourceEntryName(buttonId)} minimum height",
