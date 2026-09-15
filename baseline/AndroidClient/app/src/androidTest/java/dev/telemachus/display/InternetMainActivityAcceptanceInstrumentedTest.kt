@@ -112,6 +112,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 acceptanceStage = "internet_tab"
                 onView(withId(R.id.modeInternet)).perform(click())
                 onView(withId(R.id.internetModeContent)).check(matches(isDisplayed()))
+                onView(withId(R.id.internetRevokeButton)).check(matches(not(isDisplayed())))
                 acceptanceStage = "route_toggle"
                 onView(withId(R.id.internetPreferDirect)).check(matches(isChecked()))
                 onView(withId(R.id.internetForceRelay)).perform(click())
@@ -126,6 +127,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 completePairing(authority.accept(firstOffer, firstRequest))
                 assertTrue(profileStore.hasVerifiedPairing())
                 onView(withId(R.id.internetConnectButton)).check(matches(not(isEnabled())))
+                onView(withId(R.id.internetRevokeButton)).check(matches(isDisplayed()))
 
                 val firstLease = authority.issueLease(firstOffer, firstRequest, firstEpoch)
                 createdLeases += firstOffer to firstLease
@@ -138,6 +140,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 revokeThroughUi(scenario)
                 assertTrue("Local revoke retained a profile", profileStore.loadPublicProfile() == null)
                 assertFalse(profileStore.hasVerifiedPairing())
+                onView(withId(R.id.internetRevokeButton)).check(matches(not(isDisplayed())))
                 assertSecretsRemoved(context, firstOffer, firstLease)
 
                 val secondOffer = authority.createOffer().also(createdOffers::add)
@@ -159,10 +162,12 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 )
                 assertEquals(firstEpoch + 1, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
+                onView(withId(R.id.internetRevokeButton)).check(matches(isDisplayed()))
 
                 // Leave the dedicated acceptance installation clean for a repeat run.
                 acceptanceStage = "second_revoke"
                 revokeThroughUi(scenario)
+                onView(withId(R.id.internetRevokeButton)).check(matches(not(isDisplayed())))
                 assertSecretsRemoved(context, secondOffer, secondLease)
             }
         } catch (failure: Throwable) {

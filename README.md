@@ -719,6 +719,14 @@ verifies that the Android Internet scanner keeps first and permanent Camera
 denials inside Vibe Screen, opens app settings only from an explicit action,
 and launches the scanner once after permission is granted on return. It does
 not prove QR decoding, Internet pairing, or a Host-backed public-network session.
+The [2026-09-15 Nubia P0110 Internet empty-state action run](docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-empty-revoke-action/README.md)
+verifies on current base that `Revoke Mac` is absent until an actual pairing or
+pairing-only repair record exists, reappears for two AndroidKeyStore-backed
+pairing cycles, and disappears after each local revoke. The selected no-Host
+UI/UX regression passed 137/137 with portrait and landscape captures and no
+`tcp:54321` reverse mapping or listener. This is Android-local actionability
+and layout evidence; it does not prove QR decoding, cross-service revocation,
+public Internet transport, or a Host-backed stream.
 
 Main commit `73be8c0` hardens this slice at the source level: the Internet
 session lease issuer validates the pairing binding before reading identity
