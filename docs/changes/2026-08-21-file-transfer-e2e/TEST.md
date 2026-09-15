@@ -513,8 +513,12 @@ Evidence:
 [evidence/2026-09-15-nubia-p0110-no-host-system-share-target](evidence/2026-09-15-nubia-p0110-no-host-system-share-target/README.md).
 
 Source commit `56d9da7d2aaaa5ae78541ada410c39fbaf78328c` adds a
-single-file Android `ACTION_SEND` share target that accepts one `content://`
-stream and reuses the existing staged-file preflight/offer pipeline. The latest
+single-file Android system-share target that accepts `ACTION_SEND`, and current
+source extends the same entry contract to `ACTION_SEND_MULTIPLE` only when the
+resolved share contains exactly one `content://` stream. Empty shares, text-only
+shares, `file://` streams, and true multi-item shares fail closed before any
+staging or offer attempt. Accepted shares reuse the existing staged-file
+preflight/offer pipeline after a file-transfer-capable session exists. The latest
 Nubia P0110 / pacific / Android 16 / SDK 36 run passed 3/3 focused
 instrumentation methods. With no Host, the app keeps a lightweight pending
 draft through Activity recreation, accepts a single-URI `ClipData` share,
@@ -523,9 +527,35 @@ rejects an untrusted share-side `auto_connect` extra. Provider counters prove
 the waiting path does not query metadata, open bytes, or resolve MIME. Real
 system cold launch, portrait/landscape screenshots, and a Cancel tap verify the
 persistent panel and its cleanup without a misleading enabled Review action.
+Current source/unit coverage additionally locks the `ACTION_SEND_MULTIPLE`
+single-URI acceptance, multi-item rejection, non-`content://` rejection, and
+manifest resolver contract; the after-797 focused no-Host device run below
+records the corresponding 7-method instrumentation pass.
 
 No Host, TCC change, `tcp:54321` reverse, or local listener participated. This
 advances only Android system-share entry readiness; Host-backed bytes landing,
 receiver approval, same-session transport, endpoint SHA-256 equality, and
 cancel/disconnect cleanup remain absent.
 `file_transfer_android_product_e2e=BLOCKED`.
+
+## 2026-09-15 Nubia P0110 no-Host ACTION_SEND_MULTIPLE single-file share after PR #797
+
+Evidence:
+[evidence/2026-09-15-nubia-p0110-no-host-send-multiple-single-file-after-797](evidence/2026-09-15-nubia-p0110-no-host-send-multiple-single-file-after-797/README.md).
+
+Source base `d3c11b6ca141c4fb5340970f3b7f477a88fc546b` keeps the
+single-file system-share contract and adds `ACTION_SEND_MULTIPLE` manifest
+resolution plus policy acceptance only when the final resolved share contains
+exactly one `content://` item. The Nubia P0110 / pacific / Android 16 / SDK 36
+focused instrumentation run passed 7/7 methods, including single-item
+`ACTION_SEND_MULTIPLE` pending state, multi-item rejection, manifest resolver
+coverage, and zero provider query/open/getType counters on no-Host paths.
+It also covers malformed `ACTION_SEND_MULTIPLE` intents that use a bare `Uri`
+`EXTRA_STREAM` instead of the required `ArrayList<Uri>` payload; those are
+rejected before pending state or provider reads.
+
+This was still a no-Host run: adb reverse was empty before and after, port
+`54321` had no local listener, and no Host or TCC path participated. It does
+not prove Host-backed bytes landing, receiver approval, same-session USB/LAN
+transport, endpoint SHA-256 equality, ordered chunk artifacts, or
+cancel/disconnect cleanup. `file_transfer_android_product_e2e=BLOCKED`.

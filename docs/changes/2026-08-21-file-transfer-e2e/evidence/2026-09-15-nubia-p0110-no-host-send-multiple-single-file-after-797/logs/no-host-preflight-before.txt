@@ -1,0 +1,4 @@
+2026-09-15T13:46:10Z
+$ adb -s "$ANDROID_SERIAL" reverse --list
+
+$ lsof -nP -iTCP:54321 -sTCP:LISTEN
