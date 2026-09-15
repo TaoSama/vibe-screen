@@ -281,6 +281,16 @@
     <string name="internet_profile_missing">No Internet pairing profile. Import a fresh profile from your Mac.</string>
     <string name="internet_paired_without_lease">Verified Mac key %1$s…\nPairing is complete. Import a fresh session lease to connect.</string>
     <string name="internet_profile_format">%1$s\nSession %2$s · epoch %3$d\nVerified Mac key %4$s…</string>
+    <string name="internet_profile_unavailable_format">%1$s · fresh profile required\n%2$s\nSession %3$s · epoch %4$d\nVerified Mac key %5$s…</string>
+    <string name="internet_profile_ready">Ready</string>
+    <string name="internet_profile_missing_short">Missing profile</string>
+    <string name="internet_pairing_missing_short">Pairing missing</string>
+    <string name="internet_profile_stale">Stale session</string>
+    <string name="internet_profile_expired">Expired session</string>
+    <string name="internet_profile_revoked_short">Revoked pairing</string>
+    <string name="internet_profile_credentials_missing">Credentials missing</string>
+    <string name="internet_profile_credentials_invalid">Invalid credentials</string>
+    <string name="internet_profile_invalid">Invalid profile</string>
     <string name="internet_route_policy">Route policy</string>
     <string name="internet_prefer_direct">Direct</string>
     <string name="internet_force_turn">TURN</string>
@@ -288,6 +298,9 @@
     <string name="internet_import_profile">Import</string>
     <string name="internet_connect">Connect preview</string>
     <string name="internet_connect_profile_missing_description">Connect preview unavailable. Scan or import an Internet profile first.</string>
+    <string name="internet_connect_fresh_profile_required_description">Connect preview unavailable. Import a fresh Internet profile first.</string>
+    <string name="internet_connect_invalid_credentials_description">Connect preview unavailable. Import a valid Internet profile from your Mac first.</string>
+    <string name="internet_connect_active_description">Connect preview unavailable while an Internet session is active.</string>
     <string name="internet_revoke_local">Revoke this Mac on this device</string>
     <string name="internet_revoke_local_short">Revoke Mac</string>
     <string name="internet_state_idle">Idle · encrypted records required</string>

@@ -220,6 +220,8 @@ internal class MemoryInternetProfileSecretStore : InternetProfileSecretStore {
     private val values = mutableMapOf<String, ByteArray>()
     var persistCount = 0
         private set
+    var lastLoadedCopy: ByteArray? = null
+        private set
     val entryCount: Int
         get() = values.size
 
@@ -228,7 +230,7 @@ internal class MemoryInternetProfileSecretStore : InternetProfileSecretStore {
         persistCount += 1
     }
 
-    override fun load(name: String): ByteArray? = values[name]?.copyOf()
+    override fun load(name: String): ByteArray? = values[name]?.copyOf()?.also { lastLoadedCopy = it }
 
     override fun delete(name: String) {
         values.remove(name)

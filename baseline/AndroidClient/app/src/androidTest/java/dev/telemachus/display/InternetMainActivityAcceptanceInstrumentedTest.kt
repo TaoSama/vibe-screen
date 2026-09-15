@@ -1,6 +1,5 @@
 package dev.telemachus.display
 
-import android.Manifest
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Context
@@ -11,6 +10,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.TextView
+import com.google.gson.JsonParser
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
@@ -25,22 +25,27 @@ import androidx.test.espresso.base.DefaultFailureHandler
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
+import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.espresso.matcher.ViewMatchers.withHint
 import androidx.test.espresso.matcher.ViewMatchers.withId
+import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.rule.GrantPermissionRule
+import androidx.lifecycle.Lifecycle
 import dev.telemachus.display.internet.InternetSessionProfileStore
 import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.security.AndroidDeviceIdentityStore
 import dev.telemachus.display.internet.security.AndroidSecretStore
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
+import dev.telemachus.display.internet.security.AndroidDeviceIdentityPairingSigner
+import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingRequest
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
 import org.hamcrest.Description
 import org.hamcrest.Matchers.allOf
+import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
 import org.hamcrest.TypeSafeMatcher
 import org.junit.Assert.assertEquals
@@ -72,18 +77,18 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         TestRule { base, _ ->
             object : Statement() {
                 override fun evaluate() {
+                    val arguments = InstrumentationRegistry.getArguments()
                     assumeTrue(
-                        "Pass -e $OPT_IN_ARGUMENT true only from the dedicated Android-local Internet UI/bootstrap runner",
-                        InstrumentationRegistry.getArguments().getString(OPT_IN_ARGUMENT, "false").toBoolean(),
+                        "Pass a dedicated Android-local Internet UI acceptance opt-in only from the evidence runner",
+                        arguments.getString(BOOTSTRAP_OPT_IN_ARGUMENT, "false").toBoolean() ||
+                            arguments.getString(EXPIRED_LEASE_UX_OPT_IN_ARGUMENT, "false").toBoolean(),
                     )
                     base.evaluate()
                 }
             }
         }
-    private val cameraPermission = GrantPermissionRule.grant(Manifest.permission.CAMERA)
-
     @get:Rule
-    val acceptanceRules: RuleChain = RuleChain.outerRule(optInRule).around(cameraPermission)
+    val acceptanceRules: RuleChain = RuleChain.outerRule(optInRule)
 
     @After
     fun restoreDefaultEspressoFailureHandler() {
@@ -94,6 +99,10 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
     @Test
     fun pairingLeaseRevokeAndRepairAreAcceptedThroughMainActivity() {
+        assumeTrue(
+            "Pass -e $BOOTSTRAP_OPT_IN_ARGUMENT true only from the dedicated Android-local Internet UI/bootstrap runner",
+            InstrumentationRegistry.getArguments().getString(BOOTSTRAP_OPT_IN_ARGUMENT, "false").toBoolean(),
+        )
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = ApplicationProvider.getApplicationContext<Context>()
         val profileStore = InternetSessionProfileStore(context)
@@ -122,7 +131,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         val createdOffers = mutableListOf<TestPairingOffer>()
         val createdLeases = mutableListOf<Pair<TestPairingOffer, TestLease>>()
         val authority = TestHostAuthority()
-        val firstEpoch = System.currentTimeMillis().coerceAtLeast(1L)
+        val firstEpoch = 1L
 
         var primaryFailure: Throwable? = null
         try {
@@ -188,7 +197,10 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 onView(withId(R.id.internetRevokeButton)).check(matches(not(isDisplayed())))
                 assertSecretsRemoved(context, secondOffer, secondLease)
             }
-        } catch (failure: Throwable) {
+        } catch (failure: AssertionError) {
+            primaryFailure = failure
+            throw failure
+        } catch (failure: RuntimeException) {
             primaryFailure = failure
             throw failure
         } finally {
@@ -214,6 +226,167 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 "pairing=true strict_lease_import=true retryable_import_error=true " +
                 "local_revoke=true repair=true secure_dialogs=true",
         )
+    }
+
+    @Test
+    fun expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation() {
+        assumeTrue(
+            "Pass -e $EXPIRED_LEASE_UX_OPT_IN_ARGUMENT true only from the dedicated Android-local expired-lease UX runner",
+            InstrumentationRegistry.getArguments().getString(EXPIRED_LEASE_UX_OPT_IN_ARGUMENT, "false").toBoolean(),
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profileStore = InternetSessionProfileStore(context)
+        val preferences = PreferencesManager(context)
+        val deviceId = preferences.internetDeviceId
+        val storedFactory = AndroidStoredInternetSessionFactory(context, deviceId)
+        val revocationCoordinator = InternetProductRevocationCoordinator.processShared()
+        Espresso.setFailureHandler(
+            FailureHandler { failure, _ ->
+                throw AssertionError(
+                    "Protected Internet expired-lease UX action failed at $acceptanceStage (${failure.javaClass.simpleName})",
+                )
+            },
+        )
+        assertTrue("Expired-lease UX acceptance requires a clean profile store", profileStore.loadPublicProfile() == null)
+        assertFalse("Expired-lease UX acceptance requires a clean pairing store", profileStore.hasVerifiedPairing())
+
+        preferences.apply {
+            connectionMode = ConnectionMode.USB
+            internetForceRelay = false
+        }
+        val initialIdentityHighWatermark = identityHighWatermark(context)
+        val createdOffers = mutableListOf<TestPairingOffer>()
+        val createdLeases = mutableListOf<Pair<TestPairingOffer, TestLease>>()
+        val authority = TestHostAuthority()
+        val firstEpoch = 1L
+
+        var primaryFailure: Throwable? = null
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                acceptanceStage = "expired_lease_internet_tab"
+                onView(withId(R.id.modeInternet)).perform(click())
+                onView(withId(R.id.internetModeContent)).check(matches(isDisplayed()))
+
+                val offer = authority.createOffer().also(createdOffers::add)
+                acceptanceStage = "lease_expiry_pairing_store"
+                val request = completePairingWithoutCameraPermission(
+                    context = context,
+                    offer = offer,
+                    authority = authority,
+                    profileStore = profileStore,
+                    storedFactory = storedFactory,
+                    revocationCoordinator = revocationCoordinator,
+                )
+
+                val firstLease = authority.issueLease(offer, request, firstEpoch)
+                createdLeases += offer to firstLease
+                acceptanceStage = "expired_lease_fresh_import"
+                importLease(scenario, firstLease.encoded)
+                onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
+
+                acceptanceStage = "stale_lease_foreground_refresh"
+                scenario.onActivity { activity ->
+                    markFreshLeaseRequiredForAcceptance(activity, firstEpoch)
+                }
+                assertStaleLeaseUi(firstEpoch)
+
+                scenario.moveToState(Lifecycle.State.CREATED)
+                scenario.moveToState(Lifecycle.State.RESUMED)
+                assertStaleLeaseUi(firstEpoch)
+
+                val staleReplacementLease = authority.issueLease(offer, request, firstEpoch + 1)
+                createdLeases += offer to staleReplacementLease
+                acceptanceStage = "stale_lease_replacement_import"
+                importLease(scenario, staleReplacementLease.encoded)
+                assertEquals(firstEpoch + 1, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
+                onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
+
+                scenario.moveToState(Lifecycle.State.CREATED)
+                expirePersistedProfile(context, expiresAtUnixSeconds = System.currentTimeMillis() / 1_000)
+                acceptanceStage = "expired_lease_foreground_refresh"
+                scenario.moveToState(Lifecycle.State.RESUMED)
+                assertExpiredLeaseUi()
+
+                acceptanceStage = "expired_lease_recreation_refresh"
+                scenario.recreate()
+                assertExpiredLeaseUi()
+
+                val replacementLease = authority.issueLease(offer, request, firstEpoch + 2)
+                createdLeases += offer to replacementLease
+                acceptanceStage = "expired_lease_replacement_import"
+                importLease(scenario, replacementLease.encoded)
+                assertEquals(firstEpoch + 2, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
+                onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
+
+                acceptanceStage = "expired_lease_cleanup_revoke"
+                revokeThroughUi(scenario)
+                onView(withId(R.id.internetRevokeButton)).check(matches(not(isDisplayed())))
+                assertSecretsRemoved(context, offer, firstLease)
+                assertSecretsRemoved(context, offer, staleReplacementLease)
+                assertSecretsRemoved(context, offer, replacementLease)
+            }
+        } catch (failure: AssertionError) {
+            primaryFailure = failure
+            throw failure
+        } catch (failure: RuntimeException) {
+            primaryFailure = failure
+            throw failure
+        } finally {
+            val cleanupFailure =
+                cleanupCreatedCredentials(
+                    context = context,
+                    deviceId = deviceId,
+                    initialIdentityHighWatermark = initialIdentityHighWatermark,
+                    profileStore = profileStore,
+                    storedFactory = storedFactory,
+                    revocationCoordinator = revocationCoordinator,
+                    createdOffers = createdOffers,
+                    createdLeases = createdLeases,
+                )
+            if (cleanupFailure != null) {
+                val redacted = AssertionError("Expired-lease UX credential cleanup was incomplete")
+                if (primaryFailure == null) throw redacted else primaryFailure.addSuppressed(redacted)
+            }
+        }
+
+        println(
+            "PHASE3_ANDROID_INTERNET_EXPIRED_STALE_LEASE_UX_PASS " +
+                "expired_summary=true stale_summary=true connect_disabled=true " +
+                "stale_foreground_refresh=true expired_foreground_refresh=true " +
+                "expired_recreation_refresh=true fresh_reimport=true " +
+                "scan_import_revoke_available=true android_local_only=true",
+        )
+    }
+
+    private fun completePairingWithoutCameraPermission(
+        context: Context,
+        offer: TestPairingOffer,
+        authority: TestHostAuthority,
+        profileStore: InternetSessionProfileStore,
+        storedFactory: AndroidStoredInternetSessionFactory,
+        revocationCoordinator: InternetProductRevocationCoordinator,
+    ): InternetPairingRequest {
+        val identityEpoch = storedFactory.reserveNextIdentityEpoch()
+        val identityStore = AndroidDeviceIdentityStore()
+        val identity = identityStore.loadOrCreateForPairing(deviceId = PreferencesManager(context).internetDeviceId, identityEpoch)
+        val pending = InternetPairingCoordinator(
+            signer = AndroidDeviceIdentityPairingSigner(identity),
+            secretSink = storedFactory.internetPairingSecretSinkForAcceptance(),
+        ).begin(offer.encodedUrl, "P0110")
+        try {
+            revocationCoordinator.withCredentialMutationAdmission(
+                durableBlock = {
+                    profileStore.hasDurableCredentialMutationBlock(offer.pairingIdentifier) ||
+                        storedFactory.hasPendingPairingPersistenceCleanup()
+                },
+            ) { permit ->
+                val result = pending.complete(authority.accept(offer, pending.request))
+                profileStore.recordVerifiedPairing(permit, result.metadata, storedFactory)
+            }
+            return pending.request
+        } finally {
+            pending.close()
+        }
     }
 
     private fun cleanupCreatedCredentials(
@@ -414,6 +587,61 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         )
         assertTrue("Local revoke retained lease secrets", store.load(profileSecretSlot(offer, lease)) == null)
     }
+
+    private fun expirePersistedProfile(
+        context: Context,
+        expiresAtUnixSeconds: Long,
+    ) {
+        val preferences = context.getSharedPreferences(INTERNET_PROFILE_PREFERENCES, Context.MODE_PRIVATE)
+        val raw = requireNotNull(preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+        val root = JsonParser.parseString(raw).asJsonObject.apply {
+            addProperty("expires_at", expiresAtUnixSeconds)
+        }
+        check(
+            preferences
+                .edit()
+                .putString(InternetSessionProfileStore.PROFILE_KEY, root.toString())
+                .commit(),
+        ) { "Could not persist expired public Internet profile" }
+    }
+
+    private fun assertExpiredLeaseUi() {
+        onView(withId(R.id.internetProfileSummary))
+            .check(matches(withText(containsString("Expired session"))))
+        assertUnavailableLeaseActionsRemainAvailable()
+    }
+
+    private fun assertStaleLeaseUi(epoch: Long) {
+        onView(withId(R.id.internetProfileSummary))
+            .check(matches(withText(containsString("Stale session"))))
+        onView(withId(R.id.internetProfileSummary))
+            .check(matches(withText(containsString("epoch $epoch"))))
+        assertUnavailableLeaseActionsRemainAvailable()
+    }
+
+    private fun markFreshLeaseRequiredForAcceptance(
+        activity: MainActivity,
+        sessionEpoch: Long,
+    ) {
+        val coordinator = activity.javaClass.getDeclaredField("productSessionCoordinator").apply { isAccessible = true }.get(activity)
+        val generation = coordinator.javaClass.getDeclaredMethod("currentInternetGeneration").invoke(coordinator) as Long
+        val marked =
+            coordinator.javaClass
+                .getDeclaredMethod("markInternetSessionStartFailed", Long::class.javaPrimitiveType, Long::class.javaPrimitiveType)
+                .invoke(coordinator, generation, sessionEpoch) as Boolean
+        check(marked) { "Could not mark stale Internet lease epoch" }
+        activity.javaClass.getDeclaredMethod("refreshInternetProfileUi").apply { isAccessible = true }.invoke(activity)
+    }
+
+    private fun assertUnavailableLeaseActionsRemainAvailable() {
+        onView(withId(R.id.internetConnectButton))
+            .check(matches(not(isEnabled())))
+        onView(withId(R.id.internetConnectButton))
+            .check(matches(withContentDescription(R.string.internet_connect_fresh_profile_required_description)))
+        onView(withId(R.id.internetImportProfileButton)).check(matches(isEnabled()))
+        onView(withId(R.id.internetScanProfileButton)).check(matches(isEnabled()))
+        onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
+    }
 }
 
 private class DialogTextRootMatcher(
@@ -521,10 +749,14 @@ private fun profileSecretSlot(offer: TestPairingOffer, lease: TestLease): String
     val digest = sha256("${offer.pairingIdentifier}\u0000${lease.signalingSessionId}\u0000${lease.sessionEpoch}".toByteArray()).hex()
     return "phase3.internet.profile.v1.$digest"
 }
+private fun AndroidStoredInternetSessionFactory.internetPairingSecretSinkForAcceptance() =
+    dev.telemachus.display.internet.security.InternetPairingSecretSink(::persistPairingSecrets)
 private fun identityHighWatermark(context: Context): Long =
     context
         .getSharedPreferences("phase3_security_state", Context.MODE_PRIVATE)
         .getLong("identity_epoch_high_watermark", 0)
 
-private const val OPT_IN_ARGUMENT = "vibeScreenInternetUiBootstrapAcceptance"
+private const val BOOTSTRAP_OPT_IN_ARGUMENT = "vibeScreenInternetUiBootstrapAcceptance"
+private const val EXPIRED_LEASE_UX_OPT_IN_ARGUMENT = "vibeScreenInternetExpiredLeaseUxAcceptance"
+private const val INTERNET_PROFILE_PREFERENCES = "phase3_internet_profile"
 private const val INVALID_LEASE_JSON = "{\"version\":1,\"invalid\":true}"

@@ -71,6 +71,7 @@ import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.InternetLeaseAdmissionStatus
 import dev.telemachus.display.internet.InternetManagedPolicy
 import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
@@ -468,6 +469,7 @@ class MainActivity : AppCompatActivity() {
             synchronizeControllerDevices("foreground")
             refreshFileTransferControl()
         } else if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            refreshInternetProfileUi()
             return
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
             pendingAutomaticReconnectDelayMs?.let(::scheduleWirelessReconnect)
@@ -1121,6 +1123,7 @@ class MainActivity : AppCompatActivity() {
         applyConnectionPanelLayout()
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
+            refreshInternetProfileUi()
         }
         clampOverlayIntoSafeRect()
         activeSettingsDialog?.let { dialog ->
@@ -2376,44 +2379,78 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshInternetProfileUi() {
         if (!::binding.isInitialized) return
-        val profile = internetProfileStore.loadPublicProfile()
-        val fingerprint = internetProfileStore.verifiedHostKeyFingerprint()
+        val admission =
+            internetProfileStore.assessLeaseAdmission(
+                productSessionCoordinator.requiredFreshInternetEpoch(),
+            )
+        val profile = admission.profile
+        val fingerprint = admission.hostKeyFingerprint
         val summary =
-            if (profile == null && fingerprint == null) {
-                getString(R.string.internet_profile_missing)
-            } else if (profile == null) {
-                getString(R.string.internet_paired_without_lease, fingerprint)
-            } else {
-                getString(
-                    R.string.internet_profile_format,
-                    profile.signalingUrl,
-                    profile.signalingSessionId,
-                    profile.authoritativeSessionEpoch,
-                    fingerprint ?: getString(R.string.empty_value),
-                )
+            when {
+                profile == null && fingerprint == null -> getString(R.string.internet_profile_missing)
+                profile == null -> getString(R.string.internet_paired_without_lease, fingerprint)
+                admission.status == InternetLeaseAdmissionStatus.READY ->
+                    getString(
+                        R.string.internet_profile_format,
+                        profile.signalingUrl,
+                        profile.signalingSessionId,
+                        profile.authoritativeSessionEpoch,
+                        fingerprint ?: getString(R.string.empty_value),
+                    )
+                else ->
+                    getString(
+                        R.string.internet_profile_unavailable_format,
+                        internetLeaseAdmissionLabel(admission.status),
+                        profile.signalingUrl,
+                        profile.signalingSessionId,
+                        profile.authoritativeSessionEpoch,
+                        fingerprint ?: getString(R.string.empty_value),
+                    )
             }
         LiveRegionTextApplier.apply(binding.internetProfileSummary, summary)
+        val activeInternetSession = internetSession != null
         setInternetConnectButtonEnabled(
-            profile != null &&
-                !productSessionCoordinator.requiresFreshInternetLease(profile.authoritativeSessionEpoch) &&
-                internetSession == null,
-            profileAvailable = profile != null,
+            enabled = admission.canConnect && !activeInternetSession,
+            disabledDescription =
+                when {
+                    activeInternetSession -> R.string.internet_connect_active_description
+                    admission.status == InternetLeaseAdmissionStatus.PROFILE_MISSING ->
+                        R.string.internet_connect_profile_missing_description
+                    admission.status == InternetLeaseAdmissionStatus.INVALID_SECRET ->
+                        R.string.internet_connect_invalid_credentials_description
+                    else -> R.string.internet_connect_fresh_profile_required_description
+                },
         )
-        val canRevokePairing = profile != null || internetProfileStore.hasVerifiedPairing()
+        val canRevokePairing = admission.canRevokeLocal
         binding.internetRevokeButton.visibility = if (canRevokePairing) View.VISIBLE else View.GONE
         binding.internetRevokeButton.isEnabled = canRevokePairing
         applyConnectionPanelLayout()
-        allowInternetCredentialMutation()
     }
 
-    private fun setInternetConnectButtonEnabled(enabled: Boolean, profileAvailable: Boolean = true) {
+    private fun internetLeaseAdmissionLabel(status: InternetLeaseAdmissionStatus): String =
+        getString(
+            when (status) {
+                InternetLeaseAdmissionStatus.READY -> R.string.internet_profile_ready
+                InternetLeaseAdmissionStatus.PROFILE_MISSING -> R.string.internet_profile_missing_short
+                InternetLeaseAdmissionStatus.PAIRING_MISSING -> R.string.internet_pairing_missing_short
+                InternetLeaseAdmissionStatus.STALE_EPOCH -> R.string.internet_profile_stale
+                InternetLeaseAdmissionStatus.EXPIRED -> R.string.internet_profile_expired
+                InternetLeaseAdmissionStatus.REVOKED -> R.string.internet_profile_revoked_short
+                InternetLeaseAdmissionStatus.SECRET_MISSING -> R.string.internet_profile_credentials_missing
+                InternetLeaseAdmissionStatus.INVALID_SECRET -> R.string.internet_profile_credentials_invalid
+                InternetLeaseAdmissionStatus.INVALID_PROFILE,
+                InternetLeaseAdmissionStatus.INVALID_BINDING,
+                -> R.string.internet_profile_invalid
+            },
+        )
+
+    private fun setInternetConnectButtonEnabled(
+        enabled: Boolean,
+        @StringRes disabledDescription: Int = R.string.internet_connect,
+    ) {
         binding.internetConnectButton.isEnabled = enabled
         binding.internetConnectButton.contentDescription =
-            if (enabled || profileAvailable) {
-                getString(R.string.internet_connect)
-            } else {
-                getString(R.string.internet_connect_profile_missing_description)
-            }
+            if (enabled) getString(R.string.internet_connect) else getString(disabledDescription)
     }
 
     private fun showConnectedStreamUi() {
@@ -6158,18 +6195,15 @@ class MainActivity : AppCompatActivity() {
                 check(retryPendingInternetRevocationCleanup().isEmpty()) {
                     "Internet revocation cleanup is still pending"
                 }
-                internetProfileStore.loadLease(prefs.internetForceRelay)
+                internetProfileStore.loadLease(
+                    prefs.internetForceRelay,
+                    productSessionCoordinator.requiredFreshInternetEpoch(),
+                )
                     ?: throw IllegalStateException(getString(R.string.internet_profile_missing))
             } catch (failure: Throwable) {
+                refreshInternetProfileUi()
                 return showInternetFailure(failure)
             }
-        if (productSessionCoordinator.requiresFreshInternetLease(lease.authoritativeSessionEpoch)) {
-            return showInternetFailure(
-                IllegalStateException(
-                    "Import a lease newer than epoch ${productSessionCoordinator.requiredFreshInternetEpoch()}",
-                ),
-            )
-        }
         if (!productSessionCoordinator.beginConnectionAttempt()) return
         controlBarPolicySurface = ManagedPolicyControlSurface()
         internetRoute = null
@@ -6562,7 +6596,7 @@ class MainActivity : AppCompatActivity() {
             internetSession = created
             refreshTransferReadinessInSettings()
             refreshAudioReadinessInSettings()
-            setInternetConnectButtonEnabled(false)
+            setInternetConnectButtonEnabled(false, R.string.internet_connect_active_description)
             binding.internetDisconnectButton.visibility = View.VISIBLE
             applyConnectionPanelLayout()
             LiveRegionTextApplier.hide(binding.internetErrorText)
@@ -6882,11 +6916,7 @@ class MainActivity : AppCompatActivity() {
             {
                 setStreamingWindowState(false)
                 binding.internetDisconnectButton.visibility = View.GONE
-                val profile = internetProfileStore.loadPublicProfile()
-                setInternetConnectButtonEnabled(
-                    profile != null && !productSessionCoordinator.requiresFreshInternetLease(profile.authoritativeSessionEpoch),
-                    profileAvailable = profile != null,
-                )
+                refreshInternetProfileUi()
                 if (showIdle) {
                     LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_state_idle))
                     LiveRegionTextApplier.hide(binding.internetErrorText)
@@ -6940,7 +6970,7 @@ class MainActivity : AppCompatActivity() {
                 failure.addSuppressed(cleanupFailure)
             }
         }
-        setInternetConnectButtonEnabled(false)
+        setInternetConnectButtonEnabled(false, R.string.internet_connect_fresh_profile_required_description)
         binding.internetImportProfileButton.isEnabled = false
         binding.internetScanProfileButton.isEnabled = false
         binding.internetDisconnectButton.visibility = View.VISIBLE
@@ -6951,15 +6981,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun allowInternetCredentialMutation(): Boolean {
-        val pairingIdentifier = internetProfileStore.verifiedPairingIdentifier()
-            ?: internetProfileStore.loadPublicProfile()?.pairingIdentifier
+        val pairingIdentifier = internetProfileStore.credentialMutationPairingIdentifier()
         val quarantined =
             internetRevocationCoordinator.isCredentialMutationBlocked {
                 internetProfileStore.hasDurableCredentialMutationBlock(pairingIdentifier) ||
                     internetStoredSessionFactory.hasPendingPairingPersistenceCleanup()
             }
         if (quarantined && ::binding.isInitialized) {
-            setInternetConnectButtonEnabled(false)
+            setInternetConnectButtonEnabled(false, R.string.internet_connect_fresh_profile_required_description)
             binding.internetImportProfileButton.isEnabled = false
             binding.internetScanProfileButton.isEnabled = false
             LiveRegionTextApplier.show(

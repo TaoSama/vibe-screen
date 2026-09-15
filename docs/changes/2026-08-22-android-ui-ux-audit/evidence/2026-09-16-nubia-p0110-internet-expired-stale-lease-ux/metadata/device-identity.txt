@@ -1,0 +1,6 @@
+manufacturer=nubia
+model=P0110
+device=qssi_64
+codename=pacific
+android_release=16
+android_sdk=36

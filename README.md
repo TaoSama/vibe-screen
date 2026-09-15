@@ -756,6 +756,12 @@ revoke, and repair/re-pair cleanup. Its profile and lease are constructed by an
 in-memory instrumentation authority and entered through the product UI/store
 path, so production Authority issuance, device handoff, public-network E2E,
 real QR scan acceptance, WebRTC transport, and Host-backed media remain open.
+The [2026-09-16 Nubia P0110 Android-local expired/stale lease UX run](docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/README.md)
+adds focused no-Host coverage that stale and expired stored Internet leases are
+called out in the MainActivity summary, disable Connect with the fresh-profile
+accessibility description, leave Scan, Import, and Revoke available, and recover
+after a fresh replacement lease. It does not prove production Authority issuance,
+public Internet transport, or any Host-backed media/session path.
 A 2026-08-20 local readiness record at commit `18a6ea70` covers the same
 release boundary: protocol checks, Phase 3 security/service/static tests, local
 Authority container gating, relay coturn data-plane scripts, and direct plus
