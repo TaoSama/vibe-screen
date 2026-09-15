@@ -8,6 +8,7 @@ import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.PrivateKey
+import java.security.SecureRandom
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
@@ -403,6 +404,59 @@ class InternetPairingTest {
         }
         assertEquals(null, contextExecution.sink.sharedSecret)
     }
+
+    @Test
+    fun fixtureKeyPairConstructsMatchingP256KeyPairForSharedFixture() {
+        val fixture = SharedPairingWireFixture.load()
+        val keyPair =
+            decodeFixtureKeyPair(
+                fixture.material("device_ephemeral_private_scalar"),
+                fixture.material("device_ephemeral_public_key"),
+            )
+        val expectedPublic = decodePairingFixtureBase64URL(fixture.material("device_ephemeral_public_key"))
+        assertArrayEquals(expectedPublic, encodePublic(keyPair))
+
+        val peer = keyPair()
+        val dualSecret1 = ecdh(keyPair.private, encodePublic(peer))
+        val dualSecret2 = ecdh(peer.private, encodePublic(keyPair))
+        assertArrayEquals(dualSecret1, dualSecret2)
+
+        val testDigest = sha256("fixture-key-pair-validation".toByteArray())
+        val signature = sign(keyPair.private, testDigest)
+        assertTrue(verify(encodePublic(keyPair), testDigest, signature))
+    }
+
+    @Test
+    fun coordinatorDefaultsToRandomEphemeralGenerationWhenNoGeneratorProvided() {
+        val coordinator = Fixture().coordinator
+        val offer1 = Fixture().url.encode()
+        val offer2 = Fixture().url.encode()
+        coordinator.begin(offer1, "Client A").use { pending1 ->
+            coordinator.begin(offer2, "Client B").use { pending2 ->
+                assertFalse(
+                    pending1.request.deviceEphemeralPublicKey.contentEquals(
+                        pending2.request.deviceEphemeralPublicKey,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun sharedWireFixtureExecutionIsDeterministicAcrossRepeatedRuns() {
+        val fixture = SharedPairingWireFixture.load()
+        val expectedRequest = InternetPairingRequest.parse(fixture.wire("pairing_request").utf8)
+        val acceptance = InternetPairingAcceptance.parse(fixture.wire("acceptance").utf8)
+
+        repeat(20) {
+            val execution = beginSharedFixture(fixture)
+            assertEquals(expectedRequest, execution.pending.request)
+            assertEquals(fixture.wire("pairing_request").utf8, execution.pending.request.encode())
+            val result = execution.pending.complete(acceptance)
+            assertEquals(fixture.expected("pairing_identifier"), result.metadata.pairingIdentifier)
+            assertEquals(fixture.expected("session_key_id"), result.metadata.sessionKeyId)
+        }
+    }
 }
 
 private data class SharedFixtureExecution(
@@ -445,15 +499,24 @@ private fun beginSharedFixture(
             expectedRequest.requestSignature,
         )
     val sink = MemorySink()
+    val fixtureEphemeral =
+        decodeFixtureKeyPair(
+            fixture.material("device_ephemeral_private_scalar"),
+            fixture.material("device_ephemeral_public_key"),
+        )
     val coordinator =
         InternetPairingCoordinator(
-            signer,
-            sink,
-            Clock.fixed(Instant.ofEpochSecond(2_000_000_000L), ZoneOffset.UTC),
-            FixedFillSecureRandom(fixture.materialInt("device_ephemeral_random_fill_byte").toByte()),
+            signer = signer,
+            secretSink = sink,
+            clock = Clock.fixed(Instant.ofEpochSecond(2_000_000_000L), ZoneOffset.UTC),
+            secureRandom = SecureRandom(),
+            ephemeralKeyPairGenerator = { fixtureEphemeral },
         )
     return SharedFixtureExecution(coordinator.begin(qrWire, deviceName), signer, sink)
 }
+
+private fun decodeFixtureKeyPair(privateScalarBase64Url: String, publicKeyBase64Url: String): KeyPair =
+    KeyPair(decodePublic(decodePairingFixtureBase64URL(publicKeyBase64Url)), decodeFixturePrivateKey(privateScalarBase64Url))
 
 private fun decodeFixturePrivateKey(value: String): PrivateKey {
     val parameters = AlgorithmParameters.getInstance("EC").apply { init(ECGenParameterSpec("secp256r1")) }

@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.security.KeyPair
 import java.security.PrivateKey
 import java.security.SecureRandom
 import java.time.Clock
@@ -117,12 +118,24 @@ class InternetPairingCoordinator(
     private val clock: Clock = Clock.systemUTC(),
     private val secureRandom: SecureRandom = SecureRandom(),
 ) {
+    private var ephemeralKeyPairGenerator: (SecureRandom) -> KeyPair = ::generateEphemeral
+
     constructor(
         identity: AndroidDeviceIdentity,
         sessionFactory: AndroidStoredInternetSessionFactory,
         clock: Clock = Clock.systemUTC(),
         secureRandom: SecureRandom = SecureRandom(),
     ) : this(AndroidDeviceIdentityPairingSigner(identity), sessionFactory.internetPairingSecretSink(), clock, secureRandom)
+
+    internal constructor(
+        signer: InternetPairingSigner,
+        secretSink: InternetPairingSecretSink,
+        clock: Clock,
+        secureRandom: SecureRandom,
+        ephemeralKeyPairGenerator: (SecureRandom) -> KeyPair,
+    ) : this(signer, secretSink, clock, secureRandom) {
+        this.ephemeralKeyPairGenerator = ephemeralKeyPairGenerator
+    }
 
     fun begin(encodedUrl: String, deviceName: String): PendingInternetPairing = begin(InternetPairingURL.parse(encodedUrl), deviceName)
 
@@ -131,7 +144,7 @@ class InternetPairingCoordinator(
         val offer = url.consumeOffer()
         try {
             validateOffer(offer, clock.instant().epochSecond)
-            val ephemeral = generateEphemeral(secureRandom)
+            val ephemeral = ephemeralKeyPairGenerator(secureRandom)
             val parts = canonicalPairingRequestParts(offer, signer.publicIdentity, deviceName, publicPoint(ephemeral))
             val requestSignature = signer.signTranscriptDigest(SecurityTranscript.digest(REQUEST_DOMAIN, *parts))
             require(requestSignature.size in 1..MAX_ECDSA_DER_BYTES) { "Device pairing signature is invalid" }
