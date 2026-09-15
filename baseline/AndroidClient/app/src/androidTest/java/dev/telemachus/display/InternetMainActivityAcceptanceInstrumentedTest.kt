@@ -49,7 +49,11 @@ import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assume.assumeTrue
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
+import org.junit.runners.model.Statement
 
 /**
  * Device-side acceptance for the local Internet credential UI only.
@@ -64,8 +68,22 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     @Volatile
     private var acceptanceStage = "initialization"
 
+    private val optInRule =
+        TestRule { base, _ ->
+            object : Statement() {
+                override fun evaluate() {
+                    assumeTrue(
+                        "Pass -e $OPT_IN_ARGUMENT true only from the dedicated Android-local Internet UI/bootstrap runner",
+                        InstrumentationRegistry.getArguments().getString(OPT_IN_ARGUMENT, "false").toBoolean(),
+                    )
+                    base.evaluate()
+                }
+            }
+        }
+    private val cameraPermission = GrantPermissionRule.grant(Manifest.permission.CAMERA)
+
     @get:Rule
-    val cameraPermission: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.CAMERA)
+    val acceptanceRules: RuleChain = RuleChain.outerRule(optInRule).around(cameraPermission)
 
     @After
     fun restoreDefaultEspressoFailureHandler() {
@@ -131,8 +149,8 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
                 val firstLease = authority.issueLease(firstOffer, firstRequest, firstEpoch)
                 createdLeases += firstOffer to firstLease
-                acceptanceStage = "first_lease_import"
-                importLease(scenario, firstLease.encoded)
+                acceptanceStage = "first_lease_import_after_rejected_draft"
+                importLeaseAfterRejectedDraft(scenario, firstLease.encoded)
                 assertEquals(firstEpoch, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
 
@@ -193,7 +211,8 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
         println(
             "PHASE3_ANDROID_INTERNET_UI_PASS internet_tab=true route_toggle=true " +
-                "pairing=true strict_lease_import=true local_revoke=true repair=true secure_dialogs=true",
+                "pairing=true strict_lease_import=true retryable_import_error=true " +
+                "local_revoke=true repair=true secure_dialogs=true",
         )
     }
 
@@ -319,6 +338,46 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         acceptanceStage = "lease_import_result"
     }
 
+    private fun importLeaseAfterRejectedDraft(
+        scenario: ActivityScenario<MainActivity>,
+        encodedLease: String,
+    ) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        acceptanceStage = "lease_import_open"
+        scenario.onActivity { activity ->
+            check(activity.findViewById<View>(R.id.internetImportProfileButton).performClick()) {
+                "Internet profile import action was not handled"
+            }
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        acceptanceStage = "lease_import_rejected_draft_input"
+        onView(withHint(R.string.internet_import_hint))
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
+            .perform(SetSensitiveTextAction(INVALID_LEASE_JSON))
+        acceptanceStage = "lease_import_rejected_draft_submit"
+        onView(withHint(R.string.internet_import_hint))
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
+            .perform(ClickDialogPositiveAction(expectDialogError = true))
+        acceptanceStage = "lease_import_rejected_draft_result"
+        onView(withId(R.id.internetProfileImportErrorText))
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
+            .check(matches(isDisplayed()))
+        assertTrue("Rejected draft must not persist a profile", InternetSessionProfileStore(context).loadPublicProfile() == null)
+
+        acceptanceStage = "lease_import_corrected_input"
+        onView(withHint(R.string.internet_import_hint))
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
+            .perform(SetSensitiveTextAction(encodedLease))
+        onView(withId(R.id.internetProfileImportErrorText))
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
+            .check(matches(not(isDisplayed())))
+        acceptanceStage = "lease_import_corrected_submit"
+        onView(withHint(R.string.internet_import_hint))
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
+            .perform(ClickDialogPositiveAction())
+        acceptanceStage = "lease_import_result"
+    }
+
     private fun revokeThroughUi(scenario: ActivityScenario<MainActivity>) {
         acceptanceStage = "revoke_open"
         scenario.onActivity { activity ->
@@ -419,6 +478,7 @@ private class SetSensitiveTextAction(
 
 private class ClickDialogPositiveAction(
     private val requireSecure: Boolean = true,
+    private val expectDialogError: Boolean = false,
 ) : ViewAction {
     override fun getConstraints() = allOf(isDisplayed(), isEnabled())
     override fun getDescription() = "click the positive action in the protected dialog"
@@ -427,6 +487,12 @@ private class ClickDialogPositiveAction(
         val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
         check(button.performClick()) { "Protected dialog action was not handled" }
         uiController.loopMainThreadUntilIdle()
+        if (expectDialogError) {
+            check((view as? EditText)?.error != null) {
+                "Protected dialog action did not expose the expected retryable error"
+            }
+            return
+        }
         check((view as? EditText)?.error == null) {
             "Protected dialog action failed: ${(view as EditText).error}"
         }
@@ -459,3 +525,6 @@ private fun identityHighWatermark(context: Context): Long =
     context
         .getSharedPreferences("phase3_security_state", Context.MODE_PRIVATE)
         .getLong("identity_epoch_high_watermark", 0)
+
+private const val OPT_IN_ARGUMENT = "vibeScreenInternetUiBootstrapAcceptance"
+private const val INVALID_LEASE_JSON = "{\"version\":1,\"invalid\":true}"

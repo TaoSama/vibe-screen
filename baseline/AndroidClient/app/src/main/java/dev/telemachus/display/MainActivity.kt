@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.hardware.input.InputManager
 import android.media.MediaFormat
@@ -1941,8 +1942,11 @@ class MainActivity : AppCompatActivity() {
     private fun showInternetProfileImportDialog() {
         if (!allowInternetCredentialMutation()) return
         val content = layoutInflater.inflate(R.layout.dialog_internet_profile_import, null, false)
+        val scroll =
+            content.findViewById<View>(R.id.internetProfileImportScroll) as? ScrollView
+                ?: error("Internet profile import layout missing scroll container")
         val input =
-            content.findViewById<EditText>(R.id.internetProfileImportInput).apply {
+            scroll.findViewById<EditText>(R.id.internetProfileImportInput).apply {
                 hint = getString(R.string.internet_import_hint)
                 setHorizontallyScrolling(false)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -1952,19 +1956,44 @@ class MainActivity : AppCompatActivity() {
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                 isSaveEnabled = false
             }
-        val errorText = content.findViewById<TextView>(R.id.internetProfileImportErrorText)
+        val errorText = scroll.findViewById<TextView>(R.id.internetProfileImportErrorText)
+        fun updateImportError(message: CharSequence?) {
+            input.error = message
+            if (message == null) {
+                LiveRegionTextApplier.hide(errorText)
+            } else {
+                LiveRegionTextApplier.show(errorText, message)
+                errorText.post {
+                    errorText.requestRectangleOnScreen(
+                        Rect(0, 0, errorText.width, errorText.height),
+                        true,
+                    )
+                }
+            }
+        }
+        input.addTextChangedListener(
+            object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+                override fun afterTextChanged(s: Editable?) {
+                    if (input.error != null || errorText.visibility == View.VISIBLE) {
+                        updateImportError(null)
+                    }
+                }
+            },
+        )
         val dialog =
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.internet_import_title)
-                .setView(content)
+                .setView(scroll)
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.internet_import_action, null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
-                    input.error = null
-                    LiveRegionTextApplier.hide(errorText)
+                    updateImportError(null)
                     check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
                     internetProfileStore.import(
                         input.text.toString(),
@@ -1983,8 +2012,7 @@ class MainActivity : AppCompatActivity() {
                             R.string.internet_import_error_format,
                             failure.message ?: getString(R.string.internet_error_title),
                         )
-                    input.error = message
-                    LiveRegionTextApplier.show(errorText, message)
+                    updateImportError(message)
                 }
             }
         }
