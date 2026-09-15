@@ -1,10 +1,10 @@
 <?xml version='1.0' encoding='UTF-8' ?>
-<testsuite name="dev.telemachus.display.OutgoingFileStagerInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.825" timestamp="2026-09-15T05:53:16" hostname="localhost">
+<testsuite name="dev.telemachus.display.OutgoingFileStagerInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.745" timestamp="2026-09-15T06:39:11" hostname="localhost">
   <properties>
     <property name="device" value="P0110 - 16" />
     <property name="flavor" value="" />
     <property name="project" value=":app" />
   </properties>
-  <testcase name="productionStagerReadsContentUriIntoPrivateBytesMetadataAndCleansUp" classname="dev.telemachus.display.OutgoingFileStagerInstrumentedTest" time="0.032" />
-  <testcase name="oversizeContentUriStagingFailureRemovesPrivateDirectory" classname="dev.telemachus.display.OutgoingFileStagerInstrumentedTest" time="0.0" />
+  <testcase name="productionStagerReadsContentUriIntoPrivateBytesMetadataAndCleansUp" classname="dev.telemachus.display.OutgoingFileStagerInstrumentedTest" time="0.004" />
+  <testcase name="oversizeContentUriStagingFailureRemovesPrivateDirectory" classname="dev.telemachus.display.OutgoingFileStagerInstrumentedTest" time="0.031" />
 </testsuite>

@@ -1,7 +1,7 @@
 # 2026-09-15 Nubia P0110 no-Host outgoing staging runtime smoke
 
 This package records a focused Android-local check of the production outgoing
-file stager at source commit `e0ce35b9a`. The device was a nubia P0110 /
+file stager at source commit `b0d45519c`. The device was a nubia P0110 /
 pacific running Android 16 / SDK 36. Its ADB serial is intentionally redacted.
 
 ## Result
@@ -11,16 +11,18 @@ Both focused instrumentation methods passed on the physical device:
 - `productionStagerReadsContentUriIntoPrivateBytesMetadataAndCleansUp` created
   a real `MediaStore.Downloads` `content://` source, read it through the
   production `OutgoingFileStager`, and verified the app-private staged bytes,
-  display name, MIME type, byte length, SHA-256, and explicit cleanup.
+  display name, MIME type, byte length, SHA-256 against an independent
+  `MessageDigest` oracle, and explicit cleanup.
 - `oversizeContentUriStagingFailureRemovesPrivateDirectory` verified that an
   over-limit source fails closed and removes its partial private staging
   directory.
 
 The retained JUnit report records `tests=2`, `failures=0`, `errors=0`, and
 `skipped=0`. Focused JVM tests additionally verify that a staged file produces
-matching `FileOffer` metadata, strictly advancing first/final chunks with the
-expected session epoch, and that the UI/session cleanup owner deletes the
-staging directory after user cancellation and connection cleanup.
+matching `FileOffer` metadata across USB/LAN and Internet transports, strictly
+advancing first/final chunks with the expected session epoch, rejecting staged
+file growth or truncation, and deleting the staging directory through the
+production transfer owner after user cancellation and connection cleanup.
 
 ## Boundary
 

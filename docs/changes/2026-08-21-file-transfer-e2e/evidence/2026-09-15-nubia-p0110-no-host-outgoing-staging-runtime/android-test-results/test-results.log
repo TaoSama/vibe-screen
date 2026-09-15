@@ -29,7 +29,7 @@ INSTRUMENTATION_STATUS: test=oversizeContentUriStagingFailureRemovesPrivateDirec
 INSTRUMENTATION_STATUS_CODE: 0
 INSTRUMENTATION_RESULT: stream=
 
-Time: 0.083
+Time: 0.08
 
 OK (2 tests)
 

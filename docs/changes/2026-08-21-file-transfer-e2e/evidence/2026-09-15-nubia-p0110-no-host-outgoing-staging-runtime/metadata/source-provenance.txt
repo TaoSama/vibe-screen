@@ -1,5 +1,5 @@
 repository=git@github.com:TaoSama/vibe-screen.git
-source_commit=e0ce35b9a
+source_commit=b0d45519c
 source_branch=codex/android-outbound-file-staging-smoke
 test_class=dev.telemachus.display.OutgoingFileStagerInstrumentedTest
 scope=android_local_outgoing_content_uri_staging_runtime
