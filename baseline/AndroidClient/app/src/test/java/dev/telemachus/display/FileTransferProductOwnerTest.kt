@@ -1018,6 +1018,34 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `staged outgoing file rejects same length mutation before offer`() {
+        val staged = stagedOutgoingFile(
+            displayName = "mutated-source.txt",
+            payload = "original".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 4))
+        owner.activateSession()
+        try {
+            staged.file.writeText("modified")
+
+            val result = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+                snapshot = staged.snapshot(),
+            )
+
+            assertEquals(
+                FileTransferProductOwner.PrepareOutgoingResult.Rejected("staged_file_mismatch"),
+                result,
+            )
+            assertEquals(0, owner.activeOutgoingTransferCount())
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
+        }
+    }
+
+    @Test
     fun `staged outgoing file rejects truncation between chunks`() {
         val staged = stagedOutgoingFile(
             displayName = "truncated-source.txt",

@@ -340,6 +340,9 @@ internal class OutgoingFileTransfer(
         if (snapshotValue.sha256.size() != SHA256_BYTES) {
             throw fileTransferFailure("invalid_digest", "File digest must be SHA-256")
         }
+        if (snapshot != null && digest(file, effectivePolicy.maximumChunkBytes) != snapshotValue.sha256) {
+            throw fileTransferFailure("staged_file_mismatch", "Outgoing file content changed after staging")
+        }
         val byteLength = snapshotValue.byteLength
         if (byteLength < 0 || byteLength > effectivePolicy.maximumFileBytes) {
             throw fileTransferFailure("file_too_large", "File exceeds negotiated maximum")
