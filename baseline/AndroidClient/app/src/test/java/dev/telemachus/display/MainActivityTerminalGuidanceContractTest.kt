@@ -2076,6 +2076,33 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun internetRevokeIsOnlyVisibleForStoredPairings() {
+        val refresh = extractMethod(mainActivitySource(), "private fun refreshInternetProfileUi")
+        val compactRefresh = refresh.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Revoke eligibility must cover both a current lease and pairing-only repair state",
+            compactRefresh.contains(
+                "valcanRevokePairing=profile!=null||internetProfileStore.hasVerifiedPairing()",
+            ),
+        )
+        assertTrue(
+            "An unavailable destructive action should not occupy or receive focus in the empty state",
+            compactRefresh.contains(
+                "binding.internetRevokeButton.visibility=if(canRevokePairing)View.VISIBLEelseView.GONE",
+            ),
+        )
+        assertTrue(
+            "Revoke enabled state must use the same eligibility decision as visibility",
+            compactRefresh.contains("binding.internetRevokeButton.isEnabled=canRevokePairing"),
+        )
+        assertTrue(
+            "Changing action visibility must reflow the responsive secondary action row",
+            compactRefresh.contains("applyConnectionPanelLayout()"),
+        )
+    }
+
+    @Test
     fun internetErrorVisibilityUsesAnnouncementAwareHelpers() {
         val compactSource = mainActivitySource().replace(Regex("\\s+"), "")
         val showInvocation = "LiveRegionTextApplier.show(binding.internetErrorText,"

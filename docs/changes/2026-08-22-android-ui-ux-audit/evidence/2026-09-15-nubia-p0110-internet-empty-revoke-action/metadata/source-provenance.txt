@@ -1,0 +1,9 @@
+repository=TaoSama/vibe-screen
+worktree=<workspace>
+branch=codex/android-hide-unavailable-internet-revoke
+base_head=a51759a2f9f03ba0efb57824d24eda0be37fc760
+origin_main=a51759a2f9f03ba0efb57824d24eda0be37fc760
+base_subject=test(android): isolate real QR acceptance harness (#791)
+date=2026-09-15
+timezone=Asia/Shanghai
+local_change=Hide the unavailable Internet revoke action in the true empty state while preserving paired and pairing-only repair eligibility; add focused JVM and product acceptance coverage.

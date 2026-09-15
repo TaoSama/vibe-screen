@@ -2304,7 +2304,10 @@ class MainActivity : AppCompatActivity() {
                 internetSession == null,
             profileAvailable = profile != null,
         )
-        binding.internetRevokeButton.isEnabled = profile != null || internetProfileStore.hasVerifiedPairing()
+        val canRevokePairing = profile != null || internetProfileStore.hasVerifiedPairing()
+        binding.internetRevokeButton.visibility = if (canRevokePairing) View.VISIBLE else View.GONE
+        binding.internetRevokeButton.isEnabled = canRevokePairing
+        applyConnectionPanelLayout()
         allowInternetCredentialMutation()
     }
 
