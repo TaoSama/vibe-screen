@@ -1,6 +1,7 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.AudioReadinessSnapshot
 import dev.telemachus.display.ControllerConnectionAckTracker
 import dev.telemachus.display.ControllerDispatchOrdering
 import dev.telemachus.display.ControllerEventKind
@@ -172,6 +173,8 @@ internal interface InternetProductSessionCallbacks {
     fun onVideoFrame(frame: ProductVideoFrame) = Unit
 
     fun onAudioRecord(payload: ByteArray) = Unit
+
+    fun onAudioReadinessChanged(snapshot: AudioReadinessSnapshot) = Unit
 
     fun onBulkRecord(payload: ByteArray) = Unit
 
@@ -459,6 +462,8 @@ class InternetProductSession internal constructor(
         expireOutgoingFileTransfers()
         heartbeatTick()
     }
+
+    internal fun audioReadinessSnapshot(): AudioReadinessSnapshot? = audioPlayback?.readinessSnapshot()
 
     fun sendTouch(event: ProductTouchEvent): Boolean {
         if (!synchronized(lock) { Capability.CAPABILITY_TOUCH in expectedNegotiatedCapabilities }) return false
@@ -1659,6 +1664,8 @@ class InternetProductSession internal constructor(
             val failure = IllegalStateException("Required Protocol v1 audio configuration result could not be queued")
             if (decision.accepted) stopAudioPlayback("audio_config_result_send_failed")?.let(failure::addSuppressed)
             failIfOwned(owner, failure)
+        } else if (decision.accepted) {
+            notifyAudioReadinessChangedIfOwned(owner)
         } else if (!decision.accepted) {
             stopAudioPlayback("audio_configuration_rejected")?.let { failIfOwned(owner, it) }
         }
@@ -1781,6 +1788,7 @@ class InternetProductSession internal constructor(
                         InternetAudioDecision.reject("audio_playback_submit_failed")
                     }
                 if (!decision.accepted) playbackFailure = decision.rejectionReason
+                if (decision.accepted) notifyAudioReadinessChangedIfOwned(owner)
             } else {
                 callbacks.onAudioRecord(record.copyOf())
             }
@@ -2651,12 +2659,30 @@ class InternetProductSession internal constructor(
             currentAudioConfiguration = null
             audioPlaybackConfigured = false
         }
-        return try {
+        val failure = try {
             audioPlayback?.stop(reason)
             null
         } catch (failure: Throwable) {
             IllegalStateException("Audio playback stop failed", failure)
         }
+        if (audioPlayback != null) notifyAudioReadinessChanged()
+        return failure
+    }
+
+    private fun notifyAudioReadinessChangedIfOwned(owner: TransportOwner) {
+        withLifecycleGate {
+            val snapshot =
+                synchronized(lock) {
+                    if (!acceptsTransportCallbackLocked(owner)) return@withLifecycleGate
+                    audioPlayback?.readinessSnapshot()
+                } ?: return@withLifecycleGate
+            callbacks.onAudioReadinessChanged(snapshot)
+        }
+    }
+
+    private fun notifyAudioReadinessChanged() {
+        val snapshot = audioPlayback?.readinessSnapshot() ?: return
+        callbacks.onAudioReadinessChanged(snapshot)
     }
 
     private data class TransportOwner(val generation: Long)

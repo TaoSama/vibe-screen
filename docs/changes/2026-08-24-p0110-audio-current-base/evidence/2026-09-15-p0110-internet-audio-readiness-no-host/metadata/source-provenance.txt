@@ -1,0 +1,7 @@
+repository=TaoSama/vibe-screen
+branch=codex/android-internet-audio-readiness
+base=1da2d25770afc7a0e1b31582f0621b634faadeb1
+origin_main=1da2d25770afc7a0e1b31582f0621b634faadeb1
+base_subject=fix(android): hide unavailable Internet revoke action (#792)
+date=2026-09-15
+timezone=Asia/Shanghai

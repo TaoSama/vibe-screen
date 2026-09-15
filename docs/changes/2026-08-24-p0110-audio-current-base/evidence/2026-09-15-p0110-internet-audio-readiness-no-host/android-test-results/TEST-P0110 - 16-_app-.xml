@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="dev.telemachus.display.InternetAudioReadinessSettingsInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="2.584" timestamp="2026-09-15T05:04:05" hostname="localhost">
+  <properties>
+    <property name="device" value="P0110 - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="internetSettingsAudioReadinessUsesInternetSnapshotAndClearsAfterDisconnect" classname="dev.telemachus.display.InternetAudioReadinessSettingsInstrumentedTest" time="1.909" />
+</testsuite>

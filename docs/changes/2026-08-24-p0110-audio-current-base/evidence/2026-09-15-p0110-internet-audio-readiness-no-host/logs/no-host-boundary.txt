@@ -1,0 +1,7 @@
+before_adb_reverse=<empty>
+before_local_tcp_54321_listener=<none>
+after_adb_reverse=<empty>
+after_local_tcp_54321_listener=<none>
+window_animation_scale_restored=1.0
+transition_animation_scale_restored=1.0
+animator_duration_scale_restored=null
