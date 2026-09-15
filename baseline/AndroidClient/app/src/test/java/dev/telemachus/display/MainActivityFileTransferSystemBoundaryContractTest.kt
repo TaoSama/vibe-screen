@@ -256,7 +256,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Picker completion should stage the file and defer protocol offer submission until explicit user confirmation",
-            handlePicker.contains("PendingOutgoingFileTransfer(") &&
+            source.contains("OutgoingFileStager(") &&
+                source.contains("private fun stageOutgoingFileTransfer(") &&
+                source.contains("StagedOutgoingFile") &&
+                handlePicker.contains("PendingOutgoingFileTransfer(") &&
+                handlePicker.contains("stagedFile = file") &&
                 handlePicker.contains("promptOutgoingFileTransfer(") &&
                 assertBeforeValue(handlePicker, "PendingOutgoingFileTransfer(", "promptOutgoingFileTransfer(") &&
                 !handlePicker.contains("session.offerFile(file, mimeType)") &&
@@ -420,7 +424,9 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 clearPendingOutgoing.contains("if (clearStagedFile)") &&
                 clearPendingOutgoing.contains("pendingOutgoingFileSubmissionInFlight = false") &&
                 clearPendingOutgoing.contains("pendingOutgoingFileDialog?.dismiss()") &&
-                clearPendingOutgoing.contains("takePendingOutgoingFileTransfer()"),
+                clearPendingOutgoing.contains("takePendingOutgoingFileTransfer() as? StagedOutgoingFile") &&
+                clearPendingOutgoing.contains("cleanupBestEffort(::logOutgoingFileCleanupFailure)") &&
+                clearPendingOutgoing.contains("pendingInternetOutgoingFileTransfer?.cleanupBestEffort(::logOutgoingFileCleanupFailure)"),
         )
         assertTrue(
             "Lifecycle cleanup should dismiss outgoing confirmation and retry dialogs without leaving stale timeout callbacks",
@@ -603,7 +609,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             internetSession.contains("pendingIncomingFileDialog == null") &&
                 internetSession.contains("if (generation <= 0L || session.state != InternetProductSessionState.ACTIVE || !isCurrentAndAllowed())") &&
                 assertBeforeValue(internetSession, "pendingIncomingFileDialog == null", "return ActiveFileTransferSession") &&
-                assertBeforeValue(internetSession, "if (isCurrentAndAllowed())", "pendingInternetOutgoingFileTransfer = file"),
+                assertBeforeValue(internetSession, "if (isCurrentAndAllowed())", "pendingInternetOutgoingFileTransfer = stagedFile"),
         )
         assertTrue(
             "Internet outgoing selection should be unavailable while another file transfer is pending or active",
@@ -691,7 +697,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             "No-Host file-transfer/control-surface refresh must not launch picker, read source files, or publish Downloads",
             noHostControlSurfaceRefresh.contains("ACTION_OPEN_DOCUMENT") ||
                 noHostControlSurfaceRefresh.contains("startActivityForResult") ||
-                noHostControlSurfaceRefresh.contains("contentResolver.openInputStream") ||
+                noHostControlSurfaceRefresh.contains("stageOutgoingFileTransfer") ||
+                noHostControlSurfaceRefresh.contains("OutgoingFileStager") ||
                 noHostControlSurfaceRefresh.contains("MediaStore.Downloads") ||
                 noHostControlSurfaceRefresh.contains("saveIncomingFileToDownloads"),
         )

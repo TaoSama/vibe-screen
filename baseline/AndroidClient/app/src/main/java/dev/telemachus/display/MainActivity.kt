@@ -19,7 +19,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
@@ -102,11 +101,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.File
-import java.io.FileOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -309,7 +306,7 @@ class MainActivity : AppCompatActivity() {
     private var localAudioAllowed = true
     private var localWakeHostAllowed = true
     private var localFixedHostAllowed = true
-    private var pendingInternetOutgoingFileTransfer: File? = null
+    private var pendingInternetOutgoingFileTransfer: StagedOutgoingFile? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var pendingIncomingFileOfferTransferId: ByteString? = null
     private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
@@ -2867,7 +2864,6 @@ class MainActivity : AppCompatActivity() {
         }
         val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
-            val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
             val staged =
                 runCatching {
                     val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
@@ -2875,16 +2871,13 @@ class MainActivity : AppCompatActivity() {
                         if (session.isCurrentAndAllowed() && !hasActiveFileTransfer()) {
                             session.stageOutgoingFile(file)
                         } else {
-                            file.deleteRecursivelyBestEffort()
+                            file.cleanupBestEffort(::logOutgoingFileCleanupFailure)
                             false
                         }
                     }
                     if (registered) {
                         PendingOutgoingFileTransfer(
-                            file = file,
-                            mimeType = mimeType,
-                            displayName = safeOutgoingFileName(file.name),
-                            byteLength = file.length(),
+                            stagedFile = file,
                             maximumFileBytes = maximumFileBytes,
                         )
                     } else {
@@ -2929,55 +2922,21 @@ class MainActivity : AppCompatActivity() {
     private fun stageOutgoingFileTransfer(
         uri: Uri,
         maximumFileBytes: Long,
-    ): File {
-        val safeName = safeOutgoingFileName(displayNameForUri(uri))
-        val directory = File(cacheDir, "vibescreen-outgoing-files/" + UUID.randomUUID())
-        if (!directory.mkdirs()) throw IOException("Unable to create outgoing file staging directory")
-        val staged = File(directory, safeName)
-        var total = 0L
-        try {
-            contentResolver.openInputStream(uri).use { input ->
-                if (input == null) throw IOException("Unable to open selected file")
-                FileOutputStream(staged).use { output ->
-                    val buffer = ByteArray(FILE_TRANSFER_COPY_BUFFER_BYTES)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        total += read.toLong()
-                        if (total > maximumFileBytes) {
-                            throw SelectedFileTooLargeException()
-                        }
-                        output.write(buffer, 0, read)
-                    }
-                }
-            }
-            return staged
-        } catch (failure: Throwable) {
-            directory.deleteRecursivelyBestEffort()
-            throw failure
-        }
-    }
-
-    private fun displayNameForUri(uri: Uri): String? =
-        runCatching {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (index >= 0) cursor.getString(index) else null
-                } else {
-                    null
-                }
-            }
-        }.getOrNull()
+    ): StagedOutgoingFile =
+        OutgoingFileStager(
+            contentResolver = contentResolver,
+            cacheDirectory = cacheDir,
+            maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+        ).stage(uri, maximumFileBytes)
 
     private fun safeOutgoingFileName(displayName: String?): String =
-        AppSpecificDownloadsSaver.safeDisplayName(displayName, MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
+        OutgoingFileStager.safeDisplayName(displayName, MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
 
     private data class ActiveFileTransferSession(
         val isCurrent: () -> Boolean,
         val isCurrentAndAllowed: () -> Boolean,
         val negotiatedMaxFileBytes: Long,
-        val stageOutgoingFile: (File) -> Boolean,
+        val stageOutgoingFile: (StagedOutgoingFile) -> Boolean,
         val offerFile: (File, String) -> OutgoingFileTransferHandle?,
         val cancelOutgoingFile: (ByteString) -> Boolean,
     )
@@ -3001,14 +2960,14 @@ class MainActivity : AppCompatActivity() {
     )
 
     private data class PendingOutgoingFileTransfer(
-        val file: File,
-        val mimeType: String,
-        val displayName: String,
-        val byteLength: Long,
+        val stagedFile: StagedOutgoingFile,
         val maximumFileBytes: Long,
-    )
-
-    private class SelectedFileTooLargeException : IOException("selected_file_exceeds_transfer_limit")
+    ) {
+        val file: File get() = stagedFile.file
+        val mimeType: String get() = stagedFile.mimeType
+        val displayName: String get() = stagedFile.displayName
+        val byteLength: Long get() = stagedFile.byteLength
+    }
 
     private fun promptIncomingFileOffer(
         client: StreamClient,
@@ -3440,10 +3399,10 @@ class MainActivity : AppCompatActivity() {
                     productSessionCoordinator.requestOutgoingFileTransfer(client, generation)
             },
             negotiatedMaxFileBytes = client.negotiatedMaxFileBytes,
-            stageOutgoingFile = { file ->
+            stageOutgoingFile = { stagedFile ->
                 discardPendingOutgoingFileTransfer()
-                val staged = productSessionCoordinator.stageOutgoingFileTransfer(client, generation, file)
-                if (!staged) file.deleteRecursivelyBestEffort()
+                val staged = productSessionCoordinator.stageOutgoingFileTransfer(client, generation, stagedFile)
+                if (!staged) stagedFile.cleanupBestEffort(::logOutgoingFileCleanupFailure)
                 staged
             },
             offerFile = client::offerFileWithHandle,
@@ -3475,13 +3434,13 @@ class MainActivity : AppCompatActivity() {
             isCurrent = { generation == productSessionCoordinator.currentInternetGeneration() && internetSession === session },
             isCurrentAndAllowed = { isCurrentAndAllowed() },
             negotiatedMaxFileBytes = session.negotiatedMaxFileBytes,
-            stageOutgoingFile = { file ->
+            stageOutgoingFile = { stagedFile ->
                 if (isCurrentAndAllowed()) {
                     discardPendingOutgoingFileTransfer()
-                    pendingInternetOutgoingFileTransfer = file
+                    pendingInternetOutgoingFileTransfer = stagedFile
                     true
                 } else {
-                    file.deleteRecursivelyBestEffort()
+                    stagedFile.cleanupBestEffort(::logOutgoingFileCleanupFailure)
                     false
                 }
             },
@@ -3604,11 +3563,16 @@ class MainActivity : AppCompatActivity() {
         pendingOutgoingFileDialog = null
         if (clearStagedFile) {
             pendingOutgoingFileSubmissionInFlight = false
-            (productSessionCoordinator.takePendingOutgoingFileTransfer() as? File)?.deleteRecursivelyBestEffort()
-            pendingInternetOutgoingFileTransfer?.deleteRecursivelyBestEffort()
+            (productSessionCoordinator.takePendingOutgoingFileTransfer() as? StagedOutgoingFile)
+                ?.cleanupBestEffort(::logOutgoingFileCleanupFailure)
+            pendingInternetOutgoingFileTransfer?.cleanupBestEffort(::logOutgoingFileCleanupFailure)
             pendingInternetOutgoingFileTransfer = null
         }
         if (refreshControl) refreshFileTransferControl()
+    }
+
+    private fun logOutgoingFileCleanupFailure(failure: Throwable) {
+        mainDiag("file transfer cleanup failed: " + failure.javaClass.simpleName)
     }
 
     private fun rejectPendingIncomingFileOffer() {
@@ -3626,18 +3590,6 @@ class MainActivity : AppCompatActivity() {
         pendingIncomingFileDialog = null
         pendingIncomingFileOfferTransferId = null
         return true
-    }
-
-    private fun File.deleteRecursivelyBestEffort() {
-        runCatching {
-            if (isDirectory) {
-                deleteRecursively()
-            } else {
-                parentFile?.deleteRecursively() ?: delete()
-            }
-        }.onFailure { failure ->
-            mainDiag("file transfer cleanup failed: " + failure.javaClass.simpleName)
-        }
     }
 
     private fun File.deleteBestEffort() {
@@ -7863,7 +7815,6 @@ class MainActivity : AppCompatActivity() {
         private const val CLIPBOARD_MENU_SEND = 1
         private const val CLIPBOARD_MENU_RECEIVE = 2
         private const val FILE_TRANSFER_APPROVAL_TIMEOUT_MS = 30_000L
-        private const val FILE_TRANSFER_COPY_BUFFER_BYTES = 64 * 1024
         private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
         private const val RECENTLY_FINISHED_OUTGOING_TRANSFER_LIMIT = 16
         private const val TOAST_DEDUP_WINDOW_MS = 1_500L
