@@ -1,4 +1,4 @@
-fb67b008cca8c62e6f855e507c79d9638efd8a11f69fdb9b64a4f35c38ed48fe  ./commands.txt
+249433c9fae56befbd96fe871add149d13137e23b1bce48e47b791674e6c916d  ./commands.txt
 9230817bde5258d20320deb95dd08ac62f24c4600c3ae584355dc46c398948b8  ./focused-runs-final-20260916-005100/adb-devices.txt
 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./focused-runs-final-20260916-005100/run-1/adb-reverse-after.txt
 1faf5c35c2488da21930f6e70070229accfad8465bfafbf3a42c7668399794ac  ./focused-runs-final-20260916-005100/run-1/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
@@ -41,8 +41,8 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./focused-runs
 b940a6d271ae9fd7ee06887d31558dadc4433674d8fd463b7d6690fd040326d7  ./focused-runs-final-20260916-005100/run-3/window-after.txt
 ae6fd02351bb025c4a4c5571616e3aa178bda022cf9beb44eb5bf69b791350a4  ./metadata/device-identity.txt
 76dfd943d8c357c2440143d918692af3d7cd951ca32a9a29792bfcd68be6e1d2  ./metadata/post-run-cleanup.txt
-afaac9aa7028d0d85c5ded8188d821a0102ac916bb8a884767d49dbce22254cf  ./metadata/source-provenance.txt
-10c22e5f12472c92d7c514e7be252c70f0e1a5ec7b282a11100e3165fdd5fb64  ./README.md
+4bc75d86bb9e3b568ccb2ff8a636f77f82d7f61f78ceba85d3f1b92e1173f908  ./metadata/source-provenance.txt
+63b5954ddf0898f3d27d78121ce73bd659eaf50a69cdb0c994cc9fd4f03d1af7  ./README.md
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./verification/baseline-android-check-final-exit-status.txt
 ea27d336a39083036e36ead3cab05509054c69521bb9bcc0aa6e6aeaa7a419ed  ./verification/baseline-android-check-final.log
 9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  ./verification/compile-debug-android-test-kotlin-final-exit-status.txt

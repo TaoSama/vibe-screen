@@ -68,6 +68,8 @@ class InternetCameraPermissionRecoveryInstrumentedTest {
                 onView(withId(R.id.internetModeContent)).check(matches(isDisplayed()))
             }
         } finally {
+            context.revokeCameraPermissionFromShell()
+            context.waitForCameraPermission(granted = false)
             preferences.connectionMode = originalMode
         }
     }
@@ -78,6 +80,11 @@ class InternetCameraPermissionRecoveryInstrumentedTest {
     private fun Context.grantCameraPermissionFromShell() {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.executeShellCommand("pm grant $packageName ${Manifest.permission.CAMERA}").close()
+    }
+
+    private fun Context.revokeCameraPermissionFromShell() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.executeShellCommand("pm revoke $packageName ${Manifest.permission.CAMERA}").close()
     }
 
     private fun Context.openSystemAppInfoFromShell() {

@@ -16,7 +16,7 @@ make baseline-android-check
 # recovery into QRScannerActivity. No macOS Host or adb reverse was used.
 adb -s <redacted-adb-serial> shell pm revoke dev.telemachus.display android.permission.CAMERA >/dev/null 2>&1 || true
 adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display >/dev/null 2>&1 || true
-ANDROID_SERIAL=EP0110PZ0B9110152B ./gradlew --no-daemon --console=plain :app:connectedDebugAndroidTest \
+ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon --console=plain :app:connectedDebugAndroidTest \
   '-Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest#visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn' \
   -Pandroid.testInstrumentationRunnerArguments.vibeScreenInternetCameraRecovery=true
 adb -s <redacted-adb-serial> shell pm revoke dev.telemachus.display android.permission.CAMERA >/dev/null 2>&1 || true

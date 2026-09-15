@@ -6,7 +6,7 @@ This no-Host Android run verifies the focused Internet Camera permission recover
 
 ## Result
 
-- Device: Nubia P0110 (`pacific`), Android 16 / API 36, serial `EP0110PZ0B9110152B`. This is Nubia/P0110 evidence and is not Xiaomi/fuxi evidence.
+- Device: Nubia P0110 (`pacific`), Android 16 / API 36, `ANDROID_SERIAL=<redacted-adb-serial>`. This is Nubia/P0110 evidence and is not Xiaomi/fuxi evidence. Raw device-identity capture is retained under `metadata/device-identity.txt`.
 - The focused instrumentation started with Camera denied, showed the Internet first-denial inline recovery panel, backgrounded `MainActivity`, granted Camera through instrumentation `UiAutomation`, returned to foreground, and observed the QR scanner preview.
 - The app did not rely on the in-app `Open Settings` pending flag for this recovery path; the visible Internet permission panel was enough to trigger foreground permission reconciliation.
 - After the run, adb reverse was empty and no local TCP `54321` listener was present. The app package was not left installed by the Gradle connected test run, so no Camera permission grant remained on the device.
@@ -21,7 +21,7 @@ The final offline checks passed from the isolated worktree:
       --tests dev.telemachus.display.CameraPermissionResumePolicyTest
     ./gradlew --no-daemon --console=plain :app:compileDebugAndroidTestKotlin :app:lintDebug
     make baseline-android-check
-    ANDROID_SERIAL=EP0110PZ0B9110152B ./gradlew --no-daemon --console=plain \
+    ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon --console=plain \
       :app:connectedDebugAndroidTest \
       '-Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest#visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn' \
       -Pandroid.testInstrumentationRunnerArguments.vibeScreenInternetCameraRecovery=true
@@ -31,6 +31,8 @@ The retained final device evidence is `focused-runs-final-20260916-005100/run-{1
 An intermediate review check is intentionally retained as failure evidence: `verification/focused-jvm-after-review.log` exits `1` with `MainActivityTerminalGuidanceContractTest > internetCameraPermissionBlockedShowsInlineGuidanceWithoutAutomaticSettingsLaunch FAILED` at `MainActivityTerminalGuidanceContractTest.kt:1727` after `91 tests completed, 1 failed`. The failure was a brittle contract assertion that still searched for the pre-refactor inline expression `LAUNCH_SCANNER_ONCE -> return launchInternetScanner()` after `handleInternetCameraSettingsReturn()` was changed to assign `val launched = launchInternetScanner()` so the diagnostic log can include `launchResult`. The final contract update now asserts the foreground-return policy call, the `onResume` recovery hook, the Internet-mode early return in `onStart`, and the refactored scanner-launch assignment. `verification/focused-jvm-final.log` exits `0` and reports `BUILD SUCCESSFUL`.
 
 The evidence directory was reduced to retained source metadata, final offline verification logs, the intermediate JVM failure log, and the three final P0110 focused runs. Generated HTML reports, binary protobuf reports, transient lock files, and redundant non-final verification logs were removed before rebuilding `SHA256SUMS`.
+
+The `appops-camera-before.txt` and `appops-camera-after.txt` files are cleanup diagnostics captured after the Gradle connected-test uninstall boundary. Their `No UID for dev.telemachus.display` output means the package was not installed when the cleanup check ran, so they prove no retained package-level Camera app-op rather than an installed-app permission state.
 
 ## Boundary
 
