@@ -1,0 +1,23 @@
+{
+  "blocker": "Timed out waiting for CameraX QR decode marker (qr_scan_marker.json, log_sha256=d078177cfc596b16bb456e2b47cfb37969b402fa535160e1969596632d5f1d75)",
+  "device": {
+    "android_release": "16",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "evidence_boundaries": {
+    "adb_reverse": "not_used",
+    "camera_input": "real_camerax_imageanalysis_rear_camera",
+    "host_server": "no_host_server_in_memory_authority_only",
+    "qr_decoder": "real_zxing_qrcodereader",
+    "transport_mode": "no_host_harness"
+  },
+  "result": "blocked",
+  "schema": "dev.vibescreen.phase3-real-qr-pairing-blocked/v1",
+  "timing_utc": {
+    "finished": "2026-09-14T23:08:18.012484+00:00",
+    "started": "2026-09-14T23:07:05.445304+00:00"
+  }
+}
