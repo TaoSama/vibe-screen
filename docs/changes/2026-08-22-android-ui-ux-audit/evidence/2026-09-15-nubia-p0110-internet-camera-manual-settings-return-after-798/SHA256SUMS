@@ -1,7 +1,7 @@
-09c85f9fb99994c6dd02cb7b75cc05e56381050349264df844431b2b2415226d  ./commands.txt
+fb67b008cca8c62e6f855e507c79d9638efd8a11f69fdb9b64a4f35c38ed48fe  ./commands.txt
 9230817bde5258d20320deb95dd08ac62f24c4600c3ae584355dc46c398948b8  ./focused-runs-final-20260916-005100/adb-devices.txt
 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./focused-runs-final-20260916-005100/run-1/adb-reverse-after.txt
-eb33504b286ca2ecef1d3361cdb81465297e79417b1eb00811be467b247a1e99  ./focused-runs-final-20260916-005100/run-1/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
+1faf5c35c2488da21930f6e70070229accfad8465bfafbf3a42c7668399794ac  ./focused-runs-final-20260916-005100/run-1/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
 3faceb9fe541eef85517dc55209328e04c49e0f357e34828c63cca36b2712891  ./focused-runs-final-20260916-005100/run-1/android-test-results/P0110 - 16/test-result.textproto
 693a62064d6735ce620a13ae2c054319652951ccd32c819a939a694288c55935  ./focused-runs-final-20260916-005100/run-1/android-test-results/P0110 - 16/testlog/test-results.log
 d9067ff059dab31f9edacc6211f5ec021366cdbea3bd68cab6d0af8f36ccbf40  ./focused-runs-final-20260916-005100/run-1/android-test-results/TEST-P0110 - 16-_app-.xml
@@ -14,7 +14,7 @@ f6b74344510d7e63f03fc5e1595787b1bff93cd99f5a70573bdc30b0dd6edab0  ./focused-runs
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./focused-runs-final-20260916-005100/run-1/lsof-54321-after.txt
 53e51872c67d87e174dde03e4b1287486f7480003a97d949a21f53e4bdd439b8  ./focused-runs-final-20260916-005100/run-1/window-after.txt
 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./focused-runs-final-20260916-005100/run-2/adb-reverse-after.txt
-22cc147fa9c236ed4da28298fafbb04bfa336f42235a24efa3bc1560f483990c  ./focused-runs-final-20260916-005100/run-2/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
+afd193968a9327bfdcd8238a1f9f8e63a9610825ac31209a390241c379c7d2cf  ./focused-runs-final-20260916-005100/run-2/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
 9e9a83248a4008b470542b35a25e539212cc690cbb76e94ba6d29a9a4d445204  ./focused-runs-final-20260916-005100/run-2/android-test-results/P0110 - 16/test-result.textproto
 b04a087a515da773d928ba515522adbd8a86ecf89739809685c6dfe762bb11dc  ./focused-runs-final-20260916-005100/run-2/android-test-results/P0110 - 16/testlog/test-results.log
 1f7b68a857417b1af86f4920425b4441f0870b8b869edeba3fbca66ecc31743b  ./focused-runs-final-20260916-005100/run-2/android-test-results/TEST-P0110 - 16-_app-.xml
@@ -27,7 +27,7 @@ ed61619b051beed2c27be5543a8766fa4b5fe514ecbab0a6f73bd7413d3cee9f  ./focused-runs
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./focused-runs-final-20260916-005100/run-2/lsof-54321-after.txt
 8a7ba1e0ea51750d62f07f92ee3dfe51eaf053e4345f98ed8df362e6d0461fee  ./focused-runs-final-20260916-005100/run-2/window-after.txt
 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./focused-runs-final-20260916-005100/run-3/adb-reverse-after.txt
-1e370a15e42ae6785795e822470f126745587fa041d20511b20cf5c67e89c109  ./focused-runs-final-20260916-005100/run-3/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
+60d2a3c5a8d305f426c6ba939d0f8017b3aea281ab91eeffaeb481e67f39387a  ./focused-runs-final-20260916-005100/run-3/android-test-results/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt
 22b612728425ac5b4d557a7bd6e530f652ebcd58ab5046f4f8cd1c67f3627ef1  ./focused-runs-final-20260916-005100/run-3/android-test-results/P0110 - 16/test-result.textproto
 b6065a3a11fc65ebb1c243826c16d3c3b82179fe7c870ea1f2d0018ddd65c6ec  ./focused-runs-final-20260916-005100/run-3/android-test-results/P0110 - 16/testlog/test-results.log
 d26950e98a8b2bc14a9789b0f15c4558a2c0ece304d72259d0729abb26fe36b0  ./focused-runs-final-20260916-005100/run-3/android-test-results/TEST-P0110 - 16-_app-.xml
