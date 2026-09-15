@@ -1,0 +1,10 @@
+focused_instrumentation=PASS (2 tests on P0110 - 16)
+focused_jvm=PASS
+android_full_jvm=PASS
+compile_debug_android_test_kotlin=PASS
+assemble_debug=PASS
+compile_release_kotlin=PASS
+lint_debug=PASS
+git_diff_check=PASS
+file_transfer_android_product_e2e=BLOCKED
+phase0_stable_release=BLOCKED

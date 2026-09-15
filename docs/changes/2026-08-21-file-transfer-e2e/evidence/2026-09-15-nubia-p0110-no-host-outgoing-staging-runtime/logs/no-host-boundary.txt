@@ -1,0 +1,8 @@
+before_run_adb_reverse=empty
+before_run_local_tcp_54321_listener=none
+macos_host_started=false
+macos_tcc_requested_or_modified=false
+after_run_adb_reverse=empty
+after_run_local_tcp_54321_listener=none
+test_packages_present_after_cleanup=false
+device_lock_removed=true
