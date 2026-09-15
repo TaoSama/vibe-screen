@@ -555,6 +555,10 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
             def mock_popen(cmd, *args, **kwargs):
                 joined = " ".join(cmd)
                 if "am instrument" in joined:
+                    self.assertIn(
+                        f"-e {runner.REAL_QR_OPT_IN_ARGUMENT} true",
+                        joined,
+                    )
                     device_files[runner.OFFER_FILENAME] = sample_offer
                     device_files[runner.MARKER_FILENAME] = sample_marker
                     stdout_arg = kwargs.get("stdout")

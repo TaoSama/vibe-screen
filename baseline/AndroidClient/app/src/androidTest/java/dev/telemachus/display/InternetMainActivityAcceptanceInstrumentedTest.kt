@@ -21,6 +21,7 @@ import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.base.DefaultFailureHandler
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
@@ -45,6 +46,7 @@ import org.hamcrest.TypeSafeMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,6 +66,13 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
     @get:Rule
     val cameraPermission: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.CAMERA)
+
+    @After
+    fun restoreDefaultEspressoFailureHandler() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        Espresso.setFailureHandler(DefaultFailureHandler(context))
+        acceptanceStage = "initialization"
+    }
 
     @Test
     fun pairingLeaseRevokeAndRepairAreAcceptedThroughMainActivity() {

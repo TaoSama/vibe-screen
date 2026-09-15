@@ -20,6 +20,7 @@ import org.junit.Test
  * 6. Espresso positive action verifies internetPairingAcceptanceErrorText instead of EditText.error.
  * 7. Marker file is retained in instrumentation finally for host runner consumption.
  * 8. QRScannerActivity keeps analyze and deliverResult private, checks isMarkerActive, and avoids hash/allocation when inactive.
+ * 9. The real-camera harness is opt-in before its camera permission rule executes.
  */
 class RealQrPairingStaticContractTest {
 
@@ -112,6 +113,29 @@ class RealQrPairingStaticContractTest {
         assertFalse(
             "RealQrInternetPairingInstrumentedTest must not delete marker file in finally",
             extractFinallyBlock(rawContent).contains("deleteAppPrivateFile(context, markerFileName)"),
+        )
+        assertTrue(
+            "RealQrInternetPairingInstrumentedTest must require an explicit instrumentation opt-in",
+            codeOnly.contains("OPT_IN_ARGUMENT") && codeOnly.contains("assumeTrue("),
+        )
+        assertTrue(
+            "The opt-in rule must run before the camera permission rule",
+            codeOnly.contains("RuleChain.outerRule(optInRule).around(cameraPermission)"),
+        )
+    }
+
+    @Test
+    fun internetAcceptanceRestoresEspressoFailureHandler() {
+        val codeOnly = stripComments(readSource("InternetMainActivityAcceptanceInstrumentedTest.kt"))
+
+        assertTrue(
+            "Internet acceptance must restore Espresso's default failure handler after every test",
+            codeOnly.contains("@After") &&
+                codeOnly.contains("Espresso.setFailureHandler(DefaultFailureHandler(context))"),
+        )
+        assertTrue(
+            "Internet acceptance must reset its diagnostic stage after every test",
+            codeOnly.contains("acceptanceStage = \"initialization\""),
         )
     }
 
