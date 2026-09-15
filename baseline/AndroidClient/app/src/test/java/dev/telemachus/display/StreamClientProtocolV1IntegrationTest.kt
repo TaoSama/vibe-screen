@@ -61,6 +61,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -70,6 +71,7 @@ import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.nio.file.Files
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -3551,6 +3553,63 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun clientStagedFileOfferUsesStagingMetadataForUsbLanOfferAndChunk() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
+            val content = "from-staged-client-file".toByteArray(Charsets.UTF_8)
+            val staged = stagedOutgoingFile("vibescreen-staged-usb.txt", content, "text/plain")
+            val connected = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        connected.countDown()
+                        val offerEnvelope = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.FILE_OFFER, offerEnvelope.payloadCase)
+                        val offer = offerEnvelope.fileOffer
+                        assertEquals(staged.file.name, offer.fileName)
+                        assertEquals(staged.mimeType, offer.mimeType)
+                        assertEquals(staged.byteLength, offer.byteLength)
+                        assertEquals(staged.sha256, offer.sha256)
+                        write(peer, fileAccept(6, offer.transferId, accepted = true))
+                        val chunkFrame = ProtocolV1Framing.read(peer.getInputStream())
+                        assertEquals(ProtocolChannel.BULK, chunkFrame.channel)
+                        val decoded = ProtocolV1Framing.decodeFileChunk(chunkFrame.payload)
+                        assertEquals(offer.transferId, decoded.header.transferId)
+                        assertEquals(0L, decoded.header.offset)
+                        assertTrue(decoded.header.final)
+                        assertEquals(content.toList(), decoded.payload.toList())
+                        write(peer, fileProgress(7, offer.transferId, content.size.toLong()))
+                        write(peer, fileComplete(8, offer.transferId, accepted = true, sha256 = staged.sha256))
+                        write(peer, disconnect(9))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(connected.await(8, TimeUnit.SECONDS))
+                val handle = requireNotNull(client.offerFileWithHandle(staged))
+                assertEquals(staged.file.name, handle.fileName)
+                assertEquals(staged.byteLength, handle.byteLength)
+                assertEquals(staged.sha256, handle.sha256)
+                assertSame(staged, handle.stagedFile)
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                OutgoingFileStagingOwner.cleanupToken(staged)
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
     fun clientFileOfferSendsNextChunkOnlyAfterPeerProgress() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_FILE_TRANSFER)
@@ -4906,6 +4965,23 @@ class StreamClientProtocolV1IntegrationTest {
                 .build(),
             payload,
         )
+
+    private fun stagedOutgoingFile(
+        fileName: String,
+        payload: ByteArray,
+        mimeType: String,
+    ): StagedOutgoingFile {
+        val directory = Files.createTempDirectory("vibescreen-stream-staged-").toFile()
+        val file = File(directory, fileName).also { it.writeBytes(payload) }
+        return StagedOutgoingFile(
+            file = file,
+            stagingDirectory = directory,
+            mimeType = mimeType,
+            displayName = fileName,
+            byteLength = payload.size.toLong(),
+            sha256 = ByteString.copyFrom(sha256(payload)),
+        )
+    }
 
     private fun sha256(bytes: ByteArray): ByteArray =
         java.security.MessageDigest.getInstance("SHA-256").digest(bytes)

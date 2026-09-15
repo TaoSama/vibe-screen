@@ -12,6 +12,7 @@ import dev.telemachus.display.FileTransferProductOwner
 import dev.telemachus.display.OutgoingFileTransferHandle
 import dev.telemachus.display.PendingControllerInputDisposition
 import dev.telemachus.display.SessionInputIdSequence
+import dev.telemachus.display.StagedOutgoingFile
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.AdvancedChannelAdmission
@@ -651,9 +652,17 @@ class InternetProductSession internal constructor(
     fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean =
         offerFileWithHandle(file, mimeType) != null
 
+    internal fun offerFileWithHandle(stagedFile: StagedOutgoingFile): OutgoingFileTransferHandle? =
+        offerFileWithHandle(
+            file = stagedFile.file,
+            mimeType = stagedFile.mimeType,
+            stagedFile = stagedFile,
+        )
+
     internal fun offerFileWithHandle(
         file: File,
         mimeType: String = "application/octet-stream",
+        stagedFile: StagedOutgoingFile? = null,
     ): OutgoingFileTransferHandle? {
         val prepared =
             when (
@@ -661,6 +670,8 @@ class InternetProductSession internal constructor(
                     file = file,
                     mimeType = mimeType,
                     negotiatedPolicy = synchronized(lock) { negotiatedFilePolicy },
+                    snapshot = stagedFile?.snapshot(),
+                    onRelease = stagedFile?.let { staged -> { staged.cleanupBestEffort() } },
                 )
             ) {
                 is FileTransferProductOwner.PrepareOutgoingResult.Prepared -> result.transfer
@@ -705,6 +716,8 @@ class InternetProductSession internal constructor(
                 transferId = offer.transferId,
                 fileName = offer.fileName,
                 byteLength = offer.byteLength,
+                sha256 = offer.sha256,
+                stagedFile = stagedFile,
             )
         } else {
             null

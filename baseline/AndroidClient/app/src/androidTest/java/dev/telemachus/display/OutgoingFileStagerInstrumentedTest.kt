@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 
 @RunWith(AndroidJUnit4::class)
 class OutgoingFileStagerInstrumentedTest {
@@ -41,7 +42,7 @@ class OutgoingFileStagerInstrumentedTest {
                 assertEquals(displayName, staged.displayName)
                 assertEquals(TEST_MIME_TYPE, staged.mimeType)
                 assertEquals(payload.size.toLong(), staged.byteLength)
-                assertEquals(OutgoingFileStager.sha256(payload), staged.sha256)
+                assertEquals(testSha256(payload), staged.sha256)
                 assertArrayEquals(payload, staged.file.readBytes())
                 assertTrue(staged.file.isFile)
                 assertTrue(staged.stagingDirectory.absolutePath.startsWith(context.cacheDir.absolutePath))
@@ -147,5 +148,8 @@ class OutgoingFileStagerInstrumentedTest {
         private const val TAG = "OutgoingFileStagerTest"
 
         fun File.containsStagedChildren(): Boolean = exists() && listFiles().orEmpty().isNotEmpty()
+
+        fun testSha256(bytes: ByteArray) =
+            com.google.protobuf.ByteString.copyFrom(MessageDigest.getInstance("SHA-256").digest(bytes))
     }
 }

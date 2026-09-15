@@ -10,6 +10,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
 
@@ -70,7 +72,59 @@ class OutgoingFileStagerTest {
         assertEquals("transfer.bin", OutgoingFileStager.safeDisplayName("../", 120))
     }
 
+    @Test
+    fun ownershipTransferKeepsStagingUntilExplicitOwnerCleanup() = runBlocking {
+        val staged = stagedOutgoingFile("owned.txt", "owned-by-product-session".toByteArray(Charsets.UTF_8))
+
+        staged.transferOwnershipOrCleanup { markOwned ->
+            markOwned()
+        }
+
+        assertTrue(staged.stagingDirectory.exists())
+        assertTrue(OutgoingFileStagingOwner.cleanupToken(staged))
+        assertFalse(staged.stagingDirectory.exists())
+    }
+
+    @Test
+    fun cancellationBeforeOwnershipTransferDeletesStagingAndRethrows() = runBlocking {
+        val staged = stagedOutgoingFile("cancel-window.txt", "cancel-before-owner".toByteArray(Charsets.UTF_8))
+
+        val thrown = runCatching {
+            staged.transferOwnershipOrCleanup {
+                throw CancellationException("main-dispatch-cancelled")
+            }
+        }.exceptionOrNull()
+
+        assertTrue(thrown is CancellationException)
+        assertFalse(staged.stagingDirectory.exists())
+    }
+
+    @Test
+    fun unownedStagingReturnPathDeletesDirectory() = runBlocking {
+        val staged = stagedOutgoingFile("stale-session.txt", "stale-session-bytes".toByteArray(Charsets.UTF_8))
+
+        staged.transferOwnershipOrCleanup { "stale" }
+
+        assertFalse(staged.stagingDirectory.exists())
+    }
+
     private companion object {
         fun File.containsStagedChildren(): Boolean = exists() && listFiles().orEmpty().isNotEmpty()
+
+        fun stagedOutgoingFile(
+            displayName: String,
+            payload: ByteArray,
+        ): StagedOutgoingFile {
+            val directory = Files.createTempDirectory("vibescreen-staged-owner-").toFile()
+            val file = File(directory, displayName).also { it.writeBytes(payload) }
+            return StagedOutgoingFile(
+                file = file,
+                stagingDirectory = directory,
+                mimeType = "text/plain",
+                displayName = displayName,
+                byteLength = payload.size.toLong(),
+                sha256 = OutgoingFileStager.sha256(payload),
+            )
+        }
     }
 }

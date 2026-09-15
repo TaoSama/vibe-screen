@@ -365,6 +365,18 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         return pending.fileToken
     }
 
+    fun acceptsOutgoingFileTransfer(
+        client: ClientIdentity,
+        generation: Long,
+        fileToken: Any,
+    ): Boolean =
+        pendingOutgoingFileTransfer?.let {
+            it.client === client && it.generation == generation && it.fileToken === fileToken
+        } == true
+
+    fun acceptsPendingOutgoingFileTransfer(fileToken: Any): Boolean =
+        pendingOutgoingFileTransfer?.fileToken === fileToken
+
     fun beginIncomingFileOffer(
         client: ClientIdentity,
         generation: Long,

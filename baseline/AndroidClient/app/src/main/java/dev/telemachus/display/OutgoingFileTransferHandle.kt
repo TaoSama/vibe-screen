@@ -6,4 +6,6 @@ internal data class OutgoingFileTransferHandle(
     val transferId: ByteString,
     val fileName: String,
     val byteLength: Long,
+    val sha256: ByteString,
+    val stagedFile: StagedOutgoingFile? = null,
 )

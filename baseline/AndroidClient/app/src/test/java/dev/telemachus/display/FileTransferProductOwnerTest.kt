@@ -931,6 +931,7 @@ class FileTransferProductOwnerTest {
                 file = staged.file,
                 mimeType = staged.mimeType,
                 negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 8),
+                snapshot = staged.snapshot(),
             ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
             val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
             assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
@@ -979,6 +980,90 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `staged outgoing file rejects growth before first chunk`() {
+        val staged = stagedOutgoingFile(
+            displayName = "growth-source.txt",
+            payload = "stable".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 4))
+        owner.activateSession()
+        try {
+            val prepared = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+                snapshot = staged.snapshot(),
+            ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+            val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+            assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+            val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+            staged.file.appendText("-changed")
+
+            val update = owner.handleFileAccept(
+                FileAccept.newBuilder()
+                    .setTransferId(transferId)
+                    .setAccepted(true)
+                    .setMaximumChunkBytes(4)
+                    .build(),
+                sessionEpoch = 45,
+            )
+
+            assertEquals(transferId, update.cancelTransferId)
+            assertEquals("staged_file_mismatch", update.cancelReasonCode)
+            assertEquals(FileTransferProductOwner.TransferResult(false, "staged_file_mismatch"), update.result)
+            assertEquals(0, owner.activeOutgoingTransferCount())
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
+        }
+    }
+
+    @Test
+    fun `staged outgoing file rejects truncation between chunks`() {
+        val staged = stagedOutgoingFile(
+            displayName = "truncated-source.txt",
+            payload = "abcdefgh".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 4))
+        owner.activateSession()
+        try {
+            val prepared = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+                snapshot = staged.snapshot(),
+            ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+            val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+            assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+            val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+            val first = owner.handleFileAccept(
+                FileAccept.newBuilder()
+                    .setTransferId(transferId)
+                    .setAccepted(true)
+                    .setMaximumChunkBytes(4)
+                    .build(),
+                sessionEpoch = 46,
+            )
+            assertEquals(0L, requireNotNull(first.chunk).header.offset)
+            staged.file.writeText("abc")
+
+            val update = owner.handleFileProgress(
+                FileTransferProgress.newBuilder()
+                    .setTransferId(transferId)
+                    .setReceivedBytes(4)
+                    .build(),
+                sessionEpoch = 46,
+            )
+
+            assertEquals(transferId, update.cancelTransferId)
+            assertEquals("staged_file_mismatch", update.cancelReasonCode)
+            assertEquals(FileTransferProductOwner.TransferResult(false, "staged_file_mismatch"), update.result)
+            assertEquals(0, owner.activeOutgoingTransferCount())
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
+        }
+    }
+
+    @Test
     fun `outgoing user cancel final cleanup removes app private staging directory`() {
         val staged = stagedOutgoingFile(
             displayName = "cancelled-source.txt",
@@ -986,14 +1071,19 @@ class FileTransferProductOwnerTest {
         )
         val owner = owner()
         owner.activateSession()
-        val prepared = owner.prepareOutgoingFile(staged.file, staged.mimeType, FileTransferPolicy())
+        val prepared = owner.prepareOutgoingFile(
+            staged.file,
+            staged.mimeType,
+            FileTransferPolicy(),
+            staged.snapshot(),
+            staged::cleanup,
+        )
             as FileTransferProductOwner.PrepareOutgoingResult.Prepared
         val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
         assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
         val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
 
         val result = owner.cancelOutgoingTransfer(transferId, "user_cancelled")
-        staged.cleanupBestEffort()
 
         assertEquals(FileTransferProductOwner.TransferResult(false, "user_cancelled"), result)
         assertEquals(0, owner.activeOutgoingTransferCount())
@@ -1008,12 +1098,17 @@ class FileTransferProductOwnerTest {
         )
         val owner = owner()
         owner.activateSession()
-        val prepared = owner.prepareOutgoingFile(staged.file, staged.mimeType, FileTransferPolicy())
+        val prepared = owner.prepareOutgoingFile(
+            staged.file,
+            staged.mimeType,
+            FileTransferPolicy(),
+            staged.snapshot(),
+            staged::cleanup,
+        )
             as FileTransferProductOwner.PrepareOutgoingResult.Prepared
         assertTrue(owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true) is FileTransferProductOwner.StartOutgoingResult.Started)
 
         owner.clear(reasonCode = "connection_cleanup")
-        staged.cleanupBestEffort()
 
         assertEquals(0, owner.activeOutgoingTransferCount())
         assertFalse(staged.stagingDirectory.exists())
@@ -1536,7 +1631,7 @@ class FileTransferProductOwnerTest {
             stagingDirectory = ::stagingDirectory,
             pendingOfferGate = gate,
             incomingManagerFactory = FileTransferProductOwner.IncomingManagerFactory { _, _, _ -> store },
-            outgoingTransferFactory = FileTransferProductOwner.OutgoingTransferFactory { _, _, _, _ ->
+            outgoingTransferFactory = FileTransferProductOwner.OutgoingTransferFactory { _, _, _, _, _, _ ->
                 outgoing
             },
         )

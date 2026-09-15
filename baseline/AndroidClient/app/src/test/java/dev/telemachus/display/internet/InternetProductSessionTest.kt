@@ -9,6 +9,8 @@ import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.CONTROLLER_CONNECTION_ACK_TIMEOUT_MS
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.OutgoingFileStagingOwner
+import dev.telemachus.display.StagedOutgoingFile
 import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.protocol.CompletedIncomingFile
 import dev.telemachus.display.protocol.FileChunk
@@ -47,9 +49,12 @@ import dev.vibescreen.protocol.v1.VideoConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -1853,6 +1858,45 @@ class InternetProductSessionTest {
             assertEquals(InternetProductSessionState.ACTIVE, session.state)
         } finally {
             file.delete()
+        }
+    }
+
+    @Test
+    fun stagedFileOfferUsesStagingMetadataOverInternetBulkDataChannel() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor, fileTransfer = true)
+        val payload = byteArrayOf(0x41, 0x42, 0x43, 0x44)
+        val staged = stagedOutgoingFile("internet-staged.txt", payload, "text/plain")
+
+        try {
+            val handle = requireNotNull(session.offerFileWithHandle(staged))
+            val offer = peer.controlEnvelopes().single { it.payloadCase == Envelope.PayloadCase.FILE_OFFER }.fileOffer
+
+            assertEquals(staged.file.name, offer.fileName)
+            assertEquals(staged.mimeType, offer.mimeType)
+            assertEquals(staged.byteLength, offer.byteLength)
+            assertEquals(staged.sha256, offer.sha256)
+            assertEquals(offer.transferId, handle.transferId)
+            assertEquals(staged.sha256, handle.sha256)
+            assertSame(staged, handle.stagedFile)
+
+            peer.receive(
+                controlEnvelope(4)
+                    .setFileAccept(
+                        FileAccept
+                            .newBuilder()
+                            .setTransferId(offer.transferId)
+                            .setAccepted(true)
+                            .setMaximumChunkBytes(8),
+                    ).build(),
+            )
+
+            assertFileChunk(peer.bulk.single(), offer.transferId, offset = 0, payload = payload, final = true)
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
         }
     }
 
@@ -4262,6 +4306,23 @@ private class ProductFakePeerEngine(
 }
 
 private fun ProductFakePeerEngine.controlEnvelopes(): List<Envelope> = control.map(Envelope::parseFrom)
+
+private fun stagedOutgoingFile(
+    fileName: String,
+    payload: ByteArray,
+    mimeType: String,
+): StagedOutgoingFile {
+    val directory = Files.createTempDirectory("vibescreen-internet-staged-").toFile()
+    val file = File(directory, fileName).also { it.writeBytes(payload) }
+    return StagedOutgoingFile(
+        file = file,
+        stagingDirectory = directory,
+        mimeType = mimeType,
+        displayName = fileName,
+        byteLength = payload.size.toLong(),
+        sha256 = sha256(payload),
+    )
+}
 
 private fun assertFileChunk(
     frame: ByteArray,

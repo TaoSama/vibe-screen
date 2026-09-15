@@ -243,8 +243,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "Starting an outgoing offer should register active sending state from the returned transfer handle",
             promptOutgoing.contains(".setPositiveButton(R.string.file_transfer_outgoing_send)") &&
-                promptOutgoing.contains("val outgoingValue =") &&
-                promptOutgoing.contains("session.offerFile(pending.file, pending.mimeType)") &&
+                promptOutgoing.contains("var outgoingValue: OutgoingFileTransferHandle? = null") &&
+                promptOutgoing.contains("session.offerFile(pending.stagedFile)") &&
                 promptOutgoing.contains("finishConfirmedOutgoingFileTransfer(session, outgoingValue)") &&
                 finishConfirmed.contains("beginOutgoingFileTransferState(") &&
                 finishConfirmed.contains("transferId = outgoingValue.transferId"),
@@ -260,15 +260,17 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 source.contains("private fun stageOutgoingFileTransfer(") &&
                 source.contains("StagedOutgoingFile") &&
                 handlePicker.contains("PendingOutgoingFileTransfer(") &&
-                handlePicker.contains("stagedFile = file") &&
+                handlePicker.contains("stagedFile = stagedFile") &&
                 handlePicker.contains("promptOutgoingFileTransfer(") &&
                 assertBeforeValue(handlePicker, "PendingOutgoingFileTransfer(", "promptOutgoingFileTransfer(") &&
                 !handlePicker.contains("session.offerFile(file, mimeType)") &&
+                handlePicker.contains("stagedFile.transferOwnershipOrCleanup") &&
                 promptOutgoing.contains("lifecycleScope.launch(Dispatchers.IO)") &&
                 promptOutgoing.contains("try {") &&
                 promptOutgoing.contains("catch (exception: CancellationException)") &&
+                promptOutgoing.contains("outgoingValue?.let { session.cancelOutgoingFile(it.transferId) }") &&
                 promptOutgoing.contains("catch (_: Exception)") &&
-                promptOutgoing.contains("session.offerFile(pending.file, pending.mimeType)"),
+                promptOutgoing.contains("session.offerFile(pending.stagedFile)"),
         )
         assertTrue(
             "Started toast should only show when the outgoing progress state is actually displayed",
@@ -314,8 +316,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Outgoing confirmation must re-check session validity and mutual exclusion immediately before sending",
-            promptOutgoing.contains("if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())") &&
-                assertBeforeValue(promptOutgoing, "if (!session.isCurrentAndAllowed() || hasActiveFileTransfer())", "val outgoingValue ="),
+            promptOutgoing.contains("if (!session.canSendStagedFile(pending.stagedFile) || hasActiveFileTransfer())") &&
+                assertBeforeValue(promptOutgoing, "if (!session.canSendStagedFile(pending.stagedFile) || hasActiveFileTransfer())", "var outgoingValue: OutgoingFileTransferHandle? = null"),
         )
         assertTrue(
             "Outgoing send/cancel decisions should retain once-only guards while applying dialog button layout",
@@ -424,9 +426,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 clearPendingOutgoing.contains("if (clearStagedFile)") &&
                 clearPendingOutgoing.contains("pendingOutgoingFileSubmissionInFlight = false") &&
                 clearPendingOutgoing.contains("pendingOutgoingFileDialog?.dismiss()") &&
-                clearPendingOutgoing.contains("takePendingOutgoingFileTransfer() as? StagedOutgoingFile") &&
-                clearPendingOutgoing.contains("cleanupBestEffort(::logOutgoingFileCleanupFailure)") &&
-                clearPendingOutgoing.contains("pendingInternetOutgoingFileTransfer?.cleanupBestEffort(::logOutgoingFileCleanupFailure)"),
+                clearPendingOutgoing.contains("OutgoingFileStagingOwner.cleanupToken("),
         )
         assertTrue(
             "Lifecycle cleanup should dismiss outgoing confirmation and retry dialogs without leaving stale timeout callbacks",
@@ -710,7 +710,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Protocol file offer submission remains isolated to the explicit outgoing confirmation path",
-            extractMethod(source, "private fun promptOutgoingFileTransfer").contains("session.offerFile(pending.file, pending.mimeType)"),
+            extractMethod(source, "private fun promptOutgoingFileTransfer").contains("session.offerFile(pending.stagedFile)"),
         )
         assertTrue(
             "Saved incoming bytes remain isolated to the completed-transfer handler, not the no-Host control refresh path",

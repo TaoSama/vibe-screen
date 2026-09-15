@@ -4,11 +4,14 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.protobuf.ByteString
+import dev.telemachus.display.protocol.OutgoingFileSnapshot
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class StagedOutgoingFile(
     val file: File,
@@ -18,6 +21,13 @@ internal data class StagedOutgoingFile(
     val byteLength: Long,
     val sha256: ByteString,
 ) {
+    fun snapshot(): OutgoingFileSnapshot =
+        OutgoingFileSnapshot(
+            fileName = file.name,
+            byteLength = byteLength,
+            sha256 = sha256,
+        )
+
     fun cleanup() {
         if (stagingDirectory.exists() && !stagingDirectory.deleteRecursively()) {
             throw IOException("Unable to delete outgoing file staging directory")
@@ -26,6 +36,33 @@ internal data class StagedOutgoingFile(
 
     fun cleanupBestEffort(onFailure: (Throwable) -> Unit = {}) {
         runCatching { cleanup() }.onFailure(onFailure)
+    }
+
+    suspend fun <T> transferOwnershipOrCleanup(
+        onCleanupFailure: (Throwable) -> Unit = {},
+        block: suspend (markOwned: () -> Unit) -> T,
+    ): T {
+        val ownershipTransferred = AtomicBoolean(false)
+        try {
+            return block { ownershipTransferred.set(true) }
+        } catch (exception: CancellationException) {
+            throw exception
+        } finally {
+            if (!ownershipTransferred.get()) {
+                cleanupBestEffort(onCleanupFailure)
+            }
+        }
+    }
+}
+
+internal object OutgoingFileStagingOwner {
+    fun cleanupToken(
+        token: Any?,
+        onFailure: (Throwable) -> Unit = {},
+    ): Boolean {
+        val stagedFile = token as? StagedOutgoingFile ?: return false
+        stagedFile.cleanupBestEffort(onFailure)
+        return true
     }
 }
 

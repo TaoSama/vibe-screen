@@ -2711,9 +2711,18 @@ class StreamClient(
         offerFileWithHandle(file, mimeType) != null
 
     @Synchronized
+    internal fun offerFileWithHandle(stagedFile: StagedOutgoingFile): OutgoingFileTransferHandle? =
+        offerFileWithHandle(
+            file = stagedFile.file,
+            mimeType = stagedFile.mimeType,
+            stagedFile = stagedFile,
+        )
+
+    @Synchronized
     internal fun offerFileWithHandle(
         file: File,
         mimeType: String = "application/octet-stream",
+        stagedFile: StagedOutgoingFile? = null,
     ): OutgoingFileTransferHandle? {
         if (!protocolSessionOwner.isConnected || wireMode != WireMode.V1) return null
         val session = protocolSessionOwner.currentSession ?: return null
@@ -2724,6 +2733,8 @@ class StreamClient(
                 file = file,
                 mimeType = mimeType,
                 negotiatedPolicy = session.negotiatedFilePolicy,
+                snapshot = stagedFile?.snapshot(),
+                onRelease = stagedFile?.let { staged -> { staged.cleanupBestEffort() } },
             )
         ) {
             is FileTransferProductOwner.PrepareOutgoingResult.Prepared -> result.transfer
@@ -2789,6 +2800,8 @@ class StreamClient(
             transferId = offer.transferId,
             fileName = offer.fileName,
             byteLength = offer.byteLength,
+            sha256 = offer.sha256,
+            stagedFile = stagedFile,
         )
     }
 

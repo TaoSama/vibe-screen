@@ -97,6 +97,7 @@ import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -2864,56 +2865,47 @@ class MainActivity : AppCompatActivity() {
         }
         val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
-            val staged =
-                runCatching {
-                    val file = stageOutgoingFileTransfer(uri, maximumFileBytes)
-                    val registered = withContext(Dispatchers.Main) {
-                        if (session.isCurrentAndAllowed() && !hasActiveFileTransfer()) {
-                            session.stageOutgoingFile(file)
-                        } else {
-                            file.cleanupBestEffort(::logOutgoingFileCleanupFailure)
-                            false
-                        }
-                    }
-                    if (registered) {
-                        PendingOutgoingFileTransfer(
-                            stagedFile = file,
-                            maximumFileBytes = maximumFileBytes,
-                        )
-                    } else {
-                        null
-                    }
-            }
-            withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed || !session.isCurrent()) {
-                    discardPendingOutgoingFileTransfer(refreshControl = true)
-                    return@withContext
-                }
-                val stagedValue =
-                    staged.getOrElse { failure ->
-                        mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
-                        discardPendingOutgoingFileTransfer(refreshControl = true)
-                        showFileTransferRecoverableError(
-                            title = R.string.file_transfer_pick_failed_title,
-                            message = if (failure is SelectedFileTooLargeException) {
-                                R.string.file_transfer_failed_too_large
-                            } else {
-                                R.string.file_transfer_pick_failed
-                            },
-                        )
-                        return@withContext
-                    }
-                if (stagedValue != null) {
-                    promptOutgoingFileTransfer(
-                        pending = stagedValue,
-                        session = session,
-                    )
-                } else {
+            val stagedFile = try {
+                stageOutgoingFileTransfer(uri, maximumFileBytes)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (failure: Throwable) {
+                withContext(Dispatchers.Main) {
+                    mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                     discardPendingOutgoingFileTransfer(refreshControl = true)
                     showFileTransferRecoverableError(
-                        title = R.string.file_transfer_send_failed_title,
-                        message = R.string.file_transfer_failed_temporary_limit,
+                        title = R.string.file_transfer_pick_failed_title,
+                        message = if (failure is SelectedFileTooLargeException) {
+                            R.string.file_transfer_failed_too_large
+                        } else {
+                            R.string.file_transfer_pick_failed
+                        },
                     )
+                }
+                return@launch
+            }
+            stagedFile.transferOwnershipOrCleanup(::logOutgoingFileCleanupFailure) { markOwned ->
+                withContext(Dispatchers.Main) {
+                    if (isFinishing || isDestroyed || !session.isCurrent()) {
+                        discardPendingOutgoingFileTransfer(refreshControl = true)
+                        return@withContext
+                    }
+                    if (session.isCurrentAndAllowed() && !hasActiveFileTransfer() && session.stageOutgoingFile(stagedFile)) {
+                        markOwned()
+                        promptOutgoingFileTransfer(
+                            pending = PendingOutgoingFileTransfer(
+                                stagedFile = stagedFile,
+                                maximumFileBytes = maximumFileBytes,
+                            ),
+                            session = session,
+                        )
+                    } else {
+                        discardPendingOutgoingFileTransfer(refreshControl = true)
+                        showFileTransferRecoverableError(
+                            title = R.string.file_transfer_send_failed_title,
+                            message = R.string.file_transfer_failed_temporary_limit,
+                        )
+                    }
                 }
             }
         }
@@ -2937,7 +2929,8 @@ class MainActivity : AppCompatActivity() {
         val isCurrentAndAllowed: () -> Boolean,
         val negotiatedMaxFileBytes: Long,
         val stageOutgoingFile: (StagedOutgoingFile) -> Boolean,
-        val offerFile: (File, String) -> OutgoingFileTransferHandle?,
+        val canSendStagedFile: (StagedOutgoingFile) -> Boolean,
+        val offerFile: (StagedOutgoingFile) -> OutgoingFileTransferHandle?,
         val cancelOutgoingFile: (ByteString) -> Boolean,
     )
 
@@ -3172,7 +3165,7 @@ class MainActivity : AppCompatActivity() {
                         if (decided) return@setPositiveButton
                         decided = true
                         clearPendingDialog()
-                        if (!session.isCurrentAndAllowed() || hasActiveFileTransfer()) {
+                        if (!session.canSendStagedFile(pending.stagedFile) || hasActiveFileTransfer()) {
                             discardPendingOutgoingFileTransfer(refreshControl = true)
                             showFileTransferRecoverableError(
                                 title = R.string.file_transfer_send_failed_title,
@@ -3182,16 +3175,23 @@ class MainActivity : AppCompatActivity() {
                         }
                         pendingOutgoingFileSubmissionInFlight = true
                         lifecycleScope.launch(Dispatchers.IO) {
-                            val outgoingValue =
-                                try {
-                                    session.offerFile(pending.file, pending.mimeType)
-                                } catch (exception: CancellationException) {
-                                    throw exception
-                                } catch (_: Exception) {
-                                    null
+                            var outgoingValue: OutgoingFileTransferHandle? = null
+                            try {
+                                outgoingValue = session.offerFile(pending.stagedFile)
+                                withContext(Dispatchers.Main) {
+                                    finishConfirmedOutgoingFileTransfer(session, outgoingValue)
                                 }
-                            withContext(Dispatchers.Main) {
-                                finishConfirmedOutgoingFileTransfer(session, outgoingValue)
+                            } catch (exception: CancellationException) {
+                                outgoingValue?.let { session.cancelOutgoingFile(it.transferId) }
+                                withContext(NonCancellable + Dispatchers.Main) {
+                                    pendingOutgoingFileSubmissionInFlight = false
+                                    discardPendingOutgoingFileTransfer(refreshControl = true)
+                                }
+                                throw exception
+                            } catch (_: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    finishConfirmedOutgoingFileTransfer(session, null)
+                                }
                             }
                         }
                     }
@@ -3218,6 +3218,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         pendingOutgoingFileSubmissionInFlight = false
         if (isFinishing || isDestroyed || !session.isCurrent()) {
+            outgoingValue?.let { session.cancelOutgoingFile(it.transferId) }
             discardPendingOutgoingFileTransfer(refreshControl = true)
             return
         }
@@ -3230,8 +3231,10 @@ class MainActivity : AppCompatActivity() {
                     cancel = session.cancelOutgoingFile,
                 )
             if (started) {
+                releasePendingOutgoingFileTransfer(outgoingValue.stagedFile)
                 showDedupedToast(R.string.file_transfer_sent_to_mac)
             } else {
+                session.cancelOutgoingFile(outgoingValue.transferId)
                 discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)
             }
         } else {
@@ -3405,6 +3408,11 @@ class MainActivity : AppCompatActivity() {
                 if (!staged) stagedFile.cleanupBestEffort(::logOutgoingFileCleanupFailure)
                 staged
             },
+            canSendStagedFile = { stagedFile ->
+                productSessionCoordinator.acceptsOutgoingFileTransfer(client, generation, stagedFile) &&
+                    isCurrentSession(client, generation) &&
+                    client.canTransferFiles
+            },
             offerFile = client::offerFileWithHandle,
             cancelOutgoingFile = { transferId ->
                 if (isCurrentSession(client, generation) && client.canTransferFiles) {
@@ -3443,6 +3451,12 @@ class MainActivity : AppCompatActivity() {
                     stagedFile.cleanupBestEffort(::logOutgoingFileCleanupFailure)
                     false
                 }
+            },
+            canSendStagedFile = { stagedFile ->
+                generation == productSessionCoordinator.currentInternetGeneration() &&
+                    internetSession === session &&
+                    session.canTransferFiles &&
+                    pendingInternetOutgoingFileTransfer === stagedFile
             },
             offerFile = session::offerFileWithHandle,
             cancelOutgoingFile = { transferId ->
@@ -3563,12 +3577,24 @@ class MainActivity : AppCompatActivity() {
         pendingOutgoingFileDialog = null
         if (clearStagedFile) {
             pendingOutgoingFileSubmissionInFlight = false
-            (productSessionCoordinator.takePendingOutgoingFileTransfer() as? StagedOutgoingFile)
-                ?.cleanupBestEffort(::logOutgoingFileCleanupFailure)
-            pendingInternetOutgoingFileTransfer?.cleanupBestEffort(::logOutgoingFileCleanupFailure)
+            OutgoingFileStagingOwner.cleanupToken(
+                productSessionCoordinator.takePendingOutgoingFileTransfer(),
+                ::logOutgoingFileCleanupFailure,
+            )
+            OutgoingFileStagingOwner.cleanupToken(pendingInternetOutgoingFileTransfer, ::logOutgoingFileCleanupFailure)
             pendingInternetOutgoingFileTransfer = null
         }
         if (refreshControl) refreshFileTransferControl()
+    }
+
+    private fun releasePendingOutgoingFileTransfer(stagedFile: StagedOutgoingFile?) {
+        if (stagedFile == null) return
+        if (productSessionCoordinator.acceptsPendingOutgoingFileTransfer(stagedFile)) {
+            productSessionCoordinator.takePendingOutgoingFileTransfer()
+        }
+        if (pendingInternetOutgoingFileTransfer === stagedFile) {
+            pendingInternetOutgoingFileTransfer = null
+        }
     }
 
     private fun logOutgoingFileCleanupFailure(failure: Throwable) {
