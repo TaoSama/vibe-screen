@@ -432,6 +432,9 @@
     <string name="file_transfer_unavailable_title">File transfer unavailable</string>
     <string name="file_transfer_pick_failed">Could not prepare the selected file</string>
     <string name="file_transfer_pick_failed_title">Could not prepare file</string>
+    <string name="file_transfer_share_unsupported">Share one file while Vibe Screen is connected to a file-transfer-capable Mac session. Text-only shares, multiple items, and non-content sources are not supported.</string>
+    <string name="file_transfer_share_unsupported_title">Cannot share this item</string>
+    <string name="file_transfer_share_unavailable">Connect to a Mac session that supports file transfer, then share this file again</string>
     <string name="file_transfer_sent_to_mac">File transfer started</string>
     <string name="file_transfer_send_failed">File transfer could not start</string>
     <string name="file_transfer_send_failed_title">Could not send file</string>
