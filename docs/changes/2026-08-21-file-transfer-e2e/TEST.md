@@ -514,13 +514,15 @@ Evidence:
 
 Source commit `56d9da7d2aaaa5ae78541ada410c39fbaf78328c` adds a
 single-file Android `ACTION_SEND` share target that accepts one `content://`
-stream and reuses the existing staged-file preflight/offer pipeline. The Nubia
-P0110 / pacific / Android 16 / SDK 36 run passed 3/3 focused instrumentation
-methods, including a single-URI `ClipData` share, a second deliberate share of
-the same URI, and rejection of an untrusted share-side `auto_connect` extra, while proving
-the no-Host path does not query metadata, open bytes, or resolve MIME through
-the test provider. PackageManager discovery and a real system cold launch also
-showed the complete reconnect-and-share-again guidance on device.
+stream and reuses the existing staged-file preflight/offer pipeline. The latest
+Nubia P0110 / pacific / Android 16 / SDK 36 run passed 3/3 focused
+instrumentation methods. With no Host, the app keeps a lightweight pending
+draft through Activity recreation, accepts a single-URI `ClipData` share,
+treats a second deliberate share of the same URI as a fresh user action, and
+rejects an untrusted share-side `auto_connect` extra. Provider counters prove
+the waiting path does not query metadata, open bytes, or resolve MIME. Real
+system cold launch, portrait/landscape screenshots, and a Cancel tap verify the
+persistent panel and its cleanup without a misleading enabled Review action.
 
 No Host, TCC change, `tcp:54321` reverse, or local listener participated. This
 advances only Android system-share entry readiness; Host-backed bytes landing,

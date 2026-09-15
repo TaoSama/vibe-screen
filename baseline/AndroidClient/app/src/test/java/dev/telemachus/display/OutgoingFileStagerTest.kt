@@ -9,9 +9,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import org.robolectric.RobolectricTestRunner
 import java.io.File
 import java.nio.file.Files
 
@@ -64,6 +64,103 @@ class OutgoingFileStagerTest {
             source.delete()
             cache.deleteRecursively()
         }
+    }
+
+    @Test
+    fun nonBlankMimeTypeHintIsTrimmedAndSkipsResolverTypeLookup() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = Files.createTempFile("vibescreen-hinted-source-", ".bin").toFile()
+        source.writeText("hint wins")
+        val cache = Files.createTempDirectory("vibescreen-outgoing-stager-hint-").toFile()
+        var resolverMimeTypeLookups = 0
+        try {
+            val staged = OutgoingFileStager(
+                context.contentResolver,
+                cache,
+                maxDisplayNameLength = 120,
+                resolverMimeTypeForUri = {
+                    resolverMimeTypeLookups += 1
+                    "application/resolver"
+                },
+            ).stage(Uri.fromFile(source), maximumFileBytes = 1024, mimeTypeHint = "  text/x-shared  ")
+
+            assertEquals("text/x-shared", staged.mimeType)
+            assertEquals(source.name, staged.displayName)
+            assertEquals(0, resolverMimeTypeLookups)
+
+            staged.cleanup()
+        } finally {
+            source.delete()
+            cache.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun blankMimeTypeHintFallsBackToTrimmedResolverType() {
+        assertEquals(
+            "application/from-resolver",
+            OutgoingFileStager.resolvedMimeType(
+                mimeTypeHint = "   ",
+                resolverMimeType = "  application/from-resolver  ",
+            ),
+        )
+    }
+
+    @Test
+    fun nullHintAndBlankResolverTypeFallsBackToDefaultMimeType() {
+        assertEquals(
+            OutgoingFileStager.DEFAULT_MIME_TYPE,
+            OutgoingFileStager.resolvedMimeType(
+                mimeTypeHint = null,
+                resolverMimeType = "   ",
+            ),
+        )
+        assertEquals(
+            OutgoingFileStager.DEFAULT_MIME_TYPE,
+            OutgoingFileStager.resolvedMimeType(
+                mimeTypeHint = null,
+                resolverMimeType = null,
+            ),
+        )
+    }
+
+    @Test
+    fun blankMimeTypeHintLooksUpResolverTypeDuringStaging() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = Files.createTempFile("vibescreen-resolver-source-", ".bin").toFile()
+        source.writeText("resolver wins")
+        val cache = Files.createTempDirectory("vibescreen-outgoing-stager-resolver-").toFile()
+        var resolverMimeTypeLookups = 0
+        try {
+            val staged = OutgoingFileStager(
+                context.contentResolver,
+                cache,
+                maxDisplayNameLength = 120,
+                resolverMimeTypeForUri = {
+                    resolverMimeTypeLookups += 1
+                    "  application/from-resolver  "
+                },
+            ).stage(Uri.fromFile(source), maximumFileBytes = 1024, mimeTypeHint = "   ")
+
+            assertEquals("application/from-resolver", staged.mimeType)
+            assertEquals(1, resolverMimeTypeLookups)
+
+            staged.cleanup()
+        } finally {
+            source.delete()
+            cache.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nonBlankMimeTypeHintWinsOverResolverType() {
+        assertEquals(
+            "text/x-shared",
+            OutgoingFileStager.resolvedMimeType(
+                mimeTypeHint = "  text/x-shared  ",
+                resolverMimeType = "application/resolver",
+            ),
+        )
     }
 
     @Test

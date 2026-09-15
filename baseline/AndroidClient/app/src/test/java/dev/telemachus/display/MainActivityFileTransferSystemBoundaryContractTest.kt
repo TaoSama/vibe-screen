@@ -245,7 +245,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             promptOutgoing.contains(".setPositiveButton(R.string.file_transfer_outgoing_send)") &&
                 promptOutgoing.contains("var outgoingValue: OutgoingFileTransferHandle? = null") &&
                 promptOutgoing.contains("session.offerFile(pending.stagedFile)") &&
-                promptOutgoing.contains("finishConfirmedOutgoingFileTransfer(session, outgoingValue)") &&
+                promptOutgoing.contains("finishConfirmedOutgoingFileTransfer(session, outgoingValue, shareIntentToken)") &&
                 finishConfirmed.contains("beginOutgoingFileTransferState(") &&
                 finishConfirmed.contains("transferId = outgoingValue.transferId"),
         )
@@ -330,12 +330,17 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 promptOutgoing.contains(".setOnCancelListener { cancelPending() }"),
         )
         assertTrue(
-            "The file-transfer button should switch between picker and cancellation behavior",
+            "The file-transfer button should cancel active transfers, then review pending shares before opening the picker",
             source.contains("binding.controlFileTransferButton.setOnClickListener") &&
                 source.contains("handleFileTransferControlClick()") &&
-                clickHandler.contains("if (activeOutgoing == null)") &&
+                clickHandler.contains("if (activeOutgoing != null)") &&
+                clickHandler.contains("cancelOutgoingFileTransfer(activeOutgoing.transferId)") &&
+                clickHandler.contains("if (pendingSharedFileIntent != null)") &&
+                clickHandler.contains("beginPendingSharedFileTransfer()") &&
                 clickHandler.contains("beginChooseFileForTransfer()") &&
-                clickHandler.contains("cancelOutgoingFileTransfer(activeOutgoing.transferId)"),
+                assertBeforeValue(clickHandler, "cancelIncomingFileTransfer(activeIncoming.transferId)", "cancelOutgoingFileTransfer(activeOutgoing.transferId)") &&
+                assertBeforeValue(clickHandler, "cancelOutgoingFileTransfer(activeOutgoing.transferId)", "beginPendingSharedFileTransfer()") &&
+                assertBeforeValue(clickHandler, "beginPendingSharedFileTransfer()", "beginChooseFileForTransfer()"),
         )
         assertTrue(
             "The control bar should show progress text and expose cancellation state to accessibility",

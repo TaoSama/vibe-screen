@@ -26,6 +26,8 @@ class MainActivityShareFileContractTest {
         val consume = extractMethod(source, "private fun consumeShareFileIntentIfNeeded")
         val picker = extractMethod(source, "private fun handleFileTransferPickerResult")
         val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
+        val beginPending = extractMethod(source, "private fun beginPendingSharedFileTransfer")
+        val stageOutgoing = extractMethod(source, "private fun stageOutgoingFileTransfer")
         val launchPolicy = extractMethod(source, "private fun applyLaunchIntentPolicy")
 
         assertTrue(onCreate.contains("restoredConsumedShareIntentToken = savedInstanceState?.getString(STATE_CONSUMED_SHARE_INTENT_TOKEN)"))
@@ -34,17 +36,63 @@ class MainActivityShareFileContractTest {
         assertTrue(onNewIntent.contains("setIntent(intent)"))
         assertTrue(onNewIntent.contains("consumeShareFileIntentIfNeeded(intent)"))
         assertTrue(onSave.contains("STATE_CONSUMED_SHARE_INTENT_TOKEN"))
+        assertTrue(onSave.contains("STATE_PENDING_SHARED_FILE_URI"))
+        assertTrue(onSave.contains("STATE_PENDING_SHARED_FILE_MIME_TYPE"))
+        assertTrue(onSave.contains("STATE_PENDING_SHARED_FILE_TOKEN"))
+        assertTrue(source.contains("private class PendingSharedFileIntent"))
+        assertTrue(source.contains("private fun restorePendingSharedFileIntent"))
         assertTrue(consume.contains("token == restoredConsumedShareIntentToken"))
         assertFalse(consume.contains("token == consumedShareIntentTokenForState"))
         assertEquals(1, Regex("consumedShareIntentTokenForState = token").findAll(consume).count())
-        assertTrue(consume.contains("unavailableMessage = R.string.file_transfer_share_unavailable"))
-        assertTrue(consume.contains("shareIntentToken = token"))
+        assertTrue(consume.contains("setPendingSharedFileIntent("))
+        assertTrue(consume.contains("PendingSharedFileIntent("))
+        assertTrue(consume.contains("uri = decision.uri"))
+        assertTrue(consume.contains("mimeType = decision.mimeType"))
+        assertTrue(consume.contains("token = token"))
+        assertFalse(consume.contains("handleOutgoingFileTransferUri"))
         assertTrue(picker.contains("handleOutgoingFileTransferUri(uri)"))
-        assertTrue(handleUri.contains("stageOutgoingFileTransfer(uri, maximumFileBytes)"))
+        assertFalse(picker.contains("mimeTypeHint"))
+        assertTrue(beginPending.contains("mimeTypeHint = pending.mimeType"))
+        assertTrue(handleUri.contains("stageOutgoingFileTransfer(uri, maximumFileBytes, mimeTypeHint)"))
+        assertTrue(stageOutgoing.contains("mimeTypeHint: String? = null"))
+        assertTrue(stageOutgoing.contains(".stage(uri, maximumFileBytes, mimeTypeHint)"))
         assertTrue(handleUri.contains("transferOwnershipOrCleanup"))
         assertTrue(handleUri.contains("promptOutgoingFileTransfer("))
         assertTrue(launchPolicy.contains("!shareCandidate && launchIntent?.hasExtra(EXTRA_AUTO_CONNECT) == true"))
         assertTrue(launchPolicy.contains("if (hasAutoConnectExtra)"))
+    }
+
+    @Test
+    fun acceptedShareIntentRegistersPendingStateWithoutResolvingAFileTransferSession() {
+        val source = sourceFile("app/src/main/java/dev/telemachus/display/MainActivity.kt").readText()
+        val consume = extractMethod(source, "private fun consumeShareFileIntentIfNeeded")
+        val pendingModel = extractClass(source, "private class PendingSharedFileIntent")
+        val setPending = extractMethod(source, "private fun setPendingSharedFileIntent")
+        val restorePending = extractMethod(source, "private fun restorePendingSharedFileIntent")
+        val beginPending = extractMethod(source, "private fun beginPendingSharedFileTransfer")
+        val readiness = extractMethod(source, "private fun hasFileTransferCapableSession")
+
+        assertTrue(consume.contains("ShareFileIntentDecision.Accepted ->"))
+        assertTrue(consume.contains("setPendingSharedFileIntent("))
+        assertTrue(pendingModel.contains("mimeType: String"))
+        assertTrue(pendingModel.contains("val mimeType: String = mimeType.trim()"))
+        assertFalse(consume.contains("activeFileTransferSession()"))
+        assertFalse(consume.contains("stageOutgoingFileTransfer"))
+        assertFalse(consume.contains("contentResolver"))
+        assertTrue(setPending.contains("pendingSharedFileIntent = pending"))
+        assertTrue(setPending.contains("markShareIntentConsumed(pending.token)"))
+        assertFalse(setPending.contains("activeFileTransferSession()"))
+        assertFalse(setPending.contains("stageOutgoingFileTransfer"))
+        assertTrue(restorePending.contains("STATE_PENDING_SHARED_FILE_URI"))
+        assertTrue(restorePending.contains("STATE_PENDING_SHARED_FILE_MIME_TYPE"))
+        assertTrue(restorePending.contains("STATE_PENDING_SHARED_FILE_TOKEN"))
+        assertTrue(beginPending.contains("if (!hasFileTransferCapableSession())"))
+        assertTrue(beginPending.contains("handleOutgoingFileTransferUri("))
+        assertTrue(beginPending.contains("shareIntentToken = pending.token"))
+        assertTrue(beginPending.contains("mimeTypeHint = pending.mimeType"))
+        assertFalse(readiness.contains("requestOutgoingFileTransfer"))
+        assertFalse(readiness.contains("stageOutgoingFileTransfer"))
+        assertFalse(readiness.contains("contentResolver"))
     }
 
     @Test
@@ -56,7 +104,7 @@ class MainActivityShareFileContractTest {
         val sessionResolution = handleUri.indexOf("val session = activeFileTransferSession()")
         val noSession = handleUri.indexOf("if (session == null)")
         val earlyReturn = handleUri.indexOf("return", noSession)
-        val staging = handleUri.indexOf("stageOutgoingFileTransfer(uri, maximumFileBytes)")
+        val staging = handleUri.indexOf("stageOutgoingFileTransfer(uri, maximumFileBytes, mimeTypeHint)")
 
         assertTrue(activeTransfer >= 0)
         assertTrue(activeTransferReturn > activeTransfer)
@@ -72,6 +120,23 @@ class MainActivityShareFileContractTest {
         assertFalse(handleUri.substring(0, earlyReturn).contains("contentResolver"))
         assertFalse(handleUri.contains("ACTION_OPEN_DOCUMENT"))
         assertFalse(handleUri.contains("startActivityForResult"))
+    }
+
+    @Test
+    fun pickerPathLeavesMimeHintNullWhilePendingSharePathProvidesHint() {
+        val source = sourceFile("app/src/main/java/dev/telemachus/display/MainActivity.kt").readText()
+        val picker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val beginPending = extractMethod(source, "private fun beginPendingSharedFileTransfer")
+        val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
+        val stageOutgoing = extractMethod(source, "private fun stageOutgoingFileTransfer")
+
+        assertTrue(picker.contains("handleOutgoingFileTransferUri(uri)"))
+        assertFalse(picker.contains("mimeTypeHint"))
+        assertTrue(beginPending.contains("mimeTypeHint = pending.mimeType"))
+        assertTrue(handleUri.contains("mimeTypeHint: String? = null"))
+        assertTrue(handleUri.contains("stageOutgoingFileTransfer(uri, maximumFileBytes, mimeTypeHint)"))
+        assertTrue(stageOutgoing.contains("mimeTypeHint: String? = null"))
+        assertTrue(stageOutgoing.contains(".stage(uri, maximumFileBytes, mimeTypeHint)"))
     }
 
     private fun sourceFile(path: String): File {
@@ -99,4 +164,6 @@ class MainActivityShareFileContractTest {
         }
         error("Closing brace not found: $signature")
     }
+
+    private fun extractClass(source: String, signature: String): String = extractMethod(source, signature)
 }
