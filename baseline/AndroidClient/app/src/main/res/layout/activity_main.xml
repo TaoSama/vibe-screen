@@ -625,6 +625,88 @@
                     app:strokeWidth="1dp" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
+            <LinearLayout
+                android:id="@+id/pendingSharedFileContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:accessibilityLiveRegion="polite"
+                android:background="@drawable/instruction_bg"
+                android:importantForAccessibility="yes"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/pendingSharedFileTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:ellipsize="none"
+                    android:singleLine="false"
+                    android:text="@string/pending_shared_file_title"
+                    android:textColor="@color/on_surface"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/pendingSharedFileSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:ellipsize="none"
+                    android:lineSpacingExtra="2dp"
+                    android:singleLine="false"
+                    android:text="@string/pending_shared_file_waiting"
+                    android:textColor="@color/on_surface_subtle"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pendingSharedFileSendButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:ellipsize="none"
+                    android:gravity="center"
+                    android:letterSpacing="0"
+                    android:maxLines="2"
+                    android:minHeight="48dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:singleLine="false"
+                    android:text="@string/pending_shared_file_send"
+                    android:textAllCaps="false"
+                    android:textColor="@color/on_accent_button"
+                    app:autoSizeMaxTextSize="14sp"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeTextType="uniform"
+                    app:backgroundTint="@color/accent_button"
+                    app:cornerRadius="16dp"
+                    app:textAllCaps="false" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pendingSharedFileCancelButton"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="none"
+                    android:gravity="center"
+                    android:letterSpacing="0"
+                    android:maxLines="2"
+                    android:minHeight="48dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:singleLine="false"
+                    android:text="@string/pending_shared_file_cancel"
+                    android:textAllCaps="false"
+                    app:autoSizeMaxTextSize="14sp"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeTextType="uniform"
+                    app:textAllCaps="false" />
+            </LinearLayout>
+
             <!-- ============= USB MODE CONTENT ============= -->
             <LinearLayout
                 android:id="@+id/usbModeContent"

@@ -201,6 +201,7 @@
     <string name="control_clipboard_policy_disabled">Clipboard disabled by policy</string>
     <string name="control_file_transfer">File transfer</string>
     <string name="control_file_transfer_policy_disabled">File transfer disabled by policy</string>
+    <string name="control_file_transfer_send_pending_share">Review shared file to send to Mac</string>
     <string name="control_file_transfer_cancel">Cancel file transfer</string>
     <string name="control_file_transfer_cancel_with_progress">Cancel file transfer, %1$s</string>
     <string name="control_file_transfer_cancelling_with_progress">Cancelling file transfer, %1$s</string>
@@ -434,7 +435,13 @@
     <string name="file_transfer_pick_failed_title">Could not prepare file</string>
     <string name="file_transfer_share_unsupported">Share one file while Vibe Screen is connected to a file-transfer-capable Mac session. Text-only shares, multiple items, and non-content sources are not supported.</string>
     <string name="file_transfer_share_unsupported_title">Cannot share this item</string>
-    <string name="file_transfer_share_unavailable">Connect to a Mac session that supports file transfer, then share this file again</string>
+    <string name="file_transfer_share_unavailable">Connect to a file-transfer-capable Mac session, then send this file from Vibe Screen.</string>
+    <string name="pending_shared_file_title">1 file ready to send</string>
+    <string name="pending_shared_file_waiting">Connect to a file-transfer-capable Mac session, then review it before sending.</string>
+    <string name="pending_shared_file_ready">Review the shared file before sending it to your Mac.</string>
+    <string name="pending_shared_file_send">Review and send</string>
+    <string name="pending_shared_file_cancel">Cancel</string>
+    <string name="pending_shared_file_cancelled">Shared file removed</string>
     <string name="file_transfer_sent_to_mac">File transfer started</string>
     <string name="file_transfer_send_failed">File transfer could not start</string>
     <string name="file_transfer_send_failed_title">Could not send file</string>

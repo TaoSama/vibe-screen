@@ -121,6 +121,12 @@ private data class ClipboardConfirmationDetails(
     val noteText: String,
 )
 
+private data class PendingSharedFileIntent(
+    val uri: Uri,
+    val mimeType: String,
+    val token: String,
+)
+
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
@@ -316,6 +322,7 @@ class MainActivity : AppCompatActivity() {
     private var fileTransferErrorDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
+    private var pendingSharedFileIntent: PendingSharedFileIntent? = null
     private var restoredConsumedShareIntentToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
@@ -410,6 +417,7 @@ class MainActivity : AppCompatActivity() {
         setupModeToggle()
         setupWirelessController()
         restoredConsumedShareIntentToken = savedInstanceState?.getString(STATE_CONSUMED_SHARE_INTENT_TOKEN)
+        restorePendingSharedFileIntent(savedInstanceState)
         applyLaunchIntentPolicy(
             savedInstanceState,
             allowImplicitUsbFallback = !ShareFileIntentPolicy.isShareCandidate(intent),
@@ -429,6 +437,11 @@ class MainActivity : AppCompatActivity() {
         outState.putString(STATE_INTERNET_CAMERA_PERMISSION_PANEL, internetCameraPermissionPanelState.name)
         outState.putBoolean(STATE_INTERNET_CAMERA_SETTINGS_PENDING, internetCameraSettingsReturnPending)
         consumedShareIntentTokenForState?.let { outState.putString(STATE_CONSUMED_SHARE_INTENT_TOKEN, it) }
+        pendingSharedFileIntent?.let { pending ->
+            outState.putString(STATE_PENDING_SHARED_FILE_URI, pending.uri.toString())
+            outState.putString(STATE_PENDING_SHARED_FILE_MIME_TYPE, pending.mimeType)
+            outState.putString(STATE_PENDING_SHARED_FILE_TOKEN, pending.token)
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -451,6 +464,7 @@ class MainActivity : AppCompatActivity() {
             streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)
             internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)
             synchronizeControllerDevices("foreground")
+            refreshFileTransferControl()
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
             pendingAutomaticReconnectDelayMs?.let(::scheduleWirelessReconnect)
                 ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
@@ -1675,6 +1689,8 @@ class MainActivity : AppCompatActivity() {
         binding.internetConnectionSettingsButton.setOnClickListener {
             showSettingsDialog()
         }
+        binding.pendingSharedFileSendButton.setOnClickListener { beginPendingSharedFileTransfer() }
+        binding.pendingSharedFileCancelButton.setOnClickListener { cancelPendingSharedFileIntent() }
 
         setupInternetUi()
         binding.connectionSubtitle.setOnClickListener {
@@ -2378,6 +2394,7 @@ class MainActivity : AppCompatActivity() {
         discardPendingOutgoingFileTransfer()
         clearActiveIncomingFileTransfer()
         hideControlBar()
+        refreshPendingSharedFileUi()
         updateDisconnectedHeader(prefs.connectionMode)
     }
 
@@ -2785,15 +2802,20 @@ class MainActivity : AppCompatActivity() {
         val activeIncoming = activeIncomingFileTransfer
         val activeOutgoing = activeOutgoingFileTransfer
         val activeTransferVisible = activeIncoming != null || activeOutgoing != null
-        val fileTransferControlVisible = transferAvailable || activeTransferVisible
+        val pendingSharedFileReady = pendingSharedFileIntent != null && hasFileTransferCapableSession()
+        val fileTransferControlVisible = transferAvailable || activeTransferVisible || pendingSharedFileReady
         val progressLabel = activeIncoming?.let(::incomingFileProgressLabel) ?: activeOutgoing?.let(::outgoingFileProgressLabel)
         val cancelling = activeIncoming?.cancelling ?: activeOutgoing?.cancelling ?: false
         binding.controlFileTransferButton.visibility = if (fileTransferControlVisible) View.VISIBLE else View.GONE
         binding.controlFileTransferButton.isEnabled =
-            (fileTransferPresentation.enabled || activeTransferVisible) && !cancelling
+            (fileTransferPresentation.enabled || activeTransferVisible || pendingSharedFileReady) && !cancelling
         binding.controlFileTransferButton.contentDescription =
             if (progressLabel == null) {
-                getString(fileTransferPresentation.labelResource)
+                if (pendingSharedFileReady) {
+                    getString(R.string.control_file_transfer_send_pending_share)
+                } else {
+                    getString(fileTransferPresentation.labelResource)
+                }
             } else if (cancelling) {
                 getString(R.string.control_file_transfer_cancelling_with_progress, progressLabel)
             } else {
@@ -2833,11 +2855,15 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val activeOutgoing = activeOutgoingFileTransfer
-        if (activeOutgoing == null) {
-            beginChooseFileForTransfer()
+        if (activeOutgoing != null) {
+            cancelOutgoingFileTransfer(activeOutgoing.transferId)
             return
         }
-        cancelOutgoingFileTransfer(activeOutgoing.transferId)
+        if (pendingSharedFileIntent != null) {
+            beginPendingSharedFileTransfer()
+        } else {
+            beginChooseFileForTransfer()
+        }
     }
 
     private fun beginChooseFileForTransfer() {
@@ -2872,6 +2898,88 @@ class MainActivity : AppCompatActivity() {
         handleOutgoingFileTransferUri(uri)
     }
 
+    private fun restorePendingSharedFileIntent(savedInstanceState: Bundle?) {
+        if (savedInstanceState == null) return
+        val uri = savedInstanceState.getString(STATE_PENDING_SHARED_FILE_URI)?.let(Uri::parse) ?: return
+        val mimeType = savedInstanceState.getString(STATE_PENDING_SHARED_FILE_MIME_TYPE) ?: return
+        val token = savedInstanceState.getString(STATE_PENDING_SHARED_FILE_TOKEN) ?: return
+        pendingSharedFileIntent = PendingSharedFileIntent(uri = uri, mimeType = mimeType, token = token)
+        refreshPendingSharedFileUi()
+        refreshFileTransferControl()
+    }
+
+    private fun setPendingSharedFileIntent(pending: PendingSharedFileIntent) {
+        pendingSharedFileIntent = pending
+        markShareIntentConsumed(pending.token)
+        refreshPendingSharedFileUi()
+        refreshFileTransferControl()
+        if (isConnected && hasFileTransferCapableSession()) {
+            revealControlBar()
+        }
+    }
+
+    private fun clearPendingSharedFileIntent(token: String? = null) {
+        if (token != null && pendingSharedFileIntent?.token != token) return
+        pendingSharedFileIntent = null
+        refreshPendingSharedFileUi()
+        refreshFileTransferControl()
+    }
+
+    private fun cancelPendingSharedFileIntent() {
+        clearPendingSharedFileIntent(pendingSharedFileIntent?.token)
+        showDedupedToast(R.string.pending_shared_file_cancelled)
+    }
+
+    private fun refreshPendingSharedFileUi() {
+        val pending = pendingSharedFileIntent
+        binding.pendingSharedFileContainer.visibility = if (pending != null) View.VISIBLE else View.GONE
+        if (pending == null) {
+            binding.pendingSharedFileSummary.text = ""
+            binding.pendingSharedFileSendButton.isEnabled = false
+            binding.pendingSharedFileCancelButton.isEnabled = false
+            return
+        }
+        val ready = hasFileTransferCapableSession()
+        binding.pendingSharedFileSummary.setText(
+            if (ready) R.string.pending_shared_file_ready else R.string.pending_shared_file_waiting,
+        )
+        binding.pendingSharedFileSendButton.visibility = if (ready) View.VISIBLE else View.GONE
+        binding.pendingSharedFileSendButton.isEnabled = ready
+        binding.pendingSharedFileCancelButton.isEnabled = true
+    }
+
+    private fun hasFileTransferCapableSession(): Boolean {
+        if (!managedFileTransferAllowed) return false
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            val session = internetSession ?: return false
+            val generation = productSessionCoordinator.currentInternetGeneration()
+            return generation > 0L &&
+                session.state == InternetProductSessionState.ACTIVE &&
+                session.canTransferFiles
+        }
+        val client = streamClient ?: return false
+        val generation = activeSessionGeneration
+        return isCurrentSession(client, generation) && client.canTransferFiles
+    }
+
+    private fun beginPendingSharedFileTransfer() {
+        val pending = pendingSharedFileIntent ?: return
+        if (!hasFileTransferCapableSession()) {
+            refreshPendingSharedFileUi()
+            showFileTransferRecoverableError(
+                title = R.string.file_transfer_unavailable_title,
+                message = R.string.file_transfer_share_unavailable,
+                allowRetry = false,
+            )
+            return
+        }
+        handleOutgoingFileTransferUri(
+            uri = pending.uri,
+            unavailableMessage = R.string.file_transfer_share_unavailable,
+            shareIntentToken = pending.token,
+        )
+    }
+
     private fun consumeShareFileIntentIfNeeded(intent: Intent?) {
         if (!ShareFileIntentPolicy.isShareCandidate(intent)) return
         val token = ShareFileIntentPolicy.consumptionToken(checkNotNull(intent))
@@ -2883,10 +2991,12 @@ class MainActivity : AppCompatActivity() {
         restoredConsumedShareIntentToken = null
         when (val decision = ShareFileIntentPolicy.resolve(intent)) {
             is ShareFileIntentDecision.Accepted ->
-                handleOutgoingFileTransferUri(
-                    uri = decision.uri,
-                    unavailableMessage = R.string.file_transfer_share_unavailable,
-                    shareIntentToken = token,
+                setPendingSharedFileIntent(
+                    PendingSharedFileIntent(
+                        uri = decision.uri,
+                        mimeType = decision.mimeType,
+                        token = token,
+                    ),
                 )
             is ShareFileIntentDecision.Rejected -> {
                 markShareIntentConsumed(token)
@@ -2941,6 +3051,7 @@ class MainActivity : AppCompatActivity() {
             } catch (failure: Throwable) {
                 withContext(Dispatchers.Main) {
                     markShareIntentConsumed(shareIntentToken)
+                    clearPendingSharedFileIntent(shareIntentToken)
                     mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                     discardPendingOutgoingFileTransfer(refreshControl = true)
                     showFileTransferRecoverableError(
@@ -3216,6 +3327,7 @@ class MainActivity : AppCompatActivity() {
                 if (decided) return
                 decided = true
                 markShareIntentConsumed(shareIntentToken)
+                clearPendingSharedFileIntent(shareIntentToken)
                 clearPendingDialog()
                 discardPendingOutgoingFileTransfer(refreshControl = true)
             }
@@ -3226,6 +3338,7 @@ class MainActivity : AppCompatActivity() {
                         if (pendingOutgoingFileDialog == null || decided) return
                         decided = true
                         markShareIntentConsumed(shareIntentToken)
+                        clearPendingSharedFileIntent(shareIntentToken)
                         clearPendingDialog(dismiss = true)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
                         showFileTransferRecoverableError(
@@ -3257,7 +3370,7 @@ class MainActivity : AppCompatActivity() {
                             try {
                                 outgoingValue = session.offerFile(pending.stagedFile)
                                 withContext(Dispatchers.Main) {
-                                    finishConfirmedOutgoingFileTransfer(session, outgoingValue)
+                                    finishConfirmedOutgoingFileTransfer(session, outgoingValue, shareIntentToken)
                                 }
                             } catch (exception: CancellationException) {
                                 outgoingValue?.let { session.cancelOutgoingFile(it.transferId) }
@@ -3268,7 +3381,7 @@ class MainActivity : AppCompatActivity() {
                                 throw exception
                             } catch (_: Exception) {
                                 withContext(Dispatchers.Main) {
-                                    finishConfirmedOutgoingFileTransfer(session, null)
+                                    finishConfirmedOutgoingFileTransfer(session, null, shareIntentToken)
                                 }
                             }
                         }
@@ -3297,6 +3410,7 @@ class MainActivity : AppCompatActivity() {
     private fun finishConfirmedOutgoingFileTransfer(
         session: ActiveFileTransferSession,
         outgoingValue: OutgoingFileTransferHandle?,
+        shareIntentToken: String? = null,
     ) {
         pendingOutgoingFileSubmissionInFlight = false
         if (isFinishing || isDestroyed || !session.isCurrent()) {
@@ -3313,13 +3427,18 @@ class MainActivity : AppCompatActivity() {
                     cancel = session.cancelOutgoingFile,
                 )
             if (started) {
+                clearPendingSharedFileIntent(shareIntentToken)
                 releasePendingOutgoingFileTransfer(outgoingValue.stagedFile)
                 showDedupedToast(R.string.file_transfer_sent_to_mac)
             } else {
+                if (hasOutgoingFileTransferAlreadyFinished(outgoingValue.transferId)) {
+                    clearPendingSharedFileIntent(shareIntentToken)
+                }
                 session.cancelOutgoingFile(outgoingValue.transferId)
                 discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)
             }
         } else {
+            clearPendingSharedFileIntent(shareIntentToken)
             discardPendingOutgoingFileTransfer(refreshControl = true)
             showFileTransferRecoverableError(
                 title = R.string.file_transfer_send_failed_title,
@@ -5458,6 +5577,7 @@ class MainActivity : AppCompatActivity() {
                     binding.inputViewport.requestFocus()
                     refreshClipboardControl()
                     refreshFileTransferControl()
+                    refreshPendingSharedFileUi()
                     // For wireless mode, transition controller to CONNECTED here —
                     // not in MainActivity.connectWireless's coroutine after the
                     // receive loop returns (that runs AFTER disconnect, causing
@@ -5606,6 +5726,7 @@ class MainActivity : AppCompatActivity() {
                     populateHostActions(availableHostActions)
                     refreshClipboardControl()
                     refreshFileTransferControl()
+                    refreshPendingSharedFileUi()
                     refreshAudioReadinessInSettings()
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
@@ -5717,6 +5838,7 @@ class MainActivity : AppCompatActivity() {
                 populateHostActions(availableHostActions)
                 refreshClipboardControl()
                 refreshFileTransferControl()
+                refreshPendingSharedFileUi()
                 refreshAudioReadinessInSettings()
                 mainDiag(
                     "managed policy updated: customGestures=" + customGestures +
@@ -6591,6 +6713,7 @@ class MainActivity : AppCompatActivity() {
             internetStylusContactRouter.reset()
             setStreamingWindowState(false)
         }
+        refreshPendingSharedFileUi()
         refreshTransferReadinessInSettings()
         refreshAudioReadinessInSettings()
     }
@@ -6679,6 +6802,7 @@ class MainActivity : AppCompatActivity() {
         productSessionCoordinator.setTransportConnected(false)
         controlBarPolicySurface = ManagedPolicyControlSurface()
         refreshLocalManagedPolicySnapshot()
+        refreshPendingSharedFileUi()
         refreshTransferReadinessInSettings()
         refreshAudioReadinessInSettings()
         runBestEffort(
@@ -6728,6 +6852,7 @@ class MainActivity : AppCompatActivity() {
         clearActiveIncomingFileTransfer()
         productSessionCoordinator.setTransportConnected(false)
         refreshLocalManagedPolicySnapshot()
+        refreshPendingSharedFileUi()
         refreshTransferReadinessInSettings()
         refreshAudioReadinessInSettings()
         val quarantinedSession = requireNotNull(internetSession)
@@ -7956,6 +8081,9 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_INTERNET_CAMERA_PERMISSION_PANEL = "internet_camera_permission_panel"
         private const val STATE_INTERNET_CAMERA_SETTINGS_PENDING = "internet_camera_settings_pending"
         private const val STATE_CONSUMED_SHARE_INTENT_TOKEN = "consumed_share_intent_token"
+        private const val STATE_PENDING_SHARED_FILE_URI = "pending_shared_file_uri"
+        private const val STATE_PENDING_SHARED_FILE_MIME_TYPE = "pending_shared_file_mime_type"
+        private const val STATE_PENDING_SHARED_FILE_TOKEN = "pending_shared_file_token"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
         private const val EXTRA_USB_CONFIGURED = "configured"
