@@ -1,0 +1,9 @@
+repository=TaoSama/vibe-screen
+worktree=<workspace>
+branch=codex/android-internet-profile-import-device-evidence
+base_head=ad94be5ae559f2b314a7edd4d7a4baf2391a82af
+origin_main=ad94be5ae559f2b314a7edd4d7a4baf2391a82af
+base_subject=Recover Internet camera scanner after manual permission grant
+date=2026-09-16
+timezone=Asia/Shanghai
+local_change=Android Internet profile import dialog clears retryable errors on user edit and keeps the opt-in Android-local MainActivity profile-import/bootstrap/revoke acceptance path current-source.

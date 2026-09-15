@@ -67,6 +67,7 @@ TEST_PACKAGE = f"{APP_PACKAGE}.test"
 TEST_RUNNER = f"{APP_PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = f"{APP_PACKAGE}.internet.InternetProductSessionInteropInstrumentedTest"
 UI_TEST_CLASS = f"{APP_PACKAGE}.InternetMainActivityAcceptanceInstrumentedTest"
+UI_OPT_IN_ARGUMENT = "vibeScreenInternetUiBootstrapAcceptance"
 HOST_MARKER_PREFIX = "PHASE3_ANDROID_INTEROP_HOST_PASS"
 DEVICE_MARKER_PREFIX = "PHASE3_ANDROID_INTEROP_DEVICE_PASS"
 UI_MARKER_PREFIX = "PHASE3_ANDROID_INTERNET_UI_PASS"
@@ -85,6 +86,7 @@ UI_MARKER_FLAGS = (
     "route_toggle=true",
     "pairing=true",
     "strict_lease_import=true",
+    "retryable_import_error=true",
     "local_revoke=true",
     "repair=true",
     "secure_dialogs=true",
@@ -995,7 +997,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 raise InteropError("Android app state could not be reset before UI acceptance")
             adb.device(["logcat", "-c"], name="clear-ui-marker-log")
             ui_output = adb.device(
-                ["shell", "am", "instrument", "-w", "-r", "-e", "class", UI_TEST_CLASS, TEST_RUNNER],
+                [
+                    "shell", "am", "instrument", "-w", "-r",
+                    "-e", "class", UI_TEST_CLASS,
+                    "-e", UI_OPT_IN_ARGUMENT, "true",
+                    TEST_RUNNER,
+                ],
                 timeout=args.timeout,
                 name="instrumentation-ui",
             )

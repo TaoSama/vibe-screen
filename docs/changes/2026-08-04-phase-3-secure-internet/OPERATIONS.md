@@ -13,7 +13,9 @@ deployable production stack: signaling has PostgreSQL-backed durable routing but
 multi-instance operation is not proved, no authoritative production usage
 exporter or live active-allocation disconnect executor is deployed, macOS
 Authority-backed session-profile request and refresh are wired only as a local
-control-plane path, Android UI import/bootstrap/handoff remain unproved, the
+control-plane path, Android-local MainActivity import/bootstrap has no-Host
+P0110 evidence only, production Authority-issued Android bootstrap, device
+handoff, and public-network E2E remain unproved, the
 bundled coturn deployment does not run a production-scheduled usage exporter/reconciliation
 worker or concrete data-plane disconnect executor, and no integrated
 implementation has run on a public host in this environment. The repository now
@@ -104,8 +106,8 @@ the recovery point and ledger invariants are verified.
 
 The supplied production profile runs one Authority process. It does not prove
 multi-process Authority operation, public ingress, NTP monitoring, database
-backup automation, Android UI profile import/bootstrap/handoff, production coturn
-exporter/disconnect wiring, or
+backup automation, production Authority-issued Android import/bootstrap, device
+handoff, production coturn exporter/disconnect wiring, or
 active disconnection after revocation.
 
 Production enforcement cannot be closed from any single service log. The release
@@ -242,8 +244,8 @@ choose the accepted expiry.
 
 This manual issuer is an operator bridge for unsigned Authority leases. The
 macOS host now also has a local Authority-backed request and refresh path, but
-neither path closes Android UI import/bootstrap/handoff, public Internet, or
-real media transport gates.
+neither path closes production Authority-issued Android bootstrap, device
+handoff, public Internet, or real media transport gates.
 
 Both input and output contain the signaling token and possibly TURN credentials.
 Keep them in an owner-only temporary directory, never pass them as command-line
@@ -480,9 +482,11 @@ tokens, and log redaction). The following remain open and must not be treated as
 shipped:
 
 - macOS Authority-backed session-profile request allocation, invocation, and
-  fresh-session refresh are wired for local/offline control-plane use. Android
-  UI profile import, first lease bootstrap, device handoff, and public-network
-  E2E remain open.
+  fresh-session refresh are wired for local/offline control-plane use.
+  Android-local MainActivity profile import and first lease bootstrap have
+  P0110 no-Host evidence through an in-memory instrumentation authority.
+  Production Authority-issued Android import/bootstrap, device handoff, and
+  public-network E2E remain open.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a profile or
   signaling admission can be created.

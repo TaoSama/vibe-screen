@@ -21,6 +21,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     HOST_MARKER_PREFIX,
     UI_MARKER_FLAGS,
     UI_MARKER_PREFIX,
+    UI_OPT_IN_ARGUMENT,
     INTERNET_LEASE_LOCK,
     MANDATORY_DEVICE_LOCKS,
     PRODUCT_INTEROP_EVIDENCE_BOUNDARIES,
@@ -472,11 +473,24 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
 
         self.assertLess(marker_index, install_test_index)
 
+    def test_runner_passes_explicit_opt_in_to_android_ui_bootstrap_acceptance(self) -> None:
+        runner_source = ROOT / "scripts/phase3/android_product_session_interop_acceptance.py"
+        source = runner_source.read_text(encoding="utf-8")
+        command_start = source.index('[\n                    "shell", "am", "instrument", "-w", "-r",')
+        command_end = source.index('name="instrumentation-ui"', command_start)
+        ui_command = source[command_start:command_end]
+
+        self.assertEqual(UI_OPT_IN_ARGUMENT, "vibeScreenInternetUiBootstrapAcceptance")
+        self.assertIn('"-e", "class", UI_TEST_CLASS', ui_command)
+        self.assertIn('"-e", UI_OPT_IN_ARGUMENT, "true"', ui_command)
+        self.assertLess(ui_command.index('"-e", "class", UI_TEST_CLASS'), ui_command.index('"-e", UI_OPT_IN_ARGUMENT, "true"'))
+
     def test_ui_marker_requires_exact_complete_assertions(self) -> None:
         marker = " ".join((UI_MARKER_PREFIX, *UI_MARKER_FLAGS))
         self.assertEqual(validate_ui_marker(marker), marker)
         for broken in (
             marker.replace("pairing=true ", ""),
+            marker.replace("retryable_import_error=true ", ""),
             marker.replace(UI_MARKER_PREFIX, UI_MARKER_PREFIX + "_EVIL"),
             marker + " pairing=true",
             marker + " unknown=true",

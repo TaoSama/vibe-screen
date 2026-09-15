@@ -129,6 +129,14 @@ class RealQrPairingStaticContractTest {
         val codeOnly = stripComments(readSource("InternetMainActivityAcceptanceInstrumentedTest.kt"))
 
         assertTrue(
+            "Internet UI/bootstrap acceptance must require an explicit instrumentation opt-in",
+            codeOnly.contains("OPT_IN_ARGUMENT") && codeOnly.contains("assumeTrue("),
+        )
+        assertTrue(
+            "The opt-in rule must run before the camera permission rule",
+            codeOnly.contains("RuleChain.outerRule(optInRule).around(cameraPermission)"),
+        )
+        assertTrue(
             "Internet acceptance must restore Espresso's default failure handler after every test",
             codeOnly.contains("@After") &&
                 codeOnly.contains("Espresso.setFailureHandler(DefaultFailureHandler(context))"),
@@ -136,6 +144,39 @@ class RealQrPairingStaticContractTest {
         assertTrue(
             "Internet acceptance must reset its diagnostic stage after every test",
             codeOnly.contains("acceptanceStage = \"initialization\""),
+        )
+        assertTrue(
+            "Internet acceptance should prove rejected import drafts remain retryable",
+            codeOnly.contains("importLeaseAfterRejectedDraft") &&
+                codeOnly.contains("INVALID_LEASE_JSON") &&
+                codeOnly.contains("expectDialogError = true") &&
+                codeOnly.contains("Rejected draft must not persist a profile"),
+        )
+    }
+
+    @Test
+    fun internetImportDialogClearsRetryableErrorWhenUserEditsInput() {
+        val importDialog = stripComments(extractMethod(readSource("MainActivity.kt"), "private fun showInternetProfileImportDialog"))
+
+        assertTrue(
+            "Internet profile import should expose one inline error updater for EditText and live-region state",
+            importDialog.contains("fun updateImportError(message: CharSequence?)") &&
+                importDialog.contains("input.error = message") &&
+                importDialog.contains("LiveRegionTextApplier.hide(errorText)") &&
+                importDialog.contains("LiveRegionTextApplier.show(errorText, message)"),
+        )
+        assertTrue(
+            "Internet profile import should clear a rejected draft error as soon as the user changes the input",
+            importDialog.contains("input.addTextChangedListener") &&
+                importDialog.contains("override fun afterTextChanged") &&
+                importDialog.contains("if (input.error != null || errorText.visibility == View.VISIBLE)") &&
+                importDialog.contains("updateImportError(null)"),
+        )
+        assertTrue(
+            "Visible import errors should scroll into the parent dialog viewport",
+            importDialog.contains("errorText.post {") &&
+                importDialog.contains("errorText.requestRectangleOnScreen") &&
+                importDialog.contains("Rect(0, 0, errorText.width, errorText.height)"),
         )
     }
 
@@ -227,6 +268,47 @@ class RealQrPairingStaticContractTest {
                 val trimmed = it.trim()
                 trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*") || trimmed.endsWith("*/")
             }.joinToString("\n")
+    }
+
+    private fun extractMethod(source: String, signature: String): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) { "Method not found: $signature" }
+        var index = start
+        var braceDepth = 0
+        var inString = false
+        var escaped = false
+        var methodStarted = false
+        while (index < source.length) {
+            val current = source[index]
+            when {
+                inString -> {
+                    if (escaped) {
+                        escaped = false
+                    } else if (current == '\\') {
+                        escaped = true
+                    } else if (current == '"') {
+                        inString = false
+                    }
+                    index++
+                }
+                current == '"' -> {
+                    inString = true
+                    index++
+                }
+                current == '{' -> {
+                    methodStarted = true
+                    braceDepth++
+                    index++
+                }
+                current == '}' -> {
+                    braceDepth--
+                    if (methodStarted && braceDepth == 0) return source.substring(start, index + 1)
+                    index++
+                }
+                else -> index++
+            }
+        }
+        error("Closing brace not found for $signature")
     }
 
     private fun extractFinallyBlock(source: String): String {

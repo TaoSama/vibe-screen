@@ -747,8 +747,15 @@ after successful role authorization, and Mac signing of the exact
 Authority-supplied epoch. On the macOS host, the local/offline Authority
 session-profile request and epoch allocation path is wired, and
 Authority-backed profile invocation and refresh are covered by local tests.
-This remains local control-plane evidence only: real Android UI profile import,
-first lease bootstrap, device handoff, and public-network E2E stay open.
+That remains local control-plane evidence only. The
+[2026-09-16 Nubia P0110 Android-local profile import/bootstrap run](docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-profile-import-bootstrap/README.md)
+now verifies the real MainActivity profile-import/bootstrap UI with
+AndroidKeyStore-backed local pairing state, strict host-signed instrumentation
+test lease import after a rejected draft, retryable error clearing, local
+revoke, and repair/re-pair cleanup. Its profile and lease are constructed by an
+in-memory instrumentation authority and entered through the product UI/store
+path, so production Authority issuance, device handoff, public-network E2E,
+real QR scan acceptance, WebRTC transport, and Host-backed media remain open.
 A 2026-08-20 local readiness record at commit `18a6ea70` covers the same
 release boundary: protocol checks, Phase 3 security/service/static tests, local
 Authority container gating, relay coturn data-plane scripts, and direct plus
@@ -951,8 +958,10 @@ The current-base public Internet WebRTC/TURN relay E2E owner record is
 it stays blocked until retained product E2E evidence proves a real public
 Internet WebRTC relay session with deployed remote TURN and
 ScreenCaptureKit-to-MediaCodec continuity.
-Real Android UI profile import, first lease bootstrap, device handoff,
-public-network E2E, real QR scan request/acceptance, real encoded
+Android-local UI profile import and first lease bootstrap now have no-Host
+P0110 evidence for the product MainActivity path with an in-memory
+instrumentation authority. Host-backed production Authority issuance, device
+handoff, public-network E2E, real QR scan request/acceptance, real encoded
 ScreenCaptureKit output reaching the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation, and soak remain release gates rather than shipped

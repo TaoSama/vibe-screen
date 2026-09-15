@@ -58,8 +58,11 @@ contracts. Authority now
 exposes an admin/operator session profile issuance primitive for already
 registered devices, and the macOS host now wires local/offline
 Authority-backed session-profile request allocation, invocation, and
-fresh-session refresh. Android UI profile import, first lease bootstrap, device
-handoff, public-network E2E, cross-service revocation propagation, real coturn exporter collection,
+fresh-session refresh. Android-local UI profile import and first lease
+bootstrap now have no-Host P0110 evidence for the product MainActivity path
+using an in-memory instrumentation authority, but production Authority-issued
+Android import/bootstrap, device handoff, public-network E2E, cross-service
+revocation propagation, real coturn exporter collection,
 production scheduled reconciliation, active-allocation disconnect execution,
 authoritative coturn byte accounting, production multi-replica rollout, public
 ingress, global rate limits, and a production deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
