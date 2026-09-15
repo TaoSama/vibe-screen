@@ -72,12 +72,20 @@ internal class OutgoingFileStager(
     private val contentResolver: ContentResolver,
     private val cacheDirectory: File,
     private val maxDisplayNameLength: Int,
+    private val resolverMimeTypeForUri: (Uri) -> String? = { uri -> contentResolver.getType(uri) },
 ) {
     fun stage(
         uri: Uri,
         maximumFileBytes: Long,
+        mimeTypeHint: String? = null,
     ): StagedOutgoingFile {
-        val mimeType = contentResolver.getType(uri) ?: DEFAULT_MIME_TYPE
+        val resolverMimeType =
+            if (mimeTypeHint?.trim()?.takeIf(String::isNotEmpty) == null) {
+                resolverMimeTypeForUri(uri)
+            } else {
+                null
+            }
+        val mimeType = resolvedMimeType(mimeTypeHint, resolverMimeType)
         val safeName = safeDisplayName(displayNameForUri(uri) ?: uri.lastPathSegment, maxDisplayNameLength)
         val directory = File(cacheDirectory, STAGING_ROOT + "/" + UUID.randomUUID())
         if (!directory.mkdirs()) throw IOException("Unable to create outgoing file staging directory")
@@ -136,6 +144,14 @@ internal class OutgoingFileStager(
             displayName: String?,
             maxDisplayNameLength: Int,
         ): String = AppSpecificDownloadsSaver.safeDisplayName(displayName, maxDisplayNameLength)
+
+        fun resolvedMimeType(
+            mimeTypeHint: String?,
+            resolverMimeType: String?,
+        ): String =
+            mimeTypeHint?.trim()?.takeIf(String::isNotEmpty)
+                ?: resolverMimeType?.trim()?.takeIf(String::isNotEmpty)
+                ?: DEFAULT_MIME_TYPE
 
         fun sha256(bytes: ByteArray): ByteString = dev.telemachus.display.protocol.sha256(bytes)
     }

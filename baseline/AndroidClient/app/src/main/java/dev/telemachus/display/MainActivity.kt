@@ -121,11 +121,13 @@ private data class ClipboardConfirmationDetails(
     val noteText: String,
 )
 
-private data class PendingSharedFileIntent(
+private class PendingSharedFileIntent(
     val uri: Uri,
-    val mimeType: String,
+    mimeType: String,
     val token: String,
-)
+) {
+    val mimeType: String = mimeType.trim()
+}
 
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
@@ -2977,6 +2979,7 @@ class MainActivity : AppCompatActivity() {
             uri = pending.uri,
             unavailableMessage = R.string.file_transfer_share_unavailable,
             shareIntentToken = pending.token,
+            mimeTypeHint = pending.mimeType,
         )
     }
 
@@ -3014,6 +3017,7 @@ class MainActivity : AppCompatActivity() {
         uri: Uri,
         @StringRes unavailableMessage: Int = R.string.file_transfer_unavailable,
         shareIntentToken: String? = null,
+        mimeTypeHint: String? = null,
     ) {
         if (hasActiveFileTransfer()) {
             markShareIntentConsumed(shareIntentToken)
@@ -3045,7 +3049,7 @@ class MainActivity : AppCompatActivity() {
         val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
             val stagedFile = try {
-                stageOutgoingFileTransfer(uri, maximumFileBytes)
+                stageOutgoingFileTransfer(uri, maximumFileBytes, mimeTypeHint)
             } catch (exception: CancellationException) {
                 throw exception
             } catch (failure: Throwable) {
@@ -3097,12 +3101,13 @@ class MainActivity : AppCompatActivity() {
     private fun stageOutgoingFileTransfer(
         uri: Uri,
         maximumFileBytes: Long,
+        mimeTypeHint: String? = null,
     ): StagedOutgoingFile =
         OutgoingFileStager(
             contentResolver = contentResolver,
             cacheDirectory = cacheDir,
             maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
-        ).stage(uri, maximumFileBytes)
+        ).stage(uri, maximumFileBytes, mimeTypeHint)
 
     private fun safeOutgoingFileName(displayName: String?): String =
         OutgoingFileStager.safeDisplayName(displayName, MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS)
