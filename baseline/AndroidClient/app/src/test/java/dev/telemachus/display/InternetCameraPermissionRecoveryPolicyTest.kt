@@ -56,36 +56,66 @@ class InternetCameraPermissionRecoveryPolicyTest {
     }
 
     @Test
-    fun `settings return launches scanner only for pending grant`() {
-        assertEquals(
-            InternetCameraSettingsReturnAction.NOOP,
-            InternetCameraPermissionRecoveryPolicy.settingsReturn(
-                settingsPending = false,
-                granted = true,
-                permanentlyDenied = false,
-            ),
-        )
+    fun `foreground return launches scanner when visible permission panel becomes granted`() {
+        listOf(
+            InternetCameraPermissionPanelState.FIRST_DENIED,
+            InternetCameraPermissionPanelState.SETTINGS_REQUIRED,
+        ).forEach { panelState ->
+            assertEquals(
+                InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE,
+                InternetCameraPermissionRecoveryPolicy.foregroundReturn(
+                    panelState = panelState,
+                    settingsPending = false,
+                    granted = true,
+                    permanentlyDenied = false,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `foreground return preserves explicit settings return grant`() {
         assertEquals(
             InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE,
-            InternetCameraPermissionRecoveryPolicy.settingsReturn(
+            InternetCameraPermissionRecoveryPolicy.foregroundReturn(
+                panelState = InternetCameraPermissionPanelState.HIDDEN,
                 settingsPending = true,
                 granted = true,
                 permanentlyDenied = false,
             ),
         )
+    }
+
+    @Test
+    fun `foreground return keeps visible permission panel actionable when still denied`() {
         assertEquals(
             InternetCameraSettingsReturnAction.SHOW_SETTINGS_PANEL,
-            InternetCameraPermissionRecoveryPolicy.settingsReturn(
-                settingsPending = true,
+            InternetCameraPermissionRecoveryPolicy.foregroundReturn(
+                panelState = InternetCameraPermissionPanelState.SETTINGS_REQUIRED,
+                settingsPending = false,
                 granted = false,
                 permanentlyDenied = true,
             ),
         )
         assertEquals(
             InternetCameraSettingsReturnAction.SHOW_FIRST_DENIED_PANEL,
-            InternetCameraPermissionRecoveryPolicy.settingsReturn(
-                settingsPending = true,
+            InternetCameraPermissionRecoveryPolicy.foregroundReturn(
+                panelState = InternetCameraPermissionPanelState.FIRST_DENIED,
+                settingsPending = false,
                 granted = false,
+                permanentlyDenied = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `foreground return ignores hidden panel without settings return`() {
+        assertEquals(
+            InternetCameraSettingsReturnAction.NOOP,
+            InternetCameraPermissionRecoveryPolicy.foregroundReturn(
+                panelState = InternetCameraPermissionPanelState.HIDDEN,
+                settingsPending = false,
+                granted = true,
                 permanentlyDenied = false,
             ),
         )

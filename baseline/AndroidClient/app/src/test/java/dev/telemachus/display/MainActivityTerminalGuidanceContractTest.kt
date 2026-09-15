@@ -1690,16 +1690,25 @@ class MainActivityTerminalGuidanceContractTest {
         val scanRequested = extractMethod(source, "private fun handleInternetScanRequested")
         val openSettings = extractMethod(source, "private fun openInternetCameraPermissionSettings")
         val settingsReturn = extractMethod(source, "private fun handleInternetCameraSettingsReturn")
+        val onStart = extractMethod(source, "override fun onStart")
+        val onResume = extractMethod(source, "override fun onResume")
         val compactSetup = setup.replace(Regex("\\s+"), "")
         val compactScanRequested = scanRequested.replace(Regex("\\s+"), "")
         val compactOpenSettings = openSettings.replace(Regex("\\s+"), "")
         val compactSettingsReturn = settingsReturn.replace(Regex("\\s+"), "")
+        val compactOnStart = onStart.replace(Regex("\\s+"), "")
+        val compactOnResume = onResume.replace(Regex("\\s+"), "")
         val settingsPendingResetIndex =
             compactSettingsReturn.indexOf("internetCameraSettingsReturnPending=false")
-        val scannerLaunchIndex =
-            compactSettingsReturn.indexOf(
-                "InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE->returnlaunchInternetScanner()",
-            )
+        val scannerLaunchIndex = compactSettingsReturn.indexOf("vallaunched=launchInternetScanner()")
+        val foregroundPolicyIndex =
+            compactSettingsReturn.indexOf("InternetCameraPermissionRecoveryPolicy.foregroundReturn(")
+        val panelStateIndex = compactSettingsReturn.indexOf("valpanelState=internetCameraPermissionPanelState")
+        val settingsPendingIndex =
+            compactSettingsReturn.indexOf("valsettingsPending=internetCameraSettingsReturnPending")
+        val grantedIndex = compactSettingsReturn.indexOf("valgranted=cameraPerm.isGranted()")
+        val permanentlyDeniedIndex =
+            compactSettingsReturn.indexOf("valpermanentlyDenied=cameraPerm.isPermanentlyDenied()")
 
         assertTrue(
             "Internet scan control should delegate permission decisions to the focused handler",
@@ -1721,13 +1730,41 @@ class MainActivityTerminalGuidanceContractTest {
                 compactOpenSettings.contains("cameraPerm.openAppSettings()"),
         )
         assertTrue(
-            "Settings-return recovery must launch only from a pending settings return grant",
-            compactSettingsReturn.contains("settingsPending=internetCameraSettingsReturnPending") &&
-                compactSettingsReturn.contains("granted=cameraPerm.isGranted()") &&
-                compactSettingsReturn.contains("permanentlyDenied=cameraPerm.isPermanentlyDenied()") &&
+            "Foreground recovery must launch after a settings grant or a visible permission-panel grant",
+            panelStateIndex >= 0 &&
+                settingsPendingIndex >= 0 &&
+                grantedIndex >= 0 &&
+                permanentlyDeniedIndex >= 0 &&
+                foregroundPolicyIndex >= 0 &&
+                compactSettingsReturn.contains("panelState=panelState") &&
+                compactSettingsReturn.contains("settingsPending=settingsPending") &&
+                compactSettingsReturn.contains("granted=granted") &&
+                compactSettingsReturn.contains("permanentlyDenied=permanentlyDenied") &&
                 settingsPendingResetIndex >= 0 &&
                 scannerLaunchIndex >= 0 &&
+                panelStateIndex < foregroundPolicyIndex &&
+                settingsPendingIndex < foregroundPolicyIndex &&
+                grantedIndex < foregroundPolicyIndex &&
+                permanentlyDeniedIndex < foregroundPolicyIndex &&
                 settingsPendingResetIndex < scannerLaunchIndex,
+        )
+        assertFalse(
+            "Internet camera settings recovery must not be consumed from onStart before MainActivity is resumed",
+            compactOnStart.contains("handleInternetCameraSettingsReturn()"),
+        )
+        assertTrue(
+            "Internet camera settings recovery must run from onResume after returning from Android Settings",
+            compactOnResume.contains("prefs.connectionMode==ConnectionMode.INTERNET&&handleInternetCameraSettingsReturn()"),
+        )
+        assertTrue(
+            "Internet mode foreground start must not fall through to USB automatic reconnect scheduling",
+            compactOnStart.contains("}elseif(prefs.connectionMode==ConnectionMode.INTERNET){return}"),
+        )
+        assertTrue(
+            "Foreground recovery diagnostics must expose scanner launch admission failures",
+            source.contains("private fun logInternetCameraForegroundRecovery(") &&
+                source.contains("launchResult: Boolean? = null") &&
+                source.contains("launchResult=\$it"),
         )
     }
 

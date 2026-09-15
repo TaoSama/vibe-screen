@@ -1,0 +1,25 @@
+# Worktree
+git fetch origin
+git worktree add -b codex/internet-camera-permission-recovery .claude/worktrees/internet-camera-permission-recovery origin/main
+
+# Focused JVM and static checks
+cd baseline/AndroidClient && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest \
+  --tests dev.telemachus.display.InternetCameraPermissionRecoveryPolicyTest \
+  --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest \
+  --tests dev.telemachus.display.CameraPermissionResumePolicyTest
+cd baseline/AndroidClient && ./gradlew --no-daemon --console=plain :app:compileDebugAndroidTestKotlin :app:lintDebug
+make baseline-android-check
+
+# Focused P0110 device run. Initial denied state and final cleanup were performed
+# with adb pm revoke around the instrumentation run; the test itself grants Camera
+# through UiAutomation while MainActivity is backgrounded, then verifies foreground
+# recovery into QRScannerActivity. No macOS Host or adb reverse was used.
+adb -s EP0110PZ0B9110152B shell pm revoke dev.telemachus.display android.permission.CAMERA >/dev/null 2>&1 || true
+adb -s EP0110PZ0B9110152B shell am force-stop dev.telemachus.display >/dev/null 2>&1 || true
+ANDROID_SERIAL=EP0110PZ0B9110152B ./gradlew --no-daemon --console=plain :app:connectedDebugAndroidTest \
+  '-Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest#visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn' \
+  -Pandroid.testInstrumentationRunnerArguments.vibeScreenInternetCameraRecovery=true
+adb -s EP0110PZ0B9110152B shell pm revoke dev.telemachus.display android.permission.CAMERA >/dev/null 2>&1 || true
+adb -s EP0110PZ0B9110152B shell am force-stop dev.telemachus.display >/dev/null 2>&1 || true
+adb -s EP0110PZ0B9110152B reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN || true

@@ -1,0 +1,9 @@
+# Key logcat events for run-2
+557:09-16 00:51:33.594 29551 29551 D MA      : internet camera foreground recovery panelState=HIDDEN settingsPending=false granted=false permanentlyDenied=false action=NOOP
+1149:09-16 00:51:34.002 29551 29551 D Activity: startActivityForResult intent=Intent { act=android.settings.APPLICATION_DETAILS_SETTINGS dat=package: },requestCode=-1
+1821:09-16 00:51:34.281 29551 29551 D MA      : internet camera foreground recovery panelState=FIRST_DENIED settingsPending=false granted=true permanentlyDenied=false action=LAUNCH_SCANNER_ONCE
+1825:09-16 00:51:34.283 29551 29551 D Activity: startActivityForResult intent=Intent { cmp=dev.telemachus.display/.QRScannerActivity },requestCode=1101
+1853:09-16 00:51:34.288 29551 29551 D MA      : internet camera foreground recovery panelState=FIRST_DENIED settingsPending=false granted=true permanentlyDenied=false action=LAUNCH_SCANNER_ONCE launchResult=true
+2018:09-16 00:51:34.335  3261  3321 I ActivityTaskManager: Displayed dev.telemachus.display/.QRScannerActivity for user 0: +47ms   systype : 20 startTime: 1789491094284
+2566:09-16 00:51:34.456 29551 29551 I ViewInteraction: Checking 'MatchesViewAssertion{viewMatcher=(view has effective visibility <VISIBLE> and view.getGlobalVisibleRect() to return non-empty rectangle)}' assertion on view view.getId() is <2131231240/dev.telemachus.display:id/preview>
+3097:09-16 00:51:34.509 29551 29551 D MA      : internet camera foreground recovery panelState=HIDDEN settingsPending=false granted=true permanentlyDenied=false action=NOOP

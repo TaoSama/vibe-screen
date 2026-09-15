@@ -460,19 +460,25 @@ class MainActivity : AppCompatActivity() {
                 prefs.connectionMode == ConnectionMode.WIRELESS &&
                 wirelessController.onHostForegrounded()
         if (scannerLaunched) return
-        if (prefs.connectionMode == ConnectionMode.INTERNET && handleInternetCameraSettingsReturn()) return
         if (isConnected) {
             setStreamingWindowState(true)
             streamClient?.requestKeyframe(force = true, reason = FOREGROUND_KEYFRAME_REASON)
             internetSession?.requestKeyframe(FOREGROUND_KEYFRAME_REASON)
             synchronizeControllerDevices("foreground")
             refreshFileTransferControl()
+        } else if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            return
         } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
             pendingAutomaticReconnectDelayMs?.let(::scheduleWirelessReconnect)
                 ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
         } else {
             scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (prefs.connectionMode == ConnectionMode.INTERNET && handleInternetCameraSettingsReturn()) return
     }
 
     override fun onStop() {
@@ -2025,22 +2031,52 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleInternetCameraSettingsReturn(): Boolean {
+        val panelState = internetCameraPermissionPanelState
+        val settingsPending = internetCameraSettingsReturnPending
+        val granted = cameraPerm.isGranted()
+        val permanentlyDenied = cameraPerm.isPermanentlyDenied()
         val action =
-            InternetCameraPermissionRecoveryPolicy.settingsReturn(
-                settingsPending = internetCameraSettingsReturnPending,
-                granted = cameraPerm.isGranted(),
-                permanentlyDenied = cameraPerm.isPermanentlyDenied(),
+            InternetCameraPermissionRecoveryPolicy.foregroundReturn(
+                panelState = panelState,
+                settingsPending = settingsPending,
+                granted = granted,
+                permanentlyDenied = permanentlyDenied,
             )
-        if (action != InternetCameraSettingsReturnAction.NOOP) {
-            internetCameraSettingsReturnPending = false
-        }
+        if (action == InternetCameraSettingsReturnAction.NOOP) return false
+        internetCameraSettingsReturnPending = false
         when (action) {
+            InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE -> {
+                val launched = launchInternetScanner()
+                logInternetCameraForegroundRecovery(panelState, settingsPending, granted, permanentlyDenied, action, launched)
+                return launched
+            }
+            InternetCameraSettingsReturnAction.SHOW_FIRST_DENIED_PANEL -> {
+                logInternetCameraForegroundRecovery(panelState, settingsPending, granted, permanentlyDenied, action)
+                showInternetCameraPermissionFirstDenied()
+            }
+            InternetCameraSettingsReturnAction.SHOW_SETTINGS_PANEL -> {
+                logInternetCameraForegroundRecovery(panelState, settingsPending, granted, permanentlyDenied, action)
+                showInternetCameraPermissionSettingsPanel()
+            }
             InternetCameraSettingsReturnAction.NOOP -> return false
-            InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE -> return launchInternetScanner()
-            InternetCameraSettingsReturnAction.SHOW_FIRST_DENIED_PANEL -> showInternetCameraPermissionFirstDenied()
-            InternetCameraSettingsReturnAction.SHOW_SETTINGS_PANEL -> showInternetCameraPermissionSettingsPanel()
         }
         return false
+    }
+
+    private fun logInternetCameraForegroundRecovery(
+        panelState: InternetCameraPermissionPanelState,
+        settingsPending: Boolean,
+        granted: Boolean,
+        permanentlyDenied: Boolean,
+        action: InternetCameraSettingsReturnAction,
+        launchResult: Boolean? = null,
+    ) {
+        val launchSuffix = launchResult?.let { " launchResult=$it" }.orEmpty()
+        mainDiag(
+            "internet camera foreground recovery panelState=$panelState " +
+                "settingsPending=$settingsPending granted=$granted " +
+                "permanentlyDenied=$permanentlyDenied action=$action$launchSuffix",
+        )
     }
 
     private fun restoreInternetCameraPermissionState(savedInstanceState: Bundle?) {
