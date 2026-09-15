@@ -1,5 +1,6 @@
 package dev.telemachus.display.internet
 
+import dev.telemachus.display.AudioReadinessSnapshot
 import dev.telemachus.display.audio.AndroidAudioTrackOutputFactory
 import dev.telemachus.display.audio.AUDIO_PACKET_NO_CONFIGURATION_CODE
 import dev.telemachus.display.audio.AudioPacketRejectReason
@@ -30,30 +31,67 @@ internal interface InternetAudioPlayback {
     fun submit(serializedFrame: ByteArray): InternetAudioDecision
 
     fun stop(reason: String)
+
+    fun readinessSnapshot(): AudioReadinessSnapshot
 }
 
 internal class ProtocolInternetAudioPlayback(
     private val player: ProtocolPcmAudioPlayer = ProtocolPcmAudioPlayer(AndroidAudioTrackOutputFactory()),
 ) : InternetAudioPlayback {
+    private val lock = Any()
+    private var acceptedPacketCount = 0L
+    private var writtenPacketCount = 0L
+
     override val canAdvertiseAudio: Boolean = true
 
     override fun configure(config: AudioConfig, sessionEpoch: Long): InternetAudioDecision =
-        when (val result = player.configure(config, sessionEpoch)) {
-            is ProtocolAudioConfigureResult.Accepted -> InternetAudioDecision.ACCEPT
-            is ProtocolAudioConfigureResult.Rejected -> InternetAudioDecision.reject(result.reason.code)
-            is ProtocolAudioConfigureResult.PlaybackFailed -> InternetAudioDecision.reject(result.reason.code)
+        synchronized(lock) {
+            acceptedPacketCount = 0
+            writtenPacketCount = 0
+            when (val result = player.configure(config, sessionEpoch)) {
+                is ProtocolAudioConfigureResult.Accepted -> {
+                    InternetAudioDecision.ACCEPT
+                }
+                is ProtocolAudioConfigureResult.Rejected -> InternetAudioDecision.reject(result.reason.code)
+                is ProtocolAudioConfigureResult.PlaybackFailed -> InternetAudioDecision.reject(result.reason.code)
+            }
         }
 
     override fun submit(serializedFrame: ByteArray): InternetAudioDecision =
-        when (val result = player.submit(serializedFrame)) {
-            is ProtocolAudioPacketResult.Accepted -> InternetAudioDecision.ACCEPT
-            is ProtocolAudioPacketResult.Rejected -> InternetAudioDecision.reject(result.reason.protocolCode)
-            is ProtocolAudioPacketResult.PlaybackFailed -> InternetAudioDecision.reject(result.reason.code)
+        synchronized(lock) {
+            when (val result = player.submit(serializedFrame)) {
+                is ProtocolAudioPacketResult.Accepted -> {
+                    acceptedPacketCount++
+                    if (result.writtenPackets > 0) {
+                        writtenPacketCount += result.writtenPackets.toLong()
+                    }
+                    InternetAudioDecision.ACCEPT
+                }
+                is ProtocolAudioPacketResult.Rejected -> InternetAudioDecision.reject(result.reason.protocolCode)
+                is ProtocolAudioPacketResult.PlaybackFailed -> {
+                    acceptedPacketCount = 0
+                    writtenPacketCount = 0
+                    InternetAudioDecision.reject(result.reason.code)
+                }
+            }
         }
 
     override fun stop(reason: String) {
-        player.stop()
+        synchronized(lock) {
+            player.stop()
+            acceptedPacketCount = 0
+            writtenPacketCount = 0
+        }
     }
+
+    override fun readinessSnapshot(): AudioReadinessSnapshot =
+        synchronized(lock) {
+            AudioReadinessSnapshot(
+                activeFormat = player.activeFormat(),
+                acceptedPacketCount = acceptedPacketCount,
+                writtenPacketCount = writtenPacketCount,
+            )
+        }
 }
 
 private val AudioPacketRejectReason.protocolCode: String

@@ -7,11 +7,26 @@ import org.junit.Test
 
 class MainActivityTransferReadinessContractTest {
     @Test
+    fun internetAudioReadinessTestHookIsSeparatedFromProductionMainSource() {
+        val mainHook = optionalSourceFile("app/src/main/java/dev/telemachus/display/MainActivityInternetAudioReadinessTestHooks.kt")
+        val mainActivity = mainActivitySource()
+        val debugHook = sourceFile(listOf("app/src/debug/java/dev/telemachus/display/MainActivityInternetAudioReadinessTestHooks.kt")).readText()
+        val releaseHook = sourceFile(listOf("app/src/release/java/dev/telemachus/display/MainActivityInternetAudioReadinessTestHooks.kt")).readText()
+
+        assertTrue("The mutable readiness hook must not live in src/main", mainHook == null)
+        assertFalse("MainActivity must not declare a mutable readiness hook", mainActivity.contains("object MainActivityInternetAudioReadinessTestHooks"))
+        assertTrue("Debug builds must expose the focused readiness override", debugHook.contains("@Volatile private var override"))
+        assertTrue("Release builds must never expose an injected readiness snapshot", releaseHook.contains("fun currentOverride(): Override? = null"))
+        assertFalse("Release builds must not retain mutable override state", releaseHook.contains("private var override"))
+    }
+
+    @Test
     fun settingsDialogBindsTransferReadinessWithoutTransferSideEffects() {
         val source = mainActivitySource()
         val showSettingsDialog = extractMethod(source, "private fun showSettingsDialog")
         val renderTransferReadiness = extractMethod(source, "private fun renderTransferReadiness")
         val renderAudioReadiness = extractMethod(source, "private fun renderAudioReadiness")
+        val activeAudioReadinessSnapshot = extractMethod(source, "private fun activeAudioReadinessSnapshot")
         val refreshTransferReadiness = extractMethod(source, "private fun refreshTransferReadinessInSettings")
         val refreshAudioReadiness = extractMethod(source, "private fun refreshAudioReadinessInSettings")
 
@@ -81,9 +96,16 @@ class MainActivityTransferReadinessContractTest {
             renderTransferReadiness.contains("TransferReadinessPresentationPolicy.presentation("),
         )
         assertTrue(
-            "Audio readiness should use StreamClient read-only audio snapshot and pure policy",
-            renderAudioReadiness.contains("streamClient?.audioReadinessSnapshot()") &&
+            "Audio readiness should use the active transport read-only audio snapshot and pure policy",
+            renderAudioReadiness.contains("activeAudioReadinessSnapshot(") &&
                 renderAudioReadiness.contains("AudioReadinessPresentationPolicy.presentation("),
+        )
+        assertTrue(
+            "Audio readiness must use Internet audio counters while Internet is the active transport",
+            activeAudioReadinessSnapshot.contains("ConnectionMode.INTERNET -> internetSession?.audioReadinessSnapshot()") &&
+                activeAudioReadinessSnapshot.contains("ConnectionMode.USB") &&
+                activeAudioReadinessSnapshot.contains("ConnectionMode.WIRELESS") &&
+                activeAudioReadinessSnapshot.contains("streamClient?.audioReadinessSnapshot()"),
         )
         assertTrue(
             "Audio readiness should expose active PCM format and packet counters only from existing state",
@@ -202,6 +224,11 @@ class MainActivityTransferReadinessContractTest {
             updateInternetState.contains("LiveRegionTextApplier.apply(") &&
                 updateInternetState.contains("refreshTransferReadinessInSettings()") &&
                 updateInternetState.contains("refreshAudioReadinessInSettings()"),
+        )
+        assertTrue(
+            "Internet audio readiness changes should refresh an already-open Settings dialog",
+            source.contains("override fun onAudioReadinessChanged(snapshot: AudioReadinessSnapshot)") &&
+                source.contains("refreshAudioReadinessInSettings()"),
         )
         assertTrue(
             "Terminal Internet states should reset stale remote policy before repainting transfer readiness",
@@ -375,6 +402,24 @@ class MainActivityTransferReadinessContractTest {
         )
     }
 
+    @Test
+    fun noHostInternetAudioReadinessInstrumentationUsesHookAndRestoresState() {
+        val source = sourceFile(INTERNET_AUDIO_READINESS_INSTRUMENTATION_PATHS).readText()
+
+        assertTrue(source.contains("ActivityScenario.launch(MainActivity::class.java)"))
+        assertTrue(source.contains("preferences.connectionMode = ConnectionMode.INTERNET"))
+        assertTrue(source.contains("MainActivityInternetAudioReadinessTestHooks.setOverride("))
+        assertTrue(source.contains("withText(R.string.audio_readiness_ready_status)"))
+        assertTrue(source.contains("R.string.audio_readiness_counters, 3, 2"))
+        assertTrue(source.contains("Espresso.pressBack()"))
+        assertTrue(source.contains("withText(R.string.audio_readiness_waiting_status)"))
+        assertTrue(source.contains("preferences.connectionMode = originalMode"))
+        assertTrue(source.contains("MainActivityInternetAudioReadinessTestHooks.setOverride(null)"))
+        assertFalse(source.contains("GrantPermissionRule"))
+        assertFalse(source.contains("Manifest.permission"))
+        assertFalse(source.contains("adb"))
+    }
+
     private fun mainActivitySource(): String = sourceFile(MAIN_ACTIVITY_PATHS).readText()
 
     private fun settingsLayoutSource(): String = sourceFile(SETTINGS_LAYOUT_PATHS).readText()
@@ -391,6 +436,15 @@ class MainActivityTransferReadinessContractTest {
             current = current.parentFile?.canonicalFile ?: current
         }
         error("Source file not found from " + System.getProperty("user.dir"))
+    }
+
+    private fun optionalSourceFile(path: String): File? {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            current.resolve(path).takeIf(File::isFile)?.let { return it }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        return null
     }
 
     private fun extractMethod(
@@ -494,6 +548,11 @@ class MainActivityTransferReadinessContractTest {
             listOf(
                 "app/src/main/res/values/strings.xml",
                 "baseline/AndroidClient/app/src/main/res/values/strings.xml",
+            )
+        val INTERNET_AUDIO_READINESS_INSTRUMENTATION_PATHS =
+            listOf(
+                "app/src/androidTest/java/dev/telemachus/display/InternetAudioReadinessSettingsInstrumentedTest.kt",
+                "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/InternetAudioReadinessSettingsInstrumentedTest.kt",
             )
     }
 }

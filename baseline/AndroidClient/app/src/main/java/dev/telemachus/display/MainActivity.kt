@@ -4773,8 +4773,12 @@ class MainActivity : AppCompatActivity() {
         summary: TextView,
         counters: TextView,
     ) {
-        val connected = isConnected || internetSession?.state == InternetProductSessionState.ACTIVE
-        val snapshot = streamClient?.audioReadinessSnapshot()
+        val internetAudioOverride = MainActivityInternetAudioReadinessTestHooks.currentOverride()
+        val connected =
+            isConnected ||
+                internetSession?.state == InternetProductSessionState.ACTIVE ||
+                (prefs.connectionMode == ConnectionMode.INTERNET && internetAudioOverride?.active == true)
+        val snapshot = activeAudioReadinessSnapshot(internetAudioOverride)
         val presentation =
             AudioReadinessPresentationPolicy.presentation(
                 connected = connected,
@@ -4828,6 +4832,17 @@ class MainActivity : AppCompatActivity() {
             status.announceForAccessibility(accessibilityText)
         }
     }
+
+    private fun activeAudioReadinessSnapshot(
+        internetAudioOverride: MainActivityInternetAudioReadinessTestHooks.Override? =
+            MainActivityInternetAudioReadinessTestHooks.currentOverride(),
+    ): AudioReadinessSnapshot? =
+        when (prefs.connectionMode) {
+            ConnectionMode.INTERNET -> internetSession?.audioReadinessSnapshot() ?: internetAudioOverride?.snapshot
+            ConnectionMode.USB,
+            ConnectionMode.WIRELESS,
+            -> streamClient?.audioReadinessSnapshot()
+        }
 
     /** Refit the live settings dialog after an orientation or inset change. */
     private fun resizeSettingsDialog(dialog: Dialog) {
@@ -5961,6 +5976,14 @@ class MainActivity : AppCompatActivity() {
                             frame.keyframe,
                             frame.sessionEpoch,
                         )
+                    }
+                }
+
+                override fun onAudioReadinessChanged(snapshot: AudioReadinessSnapshot) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        refreshAudioReadinessInSettings()
                     }
                 }
 

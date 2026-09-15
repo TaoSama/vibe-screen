@@ -2,6 +2,7 @@ package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.CodedOutputStream
+import dev.telemachus.display.AudioReadinessSnapshot
 import dev.telemachus.display.ClipboardContentData
 import dev.telemachus.display.ClipboardOfferData
 import dev.telemachus.display.ControllerAxes
@@ -14,6 +15,7 @@ import dev.telemachus.display.protocol.FileChunk
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.telemachus.display.protocol.sha256
+import dev.telemachus.display.audio.PcmAudioStreamFormat
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.generateEphemeral
 import dev.telemachus.display.internet.security.pairingSha256
@@ -2161,6 +2163,10 @@ class InternetProductSessionTest {
         assertEquals(2L, result.streamId)
         assertEquals(1L, result.configEpoch)
         assertEquals(listOf(audioConfig() to 7L), playback.configured)
+        assertEquals(PcmAudioStreamFormat.from(audioConfig()), session.audioReadinessSnapshot()?.activeFormat)
+        assertEquals(0L, session.audioReadinessSnapshot()?.acceptedPacketCount)
+        assertEquals(0L, session.audioReadinessSnapshot()?.writtenPacketCount)
+        assertEquals(PcmAudioStreamFormat.from(audioConfig()), callbacks.audioReadiness.last().activeFormat)
         assertTrue(playback.stops.isEmpty())
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
     }
@@ -2182,6 +2188,17 @@ class InternetProductSessionTest {
         assertEquals(1, playback.submitted.size)
         assertArrayEquals(packet, playback.submitted.single())
         assertTrue(callbacks.audio.isEmpty())
+        assertEquals(PcmAudioStreamFormat.from(config), session.audioReadinessSnapshot()?.activeFormat)
+        assertEquals(1L, session.audioReadinessSnapshot()?.acceptedPacketCount)
+        assertEquals(1L, session.audioReadinessSnapshot()?.writtenPacketCount)
+        assertEquals(
+            AudioReadinessSnapshot(
+                activeFormat = PcmAudioStreamFormat.from(config),
+                acceptedPacketCount = 1,
+                writtenPacketCount = 1,
+            ),
+            callbacks.audioReadiness.last(),
+        )
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
     }
 
@@ -2333,6 +2350,10 @@ class InternetProductSessionTest {
 
         assertEquals(InternetProductSessionState.FAILED, session.state)
         assertEquals(listOf("invalid_audio_header", "session_failure"), playback.stops)
+        assertEquals(null, session.audioReadinessSnapshot()?.activeFormat)
+        assertEquals(0L, session.audioReadinessSnapshot()?.acceptedPacketCount)
+        assertEquals(0L, session.audioReadinessSnapshot()?.writtenPacketCount)
+        assertEquals(null, callbacks.audioReadiness.last().activeFormat)
         assertEquals(1, callbacks.failures.size)
         assertEquals(
             "Protocol v1 audio record was rejected: invalid_audio_header",
@@ -2358,6 +2379,10 @@ class InternetProductSessionTest {
             }
 
             assertTrue(playback.stops.isNotEmpty())
+            assertEquals(null, session.audioReadinessSnapshot()?.activeFormat)
+            assertEquals(0L, session.audioReadinessSnapshot()?.acceptedPacketCount)
+            assertEquals(0L, session.audioReadinessSnapshot()?.writtenPacketCount)
+            assertEquals(null, callbacks.audioReadiness.last().activeFormat)
             assertEquals(
                 when (terminal) {
                     "close" -> "session_close"
@@ -4053,6 +4078,7 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     val clipboardOffers = mutableListOf<ClipboardOfferData>()
     val clipboardContents = mutableListOf<ClipboardContentData>()
     val managedPolicies = mutableListOf<ManagedPolicyStatus>()
+    val audioReadiness = mutableListOf<AudioReadinessSnapshot>()
     var revocationEvents: MutableList<String>? = null
     override fun onStateChanged(state: InternetProductSessionState) { states += state }
     override fun onVideoConfiguration(
@@ -4081,6 +4107,7 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     }
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onAudioRecord(payload: ByteArray) { audio += payload }
+    override fun onAudioReadinessChanged(snapshot: AudioReadinessSnapshot) { audioReadiness += snapshot }
     override fun onBulkRecord(payload: ByteArray) { bulk += payload }
     override fun onClipboardOffered(offer: ClipboardOfferData) { clipboardOffers += offer }
     override fun onClipboardContent(content: ClipboardContentData) { clipboardContents += content }
@@ -4106,20 +4133,37 @@ private class ProductFakeAudioPlayback(
     val submitted = mutableListOf<ByteArray>()
     val stops = mutableListOf<String>()
     var submitDecision: InternetAudioDecision = InternetAudioDecision.ACCEPT
+    private var snapshot = AudioReadinessSnapshot(null, 0, 0)
 
     override fun configure(config: AudioConfig, sessionEpoch: Long): InternetAudioDecision {
         configured += config to sessionEpoch
+        snapshot =
+            if (configureDecision.accepted) {
+                AudioReadinessSnapshot(PcmAudioStreamFormat.from(config), 0, 0)
+            } else {
+                AudioReadinessSnapshot(null, 0, 0)
+            }
         return configureDecision
     }
 
     override fun submit(serializedFrame: ByteArray): InternetAudioDecision {
         submitted += serializedFrame.copyOf()
+        if (submitDecision.accepted) {
+            snapshot =
+                snapshot.copy(
+                    acceptedPacketCount = snapshot.acceptedPacketCount + 1,
+                    writtenPacketCount = snapshot.writtenPacketCount + 1,
+                )
+        }
         return submitDecision
     }
 
     override fun stop(reason: String) {
         stops += reason
+        snapshot = AudioReadinessSnapshot(null, 0, 0)
     }
+
+    override fun readinessSnapshot(): AudioReadinessSnapshot = snapshot
 }
 
 private class ProductFakeNetworkMonitor(
