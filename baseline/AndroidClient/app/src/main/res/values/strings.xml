@@ -224,6 +224,8 @@
     <string name="clipboard_empty">Nothing to send: the clipboard is empty.</string>
     <!-- Toast shown when the local clipboard exceeds the host clipboard byte limit. -->
     <string name="clipboard_too_large">Clipboard is too large to send to the Mac.</string>
+    <!-- Toast shown when the Mac clipboard exceeds the Android ClipboardManager safe write limit. -->
+    <string name="clipboard_too_large_for_device">Mac clipboard is too large for this device clipboard. Limit: %1$s.</string>
     <!-- Toast shown when the Mac has no clipboard content available to fetch. -->
     <string name="clipboard_mac_unavailable">No clipboard content available from the Mac.</string>
     <!-- Toast shown when a Mac clipboard offer arrives and is pending explicit approval. -->
@@ -253,8 +255,8 @@
     <string name="clipboard_confirmation_receive_preview_unavailable">The Mac clipboard preview appears after the Mac replies; you will confirm before copying.</string>
     <string name="clipboard_confirmation_preview_truncated">%1$s...</string>
     <string name="clipboard_confirmation_send_note">The local clipboard is read only after you tap Send.</string>
-    <string name="clipboard_confirmation_receive_note">Copying replaces this device’s current clipboard.</string>
-    <string name="clipboard_confirmation_direct_receive_note">Held for approval. Tap Copy to replace this device clipboard.</string>
+    <string name="clipboard_confirmation_receive_note">Copying replaces this device’s current clipboard. This device accepts up to %1$s.</string>
+    <string name="clipboard_confirmation_direct_receive_note">Held for approval. Tap Copy to replace this device clipboard. This device accepts up to %1$s.</string>
     <string name="clipboard_plain_text_label">Text from Mac</string>
     <string name="clipboard_send_failed">Couldn\'t send the clipboard to the Mac.</string>
     <string name="clipboard_receive_failed">Couldn\'t request the Mac clipboard.</string>

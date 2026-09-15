@@ -1298,6 +1298,23 @@ internal object ClipboardMenuPolicy {
     fun canFetch(offer: PendingClipboardOffer?): Boolean = offer != null
 }
 
+internal object ClipboardSystemPolicy {
+    /**
+     * Conservative Android ClipboardManager write cap from current P0110 smoke
+     * evidence: 320 KiB writes pass, while 512 KiB/1 MiB hit Binder limits.
+     */
+    const val ANDROID_SYSTEM_CLIPBOARD_BYTES: Long = 320L * 1024L
+
+    fun canWriteAndroidSystemClipboard(byteLength: Long): Boolean =
+        byteLength in 0L..ANDROID_SYSTEM_CLIPBOARD_BYTES
+
+    fun canRequestRemoteClipboard(offer: PendingClipboardOffer?): Boolean =
+        offer != null && offer.byteLength in 1L..ANDROID_SYSTEM_CLIPBOARD_BYTES
+
+    fun isWithinAndroidSystemClipboardLimit(text: String): Boolean =
+        canWriteAndroidSystemClipboard(text.toByteArray(Charsets.UTF_8).size.toLong())
+}
+
 internal object ClipboardPreviewPolicy {
     const val MAX_PREVIEW_CHARS: Int = 280
     const val PREVIEW_LINE_CHARS: Int = 36

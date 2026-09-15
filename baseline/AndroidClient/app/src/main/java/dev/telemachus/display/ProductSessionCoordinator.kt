@@ -307,6 +307,12 @@ internal class ProductSessionCoordinator<ClientIdentity : Any>(
         changeId: ByteArray,
     ): Boolean = clipboardApprovalState.cancelOfferApproval(client, generation, changeId)
 
+    fun discardClipboardOffer(
+        client: ClientIdentity,
+        generation: Long,
+        changeId: ByteArray,
+    ): Boolean = clipboardApprovalState.discardOffer(client, generation, changeId)
+
     fun consumeSolicitedClipboardContent(
         client: ClientIdentity,
         generation: Long,
