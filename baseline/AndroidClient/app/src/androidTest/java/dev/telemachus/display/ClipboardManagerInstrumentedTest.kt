@@ -170,6 +170,24 @@ class ClipboardManagerInstrumentedTest {
     }
 
     @Test
+    fun productPolicyRejectsRemoteTextAboveAndroidSystemClipboardCap() {
+        assertEquals(EXPANDED_LARGE_CLIPBOARD_BYTES.toLong(), ClipboardSystemPolicy.ANDROID_SYSTEM_CLIPBOARD_BYTES)
+
+        val accepted = "a".repeat(EXPANDED_LARGE_CLIPBOARD_BYTES)
+        val rejected512KiB = "b".repeat(REJECTED_TRANSACTION_TOO_LARGE_PROBE_BYTES)
+        val rejectedProtocolLimit = "c".repeat(ClipboardMenuPolicy.DEFAULT_CLIPBOARD_BYTES.toInt())
+
+        assertTrue(ClipboardSystemPolicy.canWriteAndroidSystemClipboard(0L))
+        assertFalse(ClipboardSystemPolicy.canWriteAndroidSystemClipboard(-1L))
+        assertTrue(ClipboardSystemPolicy.isWithinAndroidSystemClipboardLimit(accepted))
+        assertFalse(ClipboardSystemPolicy.isWithinAndroidSystemClipboardLimit(rejected512KiB))
+        assertFalse(ClipboardSystemPolicy.isWithinAndroidSystemClipboardLimit(rejectedProtocolLimit))
+        assertFalse(ClipboardSystemPolicy.canRequestRemoteClipboard(remoteOffer(0L)))
+        assertFalse(ClipboardSystemPolicy.canRequestRemoteClipboard(remoteOffer(REJECTED_TRANSACTION_TOO_LARGE_PROBE_BYTES.toLong())))
+        assertFalse(ClipboardSystemPolicy.canRequestRemoteClipboard(remoteOffer(ClipboardMenuPolicy.DEFAULT_CLIPBOARD_BYTES)))
+    }
+
+    @Test
     fun assertForegroundClipboardMatchesInstrumentationArgument() {
         val argumentMarker =
             InstrumentationRegistry
@@ -214,7 +232,17 @@ class ClipboardManagerInstrumentedTest {
         private const val ARG_CLIPBOARD_MARKER = "clipboard_marker"
         private const val LARGE_SMOKE_CLIPBOARD_BYTES = 256 * 1024
         private const val EXPANDED_LARGE_CLIPBOARD_BYTES = 320 * 1024
+        private const val REJECTED_TRANSACTION_TOO_LARGE_PROBE_BYTES = 512 * 1024
         private const val TAG = "ClipboardDeviceTest"
+
+        private fun remoteOffer(byteLength: Long): PendingClipboardOffer =
+            PendingClipboardOffer(
+                changeId = ByteArray(16) { 1 },
+                originDeviceId = "mac",
+                mimeType = "text/plain",
+                byteLength = byteLength,
+                sha256 = ByteArray(32) { 2 },
+            )
 
         private fun clearClipboard(clipboard: ClipboardManager, label: String) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

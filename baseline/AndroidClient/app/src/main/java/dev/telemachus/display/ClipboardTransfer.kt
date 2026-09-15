@@ -116,6 +116,18 @@ internal class ClipboardApprovalState<ClientIdentity : Any> {
         return false
     }
 
+    fun discardOffer(
+        client: ClientIdentity,
+        generation: Long,
+        changeId: ByteArray,
+    ): Boolean {
+        if (matches(client, generation) && pendingOffer?.changeId?.contentEquals(changeId) == true) {
+            clearPending()
+            return true
+        }
+        return false
+    }
+
     fun consumeSolicitedContent(
         client: ClientIdentity,
         generation: Long,

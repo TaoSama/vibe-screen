@@ -1,0 +1,6 @@
+adb_reverse_before=empty
+adb_reverse_after=empty
+tcp_54321_listener_before=absent
+tcp_54321_listener_after=absent
+macos_host_started=no
+macos_tcc_touched=no

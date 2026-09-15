@@ -84,6 +84,17 @@ class MainActivityClipboardSystemBoundaryContractTest {
             receiveCallback.contains("productSessionCoordinator.stageDirectClipboardContent") &&
                 receiveCallback.contains("return@runOnUiThread"),
         )
+        assertTrue(
+            "Oversize direct content must be discarded before the copy confirmation becomes actionable",
+            receiveCallback.contains("ClipboardSystemPolicy.canWriteAndroidSystemClipboard(content.content.size.toLong())") &&
+                receiveCallback.contains("productSessionCoordinator.discardDirectClipboardContent(") &&
+                receiveCallback.contains("showClipboardTooLargeForDeviceToast()"),
+        )
+        assertBefore(
+            receiveCallback,
+            "ClipboardSystemPolicy.canWriteAndroidSystemClipboard(content.content.size.toLong())",
+            "binding.controlClipboardButton.announceForAccessibility(",
+        )
     }
 
     @Test
@@ -94,9 +105,47 @@ class MainActivityClipboardSystemBoundaryContractTest {
         assertBefore(receive, "client.canSendClipboard", "productSessionCoordinator.directClipboardContentForConfirmation")
         assertBefore(receive, "isCurrentSession(client, generation)", "client.requestClipboard(offer.changeId)")
         assertBefore(receive, "client.canSendClipboard", "client.requestClipboard(offer.changeId)")
+        assertBefore(receive, "ClipboardSystemPolicy.canRequestRemoteClipboard(offer)", "productSessionCoordinator.approveClipboardOffer")
+        assertBefore(receive, "ClipboardSystemPolicy.canRequestRemoteClipboard(offer)", "client.requestClipboard(offer.changeId)")
         assertTrue(
             "A failed remote clipboard request must surface a user-visible failure",
             receive.contains("showDedupedToast(R.string.clipboard_receive_failed)"),
+        )
+        assertTrue(
+            "Oversize Mac clipboard offers must fail closed before requesting body bytes",
+            receive.contains("rejectOversizeClipboardOffer(client, generation, offer)") &&
+                receive.contains("return true"),
+        )
+    }
+
+    @Test
+    fun lanGetFromMacChecksAndroidSystemCapBeforeShowingReceiveConfirmation() {
+        val receive = extractMethod(mainActivitySource(), "private fun beginReceiveRemoteClipboard")
+
+        assertBefore(receive, "productSessionCoordinator.clipboardOfferForRequest", "ClipboardSystemPolicy.canRequestRemoteClipboard(offer)")
+        assertBefore(receive, "ClipboardSystemPolicy.canRequestRemoteClipboard(offer)", "showImmersiveDialog(")
+        assertTrue(
+            "Trusted-LAN receive should surface the device-limit error before the risk confirmation when the offered payload cannot be written locally",
+            receive.contains("rejectOversizeClipboardOffer(client, generation, offer)") &&
+                receive.contains("return true"),
+        )
+    }
+
+    @Test
+    fun oversizeOfferRejectionClearsPendingActionableStateForCurrentOwnerOnly() {
+        val source = mainActivitySource()
+        val reject = extractMethod(source, "private fun rejectOversizeClipboardOffer")
+
+        assertTrue(
+            "Oversize offers should discard exactly the pending offer owned by the current client generation and change id",
+            reject.contains("productSessionCoordinator.discardClipboardOffer(client, generation, offer.changeId)"),
+        )
+        assertBefore(reject, "productSessionCoordinator.discardClipboardOffer", "showClipboardTooLargeForDeviceToast()")
+        assertBefore(reject, "showClipboardTooLargeForDeviceToast()", "refreshClipboardControl()")
+        assertTrue(
+            "Oversize offer rejection should cancel any stale request timer and refresh the control so the Get action disappears",
+            reject.contains("cancelClipboardRequestTimeout()") &&
+                reject.contains("refreshClipboardControl()"),
         )
     }
 
@@ -110,6 +159,13 @@ class MainActivityClipboardSystemBoundaryContractTest {
             write.contains("getSystemService(ClipboardManager::class.java).setPrimaryClip") &&
                 write.contains("ClipData.newPlainText"),
         )
+        assertBefore(write, "ClipboardSystemPolicy.canWriteAndroidSystemClipboard", "getSystemService(ClipboardManager::class.java).setPrimaryClip")
+        assertBefore(write, "ClipboardSystemPolicy.isWithinAndroidSystemClipboardLimit", "getSystemService(ClipboardManager::class.java).setPrimaryClip")
+        assertTrue(
+            "Oversize verified remote content must show a device-limit error instead of attempting Binder write",
+            write.contains("showClipboardTooLargeForDeviceToast()") &&
+                write.contains("Android ClipboardManager cap"),
+        )
         assertTrue(
             "Clipboard write failures must remain visible to the user and diagnostics",
             write.contains("showDedupedToast(if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed)") &&
@@ -118,6 +174,28 @@ class MainActivityClipboardSystemBoundaryContractTest {
         assertTrue(
             "MainActivity should keep exactly one Android system clipboard write boundary",
             countOccurrences(source, "setPrimaryClip") == 1,
+        )
+    }
+
+    @Test
+    fun androidSystemClipboardLimitDoesNotNarrowOutboundProtocolCapacity() {
+        val source = mainActivitySource()
+        val send = extractMethod(source, "private fun sendLocalClipboard")
+        val receive = extractMethod(source, "private fun receiveRemoteClipboard")
+        val write = extractMethod(source, "private fun writeRemoteClipboard")
+
+        assertFalse(
+            "Sending local clipboard to Mac should keep using the negotiated Protocol v1 wire limit, not Android local write cap",
+            send.contains("ClipboardSystemPolicy"),
+        )
+        assertTrue(
+            "Receive path should use the Android system cap before requesting remote body bytes",
+            receive.contains("ClipboardSystemPolicy.canRequestRemoteClipboard(offer)"),
+        )
+        assertTrue(
+            "Write path should use the Android system cap before touching ClipboardManager",
+            write.contains("ClipboardSystemPolicy.canWriteAndroidSystemClipboard") &&
+                write.contains("ClipboardSystemPolicy.isWithinAndroidSystemClipboardLimit"),
         )
     }
 

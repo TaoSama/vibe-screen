@@ -370,7 +370,7 @@ class ClipboardConfirmationDialogLayoutInstrumentedTest {
             protection.text = context.getString(R.string.clipboard_confirmation_lan_encrypted_protection)
             size.text = context.getString(R.string.clipboard_confirmation_send_size_pending, "1.0 MiB")
             preview.text = context.getString(R.string.clipboard_confirmation_receive_preview_unavailable)
-            note.text = context.getString(R.string.clipboard_confirmation_receive_note)
+            note.text = context.getString(R.string.clipboard_confirmation_receive_note, "320.0 KiB")
         }
 
         fun renderDirectReceiveConfirmation() {
@@ -382,7 +382,7 @@ class ClipboardConfirmationDialogLayoutInstrumentedTest {
                 R.string.clipboard_confirmation_preview_truncated,
                 "Mac clipboard line ".repeat(18).chunked(CLIPBOARD_PREVIEW_LINE_CHARS).joinToString("\n"),
             )
-            note.text = context.getString(R.string.clipboard_confirmation_direct_receive_note)
+            note.text = context.getString(R.string.clipboard_confirmation_direct_receive_note, "320.0 KiB")
         }
 
         fun measureAndLayout() {

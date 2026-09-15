@@ -513,6 +513,24 @@ current `ClipboardManagerInstrumentedTest` methods. The gate now rejects
 zero-test, summary-only, and legacy 5-test Android logs while keeping
 `gate_closed=false` without retained bidirectional product evidence.
 
+## 2026-09-15 Nubia P0110 Android clipboard system cap no-Host
+
+Evidence:
+[evidence/2026-09-15-nubia-p0110-clipboard-system-cap-no-host](evidence/2026-09-15-nubia-p0110-clipboard-system-cap-no-host/README.md).
+
+Status remains open. The focused P0110 / pacific / Android 16 run passed all
+9 `ClipboardManagerInstrumentedTest` methods. It preserves the 320 KiB real
+Android ClipboardManager round trip and adds a policy-only assertion that
+512 KiB and 1 MiB Mac-to-Android candidates are rejected before the known
+unsafe Binder write. Protocol v1 keeps its negotiated 1 MiB wire ceiling, and
+Android-to-Mac sends remain governed by that negotiated limit.
+
+The Android product now discards an oversize remote offer before requesting its
+body and clears the matching pending action by owner, generation, and change ID.
+This evidence did not start a Host or configure ADB reverse, and it does not
+prove either Android/macOS product transfer direction. The clipboard product
+E2E and Phase 0 stable-release gates remain blocked.
+
 ## 2026-09-08 Clipboard preview policy JVM evidence
 
 Evidence:

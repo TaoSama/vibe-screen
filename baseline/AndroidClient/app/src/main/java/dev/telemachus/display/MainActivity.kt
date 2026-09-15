@@ -118,7 +118,7 @@ private data class ClipboardConfirmationDetails(
     @StringRes val protectionResource: Int,
     val sizeText: String,
     val preview: String,
-    @StringRes val noteResource: Int,
+    val noteText: String,
 )
 
 class MainActivity : AppCompatActivity() {
@@ -3678,7 +3678,7 @@ class MainActivity : AppCompatActivity() {
                                     readableByteCount(effectiveClipboardLimit(client.negotiatedMaxClipboardBytes)),
                                 ),
                                 preview = getString(R.string.clipboard_confirmation_send_preview_unavailable),
-                                noteResource = R.string.clipboard_confirmation_send_note,
+                                noteText = getString(R.string.clipboard_confirmation_send_note),
                             ),
                         ),
                     )
@@ -3736,6 +3736,10 @@ class MainActivity : AppCompatActivity() {
             showDedupedToast(R.string.clipboard_mac_unavailable)
             return true
         }
+        if (!ClipboardSystemPolicy.canRequestRemoteClipboard(offer)) {
+            rejectOversizeClipboardOffer(client, generation, offer)
+            return true
+        }
         if (!productSessionCoordinator.approveClipboardOffer(client, generation, offer.changeId) ||
             !client.requestClipboard(offer.changeId)
         ) {
@@ -3757,6 +3761,15 @@ class MainActivity : AppCompatActivity() {
         if (direct != null || prefs.connectionMode != ConnectionMode.WIRELESS) {
             return receiveRemoteClipboard(client, generation)
         }
+        val offer = productSessionCoordinator.clipboardOfferForRequest(client, generation)
+        if (offer == null) {
+            showDedupedToast(R.string.clipboard_mac_unavailable)
+            return true
+        }
+        if (!ClipboardSystemPolicy.canRequestRemoteClipboard(offer)) {
+            rejectOversizeClipboardOffer(client, generation, offer)
+            return true
+        }
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_lan_receive_confirm_title)
@@ -3768,7 +3781,7 @@ class MainActivity : AppCompatActivity() {
                             protectionResource = clipboardProtectionResource(client),
                             sizeText = pendingClipboardOfferSize(client, generation),
                             preview = getString(R.string.clipboard_confirmation_receive_preview_unavailable),
-                            noteResource = R.string.clipboard_confirmation_receive_note,
+                            noteText = androidClipboardWriteLimitNote(R.string.clipboard_confirmation_receive_note),
                         ),
                     ),
                 )
@@ -3852,12 +3865,13 @@ class MainActivity : AppCompatActivity() {
                 readableByteCount(textBytes),
             ),
             preview = clipboardPreview(text),
-            noteResource =
+            noteText = androidClipboardWriteLimitNote(
                 if (content?.pending == true) {
                     R.string.clipboard_confirmation_direct_receive_note
                 } else {
                     R.string.clipboard_confirmation_receive_note
                 },
+            ),
         )
     }
 
@@ -3898,9 +3912,12 @@ class MainActivity : AppCompatActivity() {
         root.findViewById<TextView>(R.id.clipboardConfirmationProtection).text = getString(details.protectionResource)
         root.findViewById<TextView>(R.id.clipboardConfirmationSize).text = details.sizeText
         root.findViewById<TextView>(R.id.clipboardConfirmationPreview).text = details.preview
-        root.findViewById<TextView>(R.id.clipboardConfirmationNote).text = getString(details.noteResource)
+        root.findViewById<TextView>(R.id.clipboardConfirmationNote).text = details.noteText
         return root
     }
+
+    private fun androidClipboardWriteLimitNote(@StringRes noteResource: Int): String =
+        getString(noteResource, readableByteCount(ClipboardSystemPolicy.ANDROID_SYSTEM_CLIPBOARD_BYTES))
 
     private fun effectiveClipboardLimit(maximumClipboardBytes: Long): Long =
         minOf(
@@ -3914,7 +3931,17 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun writeRemoteClipboard(content: ClipboardContentData) {
+        if (!ClipboardSystemPolicy.canWriteAndroidSystemClipboard(content.content.size.toLong())) {
+            showClipboardTooLargeForDeviceToast()
+            mainDiag("clipboard write blocked: Android ClipboardManager cap")
+            return
+        }
         val text = content.content.toString(Charsets.UTF_8)
+        if (!ClipboardSystemPolicy.isWithinAndroidSystemClipboardLimit(text)) {
+            showClipboardTooLargeForDeviceToast()
+            mainDiag("clipboard write blocked: UTF-8 Android ClipboardManager cap")
+            return
+        }
         val result =
             runCatching {
                 getSystemService(ClipboardManager::class.java).setPrimaryClip(
@@ -3925,6 +3952,26 @@ class MainActivity : AppCompatActivity() {
         result.exceptionOrNull()?.let { error ->
             mainDiag("clipboard write failed: " + error.javaClass.simpleName)
         }
+    }
+
+    private fun showClipboardTooLargeForDeviceToast() {
+        showDedupedToast(
+            getString(
+                R.string.clipboard_too_large_for_device,
+                readableByteCount(ClipboardSystemPolicy.ANDROID_SYSTEM_CLIPBOARD_BYTES),
+            ),
+        )
+    }
+
+    private fun rejectOversizeClipboardOffer(
+        client: StreamClient,
+        generation: Long,
+        offer: PendingClipboardOffer,
+    ) {
+        productSessionCoordinator.discardClipboardOffer(client, generation, offer.changeId)
+        cancelClipboardRequestTimeout()
+        showClipboardTooLargeForDeviceToast()
+        refreshClipboardControl()
     }
 
     private fun fileTransferFailureMessageId(reason: String): Int =
@@ -5675,13 +5722,22 @@ class MainActivity : AppCompatActivity() {
                             callbackGeneration,
                             content,
                         )
-                    if (staged) {
-                        cancelClipboardRequestTimeout()
-                        refreshClipboardControl()
-                        binding.controlClipboardButton.announceForAccessibility(
-                            getString(R.string.clipboard_pending_confirmation),
+                    if (!staged) return@runOnUiThread
+                    cancelClipboardRequestTimeout()
+                    if (!ClipboardSystemPolicy.canWriteAndroidSystemClipboard(content.content.size.toLong())) {
+                        productSessionCoordinator.discardDirectClipboardContent(
+                            callbackClient,
+                            callbackGeneration,
+                            content.changeId,
                         )
+                        showClipboardTooLargeForDeviceToast()
+                        refreshClipboardControl()
+                        return@runOnUiThread
                     }
+                    refreshClipboardControl()
+                    binding.controlClipboardButton.announceForAccessibility(
+                        getString(R.string.clipboard_pending_confirmation),
+                    )
                     return@runOnUiThread
                 }
                 cancelClipboardRequestTimeout()

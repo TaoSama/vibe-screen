@@ -556,6 +556,33 @@ class ProductSessionCoordinatorTest {
     }
 
     @Test
+    fun clipboardOfferDiscardIsScopedToOwnerGenerationAndChangeId() {
+        val coordinator = ProductSessionCoordinator<TestClient>()
+        val client = TestClient("current")
+        val otherClient = TestClient("other")
+        val generation = coordinator.activate(client)
+        coordinator.updateNegotiatedSession(client, generation, binding(clipboard = true))
+        coordinator.onConnectionStatus(client, generation, isConnected = true)
+        coordinator.setRuntimeAvailability(client, generation, clipboard = true)
+        val changeId = byteArrayOf(7, 8, 9)
+        val offer = clipboardOffer(changeId)
+
+        assertTrue(coordinator.stageClipboardOffer(client, generation, offer))
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+
+        assertFalse(coordinator.discardClipboardOffer(otherClient, generation, changeId))
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+        assertFalse(coordinator.discardClipboardOffer(client, generation + 1L, changeId))
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+        assertFalse(coordinator.discardClipboardOffer(client, generation, byteArrayOf(1, 2, 3)))
+        assertTrue(coordinator.hasPendingClipboardReceive(client, generation))
+
+        assertTrue(coordinator.discardClipboardOffer(client, generation, changeId))
+        assertFalse(coordinator.hasPendingClipboardReceive(client, generation))
+        assertNull(coordinator.clipboardOfferForRequest(client, generation))
+    }
+
+    @Test
     fun `clipboard workflow is cleared when clipboard capability or runtime is lost`() {
         val coordinator = ProductSessionCoordinator<TestClient>()
         val client = TestClient("current")
