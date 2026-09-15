@@ -17,7 +17,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val cancel = extractMethod(source, "private fun cancelIncomingFileTransfer")
         val finish = extractMethod(source, "private fun finishIncomingFileTransferState")
         val cleanup = extractMethod(source, "private fun clearActiveIncomingFileTransfer")
-        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
         val streamPromptOffer = extractMethod(source, "private fun promptIncomingFileOffer(\n        client: StreamClient")
         val promptOffer = extractMethod(source, "private fun promptIncomingFileOffer(\n        offer: dev.vibescreen.protocol.v1.FileOffer")
         val offerView = extractMethod(source, "private fun fileTransferOfferView")
@@ -141,7 +141,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 promptOffer.contains("hasActiveFileTransfer() -> \"concurrent_limit\"") &&
                 promptOffer.contains("if (rejectionReason != null)") &&
                 assertBeforeValue(promptOffer, "if (rejectionReason != null)", "respond(true, \"\")") &&
-                handlePicker.contains("session.isCurrentAndAllowed() && !hasActiveFileTransfer()"),
+                handleUri.contains("session.isCurrentAndAllowed() && !hasActiveFileTransfer()"),
         )
         assertTrue(
             "Incoming file offers should use structured, scrollable dialog content instead of a single long AlertDialog message",
@@ -217,7 +217,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
     @Test
     fun outgoingFileTransferExposesProgressAndUserCancelThroughProductState() {
         val source = mainActivitySource()
-        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
         val promptOutgoing = extractMethod(source, "private fun promptOutgoingFileTransfer")
         val outgoingView = extractMethod(source, "private fun outgoingFileTransferView")
         val finishConfirmed = extractMethod(source, "private fun finishConfirmedOutgoingFileTransfer")
@@ -251,20 +251,20 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Picker completion must not show a dialog after the Activity is destroyed",
-            handlePicker.contains("if (isFinishing || isDestroyed || !session.isCurrent())") &&
-                handlePicker.contains("discardPendingOutgoingFileTransfer(refreshControl = true)"),
+            handleUri.contains("if (isFinishing || isDestroyed || !session.isCurrent())") &&
+                handleUri.contains("discardPendingOutgoingFileTransfer(refreshControl = true)"),
         )
         assertTrue(
             "Picker completion should stage the file and defer protocol offer submission until explicit user confirmation",
             source.contains("OutgoingFileStager(") &&
                 source.contains("private fun stageOutgoingFileTransfer(") &&
                 source.contains("StagedOutgoingFile") &&
-                handlePicker.contains("PendingOutgoingFileTransfer(") &&
-                handlePicker.contains("stagedFile = stagedFile") &&
-                handlePicker.contains("promptOutgoingFileTransfer(") &&
-                assertBeforeValue(handlePicker, "PendingOutgoingFileTransfer(", "promptOutgoingFileTransfer(") &&
-                !handlePicker.contains("session.offerFile(file, mimeType)") &&
-                handlePicker.contains("stagedFile.transferOwnershipOrCleanup") &&
+                handleUri.contains("PendingOutgoingFileTransfer(") &&
+                handleUri.contains("stagedFile = stagedFile") &&
+                handleUri.contains("promptOutgoingFileTransfer(") &&
+                assertBeforeValue(handleUri, "PendingOutgoingFileTransfer(", "promptOutgoingFileTransfer(") &&
+                !handleUri.contains("session.offerFile(file, mimeType)") &&
+                handleUri.contains("stagedFile.transferOwnershipOrCleanup") &&
                 promptOutgoing.contains("lifecycleScope.launch(Dispatchers.IO)") &&
                 promptOutgoing.contains("try {") &&
                 promptOutgoing.contains("catch (exception: CancellationException)") &&
@@ -439,12 +439,12 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Picker cleanup should explicitly refresh the non-modal transfer control after cleanup",
-            handlePicker.contains("discardPendingOutgoingFileTransfer(refreshControl = true)") &&
+            handleUri.contains("discardPendingOutgoingFileTransfer(refreshControl = true)") &&
                 finishConfirmed.contains("discardPendingOutgoingFileTransfer(clearFinishedTransferMarkers = false, refreshControl = true)"),
         )
         assertTrue(
             "Recoverable outgoing errors should use a durable retry dialog instead of Toast-only failures",
-            handlePicker.contains("showFileTransferRecoverableError(") &&
+            handleUri.contains("showFileTransferRecoverableError(") &&
                 promptOutgoing.contains("showFileTransferRecoverableError(") &&
                 resultCallback.contains("else if (activeOutgoingFileTransfer != null)") &&
                 resultCallback.contains("showFileTransferRecoverableError(message = message)") &&
@@ -476,7 +476,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val source = mainActivitySource()
         val helper = dialogActionButtonLayoutApplierSource()
         val beginChoose = extractMethod(source, "private fun beginChooseFileForTransfer")
-        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
         val showError = extractMethod(source, "private fun showFileTransferRecoverableError")
 
         assertTrue(
@@ -489,10 +489,10 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "A picked file whose session disappeared should also use the dismiss-only unavailable dialog",
-            handlePicker.contains("val session = activeFileTransferSession()") &&
-                handlePicker.contains("title = R.string.file_transfer_unavailable_title") &&
-                handlePicker.contains("message = R.string.file_transfer_unavailable") &&
-                handlePicker.contains("allowRetry = false"),
+            handleUri.contains("val session = activeFileTransferSession()") &&
+                handleUri.contains("title = R.string.file_transfer_unavailable_title") &&
+                handleUri.contains("message = R.string.file_transfer_unavailable") &&
+                handleUri.contains("allowRetry = false"),
         )
         assertTrue(
             "Dismiss-only unavailable dialogs should use OK without wiring another picker launch",

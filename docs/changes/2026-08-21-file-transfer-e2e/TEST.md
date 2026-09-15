@@ -506,3 +506,24 @@ This advances only the Android system-service save boundary. It does not prove
 sender selection, receiver approval, Protocol v1 packets, Host-backed remote
 write, same-session bidirectional transfer, or cancel/disconnect cleanup, so
 the product E2E gate remains blocked.
+
+## 2026-09-15 Nubia P0110 no-Host Android system share target
+
+Evidence:
+[evidence/2026-09-15-nubia-p0110-no-host-system-share-target](evidence/2026-09-15-nubia-p0110-no-host-system-share-target/README.md).
+
+Source commit `56d9da7d2aaaa5ae78541ada410c39fbaf78328c` adds a
+single-file Android `ACTION_SEND` share target that accepts one `content://`
+stream and reuses the existing staged-file preflight/offer pipeline. The Nubia
+P0110 / pacific / Android 16 / SDK 36 run passed 3/3 focused instrumentation
+methods, including a single-URI `ClipData` share, a second deliberate share of
+the same URI, and rejection of an untrusted share-side `auto_connect` extra, while proving
+the no-Host path does not query metadata, open bytes, or resolve MIME through
+the test provider. PackageManager discovery and a real system cold launch also
+showed the complete reconnect-and-share-again guidance on device.
+
+No Host, TCC change, `tcp:54321` reverse, or local listener participated. This
+advances only Android system-share entry readiness; Host-backed bytes landing,
+receiver approval, same-session transport, endpoint SHA-256 equality, and
+cancel/disconnect cleanup remain absent.
+`file_transfer_android_product_e2e=BLOCKED`.

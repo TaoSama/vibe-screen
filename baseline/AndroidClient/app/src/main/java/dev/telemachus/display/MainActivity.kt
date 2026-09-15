@@ -316,6 +316,8 @@ class MainActivity : AppCompatActivity() {
     private var fileTransferErrorDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
+    private var restoredConsumedShareIntentToken: String? = null
+    private var consumedShareIntentTokenForState: String? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
     private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
@@ -407,19 +409,26 @@ class MainActivity : AppCompatActivity() {
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
-        applyLaunchIntentPolicy(savedInstanceState, allowImplicitUsbFallback = true)
+        restoredConsumedShareIntentToken = savedInstanceState?.getString(STATE_CONSUMED_SHARE_INTENT_TOKEN)
+        applyLaunchIntentPolicy(
+            savedInstanceState,
+            allowImplicitUsbFallback = !ShareFileIntentPolicy.isShareCandidate(intent),
+        )
+        consumeShareFileIntentIfNeeded(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         applyLaunchIntentPolicy(savedInstanceState = null, allowImplicitUsbFallback = false)
+        consumeShareFileIntentIfNeeded(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(STATE_AUTOMATIC_USB_CONNECT, automaticUsbConnect)
         outState.putString(STATE_INTERNET_CAMERA_PERMISSION_PANEL, internetCameraPermissionPanelState.name)
         outState.putBoolean(STATE_INTERNET_CAMERA_SETTINGS_PENDING, internetCameraSettingsReturnPending)
+        consumedShareIntentTokenForState?.let { outState.putString(STATE_CONSUMED_SHARE_INTENT_TOKEN, it) }
         super.onSaveInstanceState(outState)
     }
 
@@ -635,11 +644,17 @@ class MainActivity : AppCompatActivity() {
         allowImplicitUsbFallback: Boolean,
     ) {
         val launchIntent = intent
-        val hasAutoConnectExtra = launchIntent?.hasExtra(EXTRA_AUTO_CONNECT) == true
+        val shareCandidate = ShareFileIntentPolicy.isShareCandidate(launchIntent)
+        val hasAutoConnectExtra = !shareCandidate && launchIntent?.hasExtra(EXTRA_AUTO_CONNECT) == true
         val decision =
             MainActivityLaunchIntentPolicy.resolve(
                 hasAutoConnectExtra = hasAutoConnectExtra,
-                autoConnectExtra = launchIntent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) == true,
+                autoConnectExtra =
+                    if (hasAutoConnectExtra) {
+                        launchIntent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) == true
+                    } else {
+                        false
+                    },
                 hasSavedAutomaticUsbConnectState = savedInstanceState?.containsKey(STATE_AUTOMATIC_USB_CONNECT) == true,
                 savedAutomaticUsbConnect = savedInstanceState?.getBoolean(STATE_AUTOMATIC_USB_CONNECT) == true,
                 savedConnectionMode = prefs.connectionMode,
@@ -2854,13 +2869,67 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
-        val session = activeFileTransferSession()
-        if (session == null) {
+        handleOutgoingFileTransferUri(uri)
+    }
+
+    private fun consumeShareFileIntentIfNeeded(intent: Intent?) {
+        if (!ShareFileIntentPolicy.isShareCandidate(intent)) return
+        val token = ShareFileIntentPolicy.consumptionToken(checkNotNull(intent))
+        if (token == restoredConsumedShareIntentToken) {
+            consumedShareIntentTokenForState = token
+            restoredConsumedShareIntentToken = null
+            return
+        }
+        restoredConsumedShareIntentToken = null
+        when (val decision = ShareFileIntentPolicy.resolve(intent)) {
+            is ShareFileIntentDecision.Accepted ->
+                handleOutgoingFileTransferUri(
+                    uri = decision.uri,
+                    unavailableMessage = R.string.file_transfer_share_unavailable,
+                    shareIntentToken = token,
+                )
+            is ShareFileIntentDecision.Rejected -> {
+                markShareIntentConsumed(token)
+                mainDiag("share file intent rejected: ${decision.reason}")
+                showFileTransferRecoverableError(
+                    title = R.string.file_transfer_share_unsupported_title,
+                    message = R.string.file_transfer_share_unsupported,
+                    allowRetry = false,
+                )
+            }
+        }
+    }
+
+    private fun handleOutgoingFileTransferUri(
+        uri: Uri,
+        @StringRes unavailableMessage: Int = R.string.file_transfer_unavailable,
+        shareIntentToken: String? = null,
+    ) {
+        if (hasActiveFileTransfer()) {
+            markShareIntentConsumed(shareIntentToken)
             showFileTransferRecoverableError(
-                title = R.string.file_transfer_unavailable_title,
-                message = R.string.file_transfer_unavailable,
+                title = R.string.file_transfer_send_failed_title,
+                message = R.string.file_transfer_failed_temporary_limit,
                 allowRetry = false,
             )
+            return
+        }
+        val session = activeFileTransferSession()
+        if (session == null) {
+            markShareIntentConsumed(shareIntentToken)
+            if (unavailableMessage == R.string.file_transfer_share_unavailable) {
+                showFileTransferRecoverableError(
+                    title = R.string.file_transfer_unavailable_title,
+                    message = R.string.file_transfer_share_unavailable,
+                    allowRetry = false,
+                )
+            } else {
+                showFileTransferRecoverableError(
+                    title = R.string.file_transfer_unavailable_title,
+                    message = R.string.file_transfer_unavailable,
+                    allowRetry = false,
+                )
+            }
             return
         }
         val maximumFileBytes = session.negotiatedMaxFileBytes
@@ -2871,6 +2940,7 @@ class MainActivity : AppCompatActivity() {
                 throw exception
             } catch (failure: Throwable) {
                 withContext(Dispatchers.Main) {
+                    markShareIntentConsumed(shareIntentToken)
                     mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                     discardPendingOutgoingFileTransfer(refreshControl = true)
                     showFileTransferRecoverableError(
@@ -2898,8 +2968,10 @@ class MainActivity : AppCompatActivity() {
                                 maximumFileBytes = maximumFileBytes,
                             ),
                             session = session,
+                            shareIntentToken = shareIntentToken,
                         )
                     } else {
+                        markShareIntentConsumed(shareIntentToken)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
                         showFileTransferRecoverableError(
                             title = R.string.file_transfer_send_failed_title,
@@ -3102,6 +3174,7 @@ class MainActivity : AppCompatActivity() {
     private fun promptOutgoingFileTransfer(
         pending: PendingOutgoingFileTransfer,
         session: ActiveFileTransferSession,
+        shareIntentToken: String? = null,
     ) {
         runOnUiThread {
             if (!isInForeground ||
@@ -3110,6 +3183,7 @@ class MainActivity : AppCompatActivity() {
                 !session.isCurrent() ||
                 hasActiveFileTransfer()
             ) {
+                markShareIntentConsumed(shareIntentToken)
                 discardPendingOutgoingFileTransfer(refreshControl = true)
                 showFileTransferRecoverableError(
                     title = R.string.file_transfer_send_failed_title,
@@ -3118,6 +3192,7 @@ class MainActivity : AppCompatActivity() {
                 return@runOnUiThread
             }
             if (pendingOutgoingFileDialog != null) {
+                markShareIntentConsumed(shareIntentToken)
                 discardPendingOutgoingFileTransfer(refreshControl = true)
                 showFileTransferRecoverableError(
                     title = R.string.file_transfer_send_failed_title,
@@ -3140,6 +3215,7 @@ class MainActivity : AppCompatActivity() {
             fun cancelPending() {
                 if (decided) return
                 decided = true
+                markShareIntentConsumed(shareIntentToken)
                 clearPendingDialog()
                 discardPendingOutgoingFileTransfer(refreshControl = true)
             }
@@ -3149,6 +3225,7 @@ class MainActivity : AppCompatActivity() {
                         if (pendingOutgoingFileTimeout !== this) return
                         if (pendingOutgoingFileDialog == null || decided) return
                         decided = true
+                        markShareIntentConsumed(shareIntentToken)
                         clearPendingDialog(dismiss = true)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
                         showFileTransferRecoverableError(
@@ -3164,6 +3241,7 @@ class MainActivity : AppCompatActivity() {
                     .setPositiveButton(R.string.file_transfer_outgoing_send) { _, _ ->
                         if (decided) return@setPositiveButton
                         decided = true
+                        markShareIntentConsumed(shareIntentToken)
                         clearPendingDialog()
                         if (!session.canSendStagedFile(pending.stagedFile) || hasActiveFileTransfer()) {
                             discardPendingOutgoingFileTransfer(refreshControl = true)
@@ -3201,6 +3279,10 @@ class MainActivity : AppCompatActivity() {
             pendingOutgoingFileTimeout = timeout
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
+    }
+
+    private fun markShareIntentConsumed(token: String?) {
+        if (token != null) consumedShareIntentTokenForState = token
     }
 
     private fun outgoingFileTransferView(pending: PendingOutgoingFileTransfer): ScrollView {
@@ -7873,6 +7955,7 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val STATE_INTERNET_CAMERA_PERMISSION_PANEL = "internet_camera_permission_panel"
         private const val STATE_INTERNET_CAMERA_SETTINGS_PENDING = "internet_camera_settings_pending"
+        private const val STATE_CONSUMED_SHARE_INTENT_TOKEN = "consumed_share_intent_token"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
         private const val EXTRA_USB_CONFIGURED = "configured"

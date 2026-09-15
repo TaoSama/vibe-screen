@@ -264,7 +264,7 @@ class MainActivityControllerForwardingContractTest {
     @Test
     fun outgoingFileTransferStagingFailureDeletesFileAndDoesNotOffer() {
         val source = mainActivitySource()
-        val handlePicker = extractMethod(source, "private fun handleFileTransferPickerResult")
+        val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
         val promptOutgoing = extractMethod(source, "private fun promptOutgoingFileTransfer")
         val finishConfirmed = extractMethod(source, "private fun finishConfirmedOutgoingFileTransfer")
         val streamSession = extractMethod(source, "private fun activeStreamFileTransferSession")
@@ -273,11 +273,11 @@ class MainActivityControllerForwardingContractTest {
         val discardPending = extractMethod(source, "private fun discardPendingOutgoingFileTransfer")
         val clearPending = extractMethod(source, "private fun clearPendingOutgoingFileTransfer")
 
-        assertContains(handlePicker, "session.stageOutgoingFile(stagedFile)")
-        assertContains(handlePicker, "stagedFile.transferOwnershipOrCleanup")
-        assertContains(handlePicker, "PendingOutgoingFileTransfer(")
-        assertContains(handlePicker, "stagedFile = stagedFile")
-        assertContains(handlePicker, "promptOutgoingFileTransfer(")
+        assertContains(handleUri, "session.stageOutgoingFile(stagedFile)")
+        assertContains(handleUri, "stagedFile.transferOwnershipOrCleanup")
+        assertContains(handleUri, "PendingOutgoingFileTransfer(")
+        assertContains(handleUri, "stagedFile = stagedFile")
+        assertContains(handleUri, "promptOutgoingFileTransfer(")
         assertContains(promptOutgoing, "var outgoingValue: OutgoingFileTransferHandle? = null")
         assertContains(promptOutgoing, "try {")
         assertContains(promptOutgoing, "catch (exception: CancellationException)")
@@ -308,7 +308,7 @@ class MainActivityControllerForwardingContractTest {
         assertContains(clearPending, "pendingInternetOutgoingFileTransfer = null")
         assertContains(onStop, "clearStagedFile = activeOutgoingFileTransfer == null && !pendingOutgoingFileSubmissionInFlight")
         assertBefore(streamSession, "val staged = productSessionCoordinator.stageOutgoingFileTransfer", "if (!staged) stagedFile.cleanupBestEffort(::logOutgoingFileCleanupFailure)")
-        assertContains(handlePicker, "if (session.isCurrentAndAllowed() && !hasActiveFileTransfer() && session.stageOutgoingFile(stagedFile))")
+        assertContains(handleUri, "if (session.isCurrentAndAllowed() && !hasActiveFileTransfer() && session.stageOutgoingFile(stagedFile))")
         assertBefore(promptOutgoing, "if (!session.canSendStagedFile(pending.stagedFile) || hasActiveFileTransfer())", "var outgoingValue: OutgoingFileTransferHandle? = null")
     }
 
