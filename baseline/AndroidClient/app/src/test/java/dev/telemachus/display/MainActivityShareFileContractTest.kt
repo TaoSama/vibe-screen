@@ -8,13 +8,15 @@ import org.junit.Test
 
 class MainActivityShareFileContractTest {
     @Test
-    fun manifestExposesOnlySingleFileSystemShareEntry() {
+    fun manifestExposesSingleAndMultipleFileSystemShareEntries() {
         val manifest = sourceFile("app/src/main/AndroidManifest.xml").readText()
 
         assertTrue(manifest.contains("android.intent.action.SEND"))
+        assertTrue(manifest.contains("android.intent.action.SEND_MULTIPLE"))
         assertTrue(manifest.contains("android.intent.category.DEFAULT"))
         assertTrue(manifest.contains("android:mimeType=") && manifest.contains("*/*"))
-        assertFalse(manifest.contains("android.intent.action.SEND_MULTIPLE"))
+        assertEquals(1, Regex("android.intent.action.SEND\"").findAll(manifest).count())
+        assertEquals(1, Regex("android.intent.action.SEND_MULTIPLE\"").findAll(manifest).count())
     }
 
     @Test

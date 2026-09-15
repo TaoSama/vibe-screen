@@ -3,6 +3,7 @@ package dev.telemachus.display
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
+import java.util.LinkedList
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,10 +43,26 @@ class ShareFileIntentPolicyTest {
     }
 
     @Test
+    fun acceptsActionSendMultipleOnlyWhenItContainsOneContentUri() {
+        val uri = Uri.parse("content://files/report.pdf")
+        val extraOnly =
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("application/pdf")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(uri))
+        val matchingClipData =
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("application/pdf")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(uri))
+                .apply { clipData = ClipData.newRawUri("report", uri) }
+
+        assertEquals(ShareFileIntentDecision.Accepted(uri, "application/pdf"), ShareFileIntentPolicy.resolve(extraOnly))
+        assertEquals(ShareFileIntentDecision.Accepted(uri, "application/pdf"), ShareFileIntentPolicy.resolve(matchingClipData))
+    }
+
+    @Test
     fun rejectsNullUnsupportedAndMultipleActions() {
         assertRejected(null, ShareFileIntentRejectionReason.NULL_INTENT)
         assertRejected(Intent(Intent.ACTION_VIEW), ShareFileIntentRejectionReason.UNSUPPORTED_ACTION)
-        assertRejected(Intent(Intent.ACTION_SEND_MULTIPLE), ShareFileIntentRejectionReason.UNSUPPORTED_ACTION)
     }
 
     @Test
@@ -78,6 +95,38 @@ class ShareFileIntentPolicyTest {
             Intent(Intent.ACTION_SEND).setType("*/*").putExtra(Intent.EXTRA_STREAM, "not-a-uri"),
             ShareFileIntentRejectionReason.INVALID_STREAM,
         )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE).setType("*/*").putExtra(Intent.EXTRA_STREAM, first),
+            ShareFileIntentRejectionReason.INVALID_STREAM,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("*/*")
+                .putExtra(Intent.EXTRA_STREAM, LinkedList(listOf(first))),
+            ShareFileIntentRejectionReason.INVALID_STREAM,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("*/*")
+                .apply { clipData = ClipData.newRawUri("first", first) },
+            ShareFileIntentRejectionReason.MISSING_STREAM,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("*/*")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(first, second)),
+            ShareFileIntentRejectionReason.MULTIPLE_ITEMS,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("*/*")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf<Uri>()),
+            ShareFileIntentRejectionReason.MISSING_STREAM,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "hello"),
+            ShareFileIntentRejectionReason.TEXT_ONLY,
+        )
     }
 
     @Test
@@ -103,6 +152,15 @@ class ShareFileIntentPolicyTest {
         )
         assertRejected(
             sendIntent(Uri.parse("https://example.com/report.pdf"), "application/pdf"),
+            ShareFileIntentRejectionReason.UNSUPPORTED_URI,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("application/pdf")
+                .putParcelableArrayListExtra(
+                    Intent.EXTRA_STREAM,
+                    arrayListOf(Uri.parse("file:///sdcard/Download/report.pdf")),
+                ),
             ShareFileIntentRejectionReason.UNSUPPORTED_URI,
         )
     }

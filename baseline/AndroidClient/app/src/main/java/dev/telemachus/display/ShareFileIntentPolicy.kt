@@ -32,33 +32,35 @@ internal object ShareFileIntentPolicy {
 
     fun resolve(intent: Intent?): ShareFileIntentDecision {
         if (intent == null) return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.NULL_INTENT)
-        if (intent.action != Intent.ACTION_SEND) {
+        if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_SEND_MULTIPLE) {
             return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.UNSUPPORTED_ACTION)
         }
 
         val mimeType = intent.type?.trim().orEmpty()
         if (mimeType.isEmpty()) return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.MISSING_MIME_TYPE)
 
-        val clipDecision =
-            try {
-                clipDataDecision(intent.clipData)
-            } catch (_: RuntimeException) {
-                return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.INVALID_STREAM)
-            }
-        if (clipDecision == ClipDataDecision.MultipleItems) {
-            return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.MULTIPLE_ITEMS)
+        val clipDecision = clipDataUris(intent.clipData)
+        if (clipDecision is StreamDecision.Invalid) {
+            return ShareFileIntentDecision.Rejected(clipDecision.reason)
         }
-
         val streamDecision = streamUris(intent)
         if (streamDecision is StreamDecision.Invalid) {
             return ShareFileIntentDecision.Rejected(streamDecision.reason)
         }
-        val extraStreamUri = (streamDecision as StreamDecision.Valid).uris.singleOrNull()
-        val clipStreamUri = (clipDecision as? ClipDataDecision.SingleUri)?.uri
-        if (extraStreamUri != null && clipStreamUri != null && extraStreamUri != clipStreamUri) {
+        val streamUris = (streamDecision as StreamDecision.Valid).uris
+        if (intent.action == Intent.ACTION_SEND_MULTIPLE && streamUris.isEmpty()) {
+            return if (isTextOnlyShare(intent, mimeType)) {
+                ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.TEXT_ONLY)
+            } else {
+                ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.MISSING_STREAM)
+            }
+        }
+        val clipUris = (clipDecision as StreamDecision.Valid).uris
+        val distinctUris = (streamUris + clipUris).distinct()
+        if (distinctUris.size > 1) {
             return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.MULTIPLE_ITEMS)
         }
-        val streamUri = extraStreamUri ?: clipStreamUri
+        val streamUri = distinctUris.singleOrNull()
         if (streamUri == null) {
             return if (isTextOnlyShare(intent, mimeType)) {
                 ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.TEXT_ONLY)
@@ -103,12 +105,21 @@ internal object ShareFileIntentPolicy {
             } ?: return StreamDecision.Valid(emptyList())
         val uris =
             when (value) {
-                is Uri -> listOf(value)
+                is Uri -> {
+                    if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+                        return StreamDecision.Invalid(ShareFileIntentRejectionReason.INVALID_STREAM)
+                    }
+                    listOf(value)
+                }
                 is ArrayList<*> -> {
                     if (value.size > 1) return StreamDecision.Invalid(ShareFileIntentRejectionReason.MULTIPLE_ITEMS)
-                    val uri = value.singleOrNull() as? Uri
-                        ?: return StreamDecision.Invalid(ShareFileIntentRejectionReason.INVALID_STREAM)
-                    listOf(uri)
+                    if (value.isEmpty()) {
+                        emptyList()
+                    } else {
+                        val uri = value.singleOrNull() as? Uri
+                            ?: return StreamDecision.Invalid(ShareFileIntentRejectionReason.INVALID_STREAM)
+                        listOf(uri)
+                    }
                 }
                 else -> return StreamDecision.Invalid(ShareFileIntentRejectionReason.INVALID_STREAM)
             }
@@ -116,10 +127,24 @@ internal object ShareFileIntentPolicy {
         return StreamDecision.Valid(uris)
     }
 
-    private fun clipDataDecision(clipData: ClipData?): ClipDataDecision {
-        if (clipData == null || clipData.itemCount == 0) return ClipDataDecision.None
-        if (clipData.itemCount > 1) return ClipDataDecision.MultipleItems
-        return clipData.getItemAt(0).uri?.let(ClipDataDecision::SingleUri) ?: ClipDataDecision.None
+    private fun clipDataUris(clipData: ClipData?): StreamDecision {
+        if (clipData == null || clipData.itemCount == 0) return StreamDecision.Valid(emptyList())
+        if (clipData.itemCount > 1) {
+            return StreamDecision.Invalid(ShareFileIntentRejectionReason.MULTIPLE_ITEMS)
+        }
+        val uris = mutableListOf<Uri>()
+        return try {
+            for (index in 0 until clipData.itemCount) {
+                clipData.getItemAt(index).uri?.let(uris::add)
+            }
+            if (uris.distinct().size > 1) {
+                StreamDecision.Invalid(ShareFileIntentRejectionReason.MULTIPLE_ITEMS)
+            } else {
+                StreamDecision.Valid(uris.distinct())
+            }
+        } catch (_: RuntimeException) {
+            StreamDecision.Invalid(ShareFileIntentRejectionReason.INVALID_STREAM)
+        }
     }
 
     private fun streamToken(intent: Intent): String =
@@ -149,12 +174,6 @@ internal object ShareFileIntentPolicy {
     private sealed class StreamDecision {
         data class Valid(val uris: List<Uri>) : StreamDecision()
         data class Invalid(val reason: ShareFileIntentRejectionReason) : StreamDecision()
-    }
-
-    private sealed class ClipDataDecision {
-        data object None : ClipDataDecision()
-        data class SingleUri(val uri: Uri) : ClipDataDecision()
-        data object MultipleItems : ClipDataDecision()
     }
 
     private const val CONTENT_URI_SCHEME = "content"
