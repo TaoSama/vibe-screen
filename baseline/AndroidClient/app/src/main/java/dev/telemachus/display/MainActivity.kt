@@ -2880,15 +2880,16 @@ class MainActivity : AppCompatActivity() {
             restoredConsumedShareIntentToken = null
             return
         }
-        consumedShareIntentTokenForState = token
         restoredConsumedShareIntentToken = null
         when (val decision = ShareFileIntentPolicy.resolve(intent)) {
             is ShareFileIntentDecision.Accepted ->
                 handleOutgoingFileTransferUri(
                     uri = decision.uri,
                     unavailableMessage = R.string.file_transfer_share_unavailable,
+                    shareIntentToken = token,
                 )
             is ShareFileIntentDecision.Rejected -> {
+                markShareIntentConsumed(token)
                 mainDiag("share file intent rejected: ${decision.reason}")
                 showFileTransferRecoverableError(
                     title = R.string.file_transfer_share_unsupported_title,
@@ -2902,9 +2903,20 @@ class MainActivity : AppCompatActivity() {
     private fun handleOutgoingFileTransferUri(
         uri: Uri,
         @StringRes unavailableMessage: Int = R.string.file_transfer_unavailable,
+        shareIntentToken: String? = null,
     ) {
+        if (hasActiveFileTransfer()) {
+            markShareIntentConsumed(shareIntentToken)
+            showFileTransferRecoverableError(
+                title = R.string.file_transfer_send_failed_title,
+                message = R.string.file_transfer_failed_temporary_limit,
+                allowRetry = false,
+            )
+            return
+        }
         val session = activeFileTransferSession()
         if (session == null) {
+            markShareIntentConsumed(shareIntentToken)
             if (unavailableMessage == R.string.file_transfer_share_unavailable) {
                 showFileTransferRecoverableError(
                     title = R.string.file_transfer_unavailable_title,
@@ -2920,14 +2932,6 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        if (hasActiveFileTransfer()) {
-            showFileTransferRecoverableError(
-                title = R.string.file_transfer_send_failed_title,
-                message = R.string.file_transfer_failed_temporary_limit,
-                allowRetry = false,
-            )
-            return
-        }
         val maximumFileBytes = session.negotiatedMaxFileBytes
         lifecycleScope.launch(Dispatchers.IO) {
             val stagedFile = try {
@@ -2936,6 +2940,7 @@ class MainActivity : AppCompatActivity() {
                 throw exception
             } catch (failure: Throwable) {
                 withContext(Dispatchers.Main) {
+                    markShareIntentConsumed(shareIntentToken)
                     mainDiag("file transfer staging failed: " + failure.javaClass.simpleName)
                     discardPendingOutgoingFileTransfer(refreshControl = true)
                     showFileTransferRecoverableError(
@@ -2963,8 +2968,10 @@ class MainActivity : AppCompatActivity() {
                                 maximumFileBytes = maximumFileBytes,
                             ),
                             session = session,
+                            shareIntentToken = shareIntentToken,
                         )
                     } else {
+                        markShareIntentConsumed(shareIntentToken)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
                         showFileTransferRecoverableError(
                             title = R.string.file_transfer_send_failed_title,
@@ -3167,6 +3174,7 @@ class MainActivity : AppCompatActivity() {
     private fun promptOutgoingFileTransfer(
         pending: PendingOutgoingFileTransfer,
         session: ActiveFileTransferSession,
+        shareIntentToken: String? = null,
     ) {
         runOnUiThread {
             if (!isInForeground ||
@@ -3175,6 +3183,7 @@ class MainActivity : AppCompatActivity() {
                 !session.isCurrent() ||
                 hasActiveFileTransfer()
             ) {
+                markShareIntentConsumed(shareIntentToken)
                 discardPendingOutgoingFileTransfer(refreshControl = true)
                 showFileTransferRecoverableError(
                     title = R.string.file_transfer_send_failed_title,
@@ -3183,6 +3192,7 @@ class MainActivity : AppCompatActivity() {
                 return@runOnUiThread
             }
             if (pendingOutgoingFileDialog != null) {
+                markShareIntentConsumed(shareIntentToken)
                 discardPendingOutgoingFileTransfer(refreshControl = true)
                 showFileTransferRecoverableError(
                     title = R.string.file_transfer_send_failed_title,
@@ -3205,6 +3215,7 @@ class MainActivity : AppCompatActivity() {
             fun cancelPending() {
                 if (decided) return
                 decided = true
+                markShareIntentConsumed(shareIntentToken)
                 clearPendingDialog()
                 discardPendingOutgoingFileTransfer(refreshControl = true)
             }
@@ -3214,6 +3225,7 @@ class MainActivity : AppCompatActivity() {
                         if (pendingOutgoingFileTimeout !== this) return
                         if (pendingOutgoingFileDialog == null || decided) return
                         decided = true
+                        markShareIntentConsumed(shareIntentToken)
                         clearPendingDialog(dismiss = true)
                         discardPendingOutgoingFileTransfer(refreshControl = true)
                         showFileTransferRecoverableError(
@@ -3229,6 +3241,7 @@ class MainActivity : AppCompatActivity() {
                     .setPositiveButton(R.string.file_transfer_outgoing_send) { _, _ ->
                         if (decided) return@setPositiveButton
                         decided = true
+                        markShareIntentConsumed(shareIntentToken)
                         clearPendingDialog()
                         if (!session.canSendStagedFile(pending.stagedFile) || hasActiveFileTransfer()) {
                             discardPendingOutgoingFileTransfer(refreshControl = true)
@@ -3266,6 +3279,10 @@ class MainActivity : AppCompatActivity() {
             pendingOutgoingFileTimeout = timeout
             fileTransferApprovalHandler.postDelayed(timeout, FILE_TRANSFER_APPROVAL_TIMEOUT_MS)
         }
+    }
+
+    private fun markShareIntentConsumed(token: String?) {
+        if (token != null) consumedShareIntentTokenForState = token
     }
 
     private fun outgoingFileTransferView(pending: PendingOutgoingFileTransfer): ScrollView {

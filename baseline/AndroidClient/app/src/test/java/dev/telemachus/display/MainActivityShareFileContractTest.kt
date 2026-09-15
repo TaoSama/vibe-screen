@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,7 +36,9 @@ class MainActivityShareFileContractTest {
         assertTrue(onSave.contains("STATE_CONSUMED_SHARE_INTENT_TOKEN"))
         assertTrue(consume.contains("token == restoredConsumedShareIntentToken"))
         assertFalse(consume.contains("token == consumedShareIntentTokenForState"))
+        assertEquals(1, Regex("consumedShareIntentTokenForState = token").findAll(consume).count())
         assertTrue(consume.contains("unavailableMessage = R.string.file_transfer_share_unavailable"))
+        assertTrue(consume.contains("shareIntentToken = token"))
         assertTrue(picker.contains("handleOutgoingFileTransferUri(uri)"))
         assertTrue(handleUri.contains("stageOutgoingFileTransfer(uri, maximumFileBytes)"))
         assertTrue(handleUri.contains("transferOwnershipOrCleanup"))
@@ -48,18 +51,20 @@ class MainActivityShareFileContractTest {
     fun noSessionFailsClosedBeforeAnyUriReadOrPickerLaunch() {
         val source = sourceFile("app/src/main/java/dev/telemachus/display/MainActivity.kt").readText()
         val handleUri = extractMethod(source, "private fun handleOutgoingFileTransferUri")
+        val activeTransfer = handleUri.indexOf("if (hasActiveFileTransfer())")
+        val activeTransferReturn = handleUri.indexOf("return", activeTransfer)
+        val sessionResolution = handleUri.indexOf("val session = activeFileTransferSession()")
         val noSession = handleUri.indexOf("if (session == null)")
         val earlyReturn = handleUri.indexOf("return", noSession)
         val staging = handleUri.indexOf("stageOutgoingFileTransfer(uri, maximumFileBytes)")
-        val activeTransfer = handleUri.indexOf("if (hasActiveFileTransfer())")
-        val activeTransferReturn = handleUri.indexOf("return", activeTransfer)
 
+        assertTrue(activeTransfer >= 0)
+        assertTrue(activeTransferReturn > activeTransfer)
+        assertTrue(sessionResolution > activeTransferReturn)
         assertTrue(noSession >= 0)
         assertTrue(earlyReturn > noSession)
         assertTrue(staging > earlyReturn)
-        assertTrue(activeTransfer > earlyReturn)
-        assertTrue(activeTransferReturn > activeTransfer)
-        assertTrue(staging > activeTransferReturn)
+        assertTrue(staging > sessionResolution)
         assertTrue(handleUri.contains("title = R.string.file_transfer_unavailable_title"))
         assertTrue(handleUri.contains("R.string.file_transfer_share_unavailable"))
         assertTrue(handleUri.contains("R.string.file_transfer_unavailable"))
