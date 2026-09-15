@@ -1063,6 +1063,7 @@ class RealQrPairingAcceptanceTests(unittest.TestCase):
             self.assertIn("started", data["timing_utc"])
             self.assertIn("finished", data["timing_utc"])
             self.assertIn("blocker", data)
+            mock_inst_proc.communicate.assert_not_called()
 
     def test_qr_presenter_source_contract_is_cross_platform(self) -> None:
         presenter_path = Path(__file__).resolve().parents[1] / "phase3" / "qr_presenter.swift"

@@ -709,12 +709,12 @@ def run_acceptance(
                     log_file.flush()
                 except Exception:
                     pass
-                if log_path.exists() and log_path.stat().st_size > 0:
+                if log_path.exists():
                     return log_path.read_text(encoding="utf-8", errors="replace")
-                if hasattr(instrumentation_proc, "stdout") and instrumentation_proc.stdout:
+                if instrumentation_proc.poll() is not None and hasattr(instrumentation_proc, "stdout") and instrumentation_proc.stdout:
                     if hasattr(instrumentation_proc.stdout, "read"):
                         return instrumentation_proc.stdout.read() or ""
-                if hasattr(instrumentation_proc, "communicate"):
+                if instrumentation_proc.poll() is not None and hasattr(instrumentation_proc, "communicate"):
                     out, _ = instrumentation_proc.communicate()
                     return out or ""
                 return ""
