@@ -1,0 +1,5 @@
+commit=c1d6717d03d594d792703337eb8af115e41dd978
+branch=codex/internet-camera-permission-recovery
+worktree=<redacted-worktree-path>
+origin=git@github.com:TaoSama/vibe-screen.git
+diff_base=origin/main

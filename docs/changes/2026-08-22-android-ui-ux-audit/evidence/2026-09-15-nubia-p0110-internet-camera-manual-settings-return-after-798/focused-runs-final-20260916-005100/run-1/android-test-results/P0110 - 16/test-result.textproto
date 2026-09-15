@@ -1,0 +1,68 @@
+# 2026-09-15T16:51:18.019970Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 1
+}
+test_status: PASSED
+test_result {
+  test_case {
+    test_class: "InternetCameraPermissionRecoveryInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn"
+    start_time {
+      seconds: 1789491075
+      nanos: 165000000
+    }
+    end_time {
+      seconds: 1789491077
+      nanos: 335000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/internet-camera-permission-recovery/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest-visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/internet-camera-permission-recovery/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/internet-camera-permission-recovery/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/internet-camera-permission-recovery/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/internet-camera-permission-recovery/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/testlog/test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}

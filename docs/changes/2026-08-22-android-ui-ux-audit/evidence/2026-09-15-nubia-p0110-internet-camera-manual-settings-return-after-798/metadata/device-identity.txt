@@ -1,0 +1,6 @@
+serial=EP0110PZ0B9110152B
+manufacturer=nubia
+model=P0110
+device=pacific
+android_release=16
+sdk=36

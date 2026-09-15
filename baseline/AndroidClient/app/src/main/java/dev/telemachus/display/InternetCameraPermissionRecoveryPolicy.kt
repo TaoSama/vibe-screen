@@ -46,18 +46,29 @@ internal object InternetCameraPermissionRecoveryPolicy {
             else -> InternetCameraPermissionResultAction.SHOW_FIRST_DENIED_PANEL
         }
 
-    fun settingsReturn(
+    // A visible recovery panel is treated as an active user recovery flow, even
+    // when Camera was granted from Android Settings without using our button.
+    fun foregroundReturn(
+        panelState: InternetCameraPermissionPanelState,
         settingsPending: Boolean,
         granted: Boolean,
         permanentlyDenied: Boolean,
     ): InternetCameraSettingsReturnAction {
-        if (!settingsPending) return InternetCameraSettingsReturnAction.NOOP
-        return when {
+        if (!settingsPending && panelState == InternetCameraPermissionPanelState.HIDDEN) {
+            return InternetCameraSettingsReturnAction.NOOP
+        }
+        return permissionRecoveryReturn(granted, permanentlyDenied)
+    }
+
+    private fun permissionRecoveryReturn(
+        granted: Boolean,
+        permanentlyDenied: Boolean,
+    ): InternetCameraSettingsReturnAction =
+        when {
             granted -> InternetCameraSettingsReturnAction.LAUNCH_SCANNER_ONCE
             permanentlyDenied -> InternetCameraSettingsReturnAction.SHOW_SETTINGS_PANEL
             else -> InternetCameraSettingsReturnAction.SHOW_FIRST_DENIED_PANEL
         }
-    }
 
     fun restoredPanelState(name: String?): InternetCameraPermissionPanelState =
         InternetCameraPermissionPanelState.entries.firstOrNull { state -> state.name == name }

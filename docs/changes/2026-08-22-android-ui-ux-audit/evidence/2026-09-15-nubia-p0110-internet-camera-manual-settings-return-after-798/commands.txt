@@ -1,0 +1,33 @@
+# Worktree
+git fetch origin
+git worktree add -b codex/internet-camera-permission-recovery .claude/worktrees/internet-camera-permission-recovery origin/main
+validation_status=0
+
+# Focused JVM and static checks
+(cd baseline/AndroidClient && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest \
+  --tests dev.telemachus.display.InternetCameraPermissionRecoveryPolicyTest \
+  --tests dev.telemachus.display.MainActivityTerminalGuidanceContractTest \
+  --tests dev.telemachus.display.CameraPermissionResumePolicyTest) || validation_status=$?
+if [ "$validation_status" -eq 0 ]; then
+  (cd baseline/AndroidClient && ./gradlew --no-daemon --console=plain :app:compileDebugAndroidTestKotlin :app:lintDebug) || validation_status=$?
+fi
+if [ "$validation_status" -eq 0 ]; then
+  make baseline-android-check || validation_status=$?
+fi
+
+# Focused P0110 device run. Initial denied state and final cleanup were performed
+# with adb pm revoke around the instrumentation run; the test itself grants Camera
+# through UiAutomation while MainActivity is backgrounded, then verifies foreground
+# recovery into QRScannerActivity. No macOS Host or adb reverse was used.
+adb -s <redacted-adb-serial> shell pm revoke dev.telemachus.display android.permission.CAMERA >/dev/null 2>&1 || true
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display >/dev/null 2>&1 || true
+if [ "$validation_status" -eq 0 ]; then
+  (cd baseline/AndroidClient && ANDROID_SERIAL=<redacted-adb-serial> ./gradlew --no-daemon --console=plain :app:connectedDebugAndroidTest \
+    '-Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest#visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn' \
+    -Pandroid.testInstrumentationRunnerArguments.vibeScreenInternetCameraRecovery=true) || validation_status=$?
+fi
+adb -s <redacted-adb-serial> shell pm revoke dev.telemachus.display android.permission.CAMERA >/dev/null 2>&1 || true
+adb -s <redacted-adb-serial> shell am force-stop dev.telemachus.display >/dev/null 2>&1 || true
+adb -s <redacted-adb-serial> reverse --list
+lsof -nP -iTCP:54321 -sTCP:LISTEN || true
+exit "$validation_status"

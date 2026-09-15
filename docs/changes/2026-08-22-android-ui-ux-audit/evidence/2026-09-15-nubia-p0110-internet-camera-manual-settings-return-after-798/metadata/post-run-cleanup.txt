@@ -1,0 +1,11 @@
+adb devices -l
+List of devices attached
+EP0110PZ0B9110152B     device usb:1-1 product:pacific model:P0110 device:pacific transport_id:3
+
+
+adb reverse --list after run
+
+
+local tcp 54321 listeners after run
+
+camera runtime permission after cleanup
