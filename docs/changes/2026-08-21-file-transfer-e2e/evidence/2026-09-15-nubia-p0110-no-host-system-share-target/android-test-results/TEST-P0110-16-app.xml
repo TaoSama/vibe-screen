@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='UTF-8' ?>
-<testsuite name="dev.telemachus.display.ShareFileIntentInstrumentedTest" tests="3" failures="0" errors="0" skipped="0" time="3.198" timestamp="2026-09-15T09:34:34" hostname="localhost">
+<testsuite name="dev.telemachus.display.ShareFileIntentInstrumentedTest" tests="3" failures="0" errors="0" skipped="0" time="3.105" timestamp="2026-09-15T10:09:26" hostname="localhost">
   <properties>
     <property name="device" value="P0110 - 16" />
     <property name="flavor" value="" />
     <property name="project" value=":app" />
   </properties>
-  <testcase name="clipDataOnlyShareIsAcceptedWithoutReadingSourceWhenNoHostExists" classname="dev.telemachus.display.ShareFileIntentInstrumentedTest" time="0.99" />
-  <testcase name="repeatedShareOfSameUriIsHandledAsANewUserAction" classname="dev.telemachus.display.ShareFileIntentInstrumentedTest" time="0.864" />
-  <testcase name="noHostShareFailsClosedBeforeReadingContentUri" classname="dev.telemachus.display.ShareFileIntentInstrumentedTest" time="0.685" />
+  <testcase name="clipDataOnlyShareIsAcceptedWithoutReadingSourceWhenNoHostExists" classname="dev.telemachus.display.ShareFileIntentInstrumentedTest" time="0.929" />
+  <testcase name="repeatedShareOfSameUriIsHandledAsANewUserAction" classname="dev.telemachus.display.ShareFileIntentInstrumentedTest" time="0.785" />
+  <testcase name="noHostShareFailsClosedBeforeReadingContentUri" classname="dev.telemachus.display.ShareFileIntentInstrumentedTest" time="0.75" />
 </testsuite>

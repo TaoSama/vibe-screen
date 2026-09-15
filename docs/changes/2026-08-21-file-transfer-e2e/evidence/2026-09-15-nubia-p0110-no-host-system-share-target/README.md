@@ -1,7 +1,7 @@
 # 2026-09-15 Nubia P0110 no-Host system share target
 
 This package records Android system-share entry readiness for source commit
-`56d9da7d2aaaa5ae78541ada410c39fbaf78328c`. The physical device was a nubia
+`896136e09b89fcce0814c08c6cccb114b57bdd8d`. The physical device was a nubia
 P0110 / pacific running Android 16 / SDK 36 with build fingerprint
 `nubia/pacific/pacific:16/2.6.2.0/20260907.013634:userdebug/test-keys`. Its ADB
 serial is intentionally redacted.
@@ -26,6 +26,9 @@ Focused JVM coverage separately rejects text-only, multiple, malformed, and
 non-`content://` shares, fails closed on malformed external extras, refuses an
 active-transfer share before reading its URI, and keeps the existing
 staged-file preflight and explicit-send confirmation pipeline.
+The retained screenshot was captured from the same feature branch before the
+recreation-safety follow-up; that follow-up did not change the shown no-Host
+surface, and the retained XML below is from the final source commit named above.
 
 ## Boundary
 
