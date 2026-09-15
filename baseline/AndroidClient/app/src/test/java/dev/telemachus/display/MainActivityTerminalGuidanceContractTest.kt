@@ -235,6 +235,62 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun internetProfileUiUsesStoreAdmissionForLeaseFreshness() {
+        val source = mainActivitySource()
+        val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
+        val connect = extractMethod(source, "private fun connectInternet")
+        val disconnect = extractMethod(source, "private fun disconnectInternet")
+        val onStart = extractMethod(source, "override fun onStart")
+        val configurationChanged = extractMethod(source, "override fun onConfigurationChanged")
+
+        assertTrue(
+            "Internet disconnected UI must ask the profile store for lease admission",
+            refresh.contains("internetProfileStore.assessLeaseAdmission(") &&
+                refresh.contains("productSessionCoordinator.requiredFreshInternetEpoch()"),
+        )
+        assertFalse(
+            "Internet profile refresh must not parse persisted profile directly after store admission",
+            refresh.contains("internetProfileStore.loadPublicProfile()"),
+        )
+        assertFalse(
+            "Internet profile refresh must not parse pairing directly after store admission",
+            refresh.contains("internetProfileStore.hasVerifiedPairing()") ||
+                refresh.contains("internetProfileStore.verifiedHostKeyFingerprint()"),
+        )
+        assertFalse(
+            "Internet profile refresh must not re-enter mutation admission because malformed local state is rendered fail-closed",
+            refresh.contains("allowInternetCredentialMutation()"),
+        )
+        assertFalse(
+            "Internet UI must not duplicate persisted lease expiry math",
+            refresh.contains("expiresAtUnixSeconds"),
+        )
+        assertTrue(
+            "Internet connect path must load through the store admission gate with the current freshness floor",
+            connect.contains("internetProfileStore.loadLease(") &&
+                connect.contains("productSessionCoordinator.requiredFreshInternetEpoch()"),
+        )
+        assertFalse(
+            "Internet connect path must not keep a second epoch freshness branch",
+            connect.contains("requiresFreshInternetLease(lease.authoritativeSessionEpoch)"),
+        )
+        assertTrue(
+            "Foregrounding the disconnected Internet tab must refresh lease admission",
+            onStart.contains("prefs.connectionMode == ConnectionMode.INTERNET") &&
+                onStart.contains("refreshInternetProfileUi()"),
+        )
+        assertTrue(
+            "Configuration changes must refresh disconnected Internet lease admission",
+            configurationChanged.contains("prefs.connectionMode == ConnectionMode.INTERNET") &&
+                configurationChanged.contains("refreshInternetProfileUi()"),
+        )
+        assertTrue(
+            "Disconnect must return to the same admission-rendered button state",
+            disconnect.contains("refreshInternetProfileUi()"),
+        )
+    }
+
+    @Test
     fun automaticUsbRetryClampsSuggestedDelayToBackoffBudget() {
         val scheduleAutomaticUsbConnect = extractMethod(mainActivitySource(), "private fun scheduleAutomaticUsbConnect")
         val compact = scheduleAutomaticUsbConnect.replace(Regex("\\s+"), "")
@@ -1758,7 +1814,7 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "Internet mode foreground start must not fall through to USB automatic reconnect scheduling",
-            compactOnStart.contains("}elseif(prefs.connectionMode==ConnectionMode.INTERNET){return}"),
+            compactOnStart.contains("}elseif(prefs.connectionMode==ConnectionMode.INTERNET){refreshInternetProfileUi()return}"),
         )
         assertTrue(
             "Foreground recovery diagnostics must expose scanner launch admission failures",
@@ -2101,10 +2157,18 @@ class MainActivityTerminalGuidanceContractTest {
         val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
 
         assertTrue(R.string.internet_connect_profile_missing_description != 0)
+        assertTrue(R.string.internet_connect_fresh_profile_required_description != 0)
+        assertTrue(R.string.internet_connect_invalid_credentials_description != 0)
         assertTrue(helper.contains("internetConnectButton.contentDescription"))
-        assertTrue(helper.contains("R.string.internet_connect_profile_missing_description"))
+        assertTrue(helper.contains("@StringRes disabledDescription: Int"))
+        assertTrue(helper.contains("getString(disabledDescription)"))
+        assertTrue(refresh.contains("R.string.internet_connect_profile_missing_description"))
+        assertTrue(refresh.contains("R.string.internet_connect_fresh_profile_required_description"))
+        assertTrue(refresh.contains("R.string.internet_connect_invalid_credentials_description"))
+        assertTrue(refresh.contains("R.string.internet_connect_active_description"))
         assertTrue(helper.contains("R.string.internet_connect"))
-        assertTrue(refresh.contains("profileAvailable = profile != null"))
+        assertTrue(refresh.contains("admission.canConnect && !activeInternetSession"))
+        assertTrue(refresh.contains("activeInternetSession"))
         assertEquals(
             "Internet connect enabled state must keep the accessibility reason in sync",
             1,
@@ -2120,7 +2184,7 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Revoke eligibility must cover both a current lease and pairing-only repair state",
             compactRefresh.contains(
-                "valcanRevokePairing=profile!=null||internetProfileStore.hasVerifiedPairing()",
+                "valcanRevokePairing=admission.canRevokeLocal",
             ),
         )
         assertTrue(

@@ -1,0 +1,68 @@
+# 2026-09-16T02:50:30.194989Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 1
+}
+test_status: PASSED
+test_result {
+  test_case {
+    test_class: "InternetMainActivityAcceptanceInstrumentedTest"
+    test_package: "dev.telemachus.display"
+    test_method: "expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation"
+    start_time {
+      seconds: 1789527009
+      nanos: 343000000
+    }
+    end_time {
+      seconds: 1789527029
+      nanos: 573000000
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "REDACTED_WORKSPACE/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/logcat-dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest-expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "REDACTED_WORKSPACE/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "REDACTED_WORKSPACE/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "REDACTED_WORKSPACE/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "REDACTED_WORKSPACE/baseline/AndroidClient/app/build/outputs/androidTest-results/connected/debug/P0110 - 16/testlog/test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}

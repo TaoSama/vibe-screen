@@ -1,0 +1,1 @@
+09-16 10:50:29.639 15884 15906 I System.out: PHASE3_ANDROID_INTERNET_EXPIRED_STALE_LEASE_UX_PASS expired_summary=true stale_summary=true connect_disabled=true stale_foreground_refresh=true expired_foreground_refresh=true expired_recreation_refresh=true fresh_reimport=true scan_import_revoke_available=true android_local_only=true
