@@ -46,9 +46,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
+import org.junit.runners.model.Statement
 
 /**
  * Real device-side acceptance harness for Internet pairing with CameraX + ZXing decode.
@@ -66,8 +70,23 @@ class RealQrInternetPairingInstrumentedTest {
     @Volatile
     private var acceptanceStage = "initialization"
 
+    private val optInRule =
+        TestRule { base, _ ->
+            object : Statement() {
+                override fun evaluate() {
+                    val arguments = InstrumentationRegistry.getArguments()
+                    assumeTrue(
+                        "Pass -e $OPT_IN_ARGUMENT true only from the dedicated real-camera QR acceptance runner",
+                        arguments.getString(OPT_IN_ARGUMENT, "false").toBoolean(),
+                    )
+                    base.evaluate()
+                }
+            }
+        }
+    private val cameraPermission = GrantPermissionRule.grant(Manifest.permission.CAMERA)
+
     @get:Rule
-    val cameraPermission: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.CAMERA)
+    val acceptanceRules: RuleChain = RuleChain.outerRule(optInRule).around(cameraPermission)
 
     @Test
     fun realCameraQrPairingAndRevokeAreAcceptedThroughMainActivity() {
@@ -210,6 +229,10 @@ class RealQrInternetPairingInstrumentedTest {
             SystemClock.sleep(250)
         }
         throw AssertionError("Pairing request dialog did not appear within ${timeoutMs}ms; CameraX/ZXing scan timed out")
+    }
+
+    private companion object {
+        const val OPT_IN_ARGUMENT = "vibeScreenRealQrAcceptance"
     }
 
     private fun waitForPresenterReady(

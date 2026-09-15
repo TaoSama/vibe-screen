@@ -38,6 +38,7 @@ DEFAULT_APP_PACKAGE = "dev.telemachus.display"
 DEFAULT_TEST_PACKAGE = "dev.telemachus.display.test"
 DEFAULT_TEST_RUNNER = f"{DEFAULT_TEST_PACKAGE}/androidx.test.runner.AndroidJUnitRunner"
 DEFAULT_TEST_CLASS = f"{DEFAULT_APP_PACKAGE}.RealQrInternetPairingInstrumentedTest"
+REAL_QR_OPT_IN_ARGUMENT = "vibeScreenRealQrAcceptance"
 
 OFFER_FILENAME = "internet_pairing_offer.txt"
 MARKER_FILENAME = "qr_scan_marker.json"
@@ -692,6 +693,9 @@ def run_acceptance(
             "-e",
             "class",
             args.test_class,
+            "-e",
+            REAL_QR_OPT_IN_ARGUMENT,
+            "true",
             args.test_runner,
         ]
 
