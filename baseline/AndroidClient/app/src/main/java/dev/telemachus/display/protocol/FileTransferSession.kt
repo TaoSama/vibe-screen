@@ -88,6 +88,12 @@ internal data class CompletedIncomingFile(
     val sha256: ByteString,
 )
 
+internal data class OutgoingFileSnapshot(
+    val fileName: String,
+    val byteLength: Long,
+    val sha256: ByteString,
+)
+
 internal class FileTransferException(
     val reasonCode: String,
     message: String,
@@ -300,8 +306,10 @@ internal class OutgoingFileTransfer(
     mimeType: String,
     policy: FileTransferPolicy,
     remotePolicy: RemoteManagedPolicy = RemoteManagedPolicy.UNMANAGED,
+    snapshot: OutgoingFileSnapshot? = null,
 ) {
     private val effectivePolicy = policy.applying(remotePolicy)
+    private val sourceFile = file
     private val handle: RandomAccessFile
     private var offset = 0L
     private var acknowledgedOffset = 0L
@@ -317,22 +325,39 @@ internal class OutgoingFileTransfer(
             throw fileTransferFailure("policy_denied", "File transfer denied by policy")
         }
         if (!file.isFile) throw fileTransferFailure("invalid_file_name", "Outgoing file must be a regular file")
-        val byteLength = file.length()
+        val currentLength = file.length()
+        val snapshotValue = snapshot ?: OutgoingFileSnapshot(
+            fileName = file.name,
+            byteLength = currentLength,
+            sha256 = digest(file, effectivePolicy.maximumChunkBytes),
+        )
+        if (snapshotValue.fileName != file.name) {
+            throw fileTransferFailure("staged_file_mismatch", "Outgoing file name changed after staging")
+        }
+        if (snapshotValue.byteLength != currentLength) {
+            throw fileTransferFailure("staged_file_mismatch", "Outgoing file length changed after staging")
+        }
+        if (snapshotValue.sha256.size() != SHA256_BYTES) {
+            throw fileTransferFailure("invalid_digest", "File digest must be SHA-256")
+        }
+        if (snapshot != null && digest(file, effectivePolicy.maximumChunkBytes) != snapshotValue.sha256) {
+            throw fileTransferFailure("staged_file_mismatch", "Outgoing file content changed after staging")
+        }
+        val byteLength = snapshotValue.byteLength
         if (byteLength < 0 || byteLength > effectivePolicy.maximumFileBytes) {
             throw fileTransferFailure("file_too_large", "File exceeds negotiated maximum")
         }
         if (!IncomingFileTransferManager.isSafeFileName(file.name)) {
             throw fileTransferFailure("invalid_file_name", "Unsafe file name")
         }
-        val digest = digest(file, effectivePolicy.maximumChunkBytes)
         offer =
             FileOffer
                 .newBuilder()
                 .setTransferId(ByteString.copyFrom(UUID.randomUUID().toBytes()))
-                .setFileName(file.name)
+                .setFileName(snapshotValue.fileName)
                 .setMimeType(mimeType)
                 .setByteLength(byteLength)
-                .setSha256(digest)
+                .setSha256(snapshotValue.sha256)
                 .build()
         handle =
             try {
@@ -345,6 +370,10 @@ internal class OutgoingFileTransfer(
     @Synchronized
     fun nextChunk(maximumBytes: Int, sessionEpoch: Long): FileChunk? {
         if (cancelled) throw fileTransferFailure("unknown_transfer", "File transfer was cancelled")
+        val remainingBytes = offer.byteLength - offset
+        if (sourceFile.length() != offer.byteLength) {
+            throw fileTransferFailure("staged_file_mismatch", "Outgoing file length changed during transfer")
+        }
         if (offer.byteLength == 0L) {
             if (emittedEmptyFileChunk) return null
             emittedEmptyFileChunk = true
@@ -362,7 +391,7 @@ internal class OutgoingFileTransfer(
             return FileChunk(header, payload)
         }
         if (offset >= offer.byteLength) return null
-        val requested = minOf(maxOf(1, minOf(effectivePolicy.maximumChunkBytes, maximumBytes)), (offer.byteLength - offset).toInt())
+        val requested = minOf(maxOf(1, minOf(effectivePolicy.maximumChunkBytes, maximumBytes)), remainingBytes.toInt())
         val payload = ByteArray(requested)
         val read =
             try {

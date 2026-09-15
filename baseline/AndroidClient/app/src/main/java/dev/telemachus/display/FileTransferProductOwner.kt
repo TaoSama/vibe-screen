@@ -7,6 +7,7 @@ import dev.telemachus.display.protocol.FileTransferException
 import dev.telemachus.display.protocol.FileTransferPolicy
 import dev.telemachus.display.protocol.IncomingFileTransferManager
 import dev.telemachus.display.protocol.OutgoingFileTransfer
+import dev.telemachus.display.protocol.OutgoingFileSnapshot
 import dev.telemachus.display.protocol.RemoteManagedPolicy
 import dev.telemachus.display.protocol.SHA256_BYTES
 import dev.vibescreen.protocol.v1.FileAccept
@@ -18,6 +19,7 @@ import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import java.io.File
 import java.io.IOException
 import java.util.IdentityHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Owns Android file-transfer product state while the wire/session boundary stays outside. */
 internal class FileTransferProductOwner(
@@ -27,8 +29,8 @@ internal class FileTransferProductOwner(
     private val incomingManagerFactory: IncomingManagerFactory = IncomingManagerFactory { policy, directory, approve ->
         IncomingFileTransferStore(IncomingFileTransferManager(policy, directory, approve))
     },
-    private val outgoingTransferFactory: OutgoingTransferFactory = OutgoingTransferFactory { file, mimeType, policy, remotePolicy ->
-        OutgoingFileTransferStore(OutgoingFileTransfer(file, mimeType, policy, remotePolicy))
+    private val outgoingTransferFactory: OutgoingTransferFactory = OutgoingTransferFactory { file, mimeType, policy, remotePolicy, snapshot, onRelease ->
+        OutgoingFileTransferStore(OutgoingFileTransfer(file, mimeType, policy, remotePolicy, snapshot), onRelease)
     },
 ) {
     private val lock = Any()
@@ -266,10 +268,12 @@ internal class FileTransferProductOwner(
         file: File,
         mimeType: String,
         negotiatedPolicy: FileTransferPolicy,
+        snapshot: OutgoingFileSnapshot? = null,
+        onRelease: (() -> Unit)? = null,
     ): PrepareOutgoingResult =
         try {
             val remotePolicy = synchronized(lock) { remoteManagedPolicy }
-            val transfer = outgoingTransferFactory.create(file, mimeType, negotiatedPolicy, remotePolicy)
+            val transfer = outgoingTransferFactory.create(file, mimeType, negotiatedPolicy, remotePolicy, snapshot, onRelease)
             var rejectionReason: String? = null
             synchronized(lock) {
                 val effectivePolicy = negotiatedPolicy.applying(remoteManagedPolicy)
@@ -716,6 +720,8 @@ internal class FileTransferProductOwner(
             mimeType: String,
             policy: FileTransferPolicy,
             remotePolicy: RemoteManagedPolicy,
+            snapshot: OutgoingFileSnapshot?,
+            onRelease: (() -> Unit)?,
         ): OutgoingTransferStore
     }
 
@@ -737,11 +743,18 @@ internal class FileTransferProductOwner(
 
     private class OutgoingFileTransferStore(
         private val transfer: OutgoingFileTransfer,
+        private val onRelease: (() -> Unit)?,
     ) : OutgoingTransferStore {
+        private val released = AtomicBoolean(false)
         override val offer: FileOffer
             get() = transfer.offer
 
-        override fun cancel() = transfer.cancel()
+        override fun cancel() {
+            transfer.cancel()
+            if (released.compareAndSet(false, true)) {
+                onRelease?.invoke()
+            }
+        }
 
         override fun applyAcceptedMaximumChunkBytes(maximumBytes: Int) =
             transfer.applyAcceptedMaximumChunkBytes(maximumBytes)

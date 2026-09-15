@@ -918,6 +918,231 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
+    fun `staged outgoing file drives offer metadata and first last chunks`() {
+        val staged = stagedOutgoingFile(
+            displayName = "android-source.txt",
+            payload = "android-to-mac-staged-runtime".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 8))
+        owner.activateSession()
+
+        try {
+            val prepared = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 8),
+                snapshot = staged.snapshot(),
+            ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+            val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+            assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+            val offer = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer
+
+            assertEquals(staged.file.name, offer.fileName)
+            assertEquals(staged.mimeType, offer.mimeType)
+            assertEquals(staged.byteLength, offer.byteLength)
+            assertEquals(staged.sha256, offer.sha256)
+
+            val first = owner.handleFileAccept(
+                FileAccept.newBuilder()
+                    .setTransferId(offer.transferId)
+                    .setAccepted(true)
+                    .setMaximumChunkBytes(8)
+                    .build(),
+                sessionEpoch = 44,
+            )
+            val firstChunk = requireNotNull(first.chunk)
+            assertEquals(0L, firstChunk.header.offset)
+            assertEquals(8, firstChunk.payload.size)
+            assertEquals(44L, firstChunk.header.sessionEpoch)
+            assertFalse(firstChunk.header.final)
+
+            var acknowledged = firstChunk.payload.size.toLong()
+            var lastChunk = firstChunk
+            while (!lastChunk.header.final) {
+                val update = owner.handleFileProgress(
+                    FileTransferProgress.newBuilder()
+                        .setTransferId(offer.transferId)
+                        .setReceivedBytes(acknowledged)
+                        .build(),
+                    sessionEpoch = 44,
+                )
+                lastChunk = requireNotNull(update.chunk)
+                acknowledged += lastChunk.payload.size.toLong()
+            }
+
+            assertEquals(staged.byteLength - lastChunk.payload.size, lastChunk.header.offset)
+            assertTrue(lastChunk.header.final)
+            assertEquals(staged.byteLength, lastChunk.header.offset + lastChunk.payload.size)
+        } finally {
+            staged.cleanupBestEffort()
+        }
+        assertFalse(staged.stagingDirectory.exists())
+    }
+
+    @Test
+    fun `staged outgoing file rejects growth before first chunk`() {
+        val staged = stagedOutgoingFile(
+            displayName = "growth-source.txt",
+            payload = "stable".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 4))
+        owner.activateSession()
+        try {
+            val prepared = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+                snapshot = staged.snapshot(),
+            ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+            val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+            assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+            val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+            staged.file.appendText("-changed")
+
+            val update = owner.handleFileAccept(
+                FileAccept.newBuilder()
+                    .setTransferId(transferId)
+                    .setAccepted(true)
+                    .setMaximumChunkBytes(4)
+                    .build(),
+                sessionEpoch = 45,
+            )
+
+            assertEquals(transferId, update.cancelTransferId)
+            assertEquals("staged_file_mismatch", update.cancelReasonCode)
+            assertEquals(FileTransferProductOwner.TransferResult(false, "staged_file_mismatch"), update.result)
+            assertEquals(0, owner.activeOutgoingTransferCount())
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
+        }
+    }
+
+    @Test
+    fun `staged outgoing file rejects same length mutation before offer`() {
+        val staged = stagedOutgoingFile(
+            displayName = "mutated-source.txt",
+            payload = "original".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 4))
+        owner.activateSession()
+        try {
+            staged.file.writeText("modified")
+
+            val result = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+                snapshot = staged.snapshot(),
+            )
+
+            assertEquals(
+                FileTransferProductOwner.PrepareOutgoingResult.Rejected("staged_file_mismatch"),
+                result,
+            )
+            assertEquals(0, owner.activeOutgoingTransferCount())
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
+        }
+    }
+
+    @Test
+    fun `staged outgoing file rejects truncation between chunks`() {
+        val staged = stagedOutgoingFile(
+            displayName = "truncated-source.txt",
+            payload = "abcdefgh".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner(fileTransferPolicy = FileTransferPolicy(maximumChunkBytes = 4))
+        owner.activateSession()
+        try {
+            val prepared = owner.prepareOutgoingFile(
+                file = staged.file,
+                mimeType = staged.mimeType,
+                negotiatedPolicy = FileTransferPolicy(maximumChunkBytes = 4),
+                snapshot = staged.snapshot(),
+            ) as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+            val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+            assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+            val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+            val first = owner.handleFileAccept(
+                FileAccept.newBuilder()
+                    .setTransferId(transferId)
+                    .setAccepted(true)
+                    .setMaximumChunkBytes(4)
+                    .build(),
+                sessionEpoch = 46,
+            )
+            assertEquals(0L, requireNotNull(first.chunk).header.offset)
+            staged.file.writeText("abc")
+
+            val update = owner.handleFileProgress(
+                FileTransferProgress.newBuilder()
+                    .setTransferId(transferId)
+                    .setReceivedBytes(4)
+                    .build(),
+                sessionEpoch = 46,
+            )
+
+            assertEquals(transferId, update.cancelTransferId)
+            assertEquals("staged_file_mismatch", update.cancelReasonCode)
+            assertEquals(FileTransferProductOwner.TransferResult(false, "staged_file_mismatch"), update.result)
+            assertEquals(0, owner.activeOutgoingTransferCount())
+        } finally {
+            OutgoingFileStagingOwner.cleanupToken(staged)
+        }
+    }
+
+    @Test
+    fun `outgoing user cancel final cleanup removes app private staging directory`() {
+        val staged = stagedOutgoingFile(
+            displayName = "cancelled-source.txt",
+            payload = "cancelled-source-bytes".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner()
+        owner.activateSession()
+        val prepared = owner.prepareOutgoingFile(
+            staged.file,
+            staged.mimeType,
+            FileTransferPolicy(),
+            staged.snapshot(),
+            staged::cleanup,
+        )
+            as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        val started = owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true)
+        assertTrue(started is FileTransferProductOwner.StartOutgoingResult.Started)
+        val transferId = (started as FileTransferProductOwner.StartOutgoingResult.Started).offer.transferId
+
+        val result = owner.cancelOutgoingTransfer(transferId, "user_cancelled")
+
+        assertEquals(FileTransferProductOwner.TransferResult(false, "user_cancelled"), result)
+        assertEquals(0, owner.activeOutgoingTransferCount())
+        assertFalse(staged.stagingDirectory.exists())
+    }
+
+    @Test
+    fun `outgoing disconnect final cleanup removes app private staging directory`() {
+        val staged = stagedOutgoingFile(
+            displayName = "disconnect-source.txt",
+            payload = "disconnect-source-bytes".toByteArray(Charsets.UTF_8),
+        )
+        val owner = owner()
+        owner.activateSession()
+        val prepared = owner.prepareOutgoingFile(
+            staged.file,
+            staged.mimeType,
+            FileTransferPolicy(),
+            staged.snapshot(),
+            staged::cleanup,
+        )
+            as FileTransferProductOwner.PrepareOutgoingResult.Prepared
+        assertTrue(owner.startPreparedOutgoing(prepared.transfer, canTransferFiles = true) is FileTransferProductOwner.StartOutgoingResult.Started)
+
+        owner.clear(reasonCode = "connection_cleanup")
+
+        assertEquals(0, owner.activeOutgoingTransferCount())
+        assertFalse(staged.stagingDirectory.exists())
+    }
+
+    @Test
     fun `outgoing cancellation notifies finished state and transfer result`() {
         val outgoing = FakeOutgoingTransferStore(id = 108, payload = "cancel-outgoing".toByteArray())
         val owner = owner(outgoing = outgoing)
@@ -1434,7 +1659,7 @@ class FileTransferProductOwnerTest {
             stagingDirectory = ::stagingDirectory,
             pendingOfferGate = gate,
             incomingManagerFactory = FileTransferProductOwner.IncomingManagerFactory { _, _, _ -> store },
-            outgoingTransferFactory = FileTransferProductOwner.OutgoingTransferFactory { _, _, _, _ ->
+            outgoingTransferFactory = FileTransferProductOwner.OutgoingTransferFactory { _, _, _, _, _, _ ->
                 outgoing
             },
         )
@@ -1645,5 +1870,22 @@ class FileTransferProductOwnerTest {
                 stagingFile = staging,
                 sha256 = sha256(payload),
             )
+
+        fun stagedOutgoingFile(
+            displayName: String,
+            payload: ByteArray,
+            mimeType: String = "text/plain",
+        ): StagedOutgoingFile {
+            val directory = stagingDirectory()
+            val file = File(directory, displayName).also { it.writeBytes(payload) }
+            return StagedOutgoingFile(
+                file = file,
+                stagingDirectory = directory,
+                mimeType = mimeType,
+                displayName = displayName,
+                byteLength = payload.size.toLong(),
+                sha256 = sha256(payload),
+            )
+        }
     }
 }

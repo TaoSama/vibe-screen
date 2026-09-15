@@ -1,0 +1,7 @@
+manufacturer=nubia
+model=P0110
+device=pacific
+android_release=16
+sdk=36
+adb_serial=redacted
+evidence_identity=nubia_p0110_pacific
