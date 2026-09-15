@@ -132,9 +132,13 @@ class RealQrPairingStaticContractTest {
             "Internet UI/bootstrap acceptance must require an explicit instrumentation opt-in",
             codeOnly.contains("OPT_IN_ARGUMENT") && codeOnly.contains("assumeTrue("),
         )
+        assertFalse(
+            "Internet UI/bootstrap acceptance must not grant Camera for no-Host lease UX runs",
+            codeOnly.contains("GrantPermissionRule") || codeOnly.contains("cameraPermission"),
+        )
         assertTrue(
-            "The opt-in rule must run before the camera permission rule",
-            codeOnly.contains("RuleChain.outerRule(optInRule).around(cameraPermission)"),
+            "The opt-in rule must remain the outer acceptance rule",
+            codeOnly.contains("RuleChain.outerRule(optInRule)"),
         )
         assertTrue(
             "Internet acceptance must restore Espresso's default failure handler after every test",

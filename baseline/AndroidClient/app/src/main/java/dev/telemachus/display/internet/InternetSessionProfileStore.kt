@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
@@ -26,6 +27,7 @@ import java.io.OutputStreamWriter
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.security.GeneralSecurityException
 import java.util.Base64
 
 /** Non-secret, persisted part of a short-lived Internet session lease. */
@@ -49,6 +51,30 @@ data class StoredInternetSessionProfile(
 ) {
     val identityEpoch: Long
         get() = deviceIdentityEpoch
+}
+
+internal enum class InternetLeaseAdmissionStatus {
+    READY,
+    PROFILE_MISSING,
+    PAIRING_MISSING,
+    STALE_EPOCH,
+    EXPIRED,
+    REVOKED,
+    SECRET_MISSING,
+    INVALID_SECRET,
+    INVALID_PROFILE,
+    INVALID_BINDING,
+}
+
+internal data class InternetLeaseAdmission(
+    val status: InternetLeaseAdmissionStatus,
+    val profile: StoredInternetSessionProfile? = null,
+    val reason: String = "",
+    val hostKeyFingerprint: String? = null,
+    val canRevokeLocal: Boolean = false,
+) {
+    val canConnect: Boolean
+        get() = status == InternetLeaseAdmissionStatus.READY
 }
 
 internal class ImportedInternetSecrets(
@@ -103,6 +129,18 @@ private data class PendingAuthenticatedRevocation(
     val pairingIdentifier: String,
     val reason: String,
 )
+
+private data class InternetLeaseAdmissionPreflight(
+    val admission: InternetLeaseAdmission,
+    val pairing: StoredPairingBinding? = null,
+)
+
+private data class StoredReadResult<T>(
+    val value: T?,
+    val failure: Throwable? = null,
+)
+
+private class MissingInternetCredentialsException : IllegalStateException("Stored Internet credentials are unavailable")
 
 internal object InternetCredentialOwnershipPolicy {
     fun blocksMutation(
@@ -275,31 +313,25 @@ class InternetSessionProfileStore internal constructor(
         }
     }
 
-    fun loadLease(forceRelay: Boolean): InternetProductSessionLease? {
+    fun loadLease(forceRelay: Boolean): InternetProductSessionLease? =
+        loadLease(forceRelay, requiredFreshSessionEpoch = 0L)
+
+    fun loadLease(
+        forceRelay: Boolean,
+        requiredFreshSessionEpoch: Long,
+    ): InternetProductSessionLease? {
         retryDeferredCredentialCleanup()
-        val profile = loadPublicProfile() ?: return null
-        val pairing = loadVerifiedPairingBinding() ?: return null
-        check(profile.pairingIdentifier == pairing.pairingIdentifier && profile.pinnedHostId == pairing.hostIdentity.deviceId) {
-            "Stored Internet lease is not bound to the verified pairing"
+        val preflight = assessLeaseAdmissionPreflight(requiredFreshSessionEpoch)
+        if (preflight.admission.status == InternetLeaseAdmissionStatus.PROFILE_MISSING ||
+            preflight.admission.status == InternetLeaseAdmissionStatus.PAIRING_MISSING ||
+            preflight.admission.status == InternetLeaseAdmissionStatus.SECRET_MISSING
+        ) {
+            return null
         }
-        check(profile.hostIdentityEpoch == pairing.hostIdentity.keyEpoch &&
-            profile.pinnedDeviceId == pairing.localIdentity.deviceId &&
-            profile.leaseDeviceKeyId == pairing.localIdentity.keyId &&
-            profile.deviceIdentityEpoch == pairing.localIdentityEpoch &&
-            profile.transcriptContext.contentEquals(pairing.sessionContext)) {
-            "Stored Internet lease identity binding is invalid"
-        }
-        check(nowUnixSeconds() < profile.expiresAtUnixSeconds) {
-            "Internet session lease has expired; request a fresh lease"
-        }
-        check(!isRevoked(profile.pairingIdentifier)) { "This paired Mac is locally revoked" }
-        val encrypted = secretStore.load(profileSecretName(profile)) ?: return null
-        val secrets =
-            try {
-                InternetSessionProfileCodec.decodeSecrets(encrypted, profile.iceServerUrls.size)
-            } finally {
-                encrypted.fill(0)
-            }
+        check(preflight.admission.canConnect) { preflight.admission.reason }
+        val profile = checkNotNull(preflight.admission.profile)
+        val pairing = checkNotNull(preflight.pairing)
+        val secrets = decodeStoredSecrets(profile)
         val iceServers = mutableListOf<IceServer>()
         var signaling: SignalingConfiguration? = null
         try {
@@ -334,6 +366,212 @@ class InternetSessionProfileStore internal constructor(
             throw failure
         } finally {
             secrets.close()
+        }
+    }
+
+    internal fun assessLeaseAdmission(requiredFreshSessionEpoch: Long): InternetLeaseAdmission =
+        assessLeaseAdmissionPreflight(requiredFreshSessionEpoch).admission
+
+    private fun assessLeaseAdmissionPreflight(requiredFreshSessionEpoch: Long): InternetLeaseAdmissionPreflight {
+        val profileRead = readStoredProfile()
+        val pairingRead = readStoredPairingRecord()
+        val profile = profileRead.value
+        val pairingRecord = pairingRead.value
+        val fingerprint = pairingRecord?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
+        if (profileRead.failure != null) {
+            return InternetLeaseAdmissionPreflight(
+                InternetLeaseAdmission(
+                    InternetLeaseAdmissionStatus.INVALID_PROFILE,
+                    reason = profileRead.failure.message ?: "Stored Internet profile is invalid",
+                    hostKeyFingerprint = fingerprint,
+                    canRevokeLocal = pairingRecord != null,
+                ),
+            )
+        }
+        if (pairingRead.failure != null) {
+            return InternetLeaseAdmissionPreflight(
+                InternetLeaseAdmission(
+                    InternetLeaseAdmissionStatus.INVALID_BINDING,
+                    profile = profile,
+                    reason = pairingRead.failure.message ?: "Stored pairing metadata is invalid",
+                    canRevokeLocal = false,
+                ),
+            )
+        }
+        if (profile == null) {
+            return InternetLeaseAdmissionPreflight(
+                InternetLeaseAdmission(
+                    InternetLeaseAdmissionStatus.PROFILE_MISSING,
+                    reason = "Import a fresh Internet profile before connecting",
+                    hostKeyFingerprint = fingerprint,
+                    canRevokeLocal = pairingRecord != null,
+                ),
+            )
+        }
+        if (pairingRecord == null) {
+            return InternetLeaseAdmissionPreflight(
+                InternetLeaseAdmission(
+                    InternetLeaseAdmissionStatus.PAIRING_MISSING,
+                    profile = profile,
+                    reason = "Complete signed pairing before connecting",
+                    canRevokeLocal = true,
+                ),
+            )
+        }
+        val pairing =
+            when (pairingRecord) {
+                is StoredPairingBinding -> pairingRecord
+                is LegacyStoredPairingBinding -> {
+                    return InternetLeaseAdmissionPreflight(
+                        InternetLeaseAdmission(
+                            InternetLeaseAdmissionStatus.INVALID_BINDING,
+                            profile = profile,
+                            reason = LEGACY_PAIRING_REPAIR_MESSAGE,
+                            hostKeyFingerprint = fingerprint,
+                            canRevokeLocal = true,
+                        ),
+                    )
+                }
+            }
+        fun admitted(
+            status: InternetLeaseAdmissionStatus,
+            reason: String = "",
+        ): InternetLeaseAdmission =
+            InternetLeaseAdmission(
+                status = status,
+                profile = profile,
+                reason = reason,
+                hostKeyFingerprint = fingerprint,
+                canRevokeLocal = true,
+            )
+        if (profile.pairingIdentifier != pairing.pairingIdentifier || profile.pinnedHostId != pairing.hostIdentity.deviceId) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.INVALID_BINDING,
+                    reason = "Stored Internet lease is not bound to the verified pairing",
+                ),
+                pairing,
+            )
+        }
+        if (profile.hostIdentityEpoch != pairing.hostIdentity.keyEpoch ||
+            profile.pinnedDeviceId != pairing.localIdentity.deviceId ||
+            profile.leaseDeviceKeyId != pairing.localIdentity.keyId ||
+            profile.deviceIdentityEpoch != pairing.localIdentityEpoch ||
+            !profile.transcriptContext.contentEquals(pairing.sessionContext)
+        ) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.INVALID_BINDING,
+                    reason = "Stored Internet lease identity binding is invalid",
+                ),
+                pairing,
+            )
+        }
+        if (isRevoked(profile.pairingIdentifier)) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.REVOKED,
+                    reason = "This paired Mac is locally revoked",
+                ),
+                pairing,
+            )
+        }
+        if (profile.authoritativeSessionEpoch <= requiredFreshSessionEpoch) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.STALE_EPOCH,
+                    reason = "Import a lease newer than epoch $requiredFreshSessionEpoch",
+                ),
+                pairing,
+            )
+        }
+        if (nowUnixSeconds() >= profile.expiresAtUnixSeconds) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.EXPIRED,
+                    reason = "Internet session lease has expired; request a fresh lease",
+                ),
+                pairing,
+            )
+        }
+        try {
+            validateStoredSecrets(profile)
+        } catch (failure: MissingInternetCredentialsException) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.SECRET_MISSING,
+                    reason = failure.message.orEmpty(),
+                ),
+                pairing,
+            )
+        } catch (failure: IllegalArgumentException) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.INVALID_SECRET,
+                    reason = failure.message ?: "Stored Internet credentials are invalid",
+                ),
+                pairing,
+            )
+        } catch (failure: IllegalStateException) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.INVALID_SECRET,
+                    reason = failure.message ?: "Stored Internet credentials are invalid",
+                ),
+                pairing,
+            )
+        } catch (failure: GeneralSecurityException) {
+            return InternetLeaseAdmissionPreflight(
+                admitted(
+                    InternetLeaseAdmissionStatus.INVALID_SECRET,
+                    reason = "Stored Internet credentials are invalid",
+                ),
+                pairing,
+            )
+        }
+        return InternetLeaseAdmissionPreflight(
+            admitted(InternetLeaseAdmissionStatus.READY),
+            pairing,
+        )
+    }
+
+    private fun validateStoredSecrets(profile: StoredInternetSessionProfile) {
+        decodeStoredSecrets(profile).use { secrets ->
+            require(secrets.signalingToken.byteLength() > 0) {
+                "Stored Internet credentials are malformed"
+            }
+        }
+    }
+
+    private fun readStoredProfile(): StoredReadResult<StoredInternetSessionProfile> =
+        try {
+            StoredReadResult(loadPublicProfile())
+        } catch (failure: IllegalArgumentException) {
+            StoredReadResult(null, failure)
+        } catch (failure: IllegalStateException) {
+            StoredReadResult(null, failure)
+        } catch (failure: JsonParseException) {
+            StoredReadResult(null, failure)
+        }
+
+    private fun readStoredPairingRecord(): StoredReadResult<StoredPairingRecord> =
+        try {
+            StoredReadResult(loadPairingRecord())
+        } catch (failure: IllegalArgumentException) {
+            StoredReadResult(null, failure)
+        } catch (failure: IllegalStateException) {
+            StoredReadResult(null, failure)
+        } catch (failure: JsonParseException) {
+            StoredReadResult(null, failure)
+        }
+
+    private fun decodeStoredSecrets(profile: StoredInternetSessionProfile): ImportedInternetSecrets {
+        val encrypted = secretStore.load(profileSecretName(profile))
+            ?: throw MissingInternetCredentialsException()
+        return try {
+            InternetSessionProfileCodec.decodeSecrets(encrypted, profile.iceServerUrls.size)
+        } finally {
+            encrypted.fill(0)
         }
     }
 
@@ -381,6 +619,31 @@ class InternetSessionProfileStore internal constructor(
     fun verifiedLocalIdentityEpoch(): Long? = loadPairingRecord()?.localIdentityEpoch
 
     fun verifiedHostKeyFingerprint(): String? = loadPairingRecord()?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
+
+    fun credentialMutationPairingIdentifier(): String? =
+        safeLoadPairingIdentifier() ?: safeLoadPublicProfile()?.pairingIdentifier
+
+    private fun safeLoadPairingIdentifier(): String? =
+        try {
+            loadPairingRecord()?.pairingIdentifier
+        } catch (failure: IllegalArgumentException) {
+            null
+        } catch (failure: IllegalStateException) {
+            null
+        } catch (failure: JsonParseException) {
+            null
+        }
+
+    private fun safeLoadPublicProfile(): StoredInternetSessionProfile? =
+        try {
+            loadPublicProfile()
+        } catch (failure: IllegalArgumentException) {
+            null
+        } catch (failure: IllegalStateException) {
+            null
+        } catch (failure: JsonParseException) {
+            null
+        }
 
     fun markRevoked(pairingIdentifier: String) {
         InternetProductAdmissionGate.withLock {
@@ -449,15 +712,18 @@ class InternetSessionProfileStore internal constructor(
 
     fun hasDurableCredentialMutationBlock(targetPairingIdentifier: String?): Boolean =
         InternetProductAdmissionGate.withLock {
-            val verifiedPairingIdentifier = loadPairingRecord()?.pairingIdentifier
-            val profilePairingIdentifier = loadPublicProfile()?.pairingIdentifier
+            val verifiedPairingIdentifier = safeLoadPairingIdentifier()
+            val profilePairingIdentifier = safeLoadPublicProfile()?.pairingIdentifier
+            val malformedLocalState =
+                readStoredPairingRecord().failure != null ||
+                    readStoredProfile().failure != null
             InternetCredentialOwnershipPolicy.blocksMutation(
                 targetPairingIdentifier = targetPairingIdentifier,
                 verifiedPairingIdentifier = verifiedPairingIdentifier,
                 profilePairingIdentifier = profilePairingIdentifier,
                 revokedPairingIdentifier = preferences.getString(REVOKED_PAIRING_KEY, null),
                 hasPendingAuthenticatedRevocation = loadPendingAuthenticatedRevocation() != null,
-                hasPendingRevocationCleanup = loadPendingRevocationCleanup() != null,
+                hasPendingRevocationCleanup = malformedLocalState || loadPendingRevocationCleanup() != null,
             )
         }
 

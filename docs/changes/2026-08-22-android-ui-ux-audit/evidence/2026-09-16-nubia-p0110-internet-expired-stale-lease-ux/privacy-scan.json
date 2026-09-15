@@ -1,0 +1,347 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4819,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "21ce4b8ac68a4d23d321904fcd3f64ba3e8470f74d741b1c177ee8988f951915"
+    },
+    {
+      "bytes": 520,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-test-results/debug/P0110 - 16/logcat-dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest-expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation.txt",
+      "result": "pass",
+      "sha256": "5ea779941edf793cb581b1086c1fb23502b1e679fb3f620ddc03680600b97603"
+    },
+    {
+      "bytes": 1954,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-test-results/debug/P0110 - 16/test-result.textproto",
+      "result": "pass",
+      "sha256": "ab50f982cd3c8a0ff3b50b21fbd70d372ab6d66c6a5691d98564184ce42a1123"
+    },
+    {
+      "bytes": 898,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-test-results/debug/P0110 - 16/testlog/test-results.log",
+      "result": "pass",
+      "sha256": "6b24cb02028f1b1ff2494db7874b7d9f4eb04dfd2c264a8880166c780fe3a013"
+    },
+    {
+      "bytes": 1567,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-test-results/debug/P0110 - 16/utp.0.log",
+      "result": "pass",
+      "sha256": "971f5c976bfd73fd26b13d6d14060a63bc0ee9a3dc4aa372338bf46c8496de42"
+    },
+    {
+      "bytes": 607,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-test-results/debug/TEST-P0110 - 16-_app-.xml",
+      "result": "pass",
+      "sha256": "492862ea6725dfebe16a79ce6f5c9e841982729e97252c9c59a0bc11ad0dce42"
+    },
+    {
+      "bytes": 1,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/adb-reverse-after.txt",
+      "result": "pass",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 1,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/adb-reverse-before.txt",
+      "result": "pass",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 1,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/adb-reverse-final.txt",
+      "result": "pass",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 51,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/camera-appops-after-uninstall.txt",
+      "result": "pass",
+      "sha256": "4c3bc96aba9895afa99fe5d09d6eab04da8a23c6550d9d5ef21cbeb29ec0c701"
+    },
+    {
+      "bytes": 51,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/camera-appops-before-uninstall.txt",
+      "result": "pass",
+      "sha256": "4c3bc96aba9895afa99fe5d09d6eab04da8a23c6550d9d5ef21cbeb29ec0c701"
+    },
+    {
+      "bytes": 5094,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/connected-expired-stale-lease-ux-instrumentation.log",
+      "result": "pass",
+      "sha256": "850b305a4b22f0e425c6f68496220e257462271cd7197bdb029c1436c27899bf"
+    },
+    {
+      "bytes": 7,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/pm-clear-after.txt",
+      "result": "pass",
+      "sha256": "17cda257f89911e91580428928349f979e90a6eb6f83ce309f2dfb6bf9e4f729"
+    },
+    {
+      "bytes": 7,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/pm-clear-before.txt",
+      "result": "pass",
+      "sha256": "17cda257f89911e91580428928349f979e90a6eb6f83ce309f2dfb6bf9e4f729"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/pm-list-after-uninstall.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/runtime-permissions-before-uninstall.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/tcp-54321-listener-after.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/tcp-54321-listener-before.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/tcp-54321-listener-final.txt",
+      "result": "pass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 39,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/uninstall-app.txt",
+      "result": "pass",
+      "sha256": "f9646c55ffe6e79f6859da172df98883a62129949ea6c4730be71346d4659410"
+    },
+    {
+      "bytes": 39,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "logs/uninstall-test.txt",
+      "result": "pass",
+      "sha256": "f9646c55ffe6e79f6859da172df98883a62129949ea6c4730be71346d4659410"
+    },
+    {
+      "bytes": 153,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata/adb-devices.txt",
+      "result": "pass",
+      "sha256": "0036b640902cc8eb8b1e1a8b001aaffb557a79008e880ef4bb45d062b4db53b2"
+    },
+    {
+      "bytes": 97,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata/device-identity.txt",
+      "result": "pass",
+      "sha256": "35dc04e5be19583864e26a68e76cc7a038fce35eb53740877e189c051559b410"
+    },
+    {
+      "bytes": 1033,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata/git-status-before-run.txt",
+      "result": "pass",
+      "sha256": "c212ec7267f1fdf1bdbfd0737c9231a2866880829c53023e153a89d9626b85d5"
+    },
+    {
+      "bytes": 41,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "metadata/source-head-before-run.txt",
+      "result": "pass",
+      "sha256": "edeb84ae71bed7c5295b1070c9817a25c0ffcb638ff73a475baffe898af202ea"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-23.1",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

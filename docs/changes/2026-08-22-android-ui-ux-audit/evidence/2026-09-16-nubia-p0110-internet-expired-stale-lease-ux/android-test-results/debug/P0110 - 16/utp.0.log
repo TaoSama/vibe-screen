@@ -1,0 +1,33 @@
+INFO: Constructing runner from config.
+INFO: Configuring Android Instrumentation driver: android_instrumentation_runtime {
+  instrumentation_info {
+    app_package: "dev.telemachus.display"
+    test_package: "dev.telemachus.display.test"
+    test_runner_class: "androidx.test.runner.AndroidJUnitRunner"
+  }
+  instrumentation_args {
+    args_map {
+      key: "additionalTestOutputDir"
+      value: "/sdcard/Android/media/dev.telemachus.display/additional_test_output"
+    }
+    args_map {
+      key: "class"
+      value: "dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest#expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation"
+    }
+    args_map {
+      key: "vibeScreenInternetExpiredLeaseUxAcceptance"
+      value: "true"
+    }
+  }
+}
+am_instrument_timeout: 31536000
+
+INFO: No installables found in test fixture. Nothing to install.
+INFO: Installing [<repo>/baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk] on device REDACTED_P0110_USB_SERIAL.
+INFO: Installing [<repo>/baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk] on device REDACTED_P0110_USB_SERIAL.
+INFO: Start logcat streaming.
+INFO: Running Android Instrumentation driver.
+INFO: Stop logcat streaming.
+INFO: Uninstalling dev.telemachus.display for device REDACTED_P0110_USB_SERIAL.
+INFO: Uninstalling dev.telemachus.display.test for device REDACTED_P0110_USB_SERIAL.
+INFO: Execute dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest.expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation: PASSED

@@ -1,0 +1,26 @@
+21ce4b8ac68a4d23d321904fcd3f64ba3e8470f74d741b1c177ee8988f951915  ./README.md
+5ea779941edf793cb581b1086c1fb23502b1e679fb3f620ddc03680600b97603  ./android-test-results/debug/P0110 - 16/logcat-dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest-expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation.txt
+ab50f982cd3c8a0ff3b50b21fbd70d372ab6d66c6a5691d98564184ce42a1123  ./android-test-results/debug/P0110 - 16/test-result.textproto
+6b24cb02028f1b1ff2494db7874b7d9f4eb04dfd2c264a8880166c780fe3a013  ./android-test-results/debug/P0110 - 16/testlog/test-results.log
+971f5c976bfd73fd26b13d6d14060a63bc0ee9a3dc4aa372338bf46c8496de42  ./android-test-results/debug/P0110 - 16/utp.0.log
+492862ea6725dfebe16a79ce6f5c9e841982729e97252c9c59a0bc11ad0dce42  ./android-test-results/debug/TEST-P0110 - 16-_app-.xml
+01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./logs/adb-reverse-after.txt
+01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./logs/adb-reverse-before.txt
+01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  ./logs/adb-reverse-final.txt
+4c3bc96aba9895afa99fe5d09d6eab04da8a23c6550d9d5ef21cbeb29ec0c701  ./logs/camera-appops-after-uninstall.txt
+4c3bc96aba9895afa99fe5d09d6eab04da8a23c6550d9d5ef21cbeb29ec0c701  ./logs/camera-appops-before-uninstall.txt
+850b305a4b22f0e425c6f68496220e257462271cd7197bdb029c1436c27899bf  ./logs/connected-expired-stale-lease-ux-instrumentation.log
+17cda257f89911e91580428928349f979e90a6eb6f83ce309f2dfb6bf9e4f729  ./logs/pm-clear-after.txt
+17cda257f89911e91580428928349f979e90a6eb6f83ce309f2dfb6bf9e4f729  ./logs/pm-clear-before.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/pm-list-after-uninstall.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/runtime-permissions-before-uninstall.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/tcp-54321-listener-after.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/tcp-54321-listener-before.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./logs/tcp-54321-listener-final.txt
+f9646c55ffe6e79f6859da172df98883a62129949ea6c4730be71346d4659410  ./logs/uninstall-app.txt
+f9646c55ffe6e79f6859da172df98883a62129949ea6c4730be71346d4659410  ./logs/uninstall-test.txt
+0036b640902cc8eb8b1e1a8b001aaffb557a79008e880ef4bb45d062b4db53b2  ./metadata/adb-devices.txt
+35dc04e5be19583864e26a68e76cc7a038fce35eb53740877e189c051559b410  ./metadata/device-identity.txt
+c212ec7267f1fdf1bdbfd0737c9231a2866880829c53023e153a89d9626b85d5  ./metadata/git-status-before-run.txt
+edeb84ae71bed7c5295b1070c9817a25c0ffcb638ff73a475baffe898af202ea  ./metadata/source-head-before-run.txt
+fcffca6c70291a80b711d46733d5cee7b12af28c38744325a10c41c87bfe8138  ./privacy-scan.json
