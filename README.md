@@ -497,7 +497,13 @@ including a 2026-09-08 refresh that expands the smoke to 8 tests for ordinary
 text, instrumentation-argument round trips, Unicode/256 KiB and 320 KiB
 foreground text, empty-clipboard clearing, non-text `ClipData`, and first-item
 non-text multi-item handling. The fail-closed gate now rejects zero-test,
-summary-only, and older 5-test Android smoke logs. The gate still requires
+summary-only, and older 5-test Android smoke logs. A 2026-09-15 P0110 refresh
+adds an Android system-write cap at the proven 320 KiB boundary: larger valid
+Protocol v1 offers are discarded before body request or ClipboardManager write,
+while the negotiated wire ceiling remains 1 MiB and Android-to-Mac sends are not
+artificially narrowed. The focused device suite passes 9/9, including policy-only
+512 KiB and 1 MiB rejection without attempting the known unsafe Binder writes.
+The gate still requires
 retained product evidence for exact Android ClipboardManager and macOS
 NSPasteboard endpoints, verified session epoch, change ID, SHA-256 digest,
 bounded byte length, distinct markers for both transfer directions, and
