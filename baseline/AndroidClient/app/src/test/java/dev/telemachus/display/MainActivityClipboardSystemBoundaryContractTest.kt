@@ -11,6 +11,7 @@ class MainActivityClipboardSystemBoundaryContractTest {
         val source = mainActivitySource()
         val begin = extractMethod(source, "private fun beginSendSharedText")
         val send = extractMethod(source, "private fun sendSharedText")
+        val completePending = extractMethod(source, "private fun completePendingSharedTextIntent")
         val lanDialog = begin.substring(begin.indexOf("if (prefs.connectionMode == ConnectionMode.WIRELESS)"))
 
         assertFalse(begin.contains("ClipboardManager") || begin.contains("primaryClip") || begin.contains("setPrimaryClip"))
@@ -22,14 +23,33 @@ class MainActivityClipboardSystemBoundaryContractTest {
         assertTrue(begin.contains("prefs.connectionMode == ConnectionMode.WIRELESS"))
         assertTrue(begin.contains("LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState)"))
         assertTrue(begin.contains("setPositiveButton(R.string.clipboard_lan_confirm_action"))
-        assertBefore(lanDialog, "setPositiveButton(R.string.clipboard_lan_confirm_action", "markShareIntentConsumed(shareIntentToken)")
-        assertTrue(lanDialog.substringBefore("setPositiveButton").contains("markShareIntentConsumed").not())
+        assertTrue(lanDialog.contains("if (completePendingSharedTextIntent(shareIntentToken))"))
         assertTrue(lanDialog.contains("setNegativeButton(R.string.cancel)"))
         val cancelListener = lanDialog.substring(lanDialog.indexOf("setOnCancelListener"))
-        assertTrue(cancelListener.contains("markShareIntentConsumed(shareIntentToken)"))
+        assertTrue(cancelListener.contains("completePendingSharedTextIntent(shareIntentToken)"))
+        assertBefore(completePending, "pendingSharedTextIntent?.token != token", "pendingSharedTextIntent = null")
+        assertBefore(completePending, "pendingSharedTextIntent?.token != token", "markShareIntentConsumed(token)")
         assertBefore(send, "isCurrentSession(client, generation)", "client.offerClipboard(text)")
         assertBefore(send, "client.canSendClipboard", "client.offerClipboard(text)")
         assertBefore(send, "ClipboardMenuPolicy.isWithinSizeLimit", "client.offerClipboard(text)")
+    }
+
+    @Test
+    fun newerLanShareTerminatesPreviousPendingIntentAndStaleCallbacksCannotOwnIt() {
+        val source = mainActivitySource()
+        val begin = extractMethod(source, "private fun beginSendSharedText")
+        val resolvePending = extractMethod(source, "private fun resolvePendingSharedTextBefore")
+        val completePending = extractMethod(source, "private fun completePendingSharedTextIntent")
+
+        assertBefore(begin, "resolvePendingSharedTextBefore(shareIntentToken)", "managedClipboardAllowed")
+        assertTrue(resolvePending.contains("pending.token == nextToken"))
+        assertTrue(resolvePending.contains("return pendingSharedTextDialog != null"))
+        assertBefore(resolvePending, "setOnCancelListener(null)", "dismiss()")
+        assertBefore(resolvePending, "dismiss()", "pendingSharedTextIntent = null")
+        assertBefore(resolvePending, "pendingSharedTextIntent = null", "markShareIntentConsumed(pending.token)")
+        assertTrue(completePending.contains("if (pendingSharedTextIntent?.token != token) return false"))
+        assertTrue(begin.contains("if (completePendingSharedTextIntent(shareIntentToken))"))
+        assertBefore(begin, "if (completePendingSharedTextIntent(shareIntentToken))", "sendSharedText(client, generation, text)")
     }
 
     @Test

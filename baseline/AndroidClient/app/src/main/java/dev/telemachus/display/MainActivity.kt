@@ -4414,6 +4414,7 @@ class MainActivity : AppCompatActivity() {
         text: String,
         shareIntentToken: String,
     ) {
+        if (resolvePendingSharedTextBefore(shareIntentToken)) return
         if (!managedClipboardAllowed) {
             markShareIntentConsumed(shareIntentToken)
             showDedupedToast(R.string.clipboard_share_policy_disabled, Toast.LENGTH_LONG)
@@ -4481,26 +4482,41 @@ class MainActivity : AppCompatActivity() {
                         ),
                     )
                     .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
-                        pendingSharedTextIntent = null
-                        pendingSharedTextDialog = null
-                        markShareIntentConsumed(shareIntentToken)
-                        sendSharedText(client, generation, text)
+                        if (completePendingSharedTextIntent(shareIntentToken)) {
+                            sendSharedText(client, generation, text)
+                        }
                     }
                     .setNegativeButton(R.string.cancel) { _, _ ->
-                        pendingSharedTextIntent = null
-                        pendingSharedTextDialog = null
-                        markShareIntentConsumed(shareIntentToken)
+                        completePendingSharedTextIntent(shareIntentToken)
                     }
                     .setOnCancelListener {
-                        pendingSharedTextIntent = null
-                        pendingSharedTextDialog = null
-                        markShareIntentConsumed(shareIntentToken)
+                        completePendingSharedTextIntent(shareIntentToken)
                     },
             ).also(DialogActionButtonLayoutApplier::apply)
             return
         }
         markShareIntentConsumed(shareIntentToken)
         sendSharedText(client, generation, text)
+    }
+
+    private fun resolvePendingSharedTextBefore(nextToken: String): Boolean {
+        val pending = pendingSharedTextIntent ?: return false
+        if (pending.token == nextToken) return pendingSharedTextDialog != null
+
+        pendingSharedTextDialog?.setOnCancelListener(null)
+        pendingSharedTextDialog?.dismiss()
+        pendingSharedTextDialog = null
+        pendingSharedTextIntent = null
+        markShareIntentConsumed(pending.token)
+        return false
+    }
+
+    private fun completePendingSharedTextIntent(token: String): Boolean {
+        if (pendingSharedTextIntent?.token != token) return false
+        pendingSharedTextIntent = null
+        pendingSharedTextDialog = null
+        markShareIntentConsumed(token)
+        return true
     }
 
     private fun resumePendingSharedTextIfReady() {
