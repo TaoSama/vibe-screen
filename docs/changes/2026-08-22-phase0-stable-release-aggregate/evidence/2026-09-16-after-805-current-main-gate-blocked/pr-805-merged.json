@@ -1,0 +1,42 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjExMzkyODI5",
+    "is_bot": false,
+    "login": "TaoSama",
+    "name": "Wentao Lu"
+  },
+  "baseRefName": "main",
+  "body": "## Summary\n- stop revoking Camera from inside the instrumentation process, which Android 16 terminates with SIGKILL\n- add a serial-scoped Make target that performs permission and package cleanup only after instrumentation exits\n- fail closed when the app or test package is already installed, preserving existing app data\n- add a JVM contract preventing in-process revocation and unsafe cleanup regressions\n\n## Verification\n- `make baseline-android-camera-recovery-device-test ANDROID_CAMERA_RECOVERY_SERIAL=<redacted-adb-serial>`: 1/1 passed on Nubia P0110/pacific Android 16\n- post-run: app/test packages absent, Camera app-op has no UID, adb reverse empty, no TCP 54321 listener\n- preinstalled-app safety probe: target exits 2 and leaves the installed app present\n- `make baseline-android-check`\n- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy -v`\n\n## Scope\nNo macOS Host was started and no macOS Screen Recording, Accessibility, or Microphone permission was requested. This fixes the Android test lifecycle; it does not close any Host-backed Phase 0 gate.\n\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n## Summary by CodeRabbit\n\n* **New Features**\n  * Added an opt-in Android camera-permission recovery device test with explicit device selection.\n  * Added safeguards to avoid replacing existing app or test packages.\n  * Added automatic cleanup after successful or failed test runs.\n  * Improved package checks so device-query failures are reported instead of hidden.\n\n* **Tests**\n  * Added validation covering host-side permission revocation, serial-scoped execution, package preservation, and cleanup behavior.\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+  "closedAt": "2026-09-16T14:12:15Z",
+  "files": [
+    {
+      "path": "Makefile",
+      "additions": 29,
+      "deletions": 0,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/InternetCameraPermissionRecoveryInstrumentedTest.kt",
+      "additions": 0,
+      "deletions": 7,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/InternetCameraPermissionRecoveryInstrumentationContractTest.kt",
+      "additions": 58,
+      "deletions": 0,
+      "changeType": "ADDED"
+    }
+  ],
+  "headRefName": "codex/android-camera-recovery-test-cleanup",
+  "headRefOid": "07ff59cf7c866d3444b41b4ae736582044c1bb65",
+  "isDraft": false,
+  "mergeCommit": {
+    "oid": "e5d8c6fd5089eaaf1d36eab30a439264de53688b"
+  },
+  "mergedAt": "2026-09-16T14:12:15Z",
+  "number": 805,
+  "state": "MERGED",
+  "title": "fix(android): clean up camera recovery tests after instrumentation",
+  "url": "https://github.com/TaoSama/vibe-screen/pull/805"
+}
