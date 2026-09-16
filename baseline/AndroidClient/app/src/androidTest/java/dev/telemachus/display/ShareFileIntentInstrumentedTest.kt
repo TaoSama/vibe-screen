@@ -18,6 +18,33 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ShareFileIntentInstrumentedTest {
     @Test
+    fun noHostTextShareIsConsumedWithoutCreatingAFileDraftAndStaysConsumedAfterRecreation() {
+        val sharedText = "Vibe Screen private text share smoke"
+        val intent =
+            Intent(Intent.ACTION_SEND)
+                .setClassName("dev.telemachus.display", "dev.telemachus.display.MainActivity")
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, sharedText)
+                .putExtra("auto_connect", true)
+
+        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { activity ->
+                assertEquals(View.GONE, activity.findViewById<View>(R.id.pendingSharedFileContainer).visibility)
+                assertFalse(automaticUsbConnect(activity))
+                assertConsumedTextTokenIsPrivate(activity, sharedText)
+            }
+
+            scenario.recreate()
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { activity ->
+                assertEquals(View.GONE, activity.findViewById<View>(R.id.pendingSharedFileContainer).visibility)
+                assertConsumedTextTokenIsPrivate(activity, sharedText)
+            }
+        }
+    }
+
+    @Test
     fun noHostShareRemainsPendingWithoutReadingContentUri() {
         ShareFileIntentTestProvider.reset()
         ActivityScenario.launch<MainActivity>(shareIntent()).use { scenario ->
@@ -173,6 +200,17 @@ class ShareFileIntentInstrumentedTest {
         val field = MainActivity::class.java.getDeclaredField("automaticUsbConnect")
         field.isAccessible = true
         return field.getBoolean(activity)
+    }
+
+    private fun assertConsumedTextTokenIsPrivate(
+        activity: MainActivity,
+        sharedText: String,
+    ) {
+        val field = MainActivity::class.java.getDeclaredField("consumedShareIntentTokenForState")
+        field.isAccessible = true
+        val token = field.get(activity) as? String
+        assertTrue("Text share must be marked consumed", !token.isNullOrEmpty())
+        assertFalse("Consumed state must not retain shared plaintext", requireNotNull(token).contains(sharedText))
     }
 
     private fun assertPendingShare(activity: MainActivity) {

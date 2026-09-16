@@ -133,6 +133,11 @@ private class PendingSharedFileIntent(
     val mimeType: String = mimeType.trim()
 }
 
+private data class PendingSharedTextIntent(
+    val text: String,
+    val token: String,
+)
+
 private data class PendingIncomingFileExport(
     val source: Uri,
     val displayName: String,
@@ -345,12 +350,15 @@ class MainActivity : AppCompatActivity() {
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
     private var pendingSharedFileIntent: PendingSharedFileIntent? = null
+    private var pendingSharedTextIntent: PendingSharedTextIntent? = null
+    private var pendingSharedTextDialog: androidx.appcompat.app.AlertDialog? = null
     private var recentIncomingFile: PendingIncomingFileExport? = null
     private var pendingIncomingFileExport: PendingIncomingFileExport? = null
     @Volatile private var incomingFileRecoveryLoadPending = true
     @Volatile private var pendingIncomingFileRecovery: RecoveredIncomingFile? = null
     private var incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
     private var restoredConsumedShareIntentToken: String? = null
+    private var restoredPendingSharedTextToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
     private var revealOnlyTouchGestureActive = false
@@ -444,6 +452,7 @@ class MainActivity : AppCompatActivity() {
         setupModeToggle()
         setupWirelessController()
         restoredConsumedShareIntentToken = savedInstanceState?.getString(STATE_CONSUMED_SHARE_INTENT_TOKEN)
+        restoredPendingSharedTextToken = savedInstanceState?.getString(STATE_PENDING_SHARED_TEXT_TOKEN)
         restorePendingSharedFileIntent(savedInstanceState)
         restoreRecentIncomingFile(savedInstanceState)
         restorePendingIncomingFileExport(savedInstanceState)
@@ -467,6 +476,7 @@ class MainActivity : AppCompatActivity() {
         outState.putString(STATE_INTERNET_CAMERA_PERMISSION_PANEL, internetCameraPermissionPanelState.name)
         outState.putBoolean(STATE_INTERNET_CAMERA_SETTINGS_PENDING, internetCameraSettingsReturnPending)
         consumedShareIntentTokenForState?.let { outState.putString(STATE_CONSUMED_SHARE_INTENT_TOKEN, it) }
+        pendingSharedTextIntent?.let { outState.putString(STATE_PENDING_SHARED_TEXT_TOKEN, it.token) }
         pendingSharedFileIntent?.let { pending ->
             outState.putString(STATE_PENDING_SHARED_FILE_URI, pending.uri.toString())
             outState.putString(STATE_PENDING_SHARED_FILE_MIME_TYPE, pending.mimeType)
@@ -492,6 +502,7 @@ class MainActivity : AppCompatActivity() {
         deviceHealthMonitor.start()
         accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         reconcileTouchExplorationState(accessibilityManager.isTouchExplorationEnabled)
+        resumePendingSharedTextIfReady()
         mainDiag("lifecycle foreground connected=$isConnected")
         val scannerLaunched =
             ::wirelessController.isInitialized &&
@@ -533,6 +544,9 @@ class MainActivity : AppCompatActivity() {
             refreshControl = false,
             clearStagedFile = activeOutgoingFileTransfer == null && !pendingOutgoingFileSubmissionInFlight,
         )
+        pendingSharedTextDialog?.setOnCancelListener(null)
+        pendingSharedTextDialog?.dismiss()
+        pendingSharedTextDialog = null
         fileTransferErrorDialog?.dismiss()
         fileTransferErrorDialog = null
         applyStreamingWindowState(connected = isConnected, foreground = false)
@@ -3265,6 +3279,16 @@ class MainActivity : AppCompatActivity() {
                         token = token,
                     ),
                 )
+            is ShareFileIntentDecision.Text -> {
+                if (token == restoredPendingSharedTextToken) {
+                    restoredPendingSharedTextToken = null
+                    pendingSharedTextIntent = PendingSharedTextIntent(decision.text, token)
+                    resumePendingSharedTextIfReady()
+                } else {
+                    restoredPendingSharedTextToken = null
+                    beginSendSharedText(decision.text, token)
+                }
+            }
             is ShareFileIntentDecision.Rejected -> {
                 markShareIntentConsumed(token)
                 mainDiag("share file intent rejected: ${decision.reason}")
@@ -4383,6 +4407,123 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         return sendLocalClipboard(client, generation)
+    }
+
+    /** Sends text supplied by an explicit Android share without touching ClipboardManager. */
+    private fun beginSendSharedText(
+        text: String,
+        shareIntentToken: String,
+    ) {
+        if (!managedClipboardAllowed) {
+            markShareIntentConsumed(shareIntentToken)
+            showDedupedToast(R.string.clipboard_share_policy_disabled, Toast.LENGTH_LONG)
+            return
+        }
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            val session = internetSession
+            val generation = productSessionCoordinator.currentInternetGeneration()
+            if (session == null ||
+                generation <= 0L ||
+                !productSessionCoordinator.acceptsInternetSession(generation, session) ||
+                session.state != InternetProductSessionState.ACTIVE ||
+                !session.canSendClipboard()
+            ) {
+                markShareIntentConsumed(shareIntentToken)
+                showDedupedToast(R.string.clipboard_share_unavailable, Toast.LENGTH_LONG)
+                return
+            }
+            if (!ClipboardMenuPolicy.isWithinSizeLimit(text, session.negotiatedMaxClipboardBytes())) {
+                markShareIntentConsumed(shareIntentToken)
+                showDedupedToast(R.string.clipboard_too_large, Toast.LENGTH_LONG)
+                return
+            }
+            markShareIntentConsumed(shareIntentToken)
+            val sent =
+                productSessionCoordinator.acceptsInternetSession(generation, session) &&
+                    session.state == InternetProductSessionState.ACTIVE &&
+                    session.canSendClipboard() &&
+                    session.offerClipboard(text)
+            showDedupedToast(if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed)
+            return
+        }
+
+        val client = streamClient
+        val generation = activeSessionGeneration
+        if (client == null || !isCurrentSession(client, generation) || !client.canSendClipboard) {
+            markShareIntentConsumed(shareIntentToken)
+            showDedupedToast(R.string.clipboard_share_unavailable, Toast.LENGTH_LONG)
+            return
+        }
+        if (!ClipboardMenuPolicy.isWithinSizeLimit(text, client.negotiatedMaxClipboardBytes)) {
+            markShareIntentConsumed(shareIntentToken)
+            showDedupedToast(R.string.clipboard_too_large, Toast.LENGTH_LONG)
+            return
+        }
+        if (prefs.connectionMode == ConnectionMode.WIRELESS) {
+            pendingSharedTextIntent = PendingSharedTextIntent(text, shareIntentToken)
+            pendingSharedTextDialog = showImmersiveDialog(
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.clipboard_lan_confirm_title)
+                    .setView(
+                        clipboardConfirmationView(
+                            ClipboardConfirmationDetails(
+                                introResource = LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState),
+                                directionResource = R.string.clipboard_confirmation_send_direction,
+                                protectionResource = clipboardProtectionResource(client),
+                                sizeText = getString(
+                                    R.string.clipboard_confirmation_size_format,
+                                    text.length.toString(),
+                                    readableByteCount(text.toByteArray(Charsets.UTF_8).size.toLong()),
+                                ),
+                                preview = clipboardPreview(text),
+                                noteText = getString(R.string.clipboard_confirmation_shared_text_note),
+                            ),
+                        ),
+                    )
+                    .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
+                        pendingSharedTextIntent = null
+                        pendingSharedTextDialog = null
+                        markShareIntentConsumed(shareIntentToken)
+                        sendSharedText(client, generation, text)
+                    }
+                    .setNegativeButton(R.string.cancel) { _, _ ->
+                        pendingSharedTextIntent = null
+                        pendingSharedTextDialog = null
+                        markShareIntentConsumed(shareIntentToken)
+                    }
+                    .setOnCancelListener {
+                        pendingSharedTextIntent = null
+                        pendingSharedTextDialog = null
+                        markShareIntentConsumed(shareIntentToken)
+                    },
+            ).also(DialogActionButtonLayoutApplier::apply)
+            return
+        }
+        markShareIntentConsumed(shareIntentToken)
+        sendSharedText(client, generation, text)
+    }
+
+    private fun resumePendingSharedTextIfReady() {
+        val pending = pendingSharedTextIntent ?: return
+        if (!isInForeground || pendingSharedTextDialog != null || prefs.connectionMode != ConnectionMode.WIRELESS) return
+        val client = streamClient ?: return
+        val generation = activeSessionGeneration
+        if (!managedClipboardAllowed || !isCurrentSession(client, generation) || !client.canSendClipboard) return
+        beginSendSharedText(pending.text, pending.token)
+    }
+
+    private fun sendSharedText(
+        client: StreamClient,
+        generation: Long,
+        text: String,
+    ) {
+        val sent =
+            managedClipboardAllowed &&
+                isCurrentSession(client, generation) &&
+                client.canSendClipboard &&
+                ClipboardMenuPolicy.isWithinSizeLimit(text, client.negotiatedMaxClipboardBytes) &&
+                client.offerClipboard(text)
+        showDedupedToast(if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed)
     }
 
     /** Reads the system clipboard only after the transport-specific approval. */
@@ -6069,6 +6210,7 @@ class MainActivity : AppCompatActivity() {
                     refreshClipboardControl()
                     refreshFileTransferControl()
                     refreshPendingSharedFileUi()
+                    resumePendingSharedTextIfReady()
                     // For wireless mode, transition controller to CONNECTED here —
                     // not in MainActivity.connectWireless's coroutine after the
                     // receive loop returns (that runs AFTER disconnect, causing
@@ -7193,6 +7335,7 @@ class MainActivity : AppCompatActivity() {
             setStreamingWindowState(false)
         }
         refreshPendingSharedFileUi()
+        if (state == InternetProductSessionState.ACTIVE) resumePendingSharedTextIfReady()
         refreshTransferReadinessInSettings()
         refreshAudioReadinessInSettings()
     }
@@ -8563,6 +8706,7 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_INTERNET_CAMERA_PERMISSION_PANEL = "internet_camera_permission_panel"
         private const val STATE_INTERNET_CAMERA_SETTINGS_PENDING = "internet_camera_settings_pending"
         private const val STATE_CONSUMED_SHARE_INTENT_TOKEN = "consumed_share_intent_token"
+        private const val STATE_PENDING_SHARED_TEXT_TOKEN = "pending_shared_text_token"
         private const val STATE_PENDING_SHARED_FILE_URI = "pending_shared_file_uri"
         private const val STATE_PENDING_SHARED_FILE_MIME_TYPE = "pending_shared_file_mime_type"
         private const val STATE_PENDING_SHARED_FILE_TOKEN = "pending_shared_file_token"

@@ -66,10 +66,40 @@ class ShareFileIntentPolicyTest {
     }
 
     @Test
-    fun rejectsTextOnlyAndMissingStreams() {
+    fun acceptsPlainTextAndUsesExtraTextInsteadOfHtmlMarkup() {
+        assertEquals(
+            ShareFileIntentDecision.Text("hello"),
+            ShareFileIntentPolicy.resolve(
+                Intent(Intent.ACTION_SEND)
+                    .setType("text/html")
+                    .putExtra(Intent.EXTRA_TEXT, "hello")
+                    .putExtra(Intent.EXTRA_HTML_TEXT, "<b>hello</b>"),
+            ),
+        )
+    }
+
+    @Test
+    fun textMimeContentUriWithoutTextExtraRemainsAFileShare() {
+        val uri = Uri.parse("content://files/notes.txt")
+
+        assertEquals(
+            ShareFileIntentDecision.Accepted(uri, "text/plain"),
+            ShareFileIntentPolicy.resolve(sendIntent(uri, "text/plain")),
+        )
+    }
+
+    @Test
+    fun rejectsEmptyTextMissingStreamsAndAmbiguousTextWithStream() {
         assertRejected(
-            Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "hello"),
-            ShareFileIntentRejectionReason.TEXT_ONLY,
+            Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ""),
+            ShareFileIntentRejectionReason.EMPTY_TEXT,
+        )
+        assertRejected(
+            Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, "hello")
+                .putExtra(Intent.EXTRA_STREAM, Uri.parse("content://files/report")),
+            ShareFileIntentRejectionReason.AMBIGUOUS_CONTENT,
         )
         assertRejected(
             Intent(Intent.ACTION_SEND).setType("application/pdf"),
@@ -173,6 +203,18 @@ class ShareFileIntentPolicyTest {
 
         assertEquals(ShareFileIntentPolicy.consumptionToken(first), ShareFileIntentPolicy.consumptionToken(equivalent))
         assertTrue(ShareFileIntentPolicy.consumptionToken(first) != ShareFileIntentPolicy.consumptionToken(second))
+    }
+
+    @Test
+    fun textConsumptionTokenIsStableDistinctAndDoesNotContainSharedText() {
+        val first = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "private alpha")
+        val equivalent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "private alpha")
+        val second = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "private beta")
+
+        val token = ShareFileIntentPolicy.consumptionToken(first)
+        assertEquals(token, ShareFileIntentPolicy.consumptionToken(equivalent))
+        assertTrue(token != ShareFileIntentPolicy.consumptionToken(second))
+        assertTrue(!token.contains("private alpha"))
     }
 
     private fun sendIntent(uri: Uri, mimeType: String): Intent =

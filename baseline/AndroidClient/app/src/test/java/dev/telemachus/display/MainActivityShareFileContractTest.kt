@@ -52,6 +52,8 @@ class MainActivityShareFileContractTest {
         assertTrue(consume.contains("mimeType = decision.mimeType"))
         assertTrue(consume.contains("token = token"))
         assertFalse(consume.contains("handleOutgoingFileTransferUri"))
+        assertTrue(consume.contains("is ShareFileIntentDecision.Text ->"))
+        assertTrue(consume.contains("beginSendSharedText(decision.text, token)"))
         assertTrue(picker.contains("handleOutgoingFileTransferUri(uri)"))
         assertFalse(picker.contains("mimeTypeHint"))
         assertTrue(beginPending.contains("mimeTypeHint = pending.mimeType"))
