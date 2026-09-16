@@ -26,7 +26,11 @@ class InternetCameraPermissionRecoveryInstrumentationContractTest {
         )
         assertTrue(
             "The target must refuse to replace an existing app or test package",
-            target.contains("test \"${'$'}${'$'}app_was_installed\" = 0") &&
+            target.contains("app_packages=${'$'}${'$'}(adb -s") &&
+                target.contains("test_packages=${'$'}${'$'}(adb -s") &&
+                !target.contains("pm list packages \"${'$'}${'$'}package\" |") &&
+                !target.contains("pm list packages \"${'$'}${'$'}test_package\" |") &&
+                target.contains("test \"${'$'}${'$'}app_was_installed\" = 0") &&
                 target.contains("refusing to replace or erase existing app data") &&
                 target.contains("test \"${'$'}${'$'}test_was_installed\" = 0"),
         )

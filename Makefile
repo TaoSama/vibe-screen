@@ -619,8 +619,12 @@ baseline-android-camera-recovery-device-test:
 	test_package=$$package.test; \
 	test -n "$$serial" || (echo "error: set ANDROID_CAMERA_RECOVERY_SERIAL or ANDROID_SERIAL to the target adb serial" >&2; exit 2); \
 	adb -s "$$serial" get-state >/dev/null; \
-	app_was_installed=$$(adb -s "$$serial" shell pm list packages "$$package" | tr -d '\r' | grep -Fxq "package:$$package" && printf 1 || printf 0); \
-	test_was_installed=$$(adb -s "$$serial" shell pm list packages "$$test_package" | tr -d '\r' | grep -Fxq "package:$$test_package" && printf 1 || printf 0); \
+	app_packages=$$(adb -s "$$serial" shell pm list packages "$$package"); \
+	test_packages=$$(adb -s "$$serial" shell pm list packages "$$test_package"); \
+	app_was_installed=0; \
+	test_was_installed=0; \
+	if printf '%s\n' "$$app_packages" | tr -d '\r' | grep -Fxq "package:$$package"; then app_was_installed=1; fi; \
+	if printf '%s\n' "$$test_packages" | tr -d '\r' | grep -Fxq "package:$$test_package"; then test_was_installed=1; fi; \
 	test "$$app_was_installed" = 0 || (echo "error: $$package is already installed; refusing to replace or erase existing app data" >&2; exit 2); \
 	test "$$test_was_installed" = 0 || (echo "error: $$test_package is already installed; remove it before this isolated run" >&2; exit 2); \
 	cleanup() { \
