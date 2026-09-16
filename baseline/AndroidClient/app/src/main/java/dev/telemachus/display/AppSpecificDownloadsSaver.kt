@@ -11,6 +11,7 @@ import java.io.OutputStream
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.UUID
 
 internal object AppSpecificDownloadsSaver {
@@ -103,8 +104,19 @@ internal object AppSpecificDownloadsSaver {
         file: File,
         byteLength: Long,
         sha256: ByteString,
-    ): Boolean =
-        file.isFile && file.length() == byteLength && dev.telemachus.display.protocol.sha256(file.readBytes()) == sha256
+    ): Boolean {
+        if (!file.isFile || file.length() != byteLength) return false
+        val digest = MessageDigest.getInstance("SHA-256")
+        BufferedInputStream(file.inputStream()).use { input ->
+            val buffer = ByteArray(COPY_BUFFER_BYTES)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) digest.update(buffer, 0, read)
+            }
+        }
+        return ByteString.copyFrom(digest.digest()) == sha256
+    }
 
     private fun ensureDirectory(directory: File) {
         if (directory.exists()) {

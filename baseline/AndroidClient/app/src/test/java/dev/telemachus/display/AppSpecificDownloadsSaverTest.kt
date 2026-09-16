@@ -284,6 +284,21 @@ class AppSpecificDownloadsSaverTest {
         }
     }
 
+    @Test
+    fun matchesValidatesLengthAndDigestForChunkedPayload() {
+        val directory = Files.createTempDirectory("vibescreen-downloads-match").toFile()
+        try {
+            val payload = ByteArray(192 * 1024 + 17) { index -> (index % 251).toByte() }
+            val file = File(directory, "large.bin").apply { writeBytes(payload) }
+
+            assertTrue(AppSpecificDownloadsSaver.matches(file, payload.size.toLong(), sha256(payload)))
+            assertFalse(AppSpecificDownloadsSaver.matches(file, payload.size.toLong() - 1L, sha256(payload)))
+            assertFalse(AppSpecificDownloadsSaver.matches(file, payload.size.toLong(), sha256("different".toByteArray())))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     private fun File.containsPartialDownload(): Boolean =
         listFiles().orEmpty().any { it.name.startsWith(".vibescreen-") && it.name.endsWith(".partial") }
 

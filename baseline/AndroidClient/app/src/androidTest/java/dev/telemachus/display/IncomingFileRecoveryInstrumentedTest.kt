@@ -97,6 +97,7 @@ class IncomingFileRecoveryInstrumentedTest {
 
     @Test
     fun coldStartRetryPublishesExactBytesAndClearsRecovery() {
+        assumeTrue("MediaStore recovery journal requires Android Q+", android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val store = IncomingFileRecoveryStore(context)
         clearRecovery(store)

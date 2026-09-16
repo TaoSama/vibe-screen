@@ -1538,7 +1538,7 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
-    fun `incoming completion without consumer deletes staging file`() {
+    fun `incoming completion without consumer retains staging file`() {
         val staging = stagingDirectory()
         try {
             val payload = "orphan-completed".toByteArray()
@@ -1555,7 +1555,7 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
-    fun `incoming completion consumer failure deletes staging file and propagates failure`() {
+    fun `incoming completion consumer failure retains staging file and propagates failure`() {
         val staging = stagingDirectory()
         try {
             val payload = "consumer-failure".toByteArray()
