@@ -1192,7 +1192,7 @@
                     android:id="@+id/wirelessPairedIdle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:accessibilityLiveRegion="polite"
+                    android:accessibilityLiveRegion="none"
                     android:orientation="vertical"
                     android:padding="16dp"
                     android:background="@drawable/instruction_bg"
@@ -1208,6 +1208,7 @@
                         android:textSize="14sp"
                         android:textStyle="bold"
                         android:gravity="center"
+                        android:accessibilityLiveRegion="polite"
                         android:layout_marginBottom="8dp" />
 
                     <TextView
@@ -1239,7 +1240,7 @@
                         android:textSize="13sp"
                         android:gravity="center"
                         android:lineSpacingExtra="2dp"
-                        android:accessibilityLiveRegion="polite"
+                        android:accessibilityLiveRegion="none"
                         android:visibility="gone"
                         android:layout_marginBottom="16dp" />
 

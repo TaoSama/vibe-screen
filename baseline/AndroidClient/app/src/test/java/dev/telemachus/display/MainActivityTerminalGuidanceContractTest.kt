@@ -1296,6 +1296,16 @@ class MainActivityTerminalGuidanceContractTest {
                 source.contains("binding.connectButton.isEnabled = true"),
         )
         assertTrue(
+            "USB countdown ticks must remain visual without interrupting TalkBack every second",
+            source.contains("binding.connectionSubtitle.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_NONE"),
+        )
+        assertTrue(
+            "Leaving the USB countdown must restore live announcements for later status changes",
+            extractMethod(source, "private fun clearPendingUsbReconnectCountdown").contains(
+                "binding.connectionSubtitle.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE",
+            ),
+        )
+        assertTrue(
             "Checklist refreshes should keep diagnostics live without overwriting the USB retry countdown subtitle",
             source.replace(Regex("\\s+"), "").contains(
                 "if(UsbTransportDisplayPolicy.shouldRefreshSubtitle(prefs.connectionMode)&&" +
@@ -1312,6 +1322,18 @@ class MainActivityTerminalGuidanceContractTest {
             layout.contains("""android:id="@+id/wirelessReconnectCountdown""") &&
                 wirelessController.contains("R.string.reconnect_countdown_message") &&
                 wirelessController.contains("R.string.retry_now"),
+        )
+        val wirelessIdle = extractXmlElement(layout, "android:id=\"@+id/wirelessPairedIdle\"")
+        val wirelessStatus = extractXmlElement(layout, "android:id=\"@+id/idleStatusLabel\"")
+        val wirelessCountdown = extractXmlElement(layout, "android:id=\"@+id/wirelessReconnectCountdown\"")
+        assertTrue(
+            "Wireless state changes should be announced without making the whole changing card a live region",
+            wirelessIdle.contains("android:accessibilityLiveRegion=\"none\"") &&
+                wirelessStatus.contains("android:accessibilityLiveRegion=\"polite\""),
+        )
+        assertTrue(
+            "Wireless countdown ticks must remain visual without interrupting TalkBack every second",
+            wirelessCountdown.contains("android:accessibilityLiveRegion=\"none\""),
         )
         assertTrue(
             "When the scheduled retry fires, the Wireless action should become disabled with loading feedback",

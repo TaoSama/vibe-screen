@@ -7198,6 +7198,7 @@ class MainActivity : AppCompatActivity() {
         val remainingSeconds =
             ReconnectCountdownPresentationPolicy.remainingSeconds(SystemClock.uptimeMillis(), deadlineMs)
         LiveRegionTextApplier.apply(binding.connectionTitle, getString(R.string.usb_retry_wait_title))
+        binding.connectionSubtitle.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_NONE
         LiveRegionTextApplier.apply(
             binding.connectionSubtitle,
             getString(R.string.usb_retry_wait_message, remainingSeconds),
@@ -7212,6 +7213,9 @@ class MainActivity : AppCompatActivity() {
     private fun clearPendingUsbReconnectCountdown() {
         pendingUsbReconnectDeadlineMs = null
         autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)
+        if (::binding.isInitialized) {
+            binding.connectionSubtitle.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
     }
 
     private fun cancelWirelessReconnect() {
