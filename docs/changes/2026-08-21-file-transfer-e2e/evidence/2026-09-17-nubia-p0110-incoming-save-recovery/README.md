@@ -5,11 +5,12 @@ This current-source Android-local run verifies that a fully received file remain
 ## Source and device
 
 - Source base: `d8fde209161ddbf0ab26382e68f2b4bdbe79dacc`
+- Verified source head: `528ceb7c3`
 - Branch: `codex/android-incoming-save-recovery`
 - Device: nubia P0110 (`pacific`), Android 16 / API 36
 - Device serial is redacted in retained evidence.
-- App APK SHA-256: `d68ba97c8913634353140b008cd08b9440e825c78e15ad5d65b9734637f6dc8d`
-- Test APK SHA-256: `c471c7391160f626a85f38a1cbe867bc9d29aeb653e425179e8e8303d90227bc`
+- App APK SHA-256: `2a1d8b686a85968c0e38bb7fc8476b62f74927eb835878e00de3dacd0ac819ef`
+- Test APK SHA-256: `26be5530531394b23d66e64309273e6acbcf21e30f093f75aa8f953bca025503`
 
 ## Results
 
@@ -22,6 +23,7 @@ This current-source Android-local run verifies that a fully received file remain
 - External process-stop flow: seed 1/1 and verify 1/1 passed around `adb shell am force-stop`; the recovery surface returned after process restart.
 - UI inspection: ordinary portrait, font scale 2.0 portrait, and landscape retained readable actions without incoherent overlap. Large-font content remains scrollable.
 - No Host boundary: no ADB reverse mapping, no TCP 54321 listener, no macOS Host launch, and no macOS TCC request.
+- The focused 4/4 suite and APK hashes were refreshed after review fixes at `528ceb7c3`; the force-stop logs and UI screenshots predate that review-only code/test adjustment.
 
 ## Product behavior covered
 

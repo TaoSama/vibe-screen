@@ -1,4 +1,4 @@
-20d47517bdffa6694c36bc83c91bff85dad5f8e24e80de3fe93a746c1a4d5740  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/focused-recovery.log
+72199f11220331353fe915577e00f6a64d0ef0c3bca0d5f47434a545fcaac7e2  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/focused-recovery.log
 52e6dde4ee5e74c6e6115d131595f8cba3f76f669789c7c298e8988bfe627aee  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/process-seed.log
 fb69d5e4ebb3ef4c1a8f5cb70d4d015c8de48e4636e0da45b89bf8c9fcfc6c53  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/process-verify.log
 0217cdd78b86cccfffb39de354971a56d5d87820850ba23e241fb00503684670  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/logs/cold-launch.txt
@@ -6,8 +6,8 @@ fb69d5e4ebb3ef4c1a8f5cb70d4d015c8de48e4636e0da45b89bf8c9fcfc6c53  docs/changes/2
 4370945e3bba30ecb513f66d10870db41e07b2ab63297c4d9779df8c16318183  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/logs/portrait-required-elements.txt
 1e33b96482dfe0e373a47a496385eb0b6f513039c659d53caa7592df867f526f  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/logs/portrait-ui.xml
 451776914dfd050280079ac7e3250ea5a617deed535ae4f29ccaa2b255de15c6  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/metadata/device-identity.txt
-3f521cbf839ec913096e186413152f60081aa97e1908ff5e430090e9b9696fe5  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/metadata/source-provenance.txt
-9d35b4afa099e46c33db017f7b5fc6176995b61983dd6bd8ddbc7f0f96a1ce77  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/README.md
+2087b4084d2675ac5dab3911a53b13f5a3fa9e9c6e0dc5c15168e2f2e8aaa3b9  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/metadata/source-provenance.txt
+87473e0438f9ad5127504399823f93e289ae2fce781a71a3669de3184a811c44  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/README.md
 77fdb0f1e0d38f161cae5e3cc18cd59b265cd1c28fd42b3990b3dbbdc79fdbc9  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/screenshots/recovery-font-scale-2.png
 f1fd5ac28df45bfb85281a2917daa7811272811bf9cdcda5a380026ed9cb037d  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/screenshots/recovery-landscape.png
 78933d7e3c35c612e4538ee19cf30b34a0a0ad0841ed9e46e36ae81ded630577  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/screenshots/recovery-portrait.png
