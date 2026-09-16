@@ -91,9 +91,15 @@ The MacHost package sources compiled before the test target failed to build.
   `make file-transfer-android-smoke` as `file-transfer-android-smoke-gate.json`.
   That gate remains fail-closed until the retained product evidence below exists.
 - Android real-device UI file send/receive acceptance remains open.
-- Android user-selected save/export for completed incoming files remains open;
-  automatic save to Downloads is implemented but user-selected destination is
-  not.
+- Android automatic save to Downloads is implemented. Completed saves now
+  expose a persistent **Save a copy** action backed by
+  `ACTION_CREATE_DOCUMENT`. JVM contracts cover picker wiring, cancellation, and
+  lifecycle ownership; focused P0110 instrumentation verifies exact-byte and
+  SHA-256-preserving `ContentResolver` copy behavior, plus the persistent
+  completion panel across Activity recreation and Dismiss; see the
+  [2026-09-17 Nubia P0110 incoming Save a copy smoke](evidence/2026-09-17-nubia-p0110-incoming-save-copy/README.md).
+  The system picker UI itself was not driven in that no-Host run, and this
+  Android-local export boundary does not replace Host-backed receive acceptance.
 - macOS signed Host, TCC permissions, and real Android-device file transfer
   acceptance remain open.
 - Public Internet/WebRTC bulk DataChannel file-transfer acceptance remains open.

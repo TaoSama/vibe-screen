@@ -485,6 +485,12 @@
     <string name="file_transfer_app_downloads_destination">app-specific Downloads</string>
     <string name="file_transfer_saved_to_downloads">Saved %1$s to Downloads</string>
     <string name="file_transfer_saved_to_app_downloads">Saved %1$s to app-specific Downloads</string>
+    <string name="file_transfer_save_copy">Save a copy</string>
+    <string name="file_transfer_recent_saved_title">Received file saved</string>
+    <string name="file_transfer_recent_saved_summary">%1$s is in %2$s. Save another copy to a location you choose.</string>
+    <string name="file_transfer_recent_saved_dismiss">Dismiss</string>
+    <string name="file_transfer_copy_saved">Saved a copy of %1$s</string>
+    <string name="file_transfer_copy_failed">Could not save a copy of %1$s</string>
     <string name="file_transfer_save_failed">Could not save %1$s</string>
     <string name="file_transfer_completed">File transfer completed</string>
     <string name="file_transfer_failed">File transfer failed</string>
