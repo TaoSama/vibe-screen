@@ -26,8 +26,8 @@ class CameraPermissionManager(
             hasBeenRequestedAtLeastOnce(activity)
 
     override fun request(requestCode: Int) {
-        ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.CAMERA), requestCode)
         markRequested(activity)
+        ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.CAMERA), requestCode)
     }
 
     override fun openAppSettings() {
