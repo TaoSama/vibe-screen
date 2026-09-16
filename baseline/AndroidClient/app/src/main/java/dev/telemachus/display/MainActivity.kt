@@ -5670,11 +5670,10 @@ class MainActivity : AppCompatActivity() {
                     replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)
                     hasConnectedThisRun = true
                     isReconnecting = false
-                    pendingUsbReconnectDeadlineMs = null
+                    clearPendingUsbReconnectCountdown()
                     unsupportedKeyboardNoticeShown = false
                     unsupportedNativePointerNoticeShown = false
                     pendingAutomaticReconnectDelayMs = null
-                    autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)
                     startPingTimer()

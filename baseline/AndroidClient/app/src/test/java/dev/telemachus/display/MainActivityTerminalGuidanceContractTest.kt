@@ -1396,8 +1396,7 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "A successful connection must clear both pending countdown owners before showing streaming controls",
-            connected.contains("pendingUsbReconnectDeadlineMs = null") &&
-                connected.contains("autoConnectHandler.removeCallbacks(usbReconnectCountdownRunnable)") &&
+            connected.contains("clearPendingUsbReconnectCountdown()") &&
                 connected.contains("wirelessReconnectHandler.removeCallbacks(wirelessReconnectCountdownRunnable)"),
         )
     }
