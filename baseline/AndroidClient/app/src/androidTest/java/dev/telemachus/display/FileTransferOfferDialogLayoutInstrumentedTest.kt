@@ -2,6 +2,7 @@ package dev.telemachus.display
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -142,6 +143,22 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun renderedIncomingOfferDialogKeepsActionsInsideVisibleFrame() {
+        realWindowDialogConfigurations().forEach { configuration ->
+            withFileTransferBusinessDialog(
+                configuration = configuration,
+                kind = FileTransferBusinessDialogKind.INCOMING,
+                onPositive = {},
+                onNegative = {},
+                assertActionsInsideVisibleFrame = true,
+            ) { activity, dialog, content ->
+                dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.INCOMING)
+                dialog.assertCustomContentStaysAboveActions(activity, content)
+            }
+        }
+    }
+
+    @Test
     fun renderedOutgoingPreflightDialogKeepsActionsReadableAndNonDuplicated() {
         productionDialogConfigurations().forEach { configuration ->
             var sent = 0
@@ -184,6 +201,22 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
             }
             assertEquals("send callback is delivered exactly once", 1, sent)
             assertEquals("send must not run the cancel callback", 0, cancelled)
+        }
+    }
+
+    @Test
+    fun renderedOutgoingPreflightDialogKeepsActionsInsideVisibleFrame() {
+        realWindowDialogConfigurations().forEach { configuration ->
+            withFileTransferBusinessDialog(
+                configuration = configuration,
+                kind = FileTransferBusinessDialogKind.OUTGOING,
+                onPositive = {},
+                onNegative = {},
+                assertActionsInsideVisibleFrame = true,
+            ) { activity, dialog, content ->
+                dialog.assertFileTransferBusinessActions(activity, FileTransferBusinessDialogKind.OUTGOING)
+                dialog.assertCustomContentStaysAboveActions(activity, content)
+            }
         }
     }
 
@@ -309,6 +342,7 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
         kind: FileTransferBusinessDialogKind,
         onPositive: () -> Unit,
         onNegative: () -> Unit,
+        assertActionsInsideVisibleFrame: Boolean = false,
         assertion: (DialogHostActivity, AlertDialog, ScrollView) -> Unit,
     ) {
         var dialog: AlertDialog? = null
@@ -349,8 +383,10 @@ class FileTransferOfferDialogLayoutInstrumentedTest {
                     scenario.onActivity { activity ->
                         try {
                             val shownDialog = checkNotNull(dialog)
+                            val shownContent = checkNotNull(contentView)
+                            if (assertActionsInsideVisibleFrame) shownDialog.assertActionsStayInsideVisibleWindow()
                             shownDialog.window?.decorView?.measureAndLayoutWithin(activity, configuration)
-                            assertion(activity, shownDialog, checkNotNull(contentView))
+                            assertion(activity, shownDialog, shownContent)
                         } catch (failure: Throwable) {
                             assertionFailure = failure
                         }
@@ -657,6 +693,22 @@ private fun productionDialogConfigurations(): List<DialogConfiguration> =
         DialogConfiguration(widthDp = 640, heightDp = 320, fontScale = 2.0f),
     )
 
+private fun realWindowDialogConfigurations(): List<DialogConfiguration> {
+    val configuration = applicationContext().resources.configuration
+    return listOf(
+        DialogConfiguration(
+            widthDp = configuration.screenWidthDp,
+            heightDp = configuration.screenHeightDp,
+            fontScale = 1.5f,
+        ),
+        DialogConfiguration(
+            widthDp = configuration.screenWidthDp,
+            heightDp = configuration.screenHeightDp,
+            fontScale = 2.0f,
+        ),
+    )
+}
+
 private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
 
 private fun dp(
@@ -707,14 +759,14 @@ private fun AlertDialog.assertCustomContentStaysAboveActions(
     val negative = getButton(AlertDialog.BUTTON_NEGATIVE)
     val actionTop = minOf(positive.screenTop(), negative.screenTop())
     val contentBottom = content.screenBottom()
-    val decorBottom = checkNotNull(window?.decorView) { "dialog decor exists" }.screenBottom()
+    val decorView = checkNotNull(window?.decorView) { "dialog decor exists" }
+    val decorBottom = decorView.screenBottom()
     val screenBottom = activity.window.decorView.screenBottom()
     val geometry =
         "contentBottom=$contentBottom actionTop=$actionTop " +
             "contentTop=${content.screenTop()} contentHeight=${content.height} " +
-            "positiveTop=${positive.screenTop()} positiveHeight=${positive.height} " +
-            "negativeTop=${negative.screenTop()} negativeHeight=${negative.height} " +
-            "decorBottom=$decorBottom screenBottom=$screenBottom"
+            "positiveBounds=${positive.screenBounds()} negativeBounds=${negative.screenBounds()} " +
+            "decorBounds=${decorView.screenBounds()} screenBottom=$screenBottom"
 
     assertTrue("file-transfer dialog content stays above actions: $geometry", contentBottom <= actionTop)
     assertTrue("file-transfer dialog content has a visible top edge", content.screenTop() >= 0)
@@ -724,6 +776,29 @@ private fun AlertDialog.assertCustomContentStaysAboveActions(
         positive.screenBottom() <= decorBottom && negative.screenBottom() <= decorBottom,
     )
     assertTrue("file-transfer dialog decor stays within the configured screen: $geometry", decorBottom <= screenBottom)
+}
+
+private fun AlertDialog.assertActionsStayInsideVisibleWindow() {
+    val decorView = checkNotNull(window?.decorView) { "dialog decor exists" }
+    // getWindowVisibleDisplayFrame returns window coordinates, so compare it
+    // only with view bounds from getLocationInWindow.
+    val positiveBounds = getButton(AlertDialog.BUTTON_POSITIVE).windowBounds()
+    val negativeBounds = getButton(AlertDialog.BUTTON_NEGATIVE).windowBounds()
+    val visibleFrame = Rect()
+    decorView.getWindowVisibleDisplayFrame(visibleFrame)
+    val geometry =
+        "positiveBounds=$positiveBounds negativeBounds=$negativeBounds " +
+            "visibleFrame=$visibleFrame"
+
+    assertTrue("file-transfer dialog visible frame is available: $geometry", !visibleFrame.isEmpty)
+    assertTrue(
+        "file-transfer positive action stays inside the visible window: $geometry",
+        visibleFrame.contains(positiveBounds),
+    )
+    assertTrue(
+        "file-transfer negative action stays inside the visible window: $geometry",
+        visibleFrame.contains(negativeBounds),
+    )
 }
 
 private fun AlertDialog.assertNoDuplicateTalkBackSemantics(
@@ -809,6 +884,18 @@ private fun View.forEachTextView(action: (TextView) -> Unit) {
     for (index in 0 until childCount) {
         getChildAt(index).forEachTextView(action)
     }
+}
+
+private fun View.screenBounds(): Rect {
+    val location = IntArray(2)
+    getLocationOnScreen(location)
+    return Rect(location[0], location[1], location[0] + width, location[1] + height)
+}
+
+private fun View.windowBounds(): Rect {
+    val location = IntArray(2)
+    getLocationInWindow(location)
+    return Rect(location[0], location[1], location[0] + width, location[1] + height)
 }
 
 private fun View.screenTop(): Int {
