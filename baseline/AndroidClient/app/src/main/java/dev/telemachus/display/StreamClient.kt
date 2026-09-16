@@ -163,6 +163,17 @@ class StreamClient(
 
     /** Owns Protocol v1 session lifecycle, epochs, side-effect admission, and retry-transition state. */
     private val protocolSessionOwner = StreamProtocolSessionOwner(STREAM_CLIENT_EPOCHS)
+    private val incomingFileDurableOwner: IncomingFileDurableOwner =
+        context?.let { appContext ->
+            val store = IncomingFileRecoveryStore(appContext.applicationContext)
+            IncomingFileDurableOwner { completed ->
+                store.adoptBeforeAcknowledgement(
+                    completed = completed,
+                    maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+                    fallbackDisplayName = DEFAULT_INCOMING_FILE_NAME,
+                )
+            }
+        } ?: IncomingFileDurableOwner.PASS_THROUGH
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
     private val nextInputId = AtomicLong(1L)
@@ -191,6 +202,7 @@ class StreamClient(
     private val fileTransferProductOwner =
         FileTransferProductOwner(
             stagingDirectory = ::fileTransferStagingDirectory,
+            incomingFileDurableOwner = incomingFileDurableOwner,
             pendingOfferGate = object : FileTransferProductOwner.PendingOfferGate {
                 override fun trackFileOffer(
                     offer: FileOffer,
@@ -1994,6 +2006,15 @@ class StreamClient(
             )
         }
         if (!isCurrentProtocolSession(session, command.connectionGeneration)) {
+            val completed = (result as? FileTransferProductOwner.IncomingChunkResult.Accepted)?.completed
+            if (completed != null) {
+                try {
+                    fileTransferProductOwner.notifyIncomingFileCompleted(completed)
+                } catch (failure: Throwable) {
+                    command.completion.completeExceptionally(failure)
+                    throw failure
+                }
+            }
             command.completion.complete(Unit)
             return
         }
@@ -3353,6 +3374,8 @@ class StreamClient(
     )
 
     companion object {
+        private const val MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS = 120
+        private const val DEFAULT_INCOMING_FILE_NAME = "transfer.bin"
         private enum class VideoConfigurationCommitState {
             PENDING,
             RESERVED,

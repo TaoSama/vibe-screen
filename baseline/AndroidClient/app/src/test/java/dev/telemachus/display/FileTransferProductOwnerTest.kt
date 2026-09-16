@@ -1438,7 +1438,7 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
-    fun `incoming completion callback can save to app downloads and remove staging file`() {
+    fun `incoming completion callback can save to app downloads and explicitly release staging`() {
         val staging = stagingDirectory()
         val downloads = stagingDirectory()
         val owner = realIncomingOwner(staging)
@@ -1451,6 +1451,8 @@ class FileTransferProductOwnerTest {
                 downloads = downloads,
                 maxDisplayNameLength = 120,
             )
+            assertTrue("Saver must leave source ownership with the completion consumer", completed.stagingFile.exists())
+            assertTrue(completed.stagingFile.delete())
         }
         owner.activateSession()
         assertTrue(
@@ -1485,7 +1487,7 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
-    fun `incoming completion save failure removes private staging and downloads partial files`() {
+    fun `incoming completion consumer failure removes private staging and downloads partial files`() {
         val staging = stagingDirectory()
         val downloads = stagingDirectory()
         val owner = realIncomingOwner(staging)
@@ -1527,8 +1529,8 @@ class FileTransferProductOwnerTest {
         }
 
         assertSame(saveFailure, thrown)
-        assertFalse(completed.stagingFile.exists())
-        assertFalse(staging.containsPartialDownload())
+        assertTrue(completed.stagingFile.exists())
+        assertTrue(staging.containsPartialDownload())
         assertFalse(downloads.containsPartialDownload())
         assertEquals(0, owner.activeIncomingTransferCount())
         staging.deleteRecursively()
@@ -1536,7 +1538,7 @@ class FileTransferProductOwnerTest {
     }
 
     @Test
-    fun `incoming completion without consumer deletes staging file`() {
+    fun `incoming completion without consumer retains staging file`() {
         val staging = stagingDirectory()
         try {
             val payload = "orphan-completed".toByteArray()
@@ -1546,14 +1548,14 @@ class FileTransferProductOwnerTest {
 
             owner.notifyIncomingFileCompleted(completed)
 
-            assertFalse(stagingFile.exists())
+            assertTrue(stagingFile.exists())
         } finally {
             staging.deleteRecursively()
         }
     }
 
     @Test
-    fun `incoming completion consumer failure deletes staging file and propagates failure`() {
+    fun `incoming completion consumer failure retains staging file and propagates failure`() {
         val staging = stagingDirectory()
         try {
             val payload = "consumer-failure".toByteArray()
@@ -1568,7 +1570,7 @@ class FileTransferProductOwnerTest {
             }
 
             assertSame(failure, thrown)
-            assertFalse(stagingFile.exists())
+            assertTrue(stagingFile.exists())
         } finally {
             staging.deleteRecursively()
         }
@@ -1640,17 +1642,80 @@ class FileTransferProductOwnerTest {
         assertEquals(1, outgoing.cancelCount)
     }
 
+    @Test
+    fun finalChunkIsAcceptedOnlyAfterDurableAdoption() {
+        val store = FakeIncomingTransferStore(stagingDirectory())
+        val durableDirectory = stagingDirectory()
+        var adoptionCount = 0
+        val owner =
+            owner(
+                store = store,
+                durableOwner = IncomingFileDurableOwner { completed ->
+                    adoptionCount += 1
+                    val durable = File(durableDirectory, "durable.bin").also {
+                        completed.stagingFile.copyTo(it)
+                    }
+                    completed.copy(stagingFile = durable)
+                },
+            )
+        val payload = "durable-before-ack".toByteArray()
+        val offer = offer(id = 113, payload = payload, fileName = "report.txt")
+        owner.activateSession()
+        assertTrue(owner.decideFileOffer(offer, true, FileTransferPolicy(), 7).accepted)
+
+        val result = owner.receiveIncomingChunk(
+            chunk(offer, payload = payload, final = true),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+
+        assertEquals(1, adoptionCount)
+        assertTrue(result is FileTransferProductOwner.IncomingChunkResult.Accepted)
+        val completed = requireNotNull((result as FileTransferProductOwner.IncomingChunkResult.Accepted).completed)
+        assertEquals(File(durableDirectory, "durable.bin"), completed.stagingFile)
+        assertTrue(completed.stagingFile.exists())
+        durableDirectory.deleteRecursively()
+    }
+
+    @Test
+    fun durableAdoptionFailureRejectsFinalChunkAndDeletesProtocolStaging() {
+        val staging = stagingDirectory()
+        val store = FakeIncomingTransferStore(staging)
+        val failure = IOException("durable storage unavailable")
+        val owner = owner(store = store, durableOwner = IncomingFileDurableOwner { throw failure })
+        val payload = "reject-before-ack".toByteArray()
+        val offer = offer(id = 114, payload = payload, fileName = "report.txt")
+        owner.activateSession()
+        assertTrue(owner.decideFileOffer(offer, true, FileTransferPolicy(), 7).accepted)
+
+        val result = owner.receiveIncomingChunk(
+            chunk(offer, payload = payload, final = true),
+            canTransferFiles = true,
+            sessionEpoch = 7,
+        )
+
+        assertTrue(result is FileTransferProductOwner.IncomingChunkResult.Rejected)
+        result as FileTransferProductOwner.IncomingChunkResult.Rejected
+        assertEquals("io_failure", result.reasonCode)
+        assertSame(failure, result.failure)
+        assertFalse(File(staging, offer.fileName).exists())
+        assertEquals(0, owner.activeIncomingTransferCount())
+        staging.deleteRecursively()
+    }
+
     private fun owner(
         gate: FakePendingOfferGate = FakePendingOfferGate(),
         store: FakeIncomingTransferStore = FakeIncomingTransferStore(stagingDirectory()),
         fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
         outgoing: FileTransferProductOwner.OutgoingTransferStore? = null,
+        durableOwner: IncomingFileDurableOwner = IncomingFileDurableOwner.PASS_THROUGH,
     ): FileTransferProductOwner {
         if (outgoing == null) {
             return FileTransferProductOwner(
                 fileTransferPolicy = fileTransferPolicy,
                 stagingDirectory = ::stagingDirectory,
                 pendingOfferGate = gate,
+                incomingFileDurableOwner = durableOwner,
                 incomingManagerFactory = FileTransferProductOwner.IncomingManagerFactory { _, _, _ -> store },
             )
         }
@@ -1658,6 +1723,7 @@ class FileTransferProductOwnerTest {
             fileTransferPolicy = fileTransferPolicy,
             stagingDirectory = ::stagingDirectory,
             pendingOfferGate = gate,
+            incomingFileDurableOwner = durableOwner,
             incomingManagerFactory = FileTransferProductOwner.IncomingManagerFactory { _, _, _ -> store },
             outgoingTransferFactory = FileTransferProductOwner.OutgoingTransferFactory { _, _, _, _, _, _ ->
                 outgoing

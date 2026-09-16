@@ -26,6 +26,7 @@ internal class FileTransferProductOwner(
     val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
     private val stagingDirectory: () -> File,
     private val pendingOfferGate: PendingOfferGate,
+    private val incomingFileDurableOwner: IncomingFileDurableOwner = IncomingFileDurableOwner.PASS_THROUGH,
     private val incomingManagerFactory: IncomingManagerFactory = IncomingManagerFactory { policy, directory, approve ->
         IncomingFileTransferStore(IncomingFileTransferManager(policy, directory, approve))
     },
@@ -217,14 +218,18 @@ internal class FileTransferProductOwner(
         return try {
             val receivedBytes = manager.append(chunk, sessionEpoch)
             if (chunk.header.final) {
+                var completed: CompletedIncomingFile? = null
                 try {
+                    completed = manager.finish(chunk.header.transferId)
+                    val durable = incomingFileDurableOwner.adoptBeforeAcknowledgement(completed)
                     IncomingChunkResult.Accepted(
                         transferId = chunk.header.transferId,
                         receivedBytes = receivedBytes,
-                        completed = manager.finish(chunk.header.transferId),
+                        completed = durable,
                     )
                 } catch (failure: FileTransferException) {
                     manager.cancel(chunk.header.transferId)
+                    completed?.stagingFile?.delete()
                     IncomingChunkResult.Rejected(
                         transferId = chunk.header.transferId,
                         reasonCode = failure.reasonCode,
@@ -233,6 +238,7 @@ internal class FileTransferProductOwner(
                     )
                 } catch (failure: IOException) {
                     manager.cancel(chunk.header.transferId)
+                    completed?.stagingFile?.delete()
                     IncomingChunkResult.Rejected(
                         transferId = chunk.header.transferId,
                         reasonCode = "io_failure",
@@ -488,17 +494,7 @@ internal class FileTransferProductOwner(
     }
 
     fun notifyIncomingFileCompleted(completed: CompletedIncomingFile) {
-        val callback = onIncomingFileCompleted
-        if (callback == null) {
-            completed.stagingFile.delete()
-            return
-        }
-        try {
-            callback.invoke(completed)
-        } catch (failure: Throwable) {
-            completed.stagingFile.delete()
-            throw failure
-        }
+        onIncomingFileCompleted?.invoke(completed)
     }
 
     fun notifyIncomingFileProgress(transferId: ByteString, receivedBytes: Long) {

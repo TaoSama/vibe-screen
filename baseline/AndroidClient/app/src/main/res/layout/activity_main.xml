@@ -720,17 +720,17 @@
                 android:visibility="gone">
 
                 <TextView
-                    android:id="@+id/recentIncomingFileTitle"
+                    android:id="@+id/incomingFileStatusTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="6dp"
-                    android:text="@string/file_transfer_recent_saved_title"
+                    android:text="@string/file_transfer_incoming_saved_title"
                     android:textColor="@color/on_surface"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/recentIncomingFileSummary"
+                    android:id="@+id/incomingFileStatusSummary"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
@@ -741,7 +741,7 @@
                     android:textSize="12sp" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/recentIncomingFileSaveCopyButton"
+                    android:id="@+id/incomingFileStatusPrimaryButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
@@ -752,7 +752,7 @@
                     android:minHeight="48dp"
                     android:minWidth="0dp"
                     android:singleLine="false"
-                    android:text="@string/file_transfer_save_copy"
+                    android:text="@string/file_transfer_incoming_saved_primary"
                     android:textAllCaps="false"
                     android:textColor="@color/on_accent_button"
                     app:autoSizeMaxTextSize="14sp"
@@ -762,7 +762,7 @@
                     app:cornerRadius="16dp" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/recentIncomingFileDismissButton"
+                    android:id="@+id/incomingFileStatusSecondaryButton"
                     style="?attr/materialButtonOutlinedStyle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -773,7 +773,7 @@
                     android:minHeight="48dp"
                     android:minWidth="0dp"
                     android:singleLine="false"
-                    android:text="@string/file_transfer_recent_saved_dismiss"
+                    android:text="@string/file_transfer_incoming_saved_secondary"
                     android:textAllCaps="false"
                     app:autoSizeMaxTextSize="14sp"
                     app:autoSizeMinTextSize="10sp"

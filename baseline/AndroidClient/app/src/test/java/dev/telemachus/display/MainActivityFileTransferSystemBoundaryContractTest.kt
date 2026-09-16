@@ -28,18 +28,21 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             )
 
         assertTrue(
-            "Verified incoming bytes must still be saved to Downloads before optional export",
-            completed.contains("saveIncomingFileToDownloads(completed, displayName)") &&
+            "Verified incoming bytes must be durably adopted before Downloads publication and optional export",
+            completed.contains("incomingFileRecoveryStore.load()") &&
+                completed.contains("recovery.payloadFile.canonicalFile == completed.stagingFile.canonicalFile") &&
+                completed.contains("saveRecoveredIncomingFile") &&
                 completed.contains("showIncomingFileSavedAction(") &&
-                assertBeforeValue(completed, "saveIncomingFileToDownloads", "showIncomingFileSavedAction("),
+                assertBeforeValue(completed, "incomingFileRecoveryStore.load()", "saveRecoveredIncomingFile") &&
+                assertBeforeValue(completed, "saveRecoveredIncomingFile", "showIncomingFileSavedAction("),
         )
         assertTrue(
             "A completed background save must not update a finishing or destroyed Activity",
-            completed.contains("if (isFinishing || isDestroyed) return@runOnUiThread") &&
+            completed.contains("if (isFinishing || isDestroyed) return@withContext") &&
                 assertBeforeValue(
                     completed,
-                    "if (isFinishing || isDestroyed) return@runOnUiThread",
-                    "saved\n                    .onSuccess",
+                    "if (isFinishing || isDestroyed) return@withContext",
+                    "?.onSuccess { savedUri ->",
                 ),
         )
         assertTrue(
@@ -54,13 +57,14 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "The persistent completion panel should expose accessible Save and Dismiss actions",
-            recentPanel.contains("android:id=\"@+id/recentIncomingFileSaveCopyButton\"") &&
-                recentPanel.contains("android:id=\"@+id/recentIncomingFileDismissButton\"") &&
+            recentPanel.contains("android:id=\"@+id/incomingFileStatusPrimaryButton\"") &&
+                recentPanel.contains("android:id=\"@+id/incomingFileStatusSecondaryButton\"") &&
                 recentPanel.countOccurrences("android:minHeight=\"48dp\"") == 2 &&
-                setupUi.contains("recentIncomingFileSaveCopyButton.setOnClickListener") &&
-                setupUi.contains("recentIncomingFileDismissButton.setOnClickListener") &&
+                setupUi.contains("incomingFileStatusPrimaryButton.setOnClickListener") &&
+                setupUi.contains("incomingFileStatusSecondaryButton.setOnClickListener") &&
                 setupUi.contains("recentIncomingFile = null") &&
                 refreshRecent.contains("binding.recentIncomingFileContainer.visibility") &&
+                refreshRecent.contains("pendingIncomingFileRecovery") &&
                 refreshRecent.contains("pendingIncomingFileExport == null"),
         )
         assertTrue(
@@ -276,24 +280,31 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Incoming completion should clear only the matching active receive state and restart ordinary control-bar timing",
-            completedCallback.contains("if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()") &&
-                internetCompleted.contains("if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()"),
+            completedCallback.contains("isCurrentSession(callbackClient, callbackGeneration)") &&
+                completedCallback.contains("finishIncomingFileTransferState(completed.transferId)") &&
+                completedCallback.contains("revealControlBar()") &&
+                internetCompleted.contains("isCurrentInternetSession()") &&
+                internetCompleted.contains("finishIncomingFileTransferState(completed.transferId)") &&
+                internetCompleted.contains("revealControlBar()"),
         )
         assertTrue(
-            "Stale incoming completion callbacks must delete staging files before returning",
-            completedCallback.contains("completed.stagingFile.deleteBestEffort()") &&
-                completedCallback.contains("return@incomingFile") &&
-                completedCallback.contains("return@runOnUiThread") &&
-                internetCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
-                internetCompleted.contains("return") &&
-                internetCompleted.contains("return@runOnUiThread"),
+            "Stale incoming completion callbacks must still expose durable recovery while avoiding stale transfer UI cleanup",
+            !completedCallback.contains("completed.stagingFile.deleteBestEffort()") &&
+                completedCallback.contains("if (isCurrentSession(callbackClient, callbackGeneration) &&") &&
+                completedCallback.contains("onIncomingFileCompleted(completed)") &&
+                !completedCallback.contains("return@incomingFile") &&
+                !completedCallback.contains("return@runOnUiThread") &&
+                !internetCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
+                internetCompleted.contains("if (isCurrentInternetSession() &&") &&
+                internetCompleted.contains("onIncomingFileCompleted(completed)") &&
+                !internetCompleted.contains("return@runOnUiThread"),
         )
         assertTrue(
-            "Incoming completion save failures must clean private staging before reporting the UI result",
-            onIncomingCompleted.contains("val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }") &&
-                onIncomingCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
-                assertBeforeValue(onIncomingCompleted, "val saved = runCatching", "completed.stagingFile.deleteBestEffort()") &&
-                assertBeforeValue(onIncomingCompleted, "completed.stagingFile.deleteBestEffort()", "runOnUiThread") &&
+            "Incoming completion must consume the already durable record and retain recovery on save failure",
+            onIncomingCompleted.contains("incomingFileRecoveryStore.load()") &&
+                onIncomingCompleted.contains("recovery.payloadFile.canonicalFile == completed.stagingFile.canonicalFile") &&
+                !onIncomingCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
+                onIncomingCompleted.contains("pendingIncomingFileRecovery = recovery") &&
                 onIncomingCompleted.contains(".onFailure { failure ->") &&
                 onIncomingCompleted.contains("file transfer save failed"),
         )
@@ -755,7 +766,10 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             currentRevealReason.contains("hasActiveFileTransfer()") &&
                 currentRevealReason.contains("ControlBarAccessibilityPolicy.RevealReason.ACTIVE_TRANSFER") &&
                 currentRevealReason.contains("requested") &&
-                hasActiveFileTransfer.contains("activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null"),
+            hasActiveFileTransfer.contains("activeIncomingFileTransfer != null") &&
+                hasActiveFileTransfer.contains("activeOutgoingFileTransfer != null") &&
+                hasActiveFileTransfer.contains("incomingFileRecoveryLoadPending") &&
+                hasActiveFileTransfer.contains("pendingIncomingFileRecovery != null"),
         )
     }
 
@@ -816,7 +830,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         )
         assertTrue(
             "Saved incoming bytes remain isolated to the completed-transfer handler, not the no-Host control refresh path",
-            extractMethod(source, "private fun onIncomingFileCompleted").contains("saveIncomingFileToDownloads(completed, displayName)"),
+            extractMethod(source, "private fun onIncomingFileCompleted").contains("saveRecoveredIncomingFile"),
         )
     }
 

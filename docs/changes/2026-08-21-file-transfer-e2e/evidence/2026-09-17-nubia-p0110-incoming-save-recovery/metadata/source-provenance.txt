@@ -1,0 +1,9 @@
+source_base=d8fde209161ddbf0ab26382e68f2b4bdbe79dacc
+verified_source_head=528ceb7c3
+branch=codex/android-incoming-save-recovery
+captured_at=2026-09-17 Asia/Shanghai
+android_jvm_tests=1898 passed, 0 failed, 0 skipped
+review_fix_focused_jvm_tests=AppSpecificDownloadsSaverTest and FileTransferProductOwnerTest passed
+review_fix_device_tests=IncomingFileRecoveryInstrumentedTest 4 passed
+app_apk_sha256=2a1d8b686a85968c0e38bb7fc8476b62f74927eb835878e00de3dacd0ac819ef
+test_apk_sha256=26be5530531394b23d66e64309273e6acbcf21e30f093f75aa8f953bca025503

@@ -33,7 +33,7 @@ class IncomingFileSavedPanelInstrumentedTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             scenario.onActivity { activity ->
                 activity.assertRecentFilePanel("latest.bin")
-                assertTrue(activity.findViewById<Button>(R.id.recentIncomingFileDismissButton).performClick())
+                assertTrue(activity.findViewById<Button>(R.id.incomingFileStatusSecondaryButton).performClick())
                 assertEquals(View.GONE, activity.findViewById<View>(R.id.recentIncomingFileContainer).visibility)
             }
         }
@@ -57,9 +57,9 @@ class IncomingFileSavedPanelInstrumentedTest {
 
     private fun MainActivity.assertRecentFilePanel(displayName: String) {
         val container = findViewById<View>(R.id.recentIncomingFileContainer)
-        val summary = findViewById<TextView>(R.id.recentIncomingFileSummary)
-        val saveCopy = findViewById<Button>(R.id.recentIncomingFileSaveCopyButton)
-        val dismiss = findViewById<Button>(R.id.recentIncomingFileDismissButton)
+        val summary = findViewById<TextView>(R.id.incomingFileStatusSummary)
+        val saveCopy = findViewById<Button>(R.id.incomingFileStatusPrimaryButton)
+        val dismiss = findViewById<Button>(R.id.incomingFileStatusSecondaryButton)
 
         assertEquals(View.VISIBLE, container.visibility)
         assertTrue(summary.text.toString().contains(displayName))
