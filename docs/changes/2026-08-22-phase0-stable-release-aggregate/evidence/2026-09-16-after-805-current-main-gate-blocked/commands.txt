@@ -1,5 +1,6 @@
 git fetch origin main --prune
 git worktree add .claude/worktrees/phase0-after805-aggregate-refresh -b codex/phase0-after805-aggregate-refresh origin/main
+cd .claude/worktrees/phase0-after805-aggregate-refresh
 git rev-parse origin/main
 git rev-parse HEAD
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy.RepositoryPrivacyTests.test_current_tree_has_no_raw_android_serial_contexts -v
