@@ -3,30 +3,30 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "779e606477f07b3454e03f5630e47d9663ae03eb",
+    "base_commit": "53d49a557866fb89db9a3b6b0958a5c53a3fa12d",
     "base_ref": "origin/main",
-    "audit_date": "2026-09-09",
+    "audit_date": "2026-09-16",
     "owner": "Vibe Screen core team",
     "audit_source": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md"
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'map(select(.number != 737)) | sort_by(.number)'",
-    "queried_at": "2026-09-09",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'map(select(.headRefName != \"codex/phase0-after802-aggregate-refresh\")) | sort_by(.number)'",
+    "queried_at": "2026-09-16",
     "state": "open",
     "open_pr_numbers": []
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 250 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=736)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 250 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=802)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 736
+      "max": 802
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-10-after-735-current-main-gate-blocked/merged-prs-568-736.jsonl",
-    "audited_source_commit": "779e606477f07b3454e03f5630e47d9663ae03eb",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-802-current-main-gate-blocked/merged-prs-568-802.jsonl",
+    "audited_source_commit": "53d49a557866fb89db9a3b6b0958a5c53a3fa12d",
     "excluded_pr_numbers": [
       568,
       576,
@@ -34,7 +34,13 @@
       646,
       655,
       704,
-      724
+      724,
+      751,
+      753,
+      767,
+      769,
+      773,
+      775
     ]
   },
   "readme_guard": {
@@ -77,7 +83,10 @@
         "https://github.com/TaoSama/vibe-screen/actions/runs/34288307346",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245299",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245319",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34396245304"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34396245304",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626193",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626253",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626165"
       ],
       "owner_prs": [],
       "blockers": []
@@ -110,11 +119,17 @@
         "https://github.com/TaoSama/vibe-screen/actions/runs/34288307261",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34288307346",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245299",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626193",
         "tools/tests/test_clipboard_e2e_gate.py",
         "tools/tests/test_file_transfer_android_smoke.py",
         "tools/vibescreen_evidence/clipboard_e2e_gate.py",
         "tools/vibescreen_evidence/file_transfer_android_smoke.py",
-        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-14-nubia-p0110-no-host-uiux-after-782-current-main/README.md"
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-14-nubia-p0110-no-host-uiux-after-782-current-main/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-camera-manual-settings-return-after-798/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-camera-permission-recovery/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-empty-revoke-action/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-profile-import-bootstrap/README.md",
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/README.md"
       ],
       "owner_prs": [],
       "blockers": []
@@ -133,7 +148,9 @@
         "https://github.com/TaoSama/vibe-screen/actions/runs/34288307261",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34288307346",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245299",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/34396245304"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/34396245304",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626193",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626253"
       ],
       "owner_prs": [],
       "blockers": []
@@ -310,7 +327,8 @@
         "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-08-nubia-p0110-clipboard-android-baseline-current-main/README.md",
         "tools/vibescreen_evidence/clipboard_e2e_gate.py",
         "tools/tests/test_clipboard_e2e_gate.py",
-        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-14-nubia-p0110-no-host-uiux-after-782-current-main/README.md"
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-14-nubia-p0110-no-host-uiux-after-782-current-main/README.md",
+        "docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-09-15-nubia-p0110-clipboard-system-cap-no-host/README.md"
       ],
       "owner_prs": [],
       "blockers": [
@@ -318,6 +336,7 @@
         "Android now requires explicit overwrite confirmation, pending-action status visibility, duplicate action suppression, PR #620 allowed-state managed-policy control happy-path coverage, and control-boundary coverage before writing solicited or direct Mac clipboard content into ClipboardManager, but this is source/contract and local Android readiness rather than system-pasteboard product E2E. PR #659 improves Android clipboard confirmation dialog source behavior, but does not add retained Android ClipboardManager <-> macOS NSPasteboard product evidence.",
         "No retained bidirectional Android ClipboardManager -> macOS NSPasteboard and macOS NSPasteboard -> Android ClipboardManager product transfer evidence exists with exact system clipboard endpoints, explicit user action, Protocol v1 session ownership, verified session ID, verified session epoch, verified origin device ID, 16-byte change ID, SHA-256 digest, bounded byte length, final digest match, distinct markers, final marker equality, and evidence-relative non-empty retained artifacts for source read, sender action, receiver approval, protocol packets, destination write, final verification, and negative boundary verification, with each role backed by a distinct file whose declared direction, recorded byte length, and SHA-256 match the retained bytes, whose destination-write artifact matches the direction-level payload size and digest, and whose protocol-packet JSONL contains offer/request/content records matching the transfer direction, change ID, session ID, session epoch, and origin, with offer/content records also matching text/plain, byte length, and SHA-256 payload metadata.",
         "Existing P0110 evidence proves only local Android ClipboardManager smoke and offline/protocol readiness; the 2026-09-08 current-main no-Host refresh expands ClipboardManagerInstrumentedTest to 8 executed tests for ordinary foreground text, instrumentation set/read, 256 KiB and 320 KiB UTF-8 text, empty clipboard clearing, non-text Intent ClipData, and multi-item first-non-text handling, plus 2 clipboard confirmation dialog layout tests. Exploratory 512 KiB and 1 MiB local Android system-clipboard writes hit Binder transaction-size limits on P0110, so the Protocol v1 1 MiB ceiling remains JVM/protocol evidence only. This no-Host smoke must not be relabeled as Xiaomi 13/fuxi evidence and cannot close Android/macOS system-pasteboard product E2E.",
+        "PR #795 hardens Android system-clipboard write caps at the demonstrated 320 KiB local Android boundary and rejects larger valid text before attempting known unsafe Binder writes. This is Android-local system-service safety coverage only and does not add Android ClipboardManager <-> macOS NSPasteboard product evidence.",
         "PR #726 hardens clipboard product E2E artifact validation for direction-scoped payload metadata and retained bytes; this is evidence-tool hardening only and does not add Android ClipboardManager <-> macOS NSPasteboard product evidence.",
         "PR #735 records P0110 no-Host UI/UX evidence for clipboard confirmation layout/control surfaces only; it does not add Android ClipboardManager <-> macOS NSPasteboard product evidence."
       ]
@@ -332,6 +351,7 @@
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
         "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ProductSessionCoordinator.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ClientExperienceTest.kt",
+        "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/FileTransferOfferDialogLayoutInstrumentedTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/MainActivityFileTransferSystemBoundaryContractTest.kt",
         "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/ProductSessionCoordinatorTest.kt",
         "docs/changes/2026-08-21-file-transfer-e2e/TEST.md",
@@ -341,6 +361,9 @@
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-15-nubia-p0110-no-host-file-transfer-smoke-after-785/file-transfer-android-smoke-gate.json",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-15-nubia-p0110-no-host-mediastore-downloads-runtime/README.md",
         "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-15-nubia-p0110-no-host-mediastore-downloads-runtime/android-test-results/TEST-P0110-16-app.xml",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-15-nubia-p0110-no-host-outgoing-staging-runtime/README.md",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-15-nubia-p0110-no-host-system-share-target/README.md",
+        "docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-15-nubia-p0110-no-host-send-multiple-single-file-after-797/README.md",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/README.md",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-04-nubia-p0110-no-host-transfer-controls/no-host-transfer-controls-summary.json",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-05-nubia-p0110-no-host-uiux-current-source/README.md",
@@ -372,6 +395,9 @@
         "PR #736 hardens aggregate file-transfer product E2E revalidation so Android->macOS and macOS->Android evidence must each carry a valid 32-character hex session_id_hex and both directions must share that same session_id_hex before the source.product_e2e record can close; this is fail-closed evidence-tool hardening only and does not add Host-backed file-transfer product bytes landing evidence.",
         "PR #785 adds strict raw Android INSTRUMENTATION_STATUS parsing, and the 2026-09-15 Nubia P0110 no-Host refresh passes all five required Android file-transfer UI smoke methods with no Host listener or tcp:54321 reverse mapping. This closes only the android_file_transfer_smoke subcheck; Host readiness, real transport, bidirectional bytes landing, and cancel/disconnect cleanup remain blocked.",
         "The 2026-09-15 Nubia P0110 Android-local MediaStore Downloads runtime smoke verifies production-path publication, exact bytes and SHA-256 readback, IS_PENDING=0, and failed-entry deletion without a Host or tcp:54321 reverse mapping. It does not prove Protocol v1 transport, receiver approval, Host-backed bytes landing, bidirectional transfer, or cancel/disconnect cleanup.",
+        "The 2026-09-15 Nubia P0110 Android-local outgoing staging runtime smoke verifies production ContentResolver reads from a real content:// source into app-private staging with exact bytes, length, MIME type, SHA-256, and oversize cleanup. It does not prove Host-backed file offer, remote write, bidirectional transfer, or cancel/disconnect cleanup.",
+        "The 2026-09-15 Nubia P0110 Android-local system-share and ACTION_SEND_MULTIPLE smokes verify share target admission, persistent cancellable pending drafts, no eager URI reads, Activity recreation, repeated-share handling, exactly-one-item ACTION_SEND_MULTIPLE admission, and true multi-item rejection. They do not prove Host-backed file-transfer bytes landing.",
+        "PR #802 adds Android no-Host file-transfer dialog visible-frame regression coverage only. It does not prove Host-backed Android/macOS file-transfer E2E bytes landing, bidirectional transfer, or Phase 0 file-transfer gate closure.",
         "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass.",
         "PR #735 records P0110 no-Host UI/UX evidence for file-transfer offer/preflight/control surfaces only; it does not add Host-backed file-transfer product bytes landing evidence."
       ]
