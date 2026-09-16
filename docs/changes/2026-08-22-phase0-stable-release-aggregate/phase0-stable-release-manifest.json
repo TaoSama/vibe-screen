@@ -3,7 +3,7 @@
   "kind": "phase0_stable_release_closure",
   "phase": "phase0",
   "source": {
-    "base_commit": "53d49a557866fb89db9a3b6b0958a5c53a3fa12d",
+    "base_commit": "2e113cf1ba36bc0d8d5605f49f999e6e2e202a51",
     "base_ref": "origin/main",
     "audit_date": "2026-09-16",
     "owner": "Vibe Screen core team",
@@ -11,22 +11,22 @@
   },
   "open_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'map(select(.headRefName != \"codex/phase0-after802-aggregate-refresh\")) | sort_by(.number)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state open --limit 200 --json number,title,headRefName,headRefOid,baseRefName,updatedAt,isDraft,mergeStateStatus,url | jq 'map(select(.headRefName != \"codex/phase0-after803-aggregate-refresh\")) | sort_by(.number)'",
     "queried_at": "2026-09-16",
     "state": "open",
     "open_pr_numbers": []
   },
   "merged_pr_snapshot": {
     "repository": "TaoSama/vibe-screen",
-    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 250 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=802)'",
+    "command": "gh pr list --repo TaoSama/vibe-screen --state merged --base main --limit 300 --json number,title,mergedAt,headRefOid,baseRefName,mergeCommit,url --jq '.[] | select(.number>=568 and .number<=803)'",
     "state": "merged",
     "base": "main",
     "range": {
       "min": 568,
-      "max": 802
+      "max": 803
     },
-    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-802-current-main-gate-blocked/merged-prs-568-802.jsonl",
-    "audited_source_commit": "53d49a557866fb89db9a3b6b0958a5c53a3fa12d",
+    "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/merged-prs-568-803.jsonl",
+    "audited_source_commit": "2e113cf1ba36bc0d8d5605f49f999e6e2e202a51",
     "excluded_pr_numbers": [
       568,
       576,
@@ -86,7 +86,10 @@
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245304",
         "https://github.com/TaoSama/vibe-screen/actions/runs/35078626193",
         "https://github.com/TaoSama/vibe-screen/actions/runs/35078626253",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626165"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626165",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35090158210",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35090158243",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35090158226"
       ],
       "owner_prs": [],
       "blockers": []
@@ -129,7 +132,8 @@
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-camera-permission-recovery/README.md",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-15-nubia-p0110-internet-empty-revoke-action/README.md",
         "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-profile-import-bootstrap/README.md",
-        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/README.md"
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/README.md",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35090158210"
       ],
       "owner_prs": [],
       "blockers": []
@@ -150,7 +154,9 @@
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245299",
         "https://github.com/TaoSama/vibe-screen/actions/runs/34396245304",
         "https://github.com/TaoSama/vibe-screen/actions/runs/35078626193",
-        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626253"
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35078626253",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35090158210",
+        "https://github.com/TaoSama/vibe-screen/actions/runs/35090158243"
       ],
       "owner_prs": [],
       "blockers": []
@@ -398,6 +404,7 @@
         "The 2026-09-15 Nubia P0110 Android-local outgoing staging runtime smoke verifies production ContentResolver reads from a real content:// source into app-private staging with exact bytes, length, MIME type, SHA-256, and oversize cleanup. It does not prove Host-backed file offer, remote write, bidirectional transfer, or cancel/disconnect cleanup.",
         "The 2026-09-15 Nubia P0110 Android-local system-share and ACTION_SEND_MULTIPLE smokes verify share target admission, persistent cancellable pending drafts, no eager URI reads, Activity recreation, repeated-share handling, exactly-one-item ACTION_SEND_MULTIPLE admission, and true multi-item rejection. They do not prove Host-backed file-transfer bytes landing.",
         "PR #802 adds Android no-Host file-transfer dialog visible-frame regression coverage only. It does not prove Host-backed Android/macOS file-transfer E2E bytes landing, bidirectional transfer, or Phase 0 file-transfer gate closure.",
+        "PR #803 contributes aggregate refresh and Android serial privacy scanner/test hardening only. It does not prove Host-backed Android/macOS file-transfer E2E bytes landing, bidirectional transfer, or Phase 0 file-transfer gate closure.",
         "The file-transfer/WebRTC bulk current-base aggregate remains fail-closed until both the Android USB/LAN file-transfer child gate and public Internet WebRTC bulk product-flow child gate independently pass.",
         "PR #735 records P0110 no-Host UI/UX evidence for file-transfer offer/preflight/control surfaces only; it does not add Host-backed file-transfer product bytes landing evidence."
       ]
