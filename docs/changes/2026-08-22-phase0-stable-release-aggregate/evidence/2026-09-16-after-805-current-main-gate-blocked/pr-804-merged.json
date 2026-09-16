@@ -1,0 +1,120 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjExMzkyODI5",
+    "is_bot": false,
+    "login": "TaoSama",
+    "name": "Wentao Lu"
+  },
+  "baseRefName": "main",
+  "body": "## Summary\\n- refresh the Phase 0 stable-release aggregate to current main after PR #803 at 2e113cf1ba36bc0d8d5605f49f999e6e2e202a51\\n- add the 2026-09-16 after-803 blocked evidence package with PR/run/open/closed/head snapshots, gate summaries, strict-gate expected-failure capture, commands, and checksums\\n- keep Phase 0 explicitly blocked with the seven remaining non-pass gates while binding source_guard to the PR #803 squash merge commit\\n\\n## Verification\\n- jq empty docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-module-ownership-manifest.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/*.json docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/*.jsonl\\n- rg -n \"EP[0-9A-Za-z_-]{8,}\" docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/ || true -> no matches\\n- git diff origin/main...HEAD | rg -n \"EP[0-9A-Za-z_-]{8,}\" || true -> no matches\\n- shasum -a 256 -c docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/SHA256SUMS\\n- PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase0_stable_release tools.tests.test_phase0_module_ownership -v -> 148 tests OK\\n- PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.phase3.test_repository_privacy -v -> 14 tests OK\\n- make phase0-stable-release-gate PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=2e113cf1ba36bc0d8d5605f49f999e6e2e202a51 -> aggregate_verdict=blocked, source_guard.verdict=pass\\n- make phase0-stable-release-gate PHASE0_STABLE_RELEASE_REQUIRE_PASS=1 PHASE0_STABLE_RELEASE_EXPECTED_SOURCE_COMMIT=2e113cf1ba36bc0d8d5605f49f999e6e2e202a51 -> expected exit_code=2\\n- git diff --check\\n- changed-path allowlist check -> only README.md and docs/changes/2026-08-22-phase0-stable-release-aggregate/**\\n- actual successor check for branch commit 9b6189e177f2879ad8872d604774e563091954f2 -> aggregate_verdict=blocked, source_guard.verdict=pass, accepted_aggregate_only_successor=true\\n\\n## Evidence boundary\\nNo Host launch/install, TCC/System Settings, codesign/security/keychain, adb reverse/device operation, or swift run was performed. This follow-up only updates aggregate metadata and retained evidence for the current-source blocked decision.\\n\\nThe remaining non-pass Phase 0 gates are:\\n- macos_host_hardware_compatibility_matrix\\n- telemetry_and_latency_archive\\n- host_rss_2h_no_growth\\n- native_pointer_hid_mouse\\n- controller_runtime_acceptance\\n- clipboard_android_macos_product_e2e\\n- file_transfer_android_product_e2e\\n\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n## Summary by CodeRabbit\n\n- **Documentation**\n  - Updated Phase 0 stable-release aggregate references and manifests through PR `#803`.\n  - Added refreshed audit evidence, ownership records, CI results, reproducible command logs, checksums, and pull-request coverage.\n  - Documented Android serial privacy validation and the updated verification source.\n\n- **Release Status**\n  - The Phase 0 stable release remains blocked, with seven runtime and product gates unresolved.\n  - Recorded passing checks, remaining blockers, release-marking status, and the next gate requiring progress.\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+  "closedAt": "2026-09-16T12:48:09Z",
+  "files": [
+    {
+      "path": "README.md",
+      "additions": 2,
+      "deletions": 2,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/README.md",
+      "additions": 25,
+      "deletions": 23,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/README.md",
+      "additions": 101,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/SHA256SUMS",
+      "additions": 11,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/closed-prs-568-803.json",
+      "additions": 249,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/commands.txt",
+      "additions": 35,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/github-runs-main-2e113cf1.json",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/head.txt",
+      "additions": 21,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/merged-prs-568-803.jsonl",
+      "additions": 223,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/open-prs.json",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/phase0-module-ownership-summary.json",
+      "additions": 336,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/phase0-stable-release-expected-source-exit.txt",
+      "additions": 11,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/phase0-stable-release-summary.json",
+      "additions": 992,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/evidence/2026-09-16-after-803-current-main-gate-blocked/pr-803-merged.json",
+      "additions": 162,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-module-ownership-manifest.json",
+      "additions": 1,
+      "deletions": 1,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "docs/changes/2026-08-22-phase0-stable-release-aggregate/phase0-stable-release-manifest.json",
+      "additions": 16,
+      "deletions": 9,
+      "changeType": "MODIFIED"
+    }
+  ],
+  "headRefName": "codex/phase0-after803-aggregate-refresh",
+  "headRefOid": "a7dfd218271ae83d3e51229abe860d66075ab959",
+  "isDraft": false,
+  "mergeCommit": {
+    "oid": "336202c1b24aaaafb00e8f0c1def664eb4c3869c"
+  },
+  "mergedAt": "2026-09-16T12:48:09Z",
+  "number": 804,
+  "state": "MERGED",
+  "title": "docs: refresh phase0 aggregate after PR 803",
+  "url": "https://github.com/TaoSama/vibe-screen/pull/804"
+}
