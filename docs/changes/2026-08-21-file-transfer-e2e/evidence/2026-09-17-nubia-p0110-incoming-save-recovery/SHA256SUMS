@@ -1,6 +1,6 @@
-0eec7dca6a20826fd076e74aa1e41fea1f827e638c00cc55cfc74315e9d9c29a  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/focused-recovery.log
-3d6daa79115559063455fd6c9f65f53870efbdda62a865b6031773ba5acee6b2  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/process-seed.log
-8d360ad0b63ad673fb9ef4ec3edb954357b4c32b65dae86ff3a7257fb9143b1d  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/process-verify.log
+20d47517bdffa6694c36bc83c91bff85dad5f8e24e80de3fe93a746c1a4d5740  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/focused-recovery.log
+52e6dde4ee5e74c6e6115d131595f8cba3f76f669789c7c298e8988bfe627aee  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/process-seed.log
+fb69d5e4ebb3ef4c1a8f5cb70d4d015c8de48e4636e0da45b89bf8c9fcfc6c53  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/android-test-results/process-verify.log
 0217cdd78b86cccfffb39de354971a56d5d87820850ba23e241fb00503684670  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/logs/cold-launch.txt
 7277de23a59f1eba1889110c46456c3fc7a8b48f434b6a92025e82e4ed351e91  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/logs/no-host-boundary.txt
 4370945e3bba30ecb513f66d10870db41e07b2ab63297c4d9779df8c16318183  docs/changes/2026-08-21-file-transfer-e2e/evidence/2026-09-17-nubia-p0110-incoming-save-recovery/logs/portrait-required-elements.txt

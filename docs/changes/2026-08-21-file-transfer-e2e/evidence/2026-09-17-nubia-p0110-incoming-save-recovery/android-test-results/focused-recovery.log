@@ -57,7 +57,7 @@ INSTRUMENTATION_STATUS: test=coldStartRetryPublishesExactBytesAndClearsRecovery
 INSTRUMENTATION_STATUS_CODE: 0
 INSTRUMENTATION_RESULT: stream=
 
-Time: 2.203
+Time: 2.122
 
 OK (4 tests)
 
