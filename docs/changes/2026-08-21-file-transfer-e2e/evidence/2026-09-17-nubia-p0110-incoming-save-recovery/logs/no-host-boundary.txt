@@ -1,0 +1,4 @@
+adb_reverse_before_and_after=,
+local_54321_listener=
+macos_host_started=no
+macos_tcc_requested=no

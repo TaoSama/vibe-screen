@@ -1,9 +1,11 @@
 package dev.telemachus.display
 
 import dev.telemachus.display.protocol.CompletedIncomingFile
+import com.google.protobuf.ByteString
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
 import java.nio.file.FileAlreadyExistsException
@@ -18,6 +20,11 @@ internal object AppSpecificDownloadsSaver {
     private const val PARTIAL_SUFFIX = ".partial"
     private const val DEFAULT_DISPLAY_NAME = "transfer.bin"
     private val publishLock = Any()
+
+    internal data class StablePublicationTarget(
+        val target: File,
+        val partial: File,
+    )
 
     fun save(
         source: File,
@@ -51,17 +58,53 @@ internal object AppSpecificDownloadsSaver {
             maxDisplayNameLength,
             fallback = fallbackDisplayName,
         )
-        return try {
-            save(
-                source = completed.stagingFile,
-                downloads = downloads,
-                displayName = displayName,
-                copy = copy,
-            )
-        } finally {
-            completed.stagingFile.delete()
+        return save(
+            source = completed.stagingFile,
+            downloads = downloads,
+            displayName = displayName,
+            copy = copy,
+        )
+    }
+
+    fun allocateStablePublication(
+        downloads: File,
+        recoveryId: String,
+        displayName: String,
+    ): StablePublicationTarget =
+        synchronized(publishLock) {
+            validateDisplayName(displayName)
+            ensureDirectory(downloads)
+            val target = availableDestination(downloads, displayName)
+            val partial = File(downloads, PARTIAL_PREFIX + recoveryId + PARTIAL_SUFFIX)
+            if (partial.parentFile?.canonicalFile != downloads.canonicalFile) {
+                throw IOException("Downloads partial path escapes its directory")
+            }
+            StablePublicationTarget(target = target, partial = partial)
+        }
+
+    fun writeStablePartial(
+        source: File,
+        partial: File,
+        copy: (File, OutputStream) -> Unit = ::copyFileTo,
+    ) {
+        FileOutputStream(partial, false).use { rawOutput ->
+            copy(source, rawOutput)
+            rawOutput.fd.sync()
         }
     }
+
+    fun publishStablePartial(partial: File, target: File) {
+        synchronized(publishLock) {
+            if (!publishPartial(partial, target)) throw IOException("Downloads target already exists")
+        }
+    }
+
+    fun matches(
+        file: File,
+        byteLength: Long,
+        sha256: ByteString,
+    ): Boolean =
+        file.isFile && file.length() == byteLength && dev.telemachus.display.protocol.sha256(file.readBytes()) == sha256
 
     private fun ensureDirectory(directory: File) {
         if (directory.exists()) {
@@ -177,14 +220,14 @@ internal object AppSpecificDownloadsSaver {
         output: OutputStream,
     ) {
         BufferedInputStream(source.inputStream()).use { input ->
-            BufferedOutputStream(output).use { bufferedOutput ->
-                val buffer = ByteArray(COPY_BUFFER_BYTES)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    bufferedOutput.write(buffer, 0, read)
-                }
+            val bufferedOutput = BufferedOutputStream(output)
+            val buffer = ByteArray(COPY_BUFFER_BYTES)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                bufferedOutput.write(buffer, 0, read)
             }
+            bufferedOutput.flush()
         }
     }
 }

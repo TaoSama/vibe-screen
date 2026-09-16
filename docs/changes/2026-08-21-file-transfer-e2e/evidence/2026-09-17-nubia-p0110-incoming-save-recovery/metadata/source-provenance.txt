@@ -1,0 +1,6 @@
+source_base=d8fde209161ddbf0ab26382e68f2b4bdbe79dacc
+branch=codex/android-incoming-save-recovery
+captured_at=2026-09-17 Asia/Shanghai
+android_jvm_tests=1898 passed, 0 failed, 0 skipped
+app_apk_sha256=9529f98586d2fb544af90e2e12fe94f0a41a0ae1a1430449387887147e2eefad
+test_apk_sha256=c471c7391160f626a85f38a1cbe867bc9d29aeb653e425179e8e8303d90227bc

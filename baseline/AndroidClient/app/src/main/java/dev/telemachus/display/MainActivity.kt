@@ -139,6 +139,12 @@ private data class PendingIncomingFileExport(
     val mimeType: String,
 )
 
+private enum class IncomingFileRecoveryOperation {
+    IDLE,
+    SAVING,
+    DISCARDING,
+}
+
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
@@ -174,6 +180,7 @@ class MainActivity : AppCompatActivity() {
     private val pendingPairingIdentityAliasPersistence by lazy {
         SharedPreferencesPendingPairingIdentityAliasPersistence(applicationContext)
     }
+    private val incomingFileRecoveryStore by lazy { IncomingFileRecoveryStore(applicationContext) }
     @Volatile private var internetSession: InternetProductSession? = null
     private var internetVideoDecoderLifecycle: InternetVideoDecoderLifecycle? = null
     private var internetNetworkMonitor: AndroidNetworkMonitor? = null
@@ -327,6 +334,9 @@ class MainActivity : AppCompatActivity() {
     private var localFixedHostAllowed = true
     private var pendingInternetOutgoingFileTransfer: StagedOutgoingFile? = null
     private var pendingIncomingFileDialog: androidx.appcompat.app.AlertDialog? = null
+    internal var incomingFileDiscardDialog: androidx.appcompat.app.AlertDialog? = null
+        private set
+    private var incomingFileRecoveryDialog: androidx.appcompat.app.AlertDialog? = null
     private var pendingIncomingFileOfferTransferId: ByteString? = null
     private var pendingOutgoingFileDialog: androidx.appcompat.app.AlertDialog? = null
     private var pendingOutgoingFileTimeout: Runnable? = null
@@ -337,6 +347,9 @@ class MainActivity : AppCompatActivity() {
     private var pendingSharedFileIntent: PendingSharedFileIntent? = null
     private var recentIncomingFile: PendingIncomingFileExport? = null
     private var pendingIncomingFileExport: PendingIncomingFileExport? = null
+    @Volatile private var incomingFileRecoveryLoadPending = true
+    @Volatile private var pendingIncomingFileRecovery: RecoveredIncomingFile? = null
+    private var incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
     private var restoredConsumedShareIntentToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
@@ -434,6 +447,7 @@ class MainActivity : AppCompatActivity() {
         restorePendingSharedFileIntent(savedInstanceState)
         restoreRecentIncomingFile(savedInstanceState)
         restorePendingIncomingFileExport(savedInstanceState)
+        restorePendingIncomingFileRecovery()
         applyLaunchIntentPolicy(
             savedInstanceState,
             allowImplicitUsbFallback = !ShareFileIntentPolicy.isShareCandidate(intent),
@@ -1727,12 +1741,22 @@ class MainActivity : AppCompatActivity() {
         }
         binding.pendingSharedFileSendButton.setOnClickListener { beginPendingSharedFileTransfer() }
         binding.pendingSharedFileCancelButton.setOnClickListener { cancelPendingSharedFileIntent() }
-        binding.recentIncomingFileSaveCopyButton.setOnClickListener {
-            recentIncomingFile?.let { recent -> beginIncomingFileExport(recent.source, recent.displayName, recent.mimeType) }
+        binding.incomingFileStatusPrimaryButton.setOnClickListener {
+            val recovery = pendingIncomingFileRecovery
+            if (recovery != null) {
+                retryIncomingFileSave(recovery)
+            } else {
+                recentIncomingFile?.let { recent -> beginIncomingFileExport(recent.source, recent.displayName, recent.mimeType) }
+            }
         }
-        binding.recentIncomingFileDismissButton.setOnClickListener {
-            recentIncomingFile = null
-            refreshRecentIncomingFileUi()
+        binding.incomingFileStatusSecondaryButton.setOnClickListener {
+            val recovery = pendingIncomingFileRecovery
+            if (recovery != null) {
+                confirmDiscardIncomingFile(recovery)
+            } else {
+                recentIncomingFile = null
+                refreshRecentIncomingFileUi()
+            }
         }
 
         setupInternetUi()
@@ -2623,7 +2647,10 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun hasActiveFileTransfer(): Boolean =
-        activeIncomingFileTransfer != null || activeOutgoingFileTransfer != null
+        activeIncomingFileTransfer != null ||
+            activeOutgoingFileTransfer != null ||
+            incomingFileRecoveryLoadPending ||
+            pendingIncomingFileRecovery != null
 
     private fun hideControlBar() {
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
@@ -3060,19 +3087,91 @@ class MainActivity : AppCompatActivity() {
         refreshRecentIncomingFileUi()
     }
 
+    private fun restorePendingIncomingFileRecovery() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val loaded = runCatching { incomingFileRecoveryStore.load() }
+            withContext(Dispatchers.Main) {
+                incomingFileRecoveryLoadPending = false
+                if (isFinishing || isDestroyed) return@withContext
+                loaded
+                    .onSuccess { recovery -> pendingIncomingFileRecovery = recovery }
+                    .onFailure { failure ->
+                        mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
+                    }
+                refreshRecentIncomingFileUi()
+                if (loaded.getOrNull() != null) {
+                    binding.incomingFileStatusPrimaryButton.post {
+                        binding.incomingFileStatusPrimaryButton.requestRectangleOnScreen(
+                            Rect(
+                                0,
+                                0,
+                                binding.incomingFileStatusPrimaryButton.width,
+                                binding.incomingFileStatusPrimaryButton.height,
+                            ),
+                            true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private fun refreshRecentIncomingFileUi() {
+        val recovery = pendingIncomingFileRecovery
         val recent = recentIncomingFile
-        binding.recentIncomingFileContainer.visibility = if (recent == null) View.GONE else View.VISIBLE
-        if (recent == null) {
-            binding.recentIncomingFileSummary.text = ""
-            binding.recentIncomingFileSaveCopyButton.isEnabled = false
-            binding.recentIncomingFileDismissButton.isEnabled = false
+        binding.recentIncomingFileContainer.visibility = if (recovery == null && recent == null) View.GONE else View.VISIBLE
+        if (recovery != null) {
+            val operation = incomingFileRecoveryOperation
+            binding.incomingFileStatusTitle.setText(
+                when (operation) {
+                    IncomingFileRecoveryOperation.IDLE -> R.string.file_transfer_incoming_save_failed_title
+                    IncomingFileRecoveryOperation.SAVING -> R.string.file_transfer_incoming_save_retrying_title
+                    IncomingFileRecoveryOperation.DISCARDING -> R.string.file_transfer_incoming_discarding_title
+                },
+            )
+            binding.incomingFileStatusSummary.text =
+                when (operation) {
+                    IncomingFileRecoveryOperation.IDLE ->
+                        getString(
+                            R.string.file_transfer_incoming_save_failed_summary,
+                            recovery.displayName,
+                            fileTransferDestinationLabel(),
+                        )
+                    IncomingFileRecoveryOperation.SAVING ->
+                        getString(
+                            R.string.file_transfer_incoming_save_retrying_summary,
+                            recovery.displayName,
+                            fileTransferDestinationLabel(),
+                        )
+                    IncomingFileRecoveryOperation.DISCARDING ->
+                        getString(R.string.file_transfer_incoming_discarding_summary, recovery.displayName)
+                }
+            binding.incomingFileStatusPrimaryButton.setText(
+                when (operation) {
+                    IncomingFileRecoveryOperation.IDLE -> R.string.file_transfer_incoming_save_failed_primary
+                    IncomingFileRecoveryOperation.SAVING -> R.string.file_transfer_incoming_save_retrying_primary
+                    IncomingFileRecoveryOperation.DISCARDING -> R.string.file_transfer_incoming_discarding_primary
+                },
+            )
+            binding.incomingFileStatusPrimaryButton.isEnabled = operation == IncomingFileRecoveryOperation.IDLE
+            binding.incomingFileStatusSecondaryButton.setText(R.string.file_transfer_incoming_save_failed_secondary)
+            binding.incomingFileStatusSecondaryButton.isEnabled = operation == IncomingFileRecoveryOperation.IDLE
             return
         }
-        binding.recentIncomingFileSummary.text =
-            getString(R.string.file_transfer_recent_saved_summary, recent.displayName, fileTransferDestinationLabel())
-        binding.recentIncomingFileSaveCopyButton.isEnabled = pendingIncomingFileExport == null
-        binding.recentIncomingFileDismissButton.isEnabled = true
+        if (recent == null) {
+            binding.incomingFileStatusTitle.text = ""
+            binding.incomingFileStatusSummary.text = ""
+            binding.incomingFileStatusPrimaryButton.isEnabled = false
+            binding.incomingFileStatusSecondaryButton.isEnabled = false
+            return
+        }
+        binding.incomingFileStatusTitle.setText(R.string.file_transfer_incoming_saved_title)
+        binding.incomingFileStatusSummary.text =
+            getString(R.string.file_transfer_incoming_saved_summary, recent.displayName, fileTransferDestinationLabel())
+        binding.incomingFileStatusPrimaryButton.setText(R.string.file_transfer_incoming_saved_primary)
+        binding.incomingFileStatusPrimaryButton.isEnabled = pendingIncomingFileExport == null
+        binding.incomingFileStatusSecondaryButton.setText(R.string.file_transfer_incoming_saved_secondary)
+        binding.incomingFileStatusSecondaryButton.isEnabled = true
     }
 
     private fun setPendingSharedFileIntent(pending: PendingSharedFileIntent) {
@@ -3866,35 +3965,162 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val displayName = safeIncomingDisplayName(completed.fileName)
             val stagedBytes = completed.stagingFile.length()
-            val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }
-            completed.stagingFile.deleteBestEffort()
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
+            val adopted = runCatching {
+                incomingFileRecoveryStore.load()?.takeIf { recovery ->
+                    recovery.transferId == completed.transferId &&
+                        recovery.sha256 == completed.sha256 &&
+                        recovery.payloadFile.canonicalFile == completed.stagingFile.canonicalFile
+                } ?: throw IOException("Durable incoming recovery ownership is unavailable")
+            }
+            val recovery = adopted.getOrNull()
+            if (recovery != null) pendingIncomingFileRecovery = recovery
+            val saved = recovery?.let(::saveRecoveredIncomingFile)
+            withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
+                if (recovery == null) {
+                    val failure = adopted.exceptionOrNull() ?: IOException("Incoming recovery adoption failed")
+                    mainDiag(
+                        "file transfer recovery failed bytes=$stagedBytes " +
+                            "transfer_id=${completed.transferId.shortDebugId()} " +
+                            failure.javaClass.simpleName,
+                    )
+                    showDedupedToast(getString(R.string.file_transfer_save_failed, displayName), Toast.LENGTH_LONG)
+                    return@withContext
+                }
                 saved
-                    .onSuccess { savedUri ->
+                    ?.onSuccess { savedUri ->
+                        pendingIncomingFileRecovery = null
                         mainDiag(
                             "file transfer saved bytes=$stagedBytes " +
                                 "transfer_id=${completed.transferId.shortDebugId()}",
                         )
-                        showIncomingFileSavedAction(
-                            source = savedUri,
-                            displayName = displayName,
-                            mimeType = completed.mimeType,
-                        )
+                        showIncomingFileSavedAction(savedUri, displayName, completed.mimeType)
                     }
-                    .onFailure { failure ->
+                    ?.onFailure { failure ->
+                        recentIncomingFile = null
+                        pendingIncomingFileRecovery = recovery
                         mainDiag(
                             "file transfer save failed bytes=$stagedBytes " +
                                 "transfer_id=${completed.transferId.shortDebugId()} " +
                                 failure.javaClass.simpleName,
                         )
-                        showDedupedToast(
-                            getString(R.string.file_transfer_save_failed, displayName),
-                            Toast.LENGTH_LONG,
-                        )
+                        refreshRecentIncomingFileUi()
+                        if (isConnected) showIncomingFileRecoveryDialog(recovery)
                     }
             }
         }
+    }
+
+    private fun saveRecoveredIncomingFile(recovery: RecoveredIncomingFile): Result<Uri> {
+        return runCatching {
+            incomingFileDownloadsSaver().publishRecoveredIncomingFile(recovery, incomingFileRecoveryStore)
+        }
+    }
+
+    private fun retryIncomingFileSave(recovery: RecoveredIncomingFile) {
+        if (incomingFileRecoveryOperation != IncomingFileRecoveryOperation.IDLE ||
+            pendingIncomingFileRecovery?.recoveryId != recovery.recoveryId
+        ) return
+        incomingFileRecoveryDialog?.dismiss()
+        incomingFileRecoveryDialog = null
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.SAVING
+        refreshRecentIncomingFileUi()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val saved = saveRecoveredIncomingFile(recovery)
+            withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
+                incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
+                saved
+                    .onSuccess { savedUri ->
+                        pendingIncomingFileRecovery = null
+                        mainDiag("incoming file recovery saved transfer_id=${recovery.transferId.shortDebugId()}")
+                        showIncomingFileSavedAction(savedUri, recovery.displayName, recovery.mimeType)
+                    }.onFailure { failure ->
+                        mainDiag("incoming file recovery retry failed: " + failure.javaClass.simpleName)
+                        refreshRecentIncomingFileUi()
+                        if (isConnected) showIncomingFileRecoveryDialog(recovery)
+                    }
+            }
+        }
+    }
+
+    private fun confirmDiscardIncomingFile(recovery: RecoveredIncomingFile) {
+        if (incomingFileRecoveryOperation != IncomingFileRecoveryOperation.IDLE ||
+            pendingIncomingFileRecovery?.recoveryId != recovery.recoveryId
+        ) return
+        incomingFileRecoveryDialog?.dismiss()
+        incomingFileRecoveryDialog = null
+        val dialog =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.file_transfer_incoming_discard_confirmation_title)
+                .setMessage(getString(R.string.file_transfer_incoming_discard_confirmation_message, recovery.displayName))
+                .setNegativeButton(R.string.file_transfer_incoming_discard_confirmation_cancel) { _, _ ->
+                    incomingFileDiscardDialog = null
+                }
+                .setPositiveButton(R.string.file_transfer_incoming_discard_confirmation_confirm) { _, _ ->
+                    incomingFileDiscardDialog = null
+                    discardIncomingFileRecovery(recovery)
+                }
+                .create()
+        dialog.setOnCancelListener {
+            if (incomingFileDiscardDialog === dialog) incomingFileDiscardDialog = null
+        }
+        incomingFileDiscardDialog = showImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
+    }
+
+    private fun discardIncomingFileRecovery(recovery: RecoveredIncomingFile) {
+        if (incomingFileRecoveryOperation != IncomingFileRecoveryOperation.IDLE ||
+            pendingIncomingFileRecovery?.recoveryId != recovery.recoveryId
+        ) return
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.DISCARDING
+        refreshRecentIncomingFileUi()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val discarded = runCatching {
+                incomingFileDownloadsSaver().discardRecoveredIncomingFile(recovery, incomingFileRecoveryStore)
+            }
+            withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
+                incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
+                discarded
+                    .onSuccess {
+                        pendingIncomingFileRecovery = null
+                        refreshRecentIncomingFileUi()
+                    }.onFailure { failure ->
+                        mainDiag("incoming file recovery discard failed: " + failure.javaClass.simpleName)
+                        refreshRecentIncomingFileUi()
+                    }
+            }
+        }
+    }
+
+    private fun showIncomingFileRecoveryDialog(recovery: RecoveredIncomingFile) {
+        if (!isConnected || incomingFileRecoveryOperation != IncomingFileRecoveryOperation.IDLE ||
+            pendingIncomingFileRecovery?.recoveryId != recovery.recoveryId
+        ) return
+        incomingFileRecoveryDialog?.dismiss()
+        val dialog =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.file_transfer_incoming_save_failed_title)
+                .setMessage(
+                    getString(
+                        R.string.file_transfer_incoming_save_failed_summary,
+                        recovery.displayName,
+                        fileTransferDestinationLabel(),
+                    ),
+                )
+                .setPositiveButton(R.string.file_transfer_incoming_save_failed_primary) { _, _ ->
+                    incomingFileRecoveryDialog = null
+                    retryIncomingFileSave(recovery)
+                }
+                .setNegativeButton(R.string.file_transfer_incoming_save_failed_secondary) { _, _ ->
+                    incomingFileRecoveryDialog = null
+                    confirmDiscardIncomingFile(recovery)
+                }
+                .create()
+        dialog.setOnCancelListener {
+            if (incomingFileRecoveryDialog === dialog) incomingFileRecoveryDialog = null
+        }
+        incomingFileRecoveryDialog = showImmersiveDialog(dialog).also(DialogActionButtonLayoutApplier::apply)
     }
 
     private fun showIncomingFileSavedAction(
@@ -3983,15 +4209,27 @@ class MainActivity : AppCompatActivity() {
         completed: dev.telemachus.display.protocol.CompletedIncomingFile,
         displayName: String,
     ): Uri {
-        return IncomingFileDownloadsSaver(
-            appSpecificDownloads = { getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) },
-            mediaStoreDownloads = { ContentResolverMediaStoreDownloadsCollection(contentResolver) },
-        ).saveCompletedIncomingFile(
+        return incomingFileDownloadsSaver().saveCompletedIncomingFile(
             completed = completed,
             displayName = displayName,
             maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
         )
     }
+
+    private fun incomingFileDownloadsSaver(): IncomingFileDownloadsSaver =
+        IncomingFileDownloadsSaver(
+            appSpecificDownloads = { getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) },
+            mediaStoreDownloads = { ContentResolverMediaStoreDownloadsCollection(contentResolver) },
+        )
+
+    private fun incomingFileDurableOwner(): IncomingFileDurableOwner =
+        IncomingFileDurableOwner { completed ->
+            incomingFileRecoveryStore.adoptBeforeAcknowledgement(
+                completed = completed,
+                maxDisplayNameLength = MAX_FILE_TRANSFER_DISPLAY_NAME_CHARS,
+                fallbackDisplayName = getString(R.string.file_transfer_unknown_name),
+            )
+        }
 
     private fun fileTransferDestinationLabel(): String =
         getString(
@@ -6237,16 +6475,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
         callbackClient.onIncomingFileCompleted = incomingFile@{ completed ->
-            if (!isCurrentSession(callbackClient, callbackGeneration)) {
-                completed.stagingFile.deleteBestEffort()
-                return@incomingFile
-            }
             runOnUiThread {
-                if (!isCurrentSession(callbackClient, callbackGeneration)) {
-                    completed.stagingFile.deleteBestEffort()
-                    return@runOnUiThread
+                if (isCurrentSession(callbackClient, callbackGeneration) &&
+                    finishIncomingFileTransferState(completed.transferId)
+                ) {
+                    revealControlBar()
                 }
-                if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()
                 onIncomingFileCompleted(completed)
             }
         }
@@ -6547,16 +6781,10 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
-                    if (!isCurrentInternetSession()) {
-                        completed.stagingFile.deleteBestEffort()
-                        return
-                    }
                     runOnUiThread {
-                        if (!isCurrentInternetSession()) {
-                            completed.stagingFile.deleteBestEffort()
-                            return@runOnUiThread
+                        if (isCurrentInternetSession() && finishIncomingFileTransferState(completed.transferId)) {
+                            revealControlBar()
                         }
-                        if (finishIncomingFileTransferState(completed.transferId)) revealControlBar()
                         onIncomingFileCompleted(completed)
                     }
                 }
@@ -6736,6 +6964,7 @@ class MainActivity : AppCompatActivity() {
                     internetRevocationCoordinator,
                     nextControllerInputId = internetInputIds::next,
                     fileTransferStagingDirectory = File(cacheDir, "vibescreen-internet-incoming-files"),
+                    incomingFileDurableOwner = incomingFileDurableOwner(),
                 )
             sessionReference.set(created)
             productSessionCoordinator.attachInternetSession(generation, created)
@@ -8313,6 +8542,10 @@ class MainActivity : AppCompatActivity() {
         clearActiveIncomingFileTransfer()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
+        incomingFileRecoveryDialog?.dismiss()
+        incomingFileRecoveryDialog = null
+        incomingFileDiscardDialog?.dismiss()
+        incomingFileDiscardDialog = null
         fileTransferErrorDialog?.dismiss()
         fileTransferErrorDialog = null
         runCatching(::discardPendingInternetPairing).onFailure { failure ->

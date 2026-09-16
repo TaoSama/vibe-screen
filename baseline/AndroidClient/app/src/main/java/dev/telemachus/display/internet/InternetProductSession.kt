@@ -9,6 +9,7 @@ import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.ClipboardContentData
 import dev.telemachus.display.ClipboardOfferData
 import dev.telemachus.display.FileTransferProductOwner
+import dev.telemachus.display.IncomingFileDurableOwner
 import dev.telemachus.display.OutgoingFileTransferHandle
 import dev.telemachus.display.PendingControllerInputDisposition
 import dev.telemachus.display.SessionInputIdSequence
@@ -336,6 +337,7 @@ class InternetProductSession internal constructor(
     private val nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
     fileTransferStagingDirectory: File = defaultFileTransferStagingDirectory(),
     private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
+    incomingFileDurableOwner: IncomingFileDurableOwner = IncomingFileDurableOwner.PASS_THROUGH,
     private val testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
 ) : AutoCloseable {
     private val lock = Any()
@@ -381,6 +383,7 @@ class InternetProductSession internal constructor(
         FileTransferProductOwner(
             fileTransferPolicy = localFileTransferPolicy,
             stagingDirectory = { fileTransferStagingDirectory },
+            incomingFileDurableOwner = incomingFileDurableOwner,
             pendingOfferGate = InternetFileTransferPendingOfferGate(),
         ).apply {
             onFileOffer = callbacks::onFileOffer
@@ -2827,6 +2830,7 @@ class InternetProductSession internal constructor(
             revocationCoordinator: InternetProductRevocationCoordinator,
             nextControllerInputId: () -> Long = SessionInputIdSequence()::next,
             fileTransferStagingDirectory: File = defaultFileTransferStagingDirectory(),
+            incomingFileDurableOwner: IncomingFileDurableOwner = IncomingFileDurableOwner.PASS_THROUGH,
         ): InternetProductSession {
             require(localDeviceId == storedSessionFactory.localDeviceId) {
                 "Stored security identity does not match the product session identity"
@@ -2860,18 +2864,19 @@ class InternetProductSession internal constructor(
                 }
             return try {
                 InternetProductSession(
-                    lease,
-                    stored.configuration,
-                    stored.engine,
-                    networkMonitor,
-                    clock,
-                    codec,
-                    audioPlayback,
-                    callbacks,
-                    revocationStore,
-                    revocationCoordinator,
-                    nextControllerInputId,
-                    fileTransferStagingDirectory,
+                    lease = lease,
+                    configuration = stored.configuration,
+                    peerEngine = stored.engine,
+                    networkMonitor = networkMonitor,
+                    clock = clock,
+                    codec = codec,
+                    audioPlayback = audioPlayback,
+                    callbacks = callbacks,
+                    revocationStore = revocationStore,
+                    revocationCoordinator = revocationCoordinator,
+                    nextControllerInputId = nextControllerInputId,
+                    fileTransferStagingDirectory = fileTransferStagingDirectory,
+                    incomingFileDurableOwner = incomingFileDurableOwner,
                 )
             } catch (failure: Throwable) {
                 stored.close()

@@ -229,7 +229,7 @@ class AppSpecificDownloadsSaverTest {
     }
 
     @Test
-    fun saveCompletedIncomingFileUsesSafeBasenameAndRemovesStagingFile() {
+    fun saveCompletedIncomingFileUsesSafeBasenameAndLeavesSourceLifecycleToCaller() {
         val directory = Files.createTempDirectory("vibescreen-completed-save").toFile()
         val downloads = File(directory, "downloads")
         val staging = File(directory, ".vibescreen-staged.partial")
@@ -246,7 +246,7 @@ class AppSpecificDownloadsSaverTest {
 
             assertEquals("report.txt", saved.name)
             assertEquals("saved-content", saved.readText())
-            assertFalse(staging.exists())
+            assertTrue(staging.exists())
             assertFalse(downloads.containsPartialDownload())
         } finally {
             directory.deleteRecursively()
@@ -254,7 +254,7 @@ class AppSpecificDownloadsSaverTest {
     }
 
     @Test
-    fun saveCompletedIncomingFileRemovesStagingAndPartialWhenCopyFails() {
+    fun saveCompletedIncomingFileKeepsSourceAndRemovesPartialWhenCopyFails() {
         val directory = Files.createTempDirectory("vibescreen-completed-failure").toFile()
         val downloads = File(directory, "downloads")
         val staging = File(directory, ".vibescreen-staged.partial")
@@ -276,7 +276,7 @@ class AppSpecificDownloadsSaverTest {
             }
 
             assertSame(copyFailure, thrown)
-            assertFalse(staging.exists())
+            assertTrue(staging.exists())
             assertFalse(File(downloads, "incoming.txt").exists())
             assertFalse(downloads.containsPartialDownload())
         } finally {
