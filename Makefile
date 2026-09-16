@@ -5,6 +5,7 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 EVIDENCE_PORT ?= 54321
+ANDROID_CAMERA_RECOVERY_SERIAL ?= $(ANDROID_SERIAL)
 MACOS_HOST_READINESS_PROBE_LOGIN_ITEM ?=
 MACOS_HOST_READINESS_LOGIN_ITEM_DIAGNOSTIC_ACK ?=
 EVIDENCE_EXPECTED_MANUFACTURER ?=
@@ -242,6 +243,7 @@ PHASE3_WEBRTC_RELAY_E2E_TREE_STATUS ?= $(shell if test -z "$$(git status --porce
 	baseline-macos-host-readiness \
 	baseline-macos-touch-preflight \
 	baseline-android-test \
+	baseline-android-camera-recovery-device-test \
 	baseline-android-protocol-side-effect-owner \
 	baseline-android-transport-boundary \
 	baseline-android-check \
@@ -609,6 +611,29 @@ baseline-macos-touch-preflight: baseline-macos-host-preflight
 
 baseline-android-test:
 	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
+
+baseline-android-camera-recovery-device-test:
+	@set -eu; \
+	serial="$(strip $(ANDROID_CAMERA_RECOVERY_SERIAL))"; \
+	package=dev.telemachus.display; \
+	test_package=$$package.test; \
+	test -n "$$serial" || (echo "error: set ANDROID_CAMERA_RECOVERY_SERIAL or ANDROID_SERIAL to the target adb serial" >&2; exit 2); \
+	adb -s "$$serial" get-state >/dev/null; \
+	app_was_installed=$$(adb -s "$$serial" shell pm list packages "$$package" | tr -d '\r' | grep -Fxq "package:$$package" && printf 1 || printf 0); \
+	test_was_installed=$$(adb -s "$$serial" shell pm list packages "$$test_package" | tr -d '\r' | grep -Fxq "package:$$test_package" && printf 1 || printf 0); \
+	test "$$app_was_installed" = 0 || (echo "error: $$package is already installed; refusing to replace or erase existing app data" >&2; exit 2); \
+	test "$$test_was_installed" = 0 || (echo "error: $$test_package is already installed; remove it before this isolated run" >&2; exit 2); \
+	cleanup() { \
+		adb -s "$$serial" shell am force-stop "$$package" >/dev/null 2>&1 || true; \
+		adb -s "$$serial" shell pm revoke "$$package" android.permission.CAMERA >/dev/null 2>&1 || true; \
+		adb -s "$$serial" uninstall "$$test_package" >/dev/null 2>&1 || true; \
+		adb -s "$$serial" uninstall "$$package" >/dev/null 2>&1 || true; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	cd baseline/AndroidClient; \
+	ANDROID_SERIAL="$$serial" ./gradlew --no-daemon --console=plain :app:connectedDebugAndroidTest \
+		'-Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.InternetCameraPermissionRecoveryInstrumentedTest#visibleInternetPermissionPanelGrantedOutsideAppLaunchesScannerOnForegroundReturn' \
+		-Pandroid.testInstrumentationRunnerArguments.vibeScreenInternetCameraRecovery=true
 
 baseline-android-protocol-side-effect-owner:
 	cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest \
