@@ -37,6 +37,20 @@ RAW_XIAOMI_EVIDENCE_PATH_PATTERN = re.compile(
     rb"xiaomi(?:12|13)-fuxi-[0-9a-f]{8}(?:[-/]|\b)", re.IGNORECASE
 )
 RAW_ANDROID_SERIAL_TOKEN_PATTERN = re.compile(rb"(?:[0-9a-f]{8}|EP[0-9A-Z]{16})", re.IGNORECASE)
+RAW_ANDROID_SERIAL_CONTEXT_PATTERNS = (
+    re.compile(rb"\bSerial\s*:\s*(?:`)?EP[0-9A-Z]{16}(?:`)?", re.IGNORECASE),
+    re.compile(rb"\bdevice\s+EP[0-9A-Z]{16}\b", re.IGNORECASE),
+)
+LEGACY_ANDROID_SERIAL_CONTEXT_ALLOWLIST = {
+    Path(
+        "docs/changes/2026-08-22-android-ui-ux-audit/evidence/"
+        "2026-09-10-nubia-p0110-no-host-connection-primary-actions-large-text/"
+        "android-test-results/P0110 - 16/utp.0.log"
+    ): (
+        (re.compile(rb" on device EP[0-9A-Z]{16}\."), 2),
+        (re.compile(rb" for device EP[0-9A-Z]{16}\."), 2),
+    ),
+}
 CARRIER_GRADE_NAT = ipaddress.ip_network("100." + "64.0.0/10")
 IPV4_ENDPOINT_PATTERN = re.compile(
     rb"(?<![0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?:[:-][0-9]{1,5})?(?![0-9.])"
@@ -104,6 +118,26 @@ def contains_raw_adb_serial_command(content: bytes) -> bool:
     return False
 
 
+def contains_raw_android_serial_context(content: bytes) -> bool:
+    return any(pattern.search(content) for pattern in RAW_ANDROID_SERIAL_CONTEXT_PATTERNS)
+
+
+def remove_legacy_android_serial_context_fixtures(
+    relative_path: Path, content: bytes
+) -> bytes:
+    for pattern, expected_count in LEGACY_ANDROID_SERIAL_CONTEXT_ALLOWLIST.get(
+        relative_path, ()
+    ):
+        content, count = pattern.subn(
+            b" on device <allowlisted-legacy-adb-serial>.", content
+        )
+        if count != expected_count:
+            return content + f"\nlegacy-android-serial-context-allowlist-count:{count}".encode(
+                "ascii"
+            )
+    return content
+
+
 class RepositoryPrivacyTests(unittest.TestCase):
     def test_current_tree_has_no_device_endpoint(self) -> None:
         violations = []
@@ -147,8 +181,11 @@ class RepositoryPrivacyTests(unittest.TestCase):
             if not path.is_file():
                 continue
             content = path.read_bytes()
+            content = remove_legacy_android_serial_context_fixtures(relative_path, content)
             if contains_raw_adb_serial_command(content):
                 violations.append(f"adb-serial-command:{relative_path}")
+            if contains_raw_android_serial_context(content):
+                violations.append(f"android-serial-context:{relative_path}")
             if RAW_ANDROID_SERIAL_PROPERTY_PATTERN.search(content):
                 violations.append(f"android-serial-property:{relative_path}")
             if RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(content):
@@ -163,6 +200,9 @@ class RepositoryPrivacyTests(unittest.TestCase):
             b"adb -s " + long_serial + b" shell get-state",
             b"ro.serialno=" + hex_serial,
             b"ro.serialno=" + long_serial,
+            b"Android-local no-Host evidence only, on Nubia P0110/pacific Android 16 device "
+            + long_serial,
+            b"- Serial: `" + long_serial + b"`",
             b"evidence/2026-08-08-xiaomi12-fuxi-" + hex_serial + b"/README.md",
             b"evidence/2026-08-10-xiaomi13-fuxi-" + hex_serial + b"-30m/README.md",
         )
@@ -172,7 +212,18 @@ class RepositoryPrivacyTests(unittest.TestCase):
                     contains_raw_adb_serial_command(content)
                     or RAW_ANDROID_SERIAL_PROPERTY_PATTERN.search(content)
                     or RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(content)
+                    or contains_raw_android_serial_context(content)
+                    or scan_content(content).get("hardware_identifier")
                 )
+
+        scan_content_prohibited = (
+            b"Android-local no-Host evidence only, on Nubia P0110/pacific Android 16 device "
+            + long_serial,
+            b"- Serial: `" + long_serial + b"`",
+        )
+        for content in scan_content_prohibited:
+            with self.subTest(scan_content=content):
+                self.assertIn("hardware_identifier", scan_content(content))
 
         allowed = (
             b"adb -s <redacted-adb-serial> shell get-state",
@@ -182,6 +233,8 @@ class RepositoryPrivacyTests(unittest.TestCase):
             b"adb -s test-p0110-adb-serial shell get-state",
             b"ro.serialno=<redacted-adb-serial>",
             b"ro.serialno=REDACTED_P0110_USB_SERIAL",
+            b"Android-local no-Host evidence only, on Nubia P0110/pacific Android 16 device <redacted-adb-serial>",
+            b"- Serial: `<redacted-adb-serial>`",
             b"evidence/2026-08-08-xiaomi12-fuxi-redacted/README.md",
             b"evidence/2026-08-10-xiaomi13-fuxi-redacted-30m/README.md",
         )
@@ -190,6 +243,8 @@ class RepositoryPrivacyTests(unittest.TestCase):
                 self.assertFalse(contains_raw_adb_serial_command(content))
                 self.assertFalse(RAW_ANDROID_SERIAL_PROPERTY_PATTERN.search(content))
                 self.assertFalse(RAW_XIAOMI_EVIDENCE_PATH_PATTERN.search(content))
+                self.assertFalse(contains_raw_android_serial_context(content))
+                self.assertNotIn("hardware_identifier", scan_content(content))
 
     def test_cgnat_endpoint_variants_are_rejected_without_version_false_positives(self) -> None:
         address = b"100." + b"72.1.2"

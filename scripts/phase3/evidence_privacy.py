@@ -36,6 +36,8 @@ HARDWARE_IDENTIFIER_PATTERNS = (
     re.compile(rb'"adb_serial"\s*:\s*"(?!\[?redacted\]?\")[^\"]+"', re.IGNORECASE),
     re.compile(rb'"hardware_serial"\s*:\s*"(?!\[?redacted\]?\")[^\"]+"', re.IGNORECASE),
     re.compile(rb"\b(?:adb|hardware|device) serial\s*:\s*(?!\[?redacted\]?\b)[^\r\n]+", re.IGNORECASE),
+    re.compile(rb"\bSerial\s*:\s*(?:\x60)?EP[0-9A-Z]{16}(?:\x60)?", re.IGNORECASE),
+    re.compile(rb"\bdevice\s+EP[0-9A-Z]{16}\b", re.IGNORECASE),
 )
 DIRECT_CREDENTIAL_PATTERNS = (
     re.compile(rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),

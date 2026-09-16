@@ -1,0 +1,21 @@
+53d49a557866fb89db9a3b6b0958a5c53a3fa12d
+53d49a557 test(android): assert file transfer dialog visible frame
+038067da7 fix(android): require fresh internet leases before connect
+abca1da7e test(android): refresh internet profile import evidence
+ad94be5ae Recover Internet camera scanner after manual permission grant
+c1d6717d0 feat(android): accept single-item multi-share intents (#798)
+d3c11b6ca feat(android): retain pending shared files (#797)
+3263ce22b feat(android): accept single-file system shares (#796)
+9943b1f48 fix(android): cap system clipboard writes (#795)
+737646a46 test(android): verify outbound file staging (#794)
+61ea148b9 fix(android): report Internet audio readiness (#793)
+1da2d2577 fix(android): hide unavailable Internet revoke action (#792)
+a51759a2f test(android): isolate real QR acceptance harness (#791)
+41e77beec test(android): stabilize pairing wire fixtures (#790)
+526dc51c7 test(android): add real camera QR pairing harness (#789)
+9511483bd fix(android): recover Internet camera permission inline (#788)
+7720ca9bf test(android): verify MediaStore downloads publishing on P0110 (#787)
+1c079c6b5 docs(evidence): record P0110 file transfer smoke (#786)
+092f05c22 fix(evidence): parse Android instrumentation status logs (#785)
+79a56c004 fix(android): keep terminal dialog actions readable (#784)
+3f8a4f835 test(android): refresh P0110 no-host UI evidence (#783)

@@ -1,0 +1,30 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjExMzkyODI5",
+    "is_bot": false,
+    "login": "TaoSama",
+    "name": "Wentao Lu"
+  },
+  "baseRefName": "main",
+  "body": "## Summary\n- migrate the file-transfer dialog visible-frame regression from the legacy branch onto current main\n- keep the visible-frame assertion in the same coordinate space: `getWindowVisibleDisplayFrame` window coordinates compared with action `getLocationInWindow` bounds\n- split real-window visible-frame checks from synthetic 320/640dp layout checks so simulated landscape/large-font coverage does not mix with the physical device visible frame\n\n## Verification\n- `cd baseline/AndroidClient && ./gradlew :app:testDebugUnitTest --tests dev.telemachus.display.MainActivityFileTransferSystemBoundaryContractTest --console=plain` -> BUILD SUCCESSFUL, exit 0\n- `cd baseline/AndroidClient && ./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --console=plain` -> BUILD SUCCESSFUL, exit 0\n- `cd baseline/AndroidClient && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.FileTransferOfferDialogLayoutInstrumentedTest --console=plain` -> BUILD SUCCESSFUL, exit 0; started and finished 9 tests on P0110 - 16\n\n## Device Evidence\n- Serial: `<redacted-adb-serial>`\n- Manufacturer/model/device: `nubia / P0110 / pacific`\n- OS/API: `Android 16 / API 36`\n- Display: `1264x2800 @ 560dpi`\n\n## Review\n- Local medium single-pass code review: no findings\n- Independent read-only reviewer: no blocking findings; confirmed visible-frame comparison now uses window coordinates consistently\n\n## Evidence Boundaries\n- This is Android no-Host UI regression coverage only. It does not prove Host-backed Android/macOS file-transfer E2E bytes landing, bidirectional transfer, or Phase 0 file-transfer gate closure.\n- IME overlap is not covered; these dialogs do not focus an input field or show the keyboard.\n- The instrumentation uses the dialog host instead of the production immersive wrapper. It verifies the shared Material dialog content/action layout and visible-frame coordinate contract, but does not independently prove production immersive system-bar behavior.\n\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n\n## Summary by CodeRabbit\n\n- **Tests**\n  - Added device-level coverage for incoming and outgoing file-transfer dialogs.\n  - Verified that dialog actions remain visible within the available window across varied screen sizes and larger font scales.\n  - Improved layout diagnostics for identifying visibility and positioning issues.\n\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+  "closedAt": "2026-09-16T09:18:01Z",
+  "files": [
+    {
+      "path": "baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/FileTransferOfferDialogLayoutInstrumentedTest.kt",
+      "additions": 92,
+      "deletions": 5,
+      "changeType": "MODIFIED"
+    }
+  ],
+  "headRefName": "codex/fix-file-transfer-visible-frame",
+  "headRefOid": "b0afd4ca36958918626c0d83b9c763eeafdc2902",
+  "isDraft": false,
+  "mergeCommit": {
+    "oid": "53d49a557866fb89db9a3b6b0958a5c53a3fa12d"
+  },
+  "mergedAt": "2026-09-16T09:18:01Z",
+  "number": 802,
+  "state": "MERGED",
+  "title": "test(android): assert file transfer dialog visible frame",
+  "url": "https://github.com/TaoSama/vibe-screen/pull/802"
+}
