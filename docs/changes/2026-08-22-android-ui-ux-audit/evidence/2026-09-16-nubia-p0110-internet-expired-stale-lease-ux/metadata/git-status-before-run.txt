@@ -1,0 +1,11 @@
+## codex/android-internet-lease-expiry-ux...origin/codex/android-internet-lease-expiry-ux
+ M baseline/AndroidClient/app/src/androidTest/java/dev/telemachus/display/InternetMainActivityAcceptanceInstrumentedTest.kt
+ M "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/android-test-results/debug/P0110 - 16/logcat-dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest-expiredStoredLeaseDisablesConnectAcrossForegroundAndRecreation.txt"
+ M "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/android-test-results/debug/P0110 - 16/test-result.textproto"
+ M "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/android-test-results/debug/P0110 - 16/testlog/test-results.log"
+ M "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/android-test-results/debug/P0110 - 16/utp.0.log"
+ M "docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/android-test-results/debug/TEST-P0110 - 16-_app-.xml"
+ M docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/logs/connected-expired-stale-lease-ux-instrumentation.log
+ M docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/metadata/adb-devices.txt
+ M docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/metadata/git-status-before-run.txt
+ M docs/changes/2026-08-22-android-ui-ux-audit/evidence/2026-09-16-nubia-p0110-internet-expired-stale-lease-ux/metadata/source-head-before-run.txt

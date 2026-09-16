@@ -104,6 +104,7 @@ internal class TestHostAuthority {
         offer: TestPairingOffer,
         request: InternetPairingRequest,
         sessionEpoch: Long,
+        leaseLifetimeSeconds: Long = 300,
     ): TestLease {
         val sessionId = randomBytes(18).base64Url()
         val protocolSessionId = randomBytes(16)
@@ -111,7 +112,7 @@ internal class TestHostAuthority {
         val context = transcriptDigest(SESSION_CONTEXT_DOMAIN, *pairingParts(offer, request))
         val signalingUrl = "http://127.0.0.1:18080"
         val iceUrl = "stun:127.0.0.1:3478"
-        val expiresAt = System.currentTimeMillis() / 1_000 + 300
+        val expiresAt = System.currentTimeMillis() / 1_000 + leaseLifetimeSeconds
         val digest =
             transcriptDigest(
                 LEASE_DOMAIN,
@@ -170,7 +171,7 @@ internal class TestHostAuthority {
                 addProperty("lease_host_key_id", hostIdentity.keyId)
                 addProperty("lease_signature", signature.base64())
             }.toString()
-        return TestLease(encoded, sessionId, sessionEpoch)
+        return TestLease(encoded, sessionId, sessionEpoch, expiresAt)
     }
 
     private fun pairingParts(
@@ -195,6 +196,7 @@ internal data class TestLease(
     val encoded: String,
     val signalingSessionId: String,
     val sessionEpoch: Long,
+    val expiresAtUnixSeconds: Long,
 )
 
 private fun identity(deviceId: String, pair: KeyPair): InternetPairingIdentity {

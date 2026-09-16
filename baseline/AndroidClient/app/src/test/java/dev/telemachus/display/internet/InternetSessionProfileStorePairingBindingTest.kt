@@ -23,6 +23,7 @@ import java.security.SecureRandom
 import java.security.Signature
 import java.util.Base64
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -360,6 +361,287 @@ class InternetSessionProfileStorePairingBindingTest {
         assertTrue(failure.message.orEmpty().contains("expired"))
         assertEquals(0, fixture.secrets.persistCount)
         assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+    }
+
+    @Test
+    fun `stored lease admission expires exactly at the lease boundary`() {
+        var now = 4_102_444_799L
+        val fixture = recordedFixture(nowUnixSeconds = { now })
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+
+        val ready = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+        assertEquals(InternetLeaseAdmissionStatus.READY, ready.status)
+        assertTrue(ready.canConnect)
+
+        now = 4_102_444_800L
+        val expired = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+        assertEquals(InternetLeaseAdmissionStatus.EXPIRED, expired.status)
+        assertFalse(expired.canConnect)
+        assertTrue(expired.reason.contains("expired"))
+        assertThrows(IllegalStateException::class.java) { fixture.store.loadLease(forceRelay = false) }
+    }
+
+    @Test
+    fun `stored lease admission preserves verified pairing when profile is missing`() {
+        val fixture = recordedFixture()
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+
+        assertEquals(InternetLeaseAdmissionStatus.PROFILE_MISSING, admission.status)
+        assertFalse(admission.canConnect)
+        assertTrue(admission.canRevokeLocal)
+        assertEquals(fixture.hostIdentity.keyId.take(16), admission.hostKeyFingerprint)
+        assertNull(admission.profile)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+    }
+
+    @Test
+    fun `stored lease admission fails closed for malformed pairing without crashing ui preflight`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        fixture.preferences.seed(InternetSessionProfileStore.PAIRING_KEY, "{malformed")
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+
+        assertEquals(InternetLeaseAdmissionStatus.INVALID_BINDING, admission.status)
+        assertFalse(admission.canConnect)
+        assertTrue(admission.canRevokeLocal)
+        assertNotNull(admission.profile)
+        assertFalse(fixture.store.hasDurableCredentialMutationBlock(fixture.pairingIdentifier))
+        assertThrows(IllegalStateException::class.java) { fixture.store.loadLease(forceRelay = false) }
+    }
+
+    @Test
+    fun `malformed stored profile does not block replacement import with verified pairing`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        fixture.preferences.seed(InternetSessionProfileStore.PROFILE_KEY, "{malformed")
+        fixture.secrets.resetPersistCount()
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+        val replacement =
+            fixture.store.import(
+                signedLeaseJson(fixture, 8),
+                fixture.factory,
+                fixture.coordinator,
+            )
+
+        assertEquals(InternetLeaseAdmissionStatus.INVALID_PROFILE, admission.status)
+        assertFalse(admission.canConnect)
+        assertTrue(admission.canRevokeLocal)
+        assertFalse(fixture.store.hasDurableCredentialMutationBlock(fixture.pairingIdentifier))
+        assertEquals(8L, replacement.authoritativeSessionEpoch)
+        assertEquals(1, fixture.secrets.persistCount)
+        assertEquals(InternetLeaseAdmissionStatus.READY, fixture.store.assessLeaseAdmission(0L).status)
+    }
+
+    @Test
+    fun `malformed stored pairing remains locally revocable when profile identity is available`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        fixture.preferences.seed(InternetSessionProfileStore.PAIRING_KEY, "{malformed")
+        val profile = requireNotNull(fixture.store.loadPublicProfileForRecovery())
+        val profileSecret = fixture.store.profileSecretName(profile)
+        val pairingSecrets = mutableSetOf(fixture.pairingIdentifier)
+        val identityKeys = mutableSetOf("${fixture.localDeviceId}:${fixture.localIdentity.keyEpoch}")
+
+        fixture.store.beginRevocationCleanup(
+            fixture.pairingIdentifier,
+            fixture.localDeviceId,
+            fixture.localIdentity.keyEpoch,
+        )
+        val result =
+            fixture.store.retryPendingRevocationCleanup(
+                deletePairingSecret = { pairingSecrets.remove(it) },
+                deleteIdentityKey = { deviceId, epoch -> identityKeys.remove("$deviceId:$epoch") },
+            )
+
+        assertTrue(requireNotNull(result).complete)
+        assertTrue(pairingSecrets.isEmpty())
+        assertTrue(identityKeys.isEmpty())
+        assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+        assertNull(fixture.preferences.getString(InternetSessionProfileStore.PAIRING_KEY, null))
+        assertNull(fixture.secrets.load(profileSecret))
+        assertNull(fixture.store.retryPendingRevocationCleanup({ error("unexpected") }, { _, _ -> error("unexpected") }))
+    }
+
+    @Test
+    fun `malformed stored profile remains locally revocable when pairing identity is available`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        fixture.preferences.seed(InternetSessionProfileStore.PROFILE_KEY, "{malformed")
+        val pairingSecrets = mutableSetOf(fixture.pairingIdentifier)
+        val identityKeys = mutableSetOf("${fixture.localDeviceId}:${fixture.localIdentity.keyEpoch}")
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+        fixture.store.beginRevocationCleanup(
+            fixture.pairingIdentifier,
+            fixture.localDeviceId,
+            fixture.localIdentity.keyEpoch,
+        )
+        val result =
+            fixture.store.retryPendingRevocationCleanup(
+                deletePairingSecret = { pairingSecrets.remove(it) },
+                deleteIdentityKey = { deviceId, epoch -> identityKeys.remove("$deviceId:$epoch") },
+            )
+
+        assertEquals(InternetLeaseAdmissionStatus.INVALID_PROFILE, admission.status)
+        assertFalse(admission.canConnect)
+        assertTrue(admission.canRevokeLocal)
+        assertTrue(requireNotNull(result).complete)
+        assertTrue(pairingSecrets.isEmpty())
+        assertTrue(identityKeys.isEmpty())
+        assertNull(fixture.preferences.getString(InternetSessionProfileStore.PROFILE_KEY, null))
+        assertNull(fixture.preferences.getString(InternetSessionProfileStore.PAIRING_KEY, null))
+    }
+
+    @Test
+    fun `pending revocation cleanup still blocks replacement import`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        fixture.preferences.seed(InternetSessionProfileStore.PROFILE_KEY, "{malformed")
+        fixture.store.beginRevocationCleanup(fixture.pairingIdentifier, fixture.localDeviceId, fixture.localIdentity.keyEpoch)
+        fixture.secrets.resetPersistCount()
+
+        assertTrue(fixture.store.hasDurableCredentialMutationBlock(fixture.pairingIdentifier))
+        assertThrows(IllegalStateException::class.java) {
+            fixture.store.import(
+                signedLeaseJson(fixture, 8),
+                fixture.factory,
+                fixture.coordinator,
+            )
+        }
+        assertEquals(0, fixture.secrets.persistCount)
+    }
+
+    @Test
+    fun `stored lease admission uses required fresh session epoch without reimplementing in UI`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+
+        val stale = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 7L)
+        assertEquals(InternetLeaseAdmissionStatus.STALE_EPOCH, stale.status)
+        assertFalse(stale.canConnect)
+        assertTrue(stale.reason.contains("newer than epoch 7"))
+        assertThrows(IllegalStateException::class.java) {
+            fixture.store.loadLease(forceRelay = false, requiredFreshSessionEpoch = 7L)
+        }
+
+        val fresh = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 6L)
+        assertEquals(InternetLeaseAdmissionStatus.READY, fresh.status)
+        assertTrue(fresh.canConnect)
+    }
+
+    @Test
+    fun `stored lease admission reports invalid binding before stale freshness`() {
+        val fixture = recordedFixture()
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        val rawBinding = requireNotNull(fixture.preferences.getString(InternetSessionProfileStore.PAIRING_KEY, null))
+        val tampered = JsonParser.parseString(rawBinding).asJsonObject.apply {
+            addProperty("local_key_id", "0".repeat(64))
+        }
+        fixture.preferences.seed(InternetSessionProfileStore.PAIRING_KEY, tampered.toString())
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 7L)
+
+        assertEquals(InternetLeaseAdmissionStatus.INVALID_BINDING, admission.status)
+        assertFalse(admission.canConnect)
+        assertThrows(IllegalStateException::class.java) {
+            fixture.store.loadLease(forceRelay = false, requiredFreshSessionEpoch = 7L)
+        }
+    }
+
+    @Test
+    fun `stored lease admission reports revoked before freshness failures`() {
+        var now = 4_102_444_799L
+        val fixture = recordedFixture(nowUnixSeconds = { now })
+        fixture.store.import(
+            signedLeaseJson(fixture, 7),
+            fixture.factory,
+            fixture.coordinator,
+        )
+        fixture.store.markRevoked(fixture.pairingIdentifier)
+
+        val revokedAndStale = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 7L)
+        assertEquals(InternetLeaseAdmissionStatus.REVOKED, revokedAndStale.status)
+        assertFalse(revokedAndStale.canConnect)
+
+        now = 4_102_444_800L
+        val revokedAndExpired = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+        assertEquals(InternetLeaseAdmissionStatus.REVOKED, revokedAndExpired.status)
+        assertFalse(revokedAndExpired.canConnect)
+    }
+
+    @Test
+    fun `stored lease admission fails closed when encrypted credentials are missing`() {
+        val fixture = recordedFixture()
+        val imported =
+            fixture.store.import(
+                signedLeaseJson(fixture, 7),
+                fixture.factory,
+                fixture.coordinator,
+            )
+        fixture.secrets.delete(fixture.store.profileSecretName(imported))
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+        assertEquals(InternetLeaseAdmissionStatus.SECRET_MISSING, admission.status)
+        assertFalse(admission.canConnect)
+        assertNull(fixture.store.loadLease(forceRelay = false))
+    }
+
+    @Test
+    fun `stored lease admission decodes and zeroizes malformed encrypted credentials before rejecting`() {
+        val fixture = recordedFixture()
+        val imported =
+            fixture.store.import(
+                signedLeaseJson(fixture, 7),
+                fixture.factory,
+                fixture.coordinator,
+            )
+        val secretName = fixture.store.profileSecretName(imported)
+        fixture.secrets.persist(secretName, "{\"signaling_token\":123}".toByteArray(Charsets.UTF_8))
+
+        val admission = fixture.store.assessLeaseAdmission(requiredFreshSessionEpoch = 0L)
+
+        assertEquals(InternetLeaseAdmissionStatus.INVALID_SECRET, admission.status)
+        assertFalse(admission.canConnect)
+        assertTrue(
+            "Decoded credential buffer must be zeroized even when malformed credentials fail admission",
+            requireNotNull(fixture.secrets.lastLoadedCopy).all { it == 0.toByte() },
+        )
+        assertThrows(IllegalStateException::class.java) { fixture.store.loadLease(forceRelay = false) }
     }
 
     @Test
