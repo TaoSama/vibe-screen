@@ -707,6 +707,79 @@
                     app:textAllCaps="false" />
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/recentIncomingFileContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:accessibilityLiveRegion="polite"
+                android:background="@drawable/instruction_bg"
+                android:importantForAccessibility="yes"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/recentIncomingFileTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:text="@string/file_transfer_recent_saved_title"
+                    android:textColor="@color/on_surface"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/recentIncomingFileSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:ellipsize="none"
+                    android:lineSpacingExtra="2dp"
+                    android:singleLine="false"
+                    android:textColor="@color/on_surface_subtle"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/recentIncomingFileSaveCopyButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:ellipsize="none"
+                    android:gravity="center"
+                    android:letterSpacing="0"
+                    android:maxLines="2"
+                    android:minHeight="48dp"
+                    android:minWidth="0dp"
+                    android:singleLine="false"
+                    android:text="@string/file_transfer_save_copy"
+                    android:textAllCaps="false"
+                    android:textColor="@color/on_accent_button"
+                    app:autoSizeMaxTextSize="14sp"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeTextType="uniform"
+                    app:backgroundTint="@color/accent_button"
+                    app:cornerRadius="16dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/recentIncomingFileDismissButton"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="none"
+                    android:gravity="center"
+                    android:letterSpacing="0"
+                    android:maxLines="2"
+                    android:minHeight="48dp"
+                    android:minWidth="0dp"
+                    android:singleLine="false"
+                    android:text="@string/file_transfer_recent_saved_dismiss"
+                    android:textAllCaps="false"
+                    app:autoSizeMaxTextSize="14sp"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeTextType="uniform" />
+            </LinearLayout>
+
             <!-- ============= USB MODE CONTENT ============= -->
             <LinearLayout
                 android:id="@+id/usbModeContent"

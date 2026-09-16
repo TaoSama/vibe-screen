@@ -52,6 +52,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.protobuf.ByteString
@@ -100,6 +101,7 @@ import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -130,6 +132,12 @@ private class PendingSharedFileIntent(
 ) {
     val mimeType: String = mimeType.trim()
 }
+
+private data class PendingIncomingFileExport(
+    val source: Uri,
+    val displayName: String,
+    val mimeType: String,
+)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
@@ -327,6 +335,8 @@ class MainActivity : AppCompatActivity() {
     private var activeIncomingFileTransfer: ActiveIncomingFileTransfer? = null
     private var activeOutgoingFileTransfer: ActiveOutgoingFileTransfer? = null
     private var pendingSharedFileIntent: PendingSharedFileIntent? = null
+    private var recentIncomingFile: PendingIncomingFileExport? = null
+    private var pendingIncomingFileExport: PendingIncomingFileExport? = null
     private var restoredConsumedShareIntentToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
     private val recentlyFinishedOutgoingTransferIds = ArrayDeque<ByteString>()
@@ -422,6 +432,8 @@ class MainActivity : AppCompatActivity() {
         setupWirelessController()
         restoredConsumedShareIntentToken = savedInstanceState?.getString(STATE_CONSUMED_SHARE_INTENT_TOKEN)
         restorePendingSharedFileIntent(savedInstanceState)
+        restoreRecentIncomingFile(savedInstanceState)
+        restorePendingIncomingFileExport(savedInstanceState)
         applyLaunchIntentPolicy(
             savedInstanceState,
             allowImplicitUsbFallback = !ShareFileIntentPolicy.isShareCandidate(intent),
@@ -445,6 +457,16 @@ class MainActivity : AppCompatActivity() {
             outState.putString(STATE_PENDING_SHARED_FILE_URI, pending.uri.toString())
             outState.putString(STATE_PENDING_SHARED_FILE_MIME_TYPE, pending.mimeType)
             outState.putString(STATE_PENDING_SHARED_FILE_TOKEN, pending.token)
+        }
+        pendingIncomingFileExport?.let { pending ->
+            outState.putString(STATE_PENDING_INCOMING_EXPORT_SOURCE, pending.source.toString())
+            outState.putString(STATE_PENDING_INCOMING_EXPORT_NAME, pending.displayName)
+            outState.putString(STATE_PENDING_INCOMING_EXPORT_MIME_TYPE, pending.mimeType)
+        }
+        recentIncomingFile?.let { recent ->
+            outState.putString(STATE_RECENT_INCOMING_FILE_SOURCE, recent.source.toString())
+            outState.putString(STATE_RECENT_INCOMING_FILE_NAME, recent.displayName)
+            outState.putString(STATE_RECENT_INCOMING_FILE_MIME_TYPE, recent.mimeType)
         }
         super.onSaveInstanceState(outState)
     }
@@ -881,6 +903,8 @@ class MainActivity : AppCompatActivity() {
             beginInternetPairing(value)
         } else if (requestCode == REQ_FILE_TRANSFER_OPEN) {
             handleFileTransferPickerResult(resultCode, data)
+        } else if (requestCode == REQ_INCOMING_FILE_EXPORT) {
+            handleIncomingFileExportResult(resultCode, data)
         }
     }
 
@@ -1703,6 +1727,13 @@ class MainActivity : AppCompatActivity() {
         }
         binding.pendingSharedFileSendButton.setOnClickListener { beginPendingSharedFileTransfer() }
         binding.pendingSharedFileCancelButton.setOnClickListener { cancelPendingSharedFileIntent() }
+        binding.recentIncomingFileSaveCopyButton.setOnClickListener {
+            recentIncomingFile?.let { recent -> beginIncomingFileExport(recent.source, recent.displayName, recent.mimeType) }
+        }
+        binding.recentIncomingFileDismissButton.setOnClickListener {
+            recentIncomingFile = null
+            refreshRecentIncomingFileUi()
+        }
 
         setupInternetUi()
         binding.connectionSubtitle.setOnClickListener {
@@ -3011,6 +3042,39 @@ class MainActivity : AppCompatActivity() {
         refreshFileTransferControl()
     }
 
+    private fun restorePendingIncomingFileExport(savedInstanceState: Bundle?) {
+        if (savedInstanceState == null) return
+        val source = savedInstanceState.getString(STATE_PENDING_INCOMING_EXPORT_SOURCE)?.let(Uri::parse) ?: return
+        val displayName = savedInstanceState.getString(STATE_PENDING_INCOMING_EXPORT_NAME) ?: return
+        val mimeType = savedInstanceState.getString(STATE_PENDING_INCOMING_EXPORT_MIME_TYPE) ?: return
+        pendingIncomingFileExport = PendingIncomingFileExport(source, displayName, mimeType)
+        refreshRecentIncomingFileUi()
+    }
+
+    private fun restoreRecentIncomingFile(savedInstanceState: Bundle?) {
+        if (savedInstanceState == null) return
+        val source = savedInstanceState.getString(STATE_RECENT_INCOMING_FILE_SOURCE)?.let(Uri::parse) ?: return
+        val displayName = savedInstanceState.getString(STATE_RECENT_INCOMING_FILE_NAME) ?: return
+        val mimeType = savedInstanceState.getString(STATE_RECENT_INCOMING_FILE_MIME_TYPE) ?: return
+        recentIncomingFile = PendingIncomingFileExport(source, displayName, mimeType)
+        refreshRecentIncomingFileUi()
+    }
+
+    private fun refreshRecentIncomingFileUi() {
+        val recent = recentIncomingFile
+        binding.recentIncomingFileContainer.visibility = if (recent == null) View.GONE else View.VISIBLE
+        if (recent == null) {
+            binding.recentIncomingFileSummary.text = ""
+            binding.recentIncomingFileSaveCopyButton.isEnabled = false
+            binding.recentIncomingFileDismissButton.isEnabled = false
+            return
+        }
+        binding.recentIncomingFileSummary.text =
+            getString(R.string.file_transfer_recent_saved_summary, recent.displayName, fileTransferDestinationLabel())
+        binding.recentIncomingFileSaveCopyButton.isEnabled = pendingIncomingFileExport == null
+        binding.recentIncomingFileDismissButton.isEnabled = true
+    }
+
     private fun setPendingSharedFileIntent(pending: PendingSharedFileIntent) {
         pendingSharedFileIntent = pending
         markShareIntentConsumed(pending.token)
@@ -3805,15 +3869,17 @@ class MainActivity : AppCompatActivity() {
             val saved = runCatching { saveIncomingFileToDownloads(completed, displayName) }
             completed.stagingFile.deleteBestEffort()
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 saved
-                    .onSuccess {
+                    .onSuccess { savedUri ->
                         mainDiag(
                             "file transfer saved bytes=$stagedBytes " +
                                 "transfer_id=${completed.transferId.shortDebugId()}",
                         )
-                        showDedupedToast(
-                            getString(fileTransferSavedMessage(), displayName),
-                            Toast.LENGTH_LONG,
+                        showIncomingFileSavedAction(
+                            source = savedUri,
+                            displayName = displayName,
+                            mimeType = completed.mimeType,
                         )
                     }
                     .onFailure { failure ->
@@ -3824,6 +3890,88 @@ class MainActivity : AppCompatActivity() {
                         )
                         showDedupedToast(
                             getString(R.string.file_transfer_save_failed, displayName),
+                            Toast.LENGTH_LONG,
+                        )
+                    }
+            }
+        }
+    }
+
+    private fun showIncomingFileSavedAction(
+        source: Uri,
+        displayName: String,
+        mimeType: String,
+    ) {
+        val normalizedMimeType = mimeType.ifBlank { IncomingFileDownloadsSaver.DEFAULT_MIME_TYPE }
+        recentIncomingFile = PendingIncomingFileExport(source, displayName, normalizedMimeType)
+        refreshRecentIncomingFileUi()
+        Snackbar
+            .make(binding.root, getString(fileTransferSavedMessage(), displayName), Snackbar.LENGTH_LONG)
+            .setAction(R.string.file_transfer_save_copy) {
+                beginIncomingFileExport(source, displayName, normalizedMimeType)
+            }.show()
+    }
+
+    private fun beginIncomingFileExport(
+        source: Uri,
+        displayName: String,
+        mimeType: String,
+    ) {
+        if (pendingIncomingFileExport != null) return
+        val pending =
+            PendingIncomingFileExport(
+                source = source,
+                displayName = displayName,
+                mimeType = mimeType.ifBlank { IncomingFileDownloadsSaver.DEFAULT_MIME_TYPE },
+            )
+        pendingIncomingFileExport = pending
+        refreshRecentIncomingFileUi()
+        val intent =
+            Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(pending.mimeType)
+                .putExtra(Intent.EXTRA_TITLE, pending.displayName)
+        runCatching { startActivityForResult(intent, REQ_INCOMING_FILE_EXPORT) }
+            .onFailure { failure ->
+                pendingIncomingFileExport = null
+                refreshRecentIncomingFileUi()
+                mainDiag("incoming file export picker failed: " + failure.javaClass.simpleName)
+                showDedupedToast(getString(R.string.file_transfer_copy_failed, displayName), Toast.LENGTH_LONG)
+            }
+    }
+
+    private fun handleIncomingFileExportResult(
+        resultCode: Int,
+        data: Intent?,
+    ) {
+        val pending = pendingIncomingFileExport ?: return
+        pendingIncomingFileExport = null
+        refreshRecentIncomingFileUi()
+        val destination = data?.data
+        if (resultCode != RESULT_OK || destination == null) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val exported = try {
+                IncomingFileDocumentExporter(contentResolver).export(pending.source, destination) { coroutineContext.ensureActive() }
+                Result.success(Unit)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (failure: Throwable) {
+                Result.failure(failure)
+            }
+            if (isFinishing || isDestroyed) return@launch
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                exported
+                    .onSuccess {
+                        mainDiag("incoming file copy exported")
+                        showDedupedToast(
+                            getString(R.string.file_transfer_copy_saved, pending.displayName),
+                            Toast.LENGTH_LONG,
+                        )
+                    }.onFailure { failure ->
+                        mainDiag("incoming file copy export failed: " + failure.javaClass.simpleName)
+                        showDedupedToast(
+                            getString(R.string.file_transfer_copy_failed, pending.displayName),
                             Toast.LENGTH_LONG,
                         )
                     }
@@ -8185,6 +8333,12 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_PENDING_SHARED_FILE_URI = "pending_shared_file_uri"
         private const val STATE_PENDING_SHARED_FILE_MIME_TYPE = "pending_shared_file_mime_type"
         private const val STATE_PENDING_SHARED_FILE_TOKEN = "pending_shared_file_token"
+        private const val STATE_PENDING_INCOMING_EXPORT_SOURCE = "pending_incoming_export_source"
+        private const val STATE_PENDING_INCOMING_EXPORT_NAME = "pending_incoming_export_name"
+        private const val STATE_PENDING_INCOMING_EXPORT_MIME_TYPE = "pending_incoming_export_mime_type"
+        private const val STATE_RECENT_INCOMING_FILE_SOURCE = "recent_incoming_file_source"
+        private const val STATE_RECENT_INCOMING_FILE_NAME = "recent_incoming_file_name"
+        private const val STATE_RECENT_INCOMING_FILE_MIME_TYPE = "recent_incoming_file_mime_type"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
         private const val EXTRA_USB_CONFIGURED = "configured"
@@ -8227,6 +8381,7 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_INTERNET_SCAN = 1101
         private const val REQ_INTERNET_CAMERA = 1102
         private const val REQ_FILE_TRANSFER_OPEN = 1103
+        private const val REQ_INCOMING_FILE_EXPORT = 1104
         private const val INTERNET_TICK_INTERVAL_MS = 250L
         private const val INTERNET_LOG_TAG = "VibeInternet"
         private val QUARANTINED_INTERNET_SESSION = AtomicReference<InternetProductSession?>()

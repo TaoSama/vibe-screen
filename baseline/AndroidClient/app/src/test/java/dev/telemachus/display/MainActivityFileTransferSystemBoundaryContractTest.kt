@@ -7,6 +7,103 @@ import org.junit.Test
 
 class MainActivityFileTransferSystemBoundaryContractTest {
     @Test
+    fun completedIncomingFileOffersExplicitUserSelectedExportWithoutWeakeningDownloadsSave() {
+        val source = mainActivitySource()
+        val strings = stringsSource()
+        val completed = extractMethod(source, "private fun onIncomingFileCompleted")
+        val showAction = extractMethod(source, "private fun showIncomingFileSavedAction")
+        val beginExport = extractMethod(source, "private fun beginIncomingFileExport")
+        val handleResult = extractMethod(source, "private fun handleIncomingFileExportResult")
+        val onActivityResult = extractMethod(source, "override fun onActivityResult")
+        val onSaveInstanceState = extractMethod(source, "override fun onSaveInstanceState")
+        val restorePending = extractMethod(source, "private fun restorePendingIncomingFileExport")
+        val restoreRecent = extractMethod(source, "private fun restoreRecentIncomingFile")
+        val refreshRecent = extractMethod(source, "private fun refreshRecentIncomingFileUi")
+        val setupUi = extractMethod(source, "private fun setupUI")
+        val layout = mainActivityLayoutSource()
+        val recentPanel =
+            layout.substring(
+                layout.indexOf("android:id=\"@+id/recentIncomingFileContainer\"").also { require(it >= 0) },
+                layout.indexOf("android:id=\"@+id/usbModeContent\"").also { require(it >= 0) },
+            )
+
+        assertTrue(
+            "Verified incoming bytes must still be saved to Downloads before optional export",
+            completed.contains("saveIncomingFileToDownloads(completed, displayName)") &&
+                completed.contains("showIncomingFileSavedAction(") &&
+                assertBeforeValue(completed, "saveIncomingFileToDownloads", "showIncomingFileSavedAction("),
+        )
+        assertTrue(
+            "A completed background save must not update a finishing or destroyed Activity",
+            completed.contains("if (isFinishing || isDestroyed) return@runOnUiThread") &&
+                assertBeforeValue(
+                    completed,
+                    "if (isFinishing || isDestroyed) return@runOnUiThread",
+                    "saved\n                    .onSuccess",
+                ),
+        )
+        assertTrue(
+            "Successful save feedback should persist the latest file action instead of relying on transient feedback",
+            showAction.contains("recentIncomingFile = PendingIncomingFileExport(source, displayName, normalizedMimeType)") &&
+                showAction.contains("refreshRecentIncomingFileUi()") &&
+                showAction.contains("Snackbar") &&
+                showAction.contains("Snackbar.LENGTH_LONG") &&
+                showAction.contains(".setAction(R.string.file_transfer_save_copy)") &&
+                showAction.contains("beginIncomingFileExport(source, displayName, normalizedMimeType)") &&
+                !completed.contains("ACTION_CREATE_DOCUMENT"),
+        )
+        assertTrue(
+            "The persistent completion panel should expose accessible Save and Dismiss actions",
+            recentPanel.contains("android:id=\"@+id/recentIncomingFileSaveCopyButton\"") &&
+                recentPanel.contains("android:id=\"@+id/recentIncomingFileDismissButton\"") &&
+                recentPanel.countOccurrences("android:minHeight=\"48dp\"") == 2 &&
+                setupUi.contains("recentIncomingFileSaveCopyButton.setOnClickListener") &&
+                setupUi.contains("recentIncomingFileDismissButton.setOnClickListener") &&
+                setupUi.contains("recentIncomingFile = null") &&
+                refreshRecent.contains("binding.recentIncomingFileContainer.visibility") &&
+                refreshRecent.contains("pendingIncomingFileExport == null"),
+        )
+        assertTrue(
+            "The explicit export action should launch a create-document picker with safe defaults",
+            beginExport.contains("if (pendingIncomingFileExport != null) return") &&
+                beginExport.contains("Intent(Intent.ACTION_CREATE_DOCUMENT)") &&
+                beginExport.contains("Intent.CATEGORY_OPENABLE") &&
+                beginExport.contains("Intent.EXTRA_TITLE") &&
+                beginExport.contains("REQ_INCOMING_FILE_EXPORT"),
+        )
+        assertTrue(
+            "Pending export metadata should survive configuration recreation without retaining file handles",
+            source.contains("private data class PendingIncomingFileExport") &&
+                onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_SOURCE") &&
+                onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_NAME") &&
+                onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_MIME_TYPE") &&
+                restorePending.contains("PendingIncomingFileExport(source, displayName, mimeType)") &&
+                restorePending.contains("refreshRecentIncomingFileUi()") &&
+                onSaveInstanceState.contains("STATE_RECENT_INCOMING_FILE_SOURCE") &&
+                onSaveInstanceState.contains("STATE_RECENT_INCOMING_FILE_NAME") &&
+                onSaveInstanceState.contains("STATE_RECENT_INCOMING_FILE_MIME_TYPE") &&
+                restoreRecent.contains("recentIncomingFile = PendingIncomingFileExport(source, displayName, mimeType)") &&
+                restoreRecent.contains("refreshRecentIncomingFileUi()"),
+        )
+        assertTrue(
+            "Picker result handling must consume pending state before background copy and ignore cancellation",
+            onActivityResult.contains("handleIncomingFileExportResult(resultCode, data)") &&
+                handleResult.contains("val pending = pendingIncomingFileExport ?: return") &&
+                handleResult.contains("pendingIncomingFileExport = null") &&
+                handleResult.contains("refreshRecentIncomingFileUi()") &&
+                handleResult.contains("if (resultCode != RESULT_OK || destination == null) return") &&
+                assertBeforeValue(handleResult, "pendingIncomingFileExport = null", "lifecycleScope.launch(Dispatchers.IO)") &&
+                handleResult.contains("coroutineContext.ensureActive()") &&
+                handleResult.contains("catch (exception: CancellationException)") &&
+                handleResult.contains("throw exception") &&
+                handleResult.contains("if (isFinishing || isDestroyed) return@launch") &&
+                handleResult.contains("if (isFinishing || isDestroyed) return@runOnUiThread") &&
+                handleResult.contains("IncomingFileDocumentExporter(contentResolver).export(pending.source, destination)"),
+        )
+        assertTrue(strings.contains("file_transfer_save_copy") && strings.contains("Save a copy"))
+    }
+
+    @Test
     fun incomingFileTransferExposesProgressAndUserCancelThroughProductState() {
         val source = mainActivitySource()
         val strings = stringsSource()
@@ -748,6 +845,14 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         return sourceFile(STRINGS_PATHS).readText()
     }
 
+    private fun mainActivityLayoutSource(): String {
+        return sourceFile(MAIN_ACTIVITY_LAYOUT_PATHS).readText()
+    }
+
+    private fun String.countOccurrences(value: String): Int {
+        return windowed(value.length).count { it == value }
+    }
+
     private fun dialogActionButtonLayoutApplierSource(): String {
         return sourceFile(DIALOG_ACTION_BUTTON_LAYOUT_APPLIER_PATHS).readText()
     }
@@ -836,6 +941,11 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             listOf(
                 "app/src/main/res/values/strings.xml",
                 "baseline/AndroidClient/app/src/main/res/values/strings.xml",
+            )
+        val MAIN_ACTIVITY_LAYOUT_PATHS =
+            listOf(
+                "app/src/main/res/layout/activity_main.xml",
+                "baseline/AndroidClient/app/src/main/res/layout/activity_main.xml",
             )
         val DIALOG_ACTION_BUTTON_LAYOUT_APPLIER_PATHS =
             listOf(

@@ -47,6 +47,12 @@ platform scaffolding under active development.
 | iOS trusted LAN | Core client interoperates with the baseline MacHost in a real two-process localhost loopback using the secure-record path by default; the loopback harness asks the Host to bind port `0` and passes the selected localhost port to the client. Explicit plaintext legacy fallback is regression-tested separately. This is readiness evidence only: Simulator UI, signed iPhone/iPad device acceptance, and real-network LAN acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline. HarmonyOS has a portable authenticated-record contract verifier aligned with the macOS/Android AES-256-GCM record format, nonce/replay rules, session epochs, and explicit legacy-fallback semantics, but the production Harmony TCP path is still plaintext until HUKS, DevEco/HAP, Host interoperability, and MatePad evidence exist |
 
+Verified incoming Android files are saved to Downloads first. The completion
+surface also offers a persistent **Save a copy** action through Android's system
+document picker, allowing a user-selected second destination without risking
+the verified Downloads copy. This Android-local export path does not prove a
+Host-backed transfer or close the file-transfer product E2E gate.
+
 ## Quick start
 
 The shortest supported development path is USB mode:

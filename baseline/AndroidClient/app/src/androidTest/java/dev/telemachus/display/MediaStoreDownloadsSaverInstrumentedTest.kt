@@ -25,6 +25,40 @@ import java.security.MessageDigest
 @RunWith(AndroidJUnit4::class)
 class MediaStoreDownloadsSaverInstrumentedTest {
     @Test
+    fun productionDocumentExporterCopiesPublishedIncomingFileExactly() {
+        assumeTrue("MediaStore.Downloads export path is Android Q+ only", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+
+        val suffix = System.currentTimeMillis().toString()
+        val sourceName = "vibescreen-p0110-export-source-" + suffix + ".bin"
+        val destinationName = "vibescreen-p0110-export-destination-" + suffix + ".bin"
+        val payload = ("p0110-user-selected-export\n" + "fedcba9876543210".repeat(256)).toByteArray()
+        withTargetContext { context ->
+            val collection = ContentResolverMediaStoreDownloadsCollection(context.contentResolver)
+            var source: Uri? = null
+            var destination: Uri? = null
+            try {
+                source = collection.insertPending(sourceName, TEST_MIME_TYPE)
+                collection.openOutputStream(source)?.use { it.write(payload) }
+                    ?: throw IOException("Unable to seed export source")
+                collection.publish(source)
+
+                destination = collection.insertPending(destinationName, TEST_MIME_TYPE)
+                IncomingFileDocumentExporter(context.contentResolver).export(source, destination)
+                collection.publish(destination)
+
+                val exported = context.contentResolver.openInputStream(destination)?.use { it.readBytes() }
+                    ?: throw IOException("Unable to read export destination")
+                assertArrayEquals(payload, exported)
+                assertArrayEquals(sha256Bytes(payload), sha256Bytes(exported))
+                Log.i(TAG, "incoming_document_export source=" + source + " destination=" + destination + " bytes=" + exported.size)
+            } finally {
+                destination?.let { context.contentResolver.delete(it, null, null) }
+                source?.let { context.contentResolver.delete(it, null, null) }
+            }
+        }
+    }
+
+    @Test
     fun productionSaverPublishesIncomingFileToMediaStoreDownloads() {
         assumeTrue("MediaStore.Downloads publish path is Android Q+ only", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
 
