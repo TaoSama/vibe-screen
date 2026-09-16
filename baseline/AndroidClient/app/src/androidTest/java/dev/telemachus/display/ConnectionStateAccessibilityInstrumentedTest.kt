@@ -47,7 +47,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 R.id.wirelessConnecting,
                 R.id.wirelessFirstTime,
                 R.id.wirelessConnected,
-                R.id.wirelessPairedIdle,
+                R.id.idleStatusLabel,
                 R.id.wirelessTokenMismatch,
                 R.id.repairMessage,
                 R.id.wirelessPermDenied,
@@ -69,6 +69,14 @@ class ConnectionStateAccessibilityInstrumentedTest {
             assertEquals(
                 View.ACCESSIBILITY_LIVE_REGION_NONE,
                 root.findViewById<View>(R.id.wirelessCameraPermissionRetry).accessibilityLiveRegion,
+            )
+            assertEquals(
+                View.ACCESSIBILITY_LIVE_REGION_NONE,
+                root.findViewById<View>(R.id.wirelessReconnectCountdown).accessibilityLiveRegion,
+            )
+            assertEquals(
+                View.ACCESSIBILITY_LIVE_REGION_NONE,
+                root.findViewById<View>(R.id.wirelessPairedIdle).accessibilityLiveRegion,
             )
         }
     }
