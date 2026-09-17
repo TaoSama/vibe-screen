@@ -19,6 +19,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val showAction = extractMethod(source, "private fun showIncomingFileSavedAction")
         val beginExport = extractMethod(source, "private fun beginIncomingFileExport")
         val handleResult = extractMethod(source, "private fun handleIncomingFileExportResult")
+        val exportCompletion = extractMethod(source, "private fun handleIncomingFileExportCompletion")
         val onActivityResult = extractMethod(source, "override fun onActivityResult")
         val onSaveInstanceState = extractMethod(source, "override fun onSaveInstanceState")
         val restorePending = extractMethod(source, "private fun restorePendingIncomingFileExport")
@@ -115,6 +116,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_SOURCE") &&
                 onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_NAME") &&
                 onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_MIME_TYPE") &&
+                onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_COPY_IN_FLIGHT") &&
+                onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_DESTINATION") &&
                 restorePending.contains("PendingIncomingFileExport(source, displayName, mimeType)") &&
                 restorePending.contains("refreshRecentIncomingFileUi()") &&
                 onSaveInstanceState.contains("STATE_RECENT_INCOMING_FILE_SOURCE") &&
@@ -124,19 +127,24 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 restoreRecent.contains("refreshRecentIncomingFileUi()"),
         )
         assertTrue(
-            "Picker result handling must consume pending state before background copy and ignore cancellation",
+            "Picker result handling must hand background copy to the process coordinator",
             onActivityResult.contains("handleIncomingFileExportResult(resultCode, data)") &&
                 handleResult.contains("val pending = pendingIncomingFileExport ?: return") &&
                 handleResult.contains("pendingIncomingFileExport = null") &&
                 handleResult.contains("refreshRecentIncomingFileUi()") &&
-                handleResult.contains("if (resultCode != RESULT_OK || destination == null) return") &&
-                assertBeforeValue(handleResult, "pendingIncomingFileExport = null", "lifecycleScope.launch(Dispatchers.IO)") &&
-                handleResult.contains("coroutineContext.ensureActive()") &&
-                handleResult.contains("catch (exception: CancellationException)") &&
-                handleResult.contains("throw exception") &&
-                handleResult.contains("if (isFinishing || isDestroyed) return@launch") &&
-                handleResult.contains("if (isFinishing || isDestroyed) return@runOnUiThread") &&
-                handleResult.contains("IncomingFileDocumentExporter(contentResolver).export(pending.source, destination)"),
+                handleResult.contains("if (resultCode != RESULT_OK || destination == null)") &&
+                handleResult.contains("incomingFileExportCopyInFlight = true") &&
+                handleResult.contains("incomingFileExportCoordinator.export(") &&
+                !handleResult.contains("lifecycleScope") &&
+                source.contains("observePendingIncomingFileExport()") &&
+                source.contains("incomingFileExportCoordinator.observe(request") &&
+                !source.contains("incomingFileExportCoordinator.observeLatest") &&
+                onDestroy.contains("incomingFileExportSubscription?.close()") &&
+                exportCompletion.contains("isChangingConfigurations") &&
+                exportCompletion.contains("if (incomingFileExportSubscription !== subscription) return@post") &&
+                exportCompletion.contains("recentIncomingFile =") &&
+                exportCompletion.contains("result.request.mimeType") &&
+                assertBeforeValue(exportCompletion, "incomingFileExportSubscription !== subscription", "subscription.consume()"),
         )
         assertTrue(strings.contains("file_transfer_save_copy") && strings.contains("Save a copy"))
     }
