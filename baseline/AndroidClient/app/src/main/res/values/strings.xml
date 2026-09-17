@@ -260,6 +260,9 @@
     <string name="clipboard_confirmation_direct_receive_note">Held for approval. Tap Copy to replace this device clipboard. This device accepts up to %1$s.</string>
     <string name="clipboard_plain_text_label">Text from Mac</string>
     <string name="clipboard_send_failed">Couldn\'t send the clipboard to the Mac.</string>
+    <string name="clipboard_share_unavailable">Connect to a compatible Mac before sharing text.</string>
+    <string name="clipboard_share_policy_disabled">Text sharing is disabled by this device or Mac session policy.</string>
+    <string name="clipboard_confirmation_shared_text_note">Shared text is sent only after you tap Send.</string>
     <string name="clipboard_receive_failed">Couldn\'t request the Mac clipboard.</string>
     <string name="clipboard_request_timed_out">The Mac didn\'t provide the clipboard. Try again.</string>
     <string name="clipboard_write_failed">Couldn\'t copy the Mac clipboard to this device.</string>
@@ -446,7 +449,7 @@
     <string name="file_transfer_unavailable_title">File transfer unavailable</string>
     <string name="file_transfer_pick_failed">Could not prepare the selected file</string>
     <string name="file_transfer_pick_failed_title">Could not prepare file</string>
-    <string name="file_transfer_share_unsupported">Share one file while Vibe Screen is connected to a file-transfer-capable Mac session. Text-only shares, multiple items, and non-content sources are not supported.</string>
+    <string name="file_transfer_share_unsupported">Share one content URI, or send non-empty text without a file. Multiple items, text combined with a file, and non-content sources are not supported.</string>
     <string name="file_transfer_share_unsupported_title">Cannot share this item</string>
     <string name="file_transfer_share_unavailable">Connect to a file-transfer-capable Mac session, then send this file from Vibe Screen.</string>
     <string name="pending_shared_file_title">1 file ready to send</string>

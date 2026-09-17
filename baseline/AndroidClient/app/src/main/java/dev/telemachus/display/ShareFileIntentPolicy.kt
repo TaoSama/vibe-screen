@@ -3,11 +3,16 @@ package dev.telemachus.display
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
+import java.security.MessageDigest
 
 internal sealed class ShareFileIntentDecision {
     data class Accepted(
         val uri: Uri,
         val mimeType: String,
+    ) : ShareFileIntentDecision()
+
+    data class Text(
+        val text: String,
     ) : ShareFileIntentDecision()
 
     data class Rejected(
@@ -20,6 +25,8 @@ internal enum class ShareFileIntentRejectionReason {
     UNSUPPORTED_ACTION,
     MISSING_MIME_TYPE,
     TEXT_ONLY,
+    EMPTY_TEXT,
+    AMBIGUOUS_CONTENT,
     MISSING_STREAM,
     MULTIPLE_ITEMS,
     INVALID_STREAM,
@@ -48,6 +55,21 @@ internal object ShareFileIntentPolicy {
             return ShareFileIntentDecision.Rejected(streamDecision.reason)
         }
         val streamUris = (streamDecision as StreamDecision.Valid).uris
+        val sharedText = sharedPlainText(intent)
+        val hasTextExtra = hasTextExtra(intent)
+        if (hasTextExtra && (streamUris.isNotEmpty() || (clipDecision as StreamDecision.Valid).uris.isNotEmpty())) {
+            return ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.AMBIGUOUS_CONTENT)
+        }
+        if (intent.action == Intent.ACTION_SEND &&
+            mimeType.startsWith("text/", ignoreCase = true) &&
+            hasTextExtra
+        ) {
+            return if (sharedText != null) {
+                ShareFileIntentDecision.Text(sharedText)
+            } else {
+                ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.EMPTY_TEXT)
+            }
+        }
         if (intent.action == Intent.ACTION_SEND_MULTIPLE && streamUris.isEmpty()) {
             return if (isTextOnlyShare(intent, mimeType)) {
                 ShareFileIntentDecision.Rejected(ShareFileIntentRejectionReason.TEXT_ONLY)
@@ -81,6 +103,7 @@ internal object ShareFileIntentPolicy {
             intent.type.orEmpty(),
             streamToken(intent),
             clipToken(intent),
+            textToken(intent),
         ).joinToString(separator = "|")
 
     private fun isTextOnlyShare(
@@ -95,6 +118,22 @@ internal object ShareFileIntentPolicy {
         } catch (_: RuntimeException) {
             false
         }
+
+    private fun sharedPlainText(intent: Intent): String? =
+        try {
+            (intent.extras?.get(Intent.EXTRA_TEXT) as? CharSequence)
+                ?.toString()
+                ?.takeIf(String::isNotEmpty)
+        } catch (_: RuntimeException) {
+            null
+        }
+
+    private fun textToken(intent: Intent): String {
+        val text = sharedPlainText(intent) ?: return if (hasTextExtra(intent)) INVALID_TOKEN else ""
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        return "${bytes.size}:$digest"
+    }
 
     private fun streamUris(intent: Intent): StreamDecision {
         val value =
