@@ -50,6 +50,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "A replacement Activity must reattach to a process result even when durable recovery loading failed",
             restoreRecovery.contains(".onFailure { failure ->") &&
+                restoreRecovery.countOccurrences("if (!observeLatestIncomingFileDiscard()) observeLatestIncomingFilePublication()") == 2 &&
                 restoreRecovery.contains("observeLatestIncomingFilePublication()"),
         )
         assertTrue(

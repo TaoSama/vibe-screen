@@ -3122,7 +3122,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     .onFailure { failure ->
                         mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
-                        observeLatestIncomingFilePublication()
+                        if (!observeLatestIncomingFileDiscard()) observeLatestIncomingFilePublication()
                     }
                 refreshRecentIncomingFileUi()
                 if (loaded.getOrNull() != null) {
