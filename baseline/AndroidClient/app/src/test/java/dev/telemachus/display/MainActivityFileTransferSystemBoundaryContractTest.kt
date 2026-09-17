@@ -11,6 +11,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val source = mainActivitySource()
         val strings = stringsSource()
         val completed = extractMethod(source, "private fun onIncomingFileCompleted")
+        val resultHandler = extractMethod(source, "private fun handleIncomingFilePublicationResult")
+        val onDestroy = extractMethod(source, "override fun onDestroy")
         val showAction = extractMethod(source, "private fun showIncomingFileSavedAction")
         val beginExport = extractMethod(source, "private fun beginIncomingFileExport")
         val handleResult = extractMethod(source, "private fun handleIncomingFileExportResult")
@@ -28,21 +30,25 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             )
 
         assertTrue(
-            "Verified incoming bytes must be durably adopted before Downloads publication and optional export",
-            completed.contains("incomingFileRecoveryStore.load()") &&
-                completed.contains("recovery.payloadFile.canonicalFile == completed.stagingFile.canonicalFile") &&
-                completed.contains("saveRecoveredIncomingFile") &&
-                completed.contains("showIncomingFileSavedAction(") &&
-                assertBeforeValue(completed, "incomingFileRecoveryStore.load()", "saveRecoveredIncomingFile") &&
-                assertBeforeValue(completed, "saveRecoveredIncomingFile", "showIncomingFileSavedAction("),
+            "Verified incoming bytes must publish through the process coordinator before optional export",
+            completed.contains("incomingFilePublicationCoordinator.publish(completed") &&
+                !completed.contains("incomingFileRecoveryStore.load()") &&
+                !completed.contains("incomingFileDownloadsSaver()") &&
+                resultHandler.contains("showIncomingFileSavedAction("),
         )
         assertTrue(
-            "A completed background save must not update a finishing or destroyed Activity",
-            completed.contains("if (isFinishing || isDestroyed) return@withContext") &&
+            "Activity destruction must detach UI observation without cancelling process publication",
+            onDestroy.contains("incomingFilePublicationSubscription?.close()") &&
+                !onDestroy.contains("incomingFilePublicationCoordinator.consume") &&
+                resultHandler.contains("if (isFinishing || isDestroyed) return@post"),
+        )
+        assertTrue(
+            "A stale posted callback must not close or consume a newer publication subscription",
+            resultHandler.contains("if (incomingFilePublicationSubscription !== subscription) return@post") &&
                 assertBeforeValue(
-                    completed,
-                    "if (isFinishing || isDestroyed) return@withContext",
-                    "?.onSuccess { savedUri ->",
+                    resultHandler,
+                    "incomingFilePublicationSubscription !== subscription",
+                    "subscription.consume()",
                 ),
         )
         assertTrue(
@@ -300,13 +306,12 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 !internetCompleted.contains("return@runOnUiThread"),
         )
         assertTrue(
-            "Incoming completion must consume the already durable record and retain recovery on save failure",
-            onIncomingCompleted.contains("incomingFileRecoveryStore.load()") &&
-                onIncomingCompleted.contains("recovery.payloadFile.canonicalFile == completed.stagingFile.canonicalFile") &&
+            "Incoming completion must join process-owned publication and retain recovery on save failure",
+            onIncomingCompleted.contains("incomingFilePublicationCoordinator.publish(completed") &&
+                onIncomingCompleted.contains("handleIncomingFilePublicationResult") &&
                 !onIncomingCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
-                onIncomingCompleted.contains("pendingIncomingFileRecovery = recovery") &&
-                onIncomingCompleted.contains(".onFailure { failure ->") &&
-                onIncomingCompleted.contains("file transfer save failed"),
+                extractMethod(source, "private fun handleIncomingFilePublicationResult")
+                    .contains("pendingIncomingFileRecovery = published.recovery"),
         )
         assertTrue(
             "Incoming finish should clear receive state through the shared cleanup path",
@@ -829,8 +834,9 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             extractMethod(source, "private fun promptOutgoingFileTransfer").contains("session.offerFile(pending.stagedFile)"),
         )
         assertTrue(
-            "Saved incoming bytes remain isolated to the completed-transfer handler, not the no-Host control refresh path",
-            extractMethod(source, "private fun onIncomingFileCompleted").contains("saveRecoveredIncomingFile"),
+            "Saved incoming bytes remain isolated to process publication, not the no-Host control refresh path",
+            extractMethod(source, "private fun onIncomingFileCompleted")
+                .contains("incomingFilePublicationCoordinator.publish(completed"),
         )
     }
 

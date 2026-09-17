@@ -186,6 +186,7 @@ class MainActivity : AppCompatActivity() {
         SharedPreferencesPendingPairingIdentityAliasPersistence(applicationContext)
     }
     private val incomingFileRecoveryStore by lazy { IncomingFileRecoveryStore(applicationContext) }
+    private val incomingFilePublicationCoordinator by lazy { IncomingFilePublicationCoordinator.processShared(applicationContext) }
     @Volatile private var internetSession: InternetProductSession? = null
     private var internetVideoDecoderLifecycle: InternetVideoDecoderLifecycle? = null
     private var internetNetworkMonitor: AndroidNetworkMonitor? = null
@@ -357,6 +358,7 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var incomingFileRecoveryLoadPending = true
     @Volatile private var pendingIncomingFileRecovery: RecoveredIncomingFile? = null
     private var incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
+    private var incomingFilePublicationSubscription: IncomingFilePublicationSubscription? = null
     private var restoredConsumedShareIntentToken: String? = null
     private var restoredPendingSharedTextToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
@@ -3108,7 +3110,14 @@ class MainActivity : AppCompatActivity() {
                 incomingFileRecoveryLoadPending = false
                 if (isFinishing || isDestroyed) return@withContext
                 loaded
-                    .onSuccess { recovery -> pendingIncomingFileRecovery = recovery }
+                    .onSuccess { recovery ->
+                        pendingIncomingFileRecovery = recovery
+                        if (recovery != null) {
+                            observeIncomingFilePublication(recovery)
+                        } else {
+                            observeLatestIncomingFilePublication()
+                        }
+                    }
                     .onFailure { failure ->
                         mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
                     }
@@ -3986,59 +3995,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val displayName = safeIncomingDisplayName(completed.fileName)
-            val stagedBytes = completed.stagingFile.length()
-            val adopted = runCatching {
-                incomingFileRecoveryStore.load()?.takeIf { recovery ->
-                    recovery.transferId == completed.transferId &&
-                        recovery.sha256 == completed.sha256 &&
-                        recovery.payloadFile.canonicalFile == completed.stagingFile.canonicalFile
-                } ?: throw IOException("Durable incoming recovery ownership is unavailable")
-            }
-            val recovery = adopted.getOrNull()
-            if (recovery != null) pendingIncomingFileRecovery = recovery
-            val saved = recovery?.let(::saveRecoveredIncomingFile)
-            withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed) return@withContext
-                if (recovery == null) {
-                    val failure = adopted.exceptionOrNull() ?: IOException("Incoming recovery adoption failed")
-                    mainDiag(
-                        "file transfer recovery failed bytes=$stagedBytes " +
-                            "transfer_id=${completed.transferId.shortDebugId()} " +
-                            failure.javaClass.simpleName,
-                    )
-                    showDedupedToast(getString(R.string.file_transfer_save_failed, displayName), Toast.LENGTH_LONG)
-                    return@withContext
-                }
-                saved
-                    ?.onSuccess { savedUri ->
-                        pendingIncomingFileRecovery = null
-                        mainDiag(
-                            "file transfer saved bytes=$stagedBytes " +
-                                "transfer_id=${completed.transferId.shortDebugId()}",
-                        )
-                        showIncomingFileSavedAction(savedUri, displayName, completed.mimeType)
-                    }
-                    ?.onFailure { failure ->
-                        recentIncomingFile = null
-                        pendingIncomingFileRecovery = recovery
-                        mainDiag(
-                            "file transfer save failed bytes=$stagedBytes " +
-                                "transfer_id=${completed.transferId.shortDebugId()} " +
-                                failure.javaClass.simpleName,
-                        )
-                        refreshRecentIncomingFileUi()
-                        if (isConnected) showIncomingFileRecoveryDialog(recovery)
-                    }
-            }
-        }
-    }
-
-    private fun saveRecoveredIncomingFile(recovery: RecoveredIncomingFile): Result<Uri> {
-        return runCatching {
-            incomingFileDownloadsSaver().publishRecoveredIncomingFile(recovery, incomingFileRecoveryStore)
-        }
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.SAVING
+        refreshRecentIncomingFileUi()
+        replaceIncomingFilePublicationSubscription(
+            incomingFilePublicationCoordinator.publish(completed, ::handleIncomingFilePublicationResult),
+        )
     }
 
     private fun retryIncomingFileSave(recovery: RecoveredIncomingFile) {
@@ -4049,22 +4010,62 @@ class MainActivity : AppCompatActivity() {
         incomingFileRecoveryDialog = null
         incomingFileRecoveryOperation = IncomingFileRecoveryOperation.SAVING
         refreshRecentIncomingFileUi()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val saved = saveRecoveredIncomingFile(recovery)
-            withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed) return@withContext
-                incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
-                saved
-                    .onSuccess { savedUri ->
-                        pendingIncomingFileRecovery = null
-                        mainDiag("incoming file recovery saved transfer_id=${recovery.transferId.shortDebugId()}")
-                        showIncomingFileSavedAction(savedUri, recovery.displayName, recovery.mimeType)
-                    }.onFailure { failure ->
-                        mainDiag("incoming file recovery retry failed: " + failure.javaClass.simpleName)
-                        refreshRecentIncomingFileUi()
-                        if (isConnected) showIncomingFileRecoveryDialog(recovery)
-                    }
-            }
+        replaceIncomingFilePublicationSubscription(
+            incomingFilePublicationCoordinator.publish(recovery, ::handleIncomingFilePublicationResult),
+        )
+    }
+
+    private fun observeIncomingFilePublication(recovery: RecoveredIncomingFile) {
+        val subscription =
+            incomingFilePublicationCoordinator.observe(recovery, ::handleIncomingFilePublicationResult) ?: return
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.SAVING
+        refreshRecentIncomingFileUi()
+        replaceIncomingFilePublicationSubscription(subscription)
+    }
+
+    private fun observeLatestIncomingFilePublication() {
+        val subscription =
+            incomingFilePublicationCoordinator.observeLatest(::handleIncomingFilePublicationResult) ?: return
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.SAVING
+        refreshRecentIncomingFileUi()
+        replaceIncomingFilePublicationSubscription(subscription)
+    }
+
+    private fun replaceIncomingFilePublicationSubscription(subscription: IncomingFilePublicationSubscription) {
+        incomingFilePublicationSubscription?.close()
+        incomingFilePublicationSubscription = subscription
+    }
+
+    private fun handleIncomingFilePublicationResult(
+        subscription: IncomingFilePublicationSubscription,
+        result: Result<IncomingFilePublicationResult>,
+    ) {
+        binding.root.post {
+            if (isFinishing || isDestroyed) return@post
+            if (incomingFilePublicationSubscription !== subscription) return@post
+            subscription.close()
+            incomingFilePublicationSubscription = null
+            incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
+            result
+                .onSuccess { published ->
+                    subscription.consume()
+                    published.publication
+                        .onSuccess { savedUri ->
+                            pendingIncomingFileRecovery = null
+                            mainDiag("incoming file recovery saved transfer_id=${published.recovery.transferId.shortDebugId()}")
+                            showIncomingFileSavedAction(savedUri, published.recovery.displayName, published.recovery.mimeType)
+                        }.onFailure { failure ->
+                            recentIncomingFile = null
+                            pendingIncomingFileRecovery = published.recovery
+                            mainDiag("incoming file recovery save failed: " + failure.javaClass.simpleName)
+                            refreshRecentIncomingFileUi()
+                            if (isConnected) showIncomingFileRecoveryDialog(published.recovery)
+                        }
+                }.onFailure { failure ->
+                    subscription.consume()
+                    mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
+                    refreshRecentIncomingFileUi()
+                }
         }
     }
 
@@ -8687,6 +8688,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        incomingFilePublicationSubscription?.close()
+        incomingFilePublicationSubscription = null
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
         binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
         pendingConnectionPanelLayoutWidthPx = null
