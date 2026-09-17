@@ -3120,6 +3120,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     .onFailure { failure ->
                         mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
+                        observeLatestIncomingFilePublication()
                     }
                 refreshRecentIncomingFileUi()
                 if (loaded.getOrNull() != null) {
@@ -3995,10 +3996,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onIncomingFileCompleted(completed: dev.telemachus.display.protocol.CompletedIncomingFile) {
+        val displayName = safeIncomingDisplayName(completed.fileName)
         incomingFileRecoveryOperation = IncomingFileRecoveryOperation.SAVING
         refreshRecentIncomingFileUi()
         replaceIncomingFilePublicationSubscription(
-            incomingFilePublicationCoordinator.publish(completed, ::handleIncomingFilePublicationResult),
+            incomingFilePublicationCoordinator.publish(completed) { subscription, result ->
+                deliverIncomingFilePublicationResult(subscription, result, displayName)
+            },
         )
     }
 
@@ -4039,6 +4043,12 @@ class MainActivity : AppCompatActivity() {
     private fun handleIncomingFilePublicationResult(
         subscription: IncomingFilePublicationSubscription,
         result: Result<IncomingFilePublicationResult>,
+    ) = deliverIncomingFilePublicationResult(subscription, result, null)
+
+    private fun deliverIncomingFilePublicationResult(
+        subscription: IncomingFilePublicationSubscription,
+        result: Result<IncomingFilePublicationResult>,
+        failureDisplayName: String?,
     ) {
         binding.root.post {
             if (isFinishing || isDestroyed) return@post
@@ -4065,6 +4075,10 @@ class MainActivity : AppCompatActivity() {
                     subscription.consume()
                     mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
                     refreshRecentIncomingFileUi()
+                    if (pendingIncomingFileRecovery == null) {
+                        val displayName = failureDisplayName ?: getString(R.string.file_transfer_unknown_name)
+                        showDedupedToast(getString(R.string.file_transfer_save_failed, displayName), Toast.LENGTH_LONG)
+                    }
                 }
         }
     }

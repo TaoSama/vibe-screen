@@ -11,7 +11,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val source = mainActivitySource()
         val strings = stringsSource()
         val completed = extractMethod(source, "private fun onIncomingFileCompleted")
-        val resultHandler = extractMethod(source, "private fun handleIncomingFilePublicationResult")
+        val resultHandler = extractMethod(source, "private fun deliverIncomingFilePublicationResult")
+        val restoreRecovery = extractMethod(source, "private fun restorePendingIncomingFileRecovery")
         val onDestroy = extractMethod(source, "override fun onDestroy")
         val showAction = extractMethod(source, "private fun showIncomingFileSavedAction")
         val beginExport = extractMethod(source, "private fun beginIncomingFileExport")
@@ -35,6 +36,19 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 !completed.contains("incomingFileRecoveryStore.load()") &&
                 !completed.contains("incomingFileDownloadsSaver()") &&
                 resultHandler.contains("showIncomingFileSavedAction("),
+        )
+        assertTrue(
+            "Durable adoption failure must remain visible without duplicating the retry card",
+            completed.contains("val displayName = safeIncomingDisplayName(completed.fileName)") &&
+                completed.contains("deliverIncomingFilePublicationResult(subscription, result, displayName)") &&
+                resultHandler.contains("if (pendingIncomingFileRecovery == null)") &&
+                resultHandler.contains("failureDisplayName ?: getString(R.string.file_transfer_unknown_name)") &&
+                resultHandler.contains("showDedupedToast(getString(R.string.file_transfer_save_failed, displayName), Toast.LENGTH_LONG)"),
+        )
+        assertTrue(
+            "A replacement Activity must reattach to a process result even when durable recovery loading failed",
+            restoreRecovery.contains(".onFailure { failure ->") &&
+                restoreRecovery.contains("observeLatestIncomingFilePublication()"),
         )
         assertTrue(
             "Activity destruction must detach UI observation without cancelling process publication",
@@ -308,9 +322,9 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "Incoming completion must join process-owned publication and retain recovery on save failure",
             onIncomingCompleted.contains("incomingFilePublicationCoordinator.publish(completed") &&
-                onIncomingCompleted.contains("handleIncomingFilePublicationResult") &&
+                onIncomingCompleted.contains("deliverIncomingFilePublicationResult") &&
                 !onIncomingCompleted.contains("completed.stagingFile.deleteBestEffort()") &&
-                extractMethod(source, "private fun handleIncomingFilePublicationResult")
+                extractMethod(source, "private fun deliverIncomingFilePublicationResult")
                     .contains("pendingIncomingFileRecovery = published.recovery"),
         )
         assertTrue(
