@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val incomingFileRecoveryStore by lazy { IncomingFileRecoveryStore(applicationContext) }
     private val incomingFilePublicationCoordinator by lazy { IncomingFilePublicationCoordinator.processShared(applicationContext) }
+    private val incomingFileDiscardCoordinator by lazy { IncomingFileDiscardCoordinator.processShared(applicationContext) }
     @Volatile private var internetSession: InternetProductSession? = null
     private var internetVideoDecoderLifecycle: InternetVideoDecoderLifecycle? = null
     private var internetNetworkMonitor: AndroidNetworkMonitor? = null
@@ -359,6 +360,7 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var pendingIncomingFileRecovery: RecoveredIncomingFile? = null
     private var incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
     private var incomingFilePublicationSubscription: IncomingFilePublicationSubscription? = null
+    private var incomingFileDiscardSubscription: IncomingFileDiscardSubscription? = null
     private var restoredConsumedShareIntentToken: String? = null
     private var restoredPendingSharedTextToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
@@ -3113,14 +3115,14 @@ class MainActivity : AppCompatActivity() {
                     .onSuccess { recovery ->
                         pendingIncomingFileRecovery = recovery
                         if (recovery != null) {
-                            observeIncomingFilePublication(recovery)
+                            if (!observeIncomingFileDiscard(recovery)) observeIncomingFilePublication(recovery)
                         } else {
-                            observeLatestIncomingFilePublication()
+                            if (!observeLatestIncomingFileDiscard()) observeLatestIncomingFilePublication()
                         }
                     }
                     .onFailure { failure ->
                         mainDiag("incoming file recovery load failed: " + failure.javaClass.simpleName)
-                        observeLatestIncomingFilePublication()
+                        if (!observeLatestIncomingFileDiscard()) observeLatestIncomingFilePublication()
                     }
                 refreshRecentIncomingFileUi()
                 if (loaded.getOrNull() != null) {
@@ -4113,22 +4115,56 @@ class MainActivity : AppCompatActivity() {
         ) return
         incomingFileRecoveryOperation = IncomingFileRecoveryOperation.DISCARDING
         refreshRecentIncomingFileUi()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val discarded = runCatching {
-                incomingFileDownloadsSaver().discardRecoveredIncomingFile(recovery, incomingFileRecoveryStore)
-            }
-            withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed) return@withContext
-                incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
-                discarded
-                    .onSuccess {
+        replaceIncomingFileDiscardSubscription(
+            incomingFileDiscardCoordinator.discard(recovery, ::handleIncomingFileDiscardResult),
+        )
+    }
+
+    private fun observeIncomingFileDiscard(recovery: RecoveredIncomingFile): Boolean {
+        val subscription =
+            incomingFileDiscardCoordinator.observe(recovery, ::handleIncomingFileDiscardResult) ?: return false
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.DISCARDING
+        refreshRecentIncomingFileUi()
+        replaceIncomingFileDiscardSubscription(subscription)
+        return true
+    }
+
+    private fun observeLatestIncomingFileDiscard(): Boolean {
+        val subscription =
+            incomingFileDiscardCoordinator.observeLatest(::handleIncomingFileDiscardResult) ?: return false
+        incomingFileRecoveryOperation = IncomingFileRecoveryOperation.DISCARDING
+        refreshRecentIncomingFileUi()
+        replaceIncomingFileDiscardSubscription(subscription)
+        return true
+    }
+
+    private fun replaceIncomingFileDiscardSubscription(subscription: IncomingFileDiscardSubscription) {
+        incomingFileDiscardSubscription?.close()
+        incomingFileDiscardSubscription = subscription
+    }
+
+    private fun handleIncomingFileDiscardResult(
+        subscription: IncomingFileDiscardSubscription,
+        result: IncomingFileDiscardResult,
+    ) {
+        binding.root.post {
+            if (isFinishing || isDestroyed) return@post
+            if (incomingFileDiscardSubscription !== subscription) return@post
+            subscription.close()
+            incomingFileDiscardSubscription = null
+            incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
+            result.discard
+                .onSuccess {
+                    subscription.consume()
+                    if (pendingIncomingFileRecovery?.recoveryId == result.recovery.recoveryId) {
                         pendingIncomingFileRecovery = null
-                        refreshRecentIncomingFileUi()
-                    }.onFailure { failure ->
-                        mainDiag("incoming file recovery discard failed: " + failure.javaClass.simpleName)
-                        refreshRecentIncomingFileUi()
                     }
-            }
+                    refreshRecentIncomingFileUi()
+                }.onFailure { failure ->
+                    subscription.consume()
+                    mainDiag("incoming file recovery discard failed: " + failure.javaClass.simpleName)
+                    refreshRecentIncomingFileUi()
+                }
         }
     }
 
@@ -8704,6 +8740,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         incomingFilePublicationSubscription?.close()
         incomingFilePublicationSubscription = null
+        incomingFileDiscardSubscription?.close()
+        incomingFileDiscardSubscription = null
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
         binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
         pendingConnectionPanelLayoutWidthPx = null

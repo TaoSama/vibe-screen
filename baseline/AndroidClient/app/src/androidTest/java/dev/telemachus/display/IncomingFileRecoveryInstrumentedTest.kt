@@ -149,7 +149,7 @@ class IncomingFileRecoveryInstrumentedTest {
     }
 
     @Test
-    fun discardRequiresConfirmationAndRemovesRecovery() {
+    fun discardRequiresConfirmationAndSurvivesActivityRecreation() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val store = IncomingFileRecoveryStore(context)
         clearRecovery(store)
@@ -191,6 +191,7 @@ class IncomingFileRecoveryInstrumentedTest {
                     )
                     assertTrue(dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick())
                 }
+                scenario.recreate()
                 waitForActivity(scenario) { activity ->
                     activity.findViewById<View>(R.id.recentIncomingFileContainer).visibility == View.GONE
                 }

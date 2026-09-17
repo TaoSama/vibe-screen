@@ -12,6 +12,8 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         val strings = stringsSource()
         val completed = extractMethod(source, "private fun onIncomingFileCompleted")
         val resultHandler = extractMethod(source, "private fun deliverIncomingFilePublicationResult")
+        val discard = extractMethod(source, "private fun discardIncomingFileRecovery")
+        val discardResult = extractMethod(source, "private fun handleIncomingFileDiscardResult")
         val restoreRecovery = extractMethod(source, "private fun restorePendingIncomingFileRecovery")
         val onDestroy = extractMethod(source, "override fun onDestroy")
         val showAction = extractMethod(source, "private fun showIncomingFileSavedAction")
@@ -48,6 +50,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
         assertTrue(
             "A replacement Activity must reattach to a process result even when durable recovery loading failed",
             restoreRecovery.contains(".onFailure { failure ->") &&
+                restoreRecovery.countOccurrences("if (!observeLatestIncomingFileDiscard()) observeLatestIncomingFilePublication()") == 2 &&
                 restoreRecovery.contains("observeLatestIncomingFilePublication()"),
         )
         assertTrue(
@@ -55,6 +58,17 @@ class MainActivityFileTransferSystemBoundaryContractTest {
             onDestroy.contains("incomingFilePublicationSubscription?.close()") &&
                 !onDestroy.contains("incomingFilePublicationCoordinator.consume") &&
                 resultHandler.contains("if (isFinishing || isDestroyed) return@post"),
+        )
+        assertTrue(
+            "Confirmed discard must outlive Activity replacement and stale callbacks must not mutate replacement state",
+            discard.contains("incomingFileDiscardCoordinator.discard(recovery") &&
+                !discard.contains("lifecycleScope") &&
+                restoreRecovery.contains("observeIncomingFileDiscard(recovery)") &&
+                restoreRecovery.contains("observeLatestIncomingFileDiscard()") &&
+                onDestroy.contains("incomingFileDiscardSubscription?.close()") &&
+                discardResult.contains("if (incomingFileDiscardSubscription !== subscription) return@post") &&
+                discardResult.contains("pendingIncomingFileRecovery?.recoveryId == result.recovery.recoveryId") &&
+                assertBeforeValue(discardResult, "incomingFileDiscardSubscription !== subscription", "subscription.consume()"),
         )
         assertTrue(
             "A stale posted callback must not close or consume a newer publication subscription",
