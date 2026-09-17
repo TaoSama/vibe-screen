@@ -188,6 +188,7 @@ class MainActivity : AppCompatActivity() {
     private val incomingFileRecoveryStore by lazy { IncomingFileRecoveryStore(applicationContext) }
     private val incomingFilePublicationCoordinator by lazy { IncomingFilePublicationCoordinator.processShared(applicationContext) }
     private val incomingFileDiscardCoordinator by lazy { IncomingFileDiscardCoordinator.processShared(applicationContext) }
+    private val incomingFileExportCoordinator by lazy { IncomingFileExportCoordinator.processShared(applicationContext) }
     @Volatile private var internetSession: InternetProductSession? = null
     private var internetVideoDecoderLifecycle: InternetVideoDecoderLifecycle? = null
     private var internetNetworkMonitor: AndroidNetworkMonitor? = null
@@ -356,11 +357,13 @@ class MainActivity : AppCompatActivity() {
     private var pendingSharedTextDialog: androidx.appcompat.app.AlertDialog? = null
     private var recentIncomingFile: PendingIncomingFileExport? = null
     private var pendingIncomingFileExport: PendingIncomingFileExport? = null
+    private var incomingFileExportCopyInFlight = false
     @Volatile private var incomingFileRecoveryLoadPending = true
     @Volatile private var pendingIncomingFileRecovery: RecoveredIncomingFile? = null
     private var incomingFileRecoveryOperation = IncomingFileRecoveryOperation.IDLE
     private var incomingFilePublicationSubscription: IncomingFilePublicationSubscription? = null
     private var incomingFileDiscardSubscription: IncomingFileDiscardSubscription? = null
+    private var incomingFileExportSubscription: IncomingFileExportSubscription? = null
     private var restoredConsumedShareIntentToken: String? = null
     private var restoredPendingSharedTextToken: String? = null
     private var consumedShareIntentTokenForState: String? = null
@@ -460,6 +463,7 @@ class MainActivity : AppCompatActivity() {
         restorePendingSharedFileIntent(savedInstanceState)
         restoreRecentIncomingFile(savedInstanceState)
         restorePendingIncomingFileExport(savedInstanceState)
+        observeLatestIncomingFileExport()
         restorePendingIncomingFileRecovery()
         applyLaunchIntentPolicy(
             savedInstanceState,
@@ -490,6 +494,7 @@ class MainActivity : AppCompatActivity() {
             outState.putString(STATE_PENDING_INCOMING_EXPORT_SOURCE, pending.source.toString())
             outState.putString(STATE_PENDING_INCOMING_EXPORT_NAME, pending.displayName)
             outState.putString(STATE_PENDING_INCOMING_EXPORT_MIME_TYPE, pending.mimeType)
+            outState.putBoolean(STATE_PENDING_INCOMING_EXPORT_COPY_IN_FLIGHT, incomingFileExportCopyInFlight)
         }
         recentIncomingFile?.let { recent ->
             outState.putString(STATE_RECENT_INCOMING_FILE_SOURCE, recent.source.toString())
@@ -3093,6 +3098,7 @@ class MainActivity : AppCompatActivity() {
         val displayName = savedInstanceState.getString(STATE_PENDING_INCOMING_EXPORT_NAME) ?: return
         val mimeType = savedInstanceState.getString(STATE_PENDING_INCOMING_EXPORT_MIME_TYPE) ?: return
         pendingIncomingFileExport = PendingIncomingFileExport(source, displayName, mimeType)
+        incomingFileExportCopyInFlight = savedInstanceState.getBoolean(STATE_PENDING_INCOMING_EXPORT_COPY_IN_FLIGHT)
         refreshRecentIncomingFileUi()
     }
 
@@ -4226,6 +4232,7 @@ class MainActivity : AppCompatActivity() {
                 mimeType = mimeType.ifBlank { IncomingFileDownloadsSaver.DEFAULT_MIME_TYPE },
             )
         pendingIncomingFileExport = pending
+        incomingFileExportCopyInFlight = false
         refreshRecentIncomingFileUi()
         val intent =
             Intent(Intent.ACTION_CREATE_DOCUMENT)
@@ -4235,6 +4242,7 @@ class MainActivity : AppCompatActivity() {
         runCatching { startActivityForResult(intent, REQ_INCOMING_FILE_EXPORT) }
             .onFailure { failure ->
                 pendingIncomingFileExport = null
+                incomingFileExportCopyInFlight = false
                 refreshRecentIncomingFileUi()
                 mainDiag("incoming file export picker failed: " + failure.javaClass.simpleName)
                 showDedupedToast(getString(R.string.file_transfer_copy_failed, displayName), Toast.LENGTH_LONG)
@@ -4246,37 +4254,78 @@ class MainActivity : AppCompatActivity() {
         data: Intent?,
     ) {
         val pending = pendingIncomingFileExport ?: return
-        pendingIncomingFileExport = null
-        refreshRecentIncomingFileUi()
         val destination = data?.data
-        if (resultCode != RESULT_OK || destination == null) return
-        lifecycleScope.launch(Dispatchers.IO) {
-            val exported = try {
-                IncomingFileDocumentExporter(contentResolver).export(pending.source, destination) { coroutineContext.ensureActive() }
-                Result.success(Unit)
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (failure: Throwable) {
-                Result.failure(failure)
-            }
-            if (isFinishing || isDestroyed) return@launch
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                exported
-                    .onSuccess {
-                        mainDiag("incoming file copy exported")
-                        showDedupedToast(
-                            getString(R.string.file_transfer_copy_saved, pending.displayName),
-                            Toast.LENGTH_LONG,
-                        )
-                    }.onFailure { failure ->
-                        mainDiag("incoming file copy export failed: " + failure.javaClass.simpleName)
-                        showDedupedToast(
-                            getString(R.string.file_transfer_copy_failed, pending.displayName),
-                            Toast.LENGTH_LONG,
-                        )
+        if (resultCode != RESULT_OK || destination == null) {
+            pendingIncomingFileExport = null
+            incomingFileExportCopyInFlight = false
+            refreshRecentIncomingFileUi()
+            return
+        }
+        incomingFileExportCopyInFlight = true
+        refreshRecentIncomingFileUi()
+        replaceIncomingFileExportSubscription(
+            incomingFileExportCoordinator.export(
+                IncomingFileExportRequest(pending.source, destination, pending.displayName, pending.mimeType),
+                ::handleIncomingFileExportCompletion,
+            ),
+        )
+    }
+
+    private fun observeLatestIncomingFileExport() {
+        val subscription =
+            incomingFileExportCoordinator.observeLatest(::handleIncomingFileExportCompletion)
+                ?: run {
+                    if (incomingFileExportCopyInFlight) {
+                        val displayName = pendingIncomingFileExport?.displayName ?: getString(R.string.file_transfer_unknown_name)
+                        pendingIncomingFileExport = null
+                        incomingFileExportCopyInFlight = false
+                        refreshRecentIncomingFileUi()
+                        showDedupedToast(getString(R.string.file_transfer_copy_failed, displayName), Toast.LENGTH_LONG)
                     }
-            }
+                    return
+                }
+        replaceIncomingFileExportSubscription(subscription)
+    }
+
+    private fun replaceIncomingFileExportSubscription(subscription: IncomingFileExportSubscription) {
+        incomingFileExportSubscription?.close()
+        incomingFileExportSubscription = subscription
+    }
+
+    private fun handleIncomingFileExportCompletion(
+        subscription: IncomingFileExportSubscription,
+        result: IncomingFileExportResult,
+    ) {
+        binding.root.post {
+            if (isFinishing || isDestroyed || isChangingConfigurations) return@post
+            if (incomingFileExportSubscription !== subscription) return@post
+            subscription.close()
+            incomingFileExportSubscription = null
+            pendingIncomingFileExport = null
+            incomingFileExportCopyInFlight = false
+            recentIncomingFile =
+                PendingIncomingFileExport(
+                    result.request.source,
+                    result.request.displayName,
+                    result.request.mimeType,
+                )
+            refreshRecentIncomingFileUi()
+            result.export
+                .onSuccess {
+                    subscription.consume()
+                    mainDiag("incoming file copy exported")
+                    showDedupedToast(
+                        getString(R.string.file_transfer_copy_saved, result.request.displayName),
+                        Toast.LENGTH_LONG,
+                    )
+                }.onFailure { failure ->
+                    subscription.consume()
+                    mainDiag("incoming file copy export failed: " + failure.javaClass.simpleName)
+                    showDedupedToast(
+                        getString(R.string.file_transfer_copy_failed, result.request.displayName),
+                        Toast.LENGTH_LONG,
+                    )
+                }
         }
     }
 
@@ -8742,6 +8791,8 @@ class MainActivity : AppCompatActivity() {
         incomingFilePublicationSubscription = null
         incomingFileDiscardSubscription?.close()
         incomingFileDiscardSubscription = null
+        incomingFileExportSubscription?.close()
+        incomingFileExportSubscription = null
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
         binding.root.removeCallbacks(pendingConnectionPanelLayoutRunnable)
         pendingConnectionPanelLayoutWidthPx = null
@@ -8784,6 +8835,7 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_PENDING_INCOMING_EXPORT_SOURCE = "pending_incoming_export_source"
         private const val STATE_PENDING_INCOMING_EXPORT_NAME = "pending_incoming_export_name"
         private const val STATE_PENDING_INCOMING_EXPORT_MIME_TYPE = "pending_incoming_export_mime_type"
+        private const val STATE_PENDING_INCOMING_EXPORT_COPY_IN_FLIGHT = "pending_incoming_export_copy_in_flight"
         private const val STATE_RECENT_INCOMING_FILE_SOURCE = "recent_incoming_file_source"
         private const val STATE_RECENT_INCOMING_FILE_NAME = "recent_incoming_file_name"
         private const val STATE_RECENT_INCOMING_FILE_MIME_TYPE = "recent_incoming_file_mime_type"

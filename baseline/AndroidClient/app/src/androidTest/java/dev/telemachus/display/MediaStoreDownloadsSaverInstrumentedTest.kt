@@ -1,12 +1,16 @@
 package dev.telemachus.display
 
+import android.app.Activity
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.CompletedIncomingFile
 import dev.telemachus.display.protocol.sha256
@@ -24,6 +28,53 @@ import java.security.MessageDigest
 
 @RunWith(AndroidJUnit4::class)
 class MediaStoreDownloadsSaverInstrumentedTest {
+    @Test
+    fun productionDocumentExportSurvivesMainActivityRecreation() {
+        assumeTrue("MediaStore.Downloads export path is Android Q+ only", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val collection = ContentResolverMediaStoreDownloadsCollection(context.contentResolver)
+        val suffix = System.currentTimeMillis().toString()
+        val sourceName = "vibescreen-export-recreate-source-$suffix.bin"
+        val destinationName = "vibescreen-export-recreate-destination-$suffix.bin"
+        val payload = ByteArray(8 * 1024 * 1024) { index -> (index % 251).toByte() }
+        var source: Uri? = null
+        var destination: Uri? = null
+        try {
+            source = collection.insertPending(sourceName, TEST_MIME_TYPE)
+            collection.openOutputStream(source)?.use { it.write(payload) }
+                ?: throw IOException("Unable to seed export source")
+            collection.publish(source)
+            destination = collection.insertPending(destinationName, TEST_MIME_TYPE)
+
+            ActivityScenario.launch<MainActivity>(
+                Intent(context, MainActivity::class.java).putExtra("auto_connect", false),
+            ).use { scenario ->
+                scenario.onActivity { activity ->
+                    val pending = pendingExport(source, sourceName)
+                    setPrivateField(activity, "recentIncomingFile", pending)
+                    setPrivateField(activity, "pendingIncomingFileExport", pending)
+                    invokeExportResult(activity, destination)
+                }
+                scenario.recreate()
+                waitForActivity(scenario) { activity ->
+                    activity.findViewById<android.widget.Button>(R.id.incomingFileStatusPrimaryButton).isEnabled &&
+                        activity.findViewById<android.widget.TextView>(R.id.incomingFileStatusTitle).text.toString() ==
+                        activity.getString(R.string.file_transfer_incoming_saved_title)
+                }
+            }
+
+            val exported = context.contentResolver.openInputStream(destination)?.use { it.readBytes() }
+                ?: throw IOException("Unable to read recreated export destination")
+            assertArrayEquals(payload, exported)
+            assertArrayEquals(sha256Bytes(payload), sha256Bytes(exported))
+            Log.i(TAG, "incoming_document_export_recreate source=" + source + " destination=" + destination + " bytes=" + exported.size)
+        } finally {
+            destination?.let { context.contentResolver.delete(it, null, null) }
+            source?.let { context.contentResolver.delete(it, null, null) }
+        }
+    }
+
     @Test
     fun productionDocumentExporterCopiesPublishedIncomingFileExactly() {
         assumeTrue("MediaStore.Downloads export path is Android Q+ only", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
@@ -143,6 +194,40 @@ class MediaStoreDownloadsSaverInstrumentedTest {
 
     private fun withTargetContext(assertion: (android.content.Context) -> Unit) =
         assertion(ApplicationProvider.getApplicationContext())
+
+    private fun pendingExport(source: Uri, displayName: String): Any {
+        val type = Class.forName("dev.telemachus.display.PendingIncomingFileExport")
+        val constructor = type.declaredConstructors.single().apply { isAccessible = true }
+        return constructor.newInstance(source, displayName, TEST_MIME_TYPE)
+    }
+
+    private fun setPrivateField(activity: MainActivity, name: String, value: Any) {
+        MainActivity::class.java.getDeclaredField(name).apply { isAccessible = true }.set(activity, value)
+    }
+
+    private fun invokeExportResult(activity: MainActivity, destination: Uri) {
+        MainActivity::class.java
+            .getDeclaredMethod("handleIncomingFileExportResult", Int::class.javaPrimitiveType, Intent::class.java)
+            .apply { isAccessible = true }
+            .invoke(activity, Activity.RESULT_OK, Intent().setData(destination))
+    }
+
+    private fun waitForActivity(
+        scenario: ActivityScenario<MainActivity>,
+        timeoutMs: Long = 15_000L,
+        predicate: (MainActivity) -> Boolean,
+    ) {
+        val deadline = android.os.SystemClock.elapsedRealtime() + timeoutMs
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            var satisfied = false
+            scenario.onActivity { activity -> satisfied = predicate(activity) }
+            if (satisfied) return
+            android.os.SystemClock.sleep(50L)
+        }
+        var finalState = false
+        scenario.onActivity { activity -> finalState = predicate(activity) }
+        assertTrue("Timed out waiting for export UI state", finalState)
+    }
 
     private data class DownloadsRow(
         val displayName: String,
