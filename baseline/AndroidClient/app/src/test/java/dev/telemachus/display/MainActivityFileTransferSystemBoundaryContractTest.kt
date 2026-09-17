@@ -117,6 +117,7 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_NAME") &&
                 onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_MIME_TYPE") &&
                 onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_COPY_IN_FLIGHT") &&
+                onSaveInstanceState.contains("STATE_PENDING_INCOMING_EXPORT_DESTINATION") &&
                 restorePending.contains("PendingIncomingFileExport(source, displayName, mimeType)") &&
                 restorePending.contains("refreshRecentIncomingFileUi()") &&
                 onSaveInstanceState.contains("STATE_RECENT_INCOMING_FILE_SOURCE") &&
@@ -135,7 +136,9 @@ class MainActivityFileTransferSystemBoundaryContractTest {
                 handleResult.contains("incomingFileExportCopyInFlight = true") &&
                 handleResult.contains("incomingFileExportCoordinator.export(") &&
                 !handleResult.contains("lifecycleScope") &&
-                source.contains("observeLatestIncomingFileExport()") &&
+                source.contains("observePendingIncomingFileExport()") &&
+                source.contains("incomingFileExportCoordinator.observe(request") &&
+                !source.contains("incomingFileExportCoordinator.observeLatest") &&
                 onDestroy.contains("incomingFileExportSubscription?.close()") &&
                 exportCompletion.contains("isChangingConfigurations") &&
                 exportCompletion.contains("if (incomingFileExportSubscription !== subscription) return@post") &&

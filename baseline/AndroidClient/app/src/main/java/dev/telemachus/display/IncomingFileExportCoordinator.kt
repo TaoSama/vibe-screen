@@ -42,9 +42,11 @@ internal class IncomingFileExportCoordinator(
         IncomingFileExportResult(request, runCatching { exportDocument(request) })
     }
 
-    fun observeLatest(
+    fun observe(
+        request: IncomingFileExportRequest,
         observer: (IncomingFileExportSubscription, IncomingFileExportResult) -> Unit,
-    ): IncomingFileExportSubscription? = operations.subscribeLatest(observer)
+    ): IncomingFileExportSubscription? =
+        operations.subscribeExisting(OperationKey(request.source, request.destination), observer)
 
     companion object {
         private const val LOG_TAG = "VibeScreenFileExport"

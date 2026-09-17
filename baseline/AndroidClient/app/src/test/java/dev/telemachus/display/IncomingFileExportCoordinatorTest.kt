@@ -60,7 +60,7 @@ class IncomingFileExportCoordinatorTest {
         val newResults = mutableListOf<IncomingFileExportResult>()
 
         coordinator.export(request) { _, result -> oldResults.add(result) }.close()
-        assertNotNull(coordinator.observeLatest { _, result -> newResults.add(result) })
+        assertNotNull(coordinator.observe(request) { _, result -> newResults.add(result) })
         executor.runNext()
 
         assertTrue(oldResults.isEmpty())
@@ -78,10 +78,20 @@ class IncomingFileExportCoordinatorTest {
         executor.runNext()
         val resumed = mutableListOf<IncomingFileExportResult>()
 
-        assertNotNull(coordinator.observeLatest { _, result -> resumed.add(result) })
+        assertNotNull(coordinator.observe(request("failure")) { _, result -> resumed.add(result) })
         assertEquals(expected, resumed.single().export.exceptionOrNull())
         assertTrue(subscription.consume())
-        assertNull(coordinator.observeLatest { _, _ -> })
+        assertNull(coordinator.observe(request("failure")) { _, _ -> })
+    }
+
+    @Test
+    fun unrelatedRequestCannotObserveAnotherActivityExport() {
+        val executor = QueuedExecutor()
+        val coordinator = IncomingFileExportCoordinator(executor) { }
+
+        coordinator.export(request("owner")) { _, _ -> }
+
+        assertNull(coordinator.observe(request("other")) { _, _ -> })
     }
 
     @Test
